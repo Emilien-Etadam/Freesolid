@@ -153,17 +153,46 @@ class FeatureManagerCommand:
 
 
 class AliasCommand:
-    """Run a PartDesign command under its SolidWorks name."""
+    """Run a PartDesign command under its SolidWorks name.
+
+    The icon is inherited from the delegated command rather than redrawn:
+    a designer should see the same picture whichever name they reach the tool
+    by, and without one FreeCAD falls back to text labels, which overflow the
+    toolbar within a handful of entries.
+    """
 
     def __init__(self, term):
         self._term = term
 
     def GetResources(self):
-        return {
+        resources = {
             "MenuText": self._term.fr,
             "ToolTip": self._term.note or "{} ({})".format(
                 self._term.fr, self._term.command),
         }
+        pixmap = self._inherited_pixmap()
+        if pixmap:
+            resources["Pixmap"] = pixmap
+        return resources
+
+    def _inherited_pixmap(self):
+        """Icon of the PartDesign command we delegate to.
+
+        Two strategies, because the first only works once PartDesign has been
+        loaded — which is not guaranteed when FreeSolid builds its toolbars.
+        The fallback is the command name itself: FreeCAD resolves icons by
+        name against its registered icon paths, and PartDesign's icons are
+        named after their commands.
+        """
+        try:
+            command = _gui().Command.get(self._term.command)
+            if command is not None:
+                pixmap = command.getInfo().get("pixmap", "")
+                if pixmap:
+                    return pixmap
+        except Exception:
+            pass
+        return self._term.command
 
     def Activated(self, index=0):
         try:

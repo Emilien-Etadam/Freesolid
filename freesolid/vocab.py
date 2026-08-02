@@ -81,9 +81,9 @@ TERMS: tuple[Term, ...] = (
 #: FreeCAD Origin plane internal names -> the SolidWorks reference planes.
 #: FreeCAD is Z-up, SolidWorks is Y-up, hence XY->Dessus and XZ->Face.
 ORIGIN_PLANES: dict[str, tuple[str, str]] = {
-    "XY_Plane": ("Dessus", "Top"),
-    "XZ_Plane": ("Face", "Front"),
-    "YZ_Plane": ("Droite", "Right"),
+    "XY_Plane": ("Plan de dessus", "Top Plane"),
+    "XZ_Plane": ("Plan de face", "Front Plane"),
+    "YZ_Plane": ("Plan de droite", "Right Plane"),
 }
 
 ORIGIN_AXES: dict[str, tuple[str, str]] = {

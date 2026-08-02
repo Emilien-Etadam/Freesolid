@@ -37,11 +37,11 @@ def test_label_for_unknown_type_falls_back_to_short_name():
 
 
 @pytest.mark.parametrize("name,expected", [
-    ("XY_Plane", "Dessus"),
-    ("XZ_Plane", "Face"),
-    ("YZ_Plane", "Droite"),
+    ("XY_Plane", "Plan de dessus"),
+    ("XZ_Plane", "Plan de face"),
+    ("YZ_Plane", "Plan de droite"),
     # FreeCAD suffixes Origin features once a document holds several Bodies.
-    ("XZ_Plane001", "Face"),
+    ("XZ_Plane001", "Plan de face"),
     ("Z_Axis", "Axe Z"),
 ])
 def test_origin_plane_mapping(name, expected):
@@ -55,4 +55,4 @@ def test_unknown_origin_name_is_returned_verbatim():
 def test_english_labels_available():
     assert vocab.label_for_type("PartDesign::Pad", lang="en") == \
         "Extruded Boss/Base"
-    assert vocab.label_for_origin("XY_Plane", lang="en") == "Top"
+    assert vocab.label_for_origin("XY_Plane", lang="en") == "Top Plane"

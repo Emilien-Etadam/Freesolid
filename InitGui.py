@@ -98,6 +98,11 @@ try:
     _commands.register()
     from freesolid import guard as _guard
     _guard.install()
+    # The Fonctions strip and the FeatureManager must exist in every session,
+    # whatever workbench FreeCAD starts in — not only after FreeSolid is
+    # activated. Deferred one event-loop turn (main window not assembled yet).
+    from freesolid import startup as _startup
+    _startup.defer_panels()
 except Exception:
     import traceback as _tb
     App.Console.PrintError(

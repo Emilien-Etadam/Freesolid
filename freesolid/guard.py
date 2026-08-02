@@ -57,37 +57,45 @@ class _GuardObserver:
     it was merely watching.
     """
 
-    def slotCreatedDocument(self, doc):  # noqa: N802 - FreeCAD API name
-        """A brand-new empty document gets a Body, SolidWorks-style.
+    # NOTE deliberately absent: no auto-Body on File > New. PartDesign 1.x
+    # already creates and activates a Body when a sketch is started with none
+    # active; a second, plugin-made Body produced exactly the "Piece + Body"
+    # duplicate seen on a real 1.1.3 install. FreeCAD's own behaviour is the
+    # SolidWorks behaviour here — the plugin only renames, below.
 
-        Deferred to the next event-loop turn: commands that create a
-        document *and* populate it (open file, new assembly) have finished
-        by then, and a non-empty document is left strictly alone.
+    def slotCreatedObject(self, obj):  # noqa: N802 - FreeCAD API name
+        """New Body in an *unsaved* document: give it SolidWorks names.
+
+        Body -> « Pièce », origin planes -> Plan de face / dessus / droite.
+        Deferred one event-loop turn so the Origin children exist. Saved
+        documents are never touched: renaming someone's existing model on
+        open would be vandalism.
         """
         try:
-            if getattr(doc, "FileName", ""):
-                return  # opening an existing file, not File > New
+            if getattr(obj, "TypeId", "") != "PartDesign::Body":
+                return
+            if getattr(obj.Document, "FileName", ""):
+                return
             from .compat import QtCore
-            QtCore.QTimer.singleShot(0, lambda: self._ensure_body(doc))
+            QtCore.QTimer.singleShot(0, lambda: self._rename_like_sw(obj))
         except Exception:
             pass
 
     @staticmethod
-    def _ensure_body(doc):
+    def _rename_like_sw(body):
         try:
-            import FreeCAD as App
-            if doc not in App.listDocuments().values():
-                return  # closed meanwhile
-            if doc.Objects:
-                return  # someone populated it: an assembly, a restore…
-            body = doc.addObject("PartDesign::Body", "Piece")
-            doc.recompute()
-            try:
-                import FreeCADGui as Gui
-                Gui.getDocument(doc.Name).ActiveView.setActiveObject(
-                    "pdbody", body)
-            except Exception:
-                pass
+            from .vocab import label_for_origin
+            if body.Label.startswith("Body"):
+                body.Label = "Pièce"
+            origin = getattr(body, "Origin", None)
+            if origin is None:
+                return
+            children = (getattr(origin, "OriginFeatures", None)
+                        or getattr(origin, "Group", None)
+                        or getattr(origin, "OutList", None) or [])
+            origin.Label = "Origine"
+            for child in children:
+                child.Label = label_for_origin(child.Name)
         except Exception:
             pass
 

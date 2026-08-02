@@ -17,11 +17,13 @@ from . import prefs as prefs_mod
 #: Getter name and two distinct defaults per kind. Reading a key twice with
 #: different defaults is the only way FreeCAD's ParamGet API reveals whether
 #: a key exists: an absent key returns each default verbatim.
+#: String sentinels must be plain text — FreeCAD rejects NUL bytes in
+#: GetString defaults with "embedded null character" (seen on 1.1.3).
 _PROBES = {
     "bool": ("GetBool", (True, False)),
     "int": ("GetInt", (1, 2)),
     "float": ("GetFloat", (1.0, 2.0)),
-    "str": ("GetString", ("\x00probe-a", "\x00probe-b")),
+    "str": ("GetString", ("__freesolid_absent_a__", "__freesolid_absent_b__")),
 }
 
 

@@ -32,6 +32,16 @@ def _stored_everything():
     return {(p.path, p.key): p.value for p in prefs.PREFS}
 
 
+def test_probe_defaults_are_freecad_safe():
+    # FreeCAD rejects NUL bytes in GetString defaults with "embedded null
+    # character" (seen on 1.1.3) — sentinels must be plain distinct text.
+    for kind, (_, (default_a, default_b)) in diagnostics._PROBES.items():
+        assert default_a != default_b, kind
+        for default in (default_a, default_b):
+            if isinstance(default, str):
+                assert "\x00" not in default, kind
+
+
 def test_absent_keys_are_detected():
     rows = diagnostics.collect(FakeParams())          # empty store
     assert all(r["state"] == "absent" for r in rows)

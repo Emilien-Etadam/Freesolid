@@ -53,6 +53,8 @@ class Pref:
 
 
 PREFS: tuple[Pref, ...] = (
+    # verified: après Setup sur 1.1.3, la barre d'état affiche « Blender » —
+    # FreeCAD consomme bien la clé (capture utilisateur, 2026-08-02).
     Pref("BaseApp/Preferences/View", "NavigationStyle", "str",
          "Gui::BlenderNavigationStyle",
          "Molette = rotation, comme SolidWorks. FreeCAD n'a pas de style "
@@ -64,23 +66,29 @@ PREFS: tuple[Pref, ...] = (
          "PartDesignWorkbench",
          "Démarrer directement dans l'atelier de modélisation de pièces, "
          "sans passer par l'écran de démarrage.",
-         tags=("workbench",)),
+         verified=False, tags=("workbench",)),
 
     # The three rows below split the tree out of the Combo View, so the Tasks
     # panel no longer *replaces* the model tree mid-command. This is the fix
     # for the single most disorienting behaviour for a SolidWorks user.
+    # verified: diagnostic 1.1.3 du 2026-08-02 — les clés existent ET le
+    # recensement des panneaux montre l'effet (Tree view, Property view et
+    # Tasks en docks séparés, aucune Combo View).
     Pref("BaseApp/Preferences/DockWindows/ComboView", "Enabled", "bool", False,
          "Sortir l'arbre du panneau combiné : il ne disparaît plus quand une "
          "fonction s'ouvre.",
-         verified=False, tags=("layout",)),
+         tags=("layout",)),
     Pref("BaseApp/Preferences/DockWindows/TreeView", "Enabled", "bool", True,
          "L'arbre du modèle vit dans son propre panneau.",
-         verified=False, tags=("layout",)),
+         tags=("layout",)),
     Pref("BaseApp/Preferences/DockWindows/PropertyView", "Enabled", "bool", True,
          "L'éditeur de propriétés vit dans son propre panneau, à côté de "
          "l'arbre — disposition PropertyManager.",
-         verified=False, tags=("layout",)),
+         tags=("layout",)),
 
+    # Clé présente avec notre valeur sur 1.1.3, mais « présente » ne prouve
+    # pas « consommée » (c'est nous qui l'avons écrite) : reste non vérifié
+    # tant que l'effet n'est pas observé.
     Pref("BaseApp/Preferences/View", "UseNewRotationCenter", "bool", True,
          "Rotation autour du point sous le curseur, comportement attendu en "
          "CAO mécanique.",

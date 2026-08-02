@@ -19,9 +19,14 @@
             <classname>FreeSolidWorkbench</classname>
             <subdirectory>./</subdirectory>
         </workbench>
+        <!-- FreeCAD resolves a preference pack from a directory named exactly
+             like the pack, at the addon root; <subdirectory> is ignored here.
+             Hence ./FreeSolid/FreeSolid.cfg, not ./preference_packs/. -->
         <preferencepack>
             <name>FreeSolid</name>
-            <subdirectory>preference_packs/FreeSolid/</subdirectory>
+            <description>Navigation, disposition des panneaux et atelier de démarrage adaptés aux concepteurs venant de la CAO mécanique commerciale.</description>
+            <tag>navigation</tag>
+            <tag>layout</tag>
         </preferencepack>
     </content>
     <depend type="internal">FreeCAD</depend>

@@ -1,0 +1,130 @@
+"""The preference table applied by the Setup command.
+
+Declarative on purpose: every setting is a row, so the Setup command can
+*report* what it changed instead of silently mutating the user's config, and
+so the table can be unit-tested without FreeCAD.
+
+About ``verified``
+------------------
+FreeCAD's parameter paths are not a public API and some have moved between
+releases. Rows marked ``verified=False`` are written from documentation
+rather than from a run against a real FreeCAD build; the Setup command lists
+them separately so a wrong key surfaces as "not applied" instead of as a
+silent no-op. Flip them to ``True`` once checked against Tools -> Edit
+parameters on a real install.
+"""
+
+from dataclasses import dataclass, field
+
+#: Kept out of the table because it is applied through a dedicated code path
+#: (the workbench list is a comma-separated blob, not a scalar).
+KEEP_WORKBENCHES: tuple[str, ...] = (
+    "PartDesignWorkbench",
+    "SketcherWorkbench",
+    "AssemblyWorkbench",
+    "TechDrawWorkbench",
+    "PartWorkbench",
+    "DraftWorkbench",
+    "SpreadsheetWorkbench",
+)
+
+
+@dataclass(frozen=True)
+class Pref:
+    """One parameter to write.
+
+    Attributes:
+        path: parameter group, without the ``User parameter:`` prefix.
+        key: parameter name inside that group.
+        kind: one of ``bool``, ``int``, ``float``, ``str`` — selects the
+            ``ParamGet`` setter.
+        value: the value to write.
+        why: user-facing justification, shown in the Setup report.
+        verified: whether the path/key pair was checked on a real install.
+    """
+
+    path: str
+    key: str
+    kind: str
+    value: object
+    why: str
+    verified: bool = True
+    tags: tuple[str, ...] = field(default_factory=tuple)
+
+
+PREFS: tuple[Pref, ...] = (
+    Pref("BaseApp/Preferences/View", "NavigationStyle", "str",
+         "Gui::BlenderNavigationStyle",
+         "Molette = rotation, comme SolidWorks. FreeCAD n'a pas de style "
+         "SolidWorks natif ; Blender en est le plus proche (le pan est sur "
+         "Maj+milieu au lieu de Ctrl+milieu).",
+         tags=("navigation",)),
+
+    Pref("BaseApp/Preferences/General", "AutoloadModule", "str",
+         "PartDesignWorkbench",
+         "Démarrer directement dans l'atelier de modélisation de pièces, "
+         "sans passer par l'écran de démarrage.",
+         tags=("workbench",)),
+
+    # The three rows below split the tree out of the Combo View, so the Tasks
+    # panel no longer *replaces* the model tree mid-command. This is the fix
+    # for the single most disorienting behaviour for a SolidWorks user.
+    Pref("BaseApp/Preferences/DockWindows/ComboView", "Enabled", "bool", False,
+         "Sortir l'arbre du panneau combiné : il ne disparaît plus quand une "
+         "fonction s'ouvre.",
+         verified=False, tags=("layout",)),
+    Pref("BaseApp/Preferences/DockWindows/TreeView", "Enabled", "bool", True,
+         "L'arbre du modèle vit dans son propre panneau.",
+         verified=False, tags=("layout",)),
+    Pref("BaseApp/Preferences/DockWindows/PropertyView", "Enabled", "bool", True,
+         "L'éditeur de propriétés vit dans son propre panneau, à côté de "
+         "l'arbre — disposition PropertyManager.",
+         verified=False, tags=("layout",)),
+
+    Pref("BaseApp/Preferences/View", "UseNewRotationCenter", "bool", True,
+         "Rotation autour du point sous le curseur, comportement attendu en "
+         "CAO mécanique.",
+         verified=False, tags=("navigation",)),
+
+    Pref("BaseApp/Preferences/Mod/PartDesign", "AutoGroupSolids", "bool", False,
+         "Ne pas regrouper automatiquement les solides : garder un Body = "
+         "une pièce.",
+         verified=False, tags=("partdesign",)),
+)
+
+
+def unverified() -> tuple[Pref, ...]:
+    """Rows whose parameter path still needs checking on a real install."""
+    return tuple(p for p in PREFS if not p.verified)
+
+
+def by_tag(tag: str) -> tuple[Pref, ...]:
+    return tuple(p for p in PREFS if tag in p.tags)
+
+
+def apply_all(param_get):
+    """Write every row, returning ``(applied, failed)``.
+
+    Args:
+        param_get: a callable behaving like ``FreeCAD.ParamGet`` — injected
+            rather than imported so the logic is testable with a fake.
+
+    Returns:
+        A tuple of two lists: the ``Pref`` rows written without raising, and
+        ``(Pref, exception)`` pairs for the rows that failed.
+    """
+    applied, failed = [], []
+    setters = {
+        "bool": "SetBool",
+        "int": "SetInt",
+        "float": "SetFloat",
+        "str": "SetString",
+    }
+    for pref in PREFS:
+        try:
+            group = param_get("User parameter:" + pref.path)
+            getattr(group, setters[pref.kind])(pref.key, pref.value)
+            applied.append(pref)
+        except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+            failed.append((pref, exc))
+    return applied, failed

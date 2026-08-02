@@ -1,0 +1,118 @@
+# FreeSolid
+
+A familiar mechanical-CAD interface for FreeCAD.
+
+FreeSolid is a FreeCAD addon for designers who already know a commercial
+parametric CAD package — SolidWorks, Inventor, Solid Edge — and who find
+FreeCAD's terminology and panel behaviour disorienting rather than
+difficult. It changes no geometry and adds no document object types: it is a
+presentation and onboarding layer over FreeCAD's own PartDesign.
+
+> **Alpha.** Version 0.1. The vocabulary and preference tables are covered by
+> unit tests; the FreeCAD-facing code has not yet been exercised against a
+> real install. See [Status](#status).
+
+## What it does
+
+**A FeatureManager-shaped tree.** FreeCAD greys out every feature except the
+Tip, because only one solid is displayed at a time. In SolidWorks, greyed
+means *suppressed* — so the native tree reads as "everything is broken" to a
+designer coming from there. FreeSolid ships a separate dock that:
+
+- lists features chronologically and never greys a healthy one;
+- renders the Tip as a **rollback bar** — which is the mental model it
+  actually implements — movable by double-clicking a feature;
+- labels Origin planes **Face / Dessus / Droite** instead of XZ / XY / YZ;
+- colours genuinely broken features red, and only those.
+
+**Command names you already use.** *Bossage extrudé* runs `PartDesign_Pad`,
+*Enlèvement de matière extrudé* runs `PartDesign_Pocket`, *Assistant de
+perçage* runs `PartDesign_Hole`. The aliases delegate to FreeCAD's commands;
+nothing is reimplemented. The full table lives in
+[`freesolid/vocab.py`](freesolid/vocab.py) and is the single source of truth.
+
+**Nouvelle pièce.** One command that creates a document, adds a Body and
+activates it — SolidWorks' `File > New > Part`. The missing Body is the
+single most common cause of "my feature went somewhere weird".
+
+**A preference pack.** Navigation set to Blender style (middle button
+rotates, the closest FreeCAD has to SolidWorks — it has no native SolidWorks
+style), PartDesign as the startup workbench, unused workbenches hidden, and
+the model tree moved into its own dock so the Tasks panel stops *replacing*
+it mid-command.
+
+## Install
+
+Not yet listed in the Addon Manager. Meanwhile:
+
+1. `Tools → Addon manager → ⚙ → Custom repositories`, add this repository's
+   URL with branch `main`; **or** clone into `~/.local/share/FreeCAD/Mod/freesolid`
+   (`%APPDATA%\FreeCAD\Mod\freesolid` on Windows).
+2. Restart FreeCAD, pick the **FreeSolid** workbench.
+3. Run **Configurer FreeSolid** once. It reports every setting it changed and
+   flags the ones it could not apply.
+
+Requires FreeCAD 1.0 or later and Python 3.10+.
+
+## Status
+
+| Area | State |
+|---|---|
+| Vocabulary table (`vocab.py`) | ✅ unit-tested |
+| Preference table (`prefs.py`) | ✅ unit-tested, ⚠️ some parameter paths unverified |
+| FeatureManager dock | ⚠️ written, not yet run against FreeCAD |
+| Alias commands | ⚠️ written, not yet run against FreeCAD |
+| Preference pack `.cfg` | ⚠️ minimal, needs a real-install export |
+
+Six preference rows are marked `verified=False` in
+[`freesolid/prefs.py`](freesolid/prefs.py): their parameter paths come from
+documentation rather than from a run against a real build, and FreeCAD's
+parameter paths are not a public API. The Setup command lists them
+separately, so a wrong key surfaces as "not applied" instead of a silent
+no-op. Checking them against `Tools → Edit parameters` on a real install is
+the first task before 0.2.
+
+## Roadmap
+
+- Verify and lock every preference path against FreeCAD 1.0 and 1.1.
+- Guardrail before a feature would produce a disconnected solid — FreeCAD
+  errors out where SolidWorks would silently make a multibody part, and the
+  current message explains none of that.
+- A contextual command bar on <kbd>S</kbd>, SolidWorks-style.
+- A ribbon layout (JSON) for the [FreeCAD-Ribbon](https://github.com/APEbbers/FreeCAD-Ribbon)
+  addon, arranging PartDesign, Sketcher and Part into one CommandManager-like
+  tab.
+- English UI strings and a translation catalogue; the UI is French-first for
+  now.
+
+Out of scope, permanently: anything requiring a fork of FreeCAD itself. The
+one thing a designer will miss that an addon cannot deliver is **multiple
+disconnected solids inside a single Body** — that is a PartDesign
+architecture constraint, not a UI choice.
+
+## Development
+
+```bash
+python -m pip install pytest
+python -m compileall -q freesolid Init.py InitGui.py
+python -m pytest -q
+```
+
+`vocab.py` and `prefs.py` import nothing from FreeCAD, which is what makes
+them testable in CI. Keep it that way: FreeCAD imports belong inside
+functions, not at module scope.
+
+## Naming and trademarks
+
+FreeSolid is not affiliated with, endorsed by, or derived from any
+commercial CAD vendor. Vendor names appear only to describe who this addon
+is for, which is nominative use. No vendor icon, dialog or resource is
+reproduced — all icons are original.
+
+An unrelated *FreeSOLID* existed in the 2000s: a collision-detection library
+(SOLID, *Software Library for Interference Detection*). It is dormant and in
+a different domain; there is no shared code or lineage.
+
+## Licence
+
+LGPL-2.1-or-later, matching FreeCAD.

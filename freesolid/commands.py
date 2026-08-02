@@ -1,0 +1,193 @@
+"""FreeSolid commands.
+
+Three families:
+
+- ``Setup`` applies the preference table and reports what it did.
+- ``NewPart`` reproduces SolidWorks' File > New > Part, which in FreeCAD
+  means "document + Body + activate the Body" — the step whose absence
+  causes most of the early confusion.
+- The aliases in :data:`freesolid.vocab.TERMS` re-expose PartDesign commands
+  under the names a mechanical designer already knows. They delegate; they do
+  not reimplement.
+"""
+
+from . import prefs as prefs_mod
+from .vocab import TERMS
+
+
+def _gui():
+    import FreeCADGui as Gui
+    return Gui
+
+
+def _app():
+    import FreeCAD as App
+    return App
+
+
+class SetupCommand:
+    """Apply the FreeSolid defaults, then show what changed."""
+
+    def GetResources(self):
+        return {
+            "MenuText": "Configurer FreeSolid",
+            "ToolTip": "Applique la navigation, la disposition des panneaux "
+                       "et les réglages par défaut adaptés aux utilisateurs "
+                       "de CAO mécanique commerciale",
+        }
+
+    def Activated(self, index=0):
+        App = _app()
+        applied, failed = prefs_mod.apply_all(App.ParamGet)
+        self._restrict_workbenches()
+
+        lines = ["{} réglage(s) appliqué(s) :".format(len(applied)), ""]
+        lines += ["  • {}".format(p.why) for p in applied]
+
+        pending = [p for p in applied if not p.verified]
+        if pending:
+            lines += ["", "À vérifier sur cette version de FreeCAD "
+                          "(chemin de paramètre non confirmé) :"]
+            lines += ["  • {}/{}".format(p.path, p.key) for p in pending]
+
+        if failed:
+            lines += ["", "Échecs :"]
+            lines += ["  • {}/{} — {}".format(p.path, p.key, exc)
+                      for p, exc in failed]
+
+        lines += ["", "Redémarrez FreeCAD pour que la disposition des "
+                      "panneaux prenne effet."]
+
+        message = "\n".join(lines)
+        App.Console.PrintMessage(message + "\n")
+        self._show(message)
+
+    def _restrict_workbenches(self):
+        """Hide the workbenches a mechanical designer never opens.
+
+        Kept out of the declarative table: FreeCAD stores this as one
+        comma-separated blob, and the key has moved between releases, so this
+        is best-effort and deliberately non-fatal.
+        """
+        try:
+            App = _app()
+            group = App.ParamGet("User parameter:BaseApp/Preferences/Workbenches")
+            available = [wb for wb in _gui().listWorkbenches()]
+            disabled = [wb for wb in available
+                        if wb not in prefs_mod.KEEP_WORKBENCHES]
+            group.SetString("Disabled", ",".join(sorted(disabled)))
+        except Exception as exc:  # noqa: BLE001
+            _app().Console.PrintWarning(
+                "FreeSolid: liste des ateliers non modifiée ({})\n".format(exc))
+
+    @staticmethod
+    def _show(message):
+        try:
+            from .compat import QtWidgets
+            QtWidgets.QMessageBox.information(
+                _gui().getMainWindow(), "FreeSolid", message)
+        except Exception:
+            pass
+
+    def IsActive(self):
+        return True
+
+
+class NewPartCommand:
+    """Document + Body + activation, in one click."""
+
+    def GetResources(self):
+        return {
+            "MenuText": "Nouvelle pièce",
+            "ToolTip": "Crée un document contenant une pièce (Body) active, "
+                       "équivalent de Fichier > Nouveau > Pièce",
+        }
+
+    def Activated(self, index=0):
+        App, Gui = _app(), _gui()
+        doc = App.ActiveDocument or App.newDocument()
+        body = doc.addObject("PartDesign::Body", "Piece")
+        doc.recompute()
+        try:
+            Gui.ActiveDocument.ActiveView.setActiveObject("pdbody", body)
+        except Exception:
+            pass
+        try:
+            Gui.activateWorkbench("PartDesignWorkbench")
+        except Exception:
+            pass
+        from .ui.feature_manager import get_feature_manager
+        dock = get_feature_manager()
+        if dock:
+            dock.show()
+
+    def IsActive(self):
+        return True
+
+
+class FeatureManagerCommand:
+    """Show/hide the FeatureManager dock."""
+
+    def GetResources(self):
+        return {
+            "MenuText": "FeatureManager",
+            "ToolTip": "Affiche l'arbre de construction en présentation "
+                       "chronologique, avec barre de retour arrière",
+            "Checkable": True,
+        }
+
+    def Activated(self, index=0):
+        from .ui.feature_manager import get_feature_manager
+        dock = get_feature_manager()
+        if dock is None:
+            return
+        dock.setVisible(not dock.isVisible())
+
+    def IsChecked(self):
+        from .ui.feature_manager import get_feature_manager
+        dock = get_feature_manager(create=False)
+        return bool(dock and dock.isVisible())
+
+    def IsActive(self):
+        return True
+
+
+class AliasCommand:
+    """Run a PartDesign command under its SolidWorks name."""
+
+    def __init__(self, term):
+        self._term = term
+
+    def GetResources(self):
+        return {
+            "MenuText": self._term.fr,
+            "ToolTip": self._term.note or "{} ({})".format(
+                self._term.fr, self._term.command),
+        }
+
+    def Activated(self, index=0):
+        try:
+            _gui().runCommand(self._term.command, 0)
+        except Exception as exc:  # noqa: BLE001
+            _app().Console.PrintError(
+                "FreeSolid: {} indisponible ({})\n".format(
+                    self._term.command, exc))
+
+    def IsActive(self):
+        return _app().ActiveDocument is not None
+
+
+#: Alias command names, in ribbon order — consumed by InitGui to build the
+#: toolbar without restating the list.
+ALIAS_NAMES = tuple(
+    "FreeSolid_" + term.command.split("_", 1)[1] for term in TERMS)
+
+
+def register():
+    """Register every command with FreeCAD. Idempotent."""
+    Gui = _gui()
+    Gui.addCommand("FreeSolid_Setup", SetupCommand())
+    Gui.addCommand("FreeSolid_NewPart", NewPartCommand())
+    Gui.addCommand("FreeSolid_FeatureManager", FeatureManagerCommand())
+    for name, term in zip(ALIAS_NAMES, TERMS):
+        Gui.addCommand(name, AliasCommand(term))

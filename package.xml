@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<package format="1">
+    <name>FreeSolid</name>
+    <description>A familiar mechanical-CAD interface for FreeCAD: a chronological feature tree with a rollback bar, SolidWorks-style command names, and a preference pack that puts navigation and panel layout where a designer coming from commercial parametric CAD expects them.</description>
+    <version>0.1.0-alpha</version>
+    <date>2026-08-02</date>
+    <maintainer email="emilien@etadam.com">Emilien</maintainer>
+    <license file="LICENSE">LGPL-2.1-or-later</license>
+    <icon>resources/icons/freesolid.svg</icon>
+    <url type="repository" branch="main">https://github.com/Emilien-Etadam/freesolid</url>
+    <url type="bugtracker">https://github.com/Emilien-Etadam/freesolid/issues</url>
+    <url type="readme">https://github.com/Emilien-Etadam/freesolid/blob/main/README.md</url>
+    <tag>UI</tag>
+    <tag>PartDesign</tag>
+    <tag>onboarding</tag>
+    <tag>mechanical</tag>
+    <content>
+        <workbench>
+            <classname>FreeSolidWorkbench</classname>
+            <subdirectory>./</subdirectory>
+        </workbench>
+        <preferencepack>
+            <name>FreeSolid</name>
+            <subdirectory>preference_packs/FreeSolid/</subdirectory>
+        </preferencepack>
+    </content>
+    <depend type="internal">FreeCAD</depend>
+    <freecadmin>1.0</freecadmin>
+    <pythonmin>3.10</pythonmin>
+</package>

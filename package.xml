@@ -7,9 +7,9 @@
     <maintainer email="emilien@etadam.com">Emilien</maintainer>
     <license file="LICENSE">LGPL-2.1-or-later</license>
     <icon>resources/icons/freesolid.svg</icon>
-    <url type="repository" branch="main">https://github.com/Emilien-Etadam/freesolid</url>
-    <url type="bugtracker">https://github.com/Emilien-Etadam/freesolid/issues</url>
-    <url type="readme">https://github.com/Emilien-Etadam/freesolid/blob/main/README.md</url>
+    <url type="repository" branch="main">https://github.com/Emilien-Etadam/Freesolid</url>
+    <url type="bugtracker">https://github.com/Emilien-Etadam/Freesolid/issues</url>
+    <url type="readme">https://github.com/Emilien-Etadam/Freesolid/blob/main/README.md</url>
     <tag>UI</tag>
     <tag>PartDesign</tag>
     <tag>onboarding</tag>

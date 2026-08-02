@@ -102,6 +102,17 @@ python -m pytest -q
 them testable in CI. Keep it that way: FreeCAD imports belong inside
 functions, not at module scope.
 
+**The InitGui.py scoping rule.** FreeCAD `exec()`s Init scripts with separate
+globals and locals dictionaries. Names bound at the top level of `InitGui.py`
+land in locals, while function and method bodies resolve against globals — so
+**a method defined in `InitGui.py` cannot see anything defined in
+`InitGui.py`**. Reading a module-level name from a method raises `NameError`
+during initialization, and the workbench then silently never appears in the
+workbench selector. Hence: `InitGui.py` stays straight-line with no helper
+functions, every method imports what it needs inside its own body, and the
+real logic lives in the package. `tests/test_initgui_scoping.py` enforces
+this by AST inspection.
+
 ## Naming and trademarks
 
 FreeSolid is not affiliated with, endorsed by, or derived from any

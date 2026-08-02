@@ -62,11 +62,13 @@ PREFS: tuple[Pref, ...] = (
          "Maj+milieu au lieu de Ctrl+milieu).",
          tags=("navigation",)),
 
+    # verified: 1.1.3 démarre effectivement dans PartDesign après Setup
+    # (observation utilisateur, 2026-08-02).
     Pref("BaseApp/Preferences/General", "AutoloadModule", "str",
          "PartDesignWorkbench",
          "Démarrer directement dans l'atelier de modélisation de pièces, "
          "sans passer par l'écran de démarrage.",
-         verified=False, tags=("workbench",)),
+         tags=("workbench",)),
 
     # The three rows below split the tree out of the Combo View, so the Tasks
     # panel no longer *replaces* the model tree mid-command. This is the fix
@@ -86,14 +88,16 @@ PREFS: tuple[Pref, ...] = (
          "l'arbre — disposition PropertyManager.",
          tags=("layout",)),
 
-    # Clé présente avec notre valeur sur 1.1.3, mais « présente » ne prouve
-    # pas « consommée » (c'est nous qui l'avons écrite) : reste non vérifié
-    # tant que l'effet n'est pas observé.
+    # verified: rotation observée autour du point sous le curseur sur 1.1.3
+    # (observation utilisateur, 2026-08-02).
     Pref("BaseApp/Preferences/View", "UseNewRotationCenter", "bool", True,
          "Rotation autour du point sous le curseur, comportement attendu en "
          "CAO mécanique.",
-         verified=False, tags=("navigation",)),
+         tags=("navigation",)),
 
+    # Clé présente avec notre valeur sur 1.1.3, mais l'effet n'a pas encore
+    # de scénario d'observation (il faut deux solides qui se croisent dans
+    # l'atelier Part) : reste non vérifié tant qu'il n'est pas observé.
     Pref("BaseApp/Preferences/Mod/PartDesign", "AutoGroupSolids", "bool", False,
          "Ne pas regrouper automatiquement les solides : garder un Body = "
          "une pièce.",

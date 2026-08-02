@@ -59,7 +59,7 @@ Requires FreeCAD 1.0 or later and Python 3.10+.
 | Area | State |
 |---|---|
 | Vocabulary table (`vocab.py`) | ✅ unit-tested |
-| Preference table (`prefs.py`) | ✅ unit-tested, ⚠️ some parameter paths unverified |
+| Preference table (`prefs.py`) | ✅ unit-tested; 6 of 7 paths verified on a real 1.1.3 install |
 | Alias commands + toolbars | ✅ confirmed running on FreeCAD 1.1.3 |
 | FeatureManager dock | ⚠️ loads on 1.1.3; modelling feedback pending |
 | Contextual "S" bar (`ui/context_bar.py`) | ⚠️ logic unit-tested; Qt side not yet run |

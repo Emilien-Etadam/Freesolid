@@ -60,9 +60,13 @@ Requires FreeCAD 1.0 or later and Python 3.10+.
 |---|---|
 | Vocabulary table (`vocab.py`) | ✅ unit-tested |
 | Preference table (`prefs.py`) | ✅ unit-tested, ⚠️ some parameter paths unverified |
-| FeatureManager dock | ⚠️ written, not yet run against FreeCAD |
-| Alias commands | ⚠️ written, not yet run against FreeCAD |
+| Alias commands + toolbars | ✅ confirmed running on FreeCAD 1.1.3 |
+| FeatureManager dock | ⚠️ loads on 1.1.3; modelling feedback pending |
+| Contextual "S" bar (`ui/context_bar.py`) | ⚠️ logic unit-tested; Qt side not yet run |
+| Guardrail (`guard.py`) | ⚠️ translations unit-tested; observer is best-effort |
+| Diagnostics (`diagnostics.py`) | ✅ unit-tested; run it on a real install and paste the report |
 | Preference pack `.cfg` | ⚠️ minimal, needs a real-install export |
+| Navigation spec (`docs/navigation-spec.md`) | ⚠️ draft, awaiting expert line-by-line validation |
 
 Six preference rows are marked `verified=False` in
 [`freesolid/prefs.py`](freesolid/prefs.py): their parameter paths come from
@@ -74,14 +78,14 @@ the first task before 0.2.
 
 ## Roadmap
 
-- Verify and lock every preference path against FreeCAD 1.0 and 1.1.
-- Guardrail before a feature would produce a disconnected solid — FreeCAD
-  errors out where SolidWorks would silently make a multibody part, and the
-  current message explains none of that.
-- A contextual command bar on <kbd>S</kbd>, SolidWorks-style.
+- Verify and lock every preference path against FreeCAD 1.0 and 1.1 — run
+  **Diagnostic FreeSolid** on a real install and feed the report back.
 - A ribbon layout (JSON) for the [FreeCAD-Ribbon](https://github.com/APEbbers/FreeCAD-Ribbon)
   addon, arranging PartDesign, Sketcher and Part into one CommandManager-like
-  tab.
+  tab. Deliberately deferred until it can be generated against the addon's
+  actual schema on a real install, rather than written blind.
+- Validate `docs/navigation-spec.md` line by line, then reopen FreeCAD
+  discussion #18635 with it.
 - English UI strings and a translation catalogue; the UI is French-first for
   now.
 

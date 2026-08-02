@@ -206,6 +206,58 @@ class AliasCommand:
         return _app().ActiveDocument is not None
 
 
+class ContextBarCommand:
+    """Pop the SolidWorks-style shortcut bar at the cursor (the "S" key)."""
+
+    def GetResources(self):
+        return {
+            "MenuText": "Barre contextuelle",
+            "ToolTip": "Palette de commandes au curseur, adaptée à la "
+                       "sélection — l'équivalent de la barre « S » de "
+                       "SolidWorks",
+            "Accel": "S",
+        }
+
+    def Activated(self, index=0):
+        try:
+            from .ui.context_bar import show_at_cursor
+            show_at_cursor()
+        except Exception as exc:  # noqa: BLE001
+            _app().Console.PrintError(
+                "FreeSolid: barre contextuelle indisponible ({})\n".format(exc))
+
+    def IsActive(self):
+        return _app().ActiveDocument is not None
+
+
+class DiagnosticsCommand:
+    """Probe this install and produce a copy-pastable report."""
+
+    def GetResources(self):
+        return {
+            "MenuText": "Diagnostic FreeSolid",
+            "ToolTip": "Vérifie sur cette installation les chemins de "
+                       "paramètres utilisés par FreeSolid et l'état des "
+                       "panneaux, et produit un rapport copiable",
+        }
+
+    def Activated(self, index=0):
+        from . import diagnostics
+        text = diagnostics.full_report()
+        _app().Console.PrintMessage(text)
+        try:
+            diagnostics.show_dialog(text)
+        except Exception:
+            pass  # the console copy is already out
+
+    def IsActive(self):
+        return True
+
+
+#: Core (non-alias) command names, in toolbar order.
+CORE_NAMES = ("FreeSolid_NewPart", "FreeSolid_FeatureManager",
+              "FreeSolid_Setup", "FreeSolid_Diagnostics")
+
 #: Alias command names, in ribbon order — consumed by InitGui to build the
 #: toolbar without restating the list.
 ALIAS_NAMES = tuple(
@@ -218,5 +270,7 @@ def register():
     Gui.addCommand("FreeSolid_Setup", SetupCommand())
     Gui.addCommand("FreeSolid_NewPart", NewPartCommand())
     Gui.addCommand("FreeSolid_FeatureManager", FeatureManagerCommand())
+    Gui.addCommand("FreeSolid_Diagnostics", DiagnosticsCommand())
+    Gui.addCommand("FreeSolid_ContextBar", ContextBarCommand())
     for name, term in zip(ALIAS_NAMES, TERMS):
         Gui.addCommand(name, AliasCommand(term))

@@ -52,15 +52,23 @@ class FreeSolidWorkbench(Gui.Workbench):
             report("les commandes n'ont pas pu être enregistrées")
             return
 
-        core = ["FreeSolid_NewPart", "FreeSolid_FeatureManager",
-                "FreeSolid_Setup"]
         try:
-            self.appendToolbar("FreeSolid", core)
+            self.appendToolbar("FreeSolid", list(commands.CORE_NAMES))
             self.appendToolbar("Fonctions", list(commands.ALIAS_NAMES))
-            self.appendMenu("FreeSolid", core + ["Separator"]
+            self.appendMenu("FreeSolid",
+                            list(commands.CORE_NAMES)
+                            + ["FreeSolid_ContextBar", "Separator"]
                             + list(commands.ALIAS_NAMES))
         except Exception:
             report("barres d'outils et menus incomplets")
+
+        # The guardrail observes recomputes to explain PartDesign's refusals
+        # in designer terms; purely additive, so a failure is only reported.
+        try:
+            from freesolid import guard
+            guard.install()
+        except Exception:
+            report("garde-fou non installé")
 
     def Activated(self):
         from freesolid.log import report

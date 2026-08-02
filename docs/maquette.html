@@ -1,0 +1,1116 @@
+<title>FreeSolid — maquette d'interface</title>
+
+<style>
+  :root {
+    --bg:        #eaeef2;
+    --surface:   #ffffff;
+    --panel:     #f5f8fa;
+    --ink:       #121a22;
+    --ink-2:     #47545f;
+    --ink-3:     #6f7d89;
+    --line:      #d1d9e0;
+    --line-soft: #e3e9ee;
+    --accent:    #17539b;
+    --accent-bg: #dde8f6;
+    --ok:        #1c7048;
+    --ok-bg:     #d8ece1;
+    --warn:      #97590a;
+    --warn-bg:   #f6e7cf;
+    --crit:      #ab2f26;
+    --crit-bg:   #f7dedb;
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --step--1: clamp(0.78rem, 0.76rem + 0.1vw, 0.84rem);
+    --step-0:  clamp(1rem, 0.97rem + 0.15vw, 1.08rem);
+    --step-1:  clamp(1.2rem, 1.13rem + 0.35vw, 1.4rem);
+    --step-2:  clamp(1.5rem, 1.36rem + 0.7vw, 1.95rem);
+    --step-3:  clamp(2rem, 1.7rem + 1.5vw, 3rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:        #0d1218;
+      --surface:   #141c24;
+      --panel:     #19222b;
+      --ink:       #e4ebf1;
+      --ink-2:     #a5b3bf;
+      --ink-3:     #72818e;
+      --line:      #263340;
+      --line-soft: #1e2833;
+      --accent:    #5fa1ec;
+      --accent-bg: #152941;
+      --ok:        #4fbb8b;
+      --ok-bg:     #12291f;
+      --warn:      #d59b45;
+      --warn-bg:   #2c2113;
+      --crit:      #e2746c;
+      --crit-bg:   #2e1815;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg:        #0d1218;
+    --surface:   #141c24;
+    --panel:     #19222b;
+    --ink:       #e4ebf1;
+    --ink-2:     #a5b3bf;
+    --ink-3:     #72818e;
+    --line:      #263340;
+    --line-soft: #1e2833;
+    --accent:    #5fa1ec;
+    --accent-bg: #152941;
+    --ok:        #4fbb8b;
+    --ok-bg:     #12291f;
+    --warn:      #d59b45;
+    --warn-bg:   #2c2113;
+    --crit:      #e2746c;
+    --crit-bg:   #2e1815;
+  }
+
+  :root[data-theme="light"] {
+    --bg:        #eaeef2;
+    --surface:   #ffffff;
+    --panel:     #f5f8fa;
+    --ink:       #121a22;
+    --ink-2:     #47545f;
+    --ink-3:     #6f7d89;
+    --line:      #d1d9e0;
+    --line-soft: #e3e9ee;
+    --accent:    #17539b;
+    --accent-bg: #dde8f6;
+    --ok:        #1c7048;
+    --ok-bg:     #d8ece1;
+    --warn:      #97590a;
+    --warn-bg:   #f6e7cf;
+    --crit:      #ab2f26;
+    --crit-bg:   #f7dedb;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: var(--step-0);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 4vw, 4rem) clamp(1rem, 3vw, 2.5rem) 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(2.5rem, 5vw, 4.5rem);
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  h1 {
+    font-size: var(--step-3);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    font-weight: 600;
+    margin: 0.6rem 0 0;
+    max-width: 20ch;
+  }
+
+  h2 {
+    font-size: var(--step-2);
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-size: var(--step-0);
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    margin: 0;
+  }
+
+  .lede {
+    font-size: var(--step-1);
+    line-height: 1.5;
+    color: var(--ink-2);
+    max-width: 58ch;
+    margin: 1.2rem 0 0;
+  }
+
+  p { max-width: 66ch; margin: 0; }
+  header p.lede { max-width: 58ch; }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 2rem;
+    margin-top: 2rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-3);
+  }
+  .facts b {
+    display: block;
+    color: var(--ink);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .facts > div { padding: 0.4rem 0; }
+
+  section { display: flex; flex-direction: column; gap: 1.4rem; }
+  .section-head { display: flex; flex-direction: column; gap: 0.6rem; }
+
+  /* ---------- the application mockup ---------- */
+
+  .stage {
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    border-radius: 10px;
+  }
+
+  .app {
+    min-width: 60rem;
+    position: relative;
+    background: #10161d;
+    color: #c8d3dd;
+    border: 1px solid #2b3946;
+    border-radius: 8px;
+    overflow: hidden;
+    font-family: var(--sans);
+    font-size: 12px;
+    line-height: 1.35;
+    box-shadow: 0 18px 48px -24px rgba(6, 12, 20, 0.7);
+  }
+
+  .titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    background: #0b1016;
+    border-bottom: 1px solid #222f3b;
+    color: #8fa0b0;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+  }
+
+  .menubar {
+    display: flex;
+    gap: 14px;
+    padding: 5px 12px;
+    background: #131b23;
+    border-bottom: 1px solid #222f3b;
+    color: #9dacba;
+    font-size: 11.5px;
+  }
+
+  /* CommandManager */
+  .cm { background: #161f28; border-bottom: 1px solid #24313e; }
+  .cm-tabs { display: flex; gap: 2px; padding: 0 8px; }
+  .cm-tabs span {
+    padding: 5px 13px 4px;
+    font-size: 11.5px;
+    color: #8b9baa;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+  }
+  .cm-tabs span.on {
+    background: #1d2833;
+    color: #dce6ef;
+    border-color: #2f3d4a;
+  }
+  .cm-body {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    padding: 8px 10px 6px;
+    background: #1d2833;
+    border-top: 1px solid #2f3d4a;
+  }
+  .cm-group { display: flex; gap: 2px; padding: 0 10px; }
+  .cm-group + .cm-group { border-left: 1px solid #2a3742; }
+  .cmd {
+    width: 62px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 2px 3px;
+    border-radius: 4px;
+    text-align: center;
+    color: #b9c7d4;
+    font-size: 9.5px;
+    line-height: 1.15;
+  }
+  .cmd.wide { width: 74px; }
+  .cmd svg { width: 26px; height: 26px; stroke: #8fc0f2; fill: none; stroke-width: 1.4; }
+  .cmd.hot { background: #24384c; color: #eaf2fa; box-shadow: inset 0 0 0 1px #3a5f88; }
+
+  /* main row */
+  .main { display: flex; align-items: stretch; min-height: 340px; }
+
+  .fm {
+    width: 216px;
+    flex: none;
+    background: #131b23;
+    border-right: 1px solid #24313e;
+    display: flex;
+    flex-direction: column;
+  }
+  .fm-tabs { display: flex; border-bottom: 1px solid #24313e; }
+  .fm-tabs i {
+    flex: 1;
+    padding: 5px 0;
+    text-align: center;
+    font-style: normal;
+    font-size: 10px;
+    color: #7b8b9a;
+    border-bottom: 2px solid transparent;
+  }
+  .fm-tabs i.on { color: #9fc9f5; border-bottom-color: #4c8ed0; background: #17212b; }
+  .tree { padding: 6px 0; display: flex; flex-direction: column; }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2.5px 8px;
+    white-space: nowrap;
+    font-size: 11.5px;
+    color: #c2cfdb;
+  }
+  .row.sel { background: #223449; color: #e8f0f8; }
+  .row .ind { display: inline-block; width: 0; }
+  .row.d1 { padding-left: 20px; }
+  .row.d2 { padding-left: 34px; }
+  .dot { width: 11px; height: 11px; flex: none; border-radius: 2px; }
+  .dot.plane { background: #3f6ea3; opacity: 0.75; }
+  .dot.feat  { background: #7f8fa0; }
+  .dot.sketch{ background: #4d7a5c; }
+  .dot.orig  { background: #8a6f3d; }
+  .dot.body  { background: #55708f; }
+  .tip {
+    margin: 4px 8px;
+    padding: 3px 6px;
+    border-top: 1px dashed #4d6a8a;
+    border-bottom: 1px dashed #4d6a8a;
+    color: #8fb4d8;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-align: center;
+  }
+  .rolled { color: #6c7b89; }
+
+  /* viewport */
+  .vp {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(120% 90% at 50% 8%, #2a4256 0%, #16222d 55%, #0e161e 100%);
+    overflow: hidden;
+  }
+  .vp svg.part { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); width: 300px; }
+  .heads {
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 3px;
+    background: rgba(14, 22, 30, 0.72);
+    border: 1px solid #2c3d4d;
+    border-radius: 5px; padding: 3px 5px;
+  }
+  .heads span { width: 18px; height: 15px; border-radius: 3px; background: #23323f; }
+  .cube {
+    position: absolute; top: 12px; right: 12px;
+    width: 62px; height: 62px;
+  }
+  .triad { position: absolute; left: 12px; bottom: 12px; width: 46px; height: 46px; }
+
+  /* the S bar */
+  .sbar {
+    position: absolute;
+    left: 46%; top: 56%;
+    display: flex; gap: 3px;
+    padding: 4px;
+    background: rgba(19, 29, 39, 0.94);
+    border: 1px solid #3c5a7c;
+    border-radius: 6px;
+    box-shadow: 0 8px 22px -8px rgba(0,0,0,0.8);
+  }
+  .sbar b {
+    width: 26px; height: 26px;
+    display: grid; place-items: center;
+    background: #1e2c3a; border-radius: 4px;
+  }
+  .sbar b svg { width: 16px; height: 16px; stroke: #8fc0f2; fill: none; stroke-width: 1.5; }
+  .cursor { position: absolute; left: 45%; top: 54%; width: 14px; height: 20px; }
+
+  /* property manager */
+  .pm {
+    width: 178px; flex: none;
+    background: #131b23;
+    border-left: 1px solid #24313e;
+    padding: 8px 9px;
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .pm h5 {
+    margin: 0; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #7f93a6;
+  }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field label { font-size: 10px; color: #8b9baa; }
+  .field u {
+    text-decoration: none; display: block;
+    background: #0e161d; border: 1px solid #2c3a47; border-radius: 3px;
+    padding: 3px 6px; font-family: var(--mono); font-size: 11px; color: #d3e0eb;
+    font-variant-numeric: tabular-nums;
+  }
+  .pm .ok { background: #1c4c33; border-color: #2f7d54; color: #cdeada; text-align: center; padding: 4px; border-radius: 3px; font-size: 11px; }
+
+  .statusbar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 4px 12px;
+    background: #0b1016; border-top: 1px solid #222f3b;
+    color: #7f8f9e; font-size: 10.5px;
+  }
+  .statusbar .push { margin-left: auto; }
+  .statusbar em { font-style: normal; color: #7fc4a0; }
+
+  /* numbered hotspots */
+  .pin {
+    position: absolute;
+    width: 21px; height: 21px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: 0 0 0 2.5px rgba(255,255,255,0.16), 0 3px 8px rgba(0,0,0,0.5);
+    z-index: 3;
+  }
+  /* Pins always sit on the dark mockup, so they keep one fixed treatment
+     rather than following the page theme — otherwise the light-theme accent
+     would put dark blue on dark chrome. */
+  .pin { background: #6bb0f5; color: #08121e; }
+
+  /* ---------- legend ---------- */
+
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .card {
+    background: var(--surface);
+    padding: 1.15rem 1.25rem 1.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+  .card-top { display: flex; align-items: center; gap: 0.6rem; }
+  .num {
+    width: 21px; height: 21px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: var(--accent); color: var(--surface);
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+  }
+  .card p { font-size: var(--step--1); line-height: 1.55; color: var(--ink-2); max-width: none; }
+  .card .sw {
+    font-family: var(--mono); font-size: var(--step--1);
+    color: var(--ink-3);
+  }
+
+  .chip {
+    align-self: flex-start;
+    font-family: var(--sans);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2.5px 8px;
+    border-radius: 999px;
+    margin-top: auto;
+  }
+  .chip.reglage { background: var(--ok-bg);     color: var(--ok); }
+  .chip.plugin  { background: var(--accent-bg); color: var(--accent); }
+  .chip.amont   { background: var(--warn-bg);   color: var(--warn); }
+  .chip.fork    { background: var(--crit-bg);   color: var(--crit); }
+
+  /* ---------- before / after ---------- */
+
+  .compare {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+    gap: 1.25rem;
+  }
+  .ba {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .ba > header {
+    padding: 0.85rem 1.1rem;
+    border-bottom: 1px solid var(--line-soft);
+    display: flex; flex-direction: column; gap: 0.2rem;
+  }
+  .ba > header span {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3);
+  }
+  .ba-body { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line-soft); flex: 1; }
+  .ba-cell { background: var(--panel); padding: 0.9rem 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+  .ba-cell > b {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.09em;
+    text-transform: uppercase; font-weight: 600;
+  }
+  .ba-cell.now > b  { color: var(--crit); }
+  .ba-cell.next > b { color: var(--ok); }
+  .ba-cell p { font-size: var(--step--1); line-height: 1.5; color: var(--ink-2); max-width: none; }
+  .mini {
+    font-family: var(--sans);
+    background: #10161d;
+    border: 1px solid #26333f;
+    border-radius: 5px;
+    padding: 7px 8px;
+    display: flex; flex-direction: column; gap: 2.5px;
+    font-size: 11px;
+  }
+  .mini i { font-style: normal; color: #c2cfdb; display: flex; align-items: center; gap: 5px; }
+  .mini i.grey { color: #5d6b78; }
+  .mini i.pad { padding-left: 14px; }
+  .mini .bar { border-top: 1px dashed #4d6a8a; color: #8fb4d8; font-size: 9.5px; text-align: center; padding-top: 3px; letter-spacing: 0.05em; }
+
+  /* ---------- ledger ---------- */
+
+  .ledger-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; min-width: 34rem; background: var(--surface); }
+  th, td { text-align: left; padding: 0.7rem 1rem; border-bottom: 1px solid var(--line-soft); font-size: var(--step--1); }
+  th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-3); font-weight: 600;
+    background: var(--panel);
+  }
+  td { color: var(--ink-2); }
+  td:first-child { color: var(--ink); font-family: var(--sans); }
+  tr:last-child td { border-bottom: none; }
+
+  .state { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+  .state.done { color: var(--ok); }
+  .state.todo { color: var(--ink-3); }
+  .state.risk { color: var(--warn); }
+
+  /* ---------- caveats ---------- */
+
+  .caveats {
+    border-left: 3px solid var(--crit);
+    background: var(--surface);
+    border-radius: 0 8px 8px 0;
+    padding: 1.3rem 1.5rem;
+    display: flex; flex-direction: column; gap: 0.9rem;
+  }
+  .caveats ul { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+  .caveats li { color: var(--ink-2); font-size: var(--step--1); line-height: 1.55; }
+  .caveats strong { color: var(--ink); font-weight: 600; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.92em;
+    background: var(--panel);
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    padding: 0.05em 0.35em;
+  }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 1.4rem;
+    color: var(--ink-3);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    display: flex; flex-wrap: wrap; gap: 0.4rem 1.6rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .cmd, .row { transition: background-color 120ms ease; }
+  }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-pad" viewBox="0 0 24 24">
+      <path d="M4 17h12v-6H4z"/><path d="M4 11l4-3h12l-4 3"/><path d="M16 11l4-3v6l-4 3"/>
+      <path d="M10 7V2m0 0l-2 2m2-2l2 2"/>
+    </symbol>
+    <symbol id="i-pocket" viewBox="0 0 24 24">
+      <path d="M3 16h14V8H3z"/><path d="M3 8l3-3h14l-3 3"/><path d="M17 8l3-3v8l-3 3"/>
+      <ellipse cx="10" cy="12" rx="3.2" ry="1.6"/>
+      <path d="M10 2v4m0 0l-2-2m2 2l2-2"/>
+    </symbol>
+    <symbol id="i-rev" viewBox="0 0 24 24">
+      <ellipse cx="12" cy="6" rx="7" ry="2.6"/>
+      <path d="M5 6v11c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6"/>
+      <path d="M12 3.4V1"/>
+    </symbol>
+    <symbol id="i-groove" viewBox="0 0 24 24">
+      <ellipse cx="12" cy="6" rx="7" ry="2.6"/>
+      <path d="M5 6v11c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6"/>
+      <path d="M9 9h6v5H9z"/>
+    </symbol>
+    <symbol id="i-sweep" viewBox="0 0 24 24">
+      <path d="M3 19c4-11 10-14 18-14"/>
+      <rect x="2" y="15" width="7" height="7" rx="1"/>
+      <circle cx="19" cy="5" r="2.2"/>
+    </symbol>
+    <symbol id="i-loft" viewBox="0 0 24 24">
+      <rect x="2" y="14" width="8" height="7"/>
+      <ellipse cx="18" cy="6" rx="4" ry="2.4"/>
+      <path d="M10 14l4-6M10 21l8-12"/>
+    </symbol>
+    <symbol id="i-hole" viewBox="0 0 24 24">
+      <path d="M3 8h18v11H3z"/>
+      <path d="M9 8l3 6 3-6"/>
+      <path d="M12 14v5"/>
+      <path d="M7 4h10"/>
+    </symbol>
+    <symbol id="i-fillet" viewBox="0 0 24 24">
+      <path d="M4 20V10a6 6 0 016-6h10"/>
+      <path d="M4 20h4V10a2 2 0 012-2h10V4"/>
+    </symbol>
+    <symbol id="i-chamfer" viewBox="0 0 24 24">
+      <path d="M4 20V11l7-7h9"/>
+      <path d="M4 20h5v-8l5-5h6V4"/>
+    </symbol>
+    <symbol id="i-pattern" viewBox="0 0 24 24">
+      <rect x="2.5" y="9" width="6" height="6"/>
+      <rect x="11" y="9" width="6" height="6"/>
+      <rect x="19" y="9" width="3" height="6"/>
+      <path d="M3 20h18"/>
+    </symbol>
+    <symbol id="i-shell" viewBox="0 0 24 24">
+      <path d="M3 6h18v14H3z"/><path d="M7 10h10v10H7z"/>
+    </symbol>
+    <symbol id="i-sketch" viewBox="0 0 24 24">
+      <path d="M4 20L20 4"/><circle cx="4" cy="20" r="1.8"/><circle cx="20" cy="4" r="1.8"/>
+      <path d="M4 12h8"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">FreeSolid · maquette d'interface · v0</div>
+    <h1>Ce que FreeCAD deviendrait avec l'ergonomie SolidWorks</h1>
+    <p class="lede">
+      Ce n'est pas une capture d'un logiciel qui existe. C'est la cible :
+      annotée zone par zone, chaque zone étiquetée par ce qu'elle coûte
+      réellement à construire. À valider ou à corriger avant d'écrire une
+      ligne de plus.
+    </p>
+    <div class="facts">
+      <div>Base <b>FreeCAD 1.1.3</b></div>
+      <div>Livrable <b>Plugin, pas un fork</b></div>
+      <div>Couverture visée <b>7 zones sur 8</b></div>
+      <div>Hors d'atteinte <b>Le multicorps</b></div>
+    </div>
+  </header>
+
+  <section>
+    <div class="stage">
+      <div class="app">
+
+        <div class="pin" style="top:96px;  left:300px;">1</div>
+        <div class="pin" style="top:214px; left:10px;">2</div>
+        <div class="pin" style="top:398px; left:10px;">3</div>
+        <div class="pin" style="top:286px; left:10px;">4</div>
+        <div class="pin" style="top:214px; right:196px;">5</div>
+        <div class="pin" style="top:340px; left:452px;">6</div>
+        <div class="pin" style="top:196px; left:250px;">7</div>
+        <div class="pin" style="bottom:6px; left:250px;">8</div>
+
+        <div class="titlebar">Support-palier.FCStd — FreeCAD 1.1.3 · FreeSolid</div>
+
+        <div class="menubar">
+          <span>Fichier</span><span>Édition</span><span>Affichage</span>
+          <span>Insertion</span><span>Outils</span><span>Fenêtre</span><span>Aide</span>
+        </div>
+
+        <div class="cm">
+          <div class="cm-tabs">
+            <span class="on">Fonctions</span>
+            <span>Esquisse</span>
+            <span>Tôlerie</span>
+            <span>Évaluer</span>
+            <span>Assemblage</span>
+            <span>Mise en plan</span>
+          </div>
+          <div class="cm-body">
+            <div class="cm-group">
+              <div class="cmd hot"><svg><use href="#i-pad"/></svg>Bossage extrudé</div>
+              <div class="cmd"><svg><use href="#i-pocket"/></svg>Enlèv. extrudé</div>
+              <div class="cmd"><svg><use href="#i-rev"/></svg>Révolution</div>
+              <div class="cmd"><svg><use href="#i-groove"/></svg>Enlèv. révol.</div>
+            </div>
+            <div class="cm-group">
+              <div class="cmd"><svg><use href="#i-sweep"/></svg>Balayage</div>
+              <div class="cmd"><svg><use href="#i-loft"/></svg>Lissage</div>
+              <div class="cmd wide"><svg><use href="#i-hole"/></svg>Assistant perçage</div>
+            </div>
+            <div class="cm-group">
+              <div class="cmd"><svg><use href="#i-fillet"/></svg>Congé</div>
+              <div class="cmd"><svg><use href="#i-chamfer"/></svg>Chanfrein</div>
+              <div class="cmd"><svg><use href="#i-shell"/></svg>Coque</div>
+              <div class="cmd"><svg><use href="#i-pattern"/></svg>Répétition</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="main">
+
+          <div class="fm">
+            <div class="fm-tabs">
+              <i class="on">Arbre</i><i>Propriétés</i><i>Configurations</i>
+            </div>
+            <div class="tree">
+              <div class="row"><span class="dot body"></span>Support-palier</div>
+              <div class="row d1"><span class="dot orig"></span>Matériau — Acier</div>
+              <div class="row d1"><span class="dot plane"></span>Plan de face</div>
+              <div class="row d1"><span class="dot plane"></span>Plan de dessus</div>
+              <div class="row d1"><span class="dot plane"></span>Plan de droite</div>
+              <div class="row d1"><span class="dot orig"></span>Origine</div>
+              <div class="row d1"><span class="dot feat"></span>Bossage extrudé 1</div>
+              <div class="row d2"><span class="dot sketch"></span>Esquisse 1</div>
+              <div class="row d1 sel"><span class="dot feat"></span>Enlèvement extrudé 1</div>
+              <div class="row d2"><span class="dot sketch"></span>Esquisse 2</div>
+              <div class="row d1"><span class="dot feat"></span>Congé 1</div>
+              <div class="tip">▲ barre de retour arrière ▲</div>
+              <div class="row d1 rolled"><span class="dot feat"></span>Répétition linéaire 1</div>
+            </div>
+          </div>
+
+          <div class="vp">
+            <div class="heads"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+
+            <svg class="part" viewBox="-150 -70 340 250" aria-label="Pièce isométrique : plaque percée">
+              <defs>
+                <linearGradient id="gTop" x1="0" y1="0" x2="0.6" y2="1">
+                  <stop offset="0" stop-color="#dfe7ee"/><stop offset="1" stop-color="#aebcc9"/>
+                </linearGradient>
+                <linearGradient id="gL" x1="0" y1="0" x2="1" y2="0.4">
+                  <stop offset="0" stop-color="#8d9dac"/><stop offset="1" stop-color="#6d7d8c"/>
+                </linearGradient>
+                <linearGradient id="gR" x1="0" y1="0" x2="1" y2="0.4">
+                  <stop offset="0" stop-color="#b3c0cc"/><stop offset="1" stop-color="#8fa0af"/>
+                </linearGradient>
+              </defs>
+              <g stroke="#e8f0f7" stroke-width="1.1" stroke-linejoin="round">
+                <polygon points="0,-28 173.2,72 69.3,132 -103.9,32" fill="url(#gTop)"/>
+                <polygon points="0,0 0,-28 173.2,72 173.2,100" fill="url(#gR)"/>
+                <polygon points="173.2,100 173.2,72 69.3,132 69.3,160" fill="url(#gL)"/>
+                <ellipse cx="34.6" cy="52" rx="29.4" ry="17" fill="#5e6f7e"/>
+                <path d="M5.2 52a29.4 17 0 0029.4 17" fill="none" stroke="#cfdae4"/>
+              </g>
+              <g stroke="#7fd4b0" stroke-width="1.3" fill="none" opacity="0.9">
+                <ellipse cx="34.6" cy="52" rx="42" ry="24.3" stroke-dasharray="5 4"/>
+              </g>
+            </svg>
+
+            <svg class="cube" viewBox="0 0 64 64" aria-hidden="true">
+              <g stroke="#7f97ad" fill="#1c2b39" stroke-width="1.2">
+                <polygon points="32,10 54,22 32,34 10,22"/>
+                <polygon points="10,22 32,34 32,54 10,42" fill="#16222e"/>
+                <polygon points="54,22 32,34 32,54 54,42" fill="#213142"/>
+              </g>
+              <text x="32" y="26" font-size="8" fill="#a8bccf" text-anchor="middle" font-family="system-ui">DESSUS</text>
+            </svg>
+
+            <svg class="triad" viewBox="0 0 48 48" aria-hidden="true">
+              <g stroke-width="1.6" fill="none">
+                <path d="M14 34 L38 34" stroke="#e0655c"/>
+                <path d="M14 34 L2 41"  stroke="#7fc76a"/>
+                <path d="M14 34 L14 10" stroke="#6fa8e8"/>
+              </g>
+              <text x="41" y="37" font-size="8" fill="#e0655c" font-family="system-ui">x</text>
+              <text x="12" y="9"  font-size="8" fill="#6fa8e8" font-family="system-ui">z</text>
+            </svg>
+
+            <div class="sbar">
+              <b><svg><use href="#i-sketch"/></svg></b>
+              <b><svg><use href="#i-pad"/></svg></b>
+              <b><svg><use href="#i-pocket"/></svg></b>
+              <b><svg><use href="#i-hole"/></svg></b>
+              <b><svg><use href="#i-fillet"/></svg></b>
+            </div>
+
+            <svg class="cursor" viewBox="0 0 14 20" aria-hidden="true">
+              <polygon points="0,0 0,15 4,11.5 6.5,17.5 9,16.5 6.5,10.8 11,10.5"
+                       fill="#f3f8fc" stroke="#0c141c" stroke-width="1"/>
+            </svg>
+          </div>
+
+          <div class="pm">
+            <h5>Enlèvement extrudé</h5>
+            <div class="field">
+              <label>Direction</label>
+              <u>Jusqu'à la surface</u>
+            </div>
+            <div class="field">
+              <label>Profondeur</label>
+              <u>12,00 mm</u>
+            </div>
+            <div class="field">
+              <label>Dépouille</label>
+              <u>0,50°</u>
+            </div>
+            <div class="pm-ok ok">Esquisse entièrement contrainte</div>
+          </div>
+
+        </div>
+
+        <div class="statusbar">
+          <span>Entièrement contraint</span>
+          <span>Éditer la pièce</span>
+          <span class="push">MMGS</span>
+          <em>Molette = rotation</em>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Les huit zones, et ce qu'elles coûtent</h2>
+      <p>
+        Chaque zone porte son mode de construction. C'est la seule information
+        qui compte pour arbitrer : quatre catégories, du réglage d'une
+        après-midi au fork qu'on ne fera pas.
+      </p>
+    </div>
+
+    <div class="legend">
+      <div class="card">
+        <div class="card-top"><span class="num">1</span><h3>CommandManager</h3></div>
+        <div class="sw">SolidWorks : le CommandManager</div>
+        <p>
+          Un ruban à onglets qui rassemble Fonctions, Esquisse et Évaluer au
+          même endroit. C'est lui qui fait disparaître le changement d'atelier,
+          la première chose qui déroute. Construit sur l'addon FreeCAD-Ribbon,
+          dont la disposition est un simple fichier JSON qu'on livre.
+        </p>
+        <span class="chip plugin">Plugin</span>
+      </div>
+
+      <div class="card">
+        <div class="card-top"><span class="num">2</span><h3>FeatureManager</h3></div>
+        <div class="sw">SolidWorks : l'arbre de création</div>
+        <p>
+          Les fonctions dans l'ordre chronologique, et surtout <strong>rien de
+          grisé</strong>. FreeCAD grise tout sauf la dernière fonction parce
+          qu'il n'affiche qu'un solide à la fois ; chez vous grisé veut dire
+          supprimée. Même image, sens opposé.
+        </p>
+        <span class="chip plugin">Plugin</span>
+      </div>
+
+      <div class="card">
+        <div class="card-top"><span class="num">3</span><h3>Barre de retour arrière</h3></div>
+        <div class="sw">SolidWorks : le rollback</div>
+        <p>
+          FreeCAD appelle ça le <code>Tip</code> et le présente comme une
+          propriété. C'est pourtant exactement une barre de retour : on la
+          déplace, le modèle revient à cet état. Il suffisait de la dessiner
+          pour ce qu'elle est.
+        </p>
+        <span class="chip plugin">Plugin</span>
+      </div>
+
+      <div class="card">
+        <div class="card-top"><span class="num">4</span><h3>Plans de référence</h3></div>
+        <div class="sw">SolidWorks : Face, Dessus, Droite</div>
+        <p>
+          FreeCAD les nomme XZ, XY, YZ et les replie dans un nœud Origine
+          masqué par défaut. Renommés et remontés au premier niveau. FreeCAD
+          étant Z vers le haut et SolidWorks Y vers le haut, la correspondance
+          n'est pas celle qu'on croit : XY donne Dessus.
+        </p>
+        <span class="chip plugin">Plugin</span>
+      </div>
+
+      <div class="card">
+        <div class="card-top"><span class="num">5</span><h3>PropertyManager</h3></div>
+        <div class="sw">SolidWorks : le volet de propriétés</div>
+        <p>
+          Chez FreeCAD, lancer une fonction bascule le panneau sur l'onglet
+          Tâches et <em>fait disparaître l'arbre</em>. C'est ce qui donne le
+          sentiment d'être perdu à chaque commande. Ici les deux coexistent —
+          et c'est un simple réglage, pas du code.
+        </p>
+        <span class="chip reglage">Réglage</span>
+      </div>
+
+      <div class="card">
+        <div class="card-top"><span class="num">6</span><h3>Barre contextuelle S</h3></div>
+        <div class="sw">SolidWorks : la barre raccourcis</div>
+        <p>
+          Une palette qui apparaît au curseur et change selon ce qui est
+          sélectionné — face, arête, esquisse, rien. FreeCAD n'a aucun
+          équivalent : c'est une fenêtre Qt à écrire, une centaine de lignes.
+        </p>
+        <span class="chip plugin">Plugin</span>
+      </div>
+
+      <div class="card">
+        <div class="card-top"><span class="num">7</span><h3>Navigation</h3></div>
+        <div class="sw">SolidWorks : molette = rotation</div>
+        <p>
+          FreeCAD n'a pas de style SolidWorks natif ; la demande a été fermée
+          en 2024 faute de spécification. Le style Blender en est le plus
+          proche — seul le modificateur du panoramique diffère. Le vrai style
+          demande un patch C++ en amont, que vous êtes bien placé pour
+          spécifier.
+        </p>
+        <span class="chip amont">Réglage, puis amont</span>
+      </div>
+
+      <div class="card">
+        <div class="card-top"><span class="num">8</span><h3>Barre d'état</h3></div>
+        <div class="sw">SolidWorks : état de contrainte, MMGS</div>
+        <p>
+          L'état de contrainte de l'esquisse et le système d'unités, lisibles
+          en permanence là où vous avez l'habitude de les chercher.
+        </p>
+        <span class="chip reglage">Réglage</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Les trois malentendus, avant et après</h2>
+      <p>
+        Ce ne sont pas des manques de FreeCAD. Ce sont trois endroits où il dit
+        quelque chose de correct dans un vocabulaire qui, pour vous, signifie
+        autre chose.
+      </p>
+    </div>
+
+    <div class="compare">
+
+      <div class="ba">
+        <header>
+          <span>Malentendu 1</span>
+          <h3>Grisé veut dire supprimée</h3>
+        </header>
+        <div class="ba-body">
+          <div class="ba-cell now">
+            <b>FreeCAD aujourd'hui</b>
+            <div class="mini">
+              <i class="grey">◻ Pad</i>
+              <i class="grey pad">◻ Sketch</i>
+              <i class="grey">◻ Pocket</i>
+              <i>◼ Fillet</i>
+            </div>
+            <p>Tout est grisé sauf la dernière. On croit le modèle cassé.</p>
+          </div>
+          <div class="ba-cell next">
+            <b>FreeSolid</b>
+            <div class="mini">
+              <i>◼ Bossage extrudé 1</i>
+              <i class="pad">◼ Esquisse 1</i>
+              <i>◼ Enlèvement extrudé 1</i>
+              <i>◼ Congé 1</i>
+              <div class="bar">▲ retour arrière ▲</div>
+            </div>
+            <p>Rien de grisé. Le gris est réservé à ce qui est réellement en retrait.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="ba">
+        <header>
+          <span>Malentendu 2</span>
+          <h3>L'arbre disparaît</h3>
+        </header>
+        <div class="ba-body">
+          <div class="ba-cell now">
+            <b>FreeCAD aujourd'hui</b>
+            <div class="mini">
+              <i class="grey">Modèle</i>
+              <i>Tâches ◂ actif</i>
+              <i class="grey pad">— arbre masqué —</i>
+            </div>
+            <p>Lancer une fonction remplace l'arbre par le panneau de saisie.</p>
+          </div>
+          <div class="ba-cell next">
+            <b>FreeSolid</b>
+            <div class="mini">
+              <i>◼ Arbre</i>
+              <i class="pad">◼ visible en permanence</i>
+              <i>◼ Propriétés, à côté</i>
+            </div>
+            <p>Les deux coexistent, comme le volet de propriétés que vous connaissez.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="ba">
+        <header>
+          <span>Malentendu 3</span>
+          <h3>Pad, Pocket, Tip, Body</h3>
+        </header>
+        <div class="ba-body">
+          <div class="ba-cell now">
+            <b>FreeCAD aujourd'hui</b>
+            <div class="mini">
+              <i class="grey">Pad</i><i class="grey">Pocket</i>
+              <i class="grey">Tip</i><i class="grey">Body</i>
+              <i class="grey">ShapeBinder</i>
+            </div>
+            <p>Un vocabulaire qui ne recoupe aucune convention de CAO mécanique.</p>
+          </div>
+          <div class="ba-cell next">
+            <b>FreeSolid</b>
+            <div class="mini">
+              <i>Bossage extrudé</i><i>Enlèvement de matière</i>
+              <i>Barre de retour</i><i>Pièce</i>
+              <i>Référence externe</i>
+            </div>
+            <p>Les mêmes commandes, sous les noms que vous employez depuis 1997.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Où en est le code, réellement</h2>
+      <p>
+        La maquette est une cible, pas un état des lieux. Voici la part qui
+        tourne déjà chez vous, celle qui reste à écrire, et celle qui est
+        écrite mais non vérifiée.
+      </p>
+    </div>
+
+    <div class="ledger-wrap">
+      <table>
+        <thead>
+          <tr><th>Élément</th><th>Zone</th><th>Mode</th><th>État</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Arbre chronologique sans grisé</td><td>2</td><td>Plugin</td>
+            <td class="state done">livré, à éprouver</td>
+          </tr>
+          <tr>
+            <td>Barre de retour arrière (Tip)</td><td>3</td><td>Plugin</td>
+            <td class="state done">livré, à éprouver</td>
+          </tr>
+          <tr>
+            <td>Plans Face / Dessus / Droite</td><td>4</td><td>Plugin</td>
+            <td class="state done">livré, à éprouver</td>
+          </tr>
+          <tr>
+            <td>Vocabulaire et barre Fonctions</td><td>1</td><td>Plugin</td>
+            <td class="state done">livré, vu à l'écran</td>
+          </tr>
+          <tr>
+            <td>Commande Nouvelle pièce</td><td>2</td><td>Plugin</td>
+            <td class="state done">livré, à éprouver</td>
+          </tr>
+          <tr>
+            <td>Arbre et propriétés côte à côte</td><td>5</td><td>Réglage</td>
+            <td class="state risk">écrit, 6 chemins à vérifier</td>
+          </tr>
+          <tr>
+            <td>Navigation molette = rotation</td><td>7</td><td>Réglage</td>
+            <td class="state risk">écrit, à vérifier</td>
+          </tr>
+          <tr>
+            <td>Ruban CommandManager</td><td>1</td><td>Plugin</td>
+            <td class="state todo">à écrire</td>
+          </tr>
+          <tr>
+            <td>Barre contextuelle S</td><td>6</td><td>Plugin</td>
+            <td class="state todo">à écrire</td>
+          </tr>
+          <tr>
+            <td>Garde-fou volume détaché</td><td>2</td><td>Plugin</td>
+            <td class="state todo">à écrire</td>
+          </tr>
+          <tr>
+            <td>Style de navigation SolidWorks</td><td>7</td><td>Amont</td>
+            <td class="state todo">spécification à écrire</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Ce que la maquette ne promet pas</h2>
+    </div>
+    <div class="caveats">
+      <ul>
+        <li>
+          <strong>Le multicorps.</strong> Un <code>Body</code> FreeCAD ne
+          contient qu'un seul solide d'un seul tenant. Deux volumes disjoints
+          dans une même pièce, technique de construction courante chez vous,
+          restent impossibles. C'est de l'architecture PartDesign, pas de
+          l'habillage — le seul point qui exigerait un fork, et la raison pour
+          laquelle on n'en fait pas un.
+        </li>
+        <li>
+          <strong>L'arbre natif ne disparaît pas.</strong> Un plugin ajoute, il
+          ne remplace pas. Le FeatureManager vit à côté de l'arbre de FreeCAD,
+          qui reste disponible. On peut le masquer, pas le supprimer.
+        </li>
+        <li>
+          <strong>Les icônes ne seront jamais celles de SolidWorks.</strong>
+          Reproduire une ergonomie est légal, copier des ressources graphiques
+          ne l'est pas. Celles de la maquette sont originales, et les vraies
+          reprendront celles de PartDesign.
+        </li>
+        <li>
+          <strong>Les proportions sont indicatives.</strong> Densité, tailles
+          d'icônes et largeurs de panneaux se règlent à l'usage. Ce qui est
+          proposé ici, c'est la structure : quoi vit où, et à côté de quoi.
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <span>FreeSolid · maquette v0</span>
+    <span>github.com/Emilien-Etadam/Freesolid</span>
+    <span>LGPL-2.1-or-later</span>
+    <span>Sans lien avec Dassault Systèmes ; noms de produits cités à titre descriptif</span>
+  </footer>
+
+</div>

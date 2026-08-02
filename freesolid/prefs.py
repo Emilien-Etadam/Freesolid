@@ -18,7 +18,10 @@ from dataclasses import dataclass, field
 
 #: Kept out of the table because it is applied through a dedicated code path
 #: (the workbench list is a comma-separated blob, not a scalar).
+#: FreeSolidWorkbench MUST stay in this list: Setup once hid the plugin's own
+#: workbench, wiping its toolbars from the selector (seen on 1.1.3).
 KEEP_WORKBENCHES: tuple[str, ...] = (
+    "FreeSolidWorkbench",
     "PartDesignWorkbench",
     "SketcherWorkbench",
     "AssemblyWorkbench",
@@ -102,6 +105,26 @@ PREFS: tuple[Pref, ...] = (
          "Ne pas regrouper automatiquement les solides : garder un Body = "
          "une pièce.",
          verified=False, tags=("partdesign",)),
+
+    # --- Apparence SolidWorks : viewport clair, pas de page de démarrage ---
+    # Vérification à l'œil : le fond doit devenir un dégradé gris clair.
+    Pref("BaseApp/Preferences/Mod/Start", "ShowOnStartup", "bool", False,
+         "Ouvrir directement sur l'espace de modélisation, sans page de "
+         "démarrage — FreeCAD s'ouvre prêt à travailler.",
+         verified=False, tags=("appearance",)),
+    Pref("BaseApp/Preferences/View", "Simple", "bool", False,
+         "Fond de la vue 3D en dégradé plutôt qu'en couleur unie.",
+         verified=False, tags=("appearance",)),
+    Pref("BaseApp/Preferences/View", "Gradient", "bool", True,
+         "Active le dégradé de fond.",
+         verified=False, tags=("appearance",)),
+    Pref("BaseApp/Preferences/View", "BackgroundColor2", "uint", 0xE8ECEF00,
+         "Fond clair type SolidWorks (borne 1 du dégradé — haut ou bas à "
+         "confirmer à l'œil).",
+         verified=False, tags=("appearance",)),
+    Pref("BaseApp/Preferences/View", "BackgroundColor3", "uint", 0xF7F8F900,
+         "Fond clair type SolidWorks (borne 2 du dégradé).",
+         verified=False, tags=("appearance",)),
 )
 
 
@@ -131,6 +154,8 @@ def apply_all(param_get):
         "int": "SetInt",
         "float": "SetFloat",
         "str": "SetString",
+        # Colours are packed RGBA in unsigned 32-bit; SetInt would overflow.
+        "uint": "SetUnsigned",
     }
     for pref in PREFS:
         try:

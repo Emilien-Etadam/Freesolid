@@ -2,7 +2,7 @@
 <package format="1">
     <name>FreeSolid</name>
     <description>A familiar mechanical-CAD interface for FreeCAD: a chronological feature tree with a rollback bar, SolidWorks-style command names, and a preference pack that puts navigation and panel layout where a designer coming from commercial parametric CAD expects them.</description>
-    <version>0.2.0-alpha</version>
+    <version>0.3.0-alpha</version>
     <date>2026-08-02</date>
     <maintainer email="emilien@etadam.com">Emilien</maintainer>
     <license file="LICENSE">LGPL-2.1-or-later</license>

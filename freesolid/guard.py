@@ -50,12 +50,46 @@ _observer = None
 
 
 class _GuardObserver:
-    """Document observer that annotates failed recomputes.
+    """Document observer: annotate failures, and make File > New a part.
 
     Only the slots FreeCAD looks up by name are defined; everything is
-    wrapped because an exception escaping an observer aborts the recompute
+    wrapped because an exception escaping an observer aborts the operation
     it was merely watching.
     """
+
+    def slotCreatedDocument(self, doc):  # noqa: N802 - FreeCAD API name
+        """A brand-new empty document gets a Body, SolidWorks-style.
+
+        Deferred to the next event-loop turn: commands that create a
+        document *and* populate it (open file, new assembly) have finished
+        by then, and a non-empty document is left strictly alone.
+        """
+        try:
+            if getattr(doc, "FileName", ""):
+                return  # opening an existing file, not File > New
+            from .compat import QtCore
+            QtCore.QTimer.singleShot(0, lambda: self._ensure_body(doc))
+        except Exception:
+            pass
+
+    @staticmethod
+    def _ensure_body(doc):
+        try:
+            import FreeCAD as App
+            if doc not in App.listDocuments().values():
+                return  # closed meanwhile
+            if doc.Objects:
+                return  # someone populated it: an assembly, a restore…
+            body = doc.addObject("PartDesign::Body", "Piece")
+            doc.recompute()
+            try:
+                import FreeCADGui as Gui
+                Gui.getDocument(doc.Name).ActiveView.setActiveObject(
+                    "pdbody", body)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def slotRecomputedObject(self, obj):  # noqa: N802 - FreeCAD API name
         try:

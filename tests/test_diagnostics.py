@@ -13,7 +13,7 @@ class FakeGroup:
     def _get(self, key, default):
         return self._store.get((self._path, key), default)
 
-    GetBool = GetInt = GetFloat = GetString = _get
+    GetBool = GetInt = GetFloat = GetString = GetUnsigned = _get
 
 
 class FakeParams:

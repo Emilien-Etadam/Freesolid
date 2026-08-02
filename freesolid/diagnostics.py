@@ -24,6 +24,7 @@ _PROBES = {
     "int": ("GetInt", (1, 2)),
     "float": ("GetFloat", (1.0, 2.0)),
     "str": ("GetString", ("__freesolid_absent_a__", "__freesolid_absent_b__")),
+    "uint": ("GetUnsigned", (1, 2)),
 }
 
 

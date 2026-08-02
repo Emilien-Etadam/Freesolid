@@ -89,6 +89,20 @@ class FreeSolidWorkbench(Gui.Workbench):
         return "Gui::PythonWorkbench"
 
 
+# Commands are registered at application start, not at first workbench
+# activation: the "S" contextual bar, the Fonctions strip and the guardrail
+# must work in PartDesign and Sketcher without the user ever selecting the
+# FreeSolid workbench.
+try:
+    from freesolid import commands as _commands
+    _commands.register()
+    from freesolid import guard as _guard
+    _guard.install()
+except Exception:
+    import traceback as _tb
+    App.Console.PrintError(
+        "FreeSolid: enregistrement au démarrage incomplet\n" + _tb.format_exc())
+
 # Icons are cosmetic: resolved best-effort, never at the cost of registration.
 try:
     _ICONS = os.path.join(_DIR, "resources", "icons")

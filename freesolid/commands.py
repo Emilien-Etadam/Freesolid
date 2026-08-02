@@ -41,8 +41,22 @@ class SetupCommand:
         applied, failed = prefs_mod.apply_all(App.ParamGet)
         self._restrict_workbenches()
 
+        # Arrange the window immediately: tree left, properties below,
+        # Fonctions strip on top, console and report hidden. FreeCAD saves
+        # the window state on exit, so this one pass persists.
+        arranged = []
+        try:
+            from .ui.layout import apply_solidworks_layout
+            arranged = apply_solidworks_layout()
+        except Exception as exc:  # noqa: BLE001
+            App.Console.PrintWarning(
+                "FreeSolid: disposition non appliquée ({})\n".format(exc))
+
         lines = ["{} réglage(s) appliqué(s) :".format(len(applied)), ""]
         lines += ["  • {}".format(p.why) for p in applied]
+        if arranged:
+            lines += ["", "Disposition :"]
+            lines += ["  • {}".format(a) for a in arranged]
 
         pending = [p for p in applied if not p.verified]
         if pending:
@@ -264,8 +278,19 @@ ALIAS_NAMES = tuple(
     "FreeSolid_" + term.command.split("_", 1)[1] for term in TERMS)
 
 
+_registered = False
+
+
 def register():
-    """Register every command with FreeCAD. Idempotent."""
+    """Register every command with FreeCAD. Idempotent.
+
+    Called both at application start (so the "S" key and the Fonctions strip
+    work in every workbench) and from the workbench's Initialize (harmless
+    second call, guarded here).
+    """
+    global _registered
+    if _registered:
+        return
     Gui = _gui()
     Gui.addCommand("FreeSolid_Setup", SetupCommand())
     Gui.addCommand("FreeSolid_NewPart", NewPartCommand())
@@ -274,3 +299,4 @@ def register():
     Gui.addCommand("FreeSolid_ContextBar", ContextBarCommand())
     for name, term in zip(ALIAS_NAMES, TERMS):
         Gui.addCommand(name, AliasCommand(term))
+    _registered = True

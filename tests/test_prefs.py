@@ -13,7 +13,7 @@ class FakeGroup:
     def _set(self, key, value):
         self._store[(self._path, key)] = value
 
-    SetBool = SetInt = SetFloat = SetString = _set
+    SetBool = SetInt = SetFloat = SetString = SetUnsigned = _set
 
 
 class FakeParams:
@@ -31,7 +31,7 @@ class FakeParams:
 
 
 def test_kinds_are_supported():
-    assert {p.kind for p in prefs.PREFS} <= {"bool", "int", "float", "str"}
+    assert {p.kind for p in prefs.PREFS} <= {"bool", "int", "float", "str", "uint"}
 
 
 def test_rows_are_unique():
@@ -85,3 +85,15 @@ def test_layout_rows_split_the_tree_out_of_the_combo_view():
                                 "TechDrawWorkbench", "SketcherWorkbench"])
 def test_essential_workbenches_are_kept(wb):
     assert wb in prefs.KEEP_WORKBENCHES
+
+
+def test_the_plugin_never_hides_itself():
+    # Setup once hid FreeSolidWorkbench through this very list, wiping the
+    # plugin's own toolbars from the selector (seen on 1.1.3).
+    assert "FreeSolidWorkbench" in prefs.KEEP_WORKBENCHES
+
+
+def test_uint_rows_fit_in_32_bits():
+    for pref in prefs.PREFS:
+        if pref.kind == "uint":
+            assert 0 <= pref.value <= 0xFFFFFFFF, (pref.path, pref.key)

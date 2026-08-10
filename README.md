@@ -1,6 +1,22 @@
 # FreeSolid
 
-A familiar mechanical-CAD interface for FreeCAD.
+A familiar mechanical-CAD interface for FreeCAD — on two tracks.
+
+**Track 1 — the Qt addon** (this repository's root): installable today,
+reshapes stock FreeCAD toward SolidWorks habits. Documented below.
+
+**Track 2 — the app** (`engine/` + `app/`): a new web interface (Three.js,
+Plasticity-style look, SolidWorks-style FeatureManager) over a **headless
+FreeCAD engine** — documents, PartDesign, sketch solver, toponaming fix and
+STEP are inherited, only presentation and interaction are rebuilt. See
+[`docs/architecture-app.md`](docs/architecture-app.md) for the design and
+[`docs/landscape.md`](docs/landscape.md) for why nobody else occupies this
+lane. Run milestone M0 with:
+
+```bash
+<freecad-appimage>/squashfs-root/usr/bin/freecadcmd engine/server.py
+# then open http://localhost:8787
+```
 
 FreeSolid is a FreeCAD addon for designers who already know a commercial
 parametric CAD package — SolidWorks, Inventor, Solid Edge — and who find

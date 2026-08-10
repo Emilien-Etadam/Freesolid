@@ -12,10 +12,16 @@ export function createSketchMode(deps) {
   const group = new THREE.Group();
   scene.add(group);
 
-  const lineMaterial = new THREE.LineBasicMaterial({ color: 0xe8edf2 });
-  const previewMaterial = new THREE.LineBasicMaterial({ color: 0x4f8fdb });
+  // depthTest off + high renderOrder: the sketch reads through the solid,
+  // SolidWorks-style — a sketch drawn on a face was invisible behind the
+  // mesh (user report).
+  const lineMaterial = new THREE.LineBasicMaterial(
+    { color: 0xe8edf2, depthTest: false });
+  const previewMaterial = new THREE.LineBasicMaterial(
+    { color: 0x4f8fdb, depthTest: false });
   const pointMaterial = new THREE.PointsMaterial({
-    color: 0x4f8fdb, size: 7, sizeAttenuation: false });
+    color: 0x4f8fdb, size: 7, sizeAttenuation: false, depthTest: false });
+  group.renderOrder = 20;
 
   const mode = {
     active: false,
@@ -32,6 +38,13 @@ export function createSketchMode(deps) {
   };
 
   const SNAP_PX = 12;
+
+  const CURSORS = { select: "default", line: "crosshair",
+                    circle: "crosshair", dim: "crosshair" };
+
+  function setCursor(name) {
+    renderer.domElement.style.cursor = name;
+  }
 
   // ---------- coordinates ----------
 
@@ -124,7 +137,9 @@ export function createSketchMode(deps) {
         const geometry = new THREE.BufferGeometry().setFromPoints([
           new THREE.Vector3(entity.p1[0], entity.p1[1], 0),
           new THREE.Vector3(entity.p2[0], entity.p2[1], 0)]);
-        group.add(new THREE.Line(geometry, lineMaterial));
+        const line = new THREE.Line(geometry, lineMaterial);
+        line.renderOrder = 20;
+        group.add(line);
         points.push(entity.p1, entity.p2);
       } else if (entity.type === "circle") {
         const segments = [];
@@ -134,8 +149,10 @@ export function createSketchMode(deps) {
             entity.c[0] + entity.r * Math.cos(a),
             entity.c[1] + entity.r * Math.sin(a), 0));
         }
-        group.add(new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(segments), lineMaterial));
+        const circle = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(segments), lineMaterial);
+        circle.renderOrder = 20;
+        group.add(circle);
         points.push(entity.c);
       }
     }
@@ -143,7 +160,9 @@ export function createSketchMode(deps) {
       const flat = new Float32Array(points.flatMap((p) => [p[0], p[1], 0]));
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.BufferAttribute(flat, 3));
-      group.add(new THREE.Points(geometry, pointMaterial));
+      const cloud = new THREE.Points(geometry, pointMaterial);
+      cloud.renderOrder = 21;
+      group.add(cloud);
     }
 
     for (const dim of mode.state.dims) {
@@ -159,6 +178,7 @@ export function createSketchMode(deps) {
       }
       const sprite = makeDimSprite(dim.value.toFixed(2), x, y);
       sprite.userData.dim = dim;
+      sprite.renderOrder = 22;
       group.add(sprite);
     }
 
@@ -246,19 +266,30 @@ export function createSketchMode(deps) {
 
   function onPointerDown(event) {
     if (mode.tool !== "select" || !mode.state) return;
+    const p = overEndpoint(event);
+    if (p) {
+      mode.drag = { geo: p.geo, point: p.point };
+      controls.enabled = false;
+      setCursor("grabbing");
+    }
+  }
+
+  function overEndpoint(event) {
     for (const p of endpoints()) {
       const s = toScreen(p.x, p.y);
       if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < SNAP_PX) {
-        mode.drag = { geo: p.geo, point: p.point };
-        controls.enabled = false;
-        return;
+        return p;
       }
     }
+    return null;
   }
 
   let dragTimer = null;
   function onPointerMove(event) {
     mode.lastMouse = { clientX: event.clientX, clientY: event.clientY };
+    if (mode.tool === "select" && !mode.drag) {
+      setCursor(overEndpoint(event) ? "grab" : "default");
+    }
     if (mode.drag) {
       const local = toLocal(event);
       if (!local || dragTimer) return;
@@ -281,6 +312,7 @@ export function createSketchMode(deps) {
     if (mode.drag) {
       mode.drag = null;
       controls.enabled = true;
+      setCursor("grab");
     }
   }
 
@@ -332,6 +364,7 @@ export function createSketchMode(deps) {
     mode.tool = tool;
     mode.chain = null;
     mode.pendingCircle = null;
+    setCursor(CURSORS[tool] ?? "default");
     if (previewLine) previewLine.visible = false;
     for (const button of bar.querySelectorAll("button[data-tool]")) {
       button.classList.toggle("on", button.dataset.tool === tool);
@@ -400,6 +433,7 @@ export function createSketchMode(deps) {
       renderer.domElement.removeEventListener(type, handler);
     }
     document.removeEventListener("keydown", onKey);
+    setCursor("");
     group.clear();
     previewLine = null;
 

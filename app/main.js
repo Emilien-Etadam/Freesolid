@@ -119,6 +119,7 @@ renderer.domElement.addEventListener("pointermove", (event) => {
   }
   if (groupIndex !== hoveredGroup) {
     hoveredGroup = groupIndex;
+    renderer.domElement.style.cursor = groupIndex >= 0 ? "pointer" : "";
     repaintGroups();
   }
 });

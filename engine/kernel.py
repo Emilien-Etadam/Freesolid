@@ -616,79 +616,105 @@ class Kernel:
     def selftest(self):
         """Run the whole flow end to end; return stats worth pasting back.
 
-        M0: part, constrained sketch, pad, reparam. M1: sketch attached to a
-        picked face, pocket through it, fillet on a face — the exact
-        click-a-face gestures the viewport offers, minus the viewport.
+        Every step prints a live marker to the terminal and any failure
+        names the step it died in — a silent selftest is worse than a
+        failing one (learned when a user reported "the button does
+        nothing").
         """
-        report = {}
-        report["ping"] = self.ping()
-        self.new_part("Pièce de test")
-        self.add_rect_sketch(100, 60)
-        tree = self.add_pad(10)
-        mesh = self.tessellate()
-        report["m0_faces"] = len(mesh["groups"])
-        pad = next(f["name"] for f in tree["features"]
-                   if f["type"] == "PartDesign::Pad")
-        self.set_param(pad, "Length", 25.0)
-        report["m0_reparam_ok"] = self.tessellate() != mesh
+        report = {"steps": []}
 
-        top = self._top_face_id()
-        report["m1_top_face"] = top
-        self.add_rect_sketch(40, 20, face=top)
-        self.add_pocket(10)
-        report["m1_pocket_faces"] = len(self.tessellate()["groups"])
-        tree = self.add_fillet(self._top_face_id(), 3)
-        report["m1_fillet_ok"] = not any(f["error"] for f in tree["features"])
+        def mark(name):
+            report["steps"].append(name)
+            print("selftest> {}".format(name), flush=True)
 
-        # M1.5: rollback both ways, then a save/open round-trip — the file
-        # a user gets back must rebuild identically.
-        pad_feature = next(f["name"] for f in tree["features"]
-                           if f["type"] == "PartDesign::Pad")
-        faces_rolled = len(self.tessellate()["groups"])
-        self.set_tip(pad_feature)
-        report["m15_rollback_changes_shape"] = (
-            len(self.tessellate()["groups"]) != faces_rolled)
-        self.tip_to_end()
+        try:
+            mark("ping")
+            report["ping"] = self.ping()
 
-        import tempfile
-        path = os.path.join(tempfile.gettempdir(), "freesolid-selftest.FCStd")
-        self.save_part(path)
-        tree_before = self.get_tree()
-        reopened = self.open_part(path)
-        report["m15_roundtrip_ok"] = (
-            [f["type"] for f in reopened["features"]]
-            == [f["type"] for f in tree_before["features"]])
+            mark("m0: pièce + esquisse contrainte + bossage")
+            self.new_part("Pièce de test")
+            self.add_rect_sketch(100, 60)
+            tree = self.add_pad(10)
+            mesh = self.tessellate()
+            report["m0_faces"] = len(mesh["groups"])
 
-        # M2: draw a rectangle line by line the way the viewport does —
-        # auto-constraints, a driving dimension, a solver-followed drag —
-        # then pad the drawn profile.
-        state = self.sketch_start()
-        name = state["sketch"]
-        self.sketch_add_line(name, 0, 0, 80, 0)
-        self.sketch_add_line(name, 80, 0, 80, 40)
-        self.sketch_add_line(name, 80, 40, 0, 40)
-        state = self.sketch_add_line(name, 0, 40, 0, 0)
-        constraints = len(self._get_sketch(name).Constraints)
-        # 4 lines snapped into a loop: 4 coincidents + 2 H + 2 V expected.
-        report["m2_autoconstraints"] = constraints
-        report["m2_autoconstraints_ok"] = constraints >= 8
-        state = self.sketch_move(name, 1, 2, 85, 45)
-        state = self.sketch_dim(name, 0)
-        dim = max(d["id"] for d in state["dims"])
-        state = self.sketch_set_dim(name, dim, 90)
-        report["m2_dim_drives"] = any(
-            abs(d["value"] - 90) < 1e-6 for d in state["dims"])
-        report["m2_dof"] = state["dof"]
-        self.sketch_finish(name)
-        tree = self.add_pad(8, sketch=name)
-        report["m2_pad_on_drawn_sketch_ok"] = not any(
-            f["error"] for f in tree["features"])
+            mark("m0: reparamétrage 10 → 25")
+            pad = next(f["name"] for f in tree["features"]
+                       if f["type"] == "PartDesign::Pad")
+            self.set_param(pad, "Length", 25.0)
+            report["m0_reparam_ok"] = self.tessellate() != mesh
 
-        report["tree_after_pad"] = self.get_tree()
-        mesh = self.tessellate()
-        report["mesh_faces"] = len(mesh["groups"])
-        report["mesh_triangles"] = len(mesh["indices"]) // 3
-        return report
+            mark("m1: esquisse sur face + enlèvement + congé")
+            top = self._top_face_id()
+            report["m1_top_face"] = top
+            self.add_rect_sketch(40, 20, face=top)
+            self.add_pocket(10)
+            report["m1_pocket_faces"] = len(self.tessellate()["groups"])
+            tree = self.add_fillet(self._top_face_id(), 3)
+            report["m1_fillet_ok"] = not any(
+                f["error"] for f in tree["features"])
+
+            mark("m1.5: barre de retour aller-retour")
+            pad_feature = next(f["name"] for f in tree["features"]
+                               if f["type"] == "PartDesign::Pad")
+            faces_rolled = len(self.tessellate()["groups"])
+            self.set_tip(pad_feature)
+            report["m15_rollback_changes_shape"] = (
+                len(self.tessellate()["groups"]) != faces_rolled)
+            self.tip_to_end()
+
+            mark("m1.5: enregistrer puis rouvrir")
+            import tempfile
+            path = os.path.join(tempfile.gettempdir(),
+                                "freesolid-selftest.FCStd")
+            self.save_part(path)
+            tree_before = self.get_tree()
+            reopened = self.open_part(path)
+            report["m15_roundtrip_ok"] = (
+                [f["type"] for f in reopened["features"]]
+                == [f["type"] for f in tree_before["features"]])
+
+            mark("m2: rectangle dessiné ligne à ligne")
+            state = self.sketch_start()
+            name = state["sketch"]
+            self.sketch_add_line(name, 0, 0, 80, 0)
+            self.sketch_add_line(name, 80, 0, 80, 40)
+            self.sketch_add_line(name, 80, 40, 0, 40)
+            self.sketch_add_line(name, 0, 40, 0, 0)
+            constraints = len(self._get_sketch(name).Constraints)
+            # 4 snapped lines: 4 coincidents + 2 horizontal + 2 vertical.
+            report["m2_autoconstraints"] = constraints
+            report["m2_autoconstraints_ok"] = constraints >= 8
+
+            mark("m2: drag suivi par le solveur")
+            self.sketch_move(name, 1, 2, 85, 45)
+
+            mark("m2: cote pilotante à 90")
+            state = self.sketch_dim(name, 0)
+            dim = max(d["id"] for d in state["dims"])
+            state = self.sketch_set_dim(name, dim, 90)
+            report["m2_dim_drives"] = any(
+                abs(d["value"] - 90) < 1e-6 for d in state["dims"])
+            report["m2_dof"] = state["dof"]
+
+            mark("m2: extrusion du profil dessiné")
+            self.sketch_finish(name)
+            tree = self.add_pad(8, sketch=name)
+            report["m2_pad_on_drawn_sketch_ok"] = not any(
+                f["error"] for f in tree["features"])
+
+            mark("bilan")
+            report["tree_after_pad"] = self.get_tree()
+            mesh = self.tessellate()
+            report["mesh_faces"] = len(mesh["groups"])
+            report["mesh_triangles"] = len(mesh["indices"]) // 3
+            return report
+        except KernelError as exc:
+            raise KernelError("échec à l'étape « {} » : {}".format(
+                report["steps"][-1], exc))
+        except Exception as exc:  # noqa: BLE001 - name the step, always
+            raise KernelError("échec à l'étape « {} » : {}".format(
+                report["steps"][-1], _explain(exc)))
 
 
 def dispatch(kernel: Kernel, op: str, params: dict):

@@ -222,6 +222,87 @@ class Kernel:
         return self._dressup("PartDesign::Chamfer", "Chanfrein", face,
                              "Size", size)
 
+    #: Properties offered for editing, in display order. A whitelist rather
+    #: than full introspection: Pad alone carries a dozen numeric properties
+    #: and prompting through Offset/TaperAngle/Length2 buries the one that
+    #: matters.
+    _EDITABLE_PROPS = ("Length", "Radius", "Size", "Angle", "Thickness")
+
+    def get_params(self, feature):
+        """Editable numeric properties of a feature, with current values."""
+        doc = self._require_doc()
+        obj = doc.getObject(feature)
+        if obj is None:
+            raise KernelError("fonction inconnue : {}".format(feature))
+        params = []
+        for prop in self._EDITABLE_PROPS:
+            if not hasattr(obj, prop):
+                continue
+            value = getattr(obj, prop)
+            params.append({"prop": prop,
+                           "value": float(getattr(value, "Value", value))})
+        return {"feature": feature, "label": obj.Label, "params": params}
+
+    def set_tip(self, feature):
+        """Move the rollback bar: the part rebuilds up to this feature."""
+        body = self._require_body()
+        obj = self._require_doc().getObject(feature)
+        if obj is None:
+            raise KernelError("fonction inconnue : {}".format(feature))
+        body.Tip = obj
+        self._recompute()
+        return self.get_tree()
+
+    def tip_to_end(self):
+        """Rollback bar back to the last feature — the final state."""
+        body = self._require_body()
+        features = [o for o in body.Group
+                    if o.isDerivedFrom("PartDesign::Feature")]
+        if not features:
+            raise KernelError("aucune fonction dans la pièce")
+        body.Tip = features[-1]
+        self._recompute()
+        return self.get_tree()
+
+    def delete_feature(self, feature):
+        """Remove one feature. Its sketch stays — deleting it too would be
+        a second, separate decision, exactly as in SolidWorks."""
+        doc = self._require_doc()
+        obj = doc.getObject(feature)
+        if obj is None:
+            raise KernelError("fonction inconnue : {}".format(feature))
+        label = obj.Label
+        doc.removeObject(obj.Name)
+        try:
+            self._recompute()
+        except KernelError as exc:
+            raise KernelError(
+                "{} supprimé, mais l'aval casse : {}".format(label, exc))
+        return self.get_tree()
+
+    def open_part(self, path):
+        """Open an existing .FCStd — the user's real files, not our demos.
+
+        M1 scope: single active Body. A multi-body file opens on its first
+        Body and says so; a file with none (Part-workbench models, meshes)
+        is refused with the reason.
+        """
+        App = self._app()
+        path = os.path.expanduser(str(path))
+        if not os.path.exists(path):
+            raise KernelError("fichier introuvable : {}".format(path))
+        doc = App.openDocument(path)
+        bodies = [o for o in doc.Objects if o.TypeId == "PartDesign::Body"]
+        if not bodies:
+            raise KernelError(
+                "aucun corps PartDesign dans ce fichier — il vient "
+                "probablement de l'atelier Part (booléennes sans historique "
+                "de fonctions), que cette interface ne couvre pas encore")
+        self._doc, self._body = doc, bodies[0]
+        tree = self.get_tree()
+        tree["bodies_in_file"] = len(bodies)
+        return tree
+
     def save_part(self, path):
         """Save as a standard .FCStd — openable in stock FreeCAD.
 
@@ -333,7 +414,27 @@ class Kernel:
         report["m1_pocket_faces"] = len(self.tessellate()["groups"])
         tree = self.add_fillet(self._top_face_id(), 3)
         report["m1_fillet_ok"] = not any(f["error"] for f in tree["features"])
-        report["tree_after_pad"] = tree
+
+        # M1.5: rollback both ways, then a save/open round-trip — the file
+        # a user gets back must rebuild identically.
+        pad_feature = next(f["name"] for f in tree["features"]
+                           if f["type"] == "PartDesign::Pad")
+        faces_rolled = len(self.tessellate()["groups"])
+        self.set_tip(pad_feature)
+        report["m15_rollback_changes_shape"] = (
+            len(self.tessellate()["groups"]) != faces_rolled)
+        self.tip_to_end()
+
+        import tempfile
+        path = os.path.join(tempfile.gettempdir(), "freesolid-selftest.FCStd")
+        self.save_part(path)
+        tree_before = self.get_tree()
+        reopened = self.open_part(path)
+        report["m15_roundtrip_ok"] = (
+            [f["type"] for f in reopened["features"]]
+            == [f["type"] for f in tree_before["features"]])
+
+        report["tree_after_pad"] = self.get_tree()
         mesh = self.tessellate()
         report["mesh_faces"] = len(mesh["groups"])
         report["mesh_triangles"] = len(mesh["indices"]) // 3

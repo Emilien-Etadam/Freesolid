@@ -92,6 +92,11 @@ def test_m1_ops_declare_their_required_params():
     assert protocol.OPS["add_fillet"] == ("face", "radius")
     assert protocol.OPS["add_chamfer"] == ("face", "size")
     assert protocol.OPS["save_part"] == ("path",)
+    assert protocol.OPS["open_part"] == ("path",)
+    assert protocol.OPS["get_params"] == ("feature",)
+    assert protocol.OPS["set_tip"] == ("feature",)
+    assert protocol.OPS["tip_to_end"] == ()
+    assert protocol.OPS["delete_feature"] == ("feature",)
 
 
 def test_sketch_face_param_stays_optional():

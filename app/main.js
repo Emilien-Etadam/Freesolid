@@ -177,28 +177,69 @@ function renderTree(tree) {
     if (feature.error) item.className = "error";
     item.innerHTML =
       `<span class="kind">${feature.kind}</span> — ${feature.label}`;
-    item.title = "Double-clic : modifier";
+    item.title = "Double-clic : modifier · clic droit : barre de retour, supprimer";
     item.addEventListener("dblclick", () => editFeature(feature));
+    item.addEventListener("contextmenu", (e) => openMenu(e, feature));
     treeEl.appendChild(item);
     if (feature.name === tree.tip) {
       const bar = document.createElement("li");
       bar.className = "rollback";
       bar.textContent = "▲ barre de retour arrière ▲";
+      bar.title = "Double-clic : revenir à l'état final";
+      bar.addEventListener("dblclick", () => refresh(call("tip_to_end")));
       treeEl.appendChild(bar);
     }
   }
 }
 
 async function editFeature(feature) {
-  if (feature.type !== "PartDesign::Pad") {
-    say("édition M0 : seul le bossage est éditable pour l'instant");
-    return;
+  try {
+    const info = await call("get_params", { feature: feature.name });
+    if (!info.params.length) {
+      say(`${info.label} : aucun paramètre numérique éditable`);
+      return;
+    }
+    let touched = false;
+    for (const p of info.params) {
+      const raw = prompt(`${info.label} — ${p.prop} (mm) :`, p.value);
+      if (raw === null) continue; // Annuler = garder cette valeur
+      const value = parseFloat(raw);
+      if (!Number.isNaN(value) && value !== p.value) {
+        await call("set_param",
+          { feature: feature.name, prop: p.prop, value });
+        touched = true;
+      }
+    }
+    if (touched) await refresh(call("get_tree"));
+  } catch (error) {
+    say(error.message, true);
   }
-  const value = prompt("Profondeur du bossage (mm) :", "10");
-  if (value === null) return;
-  await refresh(call("set_param",
-    { feature: feature.name, prop: "Length", value: parseFloat(value) }));
 }
+
+// ---------- tree context menu ----------
+
+const menuEl = document.getElementById("ctxmenu");
+let menuFeature = null;
+
+function openMenu(event, feature) {
+  event.preventDefault();
+  menuFeature = feature;
+  menuEl.style.display = "block";
+  menuEl.style.left = Math.min(event.clientX, window.innerWidth - 200) + "px";
+  menuEl.style.top = event.clientY + "px";
+}
+document.addEventListener("click", () => { menuEl.style.display = "none"; });
+
+document.getElementById("ctx-rollback").addEventListener("click", () => {
+  if (menuFeature) refresh(call("set_tip", { feature: menuFeature.name }));
+});
+document.getElementById("ctx-end").addEventListener("click", () =>
+  refresh(call("tip_to_end")));
+document.getElementById("ctx-delete").addEventListener("click", () => {
+  if (!menuFeature) return;
+  if (confirm(`Supprimer « ${menuFeature.label} » ?`))
+    refresh(call("delete_feature", { feature: menuFeature.name }));
+});
 
 // ---------- actions ----------
 
@@ -246,6 +287,21 @@ document.getElementById("btn-fillet").addEventListener("click", () =>
 
 document.getElementById("btn-chamfer").addEventListener("click", () =>
   dressup("add_chamfer", "Taille du chanfrein", "size", "2"));
+
+document.getElementById("btn-open").addEventListener("click", async () => {
+  const path = prompt("Ouvrir (chemin .FCStd) :", "~/piece-freesolid.FCStd");
+  if (!path) return;
+  try {
+    const tree = await call("open_part", { path });
+    renderTree(tree);
+    showMesh(await call("tessellate"));
+    say(tree.bodies_in_file > 1
+      ? `Ouvert — ${tree.bodies_in_file} corps dans le fichier, affichage du premier.`
+      : "Ouvert.");
+  } catch (error) {
+    say(error.message, true);
+  }
+});
 
 document.getElementById("btn-save").addEventListener("click", async () => {
   const path = prompt("Enregistrer sous :", "~/piece-freesolid.FCStd");

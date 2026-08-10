@@ -25,7 +25,12 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_fillet": ("face", "radius"),
     "add_chamfer": ("face", "size"),
     "set_param": ("feature", "prop", "value"),
+    "get_params": ("feature",),        # editable numeric properties
+    "set_tip": ("feature",),           # move the rollback bar here
+    "tip_to_end": (),                  # back to the final state
+    "delete_feature": ("feature",),
     "save_part": ("path",),
+    "open_part": ("path",),
     "get_tree": (),
     "tessellate": (),                  # optional: deviation
 }

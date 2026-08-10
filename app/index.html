@@ -82,6 +82,18 @@
   main { grid-area: viewport; position: relative; }
   main canvas { display: block; }
 
+  #sketchbar {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    display: none; gap: 4px; z-index: 5;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px; padding: 5px;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+  }
+  #sketchbar button.on { border-color: var(--accent); color: var(--accent); }
+  #sketchbar .ok { color: #6fbf8f; }
+  #sketchbar .no { color: var(--error); }
+
   footer {
     grid-area: status;
     display: flex; align-items: center; gap: 16px;
@@ -127,7 +139,16 @@
     <ul id="tree"><li class="body">— aucun document —</li></ul>
   </aside>
 
-  <main id="viewport"></main>
+  <main id="viewport">
+    <div id="sketchbar">
+      <button data-tool="select" title="Glisser un point (le solveur suit)">Sélection</button>
+      <button data-tool="line" title="L">Ligne</button>
+      <button data-tool="circle" title="C">Cercle</button>
+      <button data-tool="dim" title="D — cote pilotante">Cote</button>
+      <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire">✔ Terminer</button>
+      <button id="sk-cancel" class="no">✖ Quitter</button>
+    </div>
+  </main>
   <div id="ctxmenu">
     <div id="ctx-rollback">Amener la barre de retour ici</div>
     <div id="ctx-end">Revenir à l'état final</div>

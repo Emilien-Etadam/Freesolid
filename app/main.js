@@ -3,6 +3,7 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { createSketchMode } from "./sketch.js";
 
 const statusEl = document.getElementById("status");
 const pickEl = document.getElementById("pick");
@@ -103,6 +104,7 @@ const pointer = new THREE.Vector2();
 let hoveredGroup = -1;
 
 renderer.domElement.addEventListener("pointermove", (event) => {
+  if (sketchMode.active) return;
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -137,10 +139,11 @@ function repaintGroups() {
 // Guarded against orbit drags: a press that travels is navigation, not a pick.
 let pressPosition = null;
 renderer.domElement.addEventListener("pointerdown", (event) => {
+  if (sketchMode.active) return;
   pressPosition = { x: event.clientX, y: event.clientY };
 });
 renderer.domElement.addEventListener("pointerup", (event) => {
-  if (!pressPosition) return;
+  if (sketchMode.active || !pressPosition) return;
   const travel = Math.hypot(event.clientX - pressPosition.x,
                             event.clientY - pressPosition.y);
   pressPosition = null;
@@ -193,6 +196,10 @@ function renderTree(tree) {
 }
 
 async function editFeature(feature) {
+  if (feature.type === "Sketcher::SketchObject") {
+    sketchMode.enter(call("sketch_edit", { feature: feature.name }));
+    return;
+  }
   try {
     const info = await call("get_params", { feature: feature.name });
     if (!info.params.length) {
@@ -258,12 +265,9 @@ document.getElementById("btn-new").addEventListener("click", () =>
   refresh(call("new_part")));
 
 document.getElementById("btn-sketch").addEventListener("click", () => {
-  const w = parseFloat(prompt("Largeur (mm) :", "100") ?? "");
-  const h = parseFloat(prompt("Hauteur (mm) :", "60") ?? "");
-  if (!w || !h) return;
-  const params = { width: w, height: h };
+  const params = {};
   if (selectedFaceId !== null) params.face = selectedFaceId;
-  refresh(call("add_rect_sketch", params));
+  sketchMode.enter(call("sketch_start", params));
 });
 
 document.getElementById("btn-pocket").addEventListener("click", () => {
@@ -317,7 +321,9 @@ document.getElementById("btn-save").addEventListener("click", async () => {
 document.getElementById("btn-pad").addEventListener("click", () => {
   const length = parseFloat(prompt("Profondeur (mm) :", "10") ?? "");
   if (!length) return;
-  refresh(call("add_pad", { length }));
+  const params = { length };
+  if (sketchMode.lastFinished) params.sketch = sketchMode.lastFinished;
+  refresh(call("add_pad", params));
 });
 
 document.getElementById("btn-selftest").addEventListener("click", async () => {
@@ -333,6 +339,11 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
     say("Selftest : " + error.message, true);
   }
 });
+
+// ---------- sketch mode ----------
+
+const sketchMode = createSketchMode(
+  { scene, camera, renderer, controls, call, say, refresh });
 
 // ---------- boot ----------
 

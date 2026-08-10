@@ -79,8 +79,23 @@ class Kernel:
         App = self._app()
         return {"freecad": ".".join(str(v) for v in App.Version()[:3])}
 
+    def _close_current(self):
+        """Drop the engine's previous document, if any.
+
+        A lingering document keeps recomputing in the background and its
+        warnings land in the terminal attributed to a part the user thinks
+        is gone — one document per engine, by construction.
+        """
+        if self._doc is not None:
+            try:
+                self._app().closeDocument(self._doc.Name)
+            except Exception:
+                pass
+        self._doc = self._body = None
+
     def new_part(self, name="Pièce"):
         App = self._app()
+        self._close_current()
         self._doc = App.newDocument("FreeSolid")
         self._body = self._doc.addObject("PartDesign::Body", "Body")
         self._body.Label = name
@@ -150,15 +165,19 @@ class Kernel:
         self._recompute()
         return self.get_tree()
 
-    def add_pad(self, length):
+    def add_pad(self, length, sketch=None):
         body = self._require_body()
         doc = self._require_doc()
-        sketches = [o for o in body.Group
-                    if o.TypeId == "Sketcher::SketchObject"]
-        if not sketches:
-            raise KernelError("aucune esquisse à extruder")
+        if sketch is not None:
+            profile = self._get_sketch(sketch)
+        else:
+            sketches = [o for o in body.Group
+                        if o.TypeId == "Sketcher::SketchObject"]
+            if not sketches:
+                raise KernelError("aucune esquisse à extruder")
+            profile = sketches[-1]
         pad = body.newObject("PartDesign::Pad", "Pad")
-        pad.Profile = sketches[-1]
+        pad.Profile = profile
         pad.Length = float(length)
         pad.Label = "Bossage extrudé"
         try:
@@ -244,11 +263,20 @@ class Kernel:
         return {"feature": feature, "label": obj.Label, "params": params}
 
     def set_tip(self, feature):
-        """Move the rollback bar: the part rebuilds up to this feature."""
+        """Move the rollback bar: the part rebuilds up to this feature.
+
+        Only PartDesign features qualify: setting Tip to a sketch made
+        FreeCAD log "Linked object is not a PartDesign feature" on every
+        recompute (seen on 1.1.3 via the tree's context menu).
+        """
         body = self._require_body()
         obj = self._require_doc().getObject(feature)
         if obj is None:
             raise KernelError("fonction inconnue : {}".format(feature))
+        if not obj.isDerivedFrom("PartDesign::Feature"):
+            raise KernelError(
+                "la barre de retour se pose sur une fonction (bossage, "
+                "enlèvement…), pas sur une esquisse")
         body.Tip = obj
         self._recompute()
         return self.get_tree()
@@ -291,6 +319,7 @@ class Kernel:
         path = os.path.expanduser(str(path))
         if not os.path.exists(path):
             raise KernelError("fichier introuvable : {}".format(path))
+        self._close_current()
         doc = App.openDocument(path)
         bodies = [o for o in doc.Objects if o.TypeId == "PartDesign::Body"]
         if not bodies:
@@ -368,6 +397,202 @@ class Kernel:
             faces.append((i, [(v.x, v.y, v.z) for v in vertices], triangles))
         return protocol.pack_mesh(faces)
 
+    # -- M2 : sketch editing --------------------------------------------
+
+    #: Exact-match tolerance for auto-constraints. The client snaps and
+    #: sends identical coordinates; this only recognizes that decision.
+    _SNAP_TOL = 1e-7
+
+    def _get_sketch(self, name):
+        obj = self._require_doc().getObject(name)
+        if obj is None or obj.TypeId != "Sketcher::SketchObject":
+            raise KernelError("esquisse inconnue : {}".format(name))
+        return obj
+
+    def sketch_start(self, face=None):
+        """Open a new empty sketch (XY plane, or a picked face)."""
+        body = self._require_body()
+        doc = self._require_doc()
+        sketch = doc.addObject("Sketcher::SketchObject", "Sketch")
+        body.addObject(sketch)
+        sketch.Label = "Esquisse"
+        if face is not None:
+            self._attach_to_face(sketch, face)
+        doc.recompute()  # resolves the placement before the client reads it
+        return self.sketch_state(sketch.Name)
+
+    def sketch_edit(self, feature):
+        """Re-enter an existing sketch."""
+        return self.sketch_state(self._get_sketch(feature).Name)
+
+    def sketch_state(self, sketch):
+        """Everything the client needs to draw the sketch.
+
+        Geometry in sketch-local 2D, dimensional constraints with values,
+        degrees of freedom, and the placement matrix (row-major, which is
+        what THREE.Matrix4.set expects) to position the plane in 3D.
+        """
+        sk = self._get_sketch(sketch)
+        entities = []
+        for gid, geo in enumerate(sk.Geometry):
+            if geo.TypeId == "Part::GeomLineSegment":
+                entities.append({
+                    "id": gid, "type": "line",
+                    "p1": [geo.StartPoint.x, geo.StartPoint.y],
+                    "p2": [geo.EndPoint.x, geo.EndPoint.y]})
+            elif geo.TypeId == "Part::GeomCircle":
+                entities.append({
+                    "id": gid, "type": "circle",
+                    "c": [geo.Center.x, geo.Center.y],
+                    "r": float(geo.Radius)})
+            else:
+                entities.append({"id": gid, "type": "other",
+                                 "kind": geo.TypeId})
+        dims = []
+        for cid, constraint in enumerate(sk.Constraints):
+            if constraint.Type in ("Distance", "DistanceX", "DistanceY",
+                                   "Radius", "Diameter", "Angle"):
+                dims.append({"id": cid, "type": constraint.Type,
+                             "value": float(constraint.Value),
+                             "geo": constraint.First})
+        try:
+            sk.solve()
+        except Exception:
+            pass
+        dof = None
+        try:
+            dof = int(sk.getLastDoF())
+        except Exception:
+            pass
+        matrix = sk.Placement.Matrix.A
+        return {
+            "sketch": sk.Name,
+            "label": sk.Label,
+            "entities": entities,
+            "dims": dims,
+            "dof": dof,
+            "fullyConstrained": bool(getattr(sk, "FullyConstrained", False)),
+            "placement": [float(v) for v in matrix],
+        }
+
+    def _auto_constrain_line(self, sk, gid):
+        """The SolidWorks reflexes: snap becomes coincident, near-axis
+        becomes horizontal/vertical.
+
+        The client decides (it snapped and sent exact coordinates); this
+        turns that decision into constraints so the solver holds it.
+        """
+        import Sketcher
+        C = Sketcher.Constraint
+        geo = sk.Geometry[gid]
+        for pos, point in ((1, geo.StartPoint), (2, geo.EndPoint)):
+            for other in range(len(sk.Geometry)):
+                if other == gid:
+                    continue
+                og = sk.Geometry[other]
+                if og.TypeId != "Part::GeomLineSegment":
+                    continue
+                matched = False
+                for opos, opoint in ((1, og.StartPoint), (2, og.EndPoint)):
+                    if point.distanceToPoint(opoint) < self._SNAP_TOL:
+                        sk.addConstraint(C("Coincident", gid, pos,
+                                           other, opos))
+                        matched = True
+                        break
+                if matched:
+                    break
+        dx = abs(geo.EndPoint.x - geo.StartPoint.x)
+        dy = abs(geo.EndPoint.y - geo.StartPoint.y)
+        if dx > self._SNAP_TOL or dy > self._SNAP_TOL:  # not degenerate
+            if dy < self._SNAP_TOL:
+                sk.addConstraint(C("Horizontal", gid))
+            elif dx < self._SNAP_TOL:
+                sk.addConstraint(C("Vertical", gid))
+
+    def sketch_add_line(self, sketch, x1, y1, x2, y2):
+        import Part
+        sk = self._get_sketch(sketch)
+        V = self._app().Vector
+        gid = sk.addGeometry(Part.LineSegment(
+            V(float(x1), float(y1), 0), V(float(x2), float(y2), 0)), False)
+        self._auto_constrain_line(sk, gid)
+        return self.sketch_state(sketch)
+
+    def sketch_add_circle(self, sketch, cx, cy, r):
+        import Part
+        sk = self._get_sketch(sketch)
+        if float(r) <= 0:
+            raise KernelError("le rayon doit être positif")
+        App = self._app()
+        sk.addGeometry(Part.Circle(
+            App.Vector(float(cx), float(cy), 0),
+            App.Vector(0, 0, 1), float(r)), False)
+        return self.sketch_state(sketch)
+
+    def sketch_move(self, sketch, geo, point, x, y):
+        """Drag: move one point, let the solver follow. ``point`` is the
+        Sketcher convention — 1 start, 2 end, 3 center, 0 whole curve."""
+        sk = self._get_sketch(sketch)
+        try:
+            sk.movePoint(int(geo), int(point),
+                         self._app().Vector(float(x), float(y), 0), 0)
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_dim(self, sketch, geo, value=None):
+        """Smart dimension: length on a line, radius on a circle.
+
+        Driving, SolidWorks-style: dimension it and the geometry obeys.
+        """
+        import Sketcher
+        sk = self._get_sketch(sketch)
+        gid = int(geo)
+        if gid < 0 or gid >= len(sk.Geometry):
+            raise KernelError("géométrie inconnue : {}".format(geo))
+        target = sk.Geometry[gid]
+        try:
+            if target.TypeId == "Part::GeomLineSegment":
+                length = (value if value is not None
+                          else target.StartPoint.distanceToPoint(
+                              target.EndPoint))
+                sk.addConstraint(Sketcher.Constraint(
+                    "Distance", gid, float(length)))
+            elif target.TypeId == "Part::GeomCircle":
+                radius = value if value is not None else target.Radius
+                sk.addConstraint(Sketcher.Constraint(
+                    "Radius", gid, float(radius)))
+            else:
+                raise KernelError("cote non gérée sur ce type de géométrie")
+        except KernelError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - over-constrained, mostly
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_set_dim(self, sketch, dim, value):
+        """Edit a dimension's value — the double-click-a-dim gesture."""
+        sk = self._get_sketch(sketch)
+        try:
+            sk.setDatum(int(dim), float(value))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_delete_geo(self, sketch, geo):
+        sk = self._get_sketch(sketch)
+        try:
+            sk.delGeometry(int(geo))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_finish(self, sketch):
+        """Close the sketch: recompute and hand back the feature tree."""
+        self._get_sketch(sketch)
+        self._recompute()
+        return self.get_tree()
+
     def _top_face_id(self):
         """Index of the upward-facing face with the highest centroid.
 
@@ -433,6 +658,31 @@ class Kernel:
         report["m15_roundtrip_ok"] = (
             [f["type"] for f in reopened["features"]]
             == [f["type"] for f in tree_before["features"]])
+
+        # M2: draw a rectangle line by line the way the viewport does —
+        # auto-constraints, a driving dimension, a solver-followed drag —
+        # then pad the drawn profile.
+        state = self.sketch_start()
+        name = state["sketch"]
+        self.sketch_add_line(name, 0, 0, 80, 0)
+        self.sketch_add_line(name, 80, 0, 80, 40)
+        self.sketch_add_line(name, 80, 40, 0, 40)
+        state = self.sketch_add_line(name, 0, 40, 0, 0)
+        constraints = len(self._get_sketch(name).Constraints)
+        # 4 lines snapped into a loop: 4 coincidents + 2 H + 2 V expected.
+        report["m2_autoconstraints"] = constraints
+        report["m2_autoconstraints_ok"] = constraints >= 8
+        state = self.sketch_move(name, 1, 2, 85, 45)
+        state = self.sketch_dim(name, 0)
+        dim = max(d["id"] for d in state["dims"])
+        state = self.sketch_set_dim(name, dim, 90)
+        report["m2_dim_drives"] = any(
+            abs(d["value"] - 90) < 1e-6 for d in state["dims"])
+        report["m2_dof"] = state["dof"]
+        self.sketch_finish(name)
+        tree = self.add_pad(8, sketch=name)
+        report["m2_pad_on_drawn_sketch_ok"] = not any(
+            f["error"] for f in tree["features"])
 
         report["tree_after_pad"] = self.get_tree()
         mesh = self.tessellate()

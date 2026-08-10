@@ -33,6 +33,18 @@ OPS: dict[str, tuple[str, ...]] = {
     "open_part": ("path",),
     "get_tree": (),
     "tessellate": (),                  # optional: deviation
+    # M2 — sketch editing. Geometry travels in sketch-local 2D; the state
+    # carries the placement matrix that positions it in 3D.
+    "sketch_start": (),                # optional: face
+    "sketch_edit": ("feature",),
+    "sketch_state": ("sketch",),
+    "sketch_add_line": ("sketch", "x1", "y1", "x2", "y2"),
+    "sketch_add_circle": ("sketch", "cx", "cy", "r"),
+    "sketch_move": ("sketch", "geo", "point", "x", "y"),
+    "sketch_dim": ("sketch", "geo"),   # optional: value
+    "sketch_set_dim": ("sketch", "dim", "value"),
+    "sketch_delete_geo": ("sketch", "geo"),
+    "sketch_finish": ("sketch",),
 }
 
 

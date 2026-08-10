@@ -108,3 +108,14 @@ def test_sketch_face_param_stays_optional():
     assert params["face"] == 5
     protocol.validate_request(
         {"op": "add_rect_sketch", "params": {"width": 40, "height": 20}})
+
+
+def test_m2_sketch_ops_declare_their_required_params():
+    assert protocol.OPS["sketch_add_line"] == (
+        "sketch", "x1", "y1", "x2", "y2")
+    assert protocol.OPS["sketch_add_circle"] == ("sketch", "cx", "cy", "r")
+    assert protocol.OPS["sketch_move"] == ("sketch", "geo", "point", "x", "y")
+    assert protocol.OPS["sketch_set_dim"] == ("sketch", "dim", "value")
+    assert protocol.OPS["sketch_dim"] == ("sketch", "geo")   # value optional
+    assert protocol.OPS["sketch_start"] == ()                # face optional
+    assert protocol.OPS["sketch_finish"] == ("sketch",)

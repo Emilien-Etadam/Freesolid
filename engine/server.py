@@ -90,7 +90,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError as exc:
+        print("FreeSolid engine : impossible d'ouvrir le port {} ({})".format(
+            PORT, exc))
+        print("Un autre serveur tourne peut-être déjà — fermez-le ou "
+              "réessayez.")
+        return
     print("FreeSolid engine prêt : http://localhost:{}".format(PORT))
     print("(Ctrl+C pour arrêter)")
     try:
@@ -99,5 +106,9 @@ def main():
         pass
 
 
-if __name__ == "__main__":
+# No `if __name__ == "__main__"` guard: freecadcmd executes scripts without
+# setting __name__ to "__main__", so the guard made the server import cleanly
+# and exit without serving (seen on 1.1.3). The env var is the escape hatch
+# for anything that needs to import this module without binding the port.
+if os.environ.get("FREESOLID_NO_SERVE") != "1":
     main()

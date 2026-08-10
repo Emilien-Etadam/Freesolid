@@ -85,3 +85,21 @@ def test_pack_mesh_coerces_to_plain_floats():
     # Payload must be JSON-serializable: no Vector objects may leak through.
     mesh = protocol.pack_mesh([(0, [(1, 2, 3)], [])])
     assert all(isinstance(v, float) for v in mesh["positions"])
+
+
+def test_m1_ops_declare_their_required_params():
+    assert protocol.OPS["add_pocket"] == ("length",)
+    assert protocol.OPS["add_fillet"] == ("face", "radius")
+    assert protocol.OPS["add_chamfer"] == ("face", "size")
+    assert protocol.OPS["save_part"] == ("path",)
+
+
+def test_sketch_face_param_stays_optional():
+    # The viewport sends `face` only when a face is selected; the plane
+    # sketch must keep working without it.
+    op, params = protocol.validate_request(
+        {"op": "add_rect_sketch",
+         "params": {"width": 40, "height": 20, "face": 5}})
+    assert params["face"] == 5
+    protocol.validate_request(
+        {"op": "add_rect_sketch", "params": {"width": 40, "height": 20}})

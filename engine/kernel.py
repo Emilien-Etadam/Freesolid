@@ -87,12 +87,32 @@ class Kernel:
         self._recompute()
         return self.get_tree()
 
-    def add_rect_sketch(self, width, height):
-        """Centered, fully-constrained rectangle on the XY plane.
+    def _attach_to_face(self, sketch, face_id):
+        """Map a sketch flat onto one of the current shape's faces.
 
-        Anchored by symmetry about the origin, driven by DistanceX/DistanceY
-        — the SolidWorks "sketch a rectangle, dimension it" outcome without
-        the interactive part (that is M2's job).
+        ``face_id`` is the tessellation index, so ``Face{id+1}`` on the Tip
+        feature — the same numbering the viewport picked. The attachment
+        property was renamed in 1.x, hence the two spellings.
+        """
+        body = self._require_body()
+        tip = getattr(body, "Tip", None)
+        if tip is None:
+            raise KernelError("pas encore de solide pour accueillir "
+                              "une esquisse sur face")
+        support = [(tip, ("Face{}".format(int(face_id) + 1),))]
+        try:
+            sketch.AttachmentSupport = support
+        except AttributeError:
+            sketch.Support = support
+        sketch.MapMode = "FlatFace"
+
+    def add_rect_sketch(self, width, height, face=None):
+        """Centered, fully-constrained rectangle.
+
+        On the XY plane by default; with ``face`` (a picked face id), mapped
+        flat onto that face — the SolidWorks "click a face, sketch on it"
+        gesture. Anchored by symmetry about the sketch origin, driven by
+        DistanceX/DistanceY; the interactive part is M2's job.
         """
         import Part
         import Sketcher
@@ -105,6 +125,8 @@ class Kernel:
         sketch = doc.addObject("Sketcher::SketchObject", "Sketch")
         body.addObject(sketch)
         sketch.Label = "Esquisse"
+        if face is not None:
+            self._attach_to_face(sketch, face)
 
         V = self._app().Vector
         x, y = w / 2.0, h / 2.0
@@ -145,6 +167,73 @@ class Kernel:
             doc.removeObject(pad.Name)
             raise
         return self.get_tree()
+
+    def _latest_sketch(self):
+        body = self._require_body()
+        sketches = [o for o in body.Group
+                    if o.TypeId == "Sketcher::SketchObject"]
+        if not sketches:
+            raise KernelError("aucune esquisse disponible")
+        return sketches[-1]
+
+    def add_pocket(self, length):
+        """Cut with the latest sketch — Extruded Cut, in SolidWorks terms."""
+        body = self._require_body()
+        doc = self._require_doc()
+        pocket = body.newObject("PartDesign::Pocket", "Pocket")
+        pocket.Profile = self._latest_sketch()
+        pocket.Length = float(length)
+        pocket.Label = "Enlèvement de matière"
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(pocket.Name)
+            raise
+        return self.get_tree()
+
+    def _dressup(self, type_id, label, face, prop, value):
+        """Fillet/chamfer share everything but the property they drive.
+
+        The dress-up references the picked face on the Tip feature — the
+        shape the viewport tessellated, so the numbering matches by
+        construction. PartDesign applies it to every edge of that face.
+        """
+        body = self._require_body()
+        doc = self._require_doc()
+        tip = getattr(body, "Tip", None)
+        if tip is None:
+            raise KernelError("pas de solide à habiller")
+        feature = body.newObject(type_id, type_id.split("::")[-1])
+        feature.Base = (tip, ["Face{}".format(int(face) + 1)])
+        setattr(feature, prop, float(value))
+        feature.Label = label
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(feature.Name)
+            raise
+        return self.get_tree()
+
+    def add_fillet(self, face, radius):
+        return self._dressup("PartDesign::Fillet", "Congé", face,
+                             "Radius", radius)
+
+    def add_chamfer(self, face, size):
+        return self._dressup("PartDesign::Chamfer", "Chanfrein", face,
+                             "Size", size)
+
+    def save_part(self, path):
+        """Save as a standard .FCStd — openable in stock FreeCAD.
+
+        The exit door stays open by design: nothing this app produces is
+        locked into it.
+        """
+        doc = self._require_doc()
+        path = os.path.expanduser(str(path))
+        if not path.endswith(".FCStd"):
+            path += ".FCStd"
+        doc.saveAs(path)
+        return {"path": path}
 
     def set_param(self, feature, prop, value):
         """Set one property on one feature by internal name, and recompute.
@@ -198,22 +287,56 @@ class Kernel:
             faces.append((i, [(v.x, v.y, v.z) for v in vertices], triangles))
         return protocol.pack_mesh(faces)
 
+    def _top_face_id(self):
+        """Index of the upward-facing face with the highest centroid.
+
+        Selftest helper: finds "the top" the way a user's eye does, without
+        assuming anything about OCCT's face ordering.
+        """
+        body = self._require_body()
+        best, best_z = None, None
+        for i, face in enumerate(body.Shape.Faces):
+            u0, u1, v0, v1 = face.ParameterRange
+            normal = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
+            if normal.z <= 0.5:
+                continue
+            z = face.CenterOfMass.z
+            if best_z is None or z > best_z:
+                best, best_z = i, z
+        if best is None:
+            raise KernelError("aucune face orientée vers le haut")
+        return best
+
     def selftest(self):
-        """Run the M0 flow end to end; return stats worth pasting back."""
+        """Run the whole flow end to end; return stats worth pasting back.
+
+        M0: part, constrained sketch, pad, reparam. M1: sketch attached to a
+        picked face, pocket through it, fillet on a face — the exact
+        click-a-face gestures the viewport offers, minus the viewport.
+        """
         report = {}
         report["ping"] = self.ping()
         self.new_part("Pièce de test")
         self.add_rect_sketch(100, 60)
         tree = self.add_pad(10)
+        mesh = self.tessellate()
+        report["m0_faces"] = len(mesh["groups"])
+        pad = next(f["name"] for f in tree["features"]
+                   if f["type"] == "PartDesign::Pad")
+        self.set_param(pad, "Length", 25.0)
+        report["m0_reparam_ok"] = self.tessellate() != mesh
+
+        top = self._top_face_id()
+        report["m1_top_face"] = top
+        self.add_rect_sketch(40, 20, face=top)
+        self.add_pocket(10)
+        report["m1_pocket_faces"] = len(self.tessellate()["groups"])
+        tree = self.add_fillet(self._top_face_id(), 3)
+        report["m1_fillet_ok"] = not any(f["error"] for f in tree["features"])
         report["tree_after_pad"] = tree
         mesh = self.tessellate()
         report["mesh_faces"] = len(mesh["groups"])
         report["mesh_triangles"] = len(mesh["indices"]) // 3
-        pad = next(f["name"] for f in tree["features"]
-                   if f["type"] == "PartDesign::Pad")
-        self.set_param(pad, "Length", 25.0)
-        mesh2 = self.tessellate()
-        report["reparam_ok"] = mesh2 != mesh
         return report
 
 

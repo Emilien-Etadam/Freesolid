@@ -15,13 +15,17 @@ Transport (M0) is HTTP JSON on localhost: requests are
 #: in the kernel docstrings.
 OPS: dict[str, tuple[str, ...]] = {
     "ping": (),
-    # Runs the full M0 flow headless and returns stats — the same
+    # Runs the full flow headless and returns stats — the same
     # paste-me-the-report loop that debugged the Qt addon.
     "selftest": (),
     "new_part": (),                    # optional: name
-    "add_rect_sketch": ("width", "height"),
+    "add_rect_sketch": ("width", "height"),   # optional: face (id) to attach
     "add_pad": ("length",),
+    "add_pocket": ("length",),         # cuts with the latest sketch
+    "add_fillet": ("face", "radius"),
+    "add_chamfer": ("face", "size"),
     "set_param": ("feature", "prop", "value"),
+    "save_part": ("path",),
     "get_tree": (),
     "tessellate": (),                  # optional: deviation
 }

@@ -59,6 +59,13 @@ const hoverMaterial = new THREE.MeshStandardMaterial({
   color: 0x4f8fdb, metalness: 0.15, roughness: 0.45,
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
+const selectedMaterial = new THREE.MeshStandardMaterial({
+  color: 0xd9924a, metalness: 0.15, roughness: 0.45,
+  polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+});
+
+// The picked face, sticky across renders: what Congé/Chanfrein/Esquisse use.
+let selectedFaceId = null;
 
 let partMesh = null;
 let partEdges = null;
@@ -69,6 +76,8 @@ function showMesh(mesh) {
   if (partEdges) { scene.remove(partEdges); partEdges.geometry.dispose(); }
   partMesh = partEdges = null;
   meshGroups = mesh.groups;
+  hoveredGroup = -1;
+  selectedFaceId = null; // ids shift after every feature: stale picks lie
   if (!mesh.indices.length) return;
 
   const geometry = new THREE.BufferGeometry();
@@ -78,7 +87,7 @@ function showMesh(mesh) {
   for (const g of mesh.groups) geometry.addGroup(g.start, g.count, 0);
   geometry.computeVertexNormals();
 
-  partMesh = new THREE.Mesh(geometry, [baseMaterial, hoverMaterial]);
+  partMesh = new THREE.Mesh(geometry, [baseMaterial, hoverMaterial, selectedMaterial]);
   scene.add(partMesh);
 
   // Plasticity-style crisp silhouette: hard edges over the shaded mesh.
@@ -108,12 +117,36 @@ renderer.domElement.addEventListener("pointermove", (event) => {
   }
   if (groupIndex !== hoveredGroup) {
     hoveredGroup = groupIndex;
-    partMesh.geometry.groups.forEach((g, i) => {
-      g.materialIndex = i === groupIndex ? 1 : 0;
-    });
-    pickEl.textContent =
-      groupIndex >= 0 ? `Face ${meshGroups[groupIndex].faceId}` : "";
+    repaintGroups();
   }
+});
+
+function repaintGroups() {
+  if (!partMesh) return;
+  partMesh.geometry.groups.forEach((g, i) => {
+    const isSelected = meshGroups[i].faceId === selectedFaceId;
+    g.materialIndex = isSelected ? 2 : (i === hoveredGroup ? 1 : 0);
+  });
+  const parts = [];
+  if (hoveredGroup >= 0) parts.push(`Face ${meshGroups[hoveredGroup].faceId}`);
+  if (selectedFaceId !== null) parts.push(`sél. Face ${selectedFaceId}`);
+  pickEl.textContent = parts.join(" · ");
+}
+
+// Click selects the hovered face (sticky); click in the void deselects.
+// Guarded against orbit drags: a press that travels is navigation, not a pick.
+let pressPosition = null;
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  pressPosition = { x: event.clientX, y: event.clientY };
+});
+renderer.domElement.addEventListener("pointerup", (event) => {
+  if (!pressPosition) return;
+  const travel = Math.hypot(event.clientX - pressPosition.x,
+                            event.clientY - pressPosition.y);
+  pressPosition = null;
+  if (travel > 5) return;
+  selectedFaceId = hoveredGroup >= 0 ? meshGroups[hoveredGroup].faceId : null;
+  repaintGroups();
 });
 
 function resize() {
@@ -187,7 +220,42 @@ document.getElementById("btn-sketch").addEventListener("click", () => {
   const w = parseFloat(prompt("Largeur (mm) :", "100") ?? "");
   const h = parseFloat(prompt("Hauteur (mm) :", "60") ?? "");
   if (!w || !h) return;
-  refresh(call("add_rect_sketch", { width: w, height: h }));
+  const params = { width: w, height: h };
+  if (selectedFaceId !== null) params.face = selectedFaceId;
+  refresh(call("add_rect_sketch", params));
+});
+
+document.getElementById("btn-pocket").addEventListener("click", () => {
+  const length = parseFloat(prompt("Profondeur de l'enlèvement (mm) :", "5") ?? "");
+  if (!length) return;
+  refresh(call("add_pocket", { length }));
+});
+
+function dressup(op, label, param, fallback) {
+  if (selectedFaceId === null) {
+    say(`${label} : cliquez d'abord une face de la pièce`, true);
+    return;
+  }
+  const value = parseFloat(prompt(`${label} (mm) :`, fallback) ?? "");
+  if (!value) return;
+  refresh(call(op, { face: selectedFaceId, [param]: value }));
+}
+
+document.getElementById("btn-fillet").addEventListener("click", () =>
+  dressup("add_fillet", "Rayon du congé", "radius", "3"));
+
+document.getElementById("btn-chamfer").addEventListener("click", () =>
+  dressup("add_chamfer", "Taille du chanfrein", "size", "2"));
+
+document.getElementById("btn-save").addEventListener("click", async () => {
+  const path = prompt("Enregistrer sous :", "~/piece-freesolid.FCStd");
+  if (!path) return;
+  try {
+    const saved = await call("save_part", { path });
+    say(`Enregistré : ${saved.path} — ouvrable dans FreeCAD standard.`);
+  } catch (error) {
+    say(error.message, true);
+  }
 });
 
 document.getElementById("btn-pad").addEventListener("click", () => {
@@ -203,7 +271,7 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
     renderTree(report.tree_after_pad);
     showMesh(await call("tessellate"));
     say(`Selftest OK — ${report.mesh_faces} faces, ` +
-        `${report.mesh_triangles} triangles, reparam ${report.reparam_ok ? "OK" : "ÉCHEC"}`);
+        `${report.mesh_triangles} triangles, reparam ${report.m0_reparam_ok ? "OK" : "ÉCHEC"}`);
     console.log("selftest", report);
   } catch (error) {
     say("Selftest : " + error.message, true);

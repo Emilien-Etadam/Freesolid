@@ -407,10 +407,24 @@ renderer.domElement.addEventListener("pointerup", (event) => {
   pressPosition = null;
   if (travel > 5) return;
   if (assemblyState) {
-    // En assemblage, le clic sélectionne un composant entier.
     raycaster.setFromCamera(pointer, camera);
     const hit = asmGroup
       ? raycaster.intersectObjects(asmGroup.children, false)[0] : null;
+    // Panneau Contrainte ouvert : le clic vise une FACE du composant.
+    if (hit && panel.active) {
+      const groups = hit.object.userData.groups ?? [];
+      const indexPosition = hit.faceIndex * 3;
+      const g = groups.find((grp) => indexPosition >= grp.start
+        && indexPosition < grp.start + grp.count);
+      if (g && panel.notifyPick("asmface", {
+            kind: "asmface",
+            component: hit.object.userData.component,
+            componentLabel: hit.object.userData.componentLabel,
+            face: g.faceId })) {
+        selectComponent(hit.object.userData.component);
+        return;
+      }
+    }
     selectComponent(hit ? hit.object.userData.component : null);
     return;
   }
@@ -952,6 +966,8 @@ function showAssemblyMeshes(data) {
     const mesh = new THREE.Mesh(geometry,
       comp.name === selectedComponent ? selectedMaterial : baseMaterial);
     mesh.userData.component = comp.name;
+    mesh.userData.componentLabel = comp.label;
+    mesh.userData.groups = comp.mesh.groups; // picking de faces (joints)
     const outline = new THREE.LineSegments(
       new THREE.EdgesGeometry(geometry, 25),
       new THREE.LineBasicMaterial({ color: 0x11141a }));
@@ -1018,7 +1034,8 @@ function renderAssemblyTree(tree) {
     const item = document.createElement("li");
     if (comp.name === selectedComponent) item.className = "sel-comp";
     item.appendChild(treeIcon("Link.svg"));
-    item.appendChild(document.createTextNode(comp.label));
+    item.appendChild(document.createTextNode(
+      comp.label + (comp.grounded ? " (fixé)" : "")));
     item.title = "Clic : sélectionner · double-clic : déplacer · " +
       "clic droit : renommer, supprimer";
     item.addEventListener("click", () => selectComponent(comp.name));
@@ -1033,6 +1050,15 @@ function renderAssemblyTree(tree) {
     const empty = document.createElement("li");
     empty.textContent = "— insérez une pièce (.FCStd) —";
     treeEl.appendChild(empty);
+  }
+  for (const joint of tree.joints ?? []) {
+    const row = document.createElement("li");
+    row.className = "child";
+    row.appendChild(treeIcon("Geoassembly.svg"));
+    row.appendChild(document.createTextNode(joint.label));
+    row.title = `${joint.type} — clic droit : renommer, supprimer`;
+    row.addEventListener("contextmenu", (e) => openMenu(e, joint));
+    treeEl.appendChild(row);
   }
 }
 
@@ -1091,6 +1117,71 @@ document.getElementById("btn-insert").addEventListener("click", () => {
 });
 
 document.getElementById("btn-move").addEventListener("click", openMovePanel);
+
+document.getElementById("btn-joint").addEventListener("click", () => {
+  if (!assemblyState) {
+    say("Créez d'abord un assemblage", true);
+    return;
+  }
+  if (assemblyState.components.length < 2) {
+    say("Contrainte : insérez au moins deux composants", true);
+    return;
+  }
+  const build = (v) => {
+    if (!v.a || !v.b || v.a.component === v.b.component) return null;
+    const params = {
+      component1: v.a.component, component2: v.b.component,
+      sub1: `Face${v.a.face + 1}`, sub2: `Face${v.b.face + 1}`,
+      type: v.type,
+    };
+    if (v.type === "distance") {
+      const d = parseFloat(v.distance);
+      if (!(d >= 0)) return null;
+      params.distance = d;
+    }
+    return params;
+  };
+  panel.open({
+    icon: "Geoassembly.svg",
+    title: "Contrainte d'assemblage",
+    groups: [
+      { label: "Type de contrainte",
+        rows: [
+          { type: "select", key: "type", value: "fixe",
+            options: [["fixe", "Fixe"], ["pivot", "Pivot"],
+                      ["cylindrique", "Cylindrique"],
+                      ["glissiere", "Glissière"], ["rotule", "Rotule"],
+                      ["distance", "Distance"]] },
+          { type: "number", key: "distance", label: "Distance", value: 10,
+            unit: "mm", min: 0, showIf: (v) => v.type === "distance" },
+        ] },
+      { label: "Élément 1",
+        rows: [{ type: "selection", key: "a", accepts: ["asmface"],
+                 hint: "Cliquez une face du premier composant" }] },
+      { label: "Élément 2",
+        rows: [{ type: "selection", key: "b", accepts: ["asmface"],
+                 hint: "Puis une face du second composant" }] },
+    ],
+    note: "Le solveur natif repositionne les composants — le premier " +
+          "inséré est fixé.",
+    onApply: (v) => {
+      const params = build(v);
+      if (!params) {
+        say("Contrainte : deux faces de deux composants différents", true);
+        return;
+      }
+      refreshAssembly(call("add_joint", params));
+    },
+  });
+});
+
+document.getElementById("btn-solve").addEventListener("click", () => {
+  if (!assemblyState) {
+    say("Créez d'abord un assemblage", true);
+    return;
+  }
+  refreshAssembly(call("solve_assembly"));
+});
 
 // ---------- actions ----------
 

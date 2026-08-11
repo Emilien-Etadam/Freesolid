@@ -29,6 +29,11 @@ OPS: dict[str, tuple[str, ...]] = {
     "move_component": ("component",),  # optional: x, y, z, yaw, pitch, roll
     "assembly_tree": (),
     "tessellate_assembly": (),         # optional: deviation
+    # Phase C3 — contraintes d'assemblage (joints natifs + solveur MbD).
+    "add_joint": ("component1", "component2"),  # optional: type (fixe|pivot|
+                                       # cylindrique|glissiere|rotule|
+                                       # distance), sub1, sub2, distance
+    "solve_assembly": (),
     "spike_assembly": (),              # rapport : joints Assembly headless ?
     # Phase E — évaluer.
     "mass_properties": (),             # optional: density (g/cm³)

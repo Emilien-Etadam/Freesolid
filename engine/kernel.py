@@ -115,14 +115,45 @@ class Kernel:
 
     def new_assembly(self, name="Assemblage"):
         """Nouveau document d'assemblage : des pièces .FCStd insérées par
-        référence (App::Link) et positionnées — le solveur de contraintes
-        viendra après (spike Assembly 1.x)."""
+        référence (App::Link) dans un Assembly::AssemblyObject, avec le
+        groupe de joints du solveur natif (spike validé sur 1.1.3)."""
         App = self._app()
         self._close_current()
         self._doc = App.newDocument("FreeSolidAsm")
         self._doc.UndoMode = 1
         self._assembly = True
+        asm = self._doc.addObject("Assembly::AssemblyObject", "Assembly")
+        asm.Label = str(name) if name else "Assemblage"
+        joints = self._doc.addObject("Assembly::JointGroup", "Joints")
+        asm.addObject(joints)
         return self.assembly_tree()
+
+    def _assembly_object(self):
+        doc = self._require_assembly()
+        for obj in doc.Objects:
+            if obj.TypeId == "Assembly::AssemblyObject":
+                return obj
+        raise KernelError("assemblage sans Assembly::AssemblyObject — "
+                          "recréez-le (ancien format)")
+
+    def _joint_group(self):
+        doc = self._require_assembly()
+        for obj in doc.Objects:
+            if obj.TypeId == "Assembly::JointGroup":
+                return obj
+        asm = self._assembly_object()
+        joints = doc.addObject("Assembly::JointGroup", "Joints")
+        asm.addObject(joints)
+        return joints
+
+    def _solve_assembly(self):
+        asm = self._assembly_object()
+        try:
+            asm.solve()
+        except Exception as exc:  # noqa: BLE001 - sur-contraint, surtout
+            raise KernelError(
+                "le solveur d'assemblage a échoué : {}".format(
+                    _explain(exc)))
 
     def insert_component(self, path):
         """Insérer une pièce : lien vers le premier corps de son fichier.
@@ -162,7 +193,128 @@ class Kernel:
         link = doc.addObject("App::Link", "Component")
         link.LinkedObject = bodies[0]
         link.Label = os.path.splitext(os.path.basename(path))[0]
+        existing = [o for o in doc.Objects
+                    if o.TypeId == "App::Link" and o is not link]
+        try:
+            self._assembly_object().addObject(link)
+        except KernelError:
+            pass  # assemblage ancien format : lien à la racine
+        if not existing:
+            # Le premier composant est fixé, comme dans SolidWorks.
+            try:
+                self._ground(link)
+            except Exception:
+                pass  # sans ancrage, le solveur bougera tout — non fatal
         doc.recompute()
+        return self.assembly_tree()
+
+    def _ground(self, link):
+        """Fixer un composant (GroundedJoint du module natif)."""
+        import JointObject
+        doc = self._require_assembly()
+        joint = doc.addObject("App::FeaturePython", "GroundedJoint")
+        self._joint_group().addObject(joint)
+        try:
+            JointObject.GroundedJoint(joint, link)
+        except TypeError:
+            JointObject.GroundedJoint(joint)
+            if hasattr(joint, "ObjectToGround"):
+                joint.ObjectToGround = link
+        joint.Label = "Fixé — {}".format(link.Label)
+
+    #: nos noms -> l'énumération JointType du module natif.
+    _JOINT_TYPES = {
+        "fixe": "Fixed", "fixed": "Fixed",
+        "pivot": "Revolute",
+        "cylindrique": "Cylindrical",
+        "glissiere": "Slider",
+        "rotule": "Ball",
+        "distance": "Distance",
+    }
+
+    def add_joint(self, component1, component2, type="fixe",
+                  sub1=None, sub2=None, distance=None):
+        """Contrainte d'assemblage entre deux composants, résolue par le
+        solveur natif (MbD). ``sub1``/``sub2`` : sous-élément visé
+        (« Face3 », « Edge5 ») — la face cliquée dans la zone graphique.
+        """
+        import JointObject
+        doc = self._require_assembly()
+        asm = self._assembly_object()
+        target = self._JOINT_TYPES.get(str(type).lower())
+        if target is None:
+            raise KernelError(
+                "contrainte inconnue « {} » — attendu : {}".format(
+                    type, ", ".join(sorted(set(self._JOINT_TYPES)
+                                           - {"fixed"}))))
+        links = {}
+        for name in (component1, component2):
+            obj = doc.getObject(str(name))
+            if obj is None or obj.TypeId != "App::Link":
+                raise KernelError("composant inconnu : {}".format(name))
+            links[name] = obj
+        if str(component1) == str(component2):
+            raise KernelError("choisissez deux composants différents")
+
+        joint = doc.addObject("App::FeaturePython", "Joint")
+        self._joint_group().addObject(joint)
+        try:
+            JointObject.Joint(joint, 0)
+        except Exception as exc:  # noqa: BLE001
+            doc.removeObject(joint.Name)
+            raise KernelError(_explain(exc))
+        allowed = list(joint.getEnumerationsOfProperty("JointType"))
+        if target not in allowed:
+            doc.removeObject(joint.Name)
+            raise KernelError(
+                "cette version ne propose pas « {} » — disponibles : "
+                "{}".format(target, ", ".join(allowed)))
+        joint.JointType = target
+        # Références : la forme UI ancre au conteneur d'assemblage avec le
+        # chemin « Lien.Sous-élément » ; repli sur la forme directe.
+        for ref_prop, name, sub in (
+                ("Reference1", component1, sub1),
+                ("Reference2", component2, sub2)):
+            link = links[name]
+            sub_name = str(sub) if sub else ""
+            forms = [
+                (asm, ("{}.{}".format(link.Name, sub_name)
+                       if sub_name else "{}.".format(link.Name),)),
+                (link, (sub_name,) if sub_name else ("",)),
+            ]
+            assigned = False
+            last_error = None
+            for form in forms:
+                try:
+                    setattr(joint, ref_prop, [form])
+                    assigned = True
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+            if not assigned:
+                doc.removeObject(joint.Name)
+                raise KernelError(_explain(last_error))
+        if target == "Distance" and distance is not None:
+            joint.Distance = float(distance)
+        labels = {"Fixed": "Fixe", "Revolute": "Pivot",
+                  "Cylindrical": "Cylindrique", "Slider": "Glissière",
+                  "Ball": "Rotule", "Distance": "Distance"}
+        joint.Label = "{} — {} / {}".format(
+            labels.get(target, target),
+            links[component1].Label, links[component2].Label)
+        doc.recompute()
+        try:
+            self._solve_assembly()
+        except KernelError:
+            doc.removeObject(joint.Name)
+            doc.recompute()
+            raise
+        return self.assembly_tree()
+
+    def solve_assembly(self):
+        """Relancer le solveur — après un déplacement à la main."""
+        self._solve_assembly()
+        self._require_assembly().recompute()
         return self.assembly_tree()
 
     def move_component(self, component, x=0.0, y=0.0, z=0.0,
@@ -177,10 +329,35 @@ class Kernel:
             App.Vector(float(x), float(y), float(z)),
             App.Rotation(float(yaw), float(pitch), float(roll)))
         doc.recompute()
+        # Avec des contraintes posées, le solveur reprend la main — le
+        # déplacement manuel devient une suggestion, comme dans SolidWorks.
+        group = next((o for o in doc.Objects
+                      if o.TypeId == "Assembly::JointGroup"), None)
+        if group is not None and any(hasattr(o, "JointType")
+                                     for o in group.Group):
+            try:
+                self._solve_assembly()
+                doc.recompute()
+            except KernelError:
+                pass  # sur-contraint : la position saisie reste
         return self.assembly_tree()
 
     def assembly_tree(self):
         doc = self._require_assembly()
+        joints = []
+        grounded = set()
+        group = next((o for o in doc.Objects
+                      if o.TypeId == "Assembly::JointGroup"), None)
+        for obj in (group.Group if group is not None else ()):
+            if hasattr(obj, "ObjectToGround"):
+                target = getattr(obj, "ObjectToGround", None)
+                if target is not None:
+                    grounded.add(target.Name)
+                joints.append({"name": obj.Name, "label": obj.Label,
+                               "type": "Fixé"})
+            elif hasattr(obj, "JointType"):
+                joints.append({"name": obj.Name, "label": obj.Label,
+                               "type": str(obj.JointType)})
         components = []
         for obj in doc.Objects:
             if obj.TypeId != "App::Link":
@@ -189,12 +366,14 @@ class Kernel:
             components.append({
                 "name": obj.Name,
                 "label": obj.Label,
+                "grounded": obj.Name in grounded,
                 "position": [placement.Base.x, placement.Base.y,
                              placement.Base.z],
                 "rotation": [float(v)
                              for v in placement.Rotation.toEuler()],
             })
-        return {"assembly": True, "components": components}
+        return {"assembly": True, "components": components,
+                "joints": joints}
 
     def tessellate_assembly(self, deviation=0.1):
         """Un maillage par composant — la sélection au clic est par
@@ -2464,6 +2643,21 @@ class Kernel:
                 and all(c["mesh"]["indices"]
                         for c in meshes["components"]))
 
+            mark("p10: contrainte fixe — le solveur déplace le composant")
+            first_comp = tree["components"][0]["name"]
+            report["p10_first_grounded"] = tree["components"][0]["grounded"]
+            tree = self.add_joint(first_comp, second,
+                                  type="fixe", sub1="Face1", sub2="Face1")
+            report["p10_joints_listed"] = len(tree.get("joints", ())) >= 2
+            comp2 = next(c for c in tree["components"]
+                         if c["name"] == second)
+            # Il était en (30, 0, 10) yaw 45 — la contrainte fixe doit
+            # l'avoir ramené ailleurs.
+            report["p10_joint_solved"] = (
+                abs(comp2["position"][0] - 30) > 1e-6
+                or abs(comp2["position"][2] - 10) > 1e-6
+                or abs(comp2["rotation"][0] - 45) > 1e-6)
+
             mark("p11: évaluer (masse PLA) + mesurer")
             self.new_part("Pièce évaluée")
             self.add_rect_sketch(10, 10)
@@ -2569,7 +2763,7 @@ _TRANSACTIONAL = frozenset({
     "add_polar_pattern", "add_thickness", "add_draft", "add_hole",
     "add_datum_plane", "add_loft", "add_sweep", "add_helix",
     "add_body", "add_boolean",
-    "insert_component", "move_component",
+    "insert_component", "move_component", "add_joint", "solve_assembly",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",

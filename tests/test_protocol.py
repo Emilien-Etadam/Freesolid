@@ -251,6 +251,15 @@ def test_multibody_ops_declared():
         {"op": "add_boolean", "params": {"tool": "Body001", "type": "cut"}})
 
 
+def test_joint_ops_declared():
+    assert protocol.OPS["add_joint"] == ("component1", "component2")
+    assert protocol.OPS["solve_assembly"] == ()
+    protocol.validate_request(
+        {"op": "add_joint",
+         "params": {"component1": "Component", "component2": "Component001",
+                    "type": "pivot", "sub1": "Face3", "sub2": "Face1"}})
+
+
 def test_assembly_ops_declared():
     assert protocol.OPS["new_assembly"] == ()
     assert protocol.OPS["insert_component"] == ("path",)

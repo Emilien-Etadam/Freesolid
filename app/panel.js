@@ -204,6 +204,8 @@ export function createPropertyPanel({ say, onClose }) {
           : `${value.edges.length} arêtes`;
       } else if (value.kind === "sketch") {
         box.textContent = value.label;
+      } else if (value.kind === "asmface") {
+        box.textContent = `${value.componentLabel} · Face ${value.face}`;
       } else {
         box.textContent = `Face ${value.face}`;
       }

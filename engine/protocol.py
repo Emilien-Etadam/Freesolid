@@ -19,6 +19,9 @@ OPS: dict[str, tuple[str, ...]] = {
     # paste-me-the-report loop that debugged the Qt addon.
     "selftest": (),
     "new_part": (),                    # optional: name
+    "undo": (),                        # une transaction = un Ctrl+Z
+    "redo": (),
+    "export_part": ("path",),          # .stl ou .step selon l'extension
     "add_rect_sketch": ("width", "height"),   # optional: face (id) to attach
     "add_pad": ("length",),
     "add_pocket": (),                  # optional: length | through — sans profondeur = à travers tout
@@ -35,7 +38,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "tessellate": (),                  # optional: deviation
     # M2 — sketch editing. Geometry travels in sketch-local 2D; the state
     # carries the placement matrix that positions it in 3D.
-    "sketch_start": (),                # optional: face
+    "sketch_start": (),                # optional: face | plane (XY|XZ|YZ)
     "sketch_edit": ("feature",),
     "sketch_state": ("sketch",),
     "sketch_add_line": ("sketch", "x1", "y1", "x2", "y2"),
@@ -44,6 +47,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_dim": ("sketch", "geo"),   # optional: value
     "sketch_set_dim": ("sketch", "dim", "value"),
     "sketch_delete_geo": ("sketch", "geo"),
+    "sketch_toggle_construction": ("sketch", "geo"),
     "sketch_finish": ("sketch",),
 }
 

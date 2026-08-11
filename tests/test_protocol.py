@@ -122,6 +122,19 @@ def test_m2_sketch_ops_declare_their_required_params():
     assert protocol.OPS["sketch_finish"] == ("sketch",)
 
 
+def test_p1_ops_declare_their_required_params():
+    assert protocol.OPS["undo"] == ()
+    assert protocol.OPS["redo"] == ()
+    assert protocol.OPS["export_part"] == ("path",)
+    assert protocol.OPS["sketch_toggle_construction"] == ("sketch", "geo")
+
+
+def test_sketch_start_accepts_named_plane():
+    op, params = protocol.validate_request(
+        {"op": "sketch_start", "params": {"plane": "XZ"}})
+    assert params["plane"] == "XZ"
+
+
 def test_pocket_accepts_length_or_through():
     protocol.validate_request({"op": "add_pocket", "params": {"length": 5}})
     protocol.validate_request({"op": "add_pocket", "params": {"through": True}})

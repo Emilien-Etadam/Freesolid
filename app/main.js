@@ -217,6 +217,10 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     frameView(VIEWS[VIEW_KEYS[event.key]].direction,
               VIEWS[VIEW_KEYS[event.key]].up);
+  } else if ((event.ctrlKey || event.metaKey)
+             && (event.key === "z" || event.key === "y")) {
+    event.preventDefault();
+    refresh(call(event.key === "z" ? "undo" : "redo"));
   }
 });
 
@@ -344,9 +348,30 @@ async function refresh(treePromise) {
 document.getElementById("btn-new").addEventListener("click", () =>
   refresh(call("new_part")));
 
+document.getElementById("btn-undo").addEventListener("click", () =>
+  refresh(call("undo")));
+document.getElementById("btn-redo").addEventListener("click", () =>
+  refresh(call("redo")));
+
+// SolidWorks names -> engine wire names (vocab.ORIGIN_PLANES, Z-up).
+const SKETCH_PLANES = { dessus: "XY", face: "XZ", droite: "YZ" };
+
 document.getElementById("btn-sketch").addEventListener("click", () => {
   const params = {};
-  if (selectedFaceId !== null) params.face = selectedFaceId;
+  if (selectedFaceId !== null) {
+    params.face = selectedFaceId;
+  } else {
+    const raw = prompt(
+      "Plan de l'esquisse : dessus / face / droite\n" +
+      "(ou Annuler, puis cliquez une face de la pièce)", "dessus");
+    if (raw === null) return;
+    const plane = SKETCH_PLANES[raw.trim().toLowerCase()];
+    if (!plane) {
+      say("Plan inconnu — répondez dessus, face ou droite", true);
+      return;
+    }
+    params.plane = plane;
+  }
   sketchMode.enter(call("sketch_start", params));
 });
 
@@ -396,6 +421,19 @@ document.getElementById("btn-save").addEventListener("click", async () => {
   try {
     const saved = await call("save_part", { path });
     say(`Enregistré : ${saved.path} — ouvrable dans FreeCAD standard.`);
+  } catch (error) {
+    say(error.message, true);
+  }
+});
+
+document.getElementById("btn-export").addEventListener("click", async () => {
+  const path = prompt(
+    "Exporter (chemin .stl pour l'impression 3D, .step pour l'échange) :",
+    "~/piece-freesolid.stl");
+  if (!path) return;
+  try {
+    const out = await call("export_part", { path });
+    say(`Exporté : ${out.path} (${(out.size / 1024).toFixed(1)} Ko)`);
   } catch (error) {
     say(error.message, true);
   }

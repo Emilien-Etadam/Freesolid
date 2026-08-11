@@ -97,10 +97,75 @@ class Kernel:
         App = self._app()
         self._close_current()
         self._doc = App.newDocument("FreeSolid")
+        self._doc.UndoMode = 1  # les transactions de dispatch() = un Ctrl+Z
         self._body = self._doc.addObject("PartDesign::Body", "Body")
         self._body.Label = name
         self._recompute()
         return self.get_tree()
+
+    def undo(self):
+        """Annuler la dernière opération — une transaction par op UI."""
+        doc = self._require_doc()
+        if not doc.UndoNames:
+            raise KernelError("rien à annuler")
+        doc.undo()
+        doc.recompute()
+        return self.get_tree()
+
+    def redo(self):
+        doc = self._require_doc()
+        if not doc.RedoNames:
+            raise KernelError("rien à rétablir")
+        doc.redo()
+        doc.recompute()
+        return self.get_tree()
+
+    def export_part(self, path):
+        """Export STL (impression 3D) ou STEP (échange CAO), par extension.
+
+        Exports the body's current shape — what the viewport shows is what
+        the printer gets.
+        """
+        body = self._require_body()
+        shape = getattr(body, "Shape", None)
+        if shape is None or not shape.Solids:
+            raise KernelError("rien à exporter — la pièce n'a pas de solide")
+        path = os.path.expanduser(str(path))
+        ext = os.path.splitext(path)[1].lower()
+        try:
+            if ext == ".stl":
+                shape.exportStl(path)
+            elif ext in (".step", ".stp"):
+                shape.exportStep(path)
+            else:
+                raise KernelError("format inconnu « {} » — utilisez .stl ou "
+                                  ".step".format(ext or "aucune extension"))
+        except KernelError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return {"path": path, "size": os.path.getsize(path)}
+
+    #: Wire names for the body's origin planes — Dessus/Face/Droite in the
+    #: client, following vocab.ORIGIN_PLANES (FreeCAD is Z-up).
+    _PLANE_ROLES = {"XY": "XY_Plane", "XZ": "XZ_Plane", "YZ": "YZ_Plane"}
+
+    def _origin_feature(self, role):
+        """One of the body's origin planes/axes, by role (XY_Plane, Z_Axis…)."""
+        body = self._require_body()
+        origin = getattr(body, "Origin", None)
+        features = getattr(origin, "OriginFeatures", None) or ()
+        for feature in features:
+            if getattr(feature, "Role", "") == role:
+                return feature
+        raise KernelError("élément d'origine introuvable : {}".format(role))
+
+    def _attach_to_support(self, sketch, support):
+        try:
+            sketch.AttachmentSupport = support
+        except AttributeError:
+            sketch.Support = support
+        sketch.MapMode = "FlatFace"
 
     def _attach_to_face(self, sketch, face_id):
         """Map a sketch flat onto one of the current shape's faces.
@@ -114,12 +179,8 @@ class Kernel:
         if tip is None:
             raise KernelError("pas encore de solide pour accueillir "
                               "une esquisse sur face")
-        support = [(tip, ("Face{}".format(int(face_id) + 1),))]
-        try:
-            sketch.AttachmentSupport = support
-        except AttributeError:
-            sketch.Support = support
-        sketch.MapMode = "FlatFace"
+        self._attach_to_support(
+            sketch, [(tip, ("Face{}".format(int(face_id) + 1),))])
 
     def add_rect_sketch(self, width, height, face=None):
         """Centered, fully-constrained rectangle.
@@ -328,6 +389,7 @@ class Kernel:
             raise KernelError("fichier introuvable : {}".format(path))
         self._close_current()
         doc = App.openDocument(path)
+        doc.UndoMode = 1
         bodies = [o for o in doc.Objects if o.TypeId == "PartDesign::Body"]
         if not bodies:
             raise KernelError(
@@ -416,8 +478,9 @@ class Kernel:
             raise KernelError("esquisse inconnue : {}".format(name))
         return obj
 
-    def sketch_start(self, face=None):
-        """Open a new empty sketch (XY plane, or a picked face)."""
+    def sketch_start(self, face=None, plane=None):
+        """Open a new empty sketch — XY by default, a picked face, or a
+        named origin plane (XY/XZ/YZ = Dessus/Face/Droite)."""
         body = self._require_body()
         doc = self._require_doc()
         sketch = doc.addObject("Sketcher::SketchObject", "Sketch")
@@ -425,6 +488,13 @@ class Kernel:
         sketch.Label = "Esquisse"
         if face is not None:
             self._attach_to_face(sketch, face)
+        elif plane is not None:
+            role = self._PLANE_ROLES.get(str(plane).upper())
+            if role is None:
+                raise KernelError(
+                    "plan inconnu « {} » — attendu XY, XZ ou YZ".format(plane))
+            self._attach_to_support(
+                sketch, [(self._origin_feature(role), ("",))])
         doc.recompute()  # resolves the placement before the client reads it
         return self.sketch_state(sketch.Name)
 
@@ -443,18 +513,19 @@ class Kernel:
         entities = []
         for gid, geo in enumerate(sk.Geometry):
             if geo.TypeId == "Part::GeomLineSegment":
-                entities.append({
+                entity = {
                     "id": gid, "type": "line",
                     "p1": [geo.StartPoint.x, geo.StartPoint.y],
-                    "p2": [geo.EndPoint.x, geo.EndPoint.y]})
+                    "p2": [geo.EndPoint.x, geo.EndPoint.y]}
             elif geo.TypeId == "Part::GeomCircle":
-                entities.append({
+                entity = {
                     "id": gid, "type": "circle",
                     "c": [geo.Center.x, geo.Center.y],
-                    "r": float(geo.Radius)})
+                    "r": float(geo.Radius)}
             else:
-                entities.append({"id": gid, "type": "other",
-                                 "kind": geo.TypeId})
+                entity = {"id": gid, "type": "other", "kind": geo.TypeId}
+            entity["construction"] = self._is_construction(sk, gid, geo)
+            entities.append(entity)
         dims = []
         for cid, constraint in enumerate(sk.Constraints):
             if constraint.Type in ("Distance", "DistanceX", "DistanceY",
@@ -609,6 +680,29 @@ class Kernel:
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
+    def _is_construction(self, sk, gid, geo):
+        """Construction flag across API generations: attribute on old
+        geometry objects, ``getConstruction`` on 1.x facades."""
+        flag = getattr(geo, "Construction", None)
+        if flag is not None:
+            return bool(flag)
+        getter = getattr(sk, "getConstruction", None)
+        if getter is not None:
+            try:
+                return bool(getter(gid))
+            except Exception:
+                pass
+        return False
+
+    def sketch_toggle_construction(self, sketch, geo):
+        """Basculer une entité en géométrie de construction, et retour."""
+        sk = self._get_sketch(sketch)
+        try:
+            sk.toggleConstruction(int(geo))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
     def sketch_delete_geo(self, sketch, geo):
         sk = self._get_sketch(sketch)
         try:
@@ -733,6 +827,44 @@ class Kernel:
             report["m2_pad_on_drawn_sketch_ok"] = not any(
                 f["error"] for f in tree["features"])
 
+            mark("p1: annuler / rétablir via transactions")
+            state = self.sketch_start()
+            sk_name = state["sketch"]
+            out = dispatch(self, "sketch_add_line",
+                           {"sketch": sk_name,
+                            "x1": 0, "y1": 0, "x2": 10, "y2": 0})
+            if not out["ok"]:
+                raise KernelError(out["error"])
+            count = len(self._get_sketch(sk_name).Geometry)
+            self.undo()
+            report["p1_undo_ok"] = (
+                len(self._get_sketch(sk_name).Geometry) == count - 1)
+            self.redo()
+            report["p1_redo_ok"] = (
+                len(self._get_sketch(sk_name).Geometry) == count)
+
+            mark("p1: géométrie de construction")
+            state = self.sketch_toggle_construction(sk_name, 0)
+            report["p1_construction_ok"] = bool(
+                state["entities"][0].get("construction"))
+            self.sketch_finish(sk_name)
+
+            mark("p1: esquisse sur plan nommé (XZ = Plan de face)")
+            state = self.sketch_start(plane="XZ")
+            identity = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+                        0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+            report["p1_plane_ok"] = (
+                [round(v, 6) for v in state["placement"]] != identity)
+            self.sketch_finish(state["sketch"])
+
+            mark("p1: export STL + STEP")
+            stl = os.path.join(tempfile.gettempdir(),
+                               "freesolid-selftest.stl")
+            step = os.path.join(tempfile.gettempdir(),
+                                "freesolid-selftest.step")
+            report["p1_export_stl_ok"] = self.export_part(stl)["size"] > 0
+            report["p1_export_step_ok"] = self.export_part(step)["size"] > 0
+
             mark("bilan")
             report["tree_after_pad"] = self.get_tree()
             mesh = self.tessellate()
@@ -747,13 +879,50 @@ class Kernel:
                 report["steps"][-1], _explain(exc)))
 
 
-def dispatch(kernel: Kernel, op: str, params: dict):
-    """Route one validated request to the kernel, normalizing errors."""
-    from . import protocol
+#: Ops recorded as one undo step each. Left out on purpose: document
+#: lifecycle (new/open), read-only ops, undo/redo themselves, and
+#: sketch_move — a drag streaming at ~20 Hz would shred the undo stack
+#: into per-frame steps.
+_TRANSACTIONAL = frozenset({
+    "add_rect_sketch", "add_pad", "add_pocket", "add_fillet", "add_chamfer",
+    "set_param", "set_tip", "tip_to_end", "delete_feature",
+    "sketch_start", "sketch_add_line", "sketch_add_circle", "sketch_dim",
+    "sketch_set_dim", "sketch_delete_geo", "sketch_finish",
+    "sketch_toggle_construction",
+})
+
+
+def _abort(doc):
+    if doc is None:
+        return
     try:
-        return protocol.ok(getattr(kernel, op)(**params))
+        doc.abortTransaction()
+    except Exception:
+        pass
+
+
+def dispatch(kernel: Kernel, op: str, params: dict):
+    """Route one validated request to the kernel, normalizing errors.
+
+    Mutating ops run inside a document transaction: one UI action = one
+    Ctrl+Z, and a failed op leaves the document as it was.
+    """
+    from . import protocol
+    doc = kernel._doc if op in _TRANSACTIONAL else None
+    if doc is not None:
+        doc.openTransaction("freesolid-" + op)
+    try:
+        result = getattr(kernel, op)(**params)
     except KernelError as exc:
+        _abort(doc)
         return protocol.err(str(exc))
     except Exception as exc:  # noqa: BLE001 - the envelope is the handler
+        _abort(doc)
         return protocol.err(_explain(exc),
                             hint="erreur moteur non traduite — à signaler")
+    if doc is not None:
+        try:
+            doc.commitTransaction()
+        except Exception:
+            pass
+    return protocol.ok(result)

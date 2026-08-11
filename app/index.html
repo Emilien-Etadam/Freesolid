@@ -22,7 +22,7 @@
     color: var(--ink);
     font: 13px/1.45 system-ui, "Segoe UI", sans-serif;
     display: grid;
-    grid-template-rows: 44px 1fr 26px;
+    grid-template-rows: auto 1fr 26px;
     grid-template-columns: 260px 1fr;
     grid-template-areas: "top top" "tree viewport" "status status";
     overflow: hidden;
@@ -30,11 +30,14 @@
 
   header {
     grid-area: top;
-    display: flex; align-items: center; gap: 8px;
-    padding: 0 12px;
+    display: flex; align-items: center; flex-wrap: wrap;
+    gap: 6px; row-gap: 4px;
+    min-height: 44px;
+    padding: 6px 12px;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
   }
+  header .sep { width: 1px; height: 22px; background: var(--line); }
   header .logo { font-weight: 600; letter-spacing: 0.02em; margin-right: 12px; }
   header .logo span { color: var(--accent); }
   button {
@@ -102,7 +105,9 @@
 
   #sketchbar {
     position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-    display: none; gap: 4px; z-index: 5;
+    display: none; flex-wrap: wrap; justify-content: center;
+    gap: 4px; z-index: 5;
+    max-width: min(860px, 92%);
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: 8px; padding: 5px;
@@ -141,14 +146,19 @@
 <body>
   <header>
     <div class="logo">Free<span>Solid</span></div>
-    <button id="btn-new"><img src="icons/document-new.svg" alt="">Nouvelle pièce</button>
+    <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt="">Nouvelle pièce</button>
+    <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/edit-undo.svg" alt=""></button>
+    <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img src="icons/edit-redo.svg" alt=""></button>
+    <div class="sep"></div>
     <button id="btn-sketch"><img src="icons/Sketcher_NewSketch.svg" alt="">Esquisse</button>
     <button id="btn-pad"><img src="icons/PartDesign_Pad.svg" alt="">Bossage extrudé</button>
     <button id="btn-pocket"><img src="icons/PartDesign_Pocket.svg" alt="">Enlèvement de matière</button>
     <button id="btn-fillet"><img src="icons/PartDesign_Fillet.svg" alt="">Congé</button>
     <button id="btn-chamfer"><img src="icons/PartDesign_Chamfer.svg" alt="">Chanfrein</button>
+    <div class="sep"></div>
     <button id="btn-open"><img src="icons/document-open.svg" alt="">Ouvrir</button>
     <button id="btn-save"><img src="icons/document-save.svg" alt="">Enregistrer</button>
+    <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img src="icons/document-save-as.svg" alt="">Exporter</button>
     <button id="btn-selftest">Selftest</button>
   </header>
 
@@ -166,11 +176,13 @@
       <button id="view-fit" title="Zoom au mieux (F)"><img src="icons/zoom-fit-best.svg" alt=""></button>
     </div>
     <div id="sketchbar">
-      <button data-tool="select" title="Glisser un point (le solveur suit)">Sélectionner</button>
-      <button data-tool="line" title="L"><img src="icons/Sketcher_CreateLine.svg" alt="">Ligne</button>
-      <button data-tool="rect" title="R"><img src="icons/Sketcher_CreateRectangle.svg" alt="">Rectangle par sommet</button>
-      <button data-tool="circle" title="C"><img src="icons/Sketcher_CreateCircle.svg" alt="">Cercle</button>
-      <button data-tool="dim" title="D — cote pilotante"><img src="icons/Constraint_Dimension.svg" alt="">Cotation intelligente</button>
+      <button data-tool="select" title="Sélectionner — glisser un point, cliquer des entités">Sélectionner</button>
+      <button data-tool="line" title="Ligne (L)"><img src="icons/Sketcher_CreateLine.svg" alt=""></button>
+      <button data-tool="rect" title="Rectangle par sommet (R)"><img src="icons/Sketcher_CreateRectangle.svg" alt=""></button>
+      <button data-tool="rectc" title="Rectangle par le centre"><img src="icons/Sketcher_CreateRectangle_Center.svg" alt=""></button>
+      <button data-tool="circle" title="Cercle (C)"><img src="icons/Sketcher_CreateCircle.svg" alt=""></button>
+      <button data-tool="construction" title="Géométrie de construction — cliquez une entité"><img src="icons/Sketcher_ToggleConstruction.svg" alt=""></button>
+      <button data-tool="dim" title="Cotation intelligente (D) — cote pilotante"><img src="icons/Constraint_Dimension.svg" alt=""></button>
       <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire"><img src="icons/Sketcher_LeaveSketch.svg" alt="">Terminer</button>
       <button id="sk-cancel" class="no"><img src="icons/Sketcher_CancelSketch.svg" alt="">Quitter</button>
     </div>

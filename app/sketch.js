@@ -17,6 +17,9 @@ export function createSketchMode(deps) {
   // mesh (user report).
   const lineMaterial = new THREE.LineBasicMaterial(
     { color: 0xe8edf2, depthTest: false });
+  // Construction geometry: dashed and dimmed, as in every CAD since ever.
+  const constructionMaterial = new THREE.LineDashedMaterial(
+    { color: 0x8b939d, dashSize: 2.5, gapSize: 1.8, depthTest: false });
   const previewMaterial = new THREE.LineBasicMaterial(
     { color: 0x4f8fdb, depthTest: false });
   const pointMaterial = new THREE.PointsMaterial({
@@ -30,6 +33,7 @@ export function createSketchMode(deps) {
     chain: null,          // last point of the line chain, sketch-local
     pendingCircle: null,  // center while waiting for the radius click
     pendingRect: null,    // first corner while waiting for the second
+    pendingRectC: null,   // center while waiting for a corner
     drag: null,           // { geo, point } while dragging
     savedCamera: null,
     matrix: new THREE.Matrix4(),
@@ -41,7 +45,8 @@ export function createSketchMode(deps) {
   const SNAP_PX = 12;
 
   const CURSORS = { select: "default", line: "crosshair", rect: "crosshair",
-                    circle: "crosshair", dim: "crosshair" };
+                    rectc: "crosshair", circle: "crosshair",
+                    construction: "pointer", dim: "crosshair" };
 
   function setCursor(name) {
     renderer.domElement.style.cursor = name;
@@ -134,11 +139,14 @@ export function createSketchMode(deps) {
 
     const points = [];
     for (const entity of mode.state.entities) {
+      const material = entity.construction ? constructionMaterial
+                                           : lineMaterial;
       if (entity.type === "line") {
         const geometry = new THREE.BufferGeometry().setFromPoints([
           new THREE.Vector3(entity.p1[0], entity.p1[1], 0),
           new THREE.Vector3(entity.p2[0], entity.p2[1], 0)]);
-        const line = new THREE.Line(geometry, lineMaterial);
+        const line = new THREE.Line(geometry, material);
+        if (entity.construction) line.computeLineDistances();
         line.renderOrder = 20;
         group.add(line);
         points.push(entity.p1, entity.p2);
@@ -151,7 +159,8 @@ export function createSketchMode(deps) {
             entity.c[1] + entity.r * Math.sin(a), 0));
         }
         const circle = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(segments), lineMaterial);
+          new THREE.BufferGeometry().setFromPoints(segments), material);
+        if (entity.construction) circle.computeLineDistances();
         circle.renderOrder = 20;
         group.add(circle);
         points.push(entity.c);
@@ -237,6 +246,16 @@ export function createSketchMode(deps) {
         mode.pendingRect = null;
         addRectangle(name, a, snapped);
       }
+    } else if (mode.tool === "rectc") {
+      if (!mode.pendingRectC) {
+        mode.pendingRectC = { x: snapped.x, y: snapped.y };
+        say("Rectangle par le centre : cliquez un sommet");
+      } else {
+        const c = mode.pendingRectC;
+        mode.pendingRectC = null;
+        addRectangle(name,
+          { x: 2 * c.x - snapped.x, y: 2 * c.y - snapped.y }, snapped);
+      }
     } else if (mode.tool === "circle") {
       if (!mode.pendingCircle) {
         mode.pendingCircle = { x: snapped.x, y: snapped.y };
@@ -247,6 +266,12 @@ export function createSketchMode(deps) {
         const r = Math.hypot(snapped.x - c.x, snapped.y - c.y);
         if (r > 0) safe(call("sketch_add_circle",
           { sketch: name, cx: c.x, cy: c.y, r }));
+      }
+    } else if (mode.tool === "construction") {
+      const target = nearestEntity(event);
+      if (target !== null) {
+        safe(call("sketch_toggle_construction",
+          { sketch: name, geo: target }));
       }
     } else if (mode.tool === "dim") {
       const target = nearestEntity(event);
@@ -346,6 +371,16 @@ export function createSketchMode(deps) {
         new THREE.Vector3(b.x, b.y, 0), new THREE.Vector3(a.x, b.y, 0),
         new THREE.Vector3(a.x, a.y, 0)]);
       previewLine.visible = true;
+    } else if (mode.tool === "rectc" && mode.pendingRectC && previewLine) {
+      const local = toLocal(event);
+      if (!local) return;
+      const c = mode.pendingRectC, k = snap(local, event);
+      const a = { x: 2 * c.x - k.x, y: 2 * c.y - k.y };
+      previewLine.geometry.setFromPoints([
+        new THREE.Vector3(a.x, a.y, 0), new THREE.Vector3(k.x, a.y, 0),
+        new THREE.Vector3(k.x, k.y, 0), new THREE.Vector3(a.x, k.y, 0),
+        new THREE.Vector3(a.x, a.y, 0)]);
+      previewLine.visible = true;
     }
   }
 
@@ -383,6 +418,7 @@ export function createSketchMode(deps) {
       mode.chain = null;
       mode.pendingCircle = null;
       mode.pendingRect = null;
+      mode.pendingRectC = null;
       if (previewLine) previewLine.visible = false;
       setTool("select");
     } else if (event.key === "Delete") {
@@ -408,6 +444,7 @@ export function createSketchMode(deps) {
     mode.chain = null;
     mode.pendingCircle = null;
     mode.pendingRect = null;
+    mode.pendingRectC = null;
     setCursor(CURSORS[tool] ?? "default");
     if (previewLine) previewLine.visible = false;
     for (const button of bar.querySelectorAll("button[data-tool]")) {
@@ -417,7 +454,9 @@ export function createSketchMode(deps) {
       select: "Sélectionner : glissez un point (le solveur suit)",
       line: "Ligne : cliquez le premier point",
       rect: "Rectangle par sommet : cliquez le premier sommet",
+      rectc: "Rectangle par le centre : cliquez le centre",
       circle: "Cercle : cliquez le centre",
+      construction: "Construction : cliquez une entité pour la basculer",
       dim: "Cotation intelligente : cliquez une ligne ou un cercle",
     };
     say(hints[tool]);

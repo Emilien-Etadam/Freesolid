@@ -135,6 +135,15 @@ class Kernel:
         path = os.path.expanduser(str(path))
         if not os.path.exists(path):
             raise KernelError("fichier introuvable : {}".format(path))
+        if not getattr(doc, "FileName", ""):
+            # Un App::Link externe exige un document propriétaire déjà
+            # enregistré (« Owner document not saved » sinon) : première
+            # insertion = enregistrement temporaire ; « Enregistrer »
+            # le déplacera où l'utilisateur veut, FreeCAD réécrit les
+            # chemins relatifs au saveAs.
+            import tempfile
+            doc.saveAs(os.path.join(tempfile.gettempdir(),
+                                    "freesolid-assemblage.FCStd"))
         part_doc = None
         for open_doc in App.listDocuments().values():
             if getattr(open_doc, "FileName", "") == path:

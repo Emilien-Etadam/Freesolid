@@ -531,14 +531,37 @@ class Kernel:
 
     def sketch_move(self, sketch, geo, point, x, y):
         """Drag: move one point, let the solver follow. ``point`` is the
-        Sketcher convention — 1 start, 2 end, 3 center, 0 whole curve."""
+        Sketcher convention — 1 start, 2 end, 3 center, 0 whole curve.
+
+        The API was renamed across FreeCAD versions (movePoint →
+        moveGeometry, plus a grouped moveGeometries), so this tries the
+        known spellings in order — 1.1.3 has no ``movePoint`` at all,
+        which the instrumented selftest caught on a real install.
+        """
         sk = self._get_sketch(sketch)
-        try:
-            sk.movePoint(int(geo), int(point),
-                         self._app().Vector(float(x), float(y), 0), 0)
-        except Exception as exc:  # noqa: BLE001
-            raise KernelError(_explain(exc))
-        return self.sketch_state(sketch)
+        gid, pos = int(geo), int(point)
+        target = self._app().Vector(float(x), float(y), 0)
+        attempts = (
+            ("moveGeometry", lambda fn: fn(gid, pos, target, 0)),
+            ("movePoint", lambda fn: fn(gid, pos, target, 0)),
+            ("moveGeometries", lambda fn: fn([(gid, pos)], target, False)),
+        )
+        tried = []
+        for name, invoke in attempts:
+            fn = getattr(sk, name, None)
+            if fn is None:
+                continue
+            tried.append(name)
+            try:
+                invoke(fn)
+                return self.sketch_state(sketch)
+            except TypeError:
+                continue  # exists but wants another signature: next spelling
+            except Exception as exc:  # noqa: BLE001 - solver refusal
+                raise KernelError(_explain(exc))
+        raise KernelError(
+            "aucune API de déplacement compatible sur cette version de "
+            "FreeCAD (essayé : {})".format(", ".join(tried) or "aucune"))
 
     def sketch_dim(self, sketch, geo, value=None):
         """Smart dimension: length on a line, radius on a circle.

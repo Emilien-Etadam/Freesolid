@@ -62,7 +62,6 @@ simulation FEM. Verdicts :
 | Vues projetées | ✅ | fait (Face/Dessus/Iso → DXF) |
 | Cotes de mise en plan | 🟧 | `TechDraw::DrawViewDimension` scriptable ; placement auto à écrire |
 | Coupes, sections, détails | 🟧 | `DrawViewSection` scriptable |
-| Nomenclature (BOM) | 🟧 | parcours de l'assemblage → tableau ; export CSV trivial |
 | Export PDF de la page | ❌ headless | l'export PDF de TechDraw passe par la GUI ; DXF/SVG restent la voie |
 
 ## Données et divers

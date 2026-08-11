@@ -161,6 +161,28 @@ let selectedPlane = null;   // plan choisi dans l'arbre (sticky)
 let hoverPlane = null;      // survol en zone graphique pendant le picking
 let treeHoverPlane = null;  // survol d'une ligne de plan dans l'arbre
 
+// Mêmes noms que vocab.ORIGIN_PLANES — affichés sur les plans eux-mêmes.
+const PLANE_LABELS = {
+  XY: "Plan de dessus", XZ: "Plan de face", YZ: "Plan de droite",
+};
+
+function makePlaneLabel(text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 44;
+  const ctx = canvas.getContext("2d");
+  ctx.font = "600 24px system-ui";
+  ctx.fillStyle = "#7fc4ff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 128, 22);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(canvas),
+    transparent: true, depthTest: false }));
+  sprite.renderOrder = 10;
+  return sprite;
+}
+
 function rebuildPlanes() {
   planesGroup.clear();
   planeMeshes = {};
@@ -179,7 +201,10 @@ function rebuildPlanes() {
       new THREE.EdgesGeometry(fill.geometry),
       new THREE.LineBasicMaterial(
         { color: 0x4f8fdb, transparent: true, opacity: 0.6 }));
-    holder.add(fill, border);
+    const label = makePlaneLabel(PLANE_LABELS[id]);
+    label.position.set(0, size * 0.46, 0);
+    label.scale.set(size * 0.42, size * 0.42 * (44 / 256), 1);
+    holder.add(fill, border, label);
     planesGroup.add(holder);
     planeMeshes[id] = fill;
   }
@@ -747,14 +772,24 @@ document.getElementById("btn-redo").addEventListener("click", () =>
   refresh(call("redo")));
 
 document.getElementById("btn-sketch").addEventListener("click", () =>
-  featureCommand(() => {
+  featureCommand(async () => {
+    // Pas encore de pièce ? Elle se crée toute seule — cliquer Esquisse
+    // est LE geste de départ, pas une erreur.
+    if (!lastTree) {
+      try {
+        renderTree(await call("new_part"));
+      } catch (error) {
+        say(error.message, true);
+        return;
+      }
+    }
     if (selectedFaceId !== null) {
       sketchMode.enter(call("sketch_start", { face: selectedFaceId }));
     } else if (selectedPlane !== null) {
       pickPlane(selectedPlane);
     } else {
-      // Rien de choisi : les trois plans s'affichent, à vous de cliquer —
-      // le geste SolidWorks exact.
+      // Rien de choisi : les trois plans s'affichent avec leur nom,
+      // à vous de cliquer — le geste SolidWorks exact.
       startPlanePick();
     }
   }));
@@ -1185,5 +1220,16 @@ const sketchMode = createSketchMode(
 // ---------- boot ----------
 
 call("ping")
-  .then((info) => say(`Moteur prêt — FreeCAD ${info.freecad}`))
+  .then(async (info) => {
+    say(`Moteur prêt — FreeCAD ${info.freecad}`);
+    // Resynchronise avec le moteur : après un rechargement de la page,
+    // la pièce en cours réapparaît au lieu d'être écrasée au premier
+    // clic sur Esquisse.
+    try {
+      renderTree(await call("get_tree"));
+      await updateViewport();
+    } catch {
+      // pas encore de pièce — Esquisse en créera une
+    }
+  })
   .catch(() => say("Moteur injoignable — lancez engine/server.py avec freecadcmd", true));

@@ -245,16 +245,43 @@ class Kernel:
             except Exception as exc:
                 result["assembly_object"] = False
                 result["assembly_object_error"] = str(exc)[:160]
+            group = None
             try:
-                doc.addObject("Assembly::JointGroup", "Joints")
+                group = doc.addObject("Assembly::JointGroup", "Joints")
                 result["joint_group"] = True
+                try:
+                    # Le groupe de joints DANS l'assemblage — le proxy du
+                    # joint remonte à son parent pour trouver l'assemblage
+                    # (« 'NoneType' object has no attribute 'Type' » quand
+                    # il est orphelin, vu sur 1.1.3).
+                    asm.addObject(group)
+                    result["joint_group_in_assembly"] = True
+                except Exception as exc:
+                    result["joint_group_in_assembly"] = False
+                    result["joint_group_in_assembly_error"] = str(exc)[:120]
             except Exception as exc:
                 result["joint_group"] = False
                 result["joint_group_error"] = str(exc)[:160]
             try:
                 import JointObject
                 result["joint_module"] = True
+                result["joint_symbols"] = [
+                    n for n in dir(JointObject)
+                    if not n.startswith("_")][:40]
+                try:
+                    # La vérité terrain : le constructeur réel de cette
+                    # version, lu sur la machine de l'utilisateur.
+                    import inspect
+                    result["joint_init_source"] = inspect.getsource(
+                        JointObject.Joint.__init__)[:1500]
+                except Exception as exc:
+                    result["joint_init_source_error"] = str(exc)[:120]
                 joint = doc.addObject("App::FeaturePython", "SpikeJoint")
+                if group is not None:
+                    try:
+                        group.addObject(joint)
+                    except Exception as exc:
+                        result["joint_into_group_error"] = str(exc)[:120]
                 created = False
                 for args in ((joint,), (joint, 0), (joint, "Fixed")):
                     try:

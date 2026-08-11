@@ -396,8 +396,10 @@ renderer.domElement.addEventListener("pointerup", (event) => {
   }
 
   const clearPlaneChoice = () => {
-    if (selectedPlane !== null) {
+    if (selectedPlane !== null || selectedDatumFeature !== null) {
       selectedPlane = null;
+      selectedDatumFeature = null;
+      refreshDatumGhost(null);
       updatePlaneVisibility();
       if (lastTree) renderTree(lastTree);
     }
@@ -519,7 +521,64 @@ const TREE_ICONS = {
   "PartDesign::LinearPattern": "PartDesign_LinearPattern.svg",
   "PartDesign::PolarPattern": "PartDesign_PolarPattern.svg",
   "PartDesign::Thickness": "PartDesign_Thickness.svg",
+  "PartDesign::Draft": "PartDesign_Draft.svg",
+  "PartDesign::Hole": "PartDesign_Hole.svg",
+  "PartDesign::Plane": "PartDesign_Plane.svg",
+  "PartDesign::AdditiveLoft": "PartDesign_AdditiveLoft.svg",
+  "PartDesign::SubtractiveLoft": "PartDesign_SubtractiveLoft.svg",
+  "PartDesign::AdditivePipe": "PartDesign_AdditivePipe.svg",
+  "PartDesign::SubtractivePipe": "PartDesign_SubtractivePipe.svg",
+  "PartDesign::AdditiveHelix": "PartDesign_AdditiveHelix.svg",
 };
+
+// ---------- plans de référence (fantôme + sélection d'esquisse) ----------
+
+let datumGhost = null;
+let selectedDatumFeature = null; // { name, placement }
+
+function refreshDatumGhost(hoverFeature) {
+  if (datumGhost) {
+    scene.remove(datumGhost);
+    datumGhost = null;
+  }
+  const feature = hoverFeature ?? selectedDatumFeature;
+  if (!feature?.placement) return;
+  const { radius } = partCenterRadius();
+  const size = Math.max(radius * 1.4, 60);
+  const holder = new THREE.Group();
+  holder.matrixAutoUpdate = false;
+  holder.matrix.set(...feature.placement);
+  const fill = new THREE.Mesh(
+    new THREE.PlaneGeometry(size, size),
+    new THREE.MeshBasicMaterial({
+      color: 0x4f8fdb, transparent: true, opacity: 0.14,
+      side: THREE.DoubleSide, depthWrite: false }));
+  const border = new THREE.LineSegments(
+    new THREE.EdgesGeometry(fill.geometry),
+    new THREE.LineBasicMaterial(
+      { color: 0x4f8fdb, transparent: true, opacity: 0.7 }));
+  holder.add(fill, border);
+  scene.add(holder);
+  datumGhost = holder;
+}
+
+function onDatumRow(feature) {
+  selectedDatumFeature =
+    selectedDatumFeature?.name === feature.name
+      ? null
+      : { name: feature.name, placement: feature.placement };
+  if (selectedDatumFeature) {
+    selectedPlane = null;
+    selectedFaceId = null;
+    repaintGroups();
+    updatePlaneVisibility();
+  }
+  refreshDatumGhost(null);
+  if (lastTree) renderTree(lastTree);
+  say(selectedDatumFeature
+    ? `${feature.label} choisi — cliquez Esquisse pour dessiner dessus`
+    : "Plan de référence désélectionné");
+}
 
 function treeIcon(file) {
   const img = document.createElement("img");
@@ -534,9 +593,13 @@ const expandedFeatures = new Set(); // les fonctions dépliées (persiste)
 function onPlaneRow(id) {
   if (planePicking) { pickPlane(id); return; }
   selectedPlane = selectedPlane === id ? null : id;
-  if (selectedPlane !== null && selectedFaceId !== null) {
-    selectedFaceId = null;
-    repaintGroups();
+  if (selectedPlane !== null) {
+    selectedDatumFeature = null;
+    refreshDatumGhost(null);
+    if (selectedFaceId !== null) {
+      selectedFaceId = null;
+      repaintGroups();
+    }
   }
   updatePlaneVisibility();
   if (lastTree) renderTree(lastTree);
@@ -599,6 +662,21 @@ function renderTree(tree) {
       "clic droit : barre de retour, supprimer";
     item.addEventListener("dblclick", () => editFeature(feature));
     item.addEventListener("contextmenu", (e) => openMenu(e, feature));
+    if (feature.type === "PartDesign::Plane") {
+      // Un plan de référence se choisit comme un plan d'origine.
+      item.classList.add("plane");
+      if (selectedDatumFeature?.name === feature.name) {
+        item.classList.add("sel");
+      }
+      item.addEventListener("click", () => onDatumRow(feature));
+      item.addEventListener("mouseenter", () => refreshDatumGhost(feature));
+      item.addEventListener("mouseleave", () => refreshDatumGhost(null));
+    }
+    if (feature.type === "Sketcher::SketchObject") {
+      // Un lissage/balayage ouvert dans le panneau absorbe le clic.
+      item.addEventListener("click", () => panel.notifyPick("sketch",
+        { kind: "sketch", name: feature.name, label: feature.label }));
+    }
     treeEl.appendChild(item);
 
     // L'esquisse consommée vit sous sa fonction, à la SolidWorks.
@@ -611,6 +689,8 @@ function renderTree(tree) {
         row.title = `${child.kind} — double-clic : modifier l'esquisse`;
         row.addEventListener("dblclick", () => editFeature(child));
         row.addEventListener("contextmenu", (e) => openMenu(e, child));
+        row.addEventListener("click", () => panel.notifyPick("sketch",
+          { kind: "sketch", name: child.name, label: child.label }));
         treeEl.appendChild(row);
       }
     }
@@ -849,6 +929,12 @@ document.getElementById("btn-sketch").addEventListener("click", () =>
     }
     if (selectedFaceId !== null) {
       sketchMode.enter(call("sketch_start", { face: selectedFaceId }));
+    } else if (selectedDatumFeature !== null) {
+      const name = selectedDatumFeature.name;
+      selectedDatumFeature = null;
+      refreshDatumGhost(null);
+      if (lastTree) renderTree(lastTree);
+      sketchMode.enter(call("sketch_start", { datum: name }));
     } else if (selectedPlane !== null) {
       pickPlane(selectedPlane);
     } else {
@@ -1075,6 +1161,146 @@ document.getElementById("btn-hole").addEventListener("click", () =>
     onApply: (v) => {
       const built = holeBuild(v);
       if (!built) { say("Valeurs du perçage invalides", true); return; }
+      refresh(call(built.op, built.params));
+    },
+  })));
+
+document.getElementById("btn-datum").addEventListener("click", () =>
+  featureCommand(() => panel.open({
+    icon: "PartDesign_Plane.svg",
+    title: "Plan de référence",
+    groups: [
+      {
+        label: "Référence",
+        rows: [
+          { type: "selection", key: "sel", accepts: ["face"],
+            hint: "Cliquez une face — ou choisissez un plan ci-dessous",
+            value: currentSelection(["face"]) },
+          { type: "select", key: "base", value: "XY", label: "Plan",
+            options: [["XZ", "Plan de face"], ["XY", "Plan de dessus"],
+                      ["YZ", "Plan de droite"]] },
+        ],
+      },
+      {
+        label: "Position",
+        rows: [
+          { type: "number", key: "offset", label: "Décalage", value: 20,
+            unit: "mm" },
+          { type: "number", key: "angle", label: "Angle", value: 0,
+            unit: "°" },
+        ],
+      },
+    ],
+    onApply: (v) => {
+      const params = {
+        offset: parseFloat(v.offset) || 0,
+        angle: parseFloat(v.angle) || 0,
+      };
+      if (v.sel && v.sel.face != null) params.face = v.sel.face;
+      else params.base = v.base;
+      refresh(call("add_datum_plane", params));
+    },
+  })));
+
+function loftBuild(v) {
+  const items = v.profiles?.items ?? [];
+  if (items.length < 2) return null;
+  return { op: "add_loft", params: {
+    sketches: items.map((i) => i.name),
+    subtractive: !!v.subtractive,
+    ruled: !!v.ruled,
+    closed: !!v.closed } };
+}
+
+document.getElementById("btn-loft").addEventListener("click", () =>
+  featureCommand(() => panel.open({
+    icon: "PartDesign_AdditiveLoft.svg",
+    title: "Bossage/Base lissé",
+    groups: [
+      { label: "Profils",
+        rows: [{ type: "selection", key: "profiles", accepts: ["sketch"],
+                 multiple: true,
+                 hint: "Cliquez les esquisses dans l'arbre, dans " +
+                       "l'ordre du lissage" }] },
+      { label: "Options",
+        rows: [
+          { type: "check", key: "subtractive",
+            label: "Enlèvement de matière", value: false },
+          { type: "check", key: "ruled", label: "Lissage droit (réglé)",
+            value: false },
+          { type: "check", key: "closed", label: "Boucle fermée",
+            value: false },
+        ] },
+    ],
+    onChange: (v) => schedulePreview(loftBuild(v)),
+    onApply: (v) => {
+      const built = loftBuild(v);
+      if (!built) { say("Lissage : au moins deux profils", true); return; }
+      refresh(call(built.op, built.params));
+    },
+  })));
+
+function sweepBuild(v) {
+  if (!v.profile || !v.spine) return null;
+  if (v.profile.name === v.spine.name) return null;
+  return { op: "add_sweep", params: {
+    profile: v.profile.name,
+    spine: v.spine.name,
+    subtractive: !!v.subtractive } };
+}
+
+document.getElementById("btn-sweep").addEventListener("click", () =>
+  featureCommand(() => panel.open({
+    icon: "PartDesign_AdditivePipe.svg",
+    title: "Bossage/Base balayé",
+    groups: [
+      { label: "Profil",
+        rows: [{ type: "selection", key: "profile", accepts: ["sketch"],
+                 hint: "Cliquez l'esquisse du profil dans l'arbre" }] },
+      { label: "Trajectoire",
+        rows: [{ type: "selection", key: "spine", accepts: ["sketch"],
+                 hint: "Puis l'esquisse de la trajectoire" }] },
+      { label: "Options",
+        rows: [{ type: "check", key: "subtractive",
+                 label: "Enlèvement de matière", value: false }] },
+    ],
+    onChange: (v) => schedulePreview(sweepBuild(v)),
+    onApply: (v) => {
+      const built = sweepBuild(v);
+      if (!built) {
+        say("Balayage : un profil puis une trajectoire (différents)", true);
+        return;
+      }
+      refresh(call(built.op, built.params));
+    },
+  })));
+
+function helixBuild(v) {
+  const pitch = parseFloat(v.pitch);
+  const height = parseFloat(v.height);
+  return pitch > 0 && height > 0
+    ? { op: "add_helix", params: { pitch, height } } : null;
+}
+
+document.getElementById("btn-helix").addEventListener("click", () =>
+  featureCommand(() => panel.open({
+    icon: "PartDesign_AdditiveHelix.svg",
+    title: "Hélice",
+    groups: [{
+      label: "Paramètres",
+      rows: [
+        { type: "number", key: "pitch", label: "Pas", value: 8,
+          unit: "mm", min: 0.01 },
+        { type: "number", key: "height", label: "Hauteur", value: 40,
+          unit: "mm", min: 0.01 },
+      ],
+    }],
+    note: "Le profil (dernière esquisse) tourne autour de l'axe " +
+          "vertical de son esquisse — dessinez-le décalé de l'axe.",
+    onChange: (v) => schedulePreview(helixBuild(v)),
+    onApply: (v) => {
+      const built = helixBuild(v);
+      if (!built) { say("Pas et hauteur doivent être positifs", true); return; }
       refresh(call(built.op, built.params));
     },
   })));

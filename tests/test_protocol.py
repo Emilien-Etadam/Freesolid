@@ -230,6 +230,19 @@ def test_parametric_ops_declared():
                     "geo3": 2}})
 
 
+def test_phase_b_ops_declared():
+    assert protocol.OPS["add_datum_plane"] == ()
+    assert protocol.OPS["add_loft"] == ("sketches",)
+    assert protocol.OPS["add_sweep"] == ("profile", "spine")
+    assert protocol.OPS["add_helix"] == ("pitch", "height")
+    protocol.validate_request(
+        {"op": "add_loft",
+         "params": {"sketches": ["Sketch", "Sketch001"],
+                    "subtractive": True}})
+    protocol.validate_request(
+        {"op": "sketch_start", "params": {"datum": "DatumPlane"}})
+
+
 def test_preview_wraps_an_op_and_its_params():
     op, params = protocol.validate_request(
         {"op": "preview",

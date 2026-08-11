@@ -36,6 +36,11 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_polar_pattern": ("count",),   # optional: angle (°), axis
     "add_thickness": ("face", "thickness"),
     "add_draft": ("face", "angle"),    # plan neutre : Plan de dessus (XY)
+    # Phase B — références et ossature.
+    "add_datum_plane": (),             # optional: base (XY|XZ|YZ) | face, offset, angle
+    "add_loft": ("sketches",),         # optional: subtractive, ruled, closed
+    "add_sweep": ("profile", "spine"),  # optional: subtractive
+    "add_helix": ("pitch", "height"),  # optional: sketch
     "set_param": ("feature", "prop", "value"),
     "set_params": ("feature", "values"),  # valeur numérique OU expression
     # Paramétrique — variables globales (App::VarSet) et équations.
@@ -57,7 +62,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "tessellate_edges": (),            # optional: deviation — picking d'arêtes
     # M2 — sketch editing. Geometry travels in sketch-local 2D; the state
     # carries the placement matrix that positions it in 3D.
-    "sketch_start": (),                # optional: face | plane (XY|XZ|YZ)
+    "sketch_start": (),                # optional: face | plane (XY|XZ|YZ) | datum (nom)
     "sketch_edit": ("feature",),
     "sketch_state": ("sketch",),
     "sketch_add_line": ("sketch", "x1", "y1", "x2", "y2"),

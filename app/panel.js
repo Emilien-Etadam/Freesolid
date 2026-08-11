@@ -80,23 +80,49 @@ export function createPropertyPanel({ say, onClose }) {
     }
   }
 
-  // The viewport reports picks here; a selection row that accepts this
-  // kind absorbs them. Values are {kind: "face", face} or
-  // {kind: "edges", edges: [...]}.
+  // The viewport and the tree report picks here; a selection row that
+  // accepts this kind absorbs them. Values: {kind: "face", face},
+  // {kind: "edges", edges: […]}, {kind: "sketch", name, label} or, for
+  // multiple rows, {kind, items: […]} (a second click on the same item
+  // removes it).
+  function hasSelectionValue(value) {
+    if (!value) return false;
+    if (value.items) return value.items.length > 0;
+    if (value.kind === "edges") return value.edges.length > 0;
+    if (value.kind === "face") return value.face != null;
+    return true;
+  }
+
   function notifyPick(kind, value) {
     if (!active) return false;
+    const rows = [];
     for (const group of active.spec.groups) {
       for (const row of group.rows ?? []) {
         if (row.type === "selection"
             && (row.accepts ?? ["face"]).includes(kind)) {
-          active.values[row.key] = value;
-          render();
-          changed();
-          return true;
+          rows.push(row);
         }
       }
     }
-    return false;
+    if (!rows.length) return false;
+    const multiRow = rows.find((r) => r.multiple);
+    if (multiRow) {
+      const current = active.values[multiRow.key] ?? { kind, items: [] };
+      const at = current.items.findIndex((i) => i.name === value.name);
+      if (at >= 0) current.items.splice(at, 1);
+      else current.items.push(value);
+      active.values[multiRow.key] = { ...current };
+    } else {
+      // Première zone vide, sinon la dernière est remplacée — le
+      // balayage remplit Profil puis Trajectoire en deux clics.
+      const target = rows.find(
+        (r) => !hasSelectionValue(active.values[r.key]))
+        ?? rows[rows.length - 1];
+      active.values[target.key] = value;
+    }
+    render();
+    changed();
+    return true;
   }
 
   // ---------- rendering ----------
@@ -162,21 +188,26 @@ export function createPropertyPanel({ say, onClose }) {
     if (row.type === "selection") {
       const box = el("div", "pselect-box");
       const value = values[row.key];
-      const empty = !value
-        || (value.kind === "edges" && !value.edges.length)
-        || (value.kind === "face" && value.face == null);
-      if (empty) {
+      if (!hasSelectionValue(value)) {
         box.textContent =
           row.hint ?? "Cliquez une face dans la zone graphique";
+        return box;
+      }
+      if (value.items) {
+        box.textContent = value.items.length <= 2
+          ? value.items.map((i) => i.label).join(" → ")
+          : `${value.items.length} profils : `
+            + value.items.map((i) => i.label).join(" → ");
       } else if (value.kind === "edges") {
         box.textContent = value.edges.length <= 3
           ? value.edges.map((e) => `Arête ${e}`).join(", ")
           : `${value.edges.length} arêtes`;
-        box.classList.add("filled");
+      } else if (value.kind === "sketch") {
+        box.textContent = value.label;
       } else {
         box.textContent = `Face ${value.face}`;
-        box.classList.add("filled");
       }
+      box.classList.add("filled");
       return box;
     }
 

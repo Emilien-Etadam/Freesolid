@@ -303,6 +303,7 @@ class Kernel:
         "add_fillet", "add_chamfer", "add_thickness", "add_draft",
         "add_mirror", "add_linear_pattern", "add_polar_pattern",
         "add_hole", "set_params",
+        "add_loft", "add_sweep", "add_helix",
     })
 
     def preview(self, op, params):
@@ -328,6 +329,118 @@ class Kernel:
             except Exception:
                 pass
             doc.recompute()
+
+    # -- phase B : références et ossature ---------------------------------
+
+    def add_datum_plane(self, base=None, face=None, offset=0.0, angle=0.0):
+        """Plan de référence : décalé (et incliné) d'un plan d'origine ou
+        d'une face — le prérequis des pièces qui ne s'empilent pas sur
+        les trois plans."""
+        body = self._require_body()
+        doc = self._require_doc()
+        App = self._app()
+        plane = body.newObject("PartDesign::Plane", "DatumPlane")
+        if face is not None:
+            tip = getattr(body, "Tip", None)
+            if tip is None:
+                raise KernelError("pas de solide pour porter ce plan")
+            support = [(tip, ("Face{}".format(int(face) + 1),))]
+        else:
+            role = self._PLANE_ROLES.get(str(base or "XY").upper())
+            if role is None:
+                raise KernelError(
+                    "plan inconnu « {} » — attendu XY, XZ ou YZ".format(base))
+            support = [(self._origin_feature(role), ("",))]
+        try:
+            plane.AttachmentSupport = support
+        except AttributeError:
+            plane.Support = support
+        plane.MapMode = "FlatFace"
+        plane.AttachmentOffset = App.Placement(
+            App.Vector(0, 0, float(offset)),
+            App.Rotation(App.Vector(1, 0, 0), float(angle)))
+        plane.Label = "Plan de référence"
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(plane.Name)
+            raise
+        return self.get_tree()
+
+    def add_loft(self, sketches, subtractive=False, ruled=False,
+                 closed=False):
+        """Bossage/Base lissé (ou enlèvement) entre plusieurs profils —
+        typiquement des esquisses posées sur des plans de référence."""
+        body = self._require_body()
+        doc = self._require_doc()
+        if not isinstance(sketches, (list, tuple)) or len(sketches) < 2:
+            raise KernelError("un lissage demande au moins deux profils")
+        profiles = [self._get_sketch(str(n)) for n in sketches]
+        type_id = ("PartDesign::SubtractiveLoft" if subtractive
+                   else "PartDesign::AdditiveLoft")
+        loft = body.newObject(type_id, type_id.split("::")[-1])
+        loft.Profile = profiles[0]
+        try:
+            loft.Sections = profiles[1:]
+        except TypeError:
+            loft.Sections = [(p, ("",)) for p in profiles[1:]]
+        loft.Ruled = bool(ruled)
+        loft.Closed = bool(closed)
+        loft.Label = label_for_type(type_id)
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(loft.Name)
+            raise
+        return self.get_tree()
+
+    def add_sweep(self, profile, spine, subtractive=False):
+        """Bossage/Base balayé (ou enlèvement) : un profil suit une
+        trajectoire — deux esquisses, souvent sur des plans différents."""
+        body = self._require_body()
+        doc = self._require_doc()
+        section = self._get_sketch(str(profile))
+        path = self._get_sketch(str(spine))
+        if section.Name == path.Name:
+            raise KernelError("profil et trajectoire doivent être deux "
+                              "esquisses différentes")
+        type_id = ("PartDesign::SubtractivePipe" if subtractive
+                   else "PartDesign::AdditivePipe")
+        pipe = body.newObject(type_id, type_id.split("::")[-1])
+        pipe.Profile = section
+        try:
+            pipe.Spine = path
+        except TypeError:
+            pipe.Spine = (path, ("",))
+        pipe.Label = label_for_type(type_id)
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(pipe.Name)
+            raise
+        return self.get_tree()
+
+    def add_helix(self, pitch, height, sketch=None):
+        """Hélice additive (ressort, filet réel) — le profil tourne autour
+        de l'axe vertical de son esquisse, comme la révolution."""
+        body = self._require_body()
+        doc = self._require_doc()
+        if float(pitch) <= 0 or float(height) <= 0:
+            raise KernelError("pas et hauteur doivent être positifs")
+        profile = (self._get_sketch(sketch) if sketch is not None
+                   else self._latest_sketch())
+        helix = body.newObject("PartDesign::AdditiveHelix", "AdditiveHelix")
+        helix.Profile = profile
+        helix.ReferenceAxis = (profile, ["V_Axis"])
+        helix.Pitch = float(pitch)
+        helix.Height = float(height)
+        helix.Label = "Hélice"
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(helix.Name)
+            raise
+        return self.get_tree()
 
     # -- palier 2 : révolutions, transformations, habillages avancés ------
 
@@ -832,13 +945,18 @@ class Kernel:
                 consumed[linked.Name] = obj.Name
 
         def entry(obj):
-            return {
+            item = {
                 "name": obj.Name,
                 "label": obj.Label,
                 "kind": label_for_type(obj.TypeId),
                 "type": obj.TypeId,
                 "error": "Invalid" in (obj.State or ()),
             }
+            if obj.TypeId == "PartDesign::Plane":
+                # Le client dessine le plan de référence dans le viewport.
+                item["placement"] = [
+                    float(v) for v in obj.Placement.Matrix.A]
+            return item
 
         items = []
         for obj in body.Group:
@@ -915,9 +1033,9 @@ class Kernel:
             raise KernelError("esquisse inconnue : {}".format(name))
         return obj
 
-    def sketch_start(self, face=None, plane=None):
-        """Open a new empty sketch — XY by default, a picked face, or a
-        named origin plane (XY/XZ/YZ = Dessus/Face/Droite)."""
+    def sketch_start(self, face=None, plane=None, datum=None):
+        """Open a new empty sketch — XY by default, a picked face, a
+        named origin plane (XY/XZ/YZ), or a datum plane by name."""
         body = self._require_body()
         doc = self._require_doc()
         sketch = doc.addObject("Sketcher::SketchObject", "Sketch")
@@ -925,6 +1043,12 @@ class Kernel:
         sketch.Label = "Esquisse"
         if face is not None:
             self._attach_to_face(sketch, face)
+        elif datum is not None:
+            target = doc.getObject(str(datum))
+            if target is None or target.TypeId != "PartDesign::Plane":
+                raise KernelError(
+                    "plan de référence inconnu : {}".format(datum))
+            self._attach_to_support(sketch, [(target, ("",))])
         elif plane is not None:
             role = self._PLANE_ROLES.get(str(plane).upper())
             if role is None:
@@ -1862,6 +1986,51 @@ class Kernel:
                 len(self._get_sketch(rel).Constraints) == before - 1)
             self.sketch_finish(rel)
 
+            mark("p8: plan de référence décalé + lissage")
+            self.new_part("Pièce lissage")
+            tree = self.add_datum_plane(base="XY", offset=30)
+            datum = next(f["name"] for f in tree["features"]
+                         if f["type"] == "PartDesign::Plane")
+            report["p8_datum_has_placement"] = any(
+                "placement" in f for f in tree["features"])
+            self.add_rect_sketch(40, 40)
+            base_sk = self._latest_sketch().Name
+            state = self.sketch_start(datum=datum)
+            top_sk = state["sketch"]
+            for line in ((-10, -10, 10, -10), (10, -10, 10, 10),
+                         (10, 10, -10, 10), (-10, 10, -10, -10)):
+                self.sketch_add_line(top_sk, *line)
+            self.sketch_finish(top_sk)
+            tree = self.add_loft(sketches=[base_sk, top_sk])
+            report["p8_loft_ok"] = (
+                not any(f["error"] for f in tree["features"])
+                and len(self.tessellate()["groups"]) > 0)
+
+            mark("p8: balayage (profil + trajectoire)")
+            self.new_part("Pièce balayage")
+            state = self.sketch_start(plane="XZ")
+            spine_sk = state["sketch"]
+            self.sketch_add_line(spine_sk, 0, 0, 0, 30)
+            self.sketch_add_line(spine_sk, 0, 30, 25, 30)
+            self.sketch_finish(spine_sk)
+            state = self.sketch_start()
+            prof_sk = state["sketch"]
+            self.sketch_add_circle(prof_sk, 0, 0, 4)
+            self.sketch_finish(prof_sk)
+            tree = self.add_sweep(profile=prof_sk, spine=spine_sk)
+            report["p8_sweep_ok"] = not any(
+                f["error"] for f in tree["features"])
+
+            mark("p8: hélice (ressort)")
+            self.new_part("Pièce hélice")
+            state = self.sketch_start(plane="XZ")
+            hel_sk = state["sketch"]
+            self.sketch_add_circle(hel_sk, 15, 0, 2)
+            self.sketch_finish(hel_sk)
+            tree = self.add_helix(pitch=8, height=40, sketch=hel_sk)
+            report["p8_helix_ok"] = not any(
+                f["error"] for f in tree["features"])
+
             mark("p3: arc, rainure, polygone")
             import math
             self.new_part("Pièce esquisse avancée")
@@ -1943,6 +2112,7 @@ _TRANSACTIONAL = frozenset({
     "add_rect_sketch", "add_pad", "add_pocket", "add_fillet", "add_chamfer",
     "add_revolution", "add_groove", "add_mirror", "add_linear_pattern",
     "add_polar_pattern", "add_thickness", "add_draft", "add_hole",
+    "add_datum_plane", "add_loft", "add_sweep", "add_helix",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",

@@ -2209,6 +2209,12 @@ class Kernel:
                 f["error"] for f in tree["features"])
 
             mark("p4: aperçu jaune (exécuté puis annulé)")
+            # Sur sa propre géométrie saine : chanfreiner le bord d'une
+            # coque dépouillée segfaultait ChFi3d dans OCCT 7.8 (SIGSEGV
+            # vu sur 1.1.3) — un crash C++, ininterceptable en Python.
+            self.new_part("Pièce aperçu")
+            self.add_rect_sketch(30, 30)
+            self.add_pad(10)
             count = len(self.get_tree()["features"])
             faces_now = len(self.tessellate()["groups"])
             ghost = self.preview(

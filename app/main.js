@@ -79,16 +79,32 @@ let selectedEdges = new Set();
 
 let partMesh = null;
 let partEdges = null;
+let othersMesh = null; // les corps non actifs, estompés
 let meshGroups = [];
 let edgeGroups = [];
 let hoveredEdgeGroup = -1;
 
+const othersMaterial = new THREE.MeshStandardMaterial({
+  color: 0x5f6b78, metalness: 0.1, roughness: 0.7,
+  transparent: true, opacity: 0.45, depthWrite: false,
+});
+
 function showMesh(mesh) {
   if (partMesh) { scene.remove(partMesh); partMesh.geometry.dispose(); }
-  partMesh = null;
+  if (othersMesh) { scene.remove(othersMesh); othersMesh.geometry.dispose(); }
+  partMesh = othersMesh = null;
   meshGroups = mesh.groups;
   hoveredGroup = -1;
   selectedFaceId = null; // ids shift after every feature: stale picks lie
+  if (mesh.others?.indices.length) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position",
+      new THREE.Float32BufferAttribute(mesh.others.positions, 3));
+    geometry.setIndex(mesh.others.indices);
+    geometry.computeVertexNormals();
+    othersMesh = new THREE.Mesh(geometry, othersMaterial);
+    scene.add(othersMesh);
+  }
   if (!mesh.indices.length) return;
 
   const geometry = new THREE.BufferGeometry();
@@ -612,12 +628,33 @@ function renderTree(tree) {
   lastTree = tree;
   treeHoverPlane = null;
   treeEl.innerHTML = "";
-  const bodyItem = document.createElement("li");
-  bodyItem.className = "body";
-  bodyItem.appendChild(treeIcon("PartDesign_Body.svg"));
-  bodyItem.appendChild(document.createTextNode(tree.body));
-  treeEl.appendChild(bodyItem);
 
+  // Tous les corps de la pièce ; clic sur un corps inactif = l'activer.
+  const bodies = tree.bodies
+    ?? [{ name: null, label: tree.body, active: true, count: 0 }];
+  for (const bodyInfo of bodies) {
+    const bodyItem = document.createElement("li");
+    bodyItem.className = "body" + (bodyInfo.active ? " active" : "");
+    bodyItem.appendChild(treeIcon("PartDesign_Body.svg"));
+    bodyItem.appendChild(document.createTextNode(
+      bodyInfo.label
+      + (bodyInfo.active ? "" : ` — ${bodyInfo.count} élément(s)`)));
+    if (!bodyInfo.active && bodyInfo.name) {
+      bodyItem.title = "Clic : activer ce corps";
+      bodyItem.addEventListener("click", () =>
+        refresh(call("set_active_body", { body: bodyInfo.name })));
+    }
+    if (bodyInfo.name) {
+      bodyItem.addEventListener("contextmenu",
+        (e) => openMenu(e, bodyInfo));
+    }
+    treeEl.appendChild(bodyItem);
+    if (!bodyInfo.active) continue;
+    renderActiveBodyContents(tree);
+  }
+}
+
+function renderActiveBodyContents(tree) {
   // Les trois plans de base, toujours là — comme dans SolidWorks.
   for (const plane of tree.planes ?? []) {
     const item = document.createElement("li");
@@ -705,6 +742,7 @@ function renderTree(tree) {
     }
   }
 }
+// (fin du rendu du corps actif)
 
 // Property names -> designer-facing labels for the edit panel.
 const PROP_LABELS = {
@@ -1164,6 +1202,43 @@ document.getElementById("btn-hole").addEventListener("click", () =>
       refresh(call(built.op, built.params));
     },
   })));
+
+document.getElementById("btn-body").addEventListener("click", () =>
+  featureCommand(() => {
+    const name = prompt("Nom du nouveau corps :", "Corps");
+    if (name === null) return;
+    refresh(call("add_body", name.trim() ? { name: name.trim() } : {}));
+  }));
+
+document.getElementById("btn-boolean").addEventListener("click", () =>
+  featureCommand(() => {
+    const others = (lastTree?.bodies ?? []).filter((b) => !b.active);
+    if (!others.length) {
+      say("Combiner : créez d'abord un second corps", true);
+      return;
+    }
+    const build = (v) => ({ op: "add_boolean",
+      params: { tool: v.tool, type: v.type } });
+    panel.open({
+      icon: "PartDesign_Boolean.svg",
+      title: "Combiner",
+      groups: [{
+        label: "Opération",
+        rows: [
+          { type: "select", key: "type", value: "cut",
+            options: [["cut", "Soustraire"], ["fuse", "Ajouter"],
+                      ["common", "Intersection"]] },
+          { type: "select", key: "tool", value: others[0].name,
+            label: "Corps outil",
+            options: others.map((b) => [b.name, b.label]) },
+        ],
+      }],
+      note: "S'applique au corps actif ; le corps outil est absorbé " +
+            "par l'opération.",
+      onChange: (v) => schedulePreview(build(v)),
+      onApply: (v) => refresh(call("add_boolean", build(v).params)),
+    });
+  }));
 
 document.getElementById("btn-datum").addEventListener("click", () =>
   featureCommand(() => panel.open({

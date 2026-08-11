@@ -243,6 +243,14 @@ def test_phase_b_ops_declared():
         {"op": "sketch_start", "params": {"datum": "DatumPlane"}})
 
 
+def test_multibody_ops_declared():
+    assert protocol.OPS["add_body"] == ()
+    assert protocol.OPS["set_active_body"] == ("body",)
+    assert protocol.OPS["add_boolean"] == ("tool",)
+    protocol.validate_request(
+        {"op": "add_boolean", "params": {"tool": "Body001", "type": "cut"}})
+
+
 def test_preview_wraps_an_op_and_its_params():
     op, params = protocol.validate_request(
         {"op": "preview",

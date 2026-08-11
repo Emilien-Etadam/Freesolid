@@ -19,6 +19,10 @@ OPS: dict[str, tuple[str, ...]] = {
     # paste-me-the-report loop that debugged the Qt addon.
     "selftest": (),
     "new_part": (),                    # optional: name
+    # Phase C — multi-corps.
+    "add_body": (),                    # optional: name — devient le corps actif
+    "set_active_body": ("body",),
+    "add_boolean": ("tool",),          # optional: type (cut|fuse|common)
     "undo": (),                        # une transaction = un Ctrl+Z
     "redo": (),
     "export_part": ("path",),          # .stl ou .step selon l'extension

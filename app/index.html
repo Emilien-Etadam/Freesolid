@@ -102,6 +102,8 @@
   }
   #tree li:hover { background: var(--panel-2); }
   #tree li.body { padding-left: 12px; font-weight: 600; }
+  #tree li.body.active { color: var(--accent); }
+  #tree li.body:not(.active) { color: var(--ink-2); cursor: pointer; }
   #tree li img {
     width: 15px; height: 15px;
     vertical-align: -3px; margin-right: 6px;
@@ -248,6 +250,8 @@
     <div id="ribbon-features" class="ribbon active">
       <button id="btn-sketch"><img src="icons/Sketcher_NewSketch.svg" alt="">Esquisse</button>
       <button id="btn-datum" title="Plan de référence — décalé d'un plan ou d'une face"><img src="icons/PartDesign_Plane.svg" alt="">Plan de référence</button>
+      <button id="btn-body" title="Nouveau corps — pièce multi-corps"><img src="icons/PartDesign_Body.svg" alt="">Corps</button>
+      <button id="btn-boolean" title="Combiner deux corps : Soustraire / Ajouter / Intersection"><img src="icons/PartDesign_Boolean.svg" alt="">Combiner</button>
       <div class="sep"></div>
       <button id="btn-pad" title="Bossage/Base extrudé"><img src="icons/PartDesign_Pad.svg" alt="">Bossage extrudé</button>
       <button id="btn-revolution" title="Bossage/Base avec révolution — autour de l'axe vertical de l'esquisse"><img src="icons/PartDesign_Revolution.svg" alt="">Révolution</button>

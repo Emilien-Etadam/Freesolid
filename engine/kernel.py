@@ -103,6 +103,72 @@ class Kernel:
         self._recompute()
         return self.get_tree()
 
+    # -- phase C : multi-corps -------------------------------------------
+
+    def add_body(self, name=None):
+        """Nouveau corps dans la pièce — il devient le corps actif.
+
+        SolidWorks: un corps par fonction séparée; FreeCAD: un Body
+        explicite. Les fonctions suivantes s'empilent dans ce corps.
+        """
+        doc = self._require_doc()
+        body = doc.addObject("PartDesign::Body", "Body")
+        body.Label = str(name).strip() if name else "Corps"
+        self._body = body
+        doc.recompute()
+        return self.get_tree()
+
+    def set_active_body(self, body):
+        """Changer de corps actif — les fonctions s'appliquent à lui."""
+        doc = self._require_doc()
+        obj = doc.getObject(str(body))
+        if obj is None or obj.TypeId != "PartDesign::Body":
+            raise KernelError("corps inconnu : {}".format(body))
+        self._body = obj
+        return self.get_tree()
+
+    def add_boolean(self, tool, type="cut"):
+        """Combiner deux corps — Soustraire / Ajouter / Intersection.
+
+        S'applique au corps actif; le corps outil est absorbé par
+        l'opération (comportement PartDesign).
+        """
+        body = self._require_body()
+        doc = self._require_doc()
+        tool_obj = doc.getObject(str(tool))
+        if tool_obj is None or tool_obj.TypeId != "PartDesign::Body":
+            raise KernelError("corps outil inconnu : {}".format(tool))
+        if tool_obj is body:
+            raise KernelError(
+                "un corps ne se combine pas avec lui-même — choisissez "
+                "un autre corps outil")
+        types = {"cut": "Cut", "fuse": "Fuse", "common": "Common"}
+        labels = {"cut": "Combiner — Soustraire",
+                  "fuse": "Combiner — Ajouter",
+                  "common": "Combiner — Intersection"}
+        boolean_type = types.get(str(type))
+        if boolean_type is None:
+            raise KernelError(
+                "opération inconnue « {} » — attendu cut, fuse ou "
+                "common".format(type))
+        feature = body.newObject("PartDesign::Boolean", "Boolean")
+        feature.Type = boolean_type
+        # L'API d'ajout du corps outil a changé selon les versions.
+        try:
+            feature.addObjects([tool_obj])
+        except AttributeError:
+            try:
+                feature.addObject(tool_obj)
+            except AttributeError:
+                feature.Group = [tool_obj]
+        feature.Label = labels[str(type)]
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(feature.Name)
+            raise
+        return self.get_tree()
+
     def undo(self):
         """Annuler la dernière opération — une transaction par op UI."""
         doc = self._require_doc()
@@ -303,7 +369,7 @@ class Kernel:
         "add_fillet", "add_chamfer", "add_thickness", "add_draft",
         "add_mirror", "add_linear_pattern", "add_polar_pattern",
         "add_hole", "set_params",
-        "add_loft", "add_sweep", "add_helix",
+        "add_loft", "add_sweep", "add_helix", "add_boolean",
     })
 
     def preview(self, op, params):
@@ -679,12 +745,26 @@ class Kernel:
 
     def delete_feature(self, feature):
         """Remove one feature. Its sketch stays — deleting it too would be
-        a second, separate decision, exactly as in SolidWorks."""
+        a second, separate decision, exactly as in SolidWorks. Deleting a
+        body removes its whole contents; the last body is protected."""
         doc = self._require_doc()
         obj = doc.getObject(feature)
         if obj is None:
             raise KernelError("fonction inconnue : {}".format(feature))
         label = obj.Label
+        if obj.TypeId == "PartDesign::Body":
+            bodies = [o for o in doc.Objects
+                      if o.TypeId == "PartDesign::Body"]
+            if len(bodies) <= 1:
+                raise KernelError("impossible de supprimer le dernier "
+                                  "corps de la pièce")
+            for child in list(obj.Group):
+                try:
+                    doc.removeObject(child.Name)
+                except Exception:
+                    pass
+            if self._body is obj:
+                self._body = next(b for b in bodies if b is not obj)
         doc.removeObject(obj.Name)
         try:
             self._recompute()
@@ -976,8 +1056,20 @@ class Kernel:
         planes = [{"id": wire,
                    "label": label_for_origin(self._PLANE_ROLES[wire])}
                   for wire in ("XZ", "XY", "YZ")]
+        bodies = []
+        for obj in self._doc.Objects:
+            if obj.TypeId != "PartDesign::Body":
+                continue
+            bodies.append({
+                "name": obj.Name,
+                "label": obj.Label,
+                "active": obj is body,
+                "count": len([o for o in obj.Group
+                              if o.isDerivedFrom("PartDesign::Feature")
+                              or o.TypeId == "Sketcher::SketchObject"]),
+            })
         tip = body.Tip.Name if getattr(body, "Tip", None) else None
-        return {"body": body.Label, "tip": tip,
+        return {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items}
 
     def tessellate(self, deviation=0.1):
@@ -989,13 +1081,29 @@ class Kernel:
         from . import protocol
         body = self._require_body()
         shape = getattr(body, "Shape", None)
-        if shape is None or not shape.Faces:
-            return protocol.pack_mesh([])
         faces = []
-        for i, face in enumerate(shape.Faces):
-            vertices, triangles = face.tessellate(float(deviation))
-            faces.append((i, [(v.x, v.y, v.z) for v in vertices], triangles))
-        return protocol.pack_mesh(faces)
+        if shape is not None and shape.Faces:
+            for i, face in enumerate(shape.Faces):
+                vertices, triangles = face.tessellate(float(deviation))
+                faces.append(
+                    (i, [(v.x, v.y, v.z) for v in vertices], triangles))
+        mesh = protocol.pack_mesh(faces)
+        # Les autres corps s'affichent estompés, non sélectionnables :
+        # on travaille sur le corps actif, on voit la pièce entière.
+        other_faces = []
+        for obj in self._doc.Objects:
+            if (obj.TypeId != "PartDesign::Body" or obj is body
+                    or getattr(obj, "Shape", None) is None):
+                continue
+            for face in obj.Shape.Faces:
+                vertices, triangles = face.tessellate(float(deviation))
+                other_faces.append(
+                    (0, [(v.x, v.y, v.z) for v in vertices], triangles))
+        if other_faces:
+            others = protocol.pack_mesh(other_faces)
+            mesh["others"] = {"positions": others["positions"],
+                              "indices": others["indices"]}
+        return mesh
 
     def tessellate_edges(self, deviation=0.05):
         """Per-edge polylines of the body's current shape.
@@ -2031,6 +2139,30 @@ class Kernel:
             report["p8_helix_ok"] = not any(
                 f["error"] for f in tree["features"])
 
+            mark("p9: multi-corps + Combiner (soustraction)")
+            self.new_part("Pièce multi-corps")
+            self.add_rect_sketch(40, 40)
+            self.add_pad(10)
+            first_body = self._require_body().Name
+            tree = self.add_body("Corps outil")
+            report["p9_two_bodies"] = (
+                len(tree["bodies"]) == 2
+                and any(b["active"] and b["label"] == "Corps outil"
+                        for b in tree["bodies"]))
+            state = self.sketch_start()
+            tool_sk = state["sketch"]
+            self.sketch_add_circle(tool_sk, 0, 0, 8)
+            self.sketch_finish(tool_sk)
+            self.add_pad(30)
+            report["p9_others_shown"] = "others" in self.tessellate()
+            tool_body = self._require_body().Name
+            self.set_active_body(first_body)
+            faces_before = len(self.tessellate()["groups"])
+            tree = self.add_boolean(tool=tool_body, type="cut")
+            report["p9_boolean_ok"] = (
+                not any(f["error"] for f in tree["features"])
+                and len(self.tessellate()["groups"]) > faces_before)
+
             mark("p3: arc, rainure, polygone")
             import math
             self.new_part("Pièce esquisse avancée")
@@ -2113,6 +2245,7 @@ _TRANSACTIONAL = frozenset({
     "add_revolution", "add_groove", "add_mirror", "add_linear_pattern",
     "add_polar_pattern", "add_thickness", "add_draft", "add_hole",
     "add_datum_plane", "add_loft", "add_sweep", "add_helix",
+    "add_body", "add_boolean",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",

@@ -195,13 +195,20 @@ class Kernel:
             raise KernelError("aucune esquisse disponible")
         return sketches[-1]
 
-    def add_pocket(self, length):
-        """Cut with the latest sketch — Extruded Cut, in SolidWorks terms."""
+    def add_pocket(self, length=None, through=False):
+        """Cut with the latest sketch — Extruded Cut, in SolidWorks terms.
+
+        No length (or ``through``) means « À travers tout » — the option a
+        SolidWorks hand reaches for by default on a cut.
+        """
         body = self._require_body()
         doc = self._require_doc()
         pocket = body.newObject("PartDesign::Pocket", "Pocket")
         pocket.Profile = self._latest_sketch()
-        pocket.Length = float(length)
+        if through or length is None:
+            pocket.Type = "ThroughAll"
+        else:
+            pocket.Length = float(length)
         pocket.Label = "Enlèvement de matière"
         try:
             self._recompute()
@@ -667,11 +674,11 @@ class Kernel:
             self.set_param(pad, "Length", 25.0)
             report["m0_reparam_ok"] = self.tessellate() != mesh
 
-            mark("m1: esquisse sur face + enlèvement + congé")
+            mark("m1: esquisse sur face + enlèvement à travers tout + congé")
             top = self._top_face_id()
             report["m1_top_face"] = top
             self.add_rect_sketch(40, 20, face=top)
-            self.add_pocket(10)
+            self.add_pocket(through=True)
             report["m1_pocket_faces"] = len(self.tessellate()["groups"])
             tree = self.add_fillet(self._top_face_id(), 3)
             report["m1_fillet_ok"] = not any(

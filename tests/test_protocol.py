@@ -88,7 +88,8 @@ def test_pack_mesh_coerces_to_plain_floats():
 
 
 def test_m1_ops_declare_their_required_params():
-    assert protocol.OPS["add_pocket"] == ("length",)
+    # Both optional: no length means « à travers tout ».
+    assert protocol.OPS["add_pocket"] == ()
     assert protocol.OPS["add_fillet"] == ("face", "radius")
     assert protocol.OPS["add_chamfer"] == ("face", "size")
     assert protocol.OPS["save_part"] == ("path",)
@@ -119,3 +120,9 @@ def test_m2_sketch_ops_declare_their_required_params():
     assert protocol.OPS["sketch_dim"] == ("sketch", "geo")   # value optional
     assert protocol.OPS["sketch_start"] == ()                # face optional
     assert protocol.OPS["sketch_finish"] == ("sketch",)
+
+
+def test_pocket_accepts_length_or_through():
+    protocol.validate_request({"op": "add_pocket", "params": {"length": 5}})
+    protocol.validate_request({"op": "add_pocket", "params": {"through": True}})
+    protocol.validate_request({"op": "add_pocket"})

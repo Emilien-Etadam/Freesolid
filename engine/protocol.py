@@ -21,7 +21,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "new_part": (),                    # optional: name
     "add_rect_sketch": ("width", "height"),   # optional: face (id) to attach
     "add_pad": ("length",),
-    "add_pocket": ("length",),         # cuts with the latest sketch
+    "add_pocket": (),                  # optional: length | through — sans profondeur = à travers tout
     "add_fillet": ("face", "radius"),
     "add_chamfer": ("face", "size"),
     "set_param": ("feature", "prop", "value"),

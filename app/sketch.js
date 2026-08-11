@@ -29,6 +29,7 @@ export function createSketchMode(deps) {
     tool: "select",       // select | line | circle | dim
     chain: null,          // last point of the line chain, sketch-local
     pendingCircle: null,  // center while waiting for the radius click
+    pendingRect: null,    // first corner while waiting for the second
     drag: null,           // { geo, point } while dragging
     savedCamera: null,
     matrix: new THREE.Matrix4(),
@@ -39,7 +40,7 @@ export function createSketchMode(deps) {
 
   const SNAP_PX = 12;
 
-  const CURSORS = { select: "default", line: "crosshair",
+  const CURSORS = { select: "default", line: "crosshair", rect: "crosshair",
                     circle: "crosshair", dim: "crosshair" };
 
   function setCursor(name) {
@@ -227,6 +228,15 @@ export function createSketchMode(deps) {
         safe(call("sketch_add_line", { sketch: name,
           x1: from.x, y1: from.y, x2: snapped.x, y2: snapped.y }));
       }
+    } else if (mode.tool === "rect") {
+      if (!mode.pendingRect) {
+        mode.pendingRect = { x: snapped.x, y: snapped.y };
+        say("Rectangle : cliquez le sommet opposé");
+      } else {
+        const a = mode.pendingRect;
+        mode.pendingRect = null;
+        addRectangle(name, a, snapped);
+      }
     } else if (mode.tool === "circle") {
       if (!mode.pendingCircle) {
         mode.pendingCircle = { x: snapped.x, y: snapped.y };
@@ -243,6 +253,28 @@ export function createSketchMode(deps) {
       if (target !== null) {
         safe(call("sketch_dim", { sketch: name, geo: target }));
       }
+    }
+  }
+
+  async function addRectangle(name, a, b) {
+    // Four chained lines: the server's auto-constraints close the loop
+    // (coincidents) and square it (horizontal/vertical) — exactly what
+    // drawing them by hand would earn.
+    if (a.x === b.x || a.y === b.y) {
+      say("Rectangle : les sommets doivent être en diagonale", true);
+      return;
+    }
+    try {
+      const corners = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }, a];
+      let state = null;
+      for (let i = 0; i < 4; i++) {
+        state = await call("sketch_add_line", { sketch: name,
+          x1: corners[i].x, y1: corners[i].y,
+          x2: corners[i + 1].x, y2: corners[i + 1].y });
+      }
+      applyState(state);
+    } catch (error) {
+      say(error.message, true);
     }
   }
 
@@ -305,6 +337,15 @@ export function createSketchMode(deps) {
         new THREE.Vector3(mode.chain.x, mode.chain.y, 0),
         new THREE.Vector3(snapped.x, snapped.y, 0)]);
       previewLine.visible = true;
+    } else if (mode.tool === "rect" && mode.pendingRect && previewLine) {
+      const local = toLocal(event);
+      if (!local) return;
+      const a = mode.pendingRect, b = snap(local, event);
+      previewLine.geometry.setFromPoints([
+        new THREE.Vector3(a.x, a.y, 0), new THREE.Vector3(b.x, a.y, 0),
+        new THREE.Vector3(b.x, b.y, 0), new THREE.Vector3(a.x, b.y, 0),
+        new THREE.Vector3(a.x, a.y, 0)]);
+      previewLine.visible = true;
     }
   }
 
@@ -341,6 +382,7 @@ export function createSketchMode(deps) {
     if (event.key === "Escape") {
       mode.chain = null;
       mode.pendingCircle = null;
+      mode.pendingRect = null;
       if (previewLine) previewLine.visible = false;
       setTool("select");
     } else if (event.key === "Delete") {
@@ -352,6 +394,7 @@ export function createSketchMode(deps) {
         say("Suppr : survolez d'abord la géométrie à supprimer");
       }
     } else if (event.key === "l") setTool("line");
+    else if (event.key === "r") setTool("rect");
     else if (event.key === "c") setTool("circle");
     else if (event.key === "d") setTool("dim");
   }
@@ -364,16 +407,18 @@ export function createSketchMode(deps) {
     mode.tool = tool;
     mode.chain = null;
     mode.pendingCircle = null;
+    mode.pendingRect = null;
     setCursor(CURSORS[tool] ?? "default");
     if (previewLine) previewLine.visible = false;
     for (const button of bar.querySelectorAll("button[data-tool]")) {
       button.classList.toggle("on", button.dataset.tool === tool);
     }
     const hints = {
-      select: "Sélection : glissez un point (le solveur suit)",
+      select: "Sélectionner : glissez un point (le solveur suit)",
       line: "Ligne : cliquez le premier point",
+      rect: "Rectangle par sommet : cliquez le premier sommet",
       circle: "Cercle : cliquez le centre",
-      dim: "Cote : cliquez une ligne ou un cercle",
+      dim: "Cotation intelligente : cliquez une ligne ou un cercle",
     };
     say(hints[tool]);
   }

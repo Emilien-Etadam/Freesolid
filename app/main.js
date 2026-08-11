@@ -272,9 +272,12 @@ document.getElementById("btn-sketch").addEventListener("click", () => {
 });
 
 document.getElementById("btn-pocket").addEventListener("click", () => {
-  const length = parseFloat(prompt("Profondeur de l'enlèvement (mm) :", "5") ?? "");
-  if (!length) return;
-  refresh(call("add_pocket", { length }));
+  const raw = prompt(
+    "Profondeur de l'enlèvement (mm) — vide = à travers tout :", "");
+  if (raw === null) return;
+  const length = parseFloat(raw);
+  refresh(call("add_pocket",
+    Number.isNaN(length) || raw.trim() === "" ? { through: true } : { length }));
 });
 
 function dressup(op, label, param, fallback) {

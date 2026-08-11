@@ -36,6 +36,8 @@ class Term:
 
 #: Ordered so a ribbon/toolbar built from this table reads like a
 #: CommandManager "Features" tab rather than an alphabetical dump.
+#: Audited against the SolidWorks 2025 French help (Fonctions tab) on
+#: 2026-08-03 — labels match the shipping product's terminology.
 TERMS: tuple[Term, ...] = (
     Term("PartDesign_Pad", "PartDesign::Pad",
          "Bossage/Base extrudé", "Extruded Boss/Base"),

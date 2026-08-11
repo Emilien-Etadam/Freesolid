@@ -671,6 +671,13 @@ class Kernel:
                     "id": gid, "type": "circle",
                     "c": [geo.Center.x, geo.Center.y],
                     "r": float(geo.Radius)}
+            elif geo.TypeId == "Part::GeomArcOfCircle":
+                entity = {
+                    "id": gid, "type": "arc",
+                    "c": [geo.Center.x, geo.Center.y],
+                    "r": float(geo.Radius),
+                    "p1": [geo.StartPoint.x, geo.StartPoint.y],
+                    "p2": [geo.EndPoint.x, geo.EndPoint.y]}
             else:
                 entity = {"id": gid, "type": "other", "kind": geo.TypeId}
             entity["construction"] = self._is_construction(sk, gid, geo)
@@ -702,7 +709,14 @@ class Kernel:
             "placement": [float(v) for v in matrix],
         }
 
-    def _auto_constrain_line(self, sk, gid):
+    @staticmethod
+    def _endpoints_of(geo):
+        """(Sketcher pos, point) pairs a snap can land on — lines and arcs."""
+        if geo.TypeId in ("Part::GeomLineSegment", "Part::GeomArcOfCircle"):
+            return ((1, geo.StartPoint), (2, geo.EndPoint))
+        return ()
+
+    def _auto_constrain(self, sk, gid):
         """The SolidWorks reflexes: snap becomes coincident, near-axis
         becomes horizontal/vertical.
 
@@ -712,15 +726,12 @@ class Kernel:
         import Sketcher
         C = Sketcher.Constraint
         geo = sk.Geometry[gid]
-        for pos, point in ((1, geo.StartPoint), (2, geo.EndPoint)):
+        for pos, point in self._endpoints_of(geo):
             for other in range(len(sk.Geometry)):
                 if other == gid:
                     continue
-                og = sk.Geometry[other]
-                if og.TypeId != "Part::GeomLineSegment":
-                    continue
                 matched = False
-                for opos, opoint in ((1, og.StartPoint), (2, og.EndPoint)):
+                for opos, opoint in self._endpoints_of(sk.Geometry[other]):
                     if point.distanceToPoint(opoint) < self._SNAP_TOL:
                         sk.addConstraint(C("Coincident", gid, pos,
                                            other, opos))
@@ -728,6 +739,8 @@ class Kernel:
                         break
                 if matched:
                     break
+        if geo.TypeId != "Part::GeomLineSegment":
+            return
         dx = abs(geo.EndPoint.x - geo.StartPoint.x)
         dy = abs(geo.EndPoint.y - geo.StartPoint.y)
         if dx > self._SNAP_TOL or dy > self._SNAP_TOL:  # not degenerate
@@ -742,7 +755,157 @@ class Kernel:
         V = self._app().Vector
         gid = sk.addGeometry(Part.LineSegment(
             V(float(x1), float(y1), 0), V(float(x2), float(y2), 0)), False)
-        self._auto_constrain_line(sk, gid)
+        self._auto_constrain(sk, gid)
+        return self.sketch_state(sketch)
+
+    def sketch_add_arc(self, sketch, cx, cy, r, a1, a2):
+        """Arc de cercle — angles en radians, sens trigonométrique."""
+        import Part
+        sk = self._get_sketch(sketch)
+        if float(r) <= 0:
+            raise KernelError("le rayon doit être positif")
+        App = self._app()
+        circle = Part.Circle(App.Vector(float(cx), float(cy), 0),
+                             App.Vector(0, 0, 1), float(r))
+        gid = sk.addGeometry(
+            Part.ArcOfCircle(circle, float(a1), float(a2)), False)
+        self._auto_constrain(sk, gid)
+        return self.sketch_state(sketch)
+
+    def sketch_add_slot(self, sketch, x1, y1, x2, y2, width):
+        """Rainure droite : deux arcs + deux lignes, tangences et rayons
+        égaux posés d'emblée — le contour reste une rainure sous le solveur.
+        """
+        import math
+        import Part
+        import Sketcher
+        sk = self._get_sketch(sketch)
+        w = float(width)
+        p1x, p1y, p2x, p2y = (float(v) for v in (x1, y1, x2, y2))
+        if w <= 0:
+            raise KernelError("la largeur doit être positive")
+        if math.hypot(p2x - p1x, p2y - p1y) < 1e-9:
+            raise KernelError("les deux centres de la rainure sont confondus")
+        r = w / 2.0
+        theta = math.atan2(p2y - p1y, p2x - p1x)
+        ux, uy = math.cos(theta + math.pi / 2), math.sin(theta + math.pi / 2)
+        V = self._app().Vector
+        z_axis = V(0, 0, 1)
+        base = len(sk.Geometry)
+        # Cap at p2 (CCW through +direction), top line, cap at p1, bottom.
+        sk.addGeometry(Part.ArcOfCircle(
+            Part.Circle(V(p2x, p2y, 0), z_axis, r),
+            theta - math.pi / 2, theta + math.pi / 2), False)
+        sk.addGeometry(Part.LineSegment(
+            V(p2x + r * ux, p2y + r * uy, 0),
+            V(p1x + r * ux, p1y + r * uy, 0)), False)
+        sk.addGeometry(Part.ArcOfCircle(
+            Part.Circle(V(p1x, p1y, 0), z_axis, r),
+            theta + math.pi / 2, theta + 3 * math.pi / 2), False)
+        sk.addGeometry(Part.LineSegment(
+            V(p1x - r * ux, p1y - r * uy, 0),
+            V(p2x - r * ux, p2y - r * uy, 0)), False)
+        C = Sketcher.Constraint
+        try:
+            # Endpoint-to-endpoint tangency implies coincidence: the
+            # standard Sketcher slot recipe.
+            sk.addConstraint(C("Tangent", base + 0, 2, base + 1, 1))
+            sk.addConstraint(C("Tangent", base + 1, 2, base + 2, 1))
+            sk.addConstraint(C("Tangent", base + 2, 2, base + 3, 1))
+            sk.addConstraint(C("Tangent", base + 3, 2, base + 0, 1))
+            sk.addConstraint(C("Equal", base + 0, base + 2))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_add_polygon(self, sketch, cx, cy, x, y, sides):
+        """Polygone régulier (centre + un sommet), via l'outil Sketcher."""
+        sk = self._get_sketch(sketch)
+        n = int(sides)
+        if n < 3:
+            raise KernelError("un polygone a au moins 3 côtés")
+        try:
+            from ProfileLib import RegularPolygon
+        except ImportError:
+            raise KernelError("outil polygone indisponible sur cette "
+                              "version de FreeCAD")
+        V = self._app().Vector
+        center = V(float(cx), float(cy), 0)
+        corner = V(float(x), float(y), 0)
+        try:
+            RegularPolygon.makeRegularPolygon(sk, n, center, corner, False)
+        except TypeError:
+            RegularPolygon.makeRegularPolygon(sk, n, center, corner)
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_fillet(self, sketch, geo1, geo2, x1, y1, x2, y2, radius):
+        """Congé d'esquisse entre deux lignes, aux points cliqués."""
+        sk = self._get_sketch(sketch)
+        if float(radius) <= 0:
+            raise KernelError("le rayon doit être positif")
+        V = self._app().Vector
+        try:
+            sk.fillet(int(geo1), int(geo2),
+                      V(float(x1), float(y1), 0), V(float(x2), float(y2), 0),
+                      float(radius))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_trim(self, sketch, geo, x, y):
+        """Ajuster : supprime le tronçon cliqué jusqu'aux intersections."""
+        sk = self._get_sketch(sketch)
+        V = self._app().Vector
+        try:
+            sk.trim(int(geo), V(float(x), float(y), 0))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    #: kind -> (Sketcher name, arité, exige des points)
+    _CONSTRAINT_KINDS = {
+        "horizontal": ("Horizontal", 1, False),
+        "vertical": ("Vertical", 1, False),
+        "parallel": ("Parallel", 2, False),
+        "perpendicular": ("Perpendicular", 2, False),
+        "equal": ("Equal", 2, False),
+        "tangent": ("Tangent", 2, False),
+        "coincident": ("Coincident", 2, True),
+    }
+
+    def sketch_constrain(self, sketch, kind, geo1,
+                         point1=None, geo2=None, point2=None):
+        """Contrainte manuelle. Points au sens Sketcher : 1 départ, 2 fin,
+        3 centre — requis pour coincident."""
+        import Sketcher
+        sk = self._get_sketch(sketch)
+        spec = self._CONSTRAINT_KINDS.get(str(kind))
+        if spec is None:
+            raise KernelError(
+                "contrainte inconnue « {} » — attendu : {}".format(
+                    kind, ", ".join(sorted(self._CONSTRAINT_KINDS))))
+        name, arity, needs_points = spec
+        if arity == 2 and geo2 is None:
+            raise KernelError(
+                "{} : sélectionnez deux entités".format(kind))
+        try:
+            if needs_points:
+                if point1 is None or point2 is None:
+                    raise KernelError("coïncidence : cliquez deux points "
+                                      "(extrémités ou centres)")
+                sk.addConstraint(Sketcher.Constraint(
+                    name, int(geo1), int(point1), int(geo2), int(point2)))
+            elif arity == 1:
+                sk.addConstraint(Sketcher.Constraint(name, int(geo1)))
+            else:
+                sk.addConstraint(Sketcher.Constraint(
+                    name, int(geo1), int(geo2)))
+        except KernelError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - over-constrained, mostly
+            raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
     def sketch_add_circle(self, sketch, cx, cy, r):
@@ -790,8 +953,72 @@ class Kernel:
             "aucune API de déplacement compatible sur cette version de "
             "FreeCAD (essayé : {})".format(", ".join(tried) or "aucune"))
 
-    def sketch_dim(self, sketch, geo, value=None):
-        """Smart dimension: length on a line, radius on a circle.
+    @staticmethod
+    def _point_of(geo, pos):
+        """Sketcher point convention: 1 start, 2 end, 3 center."""
+        if pos == 3:
+            return geo.Center
+        if pos == 2:
+            return geo.EndPoint
+        return geo.StartPoint
+
+    @staticmethod
+    def _distance_point_line(p, a, b):
+        import math
+        abx, aby = b.x - a.x, b.y - a.y
+        denominator = math.hypot(abx, aby)
+        if denominator < 1e-12:
+            return 0.0
+        return abs(abx * (p.y - a.y) - aby * (p.x - a.x)) / denominator
+
+    def _dim_two(self, sk, g1, g2, point, point2, value):
+        """Smart dimension between two entities — the pair decides the
+        constraint, as under the SolidWorks cursor: two points → distance,
+        point + line → distance, parallel lines → distance, otherwise angle
+        (radians on the wire; the client displays degrees)."""
+        import math
+        import Sketcher
+        C = Sketcher.Constraint
+        if point is None and point2 is not None:
+            # Normalize "line then point" to "point then line".
+            g1, g2 = g2, g1
+            point, point2 = point2, None
+        e1, e2 = sk.Geometry[g1], sk.Geometry[g2]
+        line = "Part::GeomLineSegment"
+        if point is not None and point2 is not None:
+            v1 = self._point_of(e1, int(point))
+            v2 = self._point_of(e2, int(point2))
+            distance = value if value is not None else v1.distanceToPoint(v2)
+            return C("Distance", g1, int(point), g2, int(point2),
+                     float(distance))
+        if point is not None and e2.TypeId == line:
+            v1 = self._point_of(e1, int(point))
+            distance = (value if value is not None else
+                        self._distance_point_line(
+                            v1, e2.StartPoint, e2.EndPoint))
+            return C("Distance", g1, int(point), g2, float(distance))
+        if e1.TypeId == line and e2.TypeId == line:
+            d1x = e1.EndPoint.x - e1.StartPoint.x
+            d1y = e1.EndPoint.y - e1.StartPoint.y
+            d2x = e2.EndPoint.x - e2.StartPoint.x
+            d2y = e2.EndPoint.y - e2.StartPoint.y
+            cross = d1x * d2y - d1y * d2x
+            if abs(cross) < 1e-7 * math.hypot(d1x, d1y) * math.hypot(d2x, d2y):
+                distance = (value if value is not None else
+                            self._distance_point_line(
+                                e1.StartPoint, e2.StartPoint, e2.EndPoint))
+                return C("Distance", g1, 1, g2, float(distance))
+            angle = (value if value is not None else
+                     abs(math.atan2(cross, d1x * d2x + d1y * d2y)))
+            return C("Angle", g1, g2, float(angle))
+        raise KernelError("cote non gérée entre ces deux entités — "
+                          "deux points, un point et une ligne, ou deux "
+                          "lignes")
+
+    def sketch_dim(self, sketch, geo, value=None,
+                   geo2=None, point=None, point2=None):
+        """Smart dimension: length on a line, radius on a circle or arc,
+        distance/angle between two entities.
 
         Driving, SolidWorks-style: dimension it and the geometry obeys.
         """
@@ -800,15 +1027,23 @@ class Kernel:
         gid = int(geo)
         if gid < 0 or gid >= len(sk.Geometry):
             raise KernelError("géométrie inconnue : {}".format(geo))
-        target = sk.Geometry[gid]
         try:
+            if geo2 is not None:
+                g2 = int(geo2)
+                if g2 < 0 or g2 >= len(sk.Geometry):
+                    raise KernelError("géométrie inconnue : {}".format(geo2))
+                sk.addConstraint(
+                    self._dim_two(sk, gid, g2, point, point2, value))
+                return self.sketch_state(sketch)
+            target = sk.Geometry[gid]
             if target.TypeId == "Part::GeomLineSegment":
                 length = (value if value is not None
                           else target.StartPoint.distanceToPoint(
                               target.EndPoint))
                 sk.addConstraint(Sketcher.Constraint(
                     "Distance", gid, float(length)))
-            elif target.TypeId == "Part::GeomCircle":
+            elif target.TypeId in ("Part::GeomCircle",
+                                   "Part::GeomArcOfCircle"):
                 radius = value if value is not None else target.Radius
                 sk.addConstraint(Sketcher.Constraint(
                     "Radius", gid, float(radius)))
@@ -1085,7 +1320,66 @@ class Kernel:
             report["p2_thickness_ok"] = not any(
                 f["error"] for f in tree["features"])
 
+            mark("p3: arc, rainure, polygone")
+            import math
+            self.new_part("Pièce esquisse avancée")
+            state = self.sketch_start()
+            adv = state["sketch"]
+            state = self.sketch_add_arc(adv, 0, 0, 20, 0, math.pi / 2)
+            report["p3_arc_ok"] = state["entities"][-1]["type"] == "arc"
+            before = len(state["entities"])
+            state = self.sketch_add_slot(adv, 0, -30, 40, -30, 10)
+            report["p3_slot_ok"] = len(state["entities"]) == before + 4
+            before = len(state["entities"])
+            state = self.sketch_add_polygon(adv, 80, 0, 90, 0, 6)
+            report["p3_polygon_ok"] = len(state["entities"]) >= before + 6
+            self.sketch_finish(adv)
+
+            mark("p3: congé d'esquisse")
+            state = self.sketch_start()
+            fil = state["sketch"]
+            self.sketch_add_line(fil, 0, 0, 40, 0)
+            self.sketch_add_line(fil, 40, 0, 40, 30)
+            state = self.sketch_fillet(fil, 0, 1, 30, 0, 40, 20, 5)
+            report["p3_sketch_fillet_ok"] = any(
+                e["type"] == "arc" for e in state["entities"])
+            self.sketch_finish(fil)
+
+            mark("p3: ajuster (trim)")
+            state = self.sketch_start()
+            trm = state["sketch"]
+            self.sketch_add_line(trm, 0, 0, 40, 0)      # géo 0
+            self.sketch_add_line(trm, 20, -10, 20, 10)  # géo 1, croise en (20,0)
+            state = self.sketch_trim(trm, 1, 20, 8)     # coupe la branche haute
+            top_ys = [max(e["p1"][1], e["p2"][1])
+                      for e in state["entities"] if e["type"] == "line"]
+            report["p3_trim_ok"] = all(y < 5 for y in top_ys)
+            self.sketch_finish(trm)
+
+            mark("p3: contraintes manuelles + cote à 2 entités")
+            state = self.sketch_start()
+            con = state["sketch"]
+            self.sketch_add_line(con, 0, 0, 30, 2)
+            self.sketch_add_line(con, 0, 10, 30, 14)
+            self.sketch_constrain(con, "horizontal", 0)
+            state = self.sketch_constrain(con, "parallel", 0, geo2=1)
+            line0 = next(e for e in state["entities"] if e["id"] == 0)
+            report["p3_constrain_ok"] = (
+                abs(line0["p1"][1] - line0["p2"][1]) < 1e-6)
+            state = self.sketch_dim(con, 0, geo2=1)  # parallèles → distance
+            report["p3_dim_distance_ok"] = any(
+                d["type"] == "Distance" for d in state["dims"])
+            self.sketch_add_line(con, 50, 0, 80, 0)   # géo 2
+            self.sketch_add_line(con, 50, 0, 80, 20)  # géo 3, snap en (50,0)
+            state = self.sketch_dim(con, 2, geo2=3)   # sécantes → angle
+            report["p3_dim_angle_ok"] = any(
+                d["type"] == "Angle" for d in state["dims"])
+            self.sketch_finish(con)
+
             mark("bilan")
+            # Reopen the saved part so the viewport ends on real geometry,
+            # not on the last sketch-only test document.
+            self.open_part(path)
             report["tree_after_pad"] = self.get_tree()
             mesh = self.tessellate()
             report["mesh_faces"] = len(mesh["groups"])
@@ -1111,6 +1405,8 @@ _TRANSACTIONAL = frozenset({
     "sketch_start", "sketch_add_line", "sketch_add_circle", "sketch_dim",
     "sketch_set_dim", "sketch_delete_geo", "sketch_finish",
     "sketch_toggle_construction",
+    "sketch_add_arc", "sketch_add_slot", "sketch_add_polygon",
+    "sketch_fillet", "sketch_trim", "sketch_constrain",
 })
 
 

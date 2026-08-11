@@ -114,6 +114,7 @@
     box-shadow: 0 10px 28px rgba(0,0,0,0.45);
   }
   #sketchbar button.on { border-color: var(--accent); color: var(--accent); }
+  #sketchbar .skbreak { flex-basis: 100%; height: 0; }
   #sketchbar .ok { color: #6fbf8f; }
   #sketchbar .no { color: var(--error); }
 
@@ -190,8 +191,22 @@
       <button data-tool="rect" title="Rectangle par sommet (R)"><img src="icons/Sketcher_CreateRectangle.svg" alt=""></button>
       <button data-tool="rectc" title="Rectangle par le centre"><img src="icons/Sketcher_CreateRectangle_Center.svg" alt=""></button>
       <button data-tool="circle" title="Cercle (C)"><img src="icons/Sketcher_CreateCircle.svg" alt=""></button>
-      <button data-tool="construction" title="Géométrie de construction — cliquez une entité"><img src="icons/Sketcher_ToggleConstruction.svg" alt=""></button>
-      <button data-tool="dim" title="Cotation intelligente (D) — cote pilotante"><img src="icons/Constraint_Dimension.svg" alt=""></button>
+      <button data-tool="arc" title="Arc par centre — centre, départ, arrivée"><img src="icons/Sketcher_CreateArc.svg" alt=""></button>
+      <button data-tool="arc3" title="Arc 3 points (A) — départ, arrivée, passage"><img src="icons/Sketcher_Create3PointArc.svg" alt=""></button>
+      <button data-tool="slot" title="Rainure droite — deux centres puis largeur"><img src="icons/Sketcher_CreateSlot.svg" alt=""></button>
+      <button data-tool="polygon" title="Polygone — nombre de côtés, centre, sommet"><img src="icons/Sketcher_CreateRegularPolygon.svg" alt=""></button>
+      <button data-tool="skfillet" title="Congé d'esquisse — cliquez deux lignes près du coin"><img src="icons/Sketcher_CreateFillet.svg" alt=""></button>
+      <button data-tool="trim" title="Ajuster les entités (T) — cliquez le tronçon à supprimer"><img src="icons/Sketcher_Trimming.svg" alt=""></button>
+      <button data-tool="construction" title="Géométrie de construction (G) — cliquez une entité"><img src="icons/Sketcher_ToggleConstruction.svg" alt=""></button>
+      <button data-tool="dim" title="Cotation intelligente (D) — 1 ou 2 entités, cote pilotante"><img src="icons/Constraint_Dimension.svg" alt=""></button>
+      <span class="skbreak"></span>
+      <button id="sk-c-horizontal" title="Contrainte horizontale"><img src="icons/Constraint_Horizontal.svg" alt=""></button>
+      <button id="sk-c-vertical" title="Contrainte verticale"><img src="icons/Constraint_Vertical.svg" alt=""></button>
+      <button id="sk-c-coincident" title="Contrainte coïncidente — deux points"><img src="icons/Constraint_Coincident.svg" alt=""></button>
+      <button id="sk-c-parallel" title="Contrainte parallèle"><img src="icons/Constraint_Parallel.svg" alt=""></button>
+      <button id="sk-c-perpendicular" title="Contrainte perpendiculaire"><img src="icons/Constraint_Perpendicular.svg" alt=""></button>
+      <button id="sk-c-tangent" title="Contrainte tangente"><img src="icons/Constraint_Tangent.svg" alt=""></button>
+      <button id="sk-c-equal" title="Contrainte égale"><img src="icons/Constraint_EqualLength.svg" alt=""></button>
       <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire"><img src="icons/Sketcher_LeaveSketch.svg" alt="">Terminer</button>
       <button id="sk-cancel" class="no"><img src="icons/Sketcher_CancelSketch.svg" alt="">Quitter</button>
     </div>

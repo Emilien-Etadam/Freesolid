@@ -15,13 +15,16 @@ Le nom affiché est **toujours** le terme SolidWorks 2025 français
 |---|---|---|---|
 | Vues standard (Isométrique, Face, Dessus, Droite) | client Three.js, Ctrl+7/1/5/4 | view-*.svg | **fait** |
 | Zoom au mieux | client, touche F | zoom-fit-best.svg | **fait** |
-| Annuler / Rétablir (Ctrl+Z / Ctrl+Y) | `doc.UndoMode = 1` + `doc.undo()` / `doc.redo()` | edit-undo.svg, edit-redo.svg | à faire |
-| Exporter STL / STEP | `shape.exportStl(path)` / `shape.exportStep(path)` — clé pour l'impression 3D | — | à faire |
-| Rectangle par le centre | variante du rectangle existant (centre + coin) | Sketcher_CreateRectangle_Center.svg | à faire |
-| Géométrie de construction (bascule) | `sketch.toggleConstruction(geo)` | Sketcher_ToggleConstruction.svg | à faire |
-| Esquisse sur plan nommé (Face / Dessus / Droite) | `sketch_start` avec plan d'origine au lieu d'une face | Sketcher_NewSketch.svg | à faire |
+| Annuler / Rétablir (Ctrl+Z / Ctrl+Y) | `doc.UndoMode = 1` + `doc.undo()` / `doc.redo()` | edit-undo.svg, edit-redo.svg | **fait** |
+| Exporter STL / STEP | `shape.exportStl(path)` / `shape.exportStep(path)` — clé pour l'impression 3D | document-save-as.svg | **fait** |
+| Rectangle par le centre | variante du rectangle existant (centre + coin) | Sketcher_CreateRectangle_Center.svg | **fait** |
+| Géométrie de construction (bascule) | `sketch.toggleConstruction(geo)` | Sketcher_ToggleConstruction.svg | **fait** |
+| Esquisse sur plan nommé (Face / Dessus / Droite) | `sketch_start` avec plan d'origine au lieu d'une face | Sketcher_NewSketch.svg | **fait** |
 
 ## Palier 2 — simple (op serveur + prompt, aucune interaction nouvelle)
+
+**Tout ce palier est implémenté** (2026-08-11), y compris la dépouille
+listée au palier 3.
 
 | Fonction | API FreeCAD | Icône | Notes |
 |---|---|---|---|
@@ -34,6 +37,8 @@ Le nom affiché est **toujours** le terme SolidWorks 2025 français
 | Options du bossage : inversé, plan milieu | propriétés `Reversed`, `Midplane` du Pad/Pocket | PartDesign_Pad.svg | cases dans le prompt |
 
 ## Palier 3 — simple côté serveur, petit geste client à créer
+
+**Tout ce palier est implémenté** (2026-08-11).
 
 | Fonction | API FreeCAD | Icône | Geste |
 |---|---|---|---|

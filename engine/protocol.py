@@ -51,8 +51,16 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_state": ("sketch",),
     "sketch_add_line": ("sketch", "x1", "y1", "x2", "y2"),
     "sketch_add_circle": ("sketch", "cx", "cy", "r"),
+    # Palier 3 — outils d'esquisse avancés. Angles en radians, sens trigo.
+    "sketch_add_arc": ("sketch", "cx", "cy", "r", "a1", "a2"),
+    "sketch_add_slot": ("sketch", "x1", "y1", "x2", "y2", "width"),
+    "sketch_add_polygon": ("sketch", "cx", "cy", "x", "y", "sides"),
+    "sketch_fillet": ("sketch", "geo1", "geo2",
+                      "x1", "y1", "x2", "y2", "radius"),
+    "sketch_trim": ("sketch", "geo", "x", "y"),
+    "sketch_constrain": ("sketch", "kind", "geo1"),  # optional: point1, geo2, point2
     "sketch_move": ("sketch", "geo", "point", "x", "y"),
-    "sketch_dim": ("sketch", "geo"),   # optional: value
+    "sketch_dim": ("sketch", "geo"),   # optional: value, geo2, point, point2
     "sketch_set_dim": ("sketch", "dim", "value"),
     "sketch_delete_geo": ("sketch", "geo"),
     "sketch_toggle_construction": ("sketch", "geo"),

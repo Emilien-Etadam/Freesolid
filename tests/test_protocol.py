@@ -152,6 +152,27 @@ def test_pad_accepts_direction_options():
     assert params["midplane"] is True
 
 
+def test_p3_ops_declare_their_required_params():
+    assert protocol.OPS["sketch_add_arc"] == (
+        "sketch", "cx", "cy", "r", "a1", "a2")
+    assert protocol.OPS["sketch_add_slot"] == (
+        "sketch", "x1", "y1", "x2", "y2", "width")
+    assert protocol.OPS["sketch_add_polygon"] == (
+        "sketch", "cx", "cy", "x", "y", "sides")
+    assert protocol.OPS["sketch_fillet"] == (
+        "sketch", "geo1", "geo2", "x1", "y1", "x2", "y2", "radius")
+    assert protocol.OPS["sketch_trim"] == ("sketch", "geo", "x", "y")
+    assert protocol.OPS["sketch_constrain"] == ("sketch", "kind", "geo1")
+
+
+def test_dim_accepts_second_entity():
+    op, params = protocol.validate_request(
+        {"op": "sketch_dim",
+         "params": {"sketch": "Sketch", "geo": 0, "geo2": 1,
+                    "point": 1, "point2": 2}})
+    assert params["geo2"] == 1
+
+
 def test_pocket_accepts_length_or_through():
     protocol.validate_request({"op": "add_pocket", "params": {"length": 5}})
     protocol.validate_request({"op": "add_pocket", "params": {"through": True}})

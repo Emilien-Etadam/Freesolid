@@ -90,6 +90,69 @@
     width: 15px; height: 15px;
     vertical-align: -3px; margin-right: 6px;
   }
+
+  /* PropertyManager : remplace l'arbre pendant une commande, comme SW. */
+  aside.panel-open h2, aside.panel-open #tree { display: none; }
+  #panel { display: none; }
+  aside.panel-open #panel { display: block; }
+  #panel .phead-main {
+    display: flex; align-items: center; gap: 7px;
+    padding: 9px 10px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+  }
+  #panel .phead-main img { width: 18px; height: 18px; }
+  #panel .ptitle {
+    flex: 1; font-weight: 600; font-size: 12px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #panel .pok, #panel .pcancel {
+    width: 28px; height: 28px; border-radius: 50%;
+    padding: 0; font-size: 15px; line-height: 1; flex: none;
+  }
+  #panel .pok { color: #6fbf8f; border-color: #4a7c5d; }
+  #panel .pok:hover { border-color: #6fbf8f; }
+  #panel .pcancel { color: var(--error); border-color: #8a4a45; }
+  #panel .pcancel:hover { border-color: var(--error); }
+  .pgroup {
+    border: 1px solid var(--line); border-radius: 6px;
+    margin: 8px; overflow: hidden;
+  }
+  .pgroup .phead {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--panel-2);
+    padding: 5px 9px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
+    cursor: pointer; user-select: none;
+  }
+  .pgroup .parrow { color: var(--ink-2); transition: transform 0.1s; }
+  .pgroup.closed .pbody { display: none; }
+  .pgroup.closed .parrow { transform: rotate(-90deg); }
+  .pbody { padding: 4px 0 6px; }
+  .prow { display: flex; align-items: center; gap: 6px; padding: 4px 9px; }
+  .prow label { flex: 1; color: var(--ink-2); font-size: 12px; }
+  .prow label.pcheck {
+    display: flex; align-items: center; gap: 7px;
+    color: var(--ink); cursor: pointer;
+  }
+  .prow input[type="number"], .prow select {
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 3px 6px; font: inherit; font-size: 12px;
+  }
+  .prow input[type="number"] { width: 76px; }
+  .prow select { flex: 1.4; }
+  .prow input[type="checkbox"] { accent-color: var(--accent); }
+  .prow .punit { color: var(--ink-2); font-size: 11px; }
+  .pselect-box {
+    margin: 4px 9px; padding: 6px 8px;
+    border: 1px dashed var(--line); border-radius: 4px;
+    color: var(--ink-2); font-size: 12px;
+  }
+  .pselect-box.filled {
+    border: 1px solid var(--accent); color: var(--accent);
+  }
+  .pnote { padding: 5px 12px 7px; font-size: 11px; color: var(--ink-2); }
   #tree li.error { color: var(--error); }
   #tree li .kind { color: var(--ink-2); }
   #tree li.rollback {
@@ -175,6 +238,7 @@
   <aside>
     <h2>FeatureManager</h2>
     <ul id="tree"><li class="body">— aucun document —</li></ul>
+    <div id="panel"></div>
   </aside>
 
   <main id="viewport">

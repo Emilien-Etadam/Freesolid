@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createSketchMode } from "./sketch.js";
+import { createPropertyPanel } from "./panel.js";
 
 const statusEl = document.getElementById("status");
 const pickEl = document.getElementById("pick");
@@ -26,6 +27,10 @@ function say(text, isError = false) {
   statusEl.textContent = text;
   statusEl.className = isError ? "err" : "";
 }
+
+// PropertyManager-style side panel — feature options live there, not in
+// prompt() dialogs. See panel.js for the SolidWorks anatomy.
+const panel = createPropertyPanel({ say });
 
 // ---------- viewport ----------
 
@@ -153,6 +158,8 @@ renderer.domElement.addEventListener("pointerup", (event) => {
   if (travel > 5) return;
   selectedFaceId = hoveredGroup >= 0 ? meshGroups[hoveredGroup].faceId : null;
   repaintGroups();
+  // A command panel with a selection box absorbs the pick, SolidWorks-style.
+  if (selectedFaceId !== null) panel.notifyFace(selectedFaceId);
 });
 
 function resize() {
@@ -210,6 +217,8 @@ for (const [id, view] of Object.entries(VIEWS)) {
 const VIEW_KEYS = { 1: "view-front", 4: "view-right", 5: "view-top", 7: "view-iso" };
 document.addEventListener("keydown", (event) => {
   if (sketchMode.active) return;
+  // Typing in a panel field must not trigger view shortcuts (F, Ctrl+1…).
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
   if ((event.key === "f" || event.key === "F")
       && !event.ctrlKey && !event.metaKey && !event.altKey) {
     frameView(null, null);
@@ -279,6 +288,17 @@ function renderTree(tree) {
   }
 }
 
+// Property names -> designer-facing labels for the edit panel.
+const PROP_LABELS = {
+  Length: ["Profondeur", "mm"],
+  Radius: ["Rayon", "mm"],
+  Size: ["Distance", "mm"],
+  Angle: ["Angle", "°"],
+  Thickness: ["Épaisseur", "mm"],
+  Value: ["Épaisseur", "mm"],
+  Occurrences: ["Nombre d'occurrences", ""],
+};
+
 async function editFeature(feature) {
   if (feature.type === "Sketcher::SketchObject") {
     sketchMode.enter(call("sketch_edit", { feature: feature.name }));
@@ -290,18 +310,34 @@ async function editFeature(feature) {
       say(`${info.label} : aucun paramètre numérique éditable`);
       return;
     }
-    let touched = false;
-    for (const p of info.params) {
-      const raw = prompt(`${info.label} — ${p.prop} (mm) :`, p.value);
-      if (raw === null) continue; // Annuler = garder cette valeur
-      const value = parseFloat(raw);
-      if (!Number.isNaN(value) && value !== p.value) {
-        await call("set_param",
-          { feature: feature.name, prop: p.prop, value });
-        touched = true;
-      }
-    }
-    if (touched) await refresh(call("get_tree"));
+    panel.open({
+      icon: TREE_ICONS[feature.type] ?? "PartDesign_Body.svg",
+      title: info.label,
+      groups: [{
+        label: "Paramètres",
+        rows: info.params.map((p) => {
+          const [label, unit] = PROP_LABELS[p.prop] ?? [p.prop, "mm"];
+          return { type: "number", key: p.prop, label, unit,
+                   value: p.value };
+        }),
+      }],
+      onApply: async (v) => {
+        try {
+          let touched = false;
+          for (const p of info.params) {
+            const value = parseFloat(v[p.prop]);
+            if (!Number.isNaN(value) && value !== p.value) {
+              await call("set_param",
+                { feature: feature.name, prop: p.prop, value });
+              touched = true;
+            }
+          }
+          if (touched) await refresh(call("get_tree"));
+        } catch (error) {
+          say(error.message, true);
+        }
+      },
+    });
   } catch (error) {
     say(error.message, true);
   }
@@ -376,88 +412,206 @@ document.getElementById("btn-sketch").addEventListener("click", () => {
 });
 
 document.getElementById("btn-pocket").addEventListener("click", () => {
-  const raw = prompt(
-    "Profondeur de l'enlèvement (mm) — vide = à travers tout, " +
-    "négatif = inversé :", "");
-  if (raw === null) return;
-  const value = parseFloat(raw);
-  refresh(call("add_pocket",
-    Number.isNaN(value) || raw.trim() === ""
-      ? { through: true }
-      : { length: Math.abs(value), reversed: value < 0 }));
+  panel.open({
+    icon: "PartDesign_Pocket.svg",
+    title: "Enlèvement de matière extrudé",
+    groups: [{
+      label: "Direction 1",
+      rows: [
+        { type: "select", key: "cond", value: "travers",
+          options: [["travers", "À travers tout"], ["borgne", "Borgne"]] },
+        { type: "number", key: "length", label: "Profondeur", value: 10,
+          unit: "mm", min: 0.01, showIf: (v) => v.cond === "borgne" },
+        { type: "check", key: "reversed", label: "Inverser la direction",
+          value: false },
+      ],
+    }],
+    onApply: (v) => {
+      const reversed = !!v.reversed;
+      if (v.cond === "travers") {
+        refresh(call("add_pocket", { through: true, reversed }));
+        return;
+      }
+      const length = Math.abs(parseFloat(v.length));
+      if (!length) { say("Profondeur invalide", true); return; }
+      refresh(call("add_pocket", { length, reversed }));
+    },
+  });
 });
 
-function dressup(op, label, param, fallback, unit = "mm") {
-  if (selectedFaceId === null) {
-    say(`${label} : cliquez d'abord une face de la pièce`, true);
-    return;
-  }
-  const value = parseFloat(prompt(`${label} (${unit}) :`, fallback) ?? "");
-  if (!value) return;
-  refresh(call(op, { face: selectedFaceId, [param]: value }));
+// Habillages : la zone de sélection du panneau absorbe le clic de face —
+// on peut ouvrir la commande d'abord et cliquer la face ensuite, comme
+// dans SolidWorks.
+function dressupPanel({ icon, title, selectionLabel, group, rows, build }) {
+  panel.open({
+    icon, title,
+    groups: [
+      { label: selectionLabel,
+        rows: [{ type: "selection", key: "face", value: selectedFaceId }] },
+      { label: group, rows },
+    ],
+    onApply: (v) => {
+      if (v.face === null || v.face === undefined) {
+        say(`${title} : cliquez une face de la pièce`, true);
+        return;
+      }
+      const params = build(v);
+      if (params) refresh(call(params.op, params.params));
+    },
+  });
 }
 
 document.getElementById("btn-fillet").addEventListener("click", () =>
-  dressup("add_fillet", "Rayon du congé", "radius", "3"));
+  dressupPanel({
+    icon: "PartDesign_Fillet.svg", title: "Congé",
+    selectionLabel: "Éléments à arrondir",
+    group: "Paramètres du congé",
+    rows: [{ type: "number", key: "radius", label: "Rayon", value: 3,
+             unit: "mm", min: 0.01 }],
+    build: (v) => {
+      const radius = parseFloat(v.radius);
+      if (!radius) { say("Rayon invalide", true); return null; }
+      return { op: "add_fillet", params: { face: v.face, radius } };
+    },
+  }));
 
 document.getElementById("btn-chamfer").addEventListener("click", () =>
-  dressup("add_chamfer", "Taille du chanfrein", "size", "2"));
+  dressupPanel({
+    icon: "PartDesign_Chamfer.svg", title: "Chanfrein",
+    selectionLabel: "Éléments à chanfreiner",
+    group: "Paramètres du chanfrein",
+    rows: [{ type: "number", key: "size", label: "Distance", value: 2,
+             unit: "mm", min: 0.01 }],
+    build: (v) => {
+      const size = parseFloat(v.size);
+      if (!size) { say("Distance invalide", true); return null; }
+      return { op: "add_chamfer", params: { face: v.face, size } };
+    },
+  }));
 
 document.getElementById("btn-shell").addEventListener("click", () =>
-  dressup("add_thickness", "Épaisseur de la coque", "thickness", "2"));
+  dressupPanel({
+    icon: "PartDesign_Thickness.svg", title: "Coque",
+    selectionLabel: "Faces à supprimer",
+    group: "Paramètres",
+    rows: [{ type: "number", key: "thickness", label: "Épaisseur", value: 2,
+             unit: "mm", min: 0.01 }],
+    build: (v) => {
+      const thickness = parseFloat(v.thickness);
+      if (!thickness) { say("Épaisseur invalide", true); return null; }
+      return { op: "add_thickness", params: { face: v.face, thickness } };
+    },
+  }));
 
 document.getElementById("btn-draft").addEventListener("click", () =>
-  dressup("add_draft",
-    "Angle de dépouille — plan neutre : Plan de dessus", "angle", "3", "°"));
+  dressupPanel({
+    icon: "PartDesign_Draft.svg", title: "Dépouille",
+    selectionLabel: "Faces à dépouiller",
+    group: "Angle de dépouille",
+    rows: [
+      { type: "number", key: "angle", label: "Angle", value: 3,
+        unit: "°", min: 0.01 },
+      { type: "note", text: "Plan neutre : Plan de dessus" },
+    ],
+    build: (v) => {
+      const angle = parseFloat(v.angle);
+      if (!angle) { say("Angle invalide", true); return null; }
+      return { op: "add_draft", params: { face: v.face, angle } };
+    },
+  }));
 
-function revolved(op, label) {
-  const raw = prompt(`${label} — angle (°) :`, "360");
-  if (raw === null) return;
-  const angle = parseFloat(raw);
-  if (!angle) return;
-  const params = { angle };
-  if (sketchMode.lastFinished) params.sketch = sketchMode.lastFinished;
-  refresh(call(op, params));
+function revolvedPanel(op, icon, title) {
+  panel.open({
+    icon, title,
+    groups: [{
+      label: "Direction 1",
+      rows: [
+        { type: "number", key: "angle", label: "Angle", value: 360,
+          unit: "°", min: 0.01 },
+      ],
+    }],
+    note: "Axe de révolution : l'axe vertical de l'esquisse",
+    onApply: (v) => {
+      const angle = parseFloat(v.angle);
+      if (!angle) { say("Angle invalide", true); return; }
+      const params = { angle };
+      if (sketchMode.lastFinished) params.sketch = sketchMode.lastFinished;
+      refresh(call(op, params));
+    },
+  });
 }
 
 document.getElementById("btn-revolution").addEventListener("click", () =>
-  revolved("add_revolution", "Bossage avec révolution"));
+  revolvedPanel("add_revolution", "PartDesign_Revolution.svg",
+                "Bossage/Base avec révolution"));
 
 document.getElementById("btn-groove").addEventListener("click", () =>
-  revolved("add_groove", "Enlèvement avec révolution"));
+  revolvedPanel("add_groove", "PartDesign_Groove.svg",
+                "Enlèvement de matière avec révolution"));
 
 document.getElementById("btn-mirror").addEventListener("click", () => {
-  const raw = prompt(
-    "Symétrie de la dernière fonction — plan : droite / face / dessus",
-    "droite");
-  if (raw === null) return;
-  const plane = SKETCH_PLANES[raw.trim().toLowerCase()];
-  if (!plane) {
-    say("Plan inconnu — répondez droite, face ou dessus", true);
-    return;
-  }
-  refresh(call("add_mirror", { plane }));
+  panel.open({
+    icon: "PartDesign_Mirrored.svg",
+    title: "Symétrie",
+    groups: [{
+      label: "Plan de symétrie",
+      rows: [
+        { type: "select", key: "plane", value: "YZ",
+          options: [["YZ", "Plan de droite"], ["XZ", "Plan de face"],
+                    ["XY", "Plan de dessus"]] },
+      ],
+    }],
+    note: "S'applique à la dernière fonction (bossage ou enlèvement)",
+    onApply: (v) => refresh(call("add_mirror", { plane: v.plane })),
+  });
 });
 
 document.getElementById("btn-linpattern").addEventListener("click", () => {
-  const axis = prompt("Répétition linéaire — direction (X / Y / Z) :", "X");
-  if (axis === null) return;
-  const length = parseFloat(
-    prompt("Longueur totale de la répétition (mm) :", "40") ?? "");
-  if (!length) return;
-  const count = parseInt(prompt("Nombre d'occurrences :", "3") ?? "", 10);
-  if (!count) return;
-  refresh(call("add_linear_pattern",
-    { axis: axis.trim().toUpperCase(), length, count }));
+  panel.open({
+    icon: "PartDesign_LinearPattern.svg",
+    title: "Répétition linéaire",
+    groups: [{
+      label: "Direction 1",
+      rows: [
+        { type: "select", key: "axis", value: "X", label: "Direction",
+          options: [["X", "Axe X"], ["Y", "Axe Y"], ["Z", "Axe Z"]] },
+        { type: "number", key: "length", label: "Longueur totale",
+          value: 40, unit: "mm", min: 0.01 },
+        { type: "number", key: "count", label: "Nombre d'occurrences",
+          value: 3, min: 2, step: 1 },
+      ],
+    }],
+    note: "S'applique à la dernière fonction (bossage ou enlèvement)",
+    onApply: (v) => {
+      const length = parseFloat(v.length);
+      const count = parseInt(v.count, 10);
+      if (!length || !count) { say("Valeurs invalides", true); return; }
+      refresh(call("add_linear_pattern", { axis: v.axis, length, count }));
+    },
+  });
 });
 
 document.getElementById("btn-polpattern").addEventListener("click", () => {
-  const count = parseInt(
-    prompt("Répétition circulaire — nombre d'occurrences :", "4") ?? "", 10);
-  if (!count) return;
-  const angle = parseFloat(prompt("Angle total (°) :", "360") ?? "");
-  if (!angle) return;
-  refresh(call("add_polar_pattern", { count, angle }));
+  panel.open({
+    icon: "PartDesign_PolarPattern.svg",
+    title: "Répétition circulaire",
+    groups: [{
+      label: "Direction 1",
+      rows: [
+        { type: "number", key: "angle", label: "Angle", value: 360,
+          unit: "°", min: 0.01 },
+        { type: "number", key: "count", label: "Nombre d'occurrences",
+          value: 4, min: 2, step: 1 },
+      ],
+    }],
+    note: "Axe : Z — s'applique à la dernière fonction",
+    onApply: (v) => {
+      const angle = parseFloat(v.angle);
+      const count = parseInt(v.count, 10);
+      if (!angle || !count) { say("Valeurs invalides", true); return; }
+      refresh(call("add_polar_pattern", { count, angle }));
+    },
+  });
 });
 
 document.getElementById("btn-open").addEventListener("click", async () => {
@@ -500,18 +654,29 @@ document.getElementById("btn-export").addEventListener("click", async () => {
 });
 
 document.getElementById("btn-pad").addEventListener("click", () => {
-  const raw = prompt(
-    "Profondeur (mm) — « 10m » = plan milieu, négatif = inversé :", "10");
-  if (raw === null) return;
-  const value = parseFloat(raw);
-  if (!value) return;
-  const params = {
-    length: Math.abs(value),
-    reversed: value < 0,
-    midplane: /m\s*$/i.test(raw.trim()),
-  };
-  if (sketchMode.lastFinished) params.sketch = sketchMode.lastFinished;
-  refresh(call("add_pad", params));
+  panel.open({
+    icon: "PartDesign_Pad.svg",
+    title: "Bossage/Base extrudé",
+    groups: [{
+      label: "Direction 1",
+      rows: [
+        { type: "select", key: "cond", value: "borgne",
+          options: [["borgne", "Borgne"], ["milieu", "Plan milieu"]] },
+        { type: "number", key: "length", label: "Profondeur", value: 10,
+          unit: "mm", min: 0.01 },
+        { type: "check", key: "reversed", label: "Inverser la direction",
+          value: false, showIf: (v) => v.cond !== "milieu" },
+      ],
+    }],
+    onApply: (v) => {
+      const length = Math.abs(parseFloat(v.length));
+      if (!length) { say("Profondeur invalide", true); return; }
+      const params = { length, reversed: !!v.reversed,
+                       midplane: v.cond === "milieu" };
+      if (sketchMode.lastFinished) params.sketch = sketchMode.lastFinished;
+      refresh(call("add_pad", params));
+    },
+  });
 });
 
 document.getElementById("btn-selftest").addEventListener("click", async () => {

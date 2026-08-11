@@ -541,6 +541,12 @@ new ResizeObserver(resize).observe(container);
 
 renderer.setAnimationLoop(() => {
   controls.update();
+  if (explodeFactor !== explodeTarget) {
+    const step = 0.06;
+    explodeFactor += Math.sign(explodeTarget - explodeFactor)
+      * Math.min(step, Math.abs(explodeTarget - explodeFactor));
+    applyExplode();
+  }
   renderer.render(scene, camera);
 });
 
@@ -982,6 +988,79 @@ async function featureCommand(openPanel) {
   openPanel();
 }
 
+// ---------- gravure de texte ----------
+
+document.getElementById("btn-text").addEventListener("click", () =>
+  featureCommand(() => dressupPanel({
+    icon: "Draft_ShapeString.svg", title: "Texte",
+    selectionLabel: "Face d'appui",
+    group: "Texte",
+    rows: [
+      { type: "text", key: "content", label: "Texte", value: "",
+        placeholder: "REF-001" },
+      { type: "number", key: "size", label: "Hauteur", value: 8,
+        unit: "mm", min: 0.1 },
+      { type: "number", key: "depth", label: "Profondeur", value: 1,
+        unit: "mm", min: 0.01 },
+      { type: "check", key: "emboss", label: "En relief (bossage)",
+        value: false },
+      { type: "number", key: "x", label: "Décalage X", value: 0,
+        unit: "mm" },
+      { type: "number", key: "y", label: "Décalage Y", value: 0,
+        unit: "mm" },
+    ],
+    build: (v) => {
+      const content = (v.content ?? "").trim();
+      const size = parseFloat(v.size);
+      const depth = parseFloat(v.depth);
+      if (!content || !(size > 0) || !(depth > 0)) return null;
+      return { op: "add_text", params: {
+        text: content, face: v.sel.face, size, depth,
+        x: parseFloat(v.x) || 0, y: parseFloat(v.y) || 0,
+        emboss: !!v.emboss } };
+    },
+  })));
+
+// ---------- plan de coupe visuel ----------
+
+function setClip(axis, position, flip) {
+  if (!axis || axis === "off") {
+    renderer.clippingPlanes = [];
+    say("Plan de coupe désactivé.");
+    return;
+  }
+  const normals = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] };
+  const n = new THREE.Vector3(...normals[axis]);
+  if (flip) n.negate();
+  renderer.clippingPlanes = [
+    new THREE.Plane(n, flip ? position : -position)];
+  say(`Coupe ${axis} à ${position} mm — purement visuelle.`);
+}
+
+document.getElementById("btn-clip").addEventListener("click", () => {
+  const active = renderer.clippingPlanes.length > 0;
+  panel.open({
+    icon: "Std_ToggleClipPlane.svg",
+    title: "Plan de coupe",
+    groups: [{
+      label: "Coupe visuelle",
+      rows: [
+        { type: "select", key: "axis", value: active ? "X" : "X",
+          label: "Axe",
+          options: [["off", "Aucune"], ["X", "X"], ["Y", "Y"],
+                    ["Z", "Z"]] },
+        { type: "number", key: "position", label: "Position", value: 0,
+          unit: "mm", showIf: (v) => v.axis !== "off" },
+        { type: "check", key: "flip", label: "Inverser le côté",
+          value: false, showIf: (v) => v.axis !== "off" },
+      ],
+    }],
+    note: "N'enlève pas de matière : la pièce est seulement montrée " +
+          "coupée à l'écran.",
+    onApply: (v) => setClip(v.axis, parseFloat(v.position) || 0, !!v.flip),
+  });
+});
+
 // ---------- surfaces (phase D) ----------
 
 function surfacePanel(id, { icon, title, rows, note, build }) {
@@ -1151,6 +1230,7 @@ function showAssemblyMeshes(data) {
     asmGroup.add(mesh);
   }
   scene.add(asmGroup);
+  computeExplodeDirs(); // la vue éclatée survit aux reconstructions
 }
 
 function selectComponent(name) {
@@ -1303,6 +1383,7 @@ document.getElementById("btn-joint").addEventListener("click", () => {
     say("Contrainte : insérez au moins deux composants", true);
     return;
   }
+  const MECHANICAL = ["engrenages", "cremaillere", "vis", "courroie"];
   const build = (v) => {
     if (!v.a || !v.b || v.a.component === v.b.component) return null;
     const params = {
@@ -1310,10 +1391,15 @@ document.getElementById("btn-joint").addEventListener("click", () => {
       sub1: `Face${v.a.face + 1}`, sub2: `Face${v.b.face + 1}`,
       type: v.type,
     };
-    if (v.type === "distance") {
+    if (v.type === "distance" || MECHANICAL.includes(v.type)) {
       const d = parseFloat(v.distance);
       if (!(d >= 0)) return null;
       params.distance = d;
+      if (["engrenages", "courroie"].includes(v.type)) {
+        const d2 = parseFloat(v.distance2);
+        if (!(d2 >= 0)) return null;
+        params.distance2 = d2;
+      }
     }
     return params;
   };
@@ -1327,9 +1413,23 @@ document.getElementById("btn-joint").addEventListener("click", () => {
             options: [["fixe", "Fixe"], ["pivot", "Pivot"],
                       ["cylindrique", "Cylindrique"],
                       ["glissiere", "Glissière"], ["rotule", "Rotule"],
-                      ["distance", "Distance"]] },
-          { type: "number", key: "distance", label: "Distance", value: 10,
-            unit: "mm", min: 0, showIf: (v) => v.type === "distance" },
+                      ["distance", "Distance"],
+                      ["engrenages", "Engrenages"],
+                      ["cremaillere", "Crémaillère-pignon"],
+                      ["vis", "Vis"], ["courroie", "Courroie"]] },
+          { type: "number", key: "distance",
+            label: "Distance / rayon 1 / pas", value: 10,
+            unit: "mm", min: 0,
+            showIf: (v) => v.type === "distance"
+              || MECHANICAL.includes(v.type) },
+          { type: "number", key: "distance2", label: "Rayon 2", value: 10,
+            unit: "mm", min: 0,
+            showIf: (v) => ["engrenages", "courroie"].includes(v.type) },
+          { type: "note",
+            text: "Mécaniques : posez d'abord les pivots des deux " +
+                  "composants, la contrainte couple ensuite leurs " +
+                  "mouvements.",
+            showIf: (v) => MECHANICAL.includes(v.type) },
         ] },
       { label: "Élément 1",
         rows: [{ type: "selection", key: "a", accepts: ["asmface"],
@@ -1357,6 +1457,77 @@ document.getElementById("btn-solve").addEventListener("click", () => {
     return;
   }
   refreshAssembly(call("solve_assembly"));
+});
+
+document.getElementById("btn-interf").addEventListener("click", async () => {
+  if (!assemblyState) {
+    say("Créez d'abord un assemblage", true);
+    return;
+  }
+  try {
+    const result = await call("check_interference");
+    if (!result.interferences.length) {
+      say("Aucune interférence entre les composants ✓");
+      return;
+    }
+    panel.open({
+      icon: "Geoassembly.svg",
+      title: "Interférences",
+      groups: [{
+        label: `${result.interferences.length} interférence(s)`,
+        rows: [{ type: "list",
+          items: result.interferences.map((p) => ({
+            label: `${p.a} ↔ ${p.b} : ` +
+              `${(p.volume_mm3 / 1000).toFixed(3)} cm³`,
+          })) }],
+      }],
+      note: "Volume commun réel (booléen OCCT) — à résoudre avant " +
+            "impression.",
+      onApply: () => {},
+    });
+  } catch (error) {
+    say(error.message, true);
+  }
+});
+
+// ---------- vue éclatée (visuelle) ----------
+
+let explodeFactor = 0;
+let explodeTarget = 0;
+
+function applyExplode() {
+  if (!asmGroup) return;
+  for (const mesh of asmGroup.children) {
+    const dir = mesh.userData.explodeDir;
+    if (dir) mesh.position.copy(dir).multiplyScalar(explodeFactor);
+  }
+}
+
+function computeExplodeDirs() {
+  if (!asmGroup || !asmGroup.children.length) return;
+  const centers = asmGroup.children.map((mesh) => {
+    mesh.geometry.computeBoundingSphere();
+    return mesh.geometry.boundingSphere.center.clone();
+  });
+  const global = centers.reduce((a, c) => a.add(c),
+    new THREE.Vector3()).divideScalar(centers.length);
+  asmGroup.children.forEach((mesh, i) => {
+    const dir = centers[i].clone().sub(global);
+    if (dir.length() < 1e-6) dir.set(0, 0, 1); // composants superposés
+    mesh.userData.explodeDir = dir.multiplyScalar(0.9);
+  });
+  applyExplode();
+}
+
+document.getElementById("btn-explode").addEventListener("click", () => {
+  if (!assemblyState) {
+    say("Créez d'abord un assemblage", true);
+    return;
+  }
+  explodeTarget = explodeTarget ? 0 : 1;
+  say(explodeTarget
+    ? "Vue éclatée — purement visuelle, re-cliquez pour rassembler"
+    : "Vue rassemblée.");
 });
 
 // ---------- actions ----------

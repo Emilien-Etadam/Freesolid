@@ -222,7 +222,8 @@ class Kernel:
                 joint.ObjectToGround = link
         joint.Label = "Fixé — {}".format(link.Label)
 
-    #: nos noms -> l'énumération JointType du module natif.
+    #: nos noms -> l'énumération JointType du module natif. Les quatre
+    #: derniers sont les contraintes mécaniques (vues dans le spike).
     _JOINT_TYPES = {
         "fixe": "Fixed", "fixed": "Fixed",
         "pivot": "Revolute",
@@ -230,10 +231,14 @@ class Kernel:
         "glissiere": "Slider",
         "rotule": "Ball",
         "distance": "Distance",
+        "engrenages": "Gears",
+        "cremaillere": "RackPinion",
+        "vis": "Screw",
+        "courroie": "Belt",
     }
 
     def add_joint(self, component1, component2, type="fixe",
-                  sub1=None, sub2=None, distance=None):
+                  sub1=None, sub2=None, distance=None, distance2=None):
         """Contrainte d'assemblage entre deux composants, résolue par le
         solveur natif (MbD). ``sub1``/``sub2`` : sous-élément visé
         (« Face3 », « Edge5 ») — la face cliquée dans la zone graphique.
@@ -294,11 +299,15 @@ class Kernel:
             if not assigned:
                 doc.removeObject(joint.Name)
                 raise KernelError(_explain(last_error))
-        if target == "Distance" and distance is not None:
+        if distance is not None and hasattr(joint, "Distance"):
             joint.Distance = float(distance)
+        if distance2 is not None and hasattr(joint, "Distance2"):
+            joint.Distance2 = float(distance2)
         labels = {"Fixed": "Fixe", "Revolute": "Pivot",
                   "Cylindrical": "Cylindrique", "Slider": "Glissière",
-                  "Ball": "Rotule", "Distance": "Distance"}
+                  "Ball": "Rotule", "Distance": "Distance",
+                  "Gears": "Engrenages", "RackPinion": "Crémaillère",
+                  "Screw": "Vis", "Belt": "Courroie"}
         joint.Label = "{} — {} / {}".format(
             labels.get(target, target),
             links[component1].Label, links[component2].Label)
@@ -398,6 +407,34 @@ class Kernel:
             components.append({"name": obj.Name, "label": obj.Label,
                                "mesh": protocol.pack_mesh(faces)})
         return {"components": components}
+
+    def check_interference(self):
+        """Détection d'interférences : volume commun de chaque paire de
+        composants — le contrôle avant impression d'un assemblage."""
+        doc = self._require_assembly()
+        shapes = []
+        for obj in doc.Objects:
+            if obj.TypeId != "App::Link":
+                continue
+            linked = getattr(obj, "LinkedObject", None)
+            shape = getattr(linked, "Shape", None)
+            if shape is None or not shape.Solids:
+                continue
+            moved = shape.copy()
+            moved.Placement = obj.Placement.multiply(moved.Placement)
+            shapes.append((obj.Label, moved))
+        pairs = []
+        for i in range(len(shapes)):
+            for j in range(i + 1, len(shapes)):
+                try:
+                    volume = float(
+                        shapes[i][1].common(shapes[j][1]).Volume)
+                except Exception:
+                    continue
+                if volume > 1e-6:
+                    pairs.append({"a": shapes[i][0], "b": shapes[j][0],
+                                  "volume_mm3": volume})
+        return {"interferences": pairs}
 
     def spike_assembly(self):
         """Rapport d'exploration : l'atelier Assembly 1.x est-il utilisable
@@ -675,6 +712,106 @@ class Kernel:
         if not os.path.exists(path):
             raise KernelError("l'export DXF n'a rien produit")
         return {"path": path, "size": os.path.getsize(path)}
+
+    # -- gravure de texte -------------------------------------------------
+
+    _FONT_CANDIDATES = (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    )
+
+    def _find_font(self, font=None):
+        import glob as globmod
+        if font:
+            path = os.path.expanduser(str(font))
+            if os.path.exists(path):
+                return path
+            raise KernelError("police introuvable : {}".format(path))
+        for candidate in self._FONT_CANDIDATES:
+            if os.path.exists(candidate):
+                return candidate
+        found = globmod.glob("/usr/share/fonts/**/*.ttf", recursive=True)
+        if found:
+            return sorted(found)[0]
+        raise KernelError("aucune police .ttf sur ce système — passez "
+                          "font=/chemin/vers/police.ttf")
+
+    def add_text(self, text, face, size=8.0, depth=1.0, x=0.0, y=0.0,
+                 emboss=False, font=None):
+        """Gravure (ou bossage) de texte sur une face plane — marquage de
+        pièces. Le texte devient un corps outil combiné dans l'historique
+        (soustraction pour graver, ajout pour embosser)."""
+        import Part
+        App = self._app()
+        body = self._require_body()
+        doc = self._require_doc()
+        text = str(text)
+        if not text.strip():
+            raise KernelError("texte vide")
+        faces = body.Shape.Faces
+        index = int(face)
+        if index < 0 or index >= len(faces):
+            raise KernelError("face inconnue : {}".format(face))
+        target = faces[index]
+        u0, u1, v0, v1 = target.ParameterRange
+        normal = target.normalAt((u0 + u1) / 2, (v0 + v1) / 2).normalize()
+        center = target.CenterOfMass
+        base = App.Placement(center, App.Rotation(App.Vector(0, 0, 1),
+                                                  normal))
+        chars = Part.makeWireString(text, self._find_font(font),
+                                    float(size), 0)
+        glyph_faces = []
+        for char_wires in chars:
+            if not char_wires:
+                continue
+            try:
+                glyph_faces.append(Part.Face(char_wires))
+            except Exception:
+                for wire in char_wires:
+                    glyph_faces.append(Part.Face(wire))
+        if not glyph_faces:
+            raise KernelError("la police n'a rien produit pour ce texte")
+        compound = Part.makeCompound(glyph_faces)
+        box = compound.BoundBox
+        compound.translate(App.Vector(
+            -(box.XMin + box.XMax) / 2 + float(x),
+            -(box.YMin + box.YMax) / 2 + float(y), 0))
+        compound.Placement = base.multiply(compound.Placement)
+        margin = 0.2
+        if emboss:
+            vector = normal * float(depth)
+        else:
+            # dépasse légèrement la surface pour une coupe franche
+            compound.translate(normal * margin)
+            vector = normal * (-(float(depth) + margin))
+        solids = [f.extrude(vector) for f in compound.Faces]
+        text_solid = solids[0]
+        for solid in solids[1:]:
+            text_solid = text_solid.fuse(solid)
+        shape_feature = doc.addObject("Part::Feature", "TextShape")
+        shape_feature.Shape = text_solid
+        shape_feature.Label = "Forme du texte"
+        tool_body = doc.addObject("PartDesign::Body", "TextBody")
+        tool_body.Label = "Corps texte"
+        tool_body.BaseFeature = shape_feature
+        doc.recompute()
+        try:
+            self.add_boolean(tool=tool_body.Name,
+                             type="fuse" if emboss else "cut")
+        except KernelError:
+            for name in (tool_body.Name, shape_feature.Name):
+                try:
+                    doc.removeObject(name)
+                except Exception:
+                    pass
+            doc.recompute()
+            raise
+        tip = getattr(body, "Tip", None)
+        if tip is not None:
+            tip.Label = "{} « {} »".format(
+                "Texte en relief" if emboss else "Gravure", text[:15])
+        return self.get_tree()
 
     # -- phase E : évaluer ------------------------------------------------
 
@@ -995,7 +1132,7 @@ class Kernel:
         "add_fillet", "add_chamfer", "add_thickness", "add_draft",
         "add_mirror", "add_linear_pattern", "add_polar_pattern",
         "add_hole", "set_params",
-        "add_loft", "add_sweep", "add_helix", "add_boolean",
+        "add_loft", "add_sweep", "add_helix", "add_boolean", "add_text",
     })
 
     def preview(self, op, params):
@@ -2420,6 +2557,104 @@ class Kernel:
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
+    def sketch_convert(self, sketch, face=None):
+        """Convertir les entités : le contour d'une face devient de la
+        géométrie d'esquisse réelle, bloquée (Block) — le geste SolidWorks
+        « esquisse sur face → convertir → décaler/modifier ».
+
+        Sans ``face``, la face porteuse de l'esquisse est utilisée.
+        Lignes, cercles et arcs parallèles au plan sont convertis ; le
+        reste est compté dans ``skipped``.
+        """
+        import math
+        import Part
+        import Sketcher
+        sk = self._get_sketch(sketch)
+        body = self._require_body()
+        target = None
+        if face is not None:
+            faces = body.Shape.Faces
+            index = int(face)
+            if index < 0 or index >= len(faces):
+                raise KernelError("face inconnue : {}".format(face))
+            target = faces[index]
+        else:
+            support = (getattr(sk, "AttachmentSupport", None)
+                       or getattr(sk, "Support", None))
+            try:
+                for obj, subs in list(support or ()):
+                    for sub in subs:
+                        if str(sub).startswith("Face"):
+                            target = obj.Shape.Faces[int(str(sub)[4:]) - 1]
+                            break
+                    if target is not None:
+                        break
+            except Exception:
+                target = None
+            if target is None:
+                raise KernelError(
+                    "l'esquisse n'est pas posée sur une face — cliquez "
+                    "d'abord une face, ou passez face=<id>")
+        inverse = sk.Placement.inverse()
+        V = self._app().Vector
+        C = Sketcher.Constraint
+        added = skipped = 0
+        for edge in target.Edges:
+            curve = edge.Curve
+            kind = type(curve).__name__
+            gid = None
+            try:
+                if kind == "Line":
+                    p1 = inverse.multVec(edge.Vertexes[0].Point)
+                    p2 = inverse.multVec(edge.Vertexes[-1].Point)
+                    if p1.distanceToPoint(p2) < 1e-9:
+                        skipped += 1
+                        continue
+                    gid = sk.addGeometry(Part.LineSegment(
+                        V(p1.x, p1.y, 0), V(p2.x, p2.y, 0)), False)
+                elif kind == "Circle":
+                    axis_local = inverse.Rotation.multVec(curve.Axis)
+                    if abs(axis_local.z) < 0.99:
+                        skipped += 1
+                        continue
+                    center = inverse.multVec(curve.Center)
+                    circle = Part.Circle(V(center.x, center.y, 0),
+                                         V(0, 0, 1), curve.Radius)
+                    if edge.isClosed():
+                        gid = sk.addGeometry(circle, False)
+                    else:
+                        s = inverse.multVec(edge.Vertexes[0].Point)
+                        e = inverse.multVec(edge.Vertexes[-1].Point)
+                        m = inverse.multVec(edge.valueAt(
+                            (edge.FirstParameter + edge.LastParameter) / 2))
+                        a_s = math.atan2(s.y - center.y, s.x - center.x)
+                        a_e = math.atan2(e.y - center.y, e.x - center.x)
+                        a_m = math.atan2(m.y - center.y, m.x - center.x)
+
+                        def onward(a, start):
+                            return a + 2 * math.pi if a <= start else a
+                        if onward(a_m, a_s) < onward(a_e, a_s):
+                            a1, a2 = a_s, onward(a_e, a_s)
+                        else:
+                            a1, a2 = a_e, onward(a_s, a_e)
+                        gid = sk.addGeometry(
+                            Part.ArcOfCircle(circle, a1, a2), False)
+                else:
+                    skipped += 1
+                    continue
+            except Exception:
+                skipped += 1
+                continue
+            sk.addConstraint(C("Block", gid))
+            added += 1
+        if not added:
+            raise KernelError("aucune arête convertible sur cette face "
+                              "(lignes, cercles, arcs)")
+        state = self.sketch_state(sketch)
+        state["converted"] = added
+        state["skipped"] = skipped
+        return state
+
     def sketch_finish(self, sketch):
         """Close the sketch: recompute and hand back the feature tree."""
         self._get_sketch(sketch)
@@ -2886,6 +3121,11 @@ class Kernel:
                 or abs(comp2["position"][2] - 10) > 1e-6
                 or abs(comp2["rotation"][0] - 45) > 1e-6)
 
+            mark("p16: interférences (les instances se chevauchent)")
+            inter = self.check_interference()
+            report["p16_interference_found"] = (
+                len(inter["interferences"]) >= 1)
+
             mark("p11: évaluer (masse PLA) + mesurer")
             self.new_part("Pièce évaluée")
             self.add_rect_sketch(10, 10)
@@ -2948,6 +3188,28 @@ class Kernel:
             dxf = os.path.join(tempfile.gettempdir(),
                                "freesolid-selftest.dxf")
             report["p13_drawing_ok"] = self.make_drawing(dxf)["size"] > 0
+
+            mark("p14: convertir les entités (contour de face)")
+            self.new_part("Pièce conversion")
+            self.add_rect_sketch(30, 20)
+            self.add_pad(6)
+            state = self.sketch_start(face=self._top_face_id())
+            conv = state["sketch"]
+            state = self.sketch_convert(conv)
+            report["p14_convert_ok"] = (
+                state["converted"] == 4 and state["skipped"] == 0)
+            self.sketch_finish(conv)
+
+            mark("p15: gravure de texte")
+            self.new_part("Pièce gravée")
+            self.add_rect_sketch(60, 20)
+            self.add_pad(5)
+            faces_now = len(self.tessellate()["groups"])
+            tree = self.add_text("AB", face=self._top_face_id(),
+                                 size=8, depth=1)
+            report["p15_text_ok"] = (
+                not any(f["error"] for f in tree["features"])
+                and len(self.tessellate()["groups"]) > faces_now)
 
             mark("p3: arc, rainure, polygone")
             import math
@@ -3034,7 +3296,7 @@ _TRANSACTIONAL = frozenset({
     "add_body", "add_boolean",
     "insert_component", "move_component", "add_joint", "solve_assembly",
     "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
-    "surface_thicken", "add_curve3d",
+    "surface_thicken", "add_curve3d", "sketch_convert", "add_text",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",

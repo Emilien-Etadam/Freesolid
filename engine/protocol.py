@@ -46,6 +46,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "mass_properties": (),             # optional: density (g/cm³)
     "measure": ("a_kind", "a_id", "b_kind", "b_id"),  # face|edge + id
     "make_drawing": ("path",),         # optional: scale — 3 vues, export DXF
+    "add_text": ("text", "face"),      # optional: size, depth, x, y, emboss, font
+    "check_interference": (),          # assemblage : volumes communs par paires
     "undo": (),                        # une transaction = un Ctrl+Z
     "redo": (),
     "export_part": ("path",),          # .stl ou .step selon l'extension
@@ -109,6 +111,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_delete_constraint": ("sketch", "constraint"),
     "sketch_delete_geo": ("sketch", "geo"),
     "sketch_toggle_construction": ("sketch", "geo"),
+    "sketch_convert": ("sketch",),     # optional: face — contour projeté, bloqué
     "sketch_finish": ("sketch",),
 }
 

@@ -819,6 +819,19 @@ export function createSketchMode(deps) {
 
   document.getElementById("sk-relations")
     .addEventListener("click", openRelationsPanel);
+
+  // Convertir les entités : le contour de la face porteuse arrive en
+  // géométrie réelle bloquée — le point de départ SolidWorks classique.
+  document.getElementById("sk-convert").addEventListener("click", () => {
+    if (!mode.active || !mode.state) return;
+    call("sketch_convert", { sketch: mode.state.sketch })
+      .then((state) => {
+        applyState(state);
+        say(`Converti : ${state.converted} entité(s)`
+          + (state.skipped ? ` — ${state.skipped} ignorée(s)` : ""));
+      })
+      .catch((error) => say(error.message, true));
+  });
   document.getElementById("sk-finish").addEventListener("click", () => exit(true));
   document.getElementById("sk-cancel").addEventListener("click", () => exit(false));
 

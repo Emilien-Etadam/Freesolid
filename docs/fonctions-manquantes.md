@@ -13,7 +13,7 @@ simulation FEM. Verdicts :
 |---|---|---|
 | Splines (B-splines) | ✅ | `Sketcher` les a (`Part.GeomBSplineCurve`) ; geste client à créer |
 | Ellipses, arcs elliptiques | ✅ | idem |
-| Convertir les entités (projeter des arêtes) | ✅ | `sketch.addExternal(obj, sub)` marche headless — gros manque actuel, à faire tôt |
+| Convertir les entités (projeter des arêtes) | ✅ **fait** | contour de la face porteuse → géométrie bloquée (lignes/cercles/arcs) |
 | Symétrie / répétition d'entités d'esquisse | ✅ | `addSymmetric`, `addCopy`, `addRectangularArray` |
 | Décaler les entités | 🟧 | offset de fil (`Part.Wire.makeOffset2D`) puis réinjection ; la version contrainte de SW est plus riche |
 | Texte d'esquisse | 🟧 | `Draft.make_shapestring` headless → gravure/embossage possible (marquage de pièces — utile impression 3D) ; gestion des polices à régler |
@@ -25,7 +25,7 @@ simulation FEM. Verdicts :
 
 | Fonction SW | Verdict | Comment / pourquoi |
 |---|---|---|
-| Gravure / embossage de texte | 🟧 | ShapeString + poche/bossage — combo codable, très demandé en impression |
+| Gravure / embossage de texte | ✅ **fait** | makeWireString + corps outil combiné dans l'historique ; police système auto-détectée |
 | Congé à rayon variable | 🟧 | pas dans PartDesign ; `Part.makeFillet` par arête avec rayons R1/R2 existe → possible hors historique, ou contribution amont |
 | Congé de face, congé plein | ❌ | OCCT fragile là-dessus (cf. segfault déjà rencontré) |
 | Nervure | 🟧 | pas de PartDesign::Rib ; se construit en esquisse ouverte + pad — un assistant est codable |
@@ -48,11 +48,11 @@ simulation FEM. Verdicts :
 
 | Fonction SW | Verdict | Comment / pourquoi |
 |---|---|---|
-| Contraintes mécaniques (crémaillère, vis, engrenages, courroie) | ✅ | déjà dans l'énumération JointType du solveur natif (« RackPinion, Screw, Gears, Belt » vus dans le spike) — il ne manque que l'UI |
+| Contraintes mécaniques (crémaillère, vis, engrenages, courroie) | ✅ **fait** | UI branchée sur les joints natifs (rayons/pas via Distance/Distance2) |
 | Limites de contraintes (angle/distance min-max) | ✅ | propriétés déjà présentes sur le joint (AngleMin/Max, LengthMin/Max vues au spike) |
 | Répétition de composants | ✅ | liens + placements calculés |
-| Détection d'interférences | ✅ | intersection booléenne par paires de composants — précieuse avant impression d'assemblages |
-| Vue éclatée | 🟧 | animation de placements côté client — codable, spectaculaire |
+| Détection d'interférences | ✅ **fait** | volumes communs par paires, listés en cm³ |
+| Vue éclatée | ✅ **fait** (visuelle) | animation client depuis le centroïde, bouton bascule |
 | Composants flexibles, en contexte | ❌ | édition en contexte = chantier majeur, hors v1 |
 
 ## Mise en plan
@@ -73,7 +73,7 @@ simulation FEM. Verdicts :
 | Parasolid, .sldprt natif | ❌ | formats propriétaires |
 | Configurations (tables de familles) | ❌ | assumé : variables globales + « enregistrer sous » (fait) |
 | Apparences / matériaux visuels | 🟧 | couleurs par corps côté client — simple |
-| Plan de coupe visuel (affichage) | ✅ | clipping plane Three.js, client pur — très utile, quasi gratuit |
+| Plan de coupe visuel (affichage) | ✅ **fait** | clipping Three.js, axe + position + inversion |
 
 ## Lecture d'ensemble
 

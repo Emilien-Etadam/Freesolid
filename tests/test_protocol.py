@@ -294,6 +294,21 @@ def test_surface_and_drawing_ops_declared():
          "params": {"points": [[0, 0, 0], [0, 0, 30]], "spline": False}})
 
 
+def test_convert_text_interference_ops_declared():
+    assert protocol.OPS["sketch_convert"] == ("sketch",)
+    assert protocol.OPS["add_text"] == ("text", "face")
+    assert protocol.OPS["check_interference"] == ()
+    protocol.validate_request(
+        {"op": "add_text",
+         "params": {"text": "REF-001", "face": 5, "size": 8,
+                    "depth": 1, "emboss": False}})
+    protocol.validate_request(
+        {"op": "add_joint",
+         "params": {"component1": "A", "component2": "B",
+                    "type": "engrenages", "sub1": "Face1", "sub2": "Face1",
+                    "distance": 20, "distance2": 10}})
+
+
 def test_preview_wraps_an_op_and_its_params():
     op, params = protocol.validate_request(
         {"op": "preview",

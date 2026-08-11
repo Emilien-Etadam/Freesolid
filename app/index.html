@@ -30,14 +30,30 @@
 
   header {
     grid-area: top;
-    display: flex; align-items: center; flex-wrap: wrap;
-    gap: 6px; row-gap: 4px;
-    min-height: 44px;
-    padding: 6px 12px;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
   }
-  header .sep { width: 1px; height: 22px; background: var(--line); }
+  #topbar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 12px 0;
+  }
+  #topbar .push { margin-left: auto; }
+  header .tab {
+    background: none; border: none; border-radius: 0;
+    border-bottom: 2px solid transparent;
+    padding: 7px 11px 5px;
+    color: var(--ink-2); font-weight: 600; font-size: 12px;
+  }
+  header .tab:hover { color: var(--ink); }
+  header .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .ribbon {
+    display: none; align-items: center; flex-wrap: wrap;
+    gap: 6px; row-gap: 4px;
+    padding: 6px 12px;
+    border-top: 1px solid var(--line);
+  }
+  .ribbon.active { display: flex; }
+  header .sep, .ribbon .sep { width: 1px; height: 22px; background: var(--line); }
   header .logo { font-weight: 600; letter-spacing: 0.02em; margin-right: 12px; }
   header .logo span { color: var(--accent); }
   button {
@@ -166,18 +182,7 @@
   main { grid-area: viewport; position: relative; }
   main canvas { display: block; }
 
-  #sketchbar {
-    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-    display: none; flex-wrap: wrap; justify-content: center;
-    gap: 4px; z-index: 5;
-    max-width: min(860px, 92%);
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 8px; padding: 5px;
-    box-shadow: 0 10px 28px rgba(0,0,0,0.45);
-  }
   #sketchbar button.on { border-color: var(--accent); color: var(--accent); }
-  #sketchbar .skbreak { flex-basis: 100%; height: 0; }
   #sketchbar .ok { color: #6fbf8f; }
   #sketchbar .no { color: var(--error); }
 
@@ -209,30 +214,63 @@
 </head>
 <body>
   <header>
-    <div class="logo">Free<span>Solid</span></div>
-    <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt="">Nouvelle pièce</button>
-    <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/edit-undo.svg" alt=""></button>
-    <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img src="icons/edit-redo.svg" alt=""></button>
-    <div class="sep"></div>
-    <button id="btn-sketch"><img src="icons/Sketcher_NewSketch.svg" alt="">Esquisse</button>
-    <button id="btn-pad" title="Bossage/Base extrudé"><img src="icons/PartDesign_Pad.svg" alt="">Bossage extrudé</button>
-    <button id="btn-revolution" title="Bossage/Base avec révolution — autour de l'axe vertical de l'esquisse"><img src="icons/PartDesign_Revolution.svg" alt="">Révolution</button>
-    <button id="btn-pocket" title="Enlèvement de matière extrudé"><img src="icons/PartDesign_Pocket.svg" alt="">Enlèvement de matière</button>
-    <button id="btn-groove" title="Enlèvement de matière avec révolution"><img src="icons/PartDesign_Groove.svg" alt="">Enlèv. révolution</button>
-    <div class="sep"></div>
-    <button id="btn-fillet"><img src="icons/PartDesign_Fillet.svg" alt="">Congé</button>
-    <button id="btn-chamfer"><img src="icons/PartDesign_Chamfer.svg" alt="">Chanfrein</button>
-    <button id="btn-shell" title="Coque — la face cliquée devient l'ouverture"><img src="icons/PartDesign_Thickness.svg" alt="">Coque</button>
-    <button id="btn-draft" title="Dépouille de la face cliquée (plan neutre : Plan de dessus)"><img src="icons/PartDesign_Draft.svg" alt="">Dépouille</button>
-    <div class="sep"></div>
-    <button id="btn-linpattern" title="Répétition linéaire de la dernière fonction"><img src="icons/PartDesign_LinearPattern.svg" alt="">Rép. linéaire</button>
-    <button id="btn-polpattern" title="Répétition circulaire de la dernière fonction"><img src="icons/PartDesign_PolarPattern.svg" alt="">Rép. circulaire</button>
-    <button id="btn-mirror" title="Symétrie de la dernière fonction par rapport à un plan d'origine"><img src="icons/PartDesign_Mirrored.svg" alt="">Symétrie</button>
-    <div class="sep"></div>
-    <button id="btn-open"><img src="icons/document-open.svg" alt="">Ouvrir</button>
-    <button id="btn-save"><img src="icons/document-save.svg" alt="">Enregistrer</button>
-    <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img src="icons/document-save-as.svg" alt="">Exporter</button>
-    <button id="btn-selftest">Selftest</button>
+    <div id="topbar">
+      <div class="logo">Free<span>Solid</span></div>
+      <button class="tab active" data-tab="features">Fonctions</button>
+      <button class="tab" data-tab="sketch">Esquisse</button>
+      <span class="push"></span>
+      <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt=""></button>
+      <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/edit-undo.svg" alt=""></button>
+      <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img src="icons/edit-redo.svg" alt=""></button>
+      <div class="sep"></div>
+      <button id="btn-open" title="Ouvrir un .FCStd"><img src="icons/document-open.svg" alt=""></button>
+      <button id="btn-save" title="Enregistrer (.FCStd)"><img src="icons/document-save.svg" alt=""></button>
+      <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img src="icons/document-save-as.svg" alt=""></button>
+      <button id="btn-selftest">Selftest</button>
+    </div>
+    <div id="ribbon-features" class="ribbon active">
+      <button id="btn-sketch"><img src="icons/Sketcher_NewSketch.svg" alt="">Esquisse</button>
+      <div class="sep"></div>
+      <button id="btn-pad" title="Bossage/Base extrudé"><img src="icons/PartDesign_Pad.svg" alt="">Bossage extrudé</button>
+      <button id="btn-revolution" title="Bossage/Base avec révolution — autour de l'axe vertical de l'esquisse"><img src="icons/PartDesign_Revolution.svg" alt="">Révolution</button>
+      <button id="btn-pocket" title="Enlèvement de matière extrudé"><img src="icons/PartDesign_Pocket.svg" alt="">Enlèvement de matière</button>
+      <button id="btn-groove" title="Enlèvement de matière avec révolution"><img src="icons/PartDesign_Groove.svg" alt="">Enlèv. révolution</button>
+      <div class="sep"></div>
+      <button id="btn-fillet"><img src="icons/PartDesign_Fillet.svg" alt="">Congé</button>
+      <button id="btn-chamfer"><img src="icons/PartDesign_Chamfer.svg" alt="">Chanfrein</button>
+      <button id="btn-shell" title="Coque — la face cliquée devient l'ouverture"><img src="icons/PartDesign_Thickness.svg" alt="">Coque</button>
+      <button id="btn-draft" title="Dépouille de la face cliquée (plan neutre : Plan de dessus)"><img src="icons/PartDesign_Draft.svg" alt="">Dépouille</button>
+      <div class="sep"></div>
+      <button id="btn-linpattern" title="Répétition linéaire de la dernière fonction"><img src="icons/PartDesign_LinearPattern.svg" alt="">Rép. linéaire</button>
+      <button id="btn-polpattern" title="Répétition circulaire de la dernière fonction"><img src="icons/PartDesign_PolarPattern.svg" alt="">Rép. circulaire</button>
+      <button id="btn-mirror" title="Symétrie de la dernière fonction par rapport à un plan d'origine"><img src="icons/PartDesign_Mirrored.svg" alt="">Symétrie</button>
+    </div>
+    <div id="sketchbar" class="ribbon">
+      <button data-tool="select" title="Sélectionner — glisser un point, cliquer des entités">Sélectionner</button>
+      <button data-tool="line" title="Ligne (L)"><img src="icons/Sketcher_CreateLine.svg" alt=""></button>
+      <button data-tool="rect" title="Rectangle par sommet (R)"><img src="icons/Sketcher_CreateRectangle.svg" alt=""></button>
+      <button data-tool="rectc" title="Rectangle par le centre"><img src="icons/Sketcher_CreateRectangle_Center.svg" alt=""></button>
+      <button data-tool="circle" title="Cercle (C)"><img src="icons/Sketcher_CreateCircle.svg" alt=""></button>
+      <button data-tool="arc" title="Arc par centre — centre, départ, arrivée"><img src="icons/Sketcher_CreateArc.svg" alt=""></button>
+      <button data-tool="arc3" title="Arc 3 points (A) — départ, arrivée, passage"><img src="icons/Sketcher_Create3PointArc.svg" alt=""></button>
+      <button data-tool="slot" title="Rainure droite — deux centres puis largeur"><img src="icons/Sketcher_CreateSlot.svg" alt=""></button>
+      <button data-tool="polygon" title="Polygone — nombre de côtés, centre, sommet"><img src="icons/Sketcher_CreateRegularPolygon.svg" alt=""></button>
+      <button data-tool="skfillet" title="Congé d'esquisse — cliquez deux lignes près du coin"><img src="icons/Sketcher_CreateFillet.svg" alt=""></button>
+      <button data-tool="trim" title="Ajuster les entités (T) — cliquez le tronçon à supprimer"><img src="icons/Sketcher_Trimming.svg" alt=""></button>
+      <button data-tool="construction" title="Géométrie de construction (G) — cliquez une entité"><img src="icons/Sketcher_ToggleConstruction.svg" alt=""></button>
+      <button data-tool="dim" title="Cotation intelligente (D) — 1 ou 2 entités, cote pilotante"><img src="icons/Constraint_Dimension.svg" alt=""></button>
+      <div class="sep"></div>
+      <button id="sk-c-horizontal" title="Contrainte horizontale"><img src="icons/Constraint_Horizontal.svg" alt=""></button>
+      <button id="sk-c-vertical" title="Contrainte verticale"><img src="icons/Constraint_Vertical.svg" alt=""></button>
+      <button id="sk-c-coincident" title="Contrainte coïncidente — deux points"><img src="icons/Constraint_Coincident.svg" alt=""></button>
+      <button id="sk-c-parallel" title="Contrainte parallèle"><img src="icons/Constraint_Parallel.svg" alt=""></button>
+      <button id="sk-c-perpendicular" title="Contrainte perpendiculaire"><img src="icons/Constraint_Perpendicular.svg" alt=""></button>
+      <button id="sk-c-tangent" title="Contrainte tangente"><img src="icons/Constraint_Tangent.svg" alt=""></button>
+      <button id="sk-c-equal" title="Contrainte égale"><img src="icons/Constraint_EqualLength.svg" alt=""></button>
+      <div class="sep"></div>
+      <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire"><img src="icons/Sketcher_LeaveSketch.svg" alt="">Terminer</button>
+      <button id="sk-cancel" class="no"><img src="icons/Sketcher_CancelSketch.svg" alt="">Quitter</button>
+    </div>
   </header>
 
   <aside>
@@ -249,32 +287,7 @@
       <button id="view-right" title="Vue de droite (Ctrl+4)"><img src="icons/view-right.svg" alt=""></button>
       <button id="view-fit" title="Zoom au mieux (F)"><img src="icons/zoom-fit-best.svg" alt=""></button>
     </div>
-    <div id="sketchbar">
-      <button data-tool="select" title="Sélectionner — glisser un point, cliquer des entités">Sélectionner</button>
-      <button data-tool="line" title="Ligne (L)"><img src="icons/Sketcher_CreateLine.svg" alt=""></button>
-      <button data-tool="rect" title="Rectangle par sommet (R)"><img src="icons/Sketcher_CreateRectangle.svg" alt=""></button>
-      <button data-tool="rectc" title="Rectangle par le centre"><img src="icons/Sketcher_CreateRectangle_Center.svg" alt=""></button>
-      <button data-tool="circle" title="Cercle (C)"><img src="icons/Sketcher_CreateCircle.svg" alt=""></button>
-      <button data-tool="arc" title="Arc par centre — centre, départ, arrivée"><img src="icons/Sketcher_CreateArc.svg" alt=""></button>
-      <button data-tool="arc3" title="Arc 3 points (A) — départ, arrivée, passage"><img src="icons/Sketcher_Create3PointArc.svg" alt=""></button>
-      <button data-tool="slot" title="Rainure droite — deux centres puis largeur"><img src="icons/Sketcher_CreateSlot.svg" alt=""></button>
-      <button data-tool="polygon" title="Polygone — nombre de côtés, centre, sommet"><img src="icons/Sketcher_CreateRegularPolygon.svg" alt=""></button>
-      <button data-tool="skfillet" title="Congé d'esquisse — cliquez deux lignes près du coin"><img src="icons/Sketcher_CreateFillet.svg" alt=""></button>
-      <button data-tool="trim" title="Ajuster les entités (T) — cliquez le tronçon à supprimer"><img src="icons/Sketcher_Trimming.svg" alt=""></button>
-      <button data-tool="construction" title="Géométrie de construction (G) — cliquez une entité"><img src="icons/Sketcher_ToggleConstruction.svg" alt=""></button>
-      <button data-tool="dim" title="Cotation intelligente (D) — 1 ou 2 entités, cote pilotante"><img src="icons/Constraint_Dimension.svg" alt=""></button>
-      <span class="skbreak"></span>
-      <button id="sk-c-horizontal" title="Contrainte horizontale"><img src="icons/Constraint_Horizontal.svg" alt=""></button>
-      <button id="sk-c-vertical" title="Contrainte verticale"><img src="icons/Constraint_Vertical.svg" alt=""></button>
-      <button id="sk-c-coincident" title="Contrainte coïncidente — deux points"><img src="icons/Constraint_Coincident.svg" alt=""></button>
-      <button id="sk-c-parallel" title="Contrainte parallèle"><img src="icons/Constraint_Parallel.svg" alt=""></button>
-      <button id="sk-c-perpendicular" title="Contrainte perpendiculaire"><img src="icons/Constraint_Perpendicular.svg" alt=""></button>
-      <button id="sk-c-tangent" title="Contrainte tangente"><img src="icons/Constraint_Tangent.svg" alt=""></button>
-      <button id="sk-c-equal" title="Contrainte égale"><img src="icons/Constraint_EqualLength.svg" alt=""></button>
-      <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire"><img src="icons/Sketcher_LeaveSketch.svg" alt="">Terminer</button>
-      <button id="sk-cancel" class="no"><img src="icons/Sketcher_CancelSketch.svg" alt="">Quitter</button>
-    </div>
-  </main>
+      </main>
   <div id="ctxmenu">
     <div id="ctx-rollback">Amener la barre de retour ici</div>
     <div id="ctx-end">Revenir à l'état final</div>

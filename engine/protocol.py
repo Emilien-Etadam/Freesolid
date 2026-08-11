@@ -22,6 +22,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "undo": (),                        # une transaction = un Ctrl+Z
     "redo": (),
     "export_part": ("path",),          # .stl ou .step selon l'extension
+    "preview": ("op", "params"),       # aperçu jaune : op exécutée puis annulée
     "add_rect_sketch": ("width", "height"),   # optional: face (id) to attach
     "add_pad": ("length",),            # optional: sketch, reversed, midplane
     "add_pocket": (),                  # optional: length | through — sans profondeur = à travers tout ; reversed

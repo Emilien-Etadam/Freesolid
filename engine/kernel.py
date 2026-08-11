@@ -232,11 +232,7 @@ class Kernel:
         if sketch is not None:
             profile = self._get_sketch(sketch)
         else:
-            sketches = [o for o in body.Group
-                        if o.TypeId == "Sketcher::SketchObject"]
-            if not sketches:
-                raise KernelError("aucune esquisse à extruder")
-            profile = sketches[-1]
+            profile = self._latest_sketch()
         pad = body.newObject("PartDesign::Pad", "Pad")
         pad.Profile = profile
         pad.Length = float(length)
@@ -253,11 +249,28 @@ class Kernel:
         return self.get_tree()
 
     def _latest_sketch(self):
+        """The newest sketch not yet consumed by a feature.
+
+        Root cause of the "passage esquisse → extrusion" confusion: reusing
+        an already-extruded profile fails downstream with a cryptic error.
+        A profile is used once; the next feature takes the next fresh
+        sketch, exactly the SolidWorks mental model.
+        """
         body = self._require_body()
+        used = set()
+        for obj in body.Group:
+            profile = getattr(obj, "Profile", None)
+            linked = profile[0] if isinstance(profile, tuple) else profile
+            if linked is not None:
+                used.add(linked.Name)
         sketches = [o for o in body.Group
-                    if o.TypeId == "Sketcher::SketchObject"]
+                    if o.TypeId == "Sketcher::SketchObject"
+                    and o.Name not in used]
         if not sketches:
-            raise KernelError("aucune esquisse disponible")
+            raise KernelError(
+                "aucune esquisse disponible — les esquisses existantes "
+                "sont déjà utilisées par des fonctions, dessinez-en une "
+                "nouvelle")
         return sketches[-1]
 
     def add_pocket(self, length=None, through=False, reversed=False):
@@ -283,6 +296,37 @@ class Kernel:
             doc.removeObject(pocket.Name)
             raise
         return self.get_tree()
+
+    #: Ops the yellow ghost preview may run speculatively.
+    _PREVIEWABLE = frozenset({
+        "add_pad", "add_pocket", "add_revolution", "add_groove",
+        "add_fillet", "add_chamfer", "add_thickness", "add_draft",
+        "add_mirror", "add_linear_pattern", "add_polar_pattern",
+    })
+
+    def preview(self, op, params):
+        """Aperçu jaune : exécute la fonction, tesselle, puis annule tout.
+
+        The op runs inside its own transaction which is always aborted —
+        the document comes back exactly as it was, whatever happened. The
+        client renders the returned mesh as the SolidWorks-style ghost.
+        """
+        doc = self._require_doc()
+        if op not in self._PREVIEWABLE:
+            raise KernelError(
+                "aperçu non disponible pour {}".format(op))
+        if not isinstance(params, dict):
+            raise KernelError("params doit être un objet JSON")
+        doc.openTransaction("freesolid-preview")
+        try:
+            getattr(self, op)(**params)
+            return self.tessellate()
+        finally:
+            try:
+                doc.abortTransaction()
+            except Exception:
+                pass
+            doc.recompute()
 
     # -- palier 2 : révolutions, transformations, habillages avancés ------
 
@@ -1319,6 +1363,17 @@ class Kernel:
             tree = self.add_thickness(self._top_face_id(), 2)
             report["p2_thickness_ok"] = not any(
                 f["error"] for f in tree["features"])
+
+            mark("p4: aperçu jaune (exécuté puis annulé)")
+            count = len(self.get_tree()["features"])
+            faces_now = len(self.tessellate()["groups"])
+            ghost = self.preview(
+                "add_chamfer", {"face": self._top_face_id(), "size": 2})
+            report["p4_preview_changes_mesh"] = (
+                len(ghost["groups"]) != faces_now)
+            report["p4_preview_leaves_doc_intact"] = (
+                len(self.get_tree()["features"]) == count
+                and len(self.tessellate()["groups"]) == faces_now)
 
             mark("p3: arc, rainure, polygone")
             import math

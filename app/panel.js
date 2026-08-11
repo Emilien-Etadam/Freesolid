@@ -20,11 +20,17 @@
 //       { type: "selection", key, label?, hint?, value? }   // face picks
 //       { type: "note", text }
 
-export function createPropertyPanel({ say }) {
+export function createPropertyPanel({ say, onClose }) {
   const aside = document.querySelector("aside");
   const panelEl = document.getElementById("panel");
 
   let active = null; // { spec, values }
+
+  // Chaque modification de valeur notifie la commande — c'est ce qui
+  // alimente l'aperçu jaune en temps réel.
+  function changed() {
+    active?.spec.onChange?.({ ...active.values });
+  }
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -47,6 +53,7 @@ export function createPropertyPanel({ say }) {
     aside.classList.add("panel-open");
     document.addEventListener("keydown", onKey, true);
     panelEl.querySelector("input, select")?.focus();
+    changed(); // premier aperçu avec les valeurs par défaut
   }
 
   function close(apply) {
@@ -56,6 +63,7 @@ export function createPropertyPanel({ say }) {
     aside.classList.remove("panel-open");
     document.removeEventListener("keydown", onKey, true);
     panelEl.innerHTML = "";
+    onClose?.(); // efface l'aperçu avant d'appliquer ou d'abandonner
     if (apply) spec.onApply({ ...values });
     else spec.onCancel?.();
   }
@@ -78,6 +86,7 @@ export function createPropertyPanel({ say }) {
         if (row.type === "selection") {
           active.values[row.key] = faceId;
           render();
+          changed();
           return true;
         }
       }
@@ -148,6 +157,7 @@ export function createPropertyPanel({ say }) {
       if (row.min !== undefined) input.min = row.min;
       input.addEventListener("input", () => {
         values[row.key] = input.value;
+        changed();
       });
       rowEl.append(el("label", "", row.label), input);
       if (row.unit) rowEl.append(el("span", "punit", row.unit));
@@ -163,6 +173,7 @@ export function createPropertyPanel({ say }) {
       select.addEventListener("change", () => {
         values[row.key] = select.value;
         render(); // showIf rows may appear/disappear
+        changed();
       });
       if (row.label) rowEl.append(el("label", "", row.label));
       rowEl.append(select);
@@ -172,6 +183,7 @@ export function createPropertyPanel({ say }) {
       input.checked = !!values[row.key];
       input.addEventListener("change", () => {
         values[row.key] = input.checked;
+        changed();
       });
       const label = el("label", "pcheck", row.label);
       label.prepend(input);

@@ -686,6 +686,7 @@ export function createSketchMode(deps) {
   }
 
   bar.addEventListener("click", (event) => {
+    if (!mode.active) return; // le ruban Esquisse est visible mais inerte
     const tool = event.target.dataset?.tool;
     if (tool) setTool(tool);
   });
@@ -755,7 +756,8 @@ export function createSketchMode(deps) {
         renderer.domElement.addEventListener(type, handler);
       }
       document.addEventListener("keydown", onKey);
-      bar.style.display = "flex";
+      // Le ruban bascule sur l'onglet Esquisse (main.js écoute).
+      document.dispatchEvent(new Event("freesolid:sketch-enter"));
       setTool("line");
     } catch (error) {
       say(error.message, true);
@@ -763,8 +765,9 @@ export function createSketchMode(deps) {
   }
 
   async function exit(keep) {
+    if (!mode.active) return;
     mode.active = false;
-    bar.style.display = "none";
+    document.dispatchEvent(new Event("freesolid:sketch-exit"));
     for (const [type, handler] of listeners) {
       renderer.domElement.removeEventListener(type, handler);
     }
@@ -799,5 +802,8 @@ export function createSketchMode(deps) {
     get active() { return mode.active; },
     get lastFinished() { return mode.lastFinished; },
     enter,
+    // Termine l'esquisse en la gardant — cliquer une fonction du ruban
+    // pendant le dessin appelle ceci avant d'ouvrir son panneau.
+    finish: () => exit(true),
   };
 }

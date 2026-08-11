@@ -173,6 +173,14 @@ def test_dim_accepts_second_entity():
     assert params["geo2"] == 1
 
 
+def test_preview_wraps_an_op_and_its_params():
+    op, params = protocol.validate_request(
+        {"op": "preview",
+         "params": {"op": "add_pad", "params": {"length": 10}}})
+    assert params["op"] == "add_pad"
+    assert params["params"] == {"length": 10}
+
+
 def test_pocket_accepts_length_or_through():
     protocol.validate_request({"op": "add_pocket", "params": {"length": 5}})
     protocol.validate_request({"op": "add_pocket", "params": {"through": True}})

@@ -29,8 +29,9 @@ function say(text, isError = false) {
 }
 
 // PropertyManager-style side panel — feature options live there, not in
-// prompt() dialogs. See panel.js for the SolidWorks anatomy.
-const panel = createPropertyPanel({ say });
+// prompt() dialogs. See panel.js for the SolidWorks anatomy. Closing the
+// panel (OK or cancel) always clears the yellow ghost preview.
+const panel = createPropertyPanel({ say, onClose: () => clearGhost() });
 
 // ---------- viewport ----------
 
@@ -59,6 +60,7 @@ scene.add(grid);
 
 const baseMaterial = new THREE.MeshStandardMaterial({
   color: 0x9fb2c4, metalness: 0.15, roughness: 0.55,
+  transparent: true, opacity: 1, // l'aperçu jaune estompe la pièce
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 const hoverMaterial = new THREE.MeshStandardMaterial({
@@ -103,6 +105,59 @@ function showMesh(mesh) {
     new THREE.EdgesGeometry(geometry, 25),
     new THREE.LineBasicMaterial({ color: 0x11141a }));
   scene.add(partEdges);
+}
+
+// ---------- aperçu jaune (le ghost du PropertyManager) ----------
+
+const ghostMaterial = new THREE.MeshStandardMaterial({
+  color: 0xf2c94c, metalness: 0.1, roughness: 0.5,
+  transparent: true, opacity: 0.55, depthWrite: false,
+});
+let ghostMesh = null;
+let previewTimer = null;
+
+function clearGhost() {
+  clearTimeout(previewTimer);
+  previewTimer = null;
+  if (ghostMesh) {
+    scene.remove(ghostMesh);
+    ghostMesh.geometry.dispose();
+    ghostMesh = null;
+  }
+  baseMaterial.opacity = 1;
+}
+
+function showGhost(mesh) {
+  if (ghostMesh) {
+    scene.remove(ghostMesh);
+    ghostMesh.geometry.dispose();
+    ghostMesh = null;
+  }
+  if (!mesh.indices.length) return;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position",
+    new THREE.Float32BufferAttribute(mesh.positions, 3));
+  geometry.setIndex(mesh.indices);
+  geometry.computeVertexNormals();
+  ghostMesh = new THREE.Mesh(geometry, ghostMaterial);
+  scene.add(ghostMesh);
+  baseMaterial.opacity = 0.15; // la pièce s'efface derrière le résultat
+}
+
+// Chaque frappe dans le panneau relance l'aperçu, débouncé — le serveur
+// exécute la fonction dans une transaction puis l'annule (op "preview").
+function schedulePreview(built) {
+  clearTimeout(previewTimer);
+  if (!built) { clearGhost(); return; }
+  previewTimer = setTimeout(async () => {
+    try {
+      showGhost(await call("preview",
+        { op: built.op, params: built.params }));
+    } catch (error) {
+      clearGhost();
+      say("Aperçu — " + error.message);
+    }
+  }, 250);
 }
 
 // Face hover: triangle index -> group -> engine faceId. By construction.
@@ -368,6 +423,31 @@ document.getElementById("ctx-delete").addEventListener("click", () => {
     refresh(call("delete_feature", { feature: menuFeature.name }));
 });
 
+// ---------- ruban à onglets (CommandManager) ----------
+
+function showTab(name) {
+  for (const tab of document.querySelectorAll("header .tab")) {
+    tab.classList.toggle("active", tab.dataset.tab === name);
+  }
+  document.getElementById("ribbon-features").classList
+    .toggle("active", name === "features");
+  document.getElementById("sketchbar").classList
+    .toggle("active", name === "sketch");
+}
+for (const tab of document.querySelectorAll("header .tab")) {
+  tab.addEventListener("click", () => showTab(tab.dataset.tab));
+}
+document.addEventListener("freesolid:sketch-enter", () => showTab("sketch"));
+document.addEventListener("freesolid:sketch-exit", () => showTab("features"));
+
+// Cliquer une fonction pendant une esquisse la termine d'abord — le
+// réflexe SolidWorks : on dessine, puis on clique Bossage, sans passer
+// par un bouton « quitter l'esquisse ».
+async function featureCommand(openPanel) {
+  if (sketchMode.active) await sketchMode.finish();
+  openPanel();
+}
+
 // ---------- actions ----------
 
 async function refresh(treePromise) {
@@ -411,8 +491,17 @@ document.getElementById("btn-sketch").addEventListener("click", () => {
   sketchMode.enter(call("sketch_start", params));
 });
 
-document.getElementById("btn-pocket").addEventListener("click", () => {
-  panel.open({
+function pocketBuild(v) {
+  const reversed = !!v.reversed;
+  if (v.cond === "travers") {
+    return { op: "add_pocket", params: { through: true, reversed } };
+  }
+  const length = Math.abs(parseFloat(v.length));
+  return length ? { op: "add_pocket", params: { length, reversed } } : null;
+}
+
+document.getElementById("btn-pocket").addEventListener("click", () =>
+  featureCommand(() => panel.open({
     icon: "PartDesign_Pocket.svg",
     title: "Enlèvement de matière extrudé",
     groups: [{
@@ -426,18 +515,13 @@ document.getElementById("btn-pocket").addEventListener("click", () => {
           value: false },
       ],
     }],
+    onChange: (v) => schedulePreview(pocketBuild(v)),
     onApply: (v) => {
-      const reversed = !!v.reversed;
-      if (v.cond === "travers") {
-        refresh(call("add_pocket", { through: true, reversed }));
-        return;
-      }
-      const length = Math.abs(parseFloat(v.length));
-      if (!length) { say("Profondeur invalide", true); return; }
-      refresh(call("add_pocket", { length, reversed }));
+      const built = pocketBuild(v);
+      if (!built) { say("Profondeur invalide", true); return; }
+      refresh(call(built.op, built.params));
     },
-  });
-});
+  })));
 
 // Habillages : la zone de sélection du panneau absorbe le clic de face —
 // on peut ouvrir la commande d'abord et cliquer la face ensuite, comme
@@ -450,19 +534,23 @@ function dressupPanel({ icon, title, selectionLabel, group, rows, build }) {
         rows: [{ type: "selection", key: "face", value: selectedFaceId }] },
       { label: group, rows },
     ],
+    onChange: (v) =>
+      schedulePreview(v.face === null || v.face === undefined
+        ? null : build(v)),
     onApply: (v) => {
       if (v.face === null || v.face === undefined) {
         say(`${title} : cliquez une face de la pièce`, true);
         return;
       }
-      const params = build(v);
-      if (params) refresh(call(params.op, params.params));
+      const built = build(v);
+      if (!built) { say("Valeur invalide", true); return; }
+      refresh(call(built.op, built.params));
     },
   });
 }
 
 document.getElementById("btn-fillet").addEventListener("click", () =>
-  dressupPanel({
+  featureCommand(() => dressupPanel({
     icon: "PartDesign_Fillet.svg", title: "Congé",
     selectionLabel: "Éléments à arrondir",
     group: "Paramètres du congé",
@@ -470,13 +558,13 @@ document.getElementById("btn-fillet").addEventListener("click", () =>
              unit: "mm", min: 0.01 }],
     build: (v) => {
       const radius = parseFloat(v.radius);
-      if (!radius) { say("Rayon invalide", true); return null; }
-      return { op: "add_fillet", params: { face: v.face, radius } };
+      return radius > 0
+        ? { op: "add_fillet", params: { face: v.face, radius } } : null;
     },
-  }));
+  })));
 
 document.getElementById("btn-chamfer").addEventListener("click", () =>
-  dressupPanel({
+  featureCommand(() => dressupPanel({
     icon: "PartDesign_Chamfer.svg", title: "Chanfrein",
     selectionLabel: "Éléments à chanfreiner",
     group: "Paramètres du chanfrein",
@@ -484,13 +572,13 @@ document.getElementById("btn-chamfer").addEventListener("click", () =>
              unit: "mm", min: 0.01 }],
     build: (v) => {
       const size = parseFloat(v.size);
-      if (!size) { say("Distance invalide", true); return null; }
-      return { op: "add_chamfer", params: { face: v.face, size } };
+      return size > 0
+        ? { op: "add_chamfer", params: { face: v.face, size } } : null;
     },
-  }));
+  })));
 
 document.getElementById("btn-shell").addEventListener("click", () =>
-  dressupPanel({
+  featureCommand(() => dressupPanel({
     icon: "PartDesign_Thickness.svg", title: "Coque",
     selectionLabel: "Faces à supprimer",
     group: "Paramètres",
@@ -498,13 +586,14 @@ document.getElementById("btn-shell").addEventListener("click", () =>
              unit: "mm", min: 0.01 }],
     build: (v) => {
       const thickness = parseFloat(v.thickness);
-      if (!thickness) { say("Épaisseur invalide", true); return null; }
-      return { op: "add_thickness", params: { face: v.face, thickness } };
+      return thickness > 0
+        ? { op: "add_thickness", params: { face: v.face, thickness } }
+        : null;
     },
-  }));
+  })));
 
 document.getElementById("btn-draft").addEventListener("click", () =>
-  dressupPanel({
+  featureCommand(() => dressupPanel({
     icon: "PartDesign_Draft.svg", title: "Dépouille",
     selectionLabel: "Faces à dépouiller",
     group: "Angle de dépouille",
@@ -515,12 +604,16 @@ document.getElementById("btn-draft").addEventListener("click", () =>
     ],
     build: (v) => {
       const angle = parseFloat(v.angle);
-      if (!angle) { say("Angle invalide", true); return null; }
-      return { op: "add_draft", params: { face: v.face, angle } };
+      return angle > 0
+        ? { op: "add_draft", params: { face: v.face, angle } } : null;
     },
-  }));
+  })));
 
 function revolvedPanel(op, icon, title) {
+  const build = (v) => {
+    const angle = parseFloat(v.angle);
+    return angle ? { op, params: { angle } } : null;
+  };
   panel.open({
     icon, title,
     groups: [{
@@ -531,26 +624,27 @@ function revolvedPanel(op, icon, title) {
       ],
     }],
     note: "Axe de révolution : l'axe vertical de l'esquisse",
+    onChange: (v) => schedulePreview(build(v)),
     onApply: (v) => {
-      const angle = parseFloat(v.angle);
-      if (!angle) { say("Angle invalide", true); return; }
-      const params = { angle };
-      if (sketchMode.lastFinished) params.sketch = sketchMode.lastFinished;
-      refresh(call(op, params));
+      const built = build(v);
+      if (!built) { say("Angle invalide", true); return; }
+      refresh(call(built.op, built.params));
     },
   });
 }
 
 document.getElementById("btn-revolution").addEventListener("click", () =>
-  revolvedPanel("add_revolution", "PartDesign_Revolution.svg",
-                "Bossage/Base avec révolution"));
+  featureCommand(() =>
+    revolvedPanel("add_revolution", "PartDesign_Revolution.svg",
+                  "Bossage/Base avec révolution")));
 
 document.getElementById("btn-groove").addEventListener("click", () =>
-  revolvedPanel("add_groove", "PartDesign_Groove.svg",
-                "Enlèvement de matière avec révolution"));
+  featureCommand(() =>
+    revolvedPanel("add_groove", "PartDesign_Groove.svg",
+                  "Enlèvement de matière avec révolution")));
 
-document.getElementById("btn-mirror").addEventListener("click", () => {
-  panel.open({
+document.getElementById("btn-mirror").addEventListener("click", () =>
+  featureCommand(() => panel.open({
     icon: "PartDesign_Mirrored.svg",
     title: "Symétrie",
     groups: [{
@@ -562,12 +656,21 @@ document.getElementById("btn-mirror").addEventListener("click", () => {
       ],
     }],
     note: "S'applique à la dernière fonction (bossage ou enlèvement)",
+    onChange: (v) =>
+      schedulePreview({ op: "add_mirror", params: { plane: v.plane } }),
     onApply: (v) => refresh(call("add_mirror", { plane: v.plane })),
-  });
-});
+  })));
 
-document.getElementById("btn-linpattern").addEventListener("click", () => {
-  panel.open({
+function linPatternBuild(v) {
+  const length = parseFloat(v.length);
+  const count = parseInt(v.count, 10);
+  return length && count >= 2
+    ? { op: "add_linear_pattern", params: { axis: v.axis, length, count } }
+    : null;
+}
+
+document.getElementById("btn-linpattern").addEventListener("click", () =>
+  featureCommand(() => panel.open({
     icon: "PartDesign_LinearPattern.svg",
     title: "Répétition linéaire",
     groups: [{
@@ -582,17 +685,23 @@ document.getElementById("btn-linpattern").addEventListener("click", () => {
       ],
     }],
     note: "S'applique à la dernière fonction (bossage ou enlèvement)",
+    onChange: (v) => schedulePreview(linPatternBuild(v)),
     onApply: (v) => {
-      const length = parseFloat(v.length);
-      const count = parseInt(v.count, 10);
-      if (!length || !count) { say("Valeurs invalides", true); return; }
-      refresh(call("add_linear_pattern", { axis: v.axis, length, count }));
+      const built = linPatternBuild(v);
+      if (!built) { say("Valeurs invalides", true); return; }
+      refresh(call(built.op, built.params));
     },
-  });
-});
+  })));
 
-document.getElementById("btn-polpattern").addEventListener("click", () => {
-  panel.open({
+function polPatternBuild(v) {
+  const angle = parseFloat(v.angle);
+  const count = parseInt(v.count, 10);
+  return angle && count >= 2
+    ? { op: "add_polar_pattern", params: { count, angle } } : null;
+}
+
+document.getElementById("btn-polpattern").addEventListener("click", () =>
+  featureCommand(() => panel.open({
     icon: "PartDesign_PolarPattern.svg",
     title: "Répétition circulaire",
     groups: [{
@@ -605,14 +714,13 @@ document.getElementById("btn-polpattern").addEventListener("click", () => {
       ],
     }],
     note: "Axe : Z — s'applique à la dernière fonction",
+    onChange: (v) => schedulePreview(polPatternBuild(v)),
     onApply: (v) => {
-      const angle = parseFloat(v.angle);
-      const count = parseInt(v.count, 10);
-      if (!angle || !count) { say("Valeurs invalides", true); return; }
-      refresh(call("add_polar_pattern", { count, angle }));
+      const built = polPatternBuild(v);
+      if (!built) { say("Valeurs invalides", true); return; }
+      refresh(call(built.op, built.params));
     },
-  });
-});
+  })));
 
 document.getElementById("btn-open").addEventListener("click", async () => {
   const path = prompt("Ouvrir (chemin .FCStd) :", "~/piece-freesolid.FCStd");
@@ -653,8 +761,16 @@ document.getElementById("btn-export").addEventListener("click", async () => {
   }
 });
 
-document.getElementById("btn-pad").addEventListener("click", () => {
-  panel.open({
+function padBuild(v) {
+  const length = Math.abs(parseFloat(v.length));
+  if (!length) return null;
+  return { op: "add_pad",
+           params: { length, reversed: !!v.reversed,
+                     midplane: v.cond === "milieu" } };
+}
+
+document.getElementById("btn-pad").addEventListener("click", () =>
+  featureCommand(() => panel.open({
     icon: "PartDesign_Pad.svg",
     title: "Bossage/Base extrudé",
     groups: [{
@@ -668,16 +784,13 @@ document.getElementById("btn-pad").addEventListener("click", () => {
           value: false, showIf: (v) => v.cond !== "milieu" },
       ],
     }],
+    onChange: (v) => schedulePreview(padBuild(v)),
     onApply: (v) => {
-      const length = Math.abs(parseFloat(v.length));
-      if (!length) { say("Profondeur invalide", true); return; }
-      const params = { length, reversed: !!v.reversed,
-                       midplane: v.cond === "milieu" };
-      if (sketchMode.lastFinished) params.sketch = sketchMode.lastFinished;
-      refresh(call("add_pad", params));
+      const built = padBuild(v);
+      if (!built) { say("Profondeur invalide", true); return; }
+      refresh(call(built.op, built.params));
     },
-  });
-});
+  })));
 
 document.getElementById("btn-selftest").addEventListener("click", async () => {
   try {

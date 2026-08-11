@@ -99,12 +99,91 @@ function showMesh(mesh) {
 
   partMesh = new THREE.Mesh(geometry, [baseMaterial, hoverMaterial, selectedMaterial]);
   scene.add(partMesh);
+  rebuildPlanes(); // les plans de base suivent la taille de la pièce
 
   // Plasticity-style crisp silhouette: hard edges over the shaded mesh.
   partEdges = new THREE.LineSegments(
     new THREE.EdgesGeometry(geometry, 25),
     new THREE.LineBasicMaterial({ color: 0x11141a }));
   scene.add(partEdges);
+}
+
+// ---------- plans de base (Face / Dessus / Droite) ----------
+// Toujours là, comme dans SolidWorks : visibles dans l'arbre, cliquables
+// dans la zone graphique quand la commande Esquisse attend un plan.
+
+const PLANE_ROTATIONS = {
+  XY: [0, 0, 0],
+  XZ: [Math.PI / 2, 0, 0],
+  YZ: [0, Math.PI / 2, 0],
+};
+const planesGroup = new THREE.Group();
+planesGroup.visible = false;
+scene.add(planesGroup);
+let planeMeshes = {};
+let planePicking = false;
+let selectedPlane = null;   // plan choisi dans l'arbre (sticky)
+let hoverPlane = null;      // survol en zone graphique pendant le picking
+let treeHoverPlane = null;  // survol d'une ligne de plan dans l'arbre
+
+function rebuildPlanes() {
+  planesGroup.clear();
+  planeMeshes = {};
+  const { radius } = partCenterRadius();
+  const size = Math.max(radius * 1.7, 80);
+  for (const [id, rotation] of Object.entries(PLANE_ROTATIONS)) {
+    const holder = new THREE.Group();
+    holder.rotation.set(...rotation);
+    const fill = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, size),
+      new THREE.MeshBasicMaterial({
+        color: 0x4f8fdb, transparent: true, opacity: 0.1,
+        side: THREE.DoubleSide, depthWrite: false }));
+    fill.userData.plane = id;
+    const border = new THREE.LineSegments(
+      new THREE.EdgesGeometry(fill.geometry),
+      new THREE.LineBasicMaterial(
+        { color: 0x4f8fdb, transparent: true, opacity: 0.6 }));
+    holder.add(fill, border);
+    planesGroup.add(holder);
+    planeMeshes[id] = fill;
+  }
+  updatePlaneVisibility();
+}
+
+function updatePlaneVisibility() {
+  const single = planePicking ? null : (treeHoverPlane ?? selectedPlane);
+  planesGroup.visible = planePicking || single !== null;
+  for (const [id, mesh] of Object.entries(planeMeshes)) {
+    mesh.parent.visible = planePicking || id === single;
+    mesh.material.opacity =
+      (planePicking && id === hoverPlane) || id === selectedPlane
+        ? 0.28 : 0.1;
+  }
+}
+
+function startPlanePick() {
+  planePicking = true;
+  hoverPlane = null;
+  rebuildPlanes();
+  say("Esquisse : cliquez un plan — dans la zone graphique ou dans " +
+      "l'arbre (Échap pour annuler)");
+}
+
+function cancelPlanePick() {
+  planePicking = false;
+  hoverPlane = null;
+  updatePlaneVisibility();
+  say("Esquisse annulée.");
+}
+
+function pickPlane(id) {
+  planePicking = false;
+  hoverPlane = null;
+  selectedPlane = null;
+  updatePlaneVisibility();
+  if (lastTree) renderTree(lastTree);
+  sketchMode.enter(call("sketch_start", { plane: id }));
 }
 
 // ---------- aperçu jaune (le ghost du PropertyManager) ----------
@@ -170,6 +249,17 @@ renderer.domElement.addEventListener("pointermove", (event) => {
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  if (planePicking) {
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects(Object.values(planeMeshes))[0];
+    const id = hit?.object.userData.plane ?? null;
+    if (id !== hoverPlane) {
+      hoverPlane = id;
+      updatePlaneVisibility();
+    }
+    renderer.domElement.style.cursor = id ? "pointer" : "";
+    return;
+  }
   if (!partMesh) return;
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObject(partMesh)[0];
@@ -211,8 +301,17 @@ renderer.domElement.addEventListener("pointerup", (event) => {
                             event.clientY - pressPosition.y);
   pressPosition = null;
   if (travel > 5) return;
+  if (planePicking) {
+    if (hoverPlane) pickPlane(hoverPlane);
+    return;
+  }
   selectedFaceId = hoveredGroup >= 0 ? meshGroups[hoveredGroup].faceId : null;
   repaintGroups();
+  if (selectedFaceId !== null && selectedPlane !== null) {
+    selectedPlane = null; // une face remplace le plan choisi
+    updatePlaneVisibility();
+    if (lastTree) renderTree(lastTree);
+  }
   // A command panel with a selection box absorbs the pick, SolidWorks-style.
   if (selectedFaceId !== null) panel.notifyFace(selectedFaceId);
 });
@@ -285,6 +384,8 @@ document.addEventListener("keydown", (event) => {
              && (event.key === "z" || event.key === "y")) {
     event.preventDefault();
     refresh(call(event.key === "z" ? "undo" : "redo"));
+  } else if (event.key === "Escape" && planePicking) {
+    cancelPlanePick();
   }
 });
 
@@ -313,7 +414,26 @@ function treeIcon(file) {
   return img;
 }
 
+let lastTree = null;
+const expandedFeatures = new Set(); // les fonctions dépliées (persiste)
+
+function onPlaneRow(id) {
+  if (planePicking) { pickPlane(id); return; }
+  selectedPlane = selectedPlane === id ? null : id;
+  if (selectedPlane !== null && selectedFaceId !== null) {
+    selectedFaceId = null;
+    repaintGroups();
+  }
+  updatePlaneVisibility();
+  if (lastTree) renderTree(lastTree);
+  say(selectedPlane
+    ? "Plan choisi — cliquez Esquisse pour dessiner dessus"
+    : "Plan désélectionné");
+}
+
 function renderTree(tree) {
+  lastTree = tree;
+  treeHoverPlane = null;
   treeEl.innerHTML = "";
   const bodyItem = document.createElement("li");
   bodyItem.className = "body";
@@ -321,9 +441,43 @@ function renderTree(tree) {
   bodyItem.appendChild(document.createTextNode(tree.body));
   treeEl.appendChild(bodyItem);
 
+  // Les trois plans de base, toujours là — comme dans SolidWorks.
+  for (const plane of tree.planes ?? []) {
+    const item = document.createElement("li");
+    item.className = "plane" + (selectedPlane === plane.id ? " sel" : "");
+    item.appendChild(treeIcon("Std_Plane.svg"));
+    item.appendChild(document.createTextNode(plane.label));
+    item.title = "Clic : choisir ce plan pour la prochaine esquisse";
+    item.addEventListener("click", () => onPlaneRow(plane.id));
+    item.addEventListener("mouseenter", () => {
+      treeHoverPlane = plane.id;
+      updatePlaneVisibility();
+    });
+    item.addEventListener("mouseleave", () => {
+      treeHoverPlane = null;
+      updatePlaneVisibility();
+    });
+    treeEl.appendChild(item);
+  }
+
   for (const feature of tree.features) {
     const item = document.createElement("li");
     if (feature.error) item.className = "error";
+    const hasChildren = !!feature.children?.length;
+    const arrow = document.createElement("span");
+    arrow.className = "arrow";
+    arrow.textContent = hasChildren
+      ? (expandedFeatures.has(feature.name) ? "▾" : "▸") : "";
+    if (hasChildren) {
+      arrow.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!expandedFeatures.delete(feature.name)) {
+          expandedFeatures.add(feature.name);
+        }
+        renderTree(lastTree);
+      });
+    }
+    item.appendChild(arrow);
     const icon = TREE_ICONS[feature.type];
     if (icon) item.appendChild(treeIcon(icon));
     item.appendChild(document.createTextNode(feature.label));
@@ -332,6 +486,21 @@ function renderTree(tree) {
     item.addEventListener("dblclick", () => editFeature(feature));
     item.addEventListener("contextmenu", (e) => openMenu(e, feature));
     treeEl.appendChild(item);
+
+    // L'esquisse consommée vit sous sa fonction, à la SolidWorks.
+    if (hasChildren && expandedFeatures.has(feature.name)) {
+      for (const child of feature.children) {
+        const row = document.createElement("li");
+        row.className = "child" + (child.error ? " error" : "");
+        row.appendChild(treeIcon("Sketcher_Sketch.svg"));
+        row.appendChild(document.createTextNode(child.label));
+        row.title = `${child.kind} — double-clic : modifier l'esquisse`;
+        row.addEventListener("dblclick", () => editFeature(child));
+        row.addEventListener("contextmenu", (e) => openMenu(e, child));
+        treeEl.appendChild(row);
+      }
+    }
+
     if (feature.name === tree.tip) {
       const bar = document.createElement("li");
       bar.className = "rollback";
@@ -469,27 +638,18 @@ document.getElementById("btn-undo").addEventListener("click", () =>
 document.getElementById("btn-redo").addEventListener("click", () =>
   refresh(call("redo")));
 
-// SolidWorks names -> engine wire names (vocab.ORIGIN_PLANES, Z-up).
-const SKETCH_PLANES = { dessus: "XY", face: "XZ", droite: "YZ" };
-
-document.getElementById("btn-sketch").addEventListener("click", () => {
-  const params = {};
-  if (selectedFaceId !== null) {
-    params.face = selectedFaceId;
-  } else {
-    const raw = prompt(
-      "Plan de l'esquisse : dessus / face / droite\n" +
-      "(ou Annuler, puis cliquez une face de la pièce)", "dessus");
-    if (raw === null) return;
-    const plane = SKETCH_PLANES[raw.trim().toLowerCase()];
-    if (!plane) {
-      say("Plan inconnu — répondez dessus, face ou droite", true);
-      return;
+document.getElementById("btn-sketch").addEventListener("click", () =>
+  featureCommand(() => {
+    if (selectedFaceId !== null) {
+      sketchMode.enter(call("sketch_start", { face: selectedFaceId }));
+    } else if (selectedPlane !== null) {
+      pickPlane(selectedPlane);
+    } else {
+      // Rien de choisi : les trois plans s'affichent, à vous de cliquer —
+      // le geste SolidWorks exact.
+      startPlanePick();
     }
-    params.plane = plane;
-  }
-  sketchMode.enter(call("sketch_start", params));
-});
+  }));
 
 function pocketBuild(v) {
   const reversed = !!v.reversed;

@@ -628,19 +628,51 @@ class Kernel:
         return self.get_tree()
 
     def get_tree(self):
-        """The feature tree, in the vocabulary the designer knows."""
+        """The feature tree, in the vocabulary the designer knows.
+
+        SolidWorks shape: the three base planes come first, and a sketch
+        consumed by a feature nests under it as a child instead of
+        cluttering the top level.
+        """
         body = self._require_body()
-        items = []
+
+        consumed = {}  # sketch name -> name of the feature using it
         for obj in body.Group:
-            items.append({
+            profile = getattr(obj, "Profile", None)
+            linked = profile[0] if isinstance(profile, tuple) else profile
+            if linked is not None:
+                consumed[linked.Name] = obj.Name
+
+        def entry(obj):
+            return {
                 "name": obj.Name,
                 "label": obj.Label,
                 "kind": label_for_type(obj.TypeId),
                 "type": obj.TypeId,
                 "error": "Invalid" in (obj.State or ()),
-            })
+            }
+
+        items = []
+        for obj in body.Group:
+            if (obj.TypeId == "Sketcher::SketchObject"
+                    and obj.Name in consumed):
+                continue
+            item = entry(obj)
+            children = [entry(o) for o in body.Group
+                        if o.TypeId == "Sketcher::SketchObject"
+                        and consumed.get(o.Name) == obj.Name]
+            if children:
+                item["children"] = children
+            items.append(item)
+
+        from freesolid.vocab import label_for_origin
+        # L'ordre SolidWorks : Plan de face, Plan de dessus, Plan de droite.
+        planes = [{"id": wire,
+                   "label": label_for_origin(self._PLANE_ROLES[wire])}
+                  for wire in ("XZ", "XY", "YZ")]
         tip = body.Tip.Name if getattr(body, "Tip", None) else None
-        return {"body": body.Label, "tip": tip, "features": items}
+        return {"body": body.Label, "tip": tip,
+                "planes": planes, "features": items}
 
     def tessellate(self, deviation=0.1):
         """Per-face tessellation of the body's current shape.
@@ -1194,7 +1226,8 @@ class Kernel:
             report["ping"] = self.ping()
 
             mark("m0: pièce + esquisse contrainte + bossage")
-            self.new_part("Pièce de test")
+            tree = self.new_part("Pièce de test")
+            report["m0_planes"] = [p["label"] for p in tree["planes"]]
             self.add_rect_sketch(100, 60)
             tree = self.add_pad(10)
             mesh = self.tessellate()
@@ -1264,6 +1297,11 @@ class Kernel:
             tree = self.add_pad(8, sketch=name)
             report["m2_pad_on_drawn_sketch_ok"] = not any(
                 f["error"] for f in tree["features"])
+            # L'esquisse consommée doit être rangée SOUS son bossage.
+            report["m2_sketch_nested_ok"] = any(
+                child["name"] == name
+                for f in tree["features"]
+                for child in f.get("children", ()))
 
             mark("p1: annuler / rétablir via transactions")
             state = self.sketch_start()

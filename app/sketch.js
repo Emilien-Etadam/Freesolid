@@ -7,7 +7,8 @@
 import * as THREE from "three";
 
 export function createSketchMode(deps) {
-  const { scene, camera, renderer, controls, call, say, refresh } = deps;
+  const { scene, camera, renderer, controls, call, say, refresh, panel } =
+    deps;
 
   const group = new THREE.Group();
   scene.add(group);
@@ -137,20 +138,29 @@ export function createSketchMode(deps) {
 
   function makeDimSprite(text, x, y) {
     const canvas = document.createElement("canvas");
-    canvas.width = 128; canvas.height = 40;
+    canvas.width = 256; canvas.height = 40;
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "rgba(23,25,28,0.85)";
-    ctx.fillRect(0, 0, 128, 40);
-    ctx.font = "24px system-ui";
+    ctx.fillRect(0, 0, 256, 40);
+    ctx.font = "22px system-ui";
     ctx.fillStyle = "#7fc4ff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(text, 64, 21);
+    ctx.fillText(text, 128, 21);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: new THREE.CanvasTexture(canvas), depthTest: false }));
     sprite.position.set(x, y, 0.01);
-    sprite.scale.set(14, 4.4, 1);
+    sprite.scale.set(26, 4.1, 1);
     return sprite;
+  }
+
+  // « largeur = 60.00 », préfixe Σ quand une équation pilote la cote.
+  function dimText(dim) {
+    const number = dim.type === "Angle"
+      ? (dim.value * 180 / Math.PI).toFixed(1) + "°"
+      : dim.value.toFixed(2);
+    return (dim.expr ? "Σ " : "")
+      + (dim.name ? dim.name + " = " : "") + number;
   }
 
   let previewLine = null;
@@ -226,11 +236,7 @@ export function createSketchMode(deps) {
         x = entity.c[0] + (entity.r ?? 0) * 0.7;
         y = entity.c[1] + (entity.r ?? 0) * 0.7;
       }
-      // Angles travel in radians; the designer reads degrees.
-      const text = dim.type === "Angle"
-        ? (dim.value * 180 / Math.PI).toFixed(1) + "°"
-        : dim.value.toFixed(2);
-      const sprite = makeDimSprite(text, x, y);
+      const sprite = makeDimSprite(dimText(dim), x, y);
       sprite.userData.dim = dim;
       sprite.renderOrder = 22;
       group.add(sprite);
@@ -298,9 +304,9 @@ export function createSketchMode(deps) {
       if (picked === null) {
         mode.selection = [];
       } else {
-        mode.selection = [...mode.selection, picked].slice(-2);
+        mode.selection = [...mode.selection, picked].slice(-3);
         say(`Sélection : ${mode.selection.length} entité(s) — ` +
-            "appliquez une contrainte, ou cliquez dans le vide");
+            "appliquez une relation, ou cliquez dans le vide");
       }
       redraw();
     } else if (mode.tool === "line") {
@@ -588,27 +594,56 @@ export function createSketchMode(deps) {
     }
   }
 
+  // Double-clic sur une cote : nom, valeur ou expression — le panneau
+  // remplace le prompt, c'est la porte d'entrée du paramétrique.
+  function editDim(dim) {
+    const isAngle = dim.type === "Angle";
+    const shown = dim.expr
+      || (isAngle ? (dim.value * 180 / Math.PI).toFixed(2)
+                  : String(+dim.value.toFixed(4)));
+    panel.open({
+      icon: "Constraint_Dimension.svg",
+      title: "Cote" + (dim.name ? ` — ${dim.name}` : ""),
+      groups: [{
+        label: "Cote",
+        rows: [
+          { type: "text", key: "name", label: "Nom", value: dim.name,
+            placeholder: "largeur" },
+          { type: "text", key: "value", label: "Valeur ou expression",
+            value: shown, unit: isAngle ? "°" : "mm" },
+        ],
+      }],
+      note: "Expression : « Variables.Largeur / 2 » ou " +
+            "« .Constraints.largeur * 2 » (les noms de cotes de cette " +
+            "esquisse s'utilisent avec .Constraints.nom)",
+      onApply: (v) => {
+        const params = { sketch: mode.state.sketch, dim: dim.id };
+        const name = (v.name ?? "").trim();
+        if (name !== (dim.name ?? "")) params.name = name;
+        const raw = String(v.value ?? "").trim();
+        if (raw && raw !== shown) {
+          if (/^-?\d+([.,]\d+)?$/.test(raw)) {
+            const parsed = parseFloat(raw.replace(",", "."));
+            params.value = isAngle ? parsed * Math.PI / 180 : parsed;
+          } else {
+            params.expr = raw;
+          }
+        }
+        if (params.name === undefined && params.value === undefined
+            && params.expr === undefined) return;
+        safe(call("sketch_set_dim", params));
+      },
+    });
+  }
+
   function onDoubleClick(event) {
-    // Double-click a dimension label: edit its value.
     if (!mode.state) return;
     for (const child of group.children) {
       const dim = child.userData?.dim;
       if (!dim) continue;
       const s = toScreen(child.position.x, child.position.y);
       if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < 22) {
-        const isAngle = dim.type === "Angle";
-        const shown = isAngle
-          ? (dim.value * 180 / Math.PI).toFixed(1) : dim.value.toFixed(2);
-        const raw = prompt(
-          isAngle ? "Nouvelle valeur (°) :" : "Nouvelle valeur (mm) :",
-          shown);
-        if (raw === null) return;
-        const parsed = parseFloat(raw);
-        if (!Number.isNaN(parsed)) {
-          const value = isAngle ? parsed * Math.PI / 180 : parsed;
-          safe(call("sketch_set_dim",
-            { sketch: mode.state.sketch, dim: dim.id, value }));
-        }
+        editDim(dim);
         return;
       }
     }
@@ -616,6 +651,8 @@ export function createSketchMode(deps) {
 
   function onKey(event) {
     if (!mode.active) return;
+    // Taper dans un champ du panneau ne doit pas changer d'outil.
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
     if (event.key === "Escape") {
       if (previewLine) previewLine.visible = false;
       setTool("select");
@@ -691,17 +728,22 @@ export function createSketchMode(deps) {
     if (tool) setTool(tool);
   });
 
-  // ---------- contraintes manuelles ----------
+  // ---------- relations manuelles ----------
 
-  const TWO_ENTITY_KINDS =
-    ["parallel", "perpendicular", "equal", "tangent", "coincident"];
+  //: relation -> nombre d'entités attendues. symmetric : 2 points + l'axe.
+  const CONSTRAINT_NEEDS = {
+    horizontal: 1, vertical: 1, fixed: 1,
+    parallel: 2, perpendicular: 2, equal: 2, tangent: 2,
+    coincident: 2, concentric: 2, collinear: 2, midpoint: 2,
+    symmetric: 3,
+  };
 
   function applyConstraint(kind) {
     if (!mode.state) return;
     const selection = mode.selection;
-    const needed = TWO_ENTITY_KINDS.includes(kind) ? 2 : 1;
+    const needed = CONSTRAINT_NEEDS[kind];
     if (selection.length < needed) {
-      say(`Contrainte : sélectionnez d'abord ${needed} entité(s) ` +
+      say(`Relation : sélectionnez d'abord ${needed} entité(s) ` +
           "avec l'outil Sélectionner", true);
       return;
     }
@@ -712,13 +754,71 @@ export function createSketchMode(deps) {
       params.geo2 = selection[1].geo;
       if (selection[1].point != null) params.point2 = selection[1].point;
     }
+    if (needed >= 3 && selection[2]) params.geo3 = selection[2].geo;
     safe(call("sketch_constrain", params));
   }
 
-  for (const kind of ["horizontal", "vertical", ...TWO_ENTITY_KINDS]) {
+  for (const kind of Object.keys(CONSTRAINT_NEEDS)) {
     document.getElementById("sk-c-" + kind)
       .addEventListener("click", () => applyConstraint(kind));
   }
+
+  // ---------- panneau Relations (voir et supprimer) ----------
+
+  async function openRelationsPanel() {
+    if (!mode.state) return;
+    if (mode.selection.length !== 1) {
+      say("Relations : sélectionnez d'abord UNE entité " +
+          "(outil Sélectionner)", true);
+      return;
+    }
+    const geo = mode.selection[0].geo;
+    let listed;
+    try {
+      listed = await call("sketch_constraints",
+        { sketch: mode.state.sketch, geo });
+    } catch (error) {
+      say(error.message, true);
+      return;
+    }
+    panel.open({
+      icon: "Sketcher_ToggleConstraint.svg",
+      title: `Relations — entité ${geo}`,
+      groups: [{
+        label: "Relations de l'entité",
+        rows: [{
+          type: "list",
+          empty: "— aucune relation sur cette entité —",
+          items: listed.constraints.map((c) => ({
+            label: c.label
+              + (c.name ? ` « ${c.name} »` : "")
+              + (c.value !== undefined
+                 ? " = " + (c.type === "Angle"
+                     ? (c.value * 180 / Math.PI).toFixed(1) + "°"
+                     : c.value.toFixed(2))
+                 : ""),
+            onDelete: async () => {
+              try {
+                applyState(await call("sketch_delete_constraint",
+                  { sketch: mode.state.sketch, constraint: c.id }));
+                mode.selection = [{ geo }];
+                redraw();
+                openRelationsPanel(); // ré-ouvre avec la liste à jour
+              } catch (error) {
+                say(error.message, true);
+              }
+            },
+          })),
+        }],
+      }],
+      note: "✕ supprime la relation — la sortie des esquisses " +
+            "sur-contraintes",
+      onApply: () => {},
+    });
+  }
+
+  document.getElementById("sk-relations")
+    .addEventListener("click", openRelationsPanel);
   document.getElementById("sk-finish").addEventListener("click", () => exit(true));
   document.getElementById("sk-cancel").addEventListener("click", () => exit(false));
 

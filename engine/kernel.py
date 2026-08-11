@@ -521,13 +521,17 @@ class Kernel:
         obj = doc.getObject(feature)
         if obj is None:
             raise KernelError("fonction inconnue : {}".format(feature))
+        exprs = self._expression_map(obj)
         params = []
         for prop in self._EDITABLE_PROPS:
             if not hasattr(obj, prop):
                 continue
             value = getattr(obj, prop)
-            params.append({"prop": prop,
-                           "value": float(getattr(value, "Value", value))})
+            entry = {"prop": prop,
+                     "value": float(getattr(value, "Value", value))}
+            if prop in exprs:
+                entry["expr"] = exprs[prop]
+            params.append(entry)
         return {"feature": feature, "label": obj.Label, "params": params}
 
     def set_tip(self, feature):
@@ -639,7 +643,12 @@ class Kernel:
 
     def set_params(self, feature, values):
         """Set several properties at once, one recompute — the edit panel
-        applies (and previews) its whole form atomically."""
+        applies (and previews) its whole form atomically.
+
+        A value may be a number, or a string: a numeric string is a
+        number, anything else is an **expression** (``2*Largeur + 5``) —
+        the SolidWorks equation, via FreeCAD's expression engine.
+        """
         doc = self._require_doc()
         obj = doc.getObject(feature)
         if obj is None:
@@ -651,6 +660,22 @@ class Kernel:
             if not hasattr(obj, prop):
                 raise KernelError("{} n'a pas de propriété {}".format(
                     obj.Label, prop))
+            if isinstance(value, str):
+                text = value.strip()
+                try:
+                    value = float(text)
+                except ValueError:
+                    try:
+                        obj.setExpression(prop, text)
+                    except Exception as exc:  # noqa: BLE001
+                        raise KernelError(_explain(exc))
+                    continue
+            # Valeur numérique : une expression existante reprendrait la
+            # main au recompute — on la retire d'abord.
+            try:
+                obj.setExpression(prop, None)
+            except Exception:
+                pass
             current = getattr(obj, prop, None)
             if isinstance(current, int) and not isinstance(current, bool):
                 value = int(value)
@@ -660,6 +685,74 @@ class Kernel:
                 raise KernelError(_explain(exc))
         self._recompute()
         return self.get_tree()
+
+    # -- paramétrique : variables globales + équations -------------------
+
+    _VARSET_NAME = "Variables"
+
+    @staticmethod
+    def _valid_identifier(name):
+        import re
+        return bool(re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", str(name)))
+
+    def _varset(self, create=False):
+        doc = self._require_doc()
+        obj = doc.getObject(self._VARSET_NAME)
+        if obj is None and create:
+            obj = doc.addObject("App::VarSet", self._VARSET_NAME)
+            obj.Label = "Équations"
+        return obj
+
+    def _variable_names(self, varset):
+        return [p for p in varset.PropertiesList
+                if varset.getGroupOfProperty(p) == "Variables"]
+
+    def list_variables(self):
+        varset = self._varset()
+        if varset is None:
+            return {"variables": []}
+        return {"variables": [
+            {"name": name,
+             "value": float(getattr(varset, name))}
+            for name in self._variable_names(varset)]}
+
+    def set_variable(self, name, value):
+        """Créer ou modifier une variable globale — utilisable ensuite
+        dans toute expression : ``Variables.Largeur * 2``."""
+        name = str(name).strip()
+        if not self._valid_identifier(name):
+            raise KernelError(
+                "nom invalide « {} » — lettres, chiffres et _ seulement, "
+                "sans commencer par un chiffre".format(name))
+        varset = self._varset(create=True)
+        if name not in varset.PropertiesList:
+            varset.addProperty("App::PropertyFloat", name, "Variables")
+        try:
+            setattr(varset, name, float(value))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        self._require_doc().recompute()
+        return self.list_variables()
+
+    def delete_variable(self, name):
+        varset = self._varset()
+        name = str(name).strip()
+        if varset is None or name not in self._variable_names(varset):
+            raise KernelError("variable inconnue : {}".format(name))
+        try:
+            varset.removeProperty(name)
+        except Exception as exc:  # noqa: BLE001 - encore référencée
+            raise KernelError(_explain(exc))
+        self._require_doc().recompute()
+        return self.list_variables()
+
+    @staticmethod
+    def _expression_map(obj):
+        """{property path -> expression}, normalized without leading dot."""
+        table = {}
+        for path, expr in (getattr(obj, "ExpressionEngine", None) or ()):
+            table[str(path).lstrip(".")] = str(expr)
+        return table
 
     def rename(self, feature, label):
         """Renommer une fonction, une esquisse ou la pièce."""
@@ -877,12 +970,25 @@ class Kernel:
                 entity = {"id": gid, "type": "other", "kind": geo.TypeId}
             entity["construction"] = self._is_construction(sk, gid, geo)
             entities.append(entity)
+        import re
+        exprs = {}  # constraint index -> expression
+        names = {c.Name: cid for cid, c in enumerate(sk.Constraints)
+                 if c.Name}
+        for path, expr in self._expression_map(sk).items():
+            by_index = re.match(r"^Constraints\[(\d+)\]$", path)
+            by_name = re.match(r"^Constraints\.(.+)$", path)
+            if by_index:
+                exprs[int(by_index.group(1))] = expr
+            elif by_name and by_name.group(1) in names:
+                exprs[names[by_name.group(1)]] = expr
         dims = []
         for cid, constraint in enumerate(sk.Constraints):
             if constraint.Type in ("Distance", "DistanceX", "DistanceY",
                                    "Radius", "Diameter", "Angle"):
                 dims.append({"id": cid, "type": constraint.Type,
                              "value": float(constraint.Value),
+                             "name": constraint.Name or "",
+                             "expr": exprs.get(cid, ""),
                              "geo": constraint.First})
         try:
             sk.solve()
@@ -1059,44 +1165,77 @@ class Kernel:
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
-    #: kind -> (Sketcher name, arité, exige des points)
-    _CONSTRAINT_KINDS = {
-        "horizontal": ("Horizontal", 1, False),
-        "vertical": ("Vertical", 1, False),
-        "parallel": ("Parallel", 2, False),
-        "perpendicular": ("Perpendicular", 2, False),
-        "equal": ("Equal", 2, False),
-        "tangent": ("Tangent", 2, False),
-        "coincident": ("Coincident", 2, True),
-    }
+    def _constraint_for(self, sk, kind, geo1, point1, geo2, point2, geo3):
+        """Build the Sketcher constraint for one designer-facing kind.
 
-    def sketch_constrain(self, sketch, kind, geo1,
-                         point1=None, geo2=None, point2=None):
-        """Contrainte manuelle. Points au sens Sketcher : 1 départ, 2 fin,
-        3 centre — requis pour coincident."""
+        The SolidWorks relation set maps onto Sketcher with a few
+        translations: colinéaire = Tangent between lines, concentrique =
+        Coincident of centers, milieu = Symmetric of the line's endpoints
+        about the point, fixe = Block.
+        """
         import Sketcher
-        sk = self._get_sketch(sketch)
-        spec = self._CONSTRAINT_KINDS.get(str(kind))
-        if spec is None:
-            raise KernelError(
-                "contrainte inconnue « {} » — attendu : {}".format(
-                    kind, ", ".join(sorted(self._CONSTRAINT_KINDS))))
-        name, arity, needs_points = spec
-        if arity == 2 and geo2 is None:
+        C = Sketcher.Constraint
+        line = "Part::GeomLineSegment"
+        round_types = ("Part::GeomCircle", "Part::GeomArcOfCircle")
+        g1 = int(geo1)
+        if kind in ("horizontal", "vertical"):
+            return C(kind.capitalize(), g1)
+        if kind == "fixed":
+            return C("Block", g1)
+        if geo2 is None:
             raise KernelError(
                 "{} : sélectionnez deux entités".format(kind))
+        g2 = int(geo2)
+        if kind == "coincident":
+            if point1 is None or point2 is None:
+                raise KernelError("coïncidence : cliquez deux points "
+                                  "(extrémités ou centres)")
+            return C("Coincident", g1, int(point1), g2, int(point2))
+        if kind == "concentric":
+            for g in (g1, g2):
+                if sk.Geometry[g].TypeId not in round_types:
+                    raise KernelError("concentrique : deux cercles ou arcs")
+            return C("Coincident", g1, 3, g2, 3)
+        if kind == "collinear":
+            for g in (g1, g2):
+                if sk.Geometry[g].TypeId != line:
+                    raise KernelError("colinéaire : deux lignes")
+            return C("Tangent", g1, g2)
+        if kind == "midpoint":
+            # point (souvent un centre) au milieu d'une ligne — dans un
+            # ordre ou l'autre.
+            if sk.Geometry[g1].TypeId == line and point2 is not None:
+                return C("Symmetric", g1, 1, g1, 2, g2, int(point2))
+            if sk.Geometry[g2].TypeId == line and point1 is not None:
+                return C("Symmetric", g2, 1, g2, 2, g1, int(point1))
+            raise KernelError("milieu : un point et une ligne")
+        if kind == "symmetric":
+            if geo3 is None or point1 is None or point2 is None:
+                raise KernelError(
+                    "symétrique : deux points puis la ligne d'axe")
+            g3 = int(geo3)
+            if sk.Geometry[g3].TypeId != line:
+                raise KernelError("symétrique : le 3e élément doit être "
+                                  "une ligne (l'axe)")
+            return C("Symmetric", g1, int(point1), g2, int(point2), g3)
+        if kind in ("parallel", "perpendicular", "equal", "tangent"):
+            names = {"parallel": "Parallel", "perpendicular": "Perpendicular",
+                     "equal": "Equal", "tangent": "Tangent"}
+            return C(names[kind], g1, g2)
+        raise KernelError(
+            "contrainte inconnue « {} » — attendu : horizontal, vertical, "
+            "coincident, parallel, perpendicular, equal, tangent, "
+            "concentric, collinear, midpoint, symmetric, fixed".format(kind))
+
+    def sketch_constrain(self, sketch, kind, geo1, point1=None,
+                         geo2=None, point2=None, geo3=None):
+        """Contrainte manuelle. Points au sens Sketcher : 1 départ, 2 fin,
+        3 centre. ``symmetric`` prend trois entités (2 points + l'axe)."""
+        sk = self._get_sketch(sketch)
         try:
-            if needs_points:
-                if point1 is None or point2 is None:
-                    raise KernelError("coïncidence : cliquez deux points "
-                                      "(extrémités ou centres)")
-                sk.addConstraint(Sketcher.Constraint(
-                    name, int(geo1), int(point1), int(geo2), int(point2)))
-            elif arity == 1:
-                sk.addConstraint(Sketcher.Constraint(name, int(geo1)))
-            else:
-                sk.addConstraint(Sketcher.Constraint(
-                    name, int(geo1), int(geo2)))
+            constraint = self._constraint_for(
+                sk, str(kind), geo1, point1, geo2, point2, geo3)
+            sk.addConstraint(constraint)
         except KernelError:
             raise
         except Exception as exc:  # noqa: BLE001 - over-constrained, mostly
@@ -1250,11 +1389,90 @@ class Kernel:
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
-    def sketch_set_dim(self, sketch, dim, value):
-        """Edit a dimension's value — the double-click-a-dim gesture."""
+    def sketch_set_dim(self, sketch, dim, value=None, name=None, expr=None):
+        """Edit a dimension — the double-click-a-dim gesture, complete:
+        value, **name** (``largeur``) and **expression** (``largeur/2``).
+
+        An expression takes over the value; setting a plain value clears
+        any expression. Names make the SolidWorks equation workflow:
+        name a dim, then reference it from any other dim or feature.
+        """
         sk = self._get_sketch(sketch)
+        idx = int(dim)
+        if idx < 0 or idx >= len(sk.Constraints):
+            raise KernelError("cote inconnue : {}".format(dim))
         try:
-            sk.setDatum(int(dim), float(value))
+            if name is not None:
+                name = str(name).strip()
+                if name and not self._valid_identifier(name):
+                    raise KernelError(
+                        "nom invalide « {} » — lettres, chiffres et _ "
+                        "seulement".format(name))
+                sk.renameConstraint(idx, name)
+            path = "Constraints[{}]".format(idx)
+            if expr is not None and str(expr).strip():
+                sk.setExpression(path, str(expr).strip())
+            elif value is not None:
+                try:
+                    sk.setExpression(path, None)
+                except Exception:
+                    pass
+                sk.setDatum(idx, float(value))
+        except KernelError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        self._require_doc().recompute()  # les expressions s'évaluent ici
+        return self.sketch_state(sketch)
+
+    #: Libellé français des types de contraintes, pour le panneau Relations.
+    _CONSTRAINT_LABELS = {
+        "Coincident": "Coïncidente", "Horizontal": "Horizontale",
+        "Vertical": "Verticale", "Parallel": "Parallèle",
+        "Perpendicular": "Perpendiculaire", "Tangent": "Tangente",
+        "Equal": "Égale", "Symmetric": "Symétrique", "Block": "Fixe",
+        "PointOnObject": "Sur l'entité", "Distance": "Cote (distance)",
+        "DistanceX": "Cote (horizontale)", "DistanceY": "Cote (verticale)",
+        "Radius": "Cote (rayon)", "Diameter": "Cote (diamètre)",
+        "Angle": "Cote (angle)",
+    }
+
+    def sketch_constraints(self, sketch, geo=None):
+        """Les relations de l'esquisse — filtrables par entité.
+
+        C'est la sortie du mur des esquisses sur-contraintes : voir ce qui
+        tient une entité, et pouvoir supprimer la relation de trop.
+        """
+        sk = self._get_sketch(sketch)
+        undefined = -2000  # Sketcher.GeoUndef
+        items = []
+        for cid, constraint in enumerate(sk.Constraints):
+            geos = [g for g in (constraint.First, constraint.Second,
+                                constraint.Third)
+                    if g is not None and g != undefined]
+            if geo is not None and int(geo) not in geos:
+                continue
+            entry = {
+                "id": cid,
+                "type": constraint.Type,
+                "label": self._CONSTRAINT_LABELS.get(
+                    constraint.Type, constraint.Type),
+                "geos": geos,
+                "name": constraint.Name or "",
+            }
+            if constraint.Type in ("Distance", "DistanceX", "DistanceY",
+                                   "Radius", "Diameter", "Angle"):
+                entry["value"] = float(constraint.Value)
+            items.append(entry)
+        return {"constraints": items}
+
+    def sketch_delete_constraint(self, sketch, constraint):
+        sk = self._get_sketch(sketch)
+        idx = int(constraint)
+        if idx < 0 or idx >= len(sk.Constraints):
+            raise KernelError("relation inconnue : {}".format(constraint))
+        try:
+            sk.delConstraint(idx)
         except Exception as exc:  # noqa: BLE001
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
@@ -1576,6 +1794,74 @@ class Kernel:
                 p["prop"] == "Diameter" and abs(p["value"] - 8.0) < 1e-9
                 for p in self.get_params(hole_name)["params"])
 
+            mark("p7: paramétrique — cote nommée, variable, équation")
+            self.new_part("Pièce paramétrique")
+            state = self.sketch_start()
+            par = state["sketch"]
+            self.sketch_add_line(par, 0, 0, 60, 0)     # géo 0 : largeur
+            self.sketch_add_line(par, 60, 0, 60, 30)   # géo 1 : hauteur
+            state = self.sketch_dim(par, 0)            # cote sur la largeur
+            width_dim = max(d["id"] for d in state["dims"])
+            state = self.sketch_set_dim(par, width_dim,
+                                        value=60, name="largeur")
+            report["p7_named_dim_ok"] = any(
+                d["id"] == width_dim and d["name"] == "largeur"
+                for d in state["dims"])
+            self.set_variable("coef", 2.0)
+            state = self.sketch_dim(par, 1)            # cote sur la hauteur
+            height_dim = max(d["id"] for d in state["dims"])
+            state = self.sketch_set_dim(
+                par, height_dim,
+                expr=".Constraints.largeur / Variables.coef")
+            height = next(d for d in state["dims"] if d["id"] == height_dim)
+            report["p7_equation_ok"] = abs(height["value"] - 30.0) < 1e-6
+            report["p7_equation_shown"] = bool(height["expr"])
+
+            mark("p7: expression sur une fonction (Length = largeur/10)")
+            self.sketch_add_line(par, 60, 30, 0, 30)
+            self.sketch_add_line(par, 0, 30, 0, 0)
+            self.sketch_finish(par)
+            tree = self.add_pad(10, sketch=par)
+            pad_name = next(f["name"] for f in tree["features"]
+                            if f["type"] == "PartDesign::Pad")
+            self.set_params(pad_name, {
+                "Length": "{}.Constraints.largeur / 10".format(par)})
+            pad_length = next(
+                p for p in self.get_params(pad_name)["params"]
+                if p["prop"] == "Length")
+            report["p7_feature_expr_ok"] = (
+                abs(pad_length["value"] - 6.0) < 1e-6
+                and bool(pad_length.get("expr")))
+
+            mark("p7: relations — concentrique, colinéaire, milieu, fixe")
+            state = self.sketch_start()
+            rel = state["sketch"]
+            self.sketch_add_circle(rel, 0, 0, 10)      # géo 0
+            self.sketch_add_circle(rel, 5, 5, 4)       # géo 1
+            state = self.sketch_constrain(rel, "concentric", 0, geo2=1)
+            circles = [e for e in state["entities"] if e["type"] == "circle"]
+            report["p7_concentric_ok"] = (
+                abs(circles[0]["c"][0] - circles[1]["c"][0]) < 1e-6
+                and abs(circles[0]["c"][1] - circles[1]["c"][1]) < 1e-6)
+            self.sketch_add_line(rel, 20, 0, 40, 2)    # géo 2
+            self.sketch_add_line(rel, 45, 3, 60, 5)    # géo 3
+            self.sketch_constrain(rel, "collinear", 2, geo2=3)
+            self.sketch_add_circle(rel, 25, 10, 2)     # géo 4
+            state = self.sketch_constrain(rel, "midpoint", 2,
+                                          geo2=4, point2=3)
+            self.sketch_constrain(rel, "fixed", 3)
+            report["p7_relations_ok"] = True
+
+            mark("p7: lister et supprimer une relation")
+            listed = self.sketch_constraints(rel, geo=2)
+            report["p7_list_count"] = len(listed["constraints"])
+            before = len(self._get_sketch(rel).Constraints)
+            self.sketch_delete_constraint(
+                rel, listed["constraints"][-1]["id"])
+            report["p7_delete_constraint_ok"] = (
+                len(self._get_sketch(rel).Constraints) == before - 1)
+            self.sketch_finish(rel)
+
             mark("p3: arc, rainure, polygone")
             import math
             self.new_part("Pièce esquisse avancée")
@@ -1658,6 +1944,7 @@ _TRANSACTIONAL = frozenset({
     "add_revolution", "add_groove", "add_mirror", "add_linear_pattern",
     "add_polar_pattern", "add_thickness", "add_draft", "add_hole",
     "set_param", "set_params", "rename",
+    "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",
     "sketch_start", "sketch_add_line", "sketch_add_circle", "sketch_dim",
     "sketch_set_dim", "sketch_delete_geo", "sketch_finish",

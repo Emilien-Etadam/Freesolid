@@ -71,9 +71,11 @@ export function createPropertyPanel({ say, onClose }) {
   function onKey(event) {
     if (event.key === "Enter" && event.target.tagName !== "SELECT") {
       event.preventDefault();
+      event.stopPropagation(); // le mode esquisse écoute aussi le clavier
       close(true);
     } else if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       close(false);
     }
   }
@@ -138,6 +140,25 @@ export function createPropertyPanel({ say, onClose }) {
     if (row.showIf && !row.showIf(values)) return null;
     if (row.type === "note") return el("div", "pnote", row.text);
 
+    if (row.type === "list") {
+      const wrap = el("div", "plist");
+      if (!row.items.length) {
+        wrap.append(el("div", "pnote", row.empty ?? "— aucune —"));
+      }
+      for (const item of row.items) {
+        const line = el("div", "plist-item");
+        line.append(el("span", "", item.label));
+        if (item.onDelete) {
+          const remove = el("button", "pdel", "✕");
+          remove.title = "Supprimer";
+          remove.addEventListener("click", item.onDelete);
+          line.append(remove);
+        }
+        wrap.append(line);
+      }
+      return wrap;
+    }
+
     if (row.type === "selection") {
       const box = el("div", "pselect-box");
       const value = values[row.key];
@@ -160,7 +181,19 @@ export function createPropertyPanel({ say, onClose }) {
     }
 
     const rowEl = el("div", "prow");
-    if (row.type === "number") {
+    if (row.type === "text") {
+      // Texte libre : noms de cotes, valeurs OU expressions (« 2*Largeur »).
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = values[row.key] ?? "";
+      if (row.placeholder) input.placeholder = row.placeholder;
+      input.addEventListener("input", () => {
+        values[row.key] = input.value;
+        changed();
+      });
+      rowEl.append(el("label", "", row.label), input);
+      if (row.unit) rowEl.append(el("span", "punit", row.unit));
+    } else if (row.type === "number") {
       const input = document.createElement("input");
       input.type = "number";
       input.value = values[row.key];

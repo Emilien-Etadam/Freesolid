@@ -117,7 +117,8 @@ def test_m2_sketch_ops_declare_their_required_params():
         "sketch", "x1", "y1", "x2", "y2")
     assert protocol.OPS["sketch_add_circle"] == ("sketch", "cx", "cy", "r")
     assert protocol.OPS["sketch_move"] == ("sketch", "geo", "point", "x", "y")
-    assert protocol.OPS["sketch_set_dim"] == ("sketch", "dim", "value")
+    # value | expr | name tous optionnels : renommer sans changer la valeur.
+    assert protocol.OPS["sketch_set_dim"] == ("sketch", "dim")
     assert protocol.OPS["sketch_dim"] == ("sketch", "geo")   # value optional
     assert protocol.OPS["sketch_start"] == ()                # face optional
     assert protocol.OPS["sketch_finish"] == ("sketch",)
@@ -209,6 +210,24 @@ def test_hole_rename_and_atomic_edit_ops():
         {"op": "add_hole",
          "params": {"diameter": 6, "through": True, "cut": "lamage",
                     "cut_diameter": 11, "cut_depth": 3}})
+
+
+def test_parametric_ops_declared():
+    assert protocol.OPS["set_variable"] == ("name", "value")
+    assert protocol.OPS["delete_variable"] == ("name",)
+    assert protocol.OPS["list_variables"] == ()
+    assert protocol.OPS["sketch_constraints"] == ("sketch",)
+    assert protocol.OPS["sketch_delete_constraint"] == (
+        "sketch", "constraint")
+    protocol.validate_request(
+        {"op": "sketch_set_dim",
+         "params": {"sketch": "Sketch", "dim": 3,
+                    "name": "largeur", "expr": "Variables.coef * 2"}})
+    protocol.validate_request(
+        {"op": "sketch_constrain",
+         "params": {"sketch": "Sketch", "kind": "symmetric",
+                    "geo1": 0, "point1": 1, "geo2": 1, "point2": 1,
+                    "geo3": 2}})
 
 
 def test_preview_wraps_an_op_and_its_params():

@@ -652,13 +652,14 @@ async function editFeature(feature) {
       say(`${info.label} : aucun paramètre numérique éditable`);
       return;
     }
+    // Champs texte : nombre OU expression (« 2*Variables.Largeur ») —
+    // le moteur tranche. Σ marque les propriétés déjà pilotées.
     const collectChanged = (v) => {
       const values = {};
       for (const p of info.params) {
-        const value = parseFloat(v[p.prop]);
-        if (!Number.isNaN(value) && value !== p.value) {
-          values[p.prop] = value;
-        }
+        const original = String(p.expr ?? p.value);
+        const raw = String(v[p.prop] ?? "").trim();
+        if (raw && raw !== original) values[p.prop] = raw;
       }
       return values;
     };
@@ -669,8 +670,9 @@ async function editFeature(feature) {
         label: "Paramètres",
         rows: info.params.map((p) => {
           const [label, unit] = PROP_LABELS[p.prop] ?? [p.prop, "mm"];
-          return { type: "number", key: p.prop, label, unit,
-                   value: p.value };
+          return { type: "text", key: p.prop,
+                   label: (p.expr ? "Σ " : "") + label, unit,
+                   value: String(p.expr ?? p.value) };
         }),
       }],
       // L'édition profite du même aperçu jaune que la création.
@@ -770,6 +772,68 @@ document.getElementById("btn-undo").addEventListener("click", () =>
   refresh(call("undo")));
 document.getElementById("btn-redo").addEventListener("click", () =>
   refresh(call("redo")));
+
+// ---------- équations (variables globales) ----------
+
+async function openEquationsPanel() {
+  let variables = [];
+  try {
+    variables = (await call("list_variables")).variables;
+  } catch (error) {
+    say(error.message, true);
+    return;
+  }
+  panel.open({
+    icon: "VarSet.svg",
+    title: "Équations",
+    groups: [
+      {
+        label: "Variables globales",
+        rows: [{
+          type: "list",
+          empty: "— aucune variable —",
+          items: variables.map((variable) => ({
+            label: `${variable.name} = ${variable.value}`,
+            onDelete: async () => {
+              try {
+                await call("delete_variable", { name: variable.name });
+                openEquationsPanel();
+              } catch (error) {
+                say(error.message, true);
+              }
+            },
+          })),
+        }],
+      },
+      {
+        label: "Ajouter / modifier",
+        rows: [
+          { type: "text", key: "name", label: "Nom",
+            placeholder: "Largeur" },
+          { type: "text", key: "value", label: "Valeur",
+            placeholder: "100" },
+        ],
+      },
+    ],
+    note: "Utilisez « Variables.Nom » dans toute cote ou propriété — " +
+          "ex. Variables.Largeur / 2. Retaper un nom existant le modifie.",
+    onApply: async (v) => {
+      const name = (v.name ?? "").trim();
+      const value = parseFloat(String(v.value ?? "").replace(",", "."));
+      if (!name || Number.isNaN(value)) return;
+      try {
+        await call("set_variable", { name, value });
+        say(`${name} = ${value}`);
+        refresh(call("get_tree")); // les cotes pilotées se recalculent
+      } catch (error) {
+        say(error.message, true);
+      }
+    },
+  });
+}
+
+document.getElementById("btn-equations")
+  .addEventListener("click", openEquationsPanel);
 
 document.getElementById("btn-sketch").addEventListener("click", () =>
   featureCommand(async () => {
@@ -1215,7 +1279,7 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
 // ---------- sketch mode ----------
 
 const sketchMode = createSketchMode(
-  { scene, camera, renderer, controls, call, say, refresh });
+  { scene, camera, renderer, controls, call, say, refresh, panel });
 
 // ---------- boot ----------
 

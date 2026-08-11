@@ -37,7 +37,11 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_thickness": ("face", "thickness"),
     "add_draft": ("face", "angle"),    # plan neutre : Plan de dessus (XY)
     "set_param": ("feature", "prop", "value"),
-    "set_params": ("feature", "values"),  # plusieurs propriétés, un recompute
+    "set_params": ("feature", "values"),  # valeur numérique OU expression
+    # Paramétrique — variables globales (App::VarSet) et équations.
+    "list_variables": (),
+    "set_variable": ("name", "value"),
+    "delete_variable": ("name",),
     "rename": ("feature", "label"),
     "add_hole": ("diameter",),         # optional: depth | through, cut
                                        # (none|lamage|fraisage), cut_diameter,
@@ -65,10 +69,12 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_fillet": ("sketch", "geo1", "geo2",
                       "x1", "y1", "x2", "y2", "radius"),
     "sketch_trim": ("sketch", "geo", "x", "y"),
-    "sketch_constrain": ("sketch", "kind", "geo1"),  # optional: point1, geo2, point2
+    "sketch_constrain": ("sketch", "kind", "geo1"),  # optional: point1, geo2, point2, geo3
     "sketch_move": ("sketch", "geo", "point", "x", "y"),
     "sketch_dim": ("sketch", "geo"),   # optional: value, geo2, point, point2
-    "sketch_set_dim": ("sketch", "dim", "value"),
+    "sketch_set_dim": ("sketch", "dim"),  # optional: value | expr, name
+    "sketch_constraints": ("sketch",),    # optional: geo — relations d'une entité
+    "sketch_delete_constraint": ("sketch", "constraint"),
     "sketch_delete_geo": ("sketch", "geo"),
     "sketch_toggle_construction": ("sketch", "geo"),
     "sketch_finish": ("sketch",),

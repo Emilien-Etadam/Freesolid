@@ -211,6 +211,121 @@ class Kernel:
                                "mesh": protocol.pack_mesh(faces)})
         return {"components": components}
 
+    def spike_assembly(self):
+        """Rapport d'exploration : l'atelier Assembly 1.x est-il utilisable
+        headless (objets, solveur, module des joints) ?
+
+        Ne lève jamais — le verdict guide la phase C3 ; il ne casse pas
+        le selftest. Chaque tentative note sa réussite ou son erreur.
+        """
+        App = self._app()
+        result = {"freecad": ".".join(str(v) for v in App.Version()[:3])}
+        doc = None
+        try:
+            doc = App.newDocument("FreeSolidSpike")
+            try:
+                asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
+                result["assembly_object"] = True
+                result["has_solve"] = hasattr(asm, "solve")
+                if result["has_solve"]:
+                    try:
+                        asm.solve()
+                        result["solve_empty_ok"] = True
+                    except Exception as exc:
+                        result["solve_empty_error"] = str(exc)[:160]
+            except Exception as exc:
+                result["assembly_object"] = False
+                result["assembly_object_error"] = str(exc)[:160]
+            try:
+                doc.addObject("Assembly::JointGroup", "Joints")
+                result["joint_group"] = True
+            except Exception as exc:
+                result["joint_group"] = False
+                result["joint_group_error"] = str(exc)[:160]
+            try:
+                import JointObject
+                result["joint_module"] = True
+                joint = doc.addObject("App::FeaturePython", "SpikeJoint")
+                created = False
+                for args in ((joint,), (joint, 0), (joint, "Fixed")):
+                    try:
+                        JointObject.Joint(*args)
+                        created = True
+                        break
+                    except TypeError:
+                        continue
+                    except Exception as exc:
+                        result["joint_proxy_error"] = str(exc)[:160]
+                        break
+                result["joint_proxy"] = created
+                if created:
+                    skip = {"Label", "Label2", "ExpressionEngine",
+                            "Visibility"}
+                    result["joint_properties"] = [
+                        p for p in joint.PropertiesList
+                        if p not in skip][:25]
+            except Exception as exc:
+                result["joint_module"] = False
+                result["joint_module_error"] = str(exc)[:160]
+        except Exception as exc:  # noqa: BLE001
+            result["error"] = str(exc)[:160]
+        finally:
+            if doc is not None:
+                try:
+                    App.closeDocument(doc.Name)
+                except Exception:
+                    pass
+        return result
+
+    # -- phase E : évaluer ------------------------------------------------
+
+    def mass_properties(self, density=1.24):
+        """Volume, masse (densité en g/cm³ — PLA par défaut), surface,
+        centre de gravité, encombrement — l'onglet Évaluer."""
+        body = self._require_body()
+        shape = getattr(body, "Shape", None)
+        if shape is None or not shape.Solids:
+            raise KernelError("pas de solide à évaluer")
+        volume = float(shape.Volume)  # mm³
+        com = shape.CenterOfMass
+        box = shape.BoundBox
+        return {
+            "volume_mm3": volume,
+            "area_mm2": float(shape.Area),
+            "density": float(density),
+            "mass_g": volume / 1000.0 * float(density),
+            "center_of_mass": [com.x, com.y, com.z],
+            "bounding_box": [box.XLength, box.YLength, box.ZLength],
+        }
+
+    def measure(self, a_kind, a_id, b_kind, b_id):
+        """Distance minimale entre deux éléments (faces ou arêtes)."""
+        body = self._require_body()
+        shape = getattr(body, "Shape", None)
+        if shape is None:
+            raise KernelError("pas de forme à mesurer")
+
+        def sub(kind, index):
+            if kind == "face":
+                sequence = shape.Faces
+            elif kind == "edge":
+                sequence = shape.Edges
+            else:
+                raise KernelError(
+                    "élément inconnu « {} » — face ou edge".format(kind))
+            index = int(index)
+            if index < 0 or index >= len(sequence):
+                raise KernelError("{} {} inexistant".format(kind, index))
+            return sequence[index]
+
+        first = sub(str(a_kind), a_id)
+        second = sub(str(b_kind), b_id)
+        try:
+            distance = float(first.distToShape(second)[0])
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return {"distance": distance}
+
     # -- phase C : multi-corps -------------------------------------------
 
     def add_body(self, name=None):
@@ -2306,6 +2421,28 @@ class Kernel:
                 len(meshes["components"]) == 2
                 and all(c["mesh"]["indices"]
                         for c in meshes["components"]))
+
+            mark("p11: évaluer (masse PLA) + mesurer")
+            self.new_part("Pièce évaluée")
+            self.add_rect_sketch(10, 10)
+            self.add_pad(10)
+            props = self.mass_properties(density=1.24)
+            report["p11_volume_ok"] = abs(props["volume_mm3"] - 1000.0) < 1e-6
+            report["p11_mass_ok"] = abs(props["mass_g"] - 1.24) < 1e-9
+            body_shape = self._require_body().Shape
+            bottom = next(
+                i for i, f in enumerate(body_shape.Faces)
+                if f.normalAt(*[sum(f.ParameterRange[k:k + 2]) / 2
+                                for k in (0, 2)]).z < -0.5)
+            distance = self.measure(
+                "face", self._top_face_id(), "face", bottom)["distance"]
+            report["p11_measure_ok"] = abs(distance - 10.0) < 1e-6
+
+            mark("spike: solveur d'assemblage headless (rapport)")
+            report["spike_assembly"] = self.spike_assembly()
+            import json
+            print("selftest> spike assemblage : " + json.dumps(
+                report["spike_assembly"], ensure_ascii=False), flush=True)
 
             mark("p3: arc, rainure, polygone")
             import math

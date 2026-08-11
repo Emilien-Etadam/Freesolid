@@ -262,6 +262,16 @@ def test_assembly_ops_declared():
          "params": {"component": "Component", "x": 30, "yaw": 45}})
 
 
+def test_evaluate_and_spike_ops_declared():
+    assert protocol.OPS["mass_properties"] == ()
+    assert protocol.OPS["measure"] == ("a_kind", "a_id", "b_kind", "b_id")
+    assert protocol.OPS["spike_assembly"] == ()
+    protocol.validate_request(
+        {"op": "measure",
+         "params": {"a_kind": "face", "a_id": 2,
+                    "b_kind": "edge", "b_id": 7}})
+
+
 def test_preview_wraps_an_op_and_its_params():
     op, params = protocol.validate_request(
         {"op": "preview",

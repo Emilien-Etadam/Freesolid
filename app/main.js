@@ -419,6 +419,30 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     return;
   }
 
+  if (measuring) {
+    const pick = hoveredEdgeGroup >= 0
+      ? { kind: "edge", id: edgeGroups[hoveredEdgeGroup].edgeId }
+      : hoveredGroup >= 0
+        ? { kind: "face", id: meshGroups[hoveredGroup].faceId }
+        : null;
+    if (!pick) return;
+    const label = (p) => `${p.kind === "edge" ? "arête" : "face"} ${p.id}`;
+    if (!measureFirst) {
+      measureFirst = pick;
+      say(`Mesurer : ${label(pick)} — cliquez le second élément`);
+    } else {
+      const first = measureFirst;
+      measuring = false;
+      measureFirst = null;
+      call("measure", { a_kind: first.kind, a_id: first.id,
+                        b_kind: pick.kind, b_id: pick.id })
+        .then((r) => say(`Distance ${label(first)} ↔ ${label(pick)} : ` +
+                         `${r.distance.toFixed(3)} mm`))
+        .catch((error) => say(error.message, true));
+    }
+    return;
+  }
+
   const clearPlaneChoice = () => {
     if (selectedPlane !== null || selectedDatumFeature !== null) {
       selectedPlane = null;
@@ -526,6 +550,10 @@ document.addEventListener("keydown", (event) => {
     refreshAny(call(event.key === "z" ? "undo" : "redo"));
   } else if (event.key === "Escape" && planePicking) {
     cancelPlanePick();
+  } else if (event.key === "Escape" && measuring) {
+    measuring = false;
+    measureFirst = null;
+    say("Mesure annulée.");
   }
 });
 
@@ -1146,6 +1174,68 @@ async function openEquationsPanel() {
 
 document.getElementById("btn-equations")
   .addEventListener("click", openEquationsPanel);
+
+// ---------- évaluer + mesurer ----------
+
+let lastDensity = 1.24; // PLA — le défaut d'un atelier d'impression 3D
+
+async function openEvaluatePanel() {
+  let props;
+  try {
+    props = await call("mass_properties", { density: lastDensity });
+  } catch (error) {
+    say(error.message, true);
+    return;
+  }
+  const fixed = (v, n = 1) => v.toFixed(n);
+  panel.open({
+    icon: "view-measurement.svg",
+    title: "Évaluer",
+    groups: [
+      { label: "Propriétés de masse",
+        rows: [{ type: "list", items: [
+          { label: `Volume : ${fixed(props.volume_mm3 / 1000, 2)} cm³` },
+          { label: `Masse : ${fixed(props.mass_g)} g ` +
+                   `(à ${props.density} g/cm³)` },
+          { label: `Surface : ${fixed(props.area_mm2 / 100)} cm²` },
+          { label: "Centre de gravité : "
+                   + props.center_of_mass.map((v) => fixed(v)).join(", ") },
+          { label: "Encombrement : "
+                   + props.bounding_box.map((v) => fixed(v)).join(" × ")
+                   + " mm" },
+        ] }] },
+      { label: "Matière",
+        rows: [{ type: "number", key: "density", label: "Densité",
+                 value: lastDensity, unit: "g/cm³", min: 0.001 }] },
+    ],
+    note: "PLA ≈ 1,24 · PETG ≈ 1,27 · ABS ≈ 1,04 · Alu ≈ 2,70 · " +
+          "Acier ≈ 7,85 — OK recalcule avec la densité saisie",
+    onApply: (v) => {
+      const density = parseFloat(v.density);
+      if (density > 0) {
+        lastDensity = density;
+        openEvaluatePanel();
+      }
+    },
+  });
+}
+
+document.getElementById("btn-evaluate")
+  .addEventListener("click", openEvaluatePanel);
+
+let measuring = false;
+let measureFirst = null;
+
+document.getElementById("btn-measure").addEventListener("click", () => {
+  if (!lastTree) {
+    say("Mesurer : ouvrez d'abord une pièce", true);
+    return;
+  }
+  measuring = true;
+  measureFirst = null;
+  say("Mesurer : cliquez deux éléments (faces ou arêtes) — Échap pour " +
+      "quitter");
+});
 
 document.getElementById("btn-sketch").addEventListener("click", () =>
   featureCommand(async () => {

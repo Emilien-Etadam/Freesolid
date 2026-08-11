@@ -29,6 +29,10 @@ OPS: dict[str, tuple[str, ...]] = {
     "move_component": ("component",),  # optional: x, y, z, yaw, pitch, roll
     "assembly_tree": (),
     "tessellate_assembly": (),         # optional: deviation
+    "spike_assembly": (),              # rapport : joints Assembly headless ?
+    # Phase E — évaluer.
+    "mass_properties": (),             # optional: density (g/cm³)
+    "measure": ("a_kind", "a_id", "b_kind", "b_id"),  # face|edge + id
     "undo": (),                        # une transaction = un Ctrl+Z
     "redo": (),
     "export_part": ("path",),          # .stl ou .step selon l'extension

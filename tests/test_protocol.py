@@ -135,6 +135,23 @@ def test_sketch_start_accepts_named_plane():
     assert params["plane"] == "XZ"
 
 
+def test_p2_ops_declare_their_required_params():
+    assert protocol.OPS["add_revolution"] == ()      # angle, sketch en option
+    assert protocol.OPS["add_groove"] == ()
+    assert protocol.OPS["add_mirror"] == ()          # plane en option
+    assert protocol.OPS["add_linear_pattern"] == ("length", "count")
+    assert protocol.OPS["add_polar_pattern"] == ("count",)
+    assert protocol.OPS["add_thickness"] == ("face", "thickness")
+    assert protocol.OPS["add_draft"] == ("face", "angle")
+
+
+def test_pad_accepts_direction_options():
+    op, params = protocol.validate_request(
+        {"op": "add_pad",
+         "params": {"length": 10, "reversed": True, "midplane": True}})
+    assert params["midplane"] is True
+
+
 def test_pocket_accepts_length_or_through():
     protocol.validate_request({"op": "add_pocket", "params": {"length": 5}})
     protocol.validate_request({"op": "add_pocket", "params": {"through": True}})

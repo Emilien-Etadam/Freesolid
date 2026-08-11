@@ -377,19 +377,22 @@ document.getElementById("btn-sketch").addEventListener("click", () => {
 
 document.getElementById("btn-pocket").addEventListener("click", () => {
   const raw = prompt(
-    "Profondeur de l'enlèvement (mm) — vide = à travers tout :", "");
+    "Profondeur de l'enlèvement (mm) — vide = à travers tout, " +
+    "négatif = inversé :", "");
   if (raw === null) return;
-  const length = parseFloat(raw);
+  const value = parseFloat(raw);
   refresh(call("add_pocket",
-    Number.isNaN(length) || raw.trim() === "" ? { through: true } : { length }));
+    Number.isNaN(value) || raw.trim() === ""
+      ? { through: true }
+      : { length: Math.abs(value), reversed: value < 0 }));
 });
 
-function dressup(op, label, param, fallback) {
+function dressup(op, label, param, fallback, unit = "mm") {
   if (selectedFaceId === null) {
     say(`${label} : cliquez d'abord une face de la pièce`, true);
     return;
   }
-  const value = parseFloat(prompt(`${label} (mm) :`, fallback) ?? "");
+  const value = parseFloat(prompt(`${label} (${unit}) :`, fallback) ?? "");
   if (!value) return;
   refresh(call(op, { face: selectedFaceId, [param]: value }));
 }
@@ -399,6 +402,63 @@ document.getElementById("btn-fillet").addEventListener("click", () =>
 
 document.getElementById("btn-chamfer").addEventListener("click", () =>
   dressup("add_chamfer", "Taille du chanfrein", "size", "2"));
+
+document.getElementById("btn-shell").addEventListener("click", () =>
+  dressup("add_thickness", "Épaisseur de la coque", "thickness", "2"));
+
+document.getElementById("btn-draft").addEventListener("click", () =>
+  dressup("add_draft",
+    "Angle de dépouille — plan neutre : Plan de dessus", "angle", "3", "°"));
+
+function revolved(op, label) {
+  const raw = prompt(`${label} — angle (°) :`, "360");
+  if (raw === null) return;
+  const angle = parseFloat(raw);
+  if (!angle) return;
+  const params = { angle };
+  if (sketchMode.lastFinished) params.sketch = sketchMode.lastFinished;
+  refresh(call(op, params));
+}
+
+document.getElementById("btn-revolution").addEventListener("click", () =>
+  revolved("add_revolution", "Bossage avec révolution"));
+
+document.getElementById("btn-groove").addEventListener("click", () =>
+  revolved("add_groove", "Enlèvement avec révolution"));
+
+document.getElementById("btn-mirror").addEventListener("click", () => {
+  const raw = prompt(
+    "Symétrie de la dernière fonction — plan : droite / face / dessus",
+    "droite");
+  if (raw === null) return;
+  const plane = SKETCH_PLANES[raw.trim().toLowerCase()];
+  if (!plane) {
+    say("Plan inconnu — répondez droite, face ou dessus", true);
+    return;
+  }
+  refresh(call("add_mirror", { plane }));
+});
+
+document.getElementById("btn-linpattern").addEventListener("click", () => {
+  const axis = prompt("Répétition linéaire — direction (X / Y / Z) :", "X");
+  if (axis === null) return;
+  const length = parseFloat(
+    prompt("Longueur totale de la répétition (mm) :", "40") ?? "");
+  if (!length) return;
+  const count = parseInt(prompt("Nombre d'occurrences :", "3") ?? "", 10);
+  if (!count) return;
+  refresh(call("add_linear_pattern",
+    { axis: axis.trim().toUpperCase(), length, count }));
+});
+
+document.getElementById("btn-polpattern").addEventListener("click", () => {
+  const count = parseInt(
+    prompt("Répétition circulaire — nombre d'occurrences :", "4") ?? "", 10);
+  if (!count) return;
+  const angle = parseFloat(prompt("Angle total (°) :", "360") ?? "");
+  if (!angle) return;
+  refresh(call("add_polar_pattern", { count, angle }));
+});
 
 document.getElementById("btn-open").addEventListener("click", async () => {
   const path = prompt("Ouvrir (chemin .FCStd) :", "~/piece-freesolid.FCStd");
@@ -440,9 +500,16 @@ document.getElementById("btn-export").addEventListener("click", async () => {
 });
 
 document.getElementById("btn-pad").addEventListener("click", () => {
-  const length = parseFloat(prompt("Profondeur (mm) :", "10") ?? "");
-  if (!length) return;
-  const params = { length };
+  const raw = prompt(
+    "Profondeur (mm) — « 10m » = plan milieu, négatif = inversé :", "10");
+  if (raw === null) return;
+  const value = parseFloat(raw);
+  if (!value) return;
+  const params = {
+    length: Math.abs(value),
+    reversed: value < 0,
+    midplane: /m\s*$/i.test(raw.trim()),
+  };
   if (sketchMode.lastFinished) params.sketch = sketchMode.lastFinished;
   refresh(call("add_pad", params));
 });

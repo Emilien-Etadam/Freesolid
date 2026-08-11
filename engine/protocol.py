@@ -23,10 +23,18 @@ OPS: dict[str, tuple[str, ...]] = {
     "redo": (),
     "export_part": ("path",),          # .stl ou .step selon l'extension
     "add_rect_sketch": ("width", "height"),   # optional: face (id) to attach
-    "add_pad": ("length",),
-    "add_pocket": (),                  # optional: length | through — sans profondeur = à travers tout
+    "add_pad": ("length",),            # optional: sketch, reversed, midplane
+    "add_pocket": (),                  # optional: length | through — sans profondeur = à travers tout ; reversed
     "add_fillet": ("face", "radius"),
     "add_chamfer": ("face", "size"),
+    # Palier 2 — fonctions volumiques, aucune interaction nouvelle.
+    "add_revolution": (),              # optional: angle (°), sketch
+    "add_groove": (),                  # optional: angle (°), sketch
+    "add_mirror": (),                  # optional: plane (XY|XZ|YZ)
+    "add_linear_pattern": ("length", "count"),   # optional: axis (X|Y|Z)
+    "add_polar_pattern": ("count",),   # optional: angle (°), axis
+    "add_thickness": ("face", "thickness"),
+    "add_draft": ("face", "angle"),    # plan neutre : Plan de dessus (XY)
     "set_param": ("feature", "prop", "value"),
     "get_params": ("feature",),        # editable numeric properties
     "set_tip": ("feature",),           # move the rollback bar here

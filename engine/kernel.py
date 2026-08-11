@@ -226,7 +226,7 @@ class Kernel:
         self._recompute()
         return self.get_tree()
 
-    def add_pad(self, length, sketch=None):
+    def add_pad(self, length, sketch=None, reversed=False, midplane=False):
         body = self._require_body()
         doc = self._require_doc()
         if sketch is not None:
@@ -240,6 +240,10 @@ class Kernel:
         pad = body.newObject("PartDesign::Pad", "Pad")
         pad.Profile = profile
         pad.Length = float(length)
+        if reversed:
+            pad.Reversed = True
+        if midplane:
+            pad.Midplane = True  # « plan milieu » : symétrique au plan
         pad.Label = "Bossage extrudé"
         try:
             self._recompute()
@@ -256,7 +260,7 @@ class Kernel:
             raise KernelError("aucune esquisse disponible")
         return sketches[-1]
 
-    def add_pocket(self, length=None, through=False):
+    def add_pocket(self, length=None, through=False, reversed=False):
         """Cut with the latest sketch — Extruded Cut, in SolidWorks terms.
 
         No length (or ``through``) means « À travers tout » — the option a
@@ -270,11 +274,152 @@ class Kernel:
             pocket.Type = "ThroughAll"
         else:
             pocket.Length = float(length)
+        if reversed:
+            pocket.Reversed = True
         pocket.Label = "Enlèvement de matière"
         try:
             self._recompute()
         except KernelError:
             doc.removeObject(pocket.Name)
+            raise
+        return self.get_tree()
+
+    # -- palier 2 : révolutions, transformations, habillages avancés ------
+
+    def _revolved(self, type_id, angle, sketch):
+        """Revolution/Groove share everything but add-vs-cut.
+
+        The axis is the sketch's own vertical axis — draw the profile beside
+        it, exactly the SolidWorks revolve reflex.
+        """
+        body = self._require_body()
+        doc = self._require_doc()
+        profile = (self._get_sketch(sketch) if sketch is not None
+                   else self._latest_sketch())
+        feature = body.newObject(type_id, type_id.split("::")[-1])
+        feature.Profile = profile
+        feature.ReferenceAxis = (profile, ["V_Axis"])
+        feature.Angle = float(angle)
+        feature.Label = label_for_type(type_id)
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(feature.Name)
+            raise
+        return self.get_tree()
+
+    def add_revolution(self, angle=360.0, sketch=None):
+        """Bossage/Base avec révolution, autour de l'axe vertical de
+        l'esquisse."""
+        return self._revolved("PartDesign::Revolution", angle, sketch)
+
+    def add_groove(self, angle=360.0, sketch=None):
+        """Enlèvement de matière avec révolution."""
+        return self._revolved("PartDesign::Groove", angle, sketch)
+
+    _AXIS_ROLES = {"X": "X_Axis", "Y": "Y_Axis", "Z": "Z_Axis"}
+
+    def _last_solid_feature(self):
+        """The feature a pattern/mirror duplicates: the latest add/sub one.
+
+        Dress-ups and other transforms don't qualify — PartDesign patterns
+        transform additive/subtractive features.
+        """
+        body = self._require_body()
+        features = [o for o in body.Group
+                    if o.isDerivedFrom("PartDesign::FeatureAddSub")]
+        if not features:
+            raise KernelError("aucune fonction à répéter — créez d'abord "
+                              "un bossage ou un enlèvement de matière")
+        return features[-1]
+
+    def _transform(self, type_id, configure):
+        body = self._require_body()
+        doc = self._require_doc()
+        original = self._last_solid_feature()
+        feature = body.newObject(type_id, type_id.split("::")[-1])
+        feature.Originals = [original]
+        configure(feature)
+        feature.Label = label_for_type(type_id)
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(feature.Name)
+            raise
+        return self.get_tree()
+
+    def add_mirror(self, plane="YZ"):
+        """Symétrie de la dernière fonction par rapport à un plan
+        d'origine (XY/XZ/YZ = Dessus/Face/Droite)."""
+        role = self._PLANE_ROLES.get(str(plane).upper())
+        if role is None:
+            raise KernelError(
+                "plan inconnu « {} » — attendu XY, XZ ou YZ".format(plane))
+        plane_obj = self._origin_feature(role)
+
+        def configure(feature):
+            feature.MirrorPlane = (plane_obj, [""])
+        return self._transform("PartDesign::Mirrored", configure)
+
+    def _origin_axis(self, axis):
+        role = self._AXIS_ROLES.get(str(axis).upper())
+        if role is None:
+            raise KernelError(
+                "axe inconnu « {} » — attendu X, Y ou Z".format(axis))
+        return self._origin_feature(role)
+
+    def add_linear_pattern(self, length, count, axis="X"):
+        """Répétition linéaire de la dernière fonction le long d'un axe.
+
+        ``length`` is the total span, occurrences included — FreeCAD's
+        convention, same as SolidWorks' « jusqu'à » spacing mode.
+        """
+        axis_obj = self._origin_axis(axis)
+        occurrences = int(count)
+        if occurrences < 2:
+            raise KernelError("au moins 2 occurrences")
+
+        def configure(feature):
+            feature.Direction = (axis_obj, [""])
+            feature.Length = float(length)
+            feature.Occurrences = occurrences
+        return self._transform("PartDesign::LinearPattern", configure)
+
+    def add_polar_pattern(self, count, angle=360.0, axis="Z"):
+        """Répétition circulaire de la dernière fonction autour d'un axe."""
+        axis_obj = self._origin_axis(axis)
+        occurrences = int(count)
+        if occurrences < 2:
+            raise KernelError("au moins 2 occurrences")
+
+        def configure(feature):
+            feature.Axis = (axis_obj, [""])
+            feature.Angle = float(angle)
+            feature.Occurrences = occurrences
+        return self._transform("PartDesign::PolarPattern", configure)
+
+    def add_thickness(self, face, thickness):
+        """Coque : évide la pièce, la face cliquée devient l'ouverture."""
+        return self._dressup("PartDesign::Thickness",
+                             label_for_type("PartDesign::Thickness"),
+                             face, "Value", thickness)
+
+    def add_draft(self, face, angle):
+        """Dépouille de la face cliquée ; plan neutre : Plan de dessus."""
+        body = self._require_body()
+        doc = self._require_doc()
+        tip = getattr(body, "Tip", None)
+        if tip is None:
+            raise KernelError("pas de solide à dépouiller")
+        feature = body.newObject("PartDesign::Draft", "Draft")
+        feature.Base = (tip, ["Face{}".format(int(face) + 1)])
+        feature.Angle = float(angle)
+        feature.NeutralPlane = (self._origin_feature("XY_Plane"), [""])
+        feature.Label = label_for_type("PartDesign::Draft")
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(feature.Name)
             raise
         return self.get_tree()
 
@@ -313,7 +458,8 @@ class Kernel:
     #: than full introspection: Pad alone carries a dozen numeric properties
     #: and prompting through Offset/TaperAngle/Length2 buries the one that
     #: matters.
-    _EDITABLE_PROPS = ("Length", "Radius", "Size", "Angle", "Thickness")
+    _EDITABLE_PROPS = ("Length", "Radius", "Size", "Angle", "Thickness",
+                       "Value", "Occurrences")
 
     def get_params(self, feature):
         """Editable numeric properties of a feature, with current values."""
@@ -427,6 +573,9 @@ class Kernel:
         if not hasattr(obj, prop):
             raise KernelError("{} n'a pas de propriété {}".format(
                 obj.Label, prop))
+        current = getattr(obj, prop, None)
+        if isinstance(current, int) and not isinstance(current, bool):
+            value = int(value)  # Occurrences : FreeCAD refuse 4.0
         try:
             setattr(obj, prop, value)
         except Exception as exc:  # noqa: BLE001
@@ -737,6 +886,16 @@ class Kernel:
             raise KernelError("aucune face orientée vers le haut")
         return best
 
+    def _side_face_id(self):
+        """Selftest helper: any vertical (side) face of the current shape."""
+        body = self._require_body()
+        for i, face in enumerate(body.Shape.Faces):
+            u0, u1, v0, v1 = face.ParameterRange
+            normal = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
+            if abs(normal.z) < 0.1:
+                return i
+        raise KernelError("aucune face latérale")
+
     def selftest(self):
         """Run the whole flow end to end; return stats worth pasting back.
 
@@ -865,6 +1024,67 @@ class Kernel:
             report["p1_export_stl_ok"] = self.export_part(stl)["size"] > 0
             report["p1_export_step_ok"] = self.export_part(step)["size"] > 0
 
+            mark("p2: révolution (tube) + enlèvement avec révolution")
+            self.new_part("Pièce révolution")
+            state = self.sketch_start()
+            rev_sk = state["sketch"]
+            for line in ((10, 0, 30, 0), (30, 0, 30, 20),
+                         (30, 20, 10, 20), (10, 20, 10, 0)):
+                self.sketch_add_line(rev_sk, *line)
+            self.sketch_finish(rev_sk)
+            tree = self.add_revolution(360, sketch=rev_sk)
+            report["p2_revolution_ok"] = not any(
+                f["error"] for f in tree["features"])
+            state = self.sketch_start()
+            groove_sk = state["sketch"]
+            for line in ((15, 8, 25, 8), (25, 8, 25, 12),
+                         (25, 12, 15, 12), (15, 12, 15, 8)):
+                self.sketch_add_line(groove_sk, *line)
+            self.sketch_finish(groove_sk)
+            tree = self.add_groove(360, sketch=groove_sk)
+            report["p2_groove_ok"] = not any(
+                f["error"] for f in tree["features"])
+
+            mark("p2: symétrie + répétition linéaire")
+            self.new_part("Pièce symétrie")
+            state = self.sketch_start()
+            sym_sk = state["sketch"]
+            for line in ((0, -10, 20, -10), (20, -10, 20, 10),
+                         (20, 10, 0, 10), (0, 10, 0, -10)):
+                self.sketch_add_line(sym_sk, *line)
+            self.sketch_finish(sym_sk)
+            self.add_pad(10, sketch=sym_sk)
+            tree = self.add_mirror(plane="YZ")
+            report["p2_mirror_ok"] = not any(
+                f["error"] for f in tree["features"])
+            tree = self.add_linear_pattern(length=20, count=2, axis="Y")
+            report["p2_linear_pattern_ok"] = not any(
+                f["error"] for f in tree["features"])
+
+            mark("p2: répétition circulaire (4 perçages)")
+            self.new_part("Pièce répétition")
+            self.add_rect_sketch(60, 60)
+            self.add_pad(6)
+            state = self.sketch_start(face=self._top_face_id())
+            pat_sk = state["sketch"]
+            self.sketch_add_circle(pat_sk, 20, 0, 4)
+            self.sketch_finish(pat_sk)
+            self.add_pocket(through=True)
+            tree = self.add_polar_pattern(count=4)
+            report["p2_polar_pattern_ok"] = not any(
+                f["error"] for f in tree["features"])
+
+            mark("p2: dépouille + coque")
+            self.new_part("Pièce coque")
+            self.add_rect_sketch(40, 40)
+            self.add_pad(20)
+            tree = self.add_draft(face=self._side_face_id(), angle=5)
+            report["p2_draft_ok"] = not any(
+                f["error"] for f in tree["features"])
+            tree = self.add_thickness(self._top_face_id(), 2)
+            report["p2_thickness_ok"] = not any(
+                f["error"] for f in tree["features"])
+
             mark("bilan")
             report["tree_after_pad"] = self.get_tree()
             mesh = self.tessellate()
@@ -885,6 +1105,8 @@ class Kernel:
 #: into per-frame steps.
 _TRANSACTIONAL = frozenset({
     "add_rect_sketch", "add_pad", "add_pocket", "add_fillet", "add_chamfer",
+    "add_revolution", "add_groove", "add_mirror", "add_linear_pattern",
+    "add_polar_pattern", "add_thickness", "add_draft",
     "set_param", "set_tip", "tip_to_end", "delete_feature",
     "sketch_start", "sketch_add_line", "sketch_add_circle", "sketch_dim",
     "sketch_set_dim", "sketch_delete_geo", "sketch_finish",

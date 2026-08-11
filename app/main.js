@@ -88,6 +88,8 @@ function showMesh(mesh) {
   for (const g of mesh.groups) geometry.addGroup(g.start, g.count, 0);
   geometry.computeVertexNormals();
 
+  geometry.computeBoundingSphere(); // les vues standard cadrent dessus
+
   partMesh = new THREE.Mesh(geometry, [baseMaterial, hoverMaterial, selectedMaterial]);
   scene.add(partMesh);
 
@@ -167,21 +169,98 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
+// ---------- standard views (SolidWorks: Ctrl+1/4/5/7, F) ----------
+
+function partCenterRadius() {
+  if (!partMesh || !partMesh.geometry.boundingSphere)
+    return { center: new THREE.Vector3(0, 0, 20), radius: 90 };
+  const sphere = partMesh.geometry.boundingSphere;
+  return { center: sphere.center.clone(), radius: Math.max(sphere.radius, 1) };
+}
+
+// direction = d'où l'on regarde ; null = garder l'angle actuel (zoom au mieux).
+function frameView(direction, up) {
+  const { center, radius } = partCenterRadius();
+  const distance =
+    1.25 * radius / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  if (up) camera.up.set(...up);
+  const dir = direction
+    ? new THREE.Vector3(...direction).normalize()
+    : camera.position.clone().sub(controls.target).normalize();
+  controls.target.copy(center);
+  camera.position.copy(center).addScaledVector(dir, distance);
+  camera.lookAt(center);
+}
+
+// Vue de face = normale au Plan de face (XZ), etc. — mêmes plans que le vocab.
+const VIEWS = {
+  "view-iso":   { direction: [1, -1, 1], up: [0, 0, 1] },
+  "view-front": { direction: [0, -1, 0], up: [0, 0, 1] },
+  "view-top":   { direction: [0, 0, 1],  up: [0, 1, 0] },
+  "view-right": { direction: [1, 0, 0],  up: [0, 0, 1] },
+  "view-fit":   { direction: null,       up: null },
+};
+for (const [id, view] of Object.entries(VIEWS)) {
+  document.getElementById(id).addEventListener("click", () => {
+    if (sketchMode.active) return; // en esquisse, la caméra suit le plan
+    frameView(view.direction, view.up);
+  });
+}
+
+const VIEW_KEYS = { 1: "view-front", 4: "view-right", 5: "view-top", 7: "view-iso" };
+document.addEventListener("keydown", (event) => {
+  if (sketchMode.active) return;
+  if ((event.key === "f" || event.key === "F")
+      && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    frameView(null, null);
+  } else if ((event.ctrlKey || event.metaKey) && VIEW_KEYS[event.key]) {
+    event.preventDefault();
+    frameView(VIEWS[VIEW_KEYS[event.key]].direction,
+              VIEWS[VIEW_KEYS[event.key]].up);
+  }
+});
+
 // ---------- feature tree ----------
+
+// FreeCAD's own icons (see app/icons/README.md) — the tree reads like
+// SolidWorks' FeatureManager: icon + label, the kind lives in the tooltip.
+const TREE_ICONS = {
+  "Sketcher::SketchObject": "Sketcher_Sketch.svg",
+  "PartDesign::Pad": "PartDesign_Pad.svg",
+  "PartDesign::Pocket": "PartDesign_Pocket.svg",
+  "PartDesign::Fillet": "PartDesign_Fillet.svg",
+  "PartDesign::Chamfer": "PartDesign_Chamfer.svg",
+  "PartDesign::Revolution": "PartDesign_Revolution.svg",
+  "PartDesign::Groove": "PartDesign_Groove.svg",
+  "PartDesign::Mirrored": "PartDesign_Mirrored.svg",
+  "PartDesign::LinearPattern": "PartDesign_LinearPattern.svg",
+  "PartDesign::PolarPattern": "PartDesign_PolarPattern.svg",
+  "PartDesign::Thickness": "PartDesign_Thickness.svg",
+};
+
+function treeIcon(file) {
+  const img = document.createElement("img");
+  img.src = "icons/" + file;
+  img.alt = "";
+  return img;
+}
 
 function renderTree(tree) {
   treeEl.innerHTML = "";
   const bodyItem = document.createElement("li");
   bodyItem.className = "body";
-  bodyItem.textContent = tree.body;
+  bodyItem.appendChild(treeIcon("PartDesign_Body.svg"));
+  bodyItem.appendChild(document.createTextNode(tree.body));
   treeEl.appendChild(bodyItem);
 
   for (const feature of tree.features) {
     const item = document.createElement("li");
     if (feature.error) item.className = "error";
-    item.innerHTML =
-      `<span class="kind">${feature.kind}</span> — ${feature.label}`;
-    item.title = "Double-clic : modifier · clic droit : barre de retour, supprimer";
+    const icon = TREE_ICONS[feature.type];
+    if (icon) item.appendChild(treeIcon(icon));
+    item.appendChild(document.createTextNode(feature.label));
+    item.title = `${feature.kind} — double-clic : modifier · ` +
+      "clic droit : barre de retour, supprimer";
     item.addEventListener("dblclick", () => editFeature(feature));
     item.addEventListener("contextmenu", (e) => openMenu(e, feature));
     treeEl.appendChild(item);

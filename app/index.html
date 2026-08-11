@@ -48,6 +48,20 @@
   }
   button:hover { border-color: var(--accent); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button img { width: 16px; height: 16px; display: block; pointer-events: none; }
+  header button, #sketchbar button, #viewbar button {
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+
+  #viewbar {
+    position: absolute; top: 10px; right: 10px;
+    display: flex; gap: 2px; z-index: 4;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px; padding: 4px;
+  }
+  #viewbar button { padding: 5px; border: none; background: none; }
+  #viewbar button:hover { background: var(--panel-2); }
 
   aside {
     grid-area: tree;
@@ -69,6 +83,10 @@
   }
   #tree li:hover { background: var(--panel-2); }
   #tree li.body { padding-left: 12px; font-weight: 600; }
+  #tree li img {
+    width: 15px; height: 15px;
+    vertical-align: -3px; margin-right: 6px;
+  }
   #tree li.error { color: var(--error); }
   #tree li .kind { color: var(--ink-2); }
   #tree li.rollback {
@@ -123,14 +141,14 @@
 <body>
   <header>
     <div class="logo">Free<span>Solid</span></div>
-    <button id="btn-new">Nouvelle pièce</button>
-    <button id="btn-sketch">Esquisse rectangle</button>
-    <button id="btn-pad">Bossage extrudé</button>
-    <button id="btn-pocket">Enlèvement de matière</button>
-    <button id="btn-fillet">Congé</button>
-    <button id="btn-chamfer">Chanfrein</button>
-    <button id="btn-open">Ouvrir</button>
-    <button id="btn-save">Enregistrer</button>
+    <button id="btn-new"><img src="icons/document-new.svg" alt="">Nouvelle pièce</button>
+    <button id="btn-sketch"><img src="icons/Sketcher_NewSketch.svg" alt="">Esquisse</button>
+    <button id="btn-pad"><img src="icons/PartDesign_Pad.svg" alt="">Bossage extrudé</button>
+    <button id="btn-pocket"><img src="icons/PartDesign_Pocket.svg" alt="">Enlèvement de matière</button>
+    <button id="btn-fillet"><img src="icons/PartDesign_Fillet.svg" alt="">Congé</button>
+    <button id="btn-chamfer"><img src="icons/PartDesign_Chamfer.svg" alt="">Chanfrein</button>
+    <button id="btn-open"><img src="icons/document-open.svg" alt="">Ouvrir</button>
+    <button id="btn-save"><img src="icons/document-save.svg" alt="">Enregistrer</button>
     <button id="btn-selftest">Selftest</button>
   </header>
 
@@ -140,14 +158,21 @@
   </aside>
 
   <main id="viewport">
+    <div id="viewbar">
+      <button id="view-iso" title="Vue isométrique (Ctrl+7)"><img src="icons/view-isometric.svg" alt=""></button>
+      <button id="view-front" title="Vue de face (Ctrl+1)"><img src="icons/view-front.svg" alt=""></button>
+      <button id="view-top" title="Vue de dessus (Ctrl+5)"><img src="icons/view-top.svg" alt=""></button>
+      <button id="view-right" title="Vue de droite (Ctrl+4)"><img src="icons/view-right.svg" alt=""></button>
+      <button id="view-fit" title="Zoom au mieux (F)"><img src="icons/zoom-fit-best.svg" alt=""></button>
+    </div>
     <div id="sketchbar">
       <button data-tool="select" title="Glisser un point (le solveur suit)">Sélectionner</button>
-      <button data-tool="line" title="L">Ligne</button>
-      <button data-tool="rect" title="R">Rectangle par sommet</button>
-      <button data-tool="circle" title="C">Cercle</button>
-      <button data-tool="dim" title="D — cote pilotante">Cotation intelligente</button>
-      <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire">✔ Terminer</button>
-      <button id="sk-cancel" class="no">✖ Quitter</button>
+      <button data-tool="line" title="L"><img src="icons/Sketcher_CreateLine.svg" alt="">Ligne</button>
+      <button data-tool="rect" title="R"><img src="icons/Sketcher_CreateRectangle.svg" alt="">Rectangle par sommet</button>
+      <button data-tool="circle" title="C"><img src="icons/Sketcher_CreateCircle.svg" alt="">Cercle</button>
+      <button data-tool="dim" title="D — cote pilotante"><img src="icons/Constraint_Dimension.svg" alt="">Cotation intelligente</button>
+      <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire"><img src="icons/Sketcher_LeaveSketch.svg" alt="">Terminer</button>
+      <button id="sk-cancel" class="no"><img src="icons/Sketcher_CancelSketch.svg" alt="">Quitter</button>
     </div>
   </main>
   <div id="ctxmenu">

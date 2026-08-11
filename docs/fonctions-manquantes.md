@@ -1,6 +1,8 @@
 # Fonctions manquantes par rapport à SolidWorks — et leur codabilité
 
-Inventaire au 2026-08-11, après les phases A-E. Verdicts :
+Inventaire au 2026-08-11, après les phases A-E. Hors périmètre par
+décision (2026-08-11) : tôlerie, moules, soudures, PDM/Toolbox,
+simulation FEM. Verdicts :
 ✅ codable (l'API headless existe, effort raisonnable) ·
 🟧 codable avec effort ou limites assumées ·
 ❌ non codable raisonnablement (FreeCAD ne l'a pas, ou c'est soudé à sa GUI).
@@ -32,14 +34,6 @@ Inventaire au 2026-08-11, après les phases A-E. Verdicts :
 | Dôme, forme libre, flex | ❌ | pas d'équivalent |
 | Filetage réel | ✅ | fait (hélice) ; assistant filetages normalisés = données + UI |
 | Répétition pilotée par esquisse / table | 🟧 | positions lues d'une esquisse de points → MultiTransform ; codable |
-
-## Tôlerie, moules, soudures
-
-| Domaine | Verdict | Comment / pourquoi |
-|---|---|---|
-| Tôlerie (plis, dépliage) | 🟧 | rien en natif ; l'addon **SheetMetal** (Python) fonctionne headless — l'embarquer et l'habiller est un chantier moyen |
-| Moules (noyau/empreinte) | ✅ | le flux existe DÉJÀ chez nous : multi-corps + Combiner-Soustraire ; manque l'échelle de retrait (🟧 scale) et la surface de joint (🟧) |
-| Constructions soudées | ❌ | pas d'équivalent sérieux |
 
 ## Surfacique avancé
 
@@ -81,8 +75,6 @@ Inventaire au 2026-08-11, après les phases A-E. Verdicts :
 | Configurations (tables de familles) | ❌ | assumé : variables globales + « enregistrer sous » (fait) |
 | Apparences / matériaux visuels | 🟧 | couleurs par corps côté client — simple |
 | Plan de coupe visuel (affichage) | ✅ | clipping plane Three.js, client pur — très utile, quasi gratuit |
-| Simulation (statique, thermique) | 🟧 | hors périmètre FreeSolid ; le module FEM de FreeCAD existe et se scripte — un pont serait un projet en soi |
-| PDM / Toolbox (visserie) | ❌ / 🟧 | PDM non ; une bibliothèque de visserie paramétrique (variables + modèles) est codable |
 
 ## Lecture d'ensemble
 
@@ -90,8 +82,7 @@ Le socle SolidWorks est couvert : esquisse contrainte + paramétrique
 complet, quinze fonctions volumiques, références, multi-corps,
 assemblages contraints par le solveur natif, surfacique v1, mise en
 plan DXF, évaluation. Les ❌ se concentrent là où FreeCAD lui-même n'a
-pas de moteur (blocs, wrap, tôlerie native, soudures, formats
-propriétaires, PDF headless) — aucun n'est bloquant pour le flux
+pas de moteur (blocs, wrap, formats propriétaires, PDF headless) — aucun n'est bloquant pour le flux
 conception → impression 3D. Les prochains ✅ au meilleur rapport
 valeur/effort : **convertir les entités**, **gravure de texte**,
 **détection d'interférences**, **plan de coupe visuel**, **contraintes

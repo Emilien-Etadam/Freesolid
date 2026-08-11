@@ -54,9 +54,9 @@ listée au palier 3.
 
 ## Pas simples — plus tard, en connaissance de cause
 
-- **Assistant de perçage** (`PartDesign::Hole`) : l'API existe mais le
-  formulaire est riche (normes, taraudage, fraisage…) — gros travail d'UI.
-  Icône déjà prête : PartDesign_Hole.svg.
+- ~~**Assistant de perçage**~~ : **fait en version simple** (2026-08-11) —
+  perçage borgne/à travers tout, lamage, fraisage, aperçu jaune. Restent :
+  les taraudages et normes ISO/ANSI du formulaire complet.
 - ~~**Congé / chanfrein sur arêtes**~~ : **fait** (2026-08-11) — le
   picking d'arêtes est en place (`tessellate_edges` + `pack_edges`,
   mêmes ids par construction que les faces ; Ctrl+clic = multi-sélection).

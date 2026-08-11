@@ -201,6 +201,16 @@ def test_edge_ops_declared():
         {"op": "add_chamfer", "params": {"size": 2, "face": 4}})
 
 
+def test_hole_rename_and_atomic_edit_ops():
+    assert protocol.OPS["add_hole"] == ("diameter",)
+    assert protocol.OPS["rename"] == ("feature", "label")
+    assert protocol.OPS["set_params"] == ("feature", "values")
+    protocol.validate_request(
+        {"op": "add_hole",
+         "params": {"diameter": 6, "through": True, "cut": "lamage",
+                    "cut_diameter": 11, "cut_depth": 3}})
+
+
 def test_preview_wraps_an_op_and_its_params():
     op, params = protocol.validate_request(
         {"op": "preview",

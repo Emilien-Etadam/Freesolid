@@ -302,6 +302,7 @@ class Kernel:
         "add_pad", "add_pocket", "add_revolution", "add_groove",
         "add_fillet", "add_chamfer", "add_thickness", "add_draft",
         "add_mirror", "add_linear_pattern", "add_polar_pattern",
+        "add_hole", "set_params",
     })
 
     def preview(self, op, params):
@@ -511,7 +512,8 @@ class Kernel:
     #: and prompting through Offset/TaperAngle/Length2 buries the one that
     #: matters.
     _EDITABLE_PROPS = ("Length", "Radius", "Size", "Angle", "Thickness",
-                       "Value", "Occurrences")
+                       "Value", "Occurrences", "Diameter", "Depth",
+                       "HoleCutDiameter", "HoleCutDepth")
 
     def get_params(self, feature):
         """Editable numeric properties of a feature, with current values."""
@@ -633,6 +635,91 @@ class Kernel:
         except Exception as exc:  # noqa: BLE001
             raise KernelError(_explain(exc))
         self._recompute()
+        return self.get_tree()
+
+    def set_params(self, feature, values):
+        """Set several properties at once, one recompute — the edit panel
+        applies (and previews) its whole form atomically."""
+        doc = self._require_doc()
+        obj = doc.getObject(feature)
+        if obj is None:
+            raise KernelError("fonction inconnue : {}".format(feature))
+        if not isinstance(values, dict):
+            raise KernelError("values doit être un objet JSON")
+        for prop, value in values.items():
+            prop = str(prop)
+            if not hasattr(obj, prop):
+                raise KernelError("{} n'a pas de propriété {}".format(
+                    obj.Label, prop))
+            current = getattr(obj, prop, None)
+            if isinstance(current, int) and not isinstance(current, bool):
+                value = int(value)
+            try:
+                setattr(obj, prop, value)
+            except Exception as exc:  # noqa: BLE001
+                raise KernelError(_explain(exc))
+        self._recompute()
+        return self.get_tree()
+
+    def rename(self, feature, label):
+        """Renommer une fonction, une esquisse ou la pièce."""
+        doc = self._require_doc()
+        obj = doc.getObject(feature)
+        if obj is None:
+            raise KernelError("fonction inconnue : {}".format(feature))
+        label = str(label).strip()
+        if not label:
+            raise KernelError("le nom ne peut pas être vide")
+        obj.Label = label
+        return self.get_tree()
+
+    #: Correspondance panneau -> énumération FreeCAD du type de lamage.
+    _HOLE_CUTS = {"none": "None", "lamage": "Counterbore",
+                  "fraisage": "Countersink"}
+
+    def add_hole(self, diameter, depth=None, through=False, cut="none",
+                 cut_diameter=None, cut_depth=None, cut_angle=None):
+        """Assistant de perçage — version simple.
+
+        Le profil est la dernière esquisse non utilisée : ses cercles (un
+        par perçage) positionnent les trous ; le diamètre saisi remplace
+        le leur. Borgne ou à travers tout, lamage ou fraisage optionnel.
+        """
+        body = self._require_body()
+        doc = self._require_doc()
+        cut_type = self._HOLE_CUTS.get(str(cut))
+        if cut_type is None:
+            raise KernelError(
+                "type inconnu « {} » — attendu : none, lamage ou "
+                "fraisage".format(cut))
+        if float(diameter) <= 0:
+            raise KernelError("le diamètre doit être positif")
+        profile = self._latest_sketch()
+        hole = body.newObject("PartDesign::Hole", "Hole")
+        hole.Profile = profile
+        hole.Threaded = False
+        hole.Diameter = float(diameter)
+        if through or depth is None:
+            hole.DepthType = "ThroughAll"
+        else:
+            hole.DepthType = "Dimension"
+            hole.Depth = float(depth)
+        hole.HoleCutType = cut_type
+        if cut_type != "None" and cut_diameter:
+            hole.HoleCutDiameter = float(cut_diameter)
+        if cut_type == "Counterbore" and cut_depth:
+            hole.HoleCutDepth = float(cut_depth)
+        if cut_type == "Countersink" and cut_angle:
+            try:
+                hole.HoleCutCountersinkAngle = float(cut_angle)
+            except AttributeError:
+                pass  # renommée selon les versions ; l'angle par défaut sert
+        hole.Label = label_for_type("PartDesign::Hole")
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(hole.Name)
+            raise
         return self.get_tree()
 
     def get_tree(self):
@@ -1461,6 +1548,34 @@ class Kernel:
                 not any(f["error"] for f in tree["features"])
                 and len(self.tessellate()["groups"]) > faces_before)
 
+            mark("p6: assistant de perçage (2 trous lamés)")
+            self.new_part("Pièce perçages")
+            self.add_rect_sketch(60, 40)
+            self.add_pad(8)
+            state = self.sketch_start(face=self._top_face_id())
+            hole_sk = state["sketch"]
+            self.sketch_add_circle(hole_sk, -15, 0, 3)
+            self.sketch_add_circle(hole_sk, 15, 0, 3)
+            self.sketch_finish(hole_sk)
+            faces_before = len(self.tessellate()["groups"])
+            tree = self.add_hole(diameter=6, through=True,
+                                 cut="lamage", cut_diameter=11, cut_depth=3)
+            report["p6_hole_ok"] = (
+                not any(f["error"] for f in tree["features"])
+                and len(self.tessellate()["groups"]) > faces_before)
+
+            mark("p6: renommer + édition atomique")
+            hole_name = next(f["name"] for f in tree["features"]
+                             if f["type"] == "PartDesign::Hole")
+            tree = self.rename(hole_name, "Perçages de fixation")
+            report["p6_rename_ok"] = any(
+                f["label"] == "Perçages de fixation"
+                for f in tree["features"])
+            self.set_params(hole_name, {"Diameter": 8.0})
+            report["p6_set_params_ok"] = any(
+                p["prop"] == "Diameter" and abs(p["value"] - 8.0) < 1e-9
+                for p in self.get_params(hole_name)["params"])
+
             mark("p3: arc, rainure, polygone")
             import math
             self.new_part("Pièce esquisse avancée")
@@ -1541,8 +1656,9 @@ class Kernel:
 _TRANSACTIONAL = frozenset({
     "add_rect_sketch", "add_pad", "add_pocket", "add_fillet", "add_chamfer",
     "add_revolution", "add_groove", "add_mirror", "add_linear_pattern",
-    "add_polar_pattern", "add_thickness", "add_draft",
-    "set_param", "set_tip", "tip_to_end", "delete_feature",
+    "add_polar_pattern", "add_thickness", "add_draft", "add_hole",
+    "set_param", "set_params", "rename",
+    "set_tip", "tip_to_end", "delete_feature",
     "sketch_start", "sketch_add_line", "sketch_add_circle", "sketch_dim",
     "sketch_set_dim", "sketch_delete_geo", "sketch_finish",
     "sketch_toggle_construction",

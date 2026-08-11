@@ -37,6 +37,11 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_thickness": ("face", "thickness"),
     "add_draft": ("face", "angle"),    # plan neutre : Plan de dessus (XY)
     "set_param": ("feature", "prop", "value"),
+    "set_params": ("feature", "values"),  # plusieurs propriétés, un recompute
+    "rename": ("feature", "label"),
+    "add_hole": ("diameter",),         # optional: depth | through, cut
+                                       # (none|lamage|fraisage), cut_diameter,
+                                       # cut_depth, cut_angle
     "get_params": ("feature",),        # editable numeric properties
     "set_tip": ("feature",),           # move the rollback bar here
     "tip_to_end": (),                  # back to the final state

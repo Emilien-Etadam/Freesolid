@@ -610,6 +610,10 @@ const PROP_LABELS = {
   Thickness: ["Épaisseur", "mm"],
   Value: ["Épaisseur", "mm"],
   Occurrences: ["Nombre d'occurrences", ""],
+  Diameter: ["Diamètre", "mm"],
+  Depth: ["Profondeur", "mm"],
+  HoleCutDiameter: ["Ø lamage/fraisage", "mm"],
+  HoleCutDepth: ["Profondeur du lamage", "mm"],
 };
 
 async function editFeature(feature) {
@@ -623,6 +627,16 @@ async function editFeature(feature) {
       say(`${info.label} : aucun paramètre numérique éditable`);
       return;
     }
+    const collectChanged = (v) => {
+      const values = {};
+      for (const p of info.params) {
+        const value = parseFloat(v[p.prop]);
+        if (!Number.isNaN(value) && value !== p.value) {
+          values[p.prop] = value;
+        }
+      }
+      return values;
+    };
     panel.open({
       icon: TREE_ICONS[feature.type] ?? "PartDesign_Body.svg",
       title: info.label,
@@ -634,21 +648,19 @@ async function editFeature(feature) {
                    value: p.value };
         }),
       }],
-      onApply: async (v) => {
-        try {
-          let touched = false;
-          for (const p of info.params) {
-            const value = parseFloat(v[p.prop]);
-            if (!Number.isNaN(value) && value !== p.value) {
-              await call("set_param",
-                { feature: feature.name, prop: p.prop, value });
-              touched = true;
-            }
-          }
-          if (touched) await refresh(call("get_tree"));
-        } catch (error) {
-          say(error.message, true);
-        }
+      // L'édition profite du même aperçu jaune que la création.
+      onChange: (v) => {
+        const values = collectChanged(v);
+        schedulePreview(Object.keys(values).length
+          ? { op: "set_params",
+              params: { feature: feature.name, values } }
+          : null);
+      },
+      onApply: (v) => {
+        const values = collectChanged(v);
+        if (!Object.keys(values).length) return;
+        refresh(call("set_params",
+          { feature: feature.name, values }));
       },
     });
   } catch (error) {
@@ -669,6 +681,13 @@ function openMenu(event, feature) {
   menuEl.style.top = event.clientY + "px";
 }
 document.addEventListener("click", () => { menuEl.style.display = "none"; });
+
+document.getElementById("ctx-rename").addEventListener("click", () => {
+  if (!menuFeature) return;
+  const label = prompt("Nouveau nom :", menuFeature.label);
+  if (label === null || !label.trim()) return;
+  refresh(call("rename", { feature: menuFeature.name, label: label.trim() }));
+});
 
 document.getElementById("ctx-rollback").addEventListener("click", () => {
   if (menuFeature) refresh(call("set_tip", { feature: menuFeature.name }));
@@ -887,6 +906,77 @@ document.getElementById("btn-draft").addEventListener("click", () =>
       const angle = parseFloat(v.angle);
       return angle > 0
         ? { op: "add_draft", params: { face: v.sel.face, angle } } : null;
+    },
+  })));
+
+function holeBuild(v) {
+  const diameter = parseFloat(v.diameter);
+  if (!(diameter > 0)) return null;
+  const params = { diameter, cut: v.cut };
+  if (v.cond === "borgne") {
+    const depth = parseFloat(v.depth);
+    if (!(depth > 0)) return null;
+    params.depth = depth;
+  } else {
+    params.through = true;
+  }
+  if (v.cut !== "none") {
+    const cutDiameter = parseFloat(v.cutDiameter);
+    if (!(cutDiameter > diameter)) return null; // le lamage englobe le trou
+    params.cut_diameter = cutDiameter;
+    if (v.cut === "lamage") {
+      const cutDepth = parseFloat(v.cutDepth);
+      if (!(cutDepth > 0)) return null;
+      params.cut_depth = cutDepth;
+    } else {
+      const cutAngle = parseFloat(v.cutAngle);
+      if (cutAngle > 0) params.cut_angle = cutAngle;
+    }
+  }
+  return { op: "add_hole", params };
+}
+
+document.getElementById("btn-hole").addEventListener("click", () =>
+  featureCommand(() => panel.open({
+    icon: "PartDesign_Hole.svg",
+    title: "Assistant de perçage",
+    groups: [
+      {
+        label: "Type de perçage",
+        rows: [
+          { type: "select", key: "cut", value: "none",
+            options: [["none", "Perçage"], ["lamage", "Lamage"],
+                      ["fraisage", "Fraisage"]] },
+          { type: "number", key: "diameter", label: "Diamètre", value: 6,
+            unit: "mm", min: 0.01 },
+          { type: "number", key: "cutDiameter", label: "Ø de tête",
+            value: 11, unit: "mm", min: 0.01,
+            showIf: (v) => v.cut !== "none" },
+          { type: "number", key: "cutDepth", label: "Prof. lamage",
+            value: 3, unit: "mm", min: 0.01,
+            showIf: (v) => v.cut === "lamage" },
+          { type: "number", key: "cutAngle", label: "Angle", value: 90,
+            unit: "°", min: 1, showIf: (v) => v.cut === "fraisage" },
+        ],
+      },
+      {
+        label: "Condition de fin",
+        rows: [
+          { type: "select", key: "cond", value: "travers",
+            options: [["travers", "À travers tout"],
+                      ["borgne", "Borgne"]] },
+          { type: "number", key: "depth", label: "Profondeur", value: 15,
+            unit: "mm", min: 0.01, showIf: (v) => v.cond === "borgne" },
+        ],
+      },
+    ],
+    note: "Position : la dernière esquisse (un cercle par perçage). " +
+          "Le diamètre saisi remplace celui des cercles.",
+    onChange: (v) => schedulePreview(holeBuild(v)),
+    onApply: (v) => {
+      const built = holeBuild(v);
+      if (!built) { say("Valeurs du perçage invalides", true); return; }
+      refresh(call(built.op, built.params));
     },
   })));
 

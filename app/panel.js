@@ -78,13 +78,16 @@ export function createPropertyPanel({ say, onClose }) {
     }
   }
 
-  // The viewport reports face picks here; a selection row absorbs them.
-  function notifyFace(faceId) {
+  // The viewport reports picks here; a selection row that accepts this
+  // kind absorbs them. Values are {kind: "face", face} or
+  // {kind: "edges", edges: [...]}.
+  function notifyPick(kind, value) {
     if (!active) return false;
     for (const group of active.spec.groups) {
       for (const row of group.rows ?? []) {
-        if (row.type === "selection") {
-          active.values[row.key] = faceId;
+        if (row.type === "selection"
+            && (row.accepts ?? ["face"]).includes(kind)) {
+          active.values[row.key] = value;
           render();
           changed();
           return true;
@@ -137,12 +140,20 @@ export function createPropertyPanel({ say, onClose }) {
 
     if (row.type === "selection") {
       const box = el("div", "pselect-box");
-      const face = values[row.key];
-      if (face === null || face === undefined) {
+      const value = values[row.key];
+      const empty = !value
+        || (value.kind === "edges" && !value.edges.length)
+        || (value.kind === "face" && value.face == null);
+      if (empty) {
         box.textContent =
           row.hint ?? "Cliquez une face dans la zone graphique";
+      } else if (value.kind === "edges") {
+        box.textContent = value.edges.length <= 3
+          ? value.edges.map((e) => `Arête ${e}`).join(", ")
+          : `${value.edges.length} arêtes`;
+        box.classList.add("filled");
       } else {
-        box.textContent = `${row.label ?? "Face"} ${face}`;
+        box.textContent = `Face ${value.face}`;
         box.classList.add("filled");
       }
       return box;
@@ -194,7 +205,7 @@ export function createPropertyPanel({ say, onClose }) {
 
   return {
     open,
-    notifyFace,
+    notifyPick,
     get active() { return active !== null; },
   };
 }

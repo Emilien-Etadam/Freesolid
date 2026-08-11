@@ -446,7 +446,7 @@ class Kernel:
         """Coque : évide la pièce, la face cliquée devient l'ouverture."""
         return self._dressup("PartDesign::Thickness",
                              label_for_type("PartDesign::Thickness"),
-                             face, "Value", thickness)
+                             "Value", thickness, face=face)
 
     def add_draft(self, face, angle):
         """Dépouille de la face cliquée ; plan neutre : Plan de dessus."""
@@ -467,20 +467,28 @@ class Kernel:
             raise
         return self.get_tree()
 
-    def _dressup(self, type_id, label, face, prop, value):
+    def _dressup(self, type_id, label, prop, value, face=None, edges=None):
         """Fillet/chamfer share everything but the property they drive.
 
-        The dress-up references the picked face on the Tip feature — the
-        shape the viewport tessellated, so the numbering matches by
-        construction. PartDesign applies it to every edge of that face.
+        The dress-up references the picked face or edges on the Tip
+        feature — the shape the viewport tessellated, so the numbering
+        matches by construction. A face means every edge of that face;
+        an edge list is the precise SolidWorks gesture.
         """
         body = self._require_body()
         doc = self._require_doc()
         tip = getattr(body, "Tip", None)
         if tip is None:
             raise KernelError("pas de solide à habiller")
+        if edges:
+            subs = ["Edge{}".format(int(e) + 1) for e in edges]
+        elif face is not None:
+            subs = ["Face{}".format(int(face) + 1)]
+        else:
+            raise KernelError(
+                "sélectionnez des arêtes ou une face de la pièce")
         feature = body.newObject(type_id, type_id.split("::")[-1])
-        feature.Base = (tip, ["Face{}".format(int(face) + 1)])
+        feature.Base = (tip, subs)
         setattr(feature, prop, float(value))
         feature.Label = label
         try:
@@ -490,13 +498,13 @@ class Kernel:
             raise
         return self.get_tree()
 
-    def add_fillet(self, face, radius):
-        return self._dressup("PartDesign::Fillet", "Congé", face,
-                             "Radius", radius)
+    def add_fillet(self, radius, face=None, edges=None):
+        return self._dressup("PartDesign::Fillet", "Congé",
+                             "Radius", radius, face=face, edges=edges)
 
-    def add_chamfer(self, face, size):
-        return self._dressup("PartDesign::Chamfer", "Chanfrein", face,
-                             "Size", size)
+    def add_chamfer(self, size, face=None, edges=None):
+        return self._dressup("PartDesign::Chamfer", "Chanfrein",
+                             "Size", size, face=face, edges=edges)
 
     #: Properties offered for editing, in display order. A whitelist rather
     #: than full introspection: Pad alone carries a dozen numeric properties
@@ -690,6 +698,30 @@ class Kernel:
             vertices, triangles = face.tessellate(float(deviation))
             faces.append((i, [(v.x, v.y, v.z) for v in vertices], triangles))
         return protocol.pack_mesh(faces)
+
+    def tessellate_edges(self, deviation=0.05):
+        """Per-edge polylines of the body's current shape.
+
+        Edge-by-edge on purpose — see ``protocol.pack_edges``: a raycast
+        hit maps to exactly one OCCT edge, same contract as ``tessellate``
+        for faces. Ids are Edge indices, so ``Edge{id+1}`` server-side.
+        """
+        from . import protocol
+        body = self._require_body()
+        shape = getattr(body, "Shape", None)
+        if shape is None or not shape.Edges:
+            return protocol.pack_edges([])
+        lines = []
+        for i, edge in enumerate(shape.Edges):
+            try:
+                points = edge.discretize(Deviation=float(deviation))
+            except Exception:
+                try:
+                    points = edge.discretize(Number=24)
+                except Exception:
+                    continue  # arête dégénérée : les ids restent justes
+            lines.append((i, [(p.x, p.y, p.z) for p in points]))
+        return protocol.pack_edges(lines)
 
     # -- M2 : sketch editing --------------------------------------------
 
@@ -1245,7 +1277,7 @@ class Kernel:
             self.add_rect_sketch(40, 20, face=top)
             self.add_pocket(through=True)
             report["m1_pocket_faces"] = len(self.tessellate()["groups"])
-            tree = self.add_fillet(self._top_face_id(), 3)
+            tree = self.add_fillet(3, face=self._top_face_id())
             report["m1_fillet_ok"] = not any(
                 f["error"] for f in tree["features"])
 
@@ -1412,6 +1444,22 @@ class Kernel:
             report["p4_preview_leaves_doc_intact"] = (
                 len(self.get_tree()["features"]) == count
                 and len(self.tessellate()["groups"]) == faces_now)
+
+            mark("p5: congé sur arêtes")
+            self.new_part("Pièce arêtes")
+            self.add_rect_sketch(40, 40)
+            self.add_pad(10)
+            edges_pack = self.tessellate_edges()
+            report["p5_edges"] = len(edges_pack["groups"])
+            top_edges = [i for i, e in
+                         enumerate(self._require_body().Shape.Edges)
+                         if abs(e.CenterOfMass.z - 10) < 1e-6]
+            report["p5_top_edges"] = len(top_edges)
+            faces_before = len(self.tessellate()["groups"])
+            tree = self.add_fillet(radius=3, edges=top_edges)
+            report["p5_edge_fillet_ok"] = (
+                not any(f["error"] for f in tree["features"])
+                and len(self.tessellate()["groups"]) > faces_before)
 
             mark("p3: arc, rainure, polygone")
             import math

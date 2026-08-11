@@ -90,8 +90,9 @@ def test_pack_mesh_coerces_to_plain_floats():
 def test_m1_ops_declare_their_required_params():
     # Both optional: no length means « à travers tout ».
     assert protocol.OPS["add_pocket"] == ()
-    assert protocol.OPS["add_fillet"] == ("face", "radius")
-    assert protocol.OPS["add_chamfer"] == ("face", "size")
+    # face OU edges : seuls le rayon/la distance sont obligatoires.
+    assert protocol.OPS["add_fillet"] == ("radius",)
+    assert protocol.OPS["add_chamfer"] == ("size",)
     assert protocol.OPS["save_part"] == ("path",)
     assert protocol.OPS["open_part"] == ("path",)
     assert protocol.OPS["get_params"] == ("feature",)
@@ -171,6 +172,33 @@ def test_dim_accepts_second_entity():
          "params": {"sketch": "Sketch", "geo": 0, "geo2": 1,
                     "point": 1, "point2": 2}})
     assert params["geo2"] == 1
+
+
+def test_pack_edges_maps_segments_to_edges_by_construction():
+    packed = protocol.pack_edges([
+        (0, [(0, 0, 0), (1, 0, 0)]),               # segment unique
+        (4, [(0, 0, 1), (1, 0, 1), (1, 1, 1)]),    # polyligne : 2 segments
+        (9, [(5, 5, 5)]),                          # dégénérée : ignorée
+    ])
+    assert packed["indices"] == [0, 1, 2, 3, 3, 4]
+    assert packed["groups"] == [
+        {"edgeId": 0, "start": 0, "count": 2},
+        {"edgeId": 4, "start": 2, "count": 4},
+    ]
+    cursor = 0
+    for group in packed["groups"]:
+        assert group["start"] == cursor
+        cursor += group["count"]
+    assert cursor == len(packed["indices"])
+    assert all(isinstance(v, float) for v in packed["positions"])
+
+
+def test_edge_ops_declared():
+    assert protocol.OPS["tessellate_edges"] == ()
+    protocol.validate_request(
+        {"op": "add_fillet", "params": {"radius": 3, "edges": [1, 5, 7]}})
+    protocol.validate_request(
+        {"op": "add_chamfer", "params": {"size": 2, "face": 4}})
 
 
 def test_preview_wraps_an_op_and_its_params():

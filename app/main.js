@@ -72,17 +72,20 @@ const selectedMaterial = new THREE.MeshStandardMaterial({
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 
-// The picked face, sticky across renders: what Congé/Chanfrein/Esquisse use.
+// The picked face, sticky across renders: what Coque/Dépouille/Esquisse use.
 let selectedFaceId = null;
+// Picked edges (multi-select, Ctrl = ajouter) : what Congé/Chanfrein use.
+let selectedEdges = new Set();
 
 let partMesh = null;
 let partEdges = null;
 let meshGroups = [];
+let edgeGroups = [];
+let hoveredEdgeGroup = -1;
 
 function showMesh(mesh) {
   if (partMesh) { scene.remove(partMesh); partMesh.geometry.dispose(); }
-  if (partEdges) { scene.remove(partEdges); partEdges.geometry.dispose(); }
-  partMesh = partEdges = null;
+  partMesh = null;
   meshGroups = mesh.groups;
   hoveredGroup = -1;
   selectedFaceId = null; // ids shift after every feature: stale picks lie
@@ -100,12 +103,44 @@ function showMesh(mesh) {
   partMesh = new THREE.Mesh(geometry, [baseMaterial, hoverMaterial, selectedMaterial]);
   scene.add(partMesh);
   rebuildPlanes(); // les plans de base suivent la taille de la pièce
+}
 
-  // Plasticity-style crisp silhouette: hard edges over the shaded mesh.
-  partEdges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(geometry, 25),
-    new THREE.LineBasicMaterial({ color: 0x11141a }));
+// Les vraies arêtes BREP du moteur (pas une silhouette approchée) :
+// chaque arête OCCT est son propre groupe d'indices — picking par
+// construction, exactement comme les faces.
+const edgeBaseMaterial = new THREE.LineBasicMaterial({ color: 0x11141a });
+const edgeHoverMaterial = new THREE.LineBasicMaterial({ color: 0x4f8fdb });
+const edgeSelectedMaterial = new THREE.LineBasicMaterial({ color: 0xd9924a });
+
+function showEdgeLines(data) {
+  if (partEdges) { scene.remove(partEdges); partEdges.geometry.dispose(); }
+  partEdges = null;
+  edgeGroups = data.groups;
+  hoveredEdgeGroup = -1;
+  selectedEdges = new Set(); // ids shift after every rebuild, like faces
+  if (!data.indices.length) return;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position",
+    new THREE.Float32BufferAttribute(data.positions, 3));
+  geometry.setIndex(data.indices);
+  for (const g of data.groups) geometry.addGroup(g.start, g.count, 0);
+  partEdges = new THREE.LineSegments(geometry,
+    [edgeBaseMaterial, edgeHoverMaterial, edgeSelectedMaterial]);
   scene.add(partEdges);
+}
+
+function repaintEdges() {
+  if (!partEdges) return;
+  partEdges.geometry.groups.forEach((g, i) => {
+    const id = edgeGroups[i].edgeId;
+    g.materialIndex = selectedEdges.has(id) ? 2
+      : (i === hoveredEdgeGroup ? 1 : 0);
+  });
+}
+
+async function updateViewport() {
+  showMesh(await call("tessellate"));
+  showEdgeLines(await call("tessellate_edges"));
 }
 
 // ---------- plans de base (Face / Dessus / Droite) ----------
@@ -262,17 +297,38 @@ renderer.domElement.addEventListener("pointermove", (event) => {
   }
   if (!partMesh) return;
   raycaster.setFromCamera(pointer, camera);
-  const hit = raycaster.intersectObject(partMesh)[0];
+  const faceHit = raycaster.intersectObject(partMesh)[0];
+
+  // Les arêtes d'abord : plus précises sous le curseur. Une arête cachée
+  // derrière une face plus proche perd — pas de sélection à travers la
+  // matière.
+  let edgeGroupIndex = -1;
+  if (partEdges) {
+    const { radius } = partCenterRadius();
+    raycaster.params.Line.threshold =
+      camera.position.distanceTo(controls.target) * 0.008;
+    const edgeHit = raycaster.intersectObject(partEdges)[0];
+    if (edgeHit && (!faceHit
+        || edgeHit.distance <= faceHit.distance + radius * 0.02)) {
+      edgeGroupIndex = edgeGroups.findIndex(
+        (g) => edgeHit.index >= g.start
+            && edgeHit.index < g.start + g.count);
+    }
+  }
+
   let groupIndex = -1;
-  if (hit) {
-    const indexPosition = hit.faceIndex * 3;
+  if (edgeGroupIndex < 0 && faceHit) {
+    const indexPosition = faceHit.faceIndex * 3;
     groupIndex = meshGroups.findIndex(
       (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
   }
-  if (groupIndex !== hoveredGroup) {
+  if (groupIndex !== hoveredGroup || edgeGroupIndex !== hoveredEdgeGroup) {
     hoveredGroup = groupIndex;
-    renderer.domElement.style.cursor = groupIndex >= 0 ? "pointer" : "";
+    hoveredEdgeGroup = edgeGroupIndex;
+    renderer.domElement.style.cursor =
+      groupIndex >= 0 || edgeGroupIndex >= 0 ? "pointer" : "";
     repaintGroups();
+    repaintEdges();
   }
 });
 
@@ -283,8 +339,16 @@ function repaintGroups() {
     g.materialIndex = isSelected ? 2 : (i === hoveredGroup ? 1 : 0);
   });
   const parts = [];
-  if (hoveredGroup >= 0) parts.push(`Face ${meshGroups[hoveredGroup].faceId}`);
-  if (selectedFaceId !== null) parts.push(`sél. Face ${selectedFaceId}`);
+  if (hoveredEdgeGroup >= 0) {
+    parts.push(`Arête ${edgeGroups[hoveredEdgeGroup].edgeId}`);
+  } else if (hoveredGroup >= 0) {
+    parts.push(`Face ${meshGroups[hoveredGroup].faceId}`);
+  }
+  if (selectedEdges.size) {
+    parts.push(`sél. ${selectedEdges.size} arête(s) — Ctrl+clic : ajouter`);
+  } else if (selectedFaceId !== null) {
+    parts.push(`sél. Face ${selectedFaceId}`);
+  }
   pickEl.textContent = parts.join(" · ");
 }
 
@@ -305,15 +369,40 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     if (hoverPlane) pickPlane(hoverPlane);
     return;
   }
-  selectedFaceId = hoveredGroup >= 0 ? meshGroups[hoveredGroup].faceId : null;
-  repaintGroups();
-  if (selectedFaceId !== null && selectedPlane !== null) {
-    selectedPlane = null; // une face remplace le plan choisi
-    updatePlaneVisibility();
-    if (lastTree) renderTree(lastTree);
+
+  const clearPlaneChoice = () => {
+    if (selectedPlane !== null) {
+      selectedPlane = null;
+      updatePlaneVisibility();
+      if (lastTree) renderTree(lastTree);
+    }
+  };
+
+  if (hoveredEdgeGroup >= 0) {
+    const id = edgeGroups[hoveredEdgeGroup].edgeId;
+    if (event.ctrlKey || event.metaKey) {
+      if (!selectedEdges.delete(id)) selectedEdges.add(id);
+    } else {
+      selectedEdges = new Set([id]);
+    }
+    selectedFaceId = null;
+    clearPlaneChoice();
+    repaintGroups();
+    repaintEdges();
+    panel.notifyPick("edges",
+      { kind: "edges", edges: [...selectedEdges] });
+    return;
   }
-  // A command panel with a selection box absorbs the pick, SolidWorks-style.
-  if (selectedFaceId !== null) panel.notifyFace(selectedFaceId);
+
+  selectedFaceId = hoveredGroup >= 0 ? meshGroups[hoveredGroup].faceId : null;
+  selectedEdges = new Set(); // une face (ou le vide) remplace les arêtes
+  repaintEdges();
+  repaintGroups();
+  if (selectedFaceId !== null) {
+    clearPlaneChoice();
+    // A command panel with a selection box absorbs the pick.
+    panel.notifyPick("face", { kind: "face", face: selectedFaceId });
+  }
 });
 
 function resize() {
@@ -623,7 +712,7 @@ async function refresh(treePromise) {
   try {
     const tree = await treePromise;
     renderTree(tree);
-    showMesh(await call("tessellate"));
+    await updateViewport();
     say("À jour.");
   } catch (error) {
     say(error.message, true);
@@ -683,23 +772,39 @@ document.getElementById("btn-pocket").addEventListener("click", () =>
     },
   })));
 
-// Habillages : la zone de sélection du panneau absorbe le clic de face —
-// on peut ouvrir la commande d'abord et cliquer la face ensuite, comme
-// dans SolidWorks.
-function dressupPanel({ icon, title, selectionLabel, group, rows, build }) {
+// Habillages : la zone de sélection du panneau absorbe les clics de la
+// zone graphique (arêtes ou face selon la commande) — on peut ouvrir la
+// commande d'abord et cliquer ensuite, comme dans SolidWorks.
+function currentSelection(accepts) {
+  if (accepts.includes("edges") && selectedEdges.size) {
+    return { kind: "edges", edges: [...selectedEdges] };
+  }
+  if (accepts.includes("face") && selectedFaceId !== null) {
+    return { kind: "face", face: selectedFaceId };
+  }
+  return null;
+}
+
+function hasSelection(sel) {
+  return !!sel && (sel.kind === "edges"
+    ? sel.edges.length > 0 : sel.face != null);
+}
+
+function dressupPanel({ icon, title, selectionLabel, group, rows, build,
+                        accepts = ["face"], hint }) {
   panel.open({
     icon, title,
     groups: [
       { label: selectionLabel,
-        rows: [{ type: "selection", key: "face", value: selectedFaceId }] },
+        rows: [{ type: "selection", key: "sel", accepts, hint,
+                 value: currentSelection(accepts) }] },
       { label: group, rows },
     ],
     onChange: (v) =>
-      schedulePreview(v.face === null || v.face === undefined
-        ? null : build(v)),
+      schedulePreview(hasSelection(v.sel) ? build(v) : null),
     onApply: (v) => {
-      if (v.face === null || v.face === undefined) {
-        say(`${title} : cliquez une face de la pièce`, true);
+      if (!hasSelection(v.sel)) {
+        say(`${title} : cliquez d'abord dans la zone graphique`, true);
         return;
       }
       const built = build(v);
@@ -709,17 +814,28 @@ function dressupPanel({ icon, title, selectionLabel, group, rows, build }) {
   });
 }
 
+// La sélection du panneau devient les params du moteur : arêtes précises
+// ou face entière (= toutes ses arêtes), les deux gestes SolidWorks.
+function dressupParams(sel) {
+  return sel.kind === "edges"
+    ? { edges: sel.edges } : { face: sel.face };
+}
+
 document.getElementById("btn-fillet").addEventListener("click", () =>
   featureCommand(() => dressupPanel({
     icon: "PartDesign_Fillet.svg", title: "Congé",
     selectionLabel: "Éléments à arrondir",
+    accepts: ["edges", "face"],
+    hint: "Cliquez des arêtes (Ctrl = ajouter) ou une face",
     group: "Paramètres du congé",
     rows: [{ type: "number", key: "radius", label: "Rayon", value: 3,
              unit: "mm", min: 0.01 }],
     build: (v) => {
       const radius = parseFloat(v.radius);
       return radius > 0
-        ? { op: "add_fillet", params: { face: v.face, radius } } : null;
+        ? { op: "add_fillet",
+            params: { ...dressupParams(v.sel), radius } }
+        : null;
     },
   })));
 
@@ -727,13 +843,17 @@ document.getElementById("btn-chamfer").addEventListener("click", () =>
   featureCommand(() => dressupPanel({
     icon: "PartDesign_Chamfer.svg", title: "Chanfrein",
     selectionLabel: "Éléments à chanfreiner",
+    accepts: ["edges", "face"],
+    hint: "Cliquez des arêtes (Ctrl = ajouter) ou une face",
     group: "Paramètres du chanfrein",
     rows: [{ type: "number", key: "size", label: "Distance", value: 2,
              unit: "mm", min: 0.01 }],
     build: (v) => {
       const size = parseFloat(v.size);
       return size > 0
-        ? { op: "add_chamfer", params: { face: v.face, size } } : null;
+        ? { op: "add_chamfer",
+            params: { ...dressupParams(v.sel), size } }
+        : null;
     },
   })));
 
@@ -747,7 +867,8 @@ document.getElementById("btn-shell").addEventListener("click", () =>
     build: (v) => {
       const thickness = parseFloat(v.thickness);
       return thickness > 0
-        ? { op: "add_thickness", params: { face: v.face, thickness } }
+        ? { op: "add_thickness",
+            params: { face: v.sel.face, thickness } }
         : null;
     },
   })));
@@ -765,7 +886,7 @@ document.getElementById("btn-draft").addEventListener("click", () =>
     build: (v) => {
       const angle = parseFloat(v.angle);
       return angle > 0
-        ? { op: "add_draft", params: { face: v.face, angle } } : null;
+        ? { op: "add_draft", params: { face: v.sel.face, angle } } : null;
     },
   })));
 
@@ -888,7 +1009,7 @@ document.getElementById("btn-open").addEventListener("click", async () => {
   try {
     const tree = await call("open_part", { path });
     renderTree(tree);
-    showMesh(await call("tessellate"));
+    await updateViewport();
     say(tree.bodies_in_file > 1
       ? `Ouvert — ${tree.bodies_in_file} corps dans le fichier, affichage du premier.`
       : "Ouvert.");
@@ -957,7 +1078,7 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
     say("Selftest en cours…");
     const report = await call("selftest");
     renderTree(report.tree_after_pad);
-    showMesh(await call("tessellate"));
+    await updateViewport();
     say(`Selftest OK — ${report.mesh_faces} faces, ` +
         `${report.mesh_triangles} triangles, reparam ${report.m0_reparam_ok ? "OK" : "ÉCHEC"}`);
     console.log("selftest", report);

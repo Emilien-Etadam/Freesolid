@@ -57,9 +57,9 @@ listée au palier 3.
 - **Assistant de perçage** (`PartDesign::Hole`) : l'API existe mais le
   formulaire est riche (normes, taraudage, fraisage…) — gros travail d'UI.
   Icône déjà prête : PartDesign_Hole.svg.
-- **Congé / chanfrein sur arêtes** : demande le *picking d'arêtes* dans le
-  viewport (aujourd'hui : faces seulement). C'est le prochain gros chantier
-  d'interaction — il débloque le vrai flux SolidWorks des habillages.
+- ~~**Congé / chanfrein sur arêtes**~~ : **fait** (2026-08-11) — le
+  picking d'arêtes est en place (`tessellate_edges` + `pack_edges`,
+  mêmes ids par construction que les faces ; Ctrl+clic = multi-sélection).
 - **Lissage / balayage** : multi-esquisses + trajectoire.
 - **Multi-corps, plans de référence personnalisés, mise en plan, assemblages.**
 - **Solveur dans le navigateur** (planegcs-wasm) : pas une fonction mais le

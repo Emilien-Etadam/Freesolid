@@ -26,8 +26,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_rect_sketch": ("width", "height"),   # optional: face (id) to attach
     "add_pad": ("length",),            # optional: sketch, reversed, midplane
     "add_pocket": (),                  # optional: length | through — sans profondeur = à travers tout ; reversed
-    "add_fillet": ("face", "radius"),
-    "add_chamfer": ("face", "size"),
+    "add_fillet": ("radius",),         # face OU edges (liste d'ids)
+    "add_chamfer": ("size",),          # face OU edges
     # Palier 2 — fonctions volumiques, aucune interaction nouvelle.
     "add_revolution": (),              # optional: angle (°), sketch
     "add_groove": (),                  # optional: angle (°), sketch
@@ -45,6 +45,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "open_part": ("path",),
     "get_tree": (),
     "tessellate": (),                  # optional: deviation
+    "tessellate_edges": (),            # optional: deviation — picking d'arêtes
     # M2 — sketch editing. Geometry travels in sketch-local 2D; the state
     # carries the placement matrix that positions it in 3D.
     "sketch_start": (),                # optional: face | plane (XY|XZ|YZ)
@@ -140,4 +141,38 @@ def pack_mesh(face_meshes) -> dict:
             "count": len(indices) - start,
         })
         vertex_base += len(vertices)
+    return {"positions": positions, "indices": indices, "groups": groups}
+
+
+def pack_edges(edge_lines) -> dict:
+    """Flatten per-edge polylines into one indexed segment buffer.
+
+    Args:
+        edge_lines: iterable of ``(edge_id, points)`` where ``points`` is
+            the discretized polyline of that BREP edge, as ``(x, y, z)``.
+
+    Returns:
+        ``positions``, ``indices`` (pairs — LineSegments) and ``groups``
+        (``{edgeId, start, count}`` in index units). Same contract as
+        ``pack_mesh``: a raycast hit's segment index maps to exactly one
+        group, hence one OCCT edge. Picking by construction.
+    """
+    positions: list[float] = []
+    indices: list[int] = []
+    groups: list[dict] = []
+    vertex_base = 0
+    for edge_id, points in edge_lines:
+        if len(points) < 2:
+            continue
+        start = len(indices)
+        for x, y, z in points:
+            positions.extend((float(x), float(y), float(z)))
+        for i in range(len(points) - 1):
+            indices.extend((vertex_base + i, vertex_base + i + 1))
+        groups.append({
+            "edgeId": edge_id,
+            "start": start,
+            "count": len(indices) - start,
+        })
+        vertex_base += len(points)
     return {"positions": positions, "indices": indices, "groups": groups}

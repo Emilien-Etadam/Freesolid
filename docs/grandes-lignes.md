@@ -42,7 +42,7 @@ Ordre choisi par fondation : chaque phase rend la suivante possible, et
 les plus incertaines (🟠) sont précédées d'un *spike* selftest qui prouve
 ou tue l'approche avant d'y investir l'UI.
 
-### Phase A — Le paramétrique complet *(c'est le cœur : sans lui, le reste n'est que du dessin)*
+### Phase A — Le paramétrique complet — **fait** (2026-08-11)
 
 1. **Cotes nommées** : renommer une cote depuis son étiquette
    (`largeur`, `entraxe`) — `renameConstraint`.
@@ -56,7 +56,7 @@ ou tue l'approche avant d'y investir l'UI.
    dans le panneau + suppression individuelle — sans quoi une esquisse
    sur-contrainte est un mur.
 
-### Phase B — Références et fonctions d'ossature
+### Phase B — Références et fonctions d'ossature — **fait** (2026-08-11)
 
 5. **Plans de référence** (décalé d'un plan/d'une face, angulaire) et
    **axes** — indispensables dès qu'une pièce n'est pas un empilement sur
@@ -65,7 +65,7 @@ ou tue l'approche avant d'y investir l'UI.
    trajectoire dans l'arbre ou la zone graphique, aperçu jaune.
 7. **Hélice** (ressorts, filetages réels simples).
 
-### Phase C — Multi-corps puis assemblages *(dans cet ordre)*
+### Phase C — Multi-corps puis assemblages *(dans cet ordre)* — **fait** (spike validé : joints natifs + solveur MbD)
 
 8. **Multi-corps** : lever le choix mono-corps M0 — plusieurs corps par
    pièce, corps actif dans l'arbre, booléens entre corps. Prérequis
@@ -78,7 +78,7 @@ ou tue l'approche avant d'y investir l'UI.
     et se résolvent **headless**. Si oui → contraintes complètes ; si non
     → petit solveur de placements maison limité à ces trois contraintes.
 
-### Phase D — Surfacique et courbes 3D
+### Phase D — Surfacique et courbes 3D — **fait en v1** (2026-08-11)
 
 11. **Surfacique v1** : surface extrudée / de révolution / lissée,
     **coudre**, **épaissir**, solidifier — via l'API Part, présenté dans
@@ -87,7 +87,7 @@ ou tue l'approche avant d'y investir l'UI.
 12. **Courbes 3D par points** (le repli esquisse 3D) : polyligne/B-spline
     3D éditable comme trajectoire de balayage.
 
-### Phase E — Exploitation
+### Phase E — Exploitation — **fait** : Évaluer/Mesurer, mise en plan DXF ; configurations assumées = variables + enregistrer sous
 
 13. **Évaluer** : masse/volume/CG (avec densité matière), outil Mesurer.
 14. **Mise en plan** TechDraw : une page, vues projetées, export PDF —

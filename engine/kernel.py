@@ -492,6 +492,190 @@ class Kernel:
                     pass
         return result
 
+    # -- phase D : surfacique (API Part) + courbes 3D ---------------------
+
+    def _add_surface(self, shape, label):
+        doc = self._require_doc()
+        feature = doc.addObject("Part::Feature", "Surface")
+        feature.Shape = shape
+        feature.Label = label
+        doc.recompute()
+        return self.get_tree()
+
+    def _surface_source(self, sketch):
+        sk = (self._get_sketch(sketch) if sketch is not None
+              else self._latest_sketch())
+        if not sk.Shape.Edges:
+            raise KernelError("l'esquisse est vide")
+        return sk
+
+    def surface_extrude(self, length, sketch=None):
+        """Surface extrudée — le profil peut être OUVERT, c'est tout
+        l'intérêt du surfacique."""
+        sk = self._surface_source(sketch)
+        normal = sk.Placement.Rotation.multVec(self._app().Vector(0, 0, 1))
+        try:
+            shape = sk.Shape.extrude(normal.multiply(float(length)))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self._add_surface(shape, "Surface extrudée")
+
+    def surface_revolve(self, angle=360.0, sketch=None):
+        """Surface de révolution autour de l'axe vertical de l'esquisse."""
+        sk = self._surface_source(sketch)
+        App = self._app()
+        base = sk.Placement.Base
+        axis = sk.Placement.Rotation.multVec(App.Vector(0, 1, 0))
+        try:
+            shape = sk.Shape.revolve(base, axis, float(angle))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self._add_surface(shape, "Surface de révolution")
+
+    def surface_loft(self, sketches):
+        """Surface lissée entre plusieurs profils (ouverts ou fermés)."""
+        import Part
+        if not isinstance(sketches, (list, tuple)) or len(sketches) < 2:
+            raise KernelError("une surface lissée demande au moins deux "
+                              "profils")
+        wires = []
+        for name in sketches:
+            sk = self._get_sketch(str(name))
+            shape = sk.Shape
+            if shape.Wires:
+                wires.append(shape.Wires[0])
+            elif shape.Edges:
+                wires.append(Part.Wire(shape.Edges))
+            else:
+                raise KernelError("esquisse vide : {}".format(name))
+        try:
+            shape = Part.makeLoft(wires, False)
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self._add_surface(shape, "Surface lissée")
+
+    def _get_surface(self, name):
+        obj = self._require_doc().getObject(str(name))
+        if obj is None or obj.TypeId != "Part::Feature":
+            raise KernelError("surface inconnue : {}".format(name))
+        return obj
+
+    def surface_sew(self, surfaces):
+        """Coudre des surfaces ; si la peau est fermée, elle devient un
+        solide — le geste « coudre puis solidifier » de SolidWorks."""
+        import Part
+        if not isinstance(surfaces, (list, tuple)) or len(surfaces) < 2:
+            raise KernelError("coudre demande au moins deux surfaces")
+        faces = []
+        for name in surfaces:
+            faces.extend(self._get_surface(name).Shape.Faces)
+        if not faces:
+            raise KernelError("aucune face à coudre")
+        try:
+            shell = Part.makeShell(faces)
+            shell.sewShape()
+            if shell.isClosed():
+                return self._add_surface(Part.makeSolid(shell),
+                                         "Solide cousu")
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self._add_surface(shell, "Surface cousue")
+
+    def surface_thicken(self, surface, thickness):
+        """Épaissir une surface en solide (offset rempli)."""
+        obj = self._get_surface(surface)
+        if float(thickness) == 0:
+            raise KernelError("l'épaisseur ne peut pas être nulle")
+        try:
+            shape = obj.Shape.makeOffsetShape(
+                float(thickness), 1e-4, fill=True)
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self._add_surface(shape, "Épaississement")
+
+    def add_curve3d(self, points, spline=True):
+        """Courbe 3D par points — le repli esquisse 3D : une trajectoire
+        pour le balayage (B-spline interpolée, ou polyligne)."""
+        import Part
+        App = self._app()
+        if not isinstance(points, (list, tuple)) or len(points) < 2:
+            raise KernelError("une courbe demande au moins deux points")
+        vectors = []
+        for p in points:
+            try:
+                x, y, z = (float(v) for v in p)
+            except Exception:
+                raise KernelError("point invalide : {}".format(p))
+            vectors.append(App.Vector(x, y, z))
+        try:
+            if spline and len(vectors) >= 3:
+                curve = Part.BSplineCurve()
+                curve.interpolate(vectors)
+                shape = curve.toShape()
+            else:
+                shape = Part.makePolygon(vectors)
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self._add_surface(shape, "Courbe 3D")
+
+    # -- phase E : mise en plan -------------------------------------------
+
+    def make_drawing(self, path, scale=None):
+        """Mise en plan minimale : Face / Dessus / Isométrique sur une
+        page TechDraw, exportée en DXF (le seul export fiable headless).
+        La page est retirée du document après l'export."""
+        doc = self._require_doc()
+        body = self._require_body()
+        App = self._app()
+        path = os.path.expanduser(str(path))
+        if not path.lower().endswith(".dxf"):
+            path += ".dxf"
+        created = []
+        try:
+            page = doc.addObject("TechDraw::DrawPage", "Page")
+            created.append(page)
+            template = doc.addObject("TechDraw::DrawSVGTemplate",
+                                     "Template")
+            created.append(template)
+            template_path = os.path.join(
+                App.getResourceDir(), "Mod", "TechDraw", "Templates",
+                "A4_LandscapeTD.svg")
+            if os.path.exists(template_path):
+                template.Template = template_path
+            page.Template = template
+            placements = (("Face", (0, -1, 0), 70, 60),
+                          ("Dessus", (0, 0, 1), 70, 150),
+                          ("Iso", (1, -1, 1), 210, 105))
+            for name, direction, x, y in placements:
+                view = doc.addObject("TechDraw::DrawViewPart",
+                                     "View" + name)
+                created.append(view)
+                view.Source = [body]
+                view.Direction = App.Vector(*direction)
+                if scale:
+                    view.ScaleType = "Custom"
+                    view.Scale = float(scale)
+                page.addView(view)
+                view.X = x
+                view.Y = y
+            doc.recompute()
+            import TechDraw
+            TechDraw.writeDXFPage(page, path)
+        except KernelError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        finally:
+            for obj in reversed(created):
+                try:
+                    doc.removeObject(obj.Name)
+                except Exception:
+                    pass
+            doc.recompute()
+        if not os.path.exists(path):
+            raise KernelError("l'export DXF n'a rien produit")
+        return {"path": path, "size": os.path.getsize(path)}
+
     # -- phase E : évaluer ------------------------------------------------
 
     def mass_properties(self, density=1.24):
@@ -908,10 +1092,19 @@ class Kernel:
         body = self._require_body()
         doc = self._require_doc()
         section = self._get_sketch(str(profile))
-        path = self._get_sketch(str(spine))
+        # La trajectoire : une esquisse OU une courbe 3D (Part::Feature).
+        path = doc.getObject(str(spine))
+        if (path is None
+                or path.TypeId not in ("Sketcher::SketchObject",
+                                       "Part::Feature")
+                or not getattr(path, "Shape", None)
+                or not path.Shape.Edges):
+            raise KernelError(
+                "trajectoire inconnue : {} (esquisse ou courbe 3D)".format(
+                    spine))
         if section.Name == path.Name:
-            raise KernelError("profil et trajectoire doivent être deux "
-                              "esquisses différentes")
+            raise KernelError("profil et trajectoire doivent être "
+                              "différents")
         type_id = ("PartDesign::SubtractivePipe" if subtractive
                    else "PartDesign::AdditivePipe")
         pipe = body.newObject(type_id, type_id.split("::")[-1])
@@ -1520,9 +1713,13 @@ class Kernel:
                               if o.isDerivedFrom("PartDesign::Feature")
                               or o.TypeId == "Sketcher::SketchObject"]),
             })
+        surfaces = [{"name": o.Name, "label": o.Label}
+                    for o in self._doc.Objects
+                    if o.TypeId == "Part::Feature"]
         tip = body.Tip.Name if getattr(body, "Tip", None) else None
         return {"body": body.Label, "tip": tip, "bodies": bodies,
-                "planes": planes, "features": items}
+                "planes": planes, "features": items,
+                "surfaces": surfaces}
 
     def tessellate(self, deviation=0.1):
         """Per-face tessellation of the body's current shape.
@@ -1555,6 +1752,37 @@ class Kernel:
             others = protocol.pack_mesh(other_faces)
             mesh["others"] = {"positions": others["positions"],
                               "indices": others["indices"]}
+        # Les surfaces (Part::Feature) voyagent à part : rendu double face
+        # translucide côté client, non sélectionnables.
+        surface_faces = []
+        surface_lines = []
+        for obj in self._doc.Objects:
+            if obj.TypeId != "Part::Feature":
+                continue
+            shape = getattr(obj, "Shape", None)
+            if shape is None:
+                continue
+            for face in shape.Faces:
+                vertices, triangles = face.tessellate(float(deviation))
+                surface_faces.append(
+                    (0, [(v.x, v.y, v.z) for v in vertices], triangles))
+            if not shape.Faces:
+                # une courbe 3D : polylignes
+                for i, edge in enumerate(shape.Edges):
+                    try:
+                        points = edge.discretize(Deviation=0.1)
+                    except Exception:
+                        continue
+                    surface_lines.append(
+                        (i, [(p.x, p.y, p.z) for p in points]))
+        if surface_faces:
+            packed = protocol.pack_mesh(surface_faces)
+            mesh["surfaces"] = {"positions": packed["positions"],
+                                "indices": packed["indices"]}
+        if surface_lines:
+            packed = protocol.pack_edges(surface_lines)
+            mesh["curves"] = {"positions": packed["positions"],
+                              "indices": packed["indices"]}
         return mesh
 
     def tessellate_edges(self, deviation=0.05):
@@ -2680,6 +2908,47 @@ class Kernel:
             print("selftest> spike assemblage : " + json.dumps(
                 report["spike_assembly"], ensure_ascii=False), flush=True)
 
+            mark("p12: surfacique — extrusion, couture, épaississement")
+            self.new_part("Pièce surfaces")
+            state = self.sketch_start()
+            surf_sk1 = state["sketch"]
+            self.sketch_add_line(surf_sk1, 0, 0, 40, 0)  # profil OUVERT
+            self.sketch_finish(surf_sk1)
+            tree = self.surface_extrude(20, sketch=surf_sk1)
+            report["p12_surface_ok"] = len(tree["surfaces"]) == 1
+            state = self.sketch_start()
+            surf_sk2 = state["sketch"]
+            self.sketch_add_line(surf_sk2, 0, 0, 0, 30)
+            self.sketch_finish(surf_sk2)
+            tree = self.surface_extrude(20, sketch=surf_sk2)
+            names = [s["name"] for s in tree["surfaces"]]
+            tree = self.surface_sew(names)
+            report["p12_sew_ok"] = len(tree["surfaces"]) == 3
+            tree = self.surface_thicken(names[0], 2)
+            thick = self._require_doc().getObject(
+                tree["surfaces"][-1]["name"])
+            report["p12_thicken_solid_ok"] = bool(thick.Shape.Solids)
+
+            mark("p12: courbe 3D + balayage dessus")
+            curve_tree = self.add_curve3d(
+                [[0, 0, 0], [0, 0, 30], [20, 0, 50]], spline=True)
+            curve_name = curve_tree["surfaces"][-1]["name"]
+            state = self.sketch_start()
+            pipe_sk = state["sketch"]
+            self.sketch_add_circle(pipe_sk, 0, 0, 3)
+            self.sketch_finish(pipe_sk)
+            tree = self.add_sweep(profile=pipe_sk, spine=curve_name)
+            report["p12_sweep_on_curve_ok"] = not any(
+                f["error"] for f in tree["features"])
+
+            mark("p13: mise en plan DXF (3 vues)")
+            self.new_part("Pièce plan")
+            self.add_rect_sketch(30, 20)
+            self.add_pad(10)
+            dxf = os.path.join(tempfile.gettempdir(),
+                               "freesolid-selftest.dxf")
+            report["p13_drawing_ok"] = self.make_drawing(dxf)["size"] > 0
+
             mark("p3: arc, rainure, polygone")
             import math
             self.new_part("Pièce esquisse avancée")
@@ -2764,6 +3033,8 @@ _TRANSACTIONAL = frozenset({
     "add_datum_plane", "add_loft", "add_sweep", "add_helix",
     "add_body", "add_boolean",
     "insert_component", "move_component", "add_joint", "solve_assembly",
+    "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
+    "surface_thicken", "add_curve3d",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",

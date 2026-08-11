@@ -13,6 +13,7 @@ local tool, not a service.
 import json
 import os
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,6 +29,11 @@ _APP_DIR = os.path.join(_REPO_ROOT, "app")
 
 #: One document per server process — M0 scope.
 _KERNEL = kernel_mod.Kernel()
+
+#: FreeCAD n'est pas thread-safe et ThreadingHTTPServer si : un drag à
+#: 20 Hz plus un aperçu débouncé pouvaient entrer en collision dans le
+#: même document. Une op à la fois, par construction.
+_KERNEL_LOCK = threading.Lock()
 
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -52,7 +58,8 @@ class Handler(BaseHTTPRequestHandler):
         except (protocol.ProtocolError, ValueError) as exc:
             self._send(400, protocol.err(str(exc)))
             return
-        response = kernel_mod.dispatch(_KERNEL, op, params)
+        with _KERNEL_LOCK:
+            response = kernel_mod.dispatch(_KERNEL, op, params)
         self._send(200, response)
 
     # -- static UI -------------------------------------------------------

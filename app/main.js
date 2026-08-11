@@ -88,6 +88,15 @@ const othersMaterial = new THREE.MeshStandardMaterial({
   color: 0x5f6b78, metalness: 0.1, roughness: 0.7,
   transparent: true, opacity: 0.45, depthWrite: false,
 });
+// Surfaces : double face translucide sarcelle — lisibles des deux côtés.
+const surfacesMaterial = new THREE.MeshStandardMaterial({
+  color: 0x4fb8a8, metalness: 0.1, roughness: 0.6,
+  transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+  depthWrite: false,
+});
+const curvesMaterial = new THREE.LineBasicMaterial({ color: 0x4fb8a8 });
+let surfacesMesh = null;
+let curvesLines = null;
 
 function showMesh(mesh) {
   if (partMesh) { scene.remove(partMesh); partMesh.geometry.dispose(); }
@@ -96,6 +105,16 @@ function showMesh(mesh) {
   meshGroups = mesh.groups;
   hoveredGroup = -1;
   selectedFaceId = null; // ids shift after every feature: stale picks lie
+  if (surfacesMesh) {
+    scene.remove(surfacesMesh);
+    surfacesMesh.geometry.dispose();
+    surfacesMesh = null;
+  }
+  if (curvesLines) {
+    scene.remove(curvesLines);
+    curvesLines.geometry.dispose();
+    curvesLines = null;
+  }
   if (mesh.others?.indices.length) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position",
@@ -104,6 +123,23 @@ function showMesh(mesh) {
     geometry.computeVertexNormals();
     othersMesh = new THREE.Mesh(geometry, othersMaterial);
     scene.add(othersMesh);
+  }
+  if (mesh.surfaces?.indices.length) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position",
+      new THREE.Float32BufferAttribute(mesh.surfaces.positions, 3));
+    geometry.setIndex(mesh.surfaces.indices);
+    geometry.computeVertexNormals();
+    surfacesMesh = new THREE.Mesh(geometry, surfacesMaterial);
+    scene.add(surfacesMesh);
+  }
+  if (mesh.curves?.indices.length) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position",
+      new THREE.Float32BufferAttribute(mesh.curves.positions, 3));
+    geometry.setIndex(mesh.curves.indices);
+    curvesLines = new THREE.LineSegments(geometry, curvesMaterial);
+    scene.add(curvesLines);
   }
   if (!mesh.indices.length) return;
 
@@ -703,6 +739,19 @@ function renderTree(tree) {
     if (!bodyInfo.active) continue;
     renderActiveBodyContents(tree);
   }
+  // Les surfaces vivent hors des corps — section à part, cliquable pour
+  // alimenter Coudre / Épaissir / Balayage.
+  for (const surface of tree.surfaces ?? []) {
+    const item = document.createElement("li");
+    item.appendChild(treeIcon("Part_3D_object.svg"));
+    item.appendChild(document.createTextNode(surface.label));
+    item.title = "Surface / courbe — clic : sélectionner pour une " +
+      "commande · clic droit : renommer, supprimer";
+    item.addEventListener("click", () => panel.notifyPick("surface",
+      { kind: "surface", name: surface.name, label: surface.label }));
+    item.addEventListener("contextmenu", (e) => openMenu(e, surface));
+    treeEl.appendChild(item);
+  }
 }
 
 function renderActiveBodyContents(tree) {
@@ -902,6 +951,7 @@ document.getElementById("ctx-delete").addEventListener("click", () => {
 const RIBBONS = {
   features: "ribbon-features",
   sketch: "sketchbar",
+  surfaces: "ribbon-surfaces",
   assembly: "ribbon-assembly",
 };
 
@@ -931,6 +981,132 @@ async function featureCommand(openPanel) {
   if (sketchMode.active) await sketchMode.finish();
   openPanel();
 }
+
+// ---------- surfaces (phase D) ----------
+
+function surfacePanel(id, { icon, title, rows, note, build }) {
+  document.getElementById(id).addEventListener("click", () =>
+    featureCommand(() => panel.open({
+      icon, title,
+      groups: [{ label: "Paramètres", rows }],
+      note,
+      onApply: (v) => {
+        const built = build(v);
+        if (!built) { say("Valeurs invalides", true); return; }
+        refresh(call(built.op, built.params));
+      },
+    })));
+}
+
+surfacePanel("btn-surf-extrude", {
+  icon: "Surface_Filling.svg", title: "Surface extrudée",
+  rows: [{ type: "number", key: "length", label: "Longueur", value: 20,
+           unit: "mm" }],
+  note: "Utilise la dernière esquisse — le profil peut être OUVERT.",
+  build: (v) => {
+    const length = parseFloat(v.length);
+    return length ? { op: "surface_extrude", params: { length } } : null;
+  },
+});
+
+surfacePanel("btn-surf-revolve", {
+  icon: "PartDesign_Revolution.svg", title: "Surface de révolution",
+  rows: [{ type: "number", key: "angle", label: "Angle", value: 360,
+           unit: "°", min: 0.01 }],
+  note: "Autour de l'axe vertical de la dernière esquisse.",
+  build: (v) => {
+    const angle = parseFloat(v.angle);
+    return angle ? { op: "surface_revolve", params: { angle } } : null;
+  },
+});
+
+document.getElementById("btn-surf-loft").addEventListener("click", () =>
+  featureCommand(() => panel.open({
+    icon: "PartDesign_AdditiveLoft.svg",
+    title: "Surface lissée",
+    groups: [{ label: "Profils",
+      rows: [{ type: "selection", key: "profiles", accepts: ["sketch"],
+               multiple: true,
+               hint: "Cliquez les esquisses dans l'arbre, dans l'ordre" }] }],
+    onApply: (v) => {
+      const items = v.profiles?.items ?? [];
+      if (items.length < 2) {
+        say("Surface lissée : au moins deux profils", true);
+        return;
+      }
+      refresh(call("surface_loft",
+        { sketches: items.map((i) => i.name) }));
+    },
+  })));
+
+document.getElementById("btn-surf-sew").addEventListener("click", () =>
+  featureCommand(() => panel.open({
+    icon: "Part_3D_object.svg",
+    title: "Coudre",
+    groups: [{ label: "Surfaces",
+      rows: [{ type: "selection", key: "surfaces", accepts: ["surface"],
+               multiple: true,
+               hint: "Cliquez les surfaces dans l'arbre" }] }],
+    note: "Si la peau cousue est fermée, elle devient un solide.",
+    onApply: (v) => {
+      const items = v.surfaces?.items ?? [];
+      if (items.length < 2) { say("Coudre : au moins deux surfaces", true); return; }
+      refresh(call("surface_sew",
+        { surfaces: items.map((i) => i.name) }));
+    },
+  })));
+
+document.getElementById("btn-surf-thicken").addEventListener("click", () =>
+  featureCommand(() => panel.open({
+    icon: "PartDesign_Thickness.svg",
+    title: "Épaissir",
+    groups: [
+      { label: "Surface",
+        rows: [{ type: "selection", key: "surface", accepts: ["surface"],
+                 hint: "Cliquez une surface dans l'arbre" }] },
+      { label: "Paramètres",
+        rows: [{ type: "number", key: "thickness", label: "Épaisseur",
+                 value: 2, unit: "mm" }] },
+    ],
+    onApply: (v) => {
+      const thickness = parseFloat(v.thickness);
+      if (!v.surface || !thickness) {
+        say("Épaissir : une surface et une épaisseur non nulle", true);
+        return;
+      }
+      refresh(call("surface_thicken",
+        { surface: v.surface.name, thickness }));
+    },
+  })));
+
+document.getElementById("btn-curve3d").addEventListener("click", () =>
+  featureCommand(() => {
+    const raw = prompt(
+      "Courbe 3D — points x,y,z séparés par « ; »\n" +
+      "ex. : 0,0,0 ; 0,0,30 ; 20,0,50", "0,0,0 ; 0,0,30 ; 20,0,50");
+    if (!raw) return;
+    const points = raw.split(";").map((p) =>
+      p.split(",").map((v) => parseFloat(v.trim())));
+    if (points.length < 2
+        || points.some((p) => p.length !== 3 || p.some(Number.isNaN))) {
+      say("Courbe 3D : au moins deux points x,y,z valides", true);
+      return;
+    }
+    refresh(call("add_curve3d", { points, spline: points.length >= 3 }));
+  }));
+
+document.getElementById("btn-drawing").addEventListener("click", async () => {
+  const path = prompt("Mise en plan (chemin .dxf) :",
+                      "~/piece-freesolid.dxf");
+  if (!path) return;
+  try {
+    const out = await call("make_drawing", { path });
+    say(`Mise en plan exportée : ${out.path} ` +
+        `(${(out.size / 1024).toFixed(1)} Ko — Face, Dessus, Iso)`);
+  } catch (error) {
+    say(error.message, true);
+  }
+});
 
 // ---------- assemblage v1 ----------
 

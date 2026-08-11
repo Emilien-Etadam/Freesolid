@@ -237,6 +237,7 @@
       <div class="logo">Free<span>Solid</span></div>
       <button class="tab active" data-tab="features">Fonctions</button>
       <button class="tab" data-tab="sketch">Esquisse</button>
+      <button class="tab" data-tab="surfaces">Surfaces</button>
       <button class="tab" data-tab="assembly">Assemblage</button>
       <span class="push"></span>
       <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt=""></button>
@@ -249,6 +250,7 @@
       <button id="btn-open" title="Ouvrir un .FCStd"><img src="icons/document-open.svg" alt=""></button>
       <button id="btn-save" title="Enregistrer (.FCStd)"><img src="icons/document-save.svg" alt=""></button>
       <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img src="icons/document-save-as.svg" alt=""></button>
+      <button id="btn-drawing" title="Mise en plan — Face / Dessus / Iso, export DXF"><img src="icons/TechDraw_PageDefault.svg" alt=""></button>
       <button id="btn-selftest">Selftest</button>
     </div>
     <div id="ribbon-features" class="ribbon active">
@@ -274,6 +276,16 @@
       <button id="btn-linpattern" title="Répétition linéaire de la dernière fonction"><img src="icons/PartDesign_LinearPattern.svg" alt="">Rép. linéaire</button>
       <button id="btn-polpattern" title="Répétition circulaire de la dernière fonction"><img src="icons/PartDesign_PolarPattern.svg" alt="">Rép. circulaire</button>
       <button id="btn-mirror" title="Symétrie de la dernière fonction par rapport à un plan d'origine"><img src="icons/PartDesign_Mirrored.svg" alt="">Symétrie</button>
+    </div>
+    <div id="ribbon-surfaces" class="ribbon">
+      <button id="btn-surf-extrude" title="Surface extrudée — le profil peut être ouvert"><img src="icons/Surface_Filling.svg" alt="">Surface extrudée</button>
+      <button id="btn-surf-revolve" title="Surface de révolution — autour de l'axe vertical de l'esquisse"><img src="icons/PartDesign_Revolution.svg" alt="">Surface de révolution</button>
+      <button id="btn-surf-loft" title="Surface lissée entre plusieurs profils"><img src="icons/PartDesign_AdditiveLoft.svg" alt="">Surface lissée</button>
+      <div class="sep"></div>
+      <button id="btn-surf-sew" title="Coudre des surfaces — solidifie si la peau est fermée"><img src="icons/Part_3D_object.svg" alt="">Coudre</button>
+      <button id="btn-surf-thicken" title="Épaissir une surface en solide"><img src="icons/PartDesign_Thickness.svg" alt="">Épaissir</button>
+      <div class="sep"></div>
+      <button id="btn-curve3d" title="Courbe 3D par points — trajectoire de balayage (le repli esquisse 3D)"><img src="icons/Sketcher_Create3PointArc.svg" alt="">Courbe 3D</button>
     </div>
     <div id="ribbon-assembly" class="ribbon">
       <button id="btn-newasm" title="Nouvel assemblage — pièces insérées par référence"><img src="icons/Geoassembly.svg" alt="">Nouvel assemblage</button>

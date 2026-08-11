@@ -281,6 +281,19 @@ def test_evaluate_and_spike_ops_declared():
                     "b_kind": "edge", "b_id": 7}})
 
 
+def test_surface_and_drawing_ops_declared():
+    assert protocol.OPS["surface_extrude"] == ("length",)
+    assert protocol.OPS["surface_revolve"] == ()
+    assert protocol.OPS["surface_loft"] == ("sketches",)
+    assert protocol.OPS["surface_sew"] == ("surfaces",)
+    assert protocol.OPS["surface_thicken"] == ("surface", "thickness")
+    assert protocol.OPS["add_curve3d"] == ("points",)
+    assert protocol.OPS["make_drawing"] == ("path",)
+    protocol.validate_request(
+        {"op": "add_curve3d",
+         "params": {"points": [[0, 0, 0], [0, 0, 30]], "spline": False}})
+
+
 def test_preview_wraps_an_op_and_its_params():
     op, params = protocol.validate_request(
         {"op": "preview",

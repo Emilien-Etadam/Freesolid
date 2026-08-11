@@ -35,9 +35,17 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # distance), sub1, sub2, distance
     "solve_assembly": (),
     "spike_assembly": (),              # rapport : joints Assembly headless ?
-    # Phase E — évaluer.
+    # Phase D — surfacique (API Part, hors historique PartDesign) + courbes.
+    "surface_extrude": ("length",),    # optional: sketch — profil ouvert OK
+    "surface_revolve": (),             # optional: angle, sketch
+    "surface_loft": ("sketches",),
+    "surface_sew": ("surfaces",),      # coudre ; solidifie si fermé
+    "surface_thicken": ("surface", "thickness"),
+    "add_curve3d": ("points",),        # optional: spline — trajectoire 3D
+    # Phase E — évaluer + mise en plan.
     "mass_properties": (),             # optional: density (g/cm³)
     "measure": ("a_kind", "a_id", "b_kind", "b_id"),  # face|edge + id
+    "make_drawing": ("path",),         # optional: scale — 3 vues, export DXF
     "undo": (),                        # une transaction = un Ctrl+Z
     "redo": (),
     "export_part": ("path",),          # .stl ou .step selon l'extension

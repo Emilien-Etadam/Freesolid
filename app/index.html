@@ -187,6 +187,7 @@
   #tree li.plane { color: var(--ink-2); }
   #tree li.plane.sel { color: var(--accent); background: var(--panel-2); }
   #tree li.child { padding-left: 40px; }
+  #tree li.sel-comp { color: var(--accent); background: var(--panel-2); }
   #tree li.error { color: var(--error); }
   #tree li .kind { color: var(--ink-2); }
   #tree li.rollback {
@@ -236,6 +237,7 @@
       <div class="logo">Free<span>Solid</span></div>
       <button class="tab active" data-tab="features">Fonctions</button>
       <button class="tab" data-tab="sketch">Esquisse</button>
+      <button class="tab" data-tab="assembly">Assemblage</button>
       <span class="push"></span>
       <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt=""></button>
       <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/edit-undo.svg" alt=""></button>
@@ -270,6 +272,11 @@
       <button id="btn-linpattern" title="Répétition linéaire de la dernière fonction"><img src="icons/PartDesign_LinearPattern.svg" alt="">Rép. linéaire</button>
       <button id="btn-polpattern" title="Répétition circulaire de la dernière fonction"><img src="icons/PartDesign_PolarPattern.svg" alt="">Rép. circulaire</button>
       <button id="btn-mirror" title="Symétrie de la dernière fonction par rapport à un plan d'origine"><img src="icons/PartDesign_Mirrored.svg" alt="">Symétrie</button>
+    </div>
+    <div id="ribbon-assembly" class="ribbon">
+      <button id="btn-newasm" title="Nouvel assemblage — pièces insérées par référence"><img src="icons/Geoassembly.svg" alt="">Nouvel assemblage</button>
+      <button id="btn-insert" title="Insérer une pièce (.FCStd) — chaque instance est un lien vers le fichier"><img src="icons/Link.svg" alt="">Insérer une pièce</button>
+      <button id="btn-move" title="Déplacer le composant sélectionné (translation + rotations)">Déplacer</button>
     </div>
     <div id="sketchbar" class="ribbon">
       <button data-tool="select" title="Sélectionner — glisser un point, cliquer des entités">Sélectionner</button>

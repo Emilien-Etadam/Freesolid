@@ -38,6 +38,7 @@ class Kernel:
     def __init__(self):
         self._doc = None
         self._body = None
+        self._assembly = False  # le document courant est un assemblage
 
     # -- helpers ---------------------------------------------------------
 
@@ -92,6 +93,7 @@ class Kernel:
             except Exception:
                 pass
         self._doc = self._body = None
+        self._assembly = False
 
     def new_part(self, name="Pièce"):
         App = self._app()
@@ -102,6 +104,112 @@ class Kernel:
         self._body.Label = name
         self._recompute()
         return self.get_tree()
+
+    # -- phase C : assemblage v1 (placements directs, sans solveur) -------
+
+    def _require_assembly(self):
+        if self._doc is None or not self._assembly:
+            raise KernelError(
+                "aucun assemblage ouvert — commencez par new_assembly")
+        return self._doc
+
+    def new_assembly(self, name="Assemblage"):
+        """Nouveau document d'assemblage : des pièces .FCStd insérées par
+        référence (App::Link) et positionnées — le solveur de contraintes
+        viendra après (spike Assembly 1.x)."""
+        App = self._app()
+        self._close_current()
+        self._doc = App.newDocument("FreeSolidAsm")
+        self._doc.UndoMode = 1
+        self._assembly = True
+        return self.assembly_tree()
+
+    def insert_component(self, path):
+        """Insérer une pièce : lien vers le premier corps de son fichier.
+
+        La pièce reste un fichier séparé — la modifier puis rouvrir
+        l'assemblage met à jour toutes ses instances, comme SolidWorks.
+        """
+        doc = self._require_assembly()
+        App = self._app()
+        path = os.path.expanduser(str(path))
+        if not os.path.exists(path):
+            raise KernelError("fichier introuvable : {}".format(path))
+        part_doc = None
+        for open_doc in App.listDocuments().values():
+            if getattr(open_doc, "FileName", "") == path:
+                part_doc = open_doc
+                break
+        if part_doc is None:
+            try:
+                part_doc = App.openDocument(path, True)  # hidden
+            except TypeError:
+                part_doc = App.openDocument(path)
+        bodies = [o for o in part_doc.Objects
+                  if o.TypeId == "PartDesign::Body"]
+        if not bodies:
+            raise KernelError(
+                "aucun corps PartDesign dans {}".format(path))
+        link = doc.addObject("App::Link", "Component")
+        link.LinkedObject = bodies[0]
+        link.Label = os.path.splitext(os.path.basename(path))[0]
+        doc.recompute()
+        return self.assembly_tree()
+
+    def move_component(self, component, x=0.0, y=0.0, z=0.0,
+                       yaw=0.0, pitch=0.0, roll=0.0):
+        """Positionner un composant : translation + lacet/tangage/roulis."""
+        doc = self._require_assembly()
+        App = self._app()
+        link = doc.getObject(str(component))
+        if link is None or link.TypeId != "App::Link":
+            raise KernelError("composant inconnu : {}".format(component))
+        link.Placement = App.Placement(
+            App.Vector(float(x), float(y), float(z)),
+            App.Rotation(float(yaw), float(pitch), float(roll)))
+        doc.recompute()
+        return self.assembly_tree()
+
+    def assembly_tree(self):
+        doc = self._require_assembly()
+        components = []
+        for obj in doc.Objects:
+            if obj.TypeId != "App::Link":
+                continue
+            placement = obj.Placement
+            components.append({
+                "name": obj.Name,
+                "label": obj.Label,
+                "position": [placement.Base.x, placement.Base.y,
+                             placement.Base.z],
+                "rotation": [float(v)
+                             for v in placement.Rotation.toEuler()],
+            })
+        return {"assembly": True, "components": components}
+
+    def tessellate_assembly(self, deviation=0.1):
+        """Un maillage par composant — la sélection au clic est par
+        composant, pas par face (v1)."""
+        from . import protocol
+        doc = self._require_assembly()
+        components = []
+        for obj in doc.Objects:
+            if obj.TypeId != "App::Link":
+                continue
+            linked = getattr(obj, "LinkedObject", None)
+            shape = getattr(linked, "Shape", None)
+            if shape is None or not shape.Faces:
+                continue
+            moved = shape.copy()
+            moved.Placement = obj.Placement.multiply(moved.Placement)
+            faces = []
+            for i, face in enumerate(moved.Faces):
+                vertices, triangles = face.tessellate(float(deviation))
+                faces.append(
+                    (i, [(v.x, v.y, v.z) for v in vertices], triangles))
+            components.append({"name": obj.Name, "label": obj.Label,
+                               "mesh": protocol.pack_mesh(faces)})
+        return {"components": components}
 
     # -- phase C : multi-corps -------------------------------------------
 
@@ -169,6 +277,10 @@ class Kernel:
             raise
         return self.get_tree()
 
+    def _current_tree(self):
+        """Part tree or assembly tree, whichever mode the document is in."""
+        return self.assembly_tree() if self._assembly else self.get_tree()
+
     def undo(self):
         """Annuler la dernière opération — une transaction par op UI."""
         doc = self._require_doc()
@@ -176,7 +288,7 @@ class Kernel:
             raise KernelError("rien à annuler")
         doc.undo()
         doc.recompute()
-        return self.get_tree()
+        return self._current_tree()
 
     def redo(self):
         doc = self._require_doc()
@@ -184,7 +296,7 @@ class Kernel:
             raise KernelError("rien à rétablir")
         doc.redo()
         doc.recompute()
-        return self.get_tree()
+        return self._current_tree()
 
     def export_part(self, path):
         """Export STL (impression 3D) ou STEP (échange CAO), par extension.
@@ -767,11 +879,14 @@ class Kernel:
                 self._body = next(b for b in bodies if b is not obj)
         doc.removeObject(obj.Name)
         try:
-            self._recompute()
+            if self._assembly:
+                doc.recompute()
+            else:
+                self._recompute()
         except KernelError as exc:
             raise KernelError(
                 "{} supprimé, mais l'aval casse : {}".format(label, exc))
-        return self.get_tree()
+        return self._current_tree()
 
     def open_part(self, path):
         """Open an existing .FCStd — the user's real files, not our demos.
@@ -789,6 +904,13 @@ class Kernel:
         doc.UndoMode = 1
         bodies = [o for o in doc.Objects if o.TypeId == "PartDesign::Body"]
         if not bodies:
+            links = [o for o in doc.Objects if o.TypeId == "App::Link"]
+            if links:
+                # C'est un assemblage enregistré par nous : on le rouvre
+                # dans le mode qui va avec.
+                self._doc, self._body = doc, None
+                self._assembly = True
+                return self.assembly_tree()
             raise KernelError(
                 "aucun corps PartDesign dans ce fichier — il vient "
                 "probablement de l'atelier Part (booléennes sans historique "
@@ -957,7 +1079,7 @@ class Kernel:
         if not label:
             raise KernelError("le nom ne peut pas être vide")
         obj.Label = label
-        return self.get_tree()
+        return self._current_tree()
 
     #: Correspondance panneau -> énumération FreeCAD du type de lamage.
     _HOLE_CUTS = {"none": "None", "lamage": "Counterbore",
@@ -2163,6 +2285,28 @@ class Kernel:
                 not any(f["error"] for f in tree["features"])
                 and len(self.tessellate()["groups"]) > faces_before)
 
+            mark("p10: assemblage — deux instances d'une pièce")
+            self.new_part("Pièce à assembler")
+            self.add_rect_sketch(20, 20)
+            self.add_pad(10)
+            asm_part = os.path.join(tempfile.gettempdir(),
+                                    "freesolid-selftest-part.FCStd")
+            self.save_part(asm_part)
+            self.new_assembly()
+            self.insert_component(asm_part)
+            tree = self.insert_component(asm_part)
+            report["p10_two_components"] = len(tree["components"]) == 2
+            second = tree["components"][1]["name"]
+            tree = self.move_component(second, x=30, z=10, yaw=45)
+            moved = next(c for c in tree["components"]
+                         if c["name"] == second)
+            report["p10_move_ok"] = abs(moved["position"][0] - 30) < 1e-9
+            meshes = self.tessellate_assembly()
+            report["p10_assembly_meshes_ok"] = (
+                len(meshes["components"]) == 2
+                and all(c["mesh"]["indices"]
+                        for c in meshes["components"]))
+
             mark("p3: arc, rainure, polygone")
             import math
             self.new_part("Pièce esquisse avancée")
@@ -2246,6 +2390,7 @@ _TRANSACTIONAL = frozenset({
     "add_polar_pattern", "add_thickness", "add_draft", "add_hole",
     "add_datum_plane", "add_loft", "add_sweep", "add_helix",
     "add_body", "add_boolean",
+    "insert_component", "move_component",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",

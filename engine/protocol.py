@@ -23,6 +23,12 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_body": (),                    # optional: name — devient le corps actif
     "set_active_body": ("body",),
     "add_boolean": ("tool",),          # optional: type (cut|fuse|common)
+    # Phase C — assemblage v1 (placements directs, sans solveur).
+    "new_assembly": (),                # optional: name
+    "insert_component": ("path",),     # .FCStd — App::Link vers son corps
+    "move_component": ("component",),  # optional: x, y, z, yaw, pitch, roll
+    "assembly_tree": (),
+    "tessellate_assembly": (),         # optional: deviation
     "undo": (),                        # une transaction = un Ctrl+Z
     "redo": (),
     "export_part": ("path",),          # .stl ou .step selon l'extension

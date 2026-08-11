@@ -251,6 +251,17 @@ def test_multibody_ops_declared():
         {"op": "add_boolean", "params": {"tool": "Body001", "type": "cut"}})
 
 
+def test_assembly_ops_declared():
+    assert protocol.OPS["new_assembly"] == ()
+    assert protocol.OPS["insert_component"] == ("path",)
+    assert protocol.OPS["move_component"] == ("component",)
+    assert protocol.OPS["assembly_tree"] == ()
+    assert protocol.OPS["tessellate_assembly"] == ()
+    protocol.validate_request(
+        {"op": "move_component",
+         "params": {"component": "Component", "x": 30, "yaw": 45}})
+
+
 def test_preview_wraps_an_op_and_its_params():
     op, params = protocol.validate_request(
         {"op": "preview",

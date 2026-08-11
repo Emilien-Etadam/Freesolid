@@ -406,6 +406,14 @@ renderer.domElement.addEventListener("pointerup", (event) => {
                             event.clientY - pressPosition.y);
   pressPosition = null;
   if (travel > 5) return;
+  if (assemblyState) {
+    // En assemblage, le clic sélectionne un composant entier.
+    raycaster.setFromCamera(pointer, camera);
+    const hit = asmGroup
+      ? raycaster.intersectObjects(asmGroup.children, false)[0] : null;
+    selectComponent(hit ? hit.object.userData.component : null);
+    return;
+  }
   if (planePicking) {
     if (hoverPlane) pickPlane(hoverPlane);
     return;
@@ -515,7 +523,7 @@ document.addEventListener("keydown", (event) => {
   } else if ((event.ctrlKey || event.metaKey)
              && (event.key === "z" || event.key === "y")) {
     event.preventDefault();
-    refresh(call(event.key === "z" ? "undo" : "redo"));
+    refreshAny(call(event.key === "z" ? "undo" : "redo"));
   } else if (event.key === "Escape" && planePicking) {
     cancelPlanePick();
   }
@@ -625,6 +633,7 @@ function onPlaneRow(id) {
 }
 
 function renderTree(tree) {
+  clearAssemblyView(); // un arbre de pièce = le mode assemblage s'efface
   lastTree = tree;
   treeHoverPlane = null;
   treeEl.innerHTML = "";
@@ -831,7 +840,8 @@ document.getElementById("ctx-rename").addEventListener("click", () => {
   if (!menuFeature) return;
   const label = prompt("Nouveau nom :", menuFeature.label);
   if (label === null || !label.trim()) return;
-  refresh(call("rename", { feature: menuFeature.name, label: label.trim() }));
+  refreshAny(call("rename",
+    { feature: menuFeature.name, label: label.trim() }));
 });
 
 document.getElementById("ctx-rollback").addEventListener("click", () => {
@@ -842,19 +852,24 @@ document.getElementById("ctx-end").addEventListener("click", () =>
 document.getElementById("ctx-delete").addEventListener("click", () => {
   if (!menuFeature) return;
   if (confirm(`Supprimer « ${menuFeature.label} » ?`))
-    refresh(call("delete_feature", { feature: menuFeature.name }));
+    refreshAny(call("delete_feature", { feature: menuFeature.name }));
 });
 
 // ---------- ruban à onglets (CommandManager) ----------
+
+const RIBBONS = {
+  features: "ribbon-features",
+  sketch: "sketchbar",
+  assembly: "ribbon-assembly",
+};
 
 function showTab(name) {
   for (const tab of document.querySelectorAll("header .tab")) {
     tab.classList.toggle("active", tab.dataset.tab === name);
   }
-  document.getElementById("ribbon-features").classList
-    .toggle("active", name === "features");
-  document.getElementById("sketchbar").classList
-    .toggle("active", name === "sketch");
+  for (const [key, id] of Object.entries(RIBBONS)) {
+    document.getElementById(id).classList.toggle("active", key === name);
+  }
 }
 for (const tab of document.querySelectorAll("header .tab")) {
   tab.addEventListener("click", () => showTab(tab.dataset.tab));
@@ -866,9 +881,188 @@ document.addEventListener("freesolid:sketch-exit", () => showTab("features"));
 // réflexe SolidWorks : on dessine, puis on clique Bossage, sans passer
 // par un bouton « quitter l'esquisse ».
 async function featureCommand(openPanel) {
+  if (assemblyState) {
+    say("Les fonctions s'appliquent aux pièces — ouvrez ou créez une " +
+        "pièce (un assemblage est en cours)", true);
+    return;
+  }
   if (sketchMode.active) await sketchMode.finish();
   openPanel();
 }
+
+// ---------- assemblage v1 ----------
+
+let assemblyState = null;      // dernier assembly_tree, ou null (mode pièce)
+let selectedComponent = null;
+let asmGroup = null;
+
+function clearAssemblyView() {
+  if (asmGroup) {
+    scene.remove(asmGroup);
+    asmGroup.traverse((o) => o.geometry?.dispose?.());
+    asmGroup = null;
+  }
+  assemblyState = null;
+  selectedComponent = null;
+}
+
+function showAssemblyMeshes(data) {
+  if (asmGroup) {
+    scene.remove(asmGroup);
+    asmGroup.traverse((o) => o.geometry?.dispose?.());
+  }
+  // Le mode pièce s'efface : maillages, arêtes, corps estompés.
+  showMesh({ positions: [], indices: [], groups: [] });
+  showEdgeLines({ positions: [], indices: [], groups: [] });
+  asmGroup = new THREE.Group();
+  for (const comp of data.components) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position",
+      new THREE.Float32BufferAttribute(comp.mesh.positions, 3));
+    geometry.setIndex(comp.mesh.indices);
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry,
+      comp.name === selectedComponent ? selectedMaterial : baseMaterial);
+    mesh.userData.component = comp.name;
+    const outline = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geometry, 25),
+      new THREE.LineBasicMaterial({ color: 0x11141a }));
+    mesh.add(outline);
+    asmGroup.add(mesh);
+  }
+  scene.add(asmGroup);
+}
+
+function selectComponent(name) {
+  selectedComponent = name;
+  if (asmGroup) {
+    for (const mesh of asmGroup.children) {
+      mesh.material = mesh.userData.component === name
+        ? selectedMaterial : baseMaterial;
+    }
+  }
+  if (assemblyState) renderAssemblyTree(assemblyState);
+  pickEl.textContent = name
+    ? `sél. ${assemblyState?.components.find(
+        (c) => c.name === name)?.label ?? name}`
+    : "";
+}
+
+async function refreshAssembly(treePromise) {
+  try {
+    assemblyState = await treePromise;
+    renderAssemblyTree(assemblyState);
+    showAssemblyMeshes(await call("tessellate_assembly"));
+    say("Assemblage à jour.");
+  } catch (error) {
+    say(error.message, true);
+  }
+}
+
+// Rafraîchit dans le bon mode — les ops transverses (renommer,
+// supprimer, annuler) renvoient l'arbre du mode courant.
+async function refreshAny(treePromise) {
+  try {
+    const tree = await treePromise;
+    if (tree.assembly) {
+      assemblyState = tree;
+      renderAssemblyTree(tree);
+      showAssemblyMeshes(await call("tessellate_assembly"));
+    } else {
+      renderTree(tree);
+      await updateViewport();
+    }
+    say("À jour.");
+  } catch (error) {
+    say(error.message, true);
+  }
+}
+
+function renderAssemblyTree(tree) {
+  lastTree = null; // le mode pièce est inactif
+  treeEl.innerHTML = "";
+  const head = document.createElement("li");
+  head.className = "body active";
+  head.appendChild(treeIcon("Geoassembly.svg"));
+  head.appendChild(document.createTextNode("Assemblage"));
+  treeEl.appendChild(head);
+  for (const comp of tree.components) {
+    const item = document.createElement("li");
+    if (comp.name === selectedComponent) item.className = "sel-comp";
+    item.appendChild(treeIcon("Link.svg"));
+    item.appendChild(document.createTextNode(comp.label));
+    item.title = "Clic : sélectionner · double-clic : déplacer · " +
+      "clic droit : renommer, supprimer";
+    item.addEventListener("click", () => selectComponent(comp.name));
+    item.addEventListener("dblclick", () => {
+      selectComponent(comp.name);
+      openMovePanel();
+    });
+    item.addEventListener("contextmenu", (e) => openMenu(e, comp));
+    treeEl.appendChild(item);
+  }
+  if (!tree.components.length) {
+    const empty = document.createElement("li");
+    empty.textContent = "— insérez une pièce (.FCStd) —";
+    treeEl.appendChild(empty);
+  }
+}
+
+function openMovePanel() {
+  const comp = assemblyState?.components.find(
+    (c) => c.name === selectedComponent);
+  if (!comp) {
+    say("Déplacer : cliquez d'abord un composant", true);
+    return;
+  }
+  const [x, y, z] = comp.position;
+  const [yaw, pitch, roll] = comp.rotation;
+  panel.open({
+    icon: "Link.svg",
+    title: `Déplacer — ${comp.label}`,
+    groups: [
+      { label: "Translation",
+        rows: [
+          { type: "number", key: "x", label: "X", value: +x.toFixed(3), unit: "mm" },
+          { type: "number", key: "y", label: "Y", value: +y.toFixed(3), unit: "mm" },
+          { type: "number", key: "z", label: "Z", value: +z.toFixed(3), unit: "mm" },
+        ] },
+      { label: "Rotation",
+        rows: [
+          { type: "number", key: "yaw", label: "Lacet (Z)", value: +yaw.toFixed(2), unit: "°" },
+          { type: "number", key: "pitch", label: "Tangage (Y)", value: +pitch.toFixed(2), unit: "°" },
+          { type: "number", key: "roll", label: "Roulis (X)", value: +roll.toFixed(2), unit: "°" },
+        ] },
+    ],
+    note: "v1 sans contraintes : positionnement direct — le solveur " +
+          "de contraintes d'assemblage viendra ensuite.",
+    onApply: (v) => refreshAssembly(call("move_component", {
+      component: comp.name,
+      x: parseFloat(v.x) || 0, y: parseFloat(v.y) || 0,
+      z: parseFloat(v.z) || 0,
+      yaw: parseFloat(v.yaw) || 0, pitch: parseFloat(v.pitch) || 0,
+      roll: parseFloat(v.roll) || 0,
+    })),
+  });
+}
+
+document.getElementById("btn-newasm").addEventListener("click", () => {
+  clearGhost();
+  refreshAssembly(call("new_assembly"));
+});
+
+document.getElementById("btn-insert").addEventListener("click", () => {
+  if (!assemblyState) {
+    say("Créez d'abord un assemblage (Nouvel assemblage)", true);
+    return;
+  }
+  const path = prompt("Insérer une pièce (chemin .FCStd) :",
+                      "~/piece-freesolid.FCStd");
+  if (!path) return;
+  refreshAssembly(call("insert_component", { path }));
+});
+
+document.getElementById("btn-move").addEventListener("click", openMovePanel);
 
 // ---------- actions ----------
 
@@ -887,9 +1081,9 @@ document.getElementById("btn-new").addEventListener("click", () =>
   refresh(call("new_part")));
 
 document.getElementById("btn-undo").addEventListener("click", () =>
-  refresh(call("undo")));
+  refreshAny(call("undo")));
 document.getElementById("btn-redo").addEventListener("click", () =>
-  refresh(call("redo")));
+  refreshAny(call("redo")));
 
 // ---------- équations (variables globales) ----------
 
@@ -1498,10 +1692,18 @@ document.getElementById("btn-open").addEventListener("click", async () => {
   if (!path) return;
   try {
     const tree = await call("open_part", { path });
+    if (tree.assembly) {
+      assemblyState = tree;
+      renderAssemblyTree(tree);
+      showAssemblyMeshes(await call("tessellate_assembly"));
+      showTab("assembly");
+      say("Assemblage ouvert.");
+      return;
+    }
     renderTree(tree);
     await updateViewport();
     say(tree.bodies_in_file > 1
-      ? `Ouvert — ${tree.bodies_in_file} corps dans le fichier, affichage du premier.`
+      ? `Ouvert — ${tree.bodies_in_file} corps dans le fichier.`
       : "Ouvert.");
   } catch (error) {
     say(error.message, true);
@@ -1594,7 +1796,15 @@ call("ping")
       renderTree(await call("get_tree"));
       await updateViewport();
     } catch {
-      // pas encore de pièce — Esquisse en créera une
+      try {
+        // Peut-être un assemblage en cours dans le moteur.
+        assemblyState = await call("assembly_tree");
+        renderAssemblyTree(assemblyState);
+        showAssemblyMeshes(await call("tessellate_assembly"));
+        showTab("assembly");
+      } catch {
+        // pas encore de document — Esquisse créera une pièce
+      }
     }
   })
   .catch(() => say("Moteur injoignable — lancez engine/server.py avec freecadcmd", true));

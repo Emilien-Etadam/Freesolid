@@ -275,23 +275,25 @@ class Kernel:
                 "cette version ne propose pas « {} » — disponibles : "
                 "{}".format(target, ", ".join(allowed)))
         joint.JointType = target
-        # Références : la forme UI ancre au conteneur d'assemblage avec le
-        # chemin « Lien.Sous-élément » ; repli sur la forme directe.
+        # Références : la propriété attend LE couple (objet, [sous-éléments])
+        # — « Expect input sequence of size 2 » si on l'emballe dans une
+        # liste (vu sur 1.1.3). Forme UI ancrée à l'assemblage d'abord,
+        # repli sur la forme directe.
         for ref_prop, name, sub in (
                 ("Reference1", component1, sub1),
                 ("Reference2", component2, sub2)):
             link = links[name]
             sub_name = str(sub) if sub else ""
             forms = [
-                (asm, ("{}.{}".format(link.Name, sub_name)
-                       if sub_name else "{}.".format(link.Name),)),
-                (link, (sub_name,) if sub_name else ("",)),
+                (asm, ["{}.{}".format(link.Name, sub_name)
+                       if sub_name else "{}.".format(link.Name)]),
+                (link, [sub_name] if sub_name else [""]),
             ]
             assigned = False
             last_error = None
             for form in forms:
                 try:
-                    setattr(joint, ref_prop, [form])
+                    setattr(joint, ref_prop, form)
                     assigned = True
                     break
                 except Exception as exc:  # noqa: BLE001

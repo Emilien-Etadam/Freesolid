@@ -34,9 +34,13 @@ jobs:
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: freecad
+          # freecad 1.0.2 a été retiré de conda-forge ; 1.0.0 est le build
+          # 1.0.x disponible et fait passer le selftest à 100 %. Ne pas
+          # monter en 1.1.x : le solveur d'assemblage MbD y diverge
+          # (p10_joint_solved / p16_interference_found échouent).
           create-args: >-
             python=3.11
-            freecad=1.0.2
+            freecad=1.0.0
           cache-environment: true
       - name: Selftest
         shell: bash -el {0}

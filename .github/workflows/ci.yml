@@ -25,3 +25,19 @@ jobs:
         run: python -m compileall -q freesolid engine Init.py InitGui.py
       - name: Unit tests
         run: python -m pytest -q
+
+  selftest:
+    name: Selftest headless (FreeCAD réel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: freecad
+          create-args: >-
+            python=3.11
+            freecad=1.0.2
+          cache-environment: true
+      - name: Selftest
+        shell: bash -el {0}
+        run: PYTHONIOENCODING=utf-8 freecadcmd scripts/run-selftest.py

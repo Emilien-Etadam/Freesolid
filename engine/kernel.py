@@ -46,6 +46,15 @@ class Kernel:
         import FreeCAD as App
         return App
 
+    def _user_path(self, path, extensions, must_exist=False):
+        """Jail des chemins client — voir ``protocol.resolve_user_path``."""
+        from . import protocol
+        try:
+            return protocol.resolve_user_path(
+                path, extensions, must_exist=must_exist)
+        except protocol.ProtocolError as exc:
+            raise KernelError(str(exc))
+
     def _require_doc(self):
         if self._doc is None:
             raise KernelError(
@@ -163,9 +172,7 @@ class Kernel:
         """
         doc = self._require_assembly()
         App = self._app()
-        path = os.path.expanduser(str(path))
-        if not os.path.exists(path):
-            raise KernelError("fichier introuvable : {}".format(path))
+        path = self._user_path(path, (".FCStd",), must_exist=True)
         if not getattr(doc, "FileName", ""):
             # Un App::Link externe exige un document propriétaire déjà
             # enregistré (« Owner document not saved » sinon) : première
@@ -706,9 +713,10 @@ class Kernel:
         doc = self._require_doc()
         body = self._require_body()
         App = self._app()
-        path = os.path.expanduser(str(path))
+        path = str(path)
         if not path.lower().endswith(".dxf"):
             path += ".dxf"
+        path = self._user_path(path, (".dxf",), must_exist=False)
         created = []
         try:
             page = doc.addObject("TechDraw::DrawPage", "Page")
@@ -766,10 +774,9 @@ class Kernel:
     def _find_font(self, font=None):
         import glob as globmod
         if font:
-            path = os.path.expanduser(str(font))
-            if os.path.exists(path):
-                return path
-            raise KernelError("police introuvable : {}".format(path))
+            # Police fournie par le client : jail. Les candidats internes
+            # (ci-dessous) ne passent pas par resolve_user_path.
+            return self._user_path(font, (".ttf", ".otf"), must_exist=True)
         for candidate in self._FONT_CANDIDATES:
             if os.path.exists(candidate):
                 return candidate
@@ -1001,12 +1008,13 @@ class Kernel:
         shape = getattr(body, "Shape", None)
         if shape is None or not shape.Solids:
             raise KernelError("rien à exporter — la pièce n'a pas de solide")
-        path = os.path.expanduser(str(path))
+        path = self._user_path(
+            path, (".stl", ".step", ".3mf"), must_exist=False)
         ext = os.path.splitext(path)[1].lower()
         try:
             if ext == ".stl":
                 shape.exportStl(path)
-            elif ext in (".step", ".stp"):
+            elif ext == ".step":
                 shape.exportStep(path)
             elif ext == ".3mf":
                 import Mesh
@@ -1621,9 +1629,9 @@ class Kernel:
         is refused with the reason.
         """
         App = self._app()
-        path = os.path.expanduser(str(path))
-        if not os.path.exists(path):
-            raise KernelError("fichier introuvable : {}".format(path))
+        path = self._user_path(
+            path, (".FCStd", ".step", ".stp", ".iges", ".igs"),
+            must_exist=True)
         if path.lower().endswith((".step", ".stp", ".iges", ".igs")):
             return self._import_cad(path)
         self._close_current()
@@ -1686,9 +1694,10 @@ class Kernel:
         locked into it.
         """
         doc = self._require_doc()
-        path = os.path.expanduser(str(path))
+        path = str(path)
         if not path.endswith(".FCStd"):
             path += ".FCStd"
+        path = self._user_path(path, (".FCStd",), must_exist=False)
         doc.saveAs(path)
         return {"path": path}
 

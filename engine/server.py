@@ -26,6 +26,7 @@ from engine import protocol                      # noqa: E402
 
 PORT = 8787
 _APP_DIR = os.path.join(_REPO_ROOT, "app")
+_MAX_BODY_BYTES = 4 * 1024 * 1024
 
 #: One document per server process — M0 scope.
 _KERNEL = kernel_mod.Kernel()
@@ -44,6 +45,57 @@ _CONTENT_TYPES = {
 }
 
 
+def _origin_ok(origin, port=PORT):
+    """``Origin`` absent = autorisé (curl, scripts) ; sinon allowlist locale."""
+    if origin is None or origin == "":
+        return True
+    allowed = {
+        "http://127.0.0.1:{}".format(port),
+        "http://localhost:{}".format(port),
+    }
+    return origin in allowed
+
+
+def _payload_ok(headers, max_bytes=_MAX_BODY_BYTES):
+    """Vérifie Content-Type et Content-Length d'un POST /api.
+
+    Returns:
+        ``(None, length)`` si OK, sinon ``(status, message_fr)``.
+    """
+    content_type = headers.get("Content-Type", "")
+    if not content_type.lower().startswith("application/json"):
+        return 403, "Content-Type application/json requis"
+
+    raw_length = headers.get("Content-Length")
+    if raw_length is None or raw_length == "":
+        return 413, "Content-Length manquant ou invalide"
+    try:
+        length = int(raw_length)
+    except (TypeError, ValueError):
+        return 413, "Content-Length manquant ou invalide"
+    if length < 0 or length > max_bytes:
+        return 413, "requête trop volumineuse (maximum 4 Mo)"
+    return None, length
+
+
+def _safe_static_path(url_path, app_dir=_APP_DIR):
+    """Résout un chemin UI sous ``app_dir``, ou ``None`` si hors jail / absent."""
+    path = "/index.html" if url_path in ("", "/") else url_path
+    # Ignore query/fragment — serving is path-only.
+    path = path.split("?", 1)[0].split("#", 1)[0]
+    candidate = os.path.join(app_dir, path.lstrip("/"))
+    real_app = os.path.realpath(app_dir)
+    real_candidate = os.path.realpath(candidate)
+    try:
+        if os.path.commonpath([real_app, real_candidate]) != real_app:
+            return None
+    except ValueError:
+        return None
+    if not os.path.isfile(real_candidate):
+        return None
+    return real_candidate
+
+
 class Handler(BaseHTTPRequestHandler):
 
     # -- api -------------------------------------------------------------
@@ -52,8 +104,18 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/api":
             self._send(404, {"ok": False, "error": "POST /api uniquement"})
             return
+        if not _origin_ok(self.headers.get("Origin")):
+            self._send(403, protocol.err(
+                "origine non autorisée — FreeSolid n'accepte que "
+                "localhost"))
+            return
+        check = _payload_ok(self.headers)
+        if check[0] is not None:
+            status, message = check
+            self._send(status, protocol.err(message))
+            return
+        length = check[1]
         try:
-            length = int(self.headers.get("Content-Length", 0))
             payload = json.loads(self.rfile.read(length) or b"{}")
             op, params = protocol.validate_request(payload)
         except (protocol.ProtocolError, ValueError) as exc:
@@ -66,10 +128,8 @@ class Handler(BaseHTTPRequestHandler):
     # -- static UI -------------------------------------------------------
 
     def do_GET(self):  # noqa: N802 - stdlib API name
-        path = "/index.html" if self.path in ("", "/") else self.path
-        # No traversal: only plain files inside app/.
-        candidate = os.path.normpath(os.path.join(_APP_DIR, path.lstrip("/")))
-        if not candidate.startswith(_APP_DIR) or not os.path.isfile(candidate):
+        candidate = _safe_static_path(self.path)
+        if candidate is None:
             self._send(404, {"ok": False, "error": "introuvable"})
             return
         ext = os.path.splitext(candidate)[1]

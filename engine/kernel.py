@@ -650,7 +650,9 @@ class Kernel:
             if spline and len(vectors) >= 3:
                 curve = Part.BSplineCurve()
                 curve.interpolate(vectors)
-                shape = curve.toShape()
+                # Un FIL, pas une arête nue : le balayage exige un
+                # TopoDS_Wire (vu sur 1.1.3).
+                shape = Part.Wire([curve.toShape()])
             else:
                 shape = Part.makePolygon(vectors)
         except Exception as exc:  # noqa: BLE001
@@ -1244,6 +1246,20 @@ class Kernel:
         if section.Name == path.Name:
             raise KernelError("profil et trajectoire doivent être "
                               "différents")
+        binder = None
+        if path.TypeId == "Part::Feature":
+            # PartDesign n'accepte que des liens internes au corps
+            # (« out of the allowed scope » sinon) : un SubShapeBinder
+            # importe la courbe 3D dans le corps.
+            binder = body.newObject("PartDesign::SubShapeBinder",
+                                    "SpineBinder")
+            try:
+                binder.Support = [(path, ("",))]
+            except TypeError:
+                binder.Support = (path, [""])
+            binder.Label = "Trajectoire — {}".format(path.Label)
+            doc.recompute()
+            path = binder
         type_id = ("PartDesign::SubtractivePipe" if subtractive
                    else "PartDesign::AdditivePipe")
         pipe = body.newObject(type_id, type_id.split("::")[-1])
@@ -1257,6 +1273,11 @@ class Kernel:
             self._recompute()
         except KernelError:
             doc.removeObject(pipe.Name)
+            if binder is not None:
+                try:
+                    doc.removeObject(binder.Name)
+                except Exception:
+                    pass
             raise
         return self.get_tree()
 

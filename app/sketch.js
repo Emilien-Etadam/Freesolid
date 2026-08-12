@@ -5,6 +5,7 @@
 // The server owns truth (geometry, solver); this module owns gesture.
 
 import * as THREE from "three";
+import { createLocalSolver } from "./solver.js";
 
 export function createSketchMode(deps) {
   const { scene, camera, renderer, controls, call, say, refresh, panel } =
@@ -48,6 +49,8 @@ export function createSketchMode(deps) {
     selection: [],        // [{ geo, point? }] — outil Sélectionner
     justDragged: false,   // un drag qui finit ne doit pas sélectionner
     drag: null,           // { geo, point } while dragging
+    dragLocal: null,      // dernière position locale d'un drag local (M3)
+    solverOk: false,      // l'esquisse est chargée dans le solveur local
     savedCamera: null,
     matrix: new THREE.Matrix4(),
     inverse: new THREE.Matrix4(),
@@ -56,6 +59,12 @@ export function createSketchMode(deps) {
   };
 
   const SNAP_PX = 12;
+
+  // M3 : le solveur planegcs (WASM) côté client. Pendant un drag, la
+  // résolution est locale (60 fps, zéro réseau) ; le serveur réconcilie
+  // au lâcher. Si l'esquisse contient une géométrie ou contrainte non
+  // traduite, solverOk reste false et on retombe sur le drag serveur.
+  const localSolver = createLocalSolver();
 
   const CURSORS = { select: "default", line: "crosshair", rect: "crosshair",
                     rectc: "crosshair", circle: "crosshair",
@@ -274,6 +283,7 @@ export function createSketchMode(deps) {
       .transformDirection(mode.matrix);
     const origin = new THREE.Vector3().setFromMatrixPosition(mode.matrix);
     mode.plane.setFromNormalAndCoplanarPoint(normal, origin);
+    mode.solverOk = localSolver.ready && localSolver.load(state);
     redraw();
   }
 
@@ -592,8 +602,20 @@ export function createSketchMode(deps) {
     if (mode.drag) {
       const local = toLocal(event);
       if (!local) return;
-      // Retour visuel IMMÉDIAT (60 fps) : le point suit le curseur en
-      // local, le solveur corrige à chaque réponse du serveur.
+      // M3 : résolution locale planegcs — toutes les contraintes tiennent
+      // à 60 fps, zéro réseau ; le serveur réconcilie au pointerup.
+      if (mode.solverOk) {
+        const updates = localSolver.drag(
+          mode.drag.geo, mode.drag.point, local.x, local.y);
+        if (updates) {
+          mode.dragLocal = local; // pour le sketch_move final
+          redraw();
+          return;
+        }
+        mode.solverOk = false; // solveur KO : retour au chemin serveur
+      }
+      // Fallback : le point suit le curseur en local, le solveur serveur
+      // corrige à chaque réponse (throttle 45 ms).
       const entity = mode.state?.entities.find(
         (e) => e.id === mode.drag.geo);
       if (entity) {
@@ -652,6 +674,14 @@ export function createSketchMode(deps) {
 
   function onPointerUp() {
     if (mode.drag) {
+      // Drag local (M3) : un seul sketch_move au lâcher — le serveur
+      // (la vérité) résout et renvoie l'état final.
+      if (mode.dragLocal && mode.state) {
+        safe(call("sketch_move", { sketch: mode.state.sketch,
+          geo: mode.drag.geo, point: mode.drag.point,
+          x: mode.dragLocal.x, y: mode.dragLocal.y }));
+      }
+      mode.dragLocal = null;
       mode.drag = null;
       mode.justDragged = true; // le click qui suit n'est pas une sélection
       controls.enabled = true;
@@ -978,6 +1008,13 @@ export function createSketchMode(deps) {
       const state = await statePromise;
       mode.active = true;
       applyState(state);
+      // Le WASM se charge en fond ; dès qu'il est prêt, l'esquisse
+      // courante y est (re)chargée.
+      localSolver.ensureInit().then((ok) => {
+        if (ok && mode.active && mode.state) {
+          mode.solverOk = localSolver.load(mode.state);
+        }
+      });
 
       previewLine = new THREE.Line(
         new THREE.BufferGeometry(), previewMaterial);

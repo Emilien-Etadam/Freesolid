@@ -2147,6 +2147,21 @@ class Kernel:
                              "name": constraint.Name or "",
                              "expr": exprs.get(cid, ""),
                              "geo": constraint.First})
+        constraints = []
+        for cid, c in enumerate(sk.Constraints):
+            geos, pos = [], []
+            for geo_attr, pos_attr in (("First", "FirstPos"),
+                                       ("Second", "SecondPos"),
+                                       ("Third", "ThirdPos")):
+                g = getattr(c, geo_attr, None)
+                # -2000 = GeoUndef chez Sketcher : « pas de géométrie »
+                geos.append(None if g is None or g <= -2000 else int(g))
+                p = getattr(c, pos_attr, 0)
+                pos.append(int(getattr(p, "value", p) or 0))
+            constraints.append({
+                "id": cid, "type": c.Type, "geos": geos, "pos": pos,
+                "value": float(c.Value),
+                "driving": bool(getattr(c, "Driving", True))})
         try:
             sk.solve()
         except Exception:
@@ -2162,6 +2177,7 @@ class Kernel:
             "label": sk.Label,
             "entities": entities,
             "dims": dims,
+            "constraints": constraints,
             "dof": dof,
             "fullyConstrained": bool(getattr(sk, "FullyConstrained", False)),
             "placement": [float(v) for v in matrix],
@@ -3490,6 +3506,14 @@ class Kernel:
             state = self.sketch_dim(con, 2, geo2=3)   # sécantes → angle
             report["p3_dim_angle_ok"] = any(
                 d["type"] == "Angle" for d in state["dims"])
+            # M3 : l'état expose les contraintes brutes (geos/pos/value/
+            # driving) — c'est ce que le solveur local planegcs consomme.
+            report["p3_constraints_export_ok"] = (
+                any(c["type"] == "Parallel" and c["geos"][:2] == [0, 1]
+                    for c in state["constraints"])
+                and all(set(c) >= {"id", "type", "geos", "pos", "value",
+                                   "driving"}
+                        for c in state["constraints"]))
             self.sketch_finish(con)
 
             mark("bilan")

@@ -21,11 +21,14 @@ pas par élégance. Ce qui est corrigé est marqué ✔.
    cache par empreinte de forme (`Shape.hashCode()` par corps), ne
    re-tesseller que ce qui a changé. Effort moyen, gain majeur sur
    grosses pièces.
-2. **Latence du drag d'esquisse** : chaque mouvement = un aller-retour
-   HTTP + solveur (throttle 45 ms → ~20 Hz). Le vrai remède est le
-   chantier M3 (planegcs compilé en WASM, solveur dans le navigateur,
-   60 fps, le serveur ne valide qu'au lâcher). C'est LE saut de fluidité
-   restant.
+2. ~~**Latence du drag d'esquisse**~~ — **fait (M3)**. Le solveur
+   planegcs de FreeCAD tourne en WASM dans le navigateur
+   (`app/vendor/planegcs/`, LGPL) ; `app/solver.js` traduit l'état
+   d'esquisse en primitives + contraintes planegcs et résout chaque
+   frame de drag localement (contraintes temporaires coordinate_x/y sur
+   le point tiré). Un seul `sketch_move` au lâcher : le serveur reste la
+   vérité. Toute géométrie/contrainte non traduite (splines, ellipses…)
+   fait retomber proprement sur l'ancien drag serveur throttlé.
 3. **Poids du JSON de maillage** : les positions voyagent en doubles
    pleine précision (~2× trop gros). Remèdes par ordre de simplicité :
    arrondir à 10⁻⁴ mm ; puis passer les buffers en base64/Float32 si un

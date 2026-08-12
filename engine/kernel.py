@@ -104,11 +104,16 @@ class Kernel:
         self._doc = self._body = None
         self._assembly = False
 
+    def _setup_doc(self, doc):
+        """Active l'undo et borne la pile (mémoire en longue session)."""
+        doc.UndoMode = 1
+        doc.UndoLimit = 80
+
     def new_part(self, name="Pièce"):
         App = self._app()
         self._close_current()
         self._doc = App.newDocument("FreeSolid")
-        self._doc.UndoMode = 1  # les transactions de dispatch() = un Ctrl+Z
+        self._setup_doc(self._doc)
         self._body = self._doc.addObject("PartDesign::Body", "Body")
         self._body.Label = name
         self._recompute()
@@ -129,7 +134,7 @@ class Kernel:
         App = self._app()
         self._close_current()
         self._doc = App.newDocument("FreeSolidAsm")
-        self._doc.UndoMode = 1
+        self._setup_doc(self._doc)
         self._assembly = True
         asm = self._doc.addObject("Assembly::AssemblyObject", "Assembly")
         asm.Label = str(name) if name else "Assemblage"
@@ -183,6 +188,7 @@ class Kernel:
             doc.saveAs(os.path.join(tempfile.gettempdir(),
                                     "freesolid-assemblage.FCStd"))
         part_doc = None
+        opened_here = False
         for open_doc in App.listDocuments().values():
             if getattr(open_doc, "FileName", "") == path:
                 part_doc = open_doc
@@ -192,9 +198,16 @@ class Kernel:
                 part_doc = App.openDocument(path, True)  # hidden
             except TypeError:
                 part_doc = App.openDocument(path)
+            opened_here = True
+            self._setup_doc(part_doc)
         bodies = [o for o in part_doc.Objects
                   if o.TypeId == "PartDesign::Body"]
         if not bodies:
+            if opened_here:
+                try:
+                    App.closeDocument(part_doc.Name)
+                except Exception:
+                    pass
             raise KernelError(
                 "aucun corps PartDesign dans {}".format(path))
         link = doc.addObject("App::Link", "Component")
@@ -718,6 +731,7 @@ class Kernel:
             path += ".dxf"
         path = self._user_path(path, (".dxf",), must_exist=False)
         created = []
+        cleanup_errors = []
         try:
             page = doc.addObject("TechDraw::DrawPage", "Page")
             created.append(page)
@@ -756,9 +770,17 @@ class Kernel:
             for obj in reversed(created):
                 try:
                     doc.removeObject(obj.Name)
-                except Exception:
-                    pass
-            doc.recompute()
+                except Exception as exc:  # noqa: BLE001
+                    cleanup_errors.append("{} ({})".format(
+                        getattr(obj, "Name", "?"), _explain(exc)))
+            try:
+                doc.recompute()
+            except Exception:
+                pass
+            if cleanup_errors:
+                raise KernelError(
+                    "mise en plan : nettoyage incomplet — {}".format(
+                        " ; ".join(cleanup_errors)))
         if not os.path.exists(path):
             raise KernelError("l'export DXF n'a rien produit")
         return {"path": path, "size": os.path.getsize(path)}
@@ -1636,7 +1658,7 @@ class Kernel:
             return self._import_cad(path)
         self._close_current()
         doc = App.openDocument(path)
-        doc.UndoMode = 1
+        self._setup_doc(doc)
         bodies = [o for o in doc.Objects if o.TypeId == "PartDesign::Body"]
         if not bodies:
             links = [o for o in doc.Objects if o.TypeId == "App::Link"]
@@ -1646,6 +1668,13 @@ class Kernel:
                 self._doc, self._body = doc, None
                 self._assembly = True
                 return self.assembly_tree()
+            # Document ouvert ici mais non adopté : le fermer pour ne
+            # pas laisser d'orphelin dans App.listDocuments().
+            try:
+                App.closeDocument(doc.Name)
+            except Exception:
+                pass
+            self._doc = self._body = None
             raise KernelError(
                 "aucun corps PartDesign dans ce fichier — il vient "
                 "probablement de l'atelier Part (booléennes sans historique "
@@ -1662,30 +1691,34 @@ class Kernel:
         App = self._app()
         self._close_current()
         self._doc = App.newDocument("FreeSolid")
-        self._doc.UndoMode = 1
+        self._setup_doc(self._doc)
         shape = Part.Shape()
         try:
             shape.read(path)
+            label = os.path.splitext(os.path.basename(path))[0]
+            body = self._doc.addObject("PartDesign::Body", "Body")
+            body.Label = label
+            self._body = body
+            solids = shape.Solids
+            base = self._doc.addObject("Part::Feature", "Imported")
+            base.Label = "Import — {}".format(label)
+            if solids:
+                base.Shape = solids[0]
+                body.BaseFeature = base
+            else:
+                # Que des surfaces : elles restent visibles dans la section
+                # Surfaces, le corps attend une première fonction.
+                base.Shape = shape
+            self._doc.recompute()
+            tree = self.get_tree()
+            tree["imported_solids"] = len(solids)
+            return tree
+        except KernelError:
+            self._close_current()
+            raise
         except Exception as exc:  # noqa: BLE001
+            self._close_current()
             raise KernelError(_explain(exc))
-        label = os.path.splitext(os.path.basename(path))[0]
-        body = self._doc.addObject("PartDesign::Body", "Body")
-        body.Label = label
-        self._body = body
-        solids = shape.Solids
-        base = self._doc.addObject("Part::Feature", "Imported")
-        base.Label = "Import — {}".format(label)
-        if solids:
-            base.Shape = solids[0]
-            body.BaseFeature = base
-        else:
-            # Que des surfaces : elles restent visibles dans la section
-            # Surfaces, le corps attend une première fonction.
-            base.Shape = shape
-        self._doc.recompute()
-        tree = self.get_tree()
-        tree["imported_solids"] = len(solids)
-        return tree
 
     def save_part(self, path):
         """Save as a standard .FCStd — openable in stock FreeCAD.
@@ -3406,6 +3439,9 @@ class Kernel:
             dxf = os.path.join(tempfile.gettempdir(),
                                "freesolid-selftest.dxf")
             report["p13_drawing_ok"] = self.make_drawing(dxf)["size"] > 0
+            report["p13_drawing_clean_ok"] = not any(
+                o.TypeId.startswith("TechDraw::")
+                for o in self._require_doc().Objects)
 
             mark("p14: convertir les entités (contour de face)")
             self.new_part("Pièce conversion")
@@ -3525,6 +3561,28 @@ class Kernel:
                         for c in state["constraints"]))
             self.sketch_finish(con)
 
+            mark("cycle de vie: open_part sans Body + UndoLimit")
+            App = self._app()
+            empty = App.newDocument("EmptyLifecycle")
+            empty_path = os.path.join(
+                tempfile.gettempdir(),
+                "freesolid-lifecycle-empty.FCStd")
+            empty.saveAs(empty_path)
+            App.closeDocument(empty.Name)
+            docs_before = len(App.listDocuments())
+            orphan_raised = False
+            try:
+                self.open_part(empty_path)
+            except KernelError:
+                orphan_raised = True
+            report["lifecycle_orphan_ok"] = (
+                orphan_raised
+                and len(App.listDocuments()) == docs_before
+                and self._doc is None)
+            self.new_part("Pièce lifecycle")
+            report["lifecycle_undo_limit_ok"] = (
+                self._doc.UndoLimit == 80)
+
             mark("bilan")
             # Reopen the saved part so the viewport ends on real geometry,
             # not on the last sketch-only test document.
@@ -3555,6 +3613,7 @@ _TRANSACTIONAL = frozenset({
     "insert_component", "move_component", "add_joint", "solve_assembly",
     "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
     "surface_thicken", "add_curve3d", "sketch_convert", "add_text",
+    "make_drawing",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",

@@ -82,7 +82,10 @@ complet, quinze fonctions volumiques, références, multi-corps,
 assemblages contraints par le solveur natif, surfacique v1, mise en
 plan DXF, évaluation. Les ❌ se concentrent là où FreeCAD lui-même n'a
 pas de moteur (blocs, wrap, formats propriétaires, PDF headless) — aucun n'est bloquant pour le flux
-conception → impression 3D. Les prochains ✅ au meilleur rapport
-valeur/effort : **convertir les entités**, **gravure de texte**,
-**détection d'interférences**, **plan de coupe visuel**, **contraintes
-mécaniques (UI)**, **vue éclatée**.
+conception → impression 3D. Les six cibles ✅ prioritaires (convertir
+les entités, gravure de texte, interférences, plan de coupe, contraintes
+mécaniques, vue éclatée) sont **faites et validées par selftest complet
+sur FreeCAD 1.1.3** (2026-08-12). Restent les ✅ secondaires (splines
+d'esquisse, ellipses, symétrie/répétition d'entités, remplir,
+répétition de composants, limites de contraintes, import STEP/IGES) et
+les 🟧.

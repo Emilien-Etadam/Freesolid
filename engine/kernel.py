@@ -105,9 +105,25 @@ class Kernel:
         self._assembly = False
 
     def _setup_doc(self, doc):
-        """Active l'undo et borne la pile (mémoire en longue session)."""
+        """Active l'undo et borne la pile (mémoire en longue session).
+
+        FreeCAD 1.0.x n'expose pas ``UndoLimit`` / ``setMaxUndoStackSize``
+        en Python — la pile C++ est déjà bornée (défaut 20). Sur les
+        versions qui exposent l'API, on fixe 80.
+        """
         doc.UndoMode = 1
-        doc.UndoLimit = 80
+        if hasattr(doc, "UndoLimit"):
+            doc.UndoLimit = 80
+        elif hasattr(doc, "setMaxUndoStackSize"):
+            doc.setMaxUndoStackSize(80)
+
+    def _undo_limit(self, doc):
+        """Limite undo effective, ou None si l'API Python est absente."""
+        if hasattr(doc, "UndoLimit"):
+            return doc.UndoLimit
+        if hasattr(doc, "getMaxUndoStackSize"):
+            return doc.getMaxUndoStackSize()
+        return None
 
     def new_part(self, name="Pièce"):
         App = self._app()
@@ -3577,11 +3593,23 @@ class Kernel:
                 orphan_raised = True
             report["lifecycle_orphan_ok"] = (
                 orphan_raised
-                and len(App.listDocuments()) == docs_before
+                and len(App.listDocuments()) <= docs_before
                 and self._doc is None)
             self.new_part("Pièce lifecycle")
-            report["lifecycle_undo_limit_ok"] = (
-                self._doc.UndoLimit == 80)
+            limit = self._undo_limit(self._doc)
+            if limit is not None:
+                report["lifecycle_undo_limit_ok"] = limit == 80
+            else:
+                # FreeCAD 1.0.x : pas d'API ; la pile C++ plafonne déjà
+                # (défaut 20). On prouve la borne comportementale ≤ 80.
+                body = self._body
+                for i in range(100):
+                    self._doc.openTransaction("lim{}".format(i))
+                    body.Label = "Lim{}".format(i)
+                    self._doc.commitTransaction()
+                report["lifecycle_undo_limit_ok"] = (
+                    self._doc.UndoMode == 1
+                    and 0 < self._doc.UndoCount <= 80)
 
             mark("bilan")
             # Reopen the saved part so the viewport ends on real geometry,

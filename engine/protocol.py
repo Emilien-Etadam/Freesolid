@@ -10,6 +10,9 @@ Transport (M0) is HTTP JSON on localhost: requests are
 ``err(...)`` envelopes. No dependency on either side.
 """
 
+import os
+import tempfile
+
 #: Every operation the engine accepts, with the params it requires.
 #: (name -> tuple of required param names). Optional params are documented
 #: in the kernel docstrings.
@@ -160,6 +163,79 @@ def err(message: str, hint: str = "") -> dict:
     if hint:
         out["hint"] = hint
     return out
+
+
+def _allowed_path_roots():
+    """Racines sous lesquelles les chemins client sont autorisés."""
+    roots = [
+        os.path.realpath(os.path.expanduser("~")),
+        os.path.realpath(tempfile.gettempdir()),
+    ]
+    data_dir = os.environ.get("FREESOLID_DATA_DIR")
+    if data_dir:
+        roots.append(os.path.realpath(os.path.expanduser(str(data_dir))))
+    return roots
+
+
+def _is_under_root(root: str, resolved: str) -> bool:
+    try:
+        return os.path.commonpath([root, resolved]) == root
+    except ValueError:
+        return False
+
+
+def resolve_user_path(path, extensions, must_exist=False):
+    """Résout un chemin fourni par le client, ou lève ProtocolError.
+
+    Les symlinks sont résolus avant toute vérification. Le chemin doit
+    rester sous le home, le répertoire temporaire, ou ``FREESOLID_DATA_DIR``
+    s'il est défini. Aucun composant relatif à cette racine ne peut
+    commencer par ``.`` (``.ssh``, ``.bashrc``, …).
+    """
+    if path is None or str(path).strip() == "":
+        raise ProtocolError("chemin manquant")
+    allowed_ext = {
+        (e if e.startswith(".") else "." + e).lower()
+        for e in extensions
+    }
+    if not allowed_ext:
+        raise ProtocolError("extension non autorisée : (aucune)")
+
+    expanded = os.path.expanduser(str(path))
+    # Refuser les segments ``..`` avant realpath : ``~/../ailleurs`` ne
+    # doit pas passer même si le résultat retombe sous le tempdir.
+    if ".." in expanded.replace("\\", "/").split("/"):
+        raise ProtocolError("chemin hors du dossier autorisé")
+    resolved = os.path.realpath(expanded)
+    matched_root = None
+    for root in _allowed_path_roots():
+        if _is_under_root(root, resolved):
+            matched_root = root
+            break
+    if matched_root is None:
+        raise ProtocolError("chemin hors du dossier autorisé")
+
+    relative = os.path.relpath(resolved, matched_root)
+    if relative == os.curdir or relative.startswith(".." + os.sep) or relative == "..":
+        raise ProtocolError("chemin hors du dossier autorisé")
+    for component in relative.split(os.sep):
+        if component.startswith("."):
+            raise ProtocolError("chemin hors du dossier autorisé")
+
+    ext = os.path.splitext(resolved)[1].lower()
+    if ext not in allowed_ext:
+        raise ProtocolError(
+            "extension non autorisée : {}".format(ext or "(aucune)"))
+
+    if must_exist:
+        if not os.path.isfile(resolved):
+            raise ProtocolError("fichier introuvable : {}".format(resolved))
+    else:
+        parent = os.path.dirname(resolved)
+        if not os.path.isdir(parent):
+            raise ProtocolError(
+                "dossier parent introuvable : {}".format(parent))
+    return resolved
 
 
 def pack_mesh(face_meshes) -> dict:

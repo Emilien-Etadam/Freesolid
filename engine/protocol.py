@@ -27,6 +27,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "new_assembly": (),                # optional: name
     "insert_component": ("path",),     # .FCStd — App::Link vers son corps
     "move_component": ("component",),  # optional: x, y, z, yaw, pitch, roll
+    "array_component": ("component", "count"),  # optional: dx, dy, dz
     "assembly_tree": (),
     "tessellate_assembly": (),         # optional: deviation
     # Phase C3 — contraintes d'assemblage (joints natifs + solveur MbD).

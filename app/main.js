@@ -1401,6 +1401,17 @@ document.getElementById("btn-joint").addEventListener("click", () => {
         params.distance2 = d2;
       }
     }
+    // Limites optionnelles : champ vide = pas de limite.
+    for (const [key, param] of [["angleMin", "angle_min"],
+                                ["angleMax", "angle_max"],
+                                ["lengthMin", "length_min"],
+                                ["lengthMax", "length_max"]]) {
+      const raw = String(v[key] ?? "").trim();
+      if (raw) {
+        const parsed = parseFloat(raw.replace(",", "."));
+        if (!Number.isNaN(parsed)) params[param] = parsed;
+      }
+    }
     return params;
   };
   panel.open({
@@ -1430,6 +1441,18 @@ document.getElementById("btn-joint").addEventListener("click", () => {
                   "composants, la contrainte couple ensuite leurs " +
                   "mouvements.",
             showIf: (v) => MECHANICAL.includes(v.type) },
+          { type: "text", key: "angleMin", label: "Angle min", unit: "°",
+            placeholder: "aucune limite",
+            showIf: (v) => ["pivot", "cylindrique"].includes(v.type) },
+          { type: "text", key: "angleMax", label: "Angle max", unit: "°",
+            placeholder: "aucune limite",
+            showIf: (v) => ["pivot", "cylindrique"].includes(v.type) },
+          { type: "text", key: "lengthMin", label: "Longueur min",
+            unit: "mm", placeholder: "aucune limite",
+            showIf: (v) => ["glissiere", "cylindrique"].includes(v.type) },
+          { type: "text", key: "lengthMax", label: "Longueur max",
+            unit: "mm", placeholder: "aucune limite",
+            showIf: (v) => ["glissiere", "cylindrique"].includes(v.type) },
         ] },
       { label: "Élément 1",
         rows: [{ type: "selection", key: "a", accepts: ["asmface"],
@@ -1457,6 +1480,40 @@ document.getElementById("btn-solve").addEventListener("click", () => {
     return;
   }
   refreshAssembly(call("solve_assembly"));
+});
+
+document.getElementById("btn-array-comp").addEventListener("click", () => {
+  const comp = assemblyState?.components.find(
+    (c) => c.name === selectedComponent);
+  if (!comp) {
+    say("Répéter : cliquez d'abord un composant", true);
+    return;
+  }
+  panel.open({
+    icon: "Link.svg",
+    title: `Répéter — ${comp.label}`,
+    groups: [{
+      label: "Répétition",
+      rows: [
+        { type: "number", key: "count", label: "Occurrences", value: 3,
+          min: 2, step: 1 },
+        { type: "number", key: "dx", label: "Pas X", value: 30,
+          unit: "mm" },
+        { type: "number", key: "dy", label: "Pas Y", value: 0,
+          unit: "mm" },
+        { type: "number", key: "dz", label: "Pas Z", value: 0,
+          unit: "mm" },
+      ],
+    }],
+    onApply: (v) => {
+      const count = parseInt(v.count, 10);
+      if (!(count >= 2)) { say("Au moins 2 occurrences", true); return; }
+      refreshAssembly(call("array_component", {
+        component: comp.name, count,
+        dx: parseFloat(v.dx) || 0, dy: parseFloat(v.dy) || 0,
+        dz: parseFloat(v.dz) || 0 }));
+    },
+  });
 });
 
 document.getElementById("btn-interf").addEventListener("click", async () => {
@@ -2216,7 +2273,8 @@ document.getElementById("btn-polpattern").addEventListener("click", () =>
   })));
 
 document.getElementById("btn-open").addEventListener("click", async () => {
-  const path = prompt("Ouvrir (chemin .FCStd) :", "~/piece-freesolid.FCStd");
+  const path = prompt("Ouvrir (.FCStd, .step, .iges) :",
+                      "~/piece-freesolid.FCStd");
   if (!path) return;
   try {
     const tree = await call("open_part", { path });
@@ -2230,9 +2288,12 @@ document.getElementById("btn-open").addEventListener("click", async () => {
     }
     renderTree(tree);
     await updateViewport();
-    say(tree.bodies_in_file > 1
-      ? `Ouvert — ${tree.bodies_in_file} corps dans le fichier.`
-      : "Ouvert.");
+    say(tree.imported_solids !== undefined
+      ? `Importé — ${tree.imported_solids} solide(s), la forme est la ` +
+        "base du corps."
+      : tree.bodies_in_file > 1
+        ? `Ouvert — ${tree.bodies_in_file} corps dans le fichier.`
+        : "Ouvert.");
   } catch (error) {
     say(error.message, true);
   }
@@ -2251,7 +2312,7 @@ document.getElementById("btn-save").addEventListener("click", async () => {
 
 document.getElementById("btn-export").addEventListener("click", async () => {
   const path = prompt(
-    "Exporter (chemin .stl pour l'impression 3D, .step pour l'échange) :",
+    "Exporter (.stl / .3mf pour l'impression, .step pour l'échange) :",
     "~/piece-freesolid.stl");
   if (!path) return;
   try {

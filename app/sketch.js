@@ -38,6 +38,8 @@ export function createSketchMode(deps) {
     pendingRect: null,    // first corner while waiting for the second
     pendingRectC: null,   // center while waiting for a corner
     pendingArc: null,     // { c, start? } — centre puis départ puis fin
+    pendingSpline: null,  // points cliqués — Entrée pour terminer
+    pendingEllipse: null, // { c, major? } — centre, grand axe, petit axe
     pendingArc3: null,    // [p1, p2] — départ, fin, puis passage
     pendingSlot: null,    // { a, b? } — centres puis largeur
     pendingPoly: null,    // { sides, c? } — centre puis sommet
@@ -60,6 +62,7 @@ export function createSketchMode(deps) {
                     arc: "crosshair", arc3: "crosshair", slot: "crosshair",
                     polygon: "crosshair", skfillet: "pointer",
                     trim: "pointer", construction: "pointer",
+                    spline: "crosshair", ellipse: "crosshair",
                     dim: "crosshair" };
 
   // CCW sweep p1 -> p2 around c, as the engine stores arcs.
@@ -214,6 +217,15 @@ export function createSketchMode(deps) {
         circle.renderOrder = 20;
         group.add(circle);
         points.push(entity.c);
+      } else if (entity.type === "poly" && entity.points?.length > 1) {
+        // Splines, ellipses, coniques : le serveur envoie la polyligne.
+        const pts = entity.points.map(
+          (p) => new THREE.Vector3(p[0], p[1], 0));
+        const line = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(pts), material);
+        if (entity.construction && !isSelected) line.computeLineDistances();
+        line.renderOrder = 20;
+        group.add(line);
       }
     }
     if (points.length) {
@@ -304,9 +316,9 @@ export function createSketchMode(deps) {
       if (picked === null) {
         mode.selection = [];
       } else {
-        mode.selection = [...mode.selection, picked].slice(-3);
+        mode.selection = [...mode.selection, picked].slice(-8);
         say(`Sélection : ${mode.selection.length} entité(s) — ` +
-            "appliquez une relation, ou cliquez dans le vide");
+            "relation, symétrie ou répétition ; clic dans le vide = vider");
       }
       redraw();
     } else if (mode.tool === "line") {
@@ -444,6 +456,32 @@ export function createSketchMode(deps) {
         safe(call("sketch_trim",
           { sketch: name, geo: target, x: local.x, y: local.y }));
       }
+    } else if (mode.tool === "spline") {
+      mode.pendingSpline = mode.pendingSpline ?? [];
+      mode.pendingSpline.push({ x: snapped.x, y: snapped.y });
+      say(`Spline : ${mode.pendingSpline.length} point(s) — ` +
+          "Entrée pour terminer (min 3), Échap pour annuler");
+    } else if (mode.tool === "ellipse") {
+      if (!mode.pendingEllipse) {
+        mode.pendingEllipse = { c: { x: snapped.x, y: snapped.y } };
+        say("Ellipse : cliquez l'extrémité du grand axe");
+      } else if (!mode.pendingEllipse.major) {
+        mode.pendingEllipse.major = { x: snapped.x, y: snapped.y };
+        say("Ellipse : cliquez pour donner le petit rayon");
+      } else {
+        const { c, major } = mode.pendingEllipse;
+        mode.pendingEllipse = null;
+        const rx = Math.hypot(major.x - c.x, major.y - c.y);
+        if (rx <= 0) return;
+        const angle = Math.atan2(major.y - c.y, major.x - c.x)
+          * 180 / Math.PI;
+        const ux = (major.x - c.x) / rx, uy = (major.y - c.y) / rx;
+        const ry = Math.abs(
+          ux * (snapped.y - c.y) - uy * (snapped.x - c.x));
+        if (ry <= 0) { say("Ellipse : petit rayon nul", true); return; }
+        safe(call("sketch_add_ellipse",
+          { sketch: name, cx: c.x, cy: c.y, rx, ry, angle }));
+      }
     } else if (mode.tool === "construction") {
       const target = nearestEntity(event);
       if (target !== null) {
@@ -515,6 +553,9 @@ export function createSketchMode(deps) {
         const am = (a1 + a2) / 2;
         s = toScreen(entity.c[0] + entity.r * Math.cos(am),
                      entity.c[1] + entity.r * Math.sin(am));
+      } else if (entity.type === "poly" && entity.points?.length) {
+        const mid = entity.points[Math.floor(entity.points.length / 2)];
+        s = toScreen(mid[0], mid[1]);
       } else continue;
       const distance = Math.hypot(s.x - event.clientX, s.y - event.clientY);
       if (distance < bestDistance) { best = entity.id; bestDistance = distance; }
@@ -550,7 +591,22 @@ export function createSketchMode(deps) {
     }
     if (mode.drag) {
       const local = toLocal(event);
-      if (!local || dragTimer) return;
+      if (!local) return;
+      // Retour visuel IMMÉDIAT (60 fps) : le point suit le curseur en
+      // local, le solveur corrige à chaque réponse du serveur.
+      const entity = mode.state?.entities.find(
+        (e) => e.id === mode.drag.geo);
+      if (entity) {
+        if (mode.drag.point === 1 && entity.p1) {
+          entity.p1 = [local.x, local.y];
+        } else if (mode.drag.point === 2 && entity.p2) {
+          entity.p2 = [local.x, local.y];
+        } else if (mode.drag.point === 3 && entity.c) {
+          entity.c = [local.x, local.y];
+        }
+        redraw();
+      }
+      if (dragTimer) return;
       dragTimer = setTimeout(() => { dragTimer = null; }, 45);
       safe(call("sketch_move", { sketch: mode.state.sketch,
         geo: mode.drag.geo, point: mode.drag.point,
@@ -581,6 +637,15 @@ export function createSketchMode(deps) {
         new THREE.Vector3(a.x, a.y, 0), new THREE.Vector3(k.x, a.y, 0),
         new THREE.Vector3(k.x, k.y, 0), new THREE.Vector3(a.x, k.y, 0),
         new THREE.Vector3(a.x, a.y, 0)]);
+      previewLine.visible = true;
+    } else if (mode.tool === "spline" && mode.pendingSpline?.length
+               && previewLine) {
+      const local = toLocal(event);
+      if (!local) return;
+      const snapped = snap(local, event);
+      previewLine.geometry.setFromPoints([
+        ...mode.pendingSpline.map((p) => new THREE.Vector3(p.x, p.y, 0)),
+        new THREE.Vector3(snapped.x, snapped.y, 0)]);
       previewLine.visible = true;
     }
   }
@@ -656,6 +721,17 @@ export function createSketchMode(deps) {
     if (event.key === "Escape") {
       if (previewLine) previewLine.visible = false;
       setTool("select");
+    } else if (event.key === "Enter" && mode.tool === "spline") {
+      const pts = mode.pendingSpline ?? [];
+      if (pts.length >= 3) {
+        const name = mode.state.sketch;
+        mode.pendingSpline = [];
+        if (previewLine) previewLine.visible = false;
+        safe(call("sketch_add_spline",
+          { sketch: name, points: pts.map((p) => [p.x, p.y]) }));
+      } else {
+        say("Spline : au moins 3 points avant Entrée", true);
+      }
     } else if (event.key === "Delete") {
       const target = mode.lastMouse ? nearestEntity(mode.lastMouse) : null;
       if (target !== null) {
@@ -668,6 +744,8 @@ export function createSketchMode(deps) {
     else if (event.key === "r") setTool("rect");
     else if (event.key === "c") setTool("circle");
     else if (event.key === "a") setTool("arc3");
+    else if (event.key === "s") setTool("spline");
+    else if (event.key === "e") setTool("ellipse");
     else if (event.key === "t") setTool("trim");
     else if (event.key === "g") setTool("construction");
     else if (event.key === "d") setTool("dim");
@@ -688,6 +766,8 @@ export function createSketchMode(deps) {
     mode.pendingSlot = null;
     mode.pendingFillet = null;
     mode.pendingDim = null;
+    mode.pendingSpline = null;
+    mode.pendingEllipse = null;
     mode.selection = [];
     if (tool === "polygon") {
       const sides = parseInt(prompt("Polygone — nombre de côtés :", "6")
@@ -709,6 +789,8 @@ export function createSketchMode(deps) {
       rect: "Rectangle par sommet : cliquez le premier sommet",
       rectc: "Rectangle par le centre : cliquez le centre",
       circle: "Cercle : cliquez le centre",
+      spline: "Spline : cliquez les points, Entrée pour terminer (S)",
+      ellipse: "Ellipse : cliquez le centre",
       arc: "Arc par centre : cliquez le centre",
       arc3: "Arc 3 points : cliquez le point de départ",
       slot: "Rainure : cliquez le centre du premier bout",
@@ -740,13 +822,13 @@ export function createSketchMode(deps) {
 
   function applyConstraint(kind) {
     if (!mode.state) return;
-    const selection = mode.selection;
     const needed = CONSTRAINT_NEEDS[kind];
-    if (selection.length < needed) {
+    if (mode.selection.length < needed) {
       say(`Relation : sélectionnez d'abord ${needed} entité(s) ` +
           "avec l'outil Sélectionner", true);
       return;
     }
+    const selection = mode.selection.slice(-needed);
     const params = { sketch: mode.state.sketch, kind,
                      geo1: selection[0].geo };
     if (selection[0].point != null) params.point1 = selection[0].point;
@@ -819,6 +901,54 @@ export function createSketchMode(deps) {
 
   document.getElementById("sk-relations")
     .addEventListener("click", openRelationsPanel);
+
+  // Symétrie d'entités : la sélection SAUF la dernière est symétrisée,
+  // la dernière entité sélectionnée est l'axe.
+  document.getElementById("sk-mirror").addEventListener("click", () => {
+    if (!mode.state) return;
+    if (mode.selection.length < 2) {
+      say("Symétrie : sélectionnez les entités PUIS la ligne d'axe " +
+          "en dernier", true);
+      return;
+    }
+    const geos = mode.selection.slice(0, -1).map((s) => s.geo);
+    const axis = mode.selection[mode.selection.length - 1].geo;
+    safe(call("sketch_mirror",
+      { sketch: mode.state.sketch, geos, axis }));
+  });
+
+  document.getElementById("sk-array").addEventListener("click", () => {
+    if (!mode.state) return;
+    if (!mode.selection.length) {
+      say("Répétition : sélectionnez d'abord des entités", true);
+      return;
+    }
+    const geos = mode.selection.map((s) => s.geo);
+    panel.open({
+      icon: "Sketcher_RectangularArray.svg",
+      title: "Répétition d'entités",
+      groups: [{
+        label: "Paramètres",
+        rows: [
+          { type: "number", key: "dx", label: "Pas X", value: 15,
+            unit: "mm" },
+          { type: "number", key: "dy", label: "Pas Y", value: 0,
+            unit: "mm" },
+          { type: "number", key: "cols", label: "Colonnes", value: 3,
+            min: 1, step: 1 },
+          { type: "number", key: "rows", label: "Lignes", value: 1,
+            min: 1, step: 1 },
+        ],
+      }],
+      note: "Le pas est piloté par des lignes de construction — " +
+            "cotables ensuite.",
+      onApply: (v) => safe(call("sketch_array", {
+        sketch: mode.state.sketch, geos,
+        dx: parseFloat(v.dx) || 0, dy: parseFloat(v.dy) || 0,
+        cols: parseInt(v.cols, 10) || 1,
+        rows: parseInt(v.rows, 10) || 1 })),
+    });
+  });
 
   // Convertir les entités : le contour de la face porteuse arrive en
   // géométrie réelle bloquée — le point de départ SolidWorks classique.

@@ -309,6 +309,21 @@ def test_convert_text_interference_ops_declared():
                     "distance": 20, "distance2": 10}})
 
 
+def test_comfort_ops_declared():
+    assert protocol.OPS["sketch_add_spline"] == ("sketch", "points")
+    assert protocol.OPS["sketch_add_ellipse"] == (
+        "sketch", "cx", "cy", "rx", "ry")
+    assert protocol.OPS["sketch_mirror"] == ("sketch", "geos", "axis")
+    assert protocol.OPS["sketch_array"] == (
+        "sketch", "geos", "dx", "dy", "cols", "rows")
+    assert protocol.OPS["array_component"] == ("component", "count")
+    protocol.validate_request(
+        {"op": "add_joint",
+         "params": {"component1": "A", "component2": "B", "type": "pivot",
+                    "sub1": "Face1", "sub2": "Face2",
+                    "angle_min": -45, "angle_max": 45}})
+
+
 def test_preview_wraps_an_op_and_its_params():
     op, params = protocol.validate_request(
         {"op": "preview",

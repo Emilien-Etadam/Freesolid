@@ -238,7 +238,9 @@ class Kernel:
     }
 
     def add_joint(self, component1, component2, type="fixe",
-                  sub1=None, sub2=None, distance=None, distance2=None):
+                  sub1=None, sub2=None, distance=None, distance2=None,
+                  angle_min=None, angle_max=None,
+                  length_min=None, length_max=None):
         """Contrainte d'assemblage entre deux composants, résolue par le
         solveur natif (MbD). ``sub1``/``sub2`` : sous-élément visé
         (« Face3 », « Edge5 ») — la face cliquée dans la zone graphique.
@@ -305,6 +307,15 @@ class Kernel:
             joint.Distance = float(distance)
         if distance2 is not None and hasattr(joint, "Distance2"):
             joint.Distance2 = float(distance2)
+        # Limites de mouvement (SolidWorks : contraintes avancées).
+        for value, prop, enable in (
+                (angle_min, "AngleMin", "EnableAngleMin"),
+                (angle_max, "AngleMax", "EnableAngleMax"),
+                (length_min, "LengthMin", "EnableLengthMin"),
+                (length_max, "LengthMax", "EnableLengthMax")):
+            if value is not None and hasattr(joint, prop):
+                setattr(joint, enable, True)
+                setattr(joint, prop, float(value))
         labels = {"Fixed": "Fixe", "Revolute": "Pivot",
                   "Cylindrical": "Cylindrique", "Slider": "Glissière",
                   "Ball": "Rotule", "Distance": "Distance",
@@ -351,6 +362,33 @@ class Kernel:
                 doc.recompute()
             except KernelError:
                 pass  # sur-contraint : la position saisie reste
+        return self.assembly_tree()
+
+    def array_component(self, component, count, dx=0.0, dy=0.0, dz=0.0):
+        """Répétition de composants : n instances du même fichier, au pas
+        donné — visserie, entretoises, séries à imprimer."""
+        doc = self._require_assembly()
+        App = self._app()
+        link = doc.getObject(str(component))
+        if link is None or link.TypeId != "App::Link":
+            raise KernelError("composant inconnu : {}".format(component))
+        total = int(count)
+        if total < 2:
+            raise KernelError("au moins 2 occurrences")
+        base_placement = link.Placement
+        for i in range(1, total):
+            copy = doc.addObject("App::Link", "Component")
+            copy.LinkedObject = link.LinkedObject
+            copy.Label = "{} ({})".format(link.Label, i + 1)
+            offset = App.Vector(float(dx) * i, float(dy) * i,
+                                float(dz) * i)
+            copy.Placement = App.Placement(
+                base_placement.Base + offset, base_placement.Rotation)
+            try:
+                self._assembly_object().addObject(copy)
+            except KernelError:
+                pass
+        doc.recompute()
         return self.assembly_tree()
 
     def assembly_tree(self):
@@ -970,9 +1008,13 @@ class Kernel:
                 shape.exportStl(path)
             elif ext in (".step", ".stp"):
                 shape.exportStep(path)
+            elif ext == ".3mf":
+                import Mesh
+                Mesh.export([body], path)
             else:
-                raise KernelError("format inconnu « {} » — utilisez .stl ou "
-                                  ".step".format(ext or "aucune extension"))
+                raise KernelError("format inconnu « {} » — utilisez .stl, "
+                                  ".step ou .3mf".format(
+                                      ext or "aucune extension"))
         except KernelError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -1582,6 +1624,8 @@ class Kernel:
         path = os.path.expanduser(str(path))
         if not os.path.exists(path):
             raise KernelError("fichier introuvable : {}".format(path))
+        if path.lower().endswith((".step", ".stp", ".iges", ".igs")):
+            return self._import_cad(path)
         self._close_current()
         doc = App.openDocument(path)
         doc.UndoMode = 1
@@ -1601,6 +1645,38 @@ class Kernel:
         self._doc, self._body = doc, bodies[0]
         tree = self.get_tree()
         tree["bodies_in_file"] = len(bodies)
+        return tree
+
+    def _import_cad(self, path):
+        """Import STEP/IGES : le solide arrive comme base d'un corps —
+        toutes les fonctions s'appliquent ensuite dessus."""
+        import Part
+        App = self._app()
+        self._close_current()
+        self._doc = App.newDocument("FreeSolid")
+        self._doc.UndoMode = 1
+        shape = Part.Shape()
+        try:
+            shape.read(path)
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        label = os.path.splitext(os.path.basename(path))[0]
+        body = self._doc.addObject("PartDesign::Body", "Body")
+        body.Label = label
+        self._body = body
+        solids = shape.Solids
+        base = self._doc.addObject("Part::Feature", "Imported")
+        base.Label = "Import — {}".format(label)
+        if solids:
+            base.Shape = solids[0]
+            body.BaseFeature = base
+        else:
+            # Que des surfaces : elles restent visibles dans la section
+            # Surfaces, le corps attend une première fonction.
+            base.Shape = shape
+        self._doc.recompute()
+        tree = self.get_tree()
+        tree["imported_solids"] = len(solids)
         return tree
 
     def save_part(self, path):
@@ -2040,6 +2116,15 @@ class Kernel:
                     "p2": [geo.EndPoint.x, geo.EndPoint.y]}
             else:
                 entity = {"id": gid, "type": "other", "kind": geo.TypeId}
+                try:
+                    # Splines, ellipses, coniques : une polyligne suffit
+                    # au client pour afficher et viser n'importe quelle
+                    # courbe.
+                    points = geo.toShape().discretize(Number=24)
+                    entity["type"] = "poly"
+                    entity["points"] = [[p.x, p.y] for p in points]
+                except Exception:
+                    pass
             entity["construction"] = self._is_construction(sk, gid, geo)
             entities.append(entity)
         import re
@@ -2143,6 +2228,91 @@ class Kernel:
         gid = sk.addGeometry(
             Part.ArcOfCircle(circle, float(a1), float(a2)), False)
         self._auto_constrain(sk, gid)
+        return self.sketch_state(sketch)
+
+    def sketch_add_spline(self, sketch, points):
+        """Spline interpolée par les points cliqués — la spline SolidWorks."""
+        import Part
+        sk = self._get_sketch(sketch)
+        App = self._app()
+        if not isinstance(points, (list, tuple)) or len(points) < 3:
+            raise KernelError("une spline demande au moins trois points")
+        vectors = []
+        for p in points:
+            try:
+                x, y = (float(v) for v in p)
+            except Exception:
+                raise KernelError("point invalide : {}".format(p))
+            vectors.append(App.Vector(x, y, 0))
+        try:
+            curve = Part.BSplineCurve()
+            curve.interpolate(vectors)
+            sk.addGeometry(curve, False)
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_add_ellipse(self, sketch, cx, cy, rx, ry, angle=0.0):
+        """Ellipse par centre + rayons, inclinée de ``angle`` degrés."""
+        import math
+        import Part
+        sk = self._get_sketch(sketch)
+        App = self._app()
+        rx, ry = float(rx), float(ry)
+        if rx <= 0 or ry <= 0:
+            raise KernelError("les deux rayons doivent être positifs")
+        tilt = float(angle)
+        if ry > rx:
+            rx, ry = ry, rx
+            tilt += 90.0
+        try:
+            ellipse = Part.Ellipse(App.Vector(float(cx), float(cy), 0),
+                                   rx, ry)
+            try:
+                ellipse.AngleXU = math.radians(tilt)
+            except AttributeError:
+                pass
+            sk.addGeometry(ellipse, False)
+        except KernelError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_mirror(self, sketch, geos, axis):
+        """Symétrie d'entités : copies miroir par rapport à une ligne."""
+        sk = self._get_sketch(sketch)
+        ids = [int(g) for g in (geos or ())]
+        if not ids:
+            raise KernelError("sélectionnez les entités à symétriser")
+        axis_id = int(axis)
+        if axis_id in ids:
+            raise KernelError("l'axe ne peut pas faire partie de la "
+                              "sélection")
+        try:
+            sk.addSymmetric(ids, axis_id)
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_array(self, sketch, geos, dx, dy, cols, rows):
+        """Répétition linéaire d'entités d'esquisse (grille cols × rows)."""
+        sk = self._get_sketch(sketch)
+        App = self._app()
+        ids = [int(g) for g in (geos or ())]
+        if not ids:
+            raise KernelError("sélectionnez les entités à répéter")
+        cols, rows = int(cols), int(rows)
+        if cols < 1 or rows < 1 or cols * rows < 2:
+            raise KernelError("au moins deux occurrences (cols × rows)")
+        displacement = App.Vector(float(dx), float(dy), 0)
+        try:
+            sk.addRectangularArray(ids, displacement, False, cols, rows,
+                                   True)
+        except TypeError:
+            sk.addRectangularArray(ids, displacement, False, cols, rows)
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
     def sketch_add_slot(self, sketch, x1, y1, x2, y2, width):
@@ -3234,6 +3404,38 @@ class Kernel:
                 not any(f["error"] for f in tree["features"])
                 and len(self.tessellate()["groups"]) > faces_now)
 
+            mark("p17: spline, ellipse, symétrie et répétition d'entités")
+            self.new_part("Pièce esquisse confort")
+            state = self.sketch_start()
+            comfort = state["sketch"]
+            state = self.sketch_add_spline(
+                comfort, [[0, 0], [10, 8], [20, -4], [30, 6]])
+            report["p17_spline_ok"] = any(
+                e["type"] == "poly" for e in state["entities"])
+            state = self.sketch_add_ellipse(comfort, 50, 0, 12, 6,
+                                            angle=15)
+            report["p17_ellipse_ok"] = len(state["entities"]) == 2
+            self.sketch_add_line(comfort, 0, 20, 20, 30)   # géo 2
+            self.sketch_add_line(comfort, 0, 40, 40, 40)   # géo 3 : axe
+            state = self.sketch_mirror(comfort, [2], 3)
+            report["p17_mirror_ok"] = len(state["entities"]) == 5
+            state = self.sketch_array(comfort, [2], dx=15, dy=0,
+                                      cols=3, rows=1)
+            # 2 copies + 2 lignes de construction qui pilotent le pas
+            # (comportement addRectangularArray, sondé sur 1.0.2).
+            report["p17_array_ok"] = len(state["entities"]) == 9
+            self.sketch_finish(comfort)
+
+            mark("p18: import STEP + export 3MF")
+            tree = self.open_part(os.path.join(
+                tempfile.gettempdir(), "freesolid-selftest.step"))
+            report["p18_step_import_ok"] = (
+                tree.get("imported_solids", 0) >= 1
+                and len(self.tessellate()["groups"]) > 0)
+            threemf = os.path.join(tempfile.gettempdir(),
+                                   "freesolid-selftest.3mf")
+            report["p18_3mf_ok"] = self.export_part(threemf)["size"] > 0
+
             mark("p3: arc, rainure, polygone")
             import math
             self.new_part("Pièce esquisse avancée")
@@ -3328,6 +3530,8 @@ _TRANSACTIONAL = frozenset({
     "sketch_toggle_construction",
     "sketch_add_arc", "sketch_add_slot", "sketch_add_polygon",
     "sketch_fillet", "sketch_trim", "sketch_constrain",
+    "sketch_add_spline", "sketch_add_ellipse", "sketch_mirror",
+    "sketch_array", "array_component",
 })
 
 

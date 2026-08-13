@@ -98,6 +98,21 @@ const curvesMaterial = new THREE.LineBasicMaterial({ color: 0x4fb8a8 });
 let surfacesMesh = null;
 let curvesLines = null;
 
+// Qui alloue dispose. Les matériaux partagés (constantes de module) ne
+// portent pas le flag et ne sont jamais disposés ; tout matériau créé
+// par allocation pose `userData.own = true`.
+function disposeSubtree(root) {
+  root.traverse((obj) => {
+    obj.geometry?.dispose();
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const m of mats) {
+      if (m && m.userData?.own) { m.map?.dispose(); m.dispose(); }
+    }
+  });
+}
+
+let lastClearedSelections = false;
+
 function showMesh(mesh) {
   if (partMesh) { scene.remove(partMesh); partMesh.geometry.dispose(); }
   if (othersMesh) { scene.remove(othersMesh); othersMesh.geometry.dispose(); }
@@ -105,6 +120,11 @@ function showMesh(mesh) {
   meshGroups = mesh.groups;
   hoveredGroup = -1;
   selectedFaceId = null; // ids shift after every feature: stale picks lie
+  const cleared = panel.invalidateSelections();
+  lastClearedSelections = cleared > 0;
+  if (lastClearedSelections) {
+    say("Sélections réinitialisées — la géométrie a changé.");
+  }
   if (surfacesMesh) {
     scene.remove(surfacesMesh);
     surfacesMesh.geometry.dispose();
@@ -237,31 +257,43 @@ function makePlaneLabel(text) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, 128, 22);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+  const material = new THREE.SpriteMaterial({
     map: new THREE.CanvasTexture(canvas),
-    transparent: true, depthTest: false }));
+    transparent: true, depthTest: false });
+  material.userData.own = true;
+  const sprite = new THREE.Sprite(material);
   sprite.renderOrder = 10;
   return sprite;
 }
 
+let lastPlanesSize = null;
+
 function rebuildPlanes() {
-  planesGroup.clear();
-  planeMeshes = {};
   const { radius } = partCenterRadius();
   const size = Math.max(radius * 1.7, 80);
+  if (lastPlanesSize === size && Object.keys(planeMeshes).length) {
+    updatePlaneVisibility();
+    return;
+  }
+  disposeSubtree(planesGroup);
+  planesGroup.clear();
+  planeMeshes = {};
+  lastPlanesSize = size;
   for (const [id, rotation] of Object.entries(PLANE_ROTATIONS)) {
     const holder = new THREE.Group();
     holder.rotation.set(...rotation);
+    const fillMaterial = new THREE.MeshBasicMaterial({
+      color: 0x4f8fdb, transparent: true, opacity: 0.1,
+      side: THREE.DoubleSide, depthWrite: false });
+    fillMaterial.userData.own = true;
     const fill = new THREE.Mesh(
-      new THREE.PlaneGeometry(size, size),
-      new THREE.MeshBasicMaterial({
-        color: 0x4f8fdb, transparent: true, opacity: 0.1,
-        side: THREE.DoubleSide, depthWrite: false }));
+      new THREE.PlaneGeometry(size, size), fillMaterial);
     fill.userData.plane = id;
+    const borderMaterial = new THREE.LineBasicMaterial(
+      { color: 0x4f8fdb, transparent: true, opacity: 0.6 });
+    borderMaterial.userData.own = true;
     const border = new THREE.LineSegments(
-      new THREE.EdgesGeometry(fill.geometry),
-      new THREE.LineBasicMaterial(
-        { color: 0x4f8fdb, transparent: true, opacity: 0.6 }));
+      new THREE.EdgesGeometry(fill.geometry), borderMaterial);
     const label = makePlaneLabel(PLANE_LABELS[id]);
     label.position.set(0, size * 0.46, 0);
     label.scale.set(size * 0.42, size * 0.42 * (44 / 256), 1);
@@ -664,6 +696,7 @@ let selectedDatumFeature = null; // { name, placement }
 
 function refreshDatumGhost(hoverFeature) {
   if (datumGhost) {
+    disposeSubtree(datumGhost);
     scene.remove(datumGhost);
     datumGhost = null;
   }
@@ -674,15 +707,17 @@ function refreshDatumGhost(hoverFeature) {
   const holder = new THREE.Group();
   holder.matrixAutoUpdate = false;
   holder.matrix.set(...feature.placement);
+  const fillMaterial = new THREE.MeshBasicMaterial({
+    color: 0x4f8fdb, transparent: true, opacity: 0.14,
+    side: THREE.DoubleSide, depthWrite: false });
+  fillMaterial.userData.own = true;
   const fill = new THREE.Mesh(
-    new THREE.PlaneGeometry(size, size),
-    new THREE.MeshBasicMaterial({
-      color: 0x4f8fdb, transparent: true, opacity: 0.14,
-      side: THREE.DoubleSide, depthWrite: false }));
+    new THREE.PlaneGeometry(size, size), fillMaterial);
+  const borderMaterial = new THREE.LineBasicMaterial(
+    { color: 0x4f8fdb, transparent: true, opacity: 0.7 });
+  borderMaterial.userData.own = true;
   const border = new THREE.LineSegments(
-    new THREE.EdgesGeometry(fill.geometry),
-    new THREE.LineBasicMaterial(
-      { color: 0x4f8fdb, transparent: true, opacity: 0.7 }));
+    new THREE.EdgesGeometry(fill.geometry), borderMaterial);
   holder.add(fill, border);
   scene.add(holder);
   datumGhost = holder;
@@ -1210,6 +1245,7 @@ document.getElementById("btn-drawing").addEventListener("click", async () => {
 let assemblyState = null;      // dernier assembly_tree, ou null (mode pièce)
 let selectedComponent = null;
 let asmGroup = null;
+const asmOutlineMaterial = new THREE.LineBasicMaterial({ color: 0x11141a });
 
 function clearAssemblyView() {
   if (asmGroup) {
@@ -1243,7 +1279,7 @@ function showAssemblyMeshes(data) {
     mesh.userData.groups = comp.mesh.groups; // picking de faces (joints)
     const outline = new THREE.LineSegments(
       new THREE.EdgesGeometry(geometry, 25),
-      new THREE.LineBasicMaterial({ color: 0x11141a }));
+      asmOutlineMaterial);
     mesh.add(outline);
     asmGroup.add(mesh);
   }
@@ -1268,6 +1304,7 @@ function selectComponent(name) {
 
 async function refreshAssembly(treePromise) {
   const gen = ++viewGen;
+  lastClearedSelections = false;
   try {
     assemblyState = await treePromise;
     if (gen !== viewGen) return;
@@ -1275,7 +1312,7 @@ async function refreshAssembly(treePromise) {
     const meshes = await call("tessellate_assembly");
     if (gen !== viewGen) return;
     showAssemblyMeshes(meshes);
-    say("Assemblage à jour.");
+    if (!lastClearedSelections) say("Assemblage à jour.");
   } catch (error) {
     if (gen !== viewGen) return;
     say(error.message, true);
@@ -1286,6 +1323,7 @@ async function refreshAssembly(treePromise) {
 // supprimer, annuler) renvoient l'arbre du mode courant.
 async function refreshAny(treePromise) {
   const gen = ++viewGen;
+  lastClearedSelections = false;
   try {
     const tree = await treePromise;
     if (gen !== viewGen) return;
@@ -1300,7 +1338,7 @@ async function refreshAny(treePromise) {
       await updateViewport(gen);
       if (gen !== viewGen) return;
     }
-    say("À jour.");
+    if (!lastClearedSelections) say("À jour.");
   } catch (error) {
     if (gen !== viewGen) return;
     say(error.message, true);
@@ -1620,13 +1658,14 @@ document.getElementById("btn-explode").addEventListener("click", () => {
 
 async function refresh(treePromise) {
   const gen = ++viewGen;
+  lastClearedSelections = false;
   try {
     const tree = await treePromise;
     if (gen !== viewGen) return;
     renderTree(tree);
     await updateViewport(gen);
     if (gen !== viewGen) return;
-    say("À jour.");
+    if (!lastClearedSelections) say("À jour.");
   } catch (error) {
     if (gen !== viewGen) return;
     say(error.message, true);

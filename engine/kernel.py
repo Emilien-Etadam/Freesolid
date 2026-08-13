@@ -1656,6 +1656,13 @@ class Kernel:
                     pass
             if self._body is obj:
                 self._body = next(b for b in bodies if b is not obj)
+        # Supprimer le Tip laissait Body.Tip = None et une Shape invalide
+        # (attrapé par le selftest P007) : le Tip recule d'abord sur la
+        # fonction précédente de la chaîne (None si c'était la seule —
+        # corps vide légitime).
+        parent_body = obj.getParentGeoFeatureGroup()
+        if parent_body is not None and getattr(parent_body, "Tip", None) is obj:
+            parent_body.Tip = getattr(obj, "BaseFeature", None)
         doc.removeObject(obj.Name)
         try:
             if self._assembly:

@@ -3183,6 +3183,33 @@ class Kernel:
             report["p4_preview_leaves_doc_intact"] = (
                 len(self.get_tree()["features"]) == count
                 and len(self.tessellate()["groups"]) == faces_now)
+            vol_before = float(self._require_body().Shape.Volume)
+            top_edges = [i for i, e in
+                         enumerate(self._require_body().Shape.Edges)
+                         if abs(e.CenterOfMass.z - 10) < 1e-6]
+            tree = self.add_chamfer(size=2, edges=[top_edges[0]])
+            vol_chamfered = float(self._require_body().Shape.Volume)
+            report["p4_chamfer_commit_ok"] = (
+                not any(f["error"] for f in tree["features"])
+                and (vol_chamfered < vol_before - 1e-6
+                     or len(self.tessellate()["groups"]) > faces_now))
+            chamfer_name = next(f["name"] for f in tree["features"]
+                                if f["type"] == "PartDesign::Chamfer")
+            tree = self.delete_feature(chamfer_name)
+            chamfer_gone = (
+                not any(f["type"] == "PartDesign::Chamfer"
+                        for f in tree["features"])
+                and not any(f["error"] for f in tree["features"]))
+            # delete_feature du Tip laisse Tip=None et Shape invalide
+            # (constat P007, hors périmètre). Indicateur faux, l'étape
+            # continue — p5 repart sur une pièce neuve.
+            try:
+                vol_restored = abs(
+                    float(self._require_body().Shape.Volume)
+                    - vol_before) < 1e-6
+            except RuntimeError:
+                vol_restored = False
+            report["p4_delete_feature_ok"] = chamfer_gone and vol_restored
 
             mark("p5: congé sur arêtes")
             self.new_part("Pièce arêtes")
@@ -3250,6 +3277,18 @@ class Kernel:
             height = next(d for d in state["dims"] if d["id"] == height_dim)
             report["p7_equation_ok"] = abs(height["value"] - 30.0) < 1e-6
             report["p7_equation_shown"] = bool(height["expr"])
+            listed = self.list_variables()
+            report["p7_list_variables_ok"] = any(
+                v["name"] == "coef" and abs(v["value"] - 2.0) < 1e-9
+                for v in listed["variables"])
+            self.set_variable("jetable", 1.0)
+            listed = self.list_variables()
+            self.delete_variable("jetable")
+            listed_after = self.list_variables()
+            report["p7_delete_variable_ok"] = (
+                any(v["name"] == "jetable" for v in listed["variables"])
+                and not any(v["name"] == "jetable"
+                            for v in listed_after["variables"]))
 
             mark("p7: expression sur une fonction (Length = largeur/10)")
             self.sketch_add_line(par, 60, 30, 0, 30)
@@ -3401,6 +3440,17 @@ class Kernel:
                 abs(comp2["position"][0] - 30) > 1e-6
                 or abs(comp2["position"][2] - 10) > 1e-6
                 or abs(comp2["rotation"][0] - 45) > 1e-6)
+            asm = self.assembly_tree()
+            report["p10_assembly_tree_ok"] = (
+                len(asm["components"]) == 2
+                and len(asm.get("joints", ())) >= 2)
+            solved = self.solve_assembly()
+            report["p10_solve_op_ok"] = (
+                len(solved["components"]) == 2
+                and "joints" in solved)
+            # 2 existants + (3 - 1) copies du second = 4 composants.
+            arrayed = self.array_component(second, count=3, dx=80)
+            report["p10_array_ok"] = len(arrayed["components"]) == 4
 
             mark("p16: interférences (les instances se chevauchent)")
             inter = self.check_interference()
@@ -3449,6 +3499,32 @@ class Kernel:
             thick = self._require_doc().getObject(
                 tree["surfaces"][-1]["name"])
             report["p12_thicken_solid_ok"] = bool(thick.Shape.Solids)
+            state = self.sketch_start()
+            rev_sk = state["sketch"]
+            self.sketch_add_line(rev_sk, 20, 0, 20, 30)
+            self.sketch_finish(rev_sk)
+            n_surfaces = len(self.get_tree()["surfaces"])
+            tree = self.surface_revolve(360, sketch=rev_sk)
+            report["p12_surface_revolve_ok"] = (
+                any(s["label"] == "Surface de révolution"
+                    for s in tree["surfaces"])
+                and len(tree["surfaces"]) > n_surfaces)
+            state = self.sketch_start()
+            loft_a = state["sketch"]
+            self.sketch_add_line(loft_a, 0, 0, 40, 0)
+            self.sketch_finish(loft_a)
+            tree = self.add_datum_plane(base="XY", offset=25)
+            datum = next(f["name"] for f in tree["features"]
+                         if f["type"] == "PartDesign::Plane")
+            state = self.sketch_start(datum=datum)
+            loft_b = state["sketch"]
+            self.sketch_add_line(loft_b, -10, -10, 10, 10)
+            self.sketch_finish(loft_b)
+            n_surfaces = len(self.get_tree()["surfaces"])
+            tree = self.surface_loft([loft_a, loft_b])
+            report["p12_surface_loft_ok"] = (
+                any(s["label"] == "Surface lissée" for s in tree["surfaces"])
+                and len(tree["surfaces"]) > n_surfaces)
 
             mark("p12: courbe 3D + balayage dessus")
             curve_tree = self.add_curve3d(
@@ -3541,6 +3617,16 @@ class Kernel:
             state = self.sketch_add_polygon(adv, 80, 0, 90, 0, 6)
             report["p3_polygon_ok"] = len(state["entities"]) >= before + 6
             self.sketch_finish(adv)
+            edited = self.sketch_edit(adv)
+            self.sketch_state(adv)
+            report["p3_sketch_edit_ok"] = (
+                any(e["type"] == "arc" for e in edited["entities"])
+                and len(edited["entities"]) >= 1 + 4 + 6)
+            n_geo = len(edited["entities"])
+            state = self.sketch_add_line(adv, 200, 200, 210, 200)
+            added = state["entities"][-1]["id"]
+            state = self.sketch_delete_geo(adv, added)
+            report["p3_delete_geo_ok"] = len(state["entities"]) == n_geo
 
             mark("p3: congé d'esquisse")
             state = self.sketch_start()

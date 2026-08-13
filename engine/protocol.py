@@ -184,6 +184,32 @@ def _is_under_root(root: str, resolved: str) -> bool:
         return False
 
 
+#: Ponctuation arithmétique autorisée dans une expression client.
+#: Tout le reste (``<<Label>>``, indexation, chaînes, affectation…) est
+#: refusé — le moteur d'expressions FreeCAD sait sinon référencer
+#: n'importe quel objet du document.
+_EXPR_PUNCT = frozenset(" _.,+-*/%^()")
+_EXPR_MAX_LEN = 256
+
+
+def validate_expression(text):
+    """Expression paramétrique client — retourne le texte épuré,
+    ou lève ProtocolError."""
+    cleaned = str(text).strip() if text is not None else ""
+    if not cleaned:
+        raise ProtocolError("expression refusée — vide")
+    if len(cleaned) > _EXPR_MAX_LEN:
+        raise ProtocolError(
+            "expression refusée — trop longue (max. {} caractères)".format(
+                _EXPR_MAX_LEN))
+    for ch in cleaned:
+        if ch.isalpha() or ch in "0123456789" or ch in _EXPR_PUNCT:
+            continue
+        raise ProtocolError(
+            "expression refusée — caractère non autorisé : «{}»".format(ch))
+    return cleaned
+
+
 def resolve_user_path(path, extensions, must_exist=False):
     """Résout un chemin fourni par le client, ou lève ProtocolError.
 

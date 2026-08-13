@@ -55,6 +55,14 @@ class Kernel:
         except protocol.ProtocolError as exc:
             raise KernelError(str(exc))
 
+    def _user_expression(self, text):
+        """Allowlist d'expressions client — voir ``protocol.validate_expression``."""
+        from . import protocol
+        try:
+            return protocol.validate_expression(text)
+        except protocol.ProtocolError as exc:
+            raise KernelError(str(exc))
+
     def _require_doc(self):
         if self._doc is None:
             raise KernelError(
@@ -1760,6 +1768,9 @@ class Kernel:
         obj = doc.getObject(feature)
         if obj is None:
             raise KernelError("fonction inconnue : {}".format(feature))
+        prop = str(prop)
+        if prop not in self._EDITABLE_PROPS:
+            raise KernelError("propriété non éditable : {}".format(prop))
         if not hasattr(obj, prop):
             raise KernelError("{} n'a pas de propriété {}".format(
                 obj.Label, prop))
@@ -1789,6 +1800,8 @@ class Kernel:
             raise KernelError("values doit être un objet JSON")
         for prop, value in values.items():
             prop = str(prop)
+            if prop not in self._EDITABLE_PROPS:
+                raise KernelError("propriété non éditable : {}".format(prop))
             if not hasattr(obj, prop):
                 raise KernelError("{} n'a pas de propriété {}".format(
                     obj.Label, prop))
@@ -1797,6 +1810,7 @@ class Kernel:
                 try:
                     value = float(text)
                 except ValueError:
+                    text = self._user_expression(text)
                     try:
                         obj.setExpression(prop, text)
                     except Exception as exc:  # noqa: BLE001
@@ -2727,7 +2741,7 @@ class Kernel:
                 sk.renameConstraint(idx, name)
             path = "Constraints[{}]".format(idx)
             if expr is not None and str(expr).strip():
-                sk.setExpression(path, str(expr).strip())
+                sk.setExpression(path, self._user_expression(expr))
             elif value is not None:
                 try:
                     sk.setExpression(path, None)

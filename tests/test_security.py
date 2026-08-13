@@ -1,4 +1,4 @@
-"""Sécurité serveur — jail chemins, anti-CSRF, cap requête.
+"""Sécurité serveur — jail chemins, anti-CSRF, cap requête, expressions.
 
 Pur Python : aucun FreeCAD. ``FREESOLID_NO_SERVE`` est posé avant l'import
 de ``engine.server`` pour éviter d'ouvrir le port.
@@ -203,3 +203,50 @@ def test_safe_static_path_inside(tmp_path):
 def test_safe_static_path_traversal(tmp_path):
     assert server._safe_static_path(
         "/../etc/passwd", app_dir=str(tmp_path)) is None
+
+
+# -- validate_expression -------------------------------------------------
+
+@pytest.mark.parametrize("text", [
+    "2*Largeur + 5",
+    "Variables.epaisseur / 2",
+    "sin(30 deg)",
+    "(a + b) * 0,5",
+    "Variables.épaisseur / 2",
+])
+def test_validate_expression_accepts_real_usage(text):
+    assert protocol.validate_expression(text) == text
+
+
+def test_validate_expression_strips():
+    assert protocol.validate_expression("  2*x  ") == "2*x"
+
+
+@pytest.mark.parametrize("text, char", [
+    ("<<Autre>>.Valeur", "<"),
+    ("a; b", ";"),
+    ("x = 3", "="),
+    ('"txt"', '"'),
+    ("a[0]", "["),
+])
+def test_validate_expression_refuses_injection_chars(text, char):
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_expression(text)
+    message = str(excinfo.value)
+    assert "caractère non autorisé" in message
+    assert "«{}»".format(char) in message
+
+
+def test_validate_expression_refuses_empty():
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_expression("")
+    assert "vide" in str(excinfo.value)
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_expression("  ")
+    assert "vide" in str(excinfo.value)
+
+
+def test_validate_expression_refuses_too_long():
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_expression("a" * 300)
+    assert "trop longue" in str(excinfo.value)

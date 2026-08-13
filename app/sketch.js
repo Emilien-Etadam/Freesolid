@@ -159,8 +159,10 @@ export function createSketchMode(deps) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(text, 128, 21);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: new THREE.CanvasTexture(canvas), depthTest: false }));
+    const material = new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(canvas), depthTest: false });
+    material.userData.own = true;
+    const sprite = new THREE.Sprite(material);
     sprite.position.set(x, y, 0.01);
     sprite.scale.set(26, 4.1, 1);
     return sprite;
@@ -177,7 +179,21 @@ export function createSketchMode(deps) {
 
   let previewLine = null;
 
+  // Qui alloue dispose. Matériaux partagés (lineMaterial, etc.) : pas
+  // de flag, jamais disposés. Sprites de cotes : userData.own = true.
+  function disposeSubtree(root) {
+    root.traverse((obj) => {
+      obj.geometry?.dispose();
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const m of mats) {
+        if (m && m.userData?.own) { m.map?.dispose(); m.dispose(); }
+      }
+    });
+  }
+
   function redraw() {
+    if (previewLine) group.remove(previewLine);
+    disposeSubtree(group);
     group.clear();
     group.matrix.copy(mode.matrix);
     group.matrixAutoUpdate = false;
@@ -1086,6 +1102,7 @@ export function createSketchMode(deps) {
     }
     document.removeEventListener("keydown", onKey);
     setCursor("");
+    disposeSubtree(group);
     group.clear();
     previewLine = null;
 

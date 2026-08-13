@@ -125,6 +125,26 @@ export function createPropertyPanel({ say, onClose }) {
     return true;
   }
 
+  // Les ids de faces/arêtes meurent à chaque rebuild. Le viewport vide
+  // ses picks ; le PropertyManager doit faire de même — un Congé ouvert
+  // ne doit pas appliquer des ids périmés après un Ctrl+Z.
+  function invalidateSelections() {
+    if (!active) return 0;
+    let cleared = 0;
+    for (const group of active.spec.groups) {
+      for (const row of group.rows ?? []) {
+        if (row.type !== "selection") continue;
+        if (!hasSelectionValue(active.values[row.key])) continue;
+        active.values[row.key] = row.multiple ? { items: [] } : null;
+        cleared++;
+      }
+    }
+    if (!cleared) return 0;
+    render();
+    changed();
+    return cleared;
+  }
+
   // ---------- rendering ----------
 
   function render() {
@@ -272,6 +292,7 @@ export function createPropertyPanel({ say, onClose }) {
   return {
     open,
     notifyPick,
+    invalidateSelections,
     get active() { return active !== null; },
   };
 }

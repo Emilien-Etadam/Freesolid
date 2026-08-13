@@ -117,6 +117,11 @@ export function createLocalSolver(loadModule) {
   }
 
   // Une contrainte FreeCAD -> zéro, une ou plusieurs planegcs.
+  // Tableau vide : valide (Block, déjà posé via `fixed` sur les points).
+  // `null` ou `undefined` : non supporté — load() refuse toute l'esquisse
+  // et l'appelant retombe sur le drag serveur. Ne pas ignorer `null` :
+  // une contrainte connue mais irrésolue (ex. coïncidence vers un point
+  // d'axe) laisserait le modèle local sous-contraint.
   function translate(c, kinds, index) {
     const [g1, g2, g3] = c.geos;
     const [p1, p2, p3] = c.pos;
@@ -300,8 +305,8 @@ export function createLocalSolver(loadModule) {
     for (const [index, c] of state.constraints.entries()) {
       if (c.driving === false) continue; // cote de référence
       const translated = translate(c, kinds, index);
-      if (translated === undefined) return false; // non couvert
-      if (translated) primitives.push(...translated);
+      if (translated == null) return false; // null ou undefined : fallback
+      primitives.push(...translated);
     }
     model = { primitives, entities: state.entities };
     return true;

@@ -190,9 +190,18 @@ function repaintEdges() {
   });
 }
 
-async function updateViewport() {
-  showMesh(await call("tessellate"));
-  showEdgeLines(await call("tessellate_edges"));
+// Jeton monotone : une réponse n'applique arbre/maillage que si elle
+// est encore la plus récente (deux Ctrl+Z rapides, undo pendant un
+// refresh). Jamais de booléen « busy » qui bloque l'utilisateur.
+let viewGen = 0;
+
+async function updateViewport(gen) {
+  const mesh = await call("tessellate");
+  if (gen !== viewGen) return;
+  showMesh(mesh);
+  const edges = await call("tessellate_edges");
+  if (gen !== viewGen) return;
+  showEdgeLines(edges);
 }
 
 // ---------- plans de base (Face / Dessus / Droite) ----------
@@ -306,6 +315,7 @@ const ghostMaterial = new THREE.MeshStandardMaterial({
 });
 let ghostMesh = null;
 let previewTimer = null;
+let previewGen = 0;
 
 function clearGhost() {
   clearTimeout(previewTimer);
@@ -337,14 +347,22 @@ function showGhost(mesh) {
 
 // Chaque frappe dans le panneau relance l'aperçu, débouncé — le serveur
 // exécute la fonction dans une transaction puis l'annule (op "preview").
+// previewGen s'incrémente à chaque appel (y compris built == null) : une
+// réponse obsolète ne montre ni n'efface le fantôme.
 function schedulePreview(built) {
+  const gen = ++previewGen;
   clearTimeout(previewTimer);
   if (!built) { clearGhost(); return; }
   previewTimer = setTimeout(async () => {
     try {
-      showGhost(await call("preview",
-        { op: built.op, params: built.params }));
+      const mesh = await call("preview",
+        { op: built.op, params: built.params });
+      if (gen !== previewGen) return;
+      if (!panel.active) return;
+      showGhost(mesh);
     } catch (error) {
+      if (gen !== previewGen) return;
+      if (!panel.active) return;
       clearGhost();
       say("Aperçu — " + error.message);
     }
@@ -1249,12 +1267,17 @@ function selectComponent(name) {
 }
 
 async function refreshAssembly(treePromise) {
+  const gen = ++viewGen;
   try {
     assemblyState = await treePromise;
+    if (gen !== viewGen) return;
     renderAssemblyTree(assemblyState);
-    showAssemblyMeshes(await call("tessellate_assembly"));
+    const meshes = await call("tessellate_assembly");
+    if (gen !== viewGen) return;
+    showAssemblyMeshes(meshes);
     say("Assemblage à jour.");
   } catch (error) {
+    if (gen !== viewGen) return;
     say(error.message, true);
   }
 }
@@ -1262,18 +1285,24 @@ async function refreshAssembly(treePromise) {
 // Rafraîchit dans le bon mode — les ops transverses (renommer,
 // supprimer, annuler) renvoient l'arbre du mode courant.
 async function refreshAny(treePromise) {
+  const gen = ++viewGen;
   try {
     const tree = await treePromise;
+    if (gen !== viewGen) return;
     if (tree.assembly) {
       assemblyState = tree;
       renderAssemblyTree(tree);
-      showAssemblyMeshes(await call("tessellate_assembly"));
+      const meshes = await call("tessellate_assembly");
+      if (gen !== viewGen) return;
+      showAssemblyMeshes(meshes);
     } else {
       renderTree(tree);
-      await updateViewport();
+      await updateViewport(gen);
+      if (gen !== viewGen) return;
     }
     say("À jour.");
   } catch (error) {
+    if (gen !== viewGen) return;
     say(error.message, true);
   }
 }
@@ -1590,12 +1619,16 @@ document.getElementById("btn-explode").addEventListener("click", () => {
 // ---------- actions ----------
 
 async function refresh(treePromise) {
+  const gen = ++viewGen;
   try {
     const tree = await treePromise;
+    if (gen !== viewGen) return;
     renderTree(tree);
-    await updateViewport();
+    await updateViewport(gen);
+    if (gen !== viewGen) return;
     say("À jour.");
   } catch (error) {
+    if (gen !== viewGen) return;
     say(error.message, true);
   }
 }
@@ -2276,18 +2309,23 @@ document.getElementById("btn-open").addEventListener("click", async () => {
   const path = prompt("Ouvrir (.FCStd, .step, .iges) :",
                       "~/piece-freesolid.FCStd");
   if (!path) return;
+  const gen = ++viewGen;
   try {
     const tree = await call("open_part", { path });
+    if (gen !== viewGen) return;
     if (tree.assembly) {
       assemblyState = tree;
       renderAssemblyTree(tree);
-      showAssemblyMeshes(await call("tessellate_assembly"));
+      const meshes = await call("tessellate_assembly");
+      if (gen !== viewGen) return;
+      showAssemblyMeshes(meshes);
       showTab("assembly");
       say("Assemblage ouvert.");
       return;
     }
     renderTree(tree);
-    await updateViewport();
+    await updateViewport(gen);
+    if (gen !== viewGen) return;
     say(tree.imported_solids !== undefined
       ? `Importé — ${tree.imported_solids} solide(s), la forme est la ` +
         "base du corps."
@@ -2295,6 +2333,7 @@ document.getElementById("btn-open").addEventListener("click", async () => {
         ? `Ouvert — ${tree.bodies_in_file} corps dans le fichier.`
         : "Ouvert.");
   } catch (error) {
+    if (gen !== viewGen) return;
     say(error.message, true);
   }
 });
@@ -2355,15 +2394,19 @@ document.getElementById("btn-pad").addEventListener("click", () =>
   })));
 
 document.getElementById("btn-selftest").addEventListener("click", async () => {
+  const gen = ++viewGen;
   try {
     say("Selftest en cours…");
     const report = await call("selftest");
+    if (gen !== viewGen) return;
     renderTree(report.tree_after_pad);
-    await updateViewport();
+    await updateViewport(gen);
+    if (gen !== viewGen) return;
     say(`Selftest OK — ${report.mesh_faces} faces, ` +
         `${report.mesh_triangles} triangles, reparam ${report.m0_reparam_ok ? "OK" : "ÉCHEC"}`);
     console.log("selftest", report);
   } catch (error) {
+    if (gen !== viewGen) return;
     say("Selftest : " + error.message, true);
   }
 });
@@ -2382,14 +2425,21 @@ call("ping")
     // la pièce en cours réapparaît au lieu d'être écrasée au premier
     // clic sur Esquisse.
     try {
-      renderTree(await call("get_tree"));
-      await updateViewport();
+      const gen = ++viewGen;
+      const tree = await call("get_tree");
+      if (gen !== viewGen) return;
+      renderTree(tree);
+      await updateViewport(gen);
     } catch {
       try {
         // Peut-être un assemblage en cours dans le moteur.
+        const gen = ++viewGen;
         assemblyState = await call("assembly_tree");
+        if (gen !== viewGen) return;
         renderAssemblyTree(assemblyState);
-        showAssemblyMeshes(await call("tessellate_assembly"));
+        const meshes = await call("tessellate_assembly");
+        if (gen !== viewGen) return;
+        showAssemblyMeshes(meshes);
         showTab("assembly");
       } catch {
         // pas encore de document — Esquisse créera une pièce

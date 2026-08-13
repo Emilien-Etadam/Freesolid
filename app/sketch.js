@@ -593,7 +593,45 @@ export function createSketchMode(deps) {
     return null;
   }
 
-  let dragTimer = null;
+  let moveInFlight = false;
+  let pendingMove = null; // { sketch, geo, point, x, y, gen } | null
+  let moveGen = 0;
+
+  // File sérielle du fallback serveur : un seul sketch_move en vol ;
+  // pendant l'attente on ne garde que la dernière (x, y) ; seule la
+  // réponse la plus récente peut applyState. Le sketch_move final du
+  // pointerup (chemin solveur local) passe par ici aussi.
+  function enqueueSketchMove(x, y) {
+    if (!mode.state || !mode.drag) return;
+    pendingMove = {
+      sketch: mode.state.sketch,
+      geo: mode.drag.geo,
+      point: mode.drag.point,
+      x, y,
+      gen: ++moveGen,
+    };
+    flushSketchMoves();
+  }
+
+  async function flushSketchMoves() {
+    if (moveInFlight || !pendingMove) return;
+    const req = pendingMove;
+    pendingMove = null;
+    moveInFlight = true;
+    try {
+      const state = await call("sketch_move", {
+        sketch: req.sketch, geo: req.geo, point: req.point,
+        x: req.x, y: req.y,
+      });
+      if (req.gen === moveGen) applyState(state);
+    } catch (error) {
+      if (req.gen === moveGen) say(error.message, true);
+    } finally {
+      moveInFlight = false;
+      if (pendingMove) flushSketchMoves();
+    }
+  }
+
   function onPointerMove(event) {
     mode.lastMouse = { clientX: event.clientX, clientY: event.clientY };
     if (mode.tool === "select" && !mode.drag) {
@@ -614,8 +652,9 @@ export function createSketchMode(deps) {
         }
         mode.solverOk = false; // solveur KO : retour au chemin serveur
       }
-      // Fallback : le point suit le curseur en local, le solveur serveur
-      // corrige à chaque réponse (throttle 45 ms).
+      // Fallback : le point suit le curseur en local ; le solveur
+      // serveur corrige via une file sérielle (un sketch_move en vol,
+      // dernière position en attente).
       const entity = mode.state?.entities.find(
         (e) => e.id === mode.drag.geo);
       if (entity) {
@@ -628,11 +667,7 @@ export function createSketchMode(deps) {
         }
         redraw();
       }
-      if (dragTimer) return;
-      dragTimer = setTimeout(() => { dragTimer = null; }, 45);
-      safe(call("sketch_move", { sketch: mode.state.sketch,
-        geo: mode.drag.geo, point: mode.drag.point,
-        x: local.x, y: local.y }));
+      enqueueSketchMove(local.x, local.y);
     } else if (mode.tool === "line" && mode.chain && previewLine) {
       const local = toLocal(event);
       if (!local) return;
@@ -674,12 +709,10 @@ export function createSketchMode(deps) {
 
   function onPointerUp() {
     if (mode.drag) {
-      // Drag local (M3) : un seul sketch_move au lâcher — le serveur
-      // (la vérité) résout et renvoie l'état final.
-      if (mode.dragLocal && mode.state) {
-        safe(call("sketch_move", { sketch: mode.state.sketch,
-          geo: mode.drag.geo, point: mode.drag.point,
-          x: mode.dragLocal.x, y: mode.dragLocal.y }));
+      // Drag local (M3) : un seul sketch_move au lâcher, via la même
+      // file — il ne double pas un move serveur déjà en vol.
+      if (mode.solverOk && mode.dragLocal && mode.state) {
+        enqueueSketchMove(mode.dragLocal.x, mode.dragLocal.y);
       }
       mode.dragLocal = null;
       mode.drag = null;

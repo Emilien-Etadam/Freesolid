@@ -60,8 +60,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const step = async (label) =>
     console.log(`[${label}] status = "${await status()}"`);
 
-  await page.goto(URL_BASE + "/");
-  await sleep(3000);
+  // Attente active du moteur : la page peut se charger avant que
+  // freecadcmd n'ait fini de démarrer (~10 s à froid), et l'app ne
+  // ping qu'une fois au boot — on recharge jusqu'au « Moteur prêt ».
+  let ready = false;
+  for (let i = 0; i < 20 && !ready; i++) {
+    await page.goto(URL_BASE + "/");
+    await sleep(3000);
+    ready = (await status()).includes("Moteur prêt");
+  }
+  if (!ready) {
+    console.log("ERREUR: moteur jamais prêt — status = " + await status());
+    await browser.close();
+    process.exit(1);
+  }
   await step("chargement");
 
   // 1. Esquisse — choix du plan dans le viewport

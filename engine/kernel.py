@@ -782,14 +782,10 @@ class Kernel:
     def _drawing_add_extent_dims(self, doc, page, view, created):
         """Cotes d'encombrement DistanceX/DistanceY sur la vue de face.
 
-        Headless 1.0.x : HLR tourne dans un thread Qt sans QApplication,
-        donc getVisibleEdges() reste vide. CoarseView (projection
-        polygonale) peuple les arêtes 2D — c'est ce qui rend les
-        References2D possibles. Retourne False plutôt que d'échouer.
+        Les arêtes 2D doivent déjà être peuplées (CoarseView posé à la
+        création de la vue — trop tard ensuite). Retourne False plutôt
+        que d'échouer : le DXF muet reste meilleur que pas de DXF.
         """
-        if not self._drawing_visible_edges(view):
-            view.CoarseView = True
-            doc.recompute()
         edges = self._drawing_visible_edges(view)
         ids = self._drawing_extreme_edge_ids(edges)
         if ids is None:
@@ -908,6 +904,10 @@ class Kernel:
                 created.append(view)
                 view.Source = [body]
                 view.Direction = App.Vector(*direction)
+                # Headless 1.0.x : le HLR Qt ne peuple pas les arêtes 2D.
+                # CoarseView doit être posé AVANT le premier recompute.
+                if want_dims:
+                    view.CoarseView = True
                 self._drawing_apply_scale(view, scale)
                 page.addView(view)
                 view.X = x

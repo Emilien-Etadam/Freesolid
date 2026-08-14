@@ -1040,6 +1040,34 @@ export function createSketchMode(deps) {
     });
   });
 
+  document.getElementById("sk-offset").addEventListener("click", () => {
+    if (!mode.state) return;
+    if (!mode.selection.length) {
+      say("Décaler : sélectionnez d'abord une chaîne d'entités", true);
+      return;
+    }
+    const geos = mode.selection.map((s) => s.geo);
+    panel.open({
+      icon: "Sketcher_Copy.svg",
+      title: "Décaler les entités",
+      groups: [{
+        label: "Paramètres",
+        rows: [
+          { type: "number", key: "distance", label: "Distance", value: 5,
+            unit: "mm", min: 0.01 },
+          { type: "check", key: "reversed", label: "Inverser le côté",
+            value: false },
+        ],
+      }],
+      note: "Les copies restent libres — le décalage paramétrique " +
+            "viendra plus tard.",
+      onApply: (v) => safe(call("sketch_offset", {
+        sketch: mode.state.sketch, geos,
+        distance: num(v.distance) ?? 5,
+        reversed: !!v.reversed })),
+    });
+  });
+
   // Convertir les entités : le contour de la face porteuse arrive en
   // géométrie réelle bloquée — le point de départ SolidWorks classique.
   document.getElementById("sk-convert").addEventListener("click", () => {

@@ -2415,6 +2415,102 @@ class Kernel:
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
+    def sketch_offset(self, sketch, geos, distance, reversed=False):
+        """Décalage d'entités : offset 2D non contraint (makeOffset2D).
+
+        Le « Décalage » paramétrique SolidWorks (contraintes d'égalité
+        de distance) viendra plus tard — les copies restent libres.
+        """
+        import Part
+        sk = self._get_sketch(sketch)
+        App = self._app()
+        ids = []
+        seen = set()
+        for raw in geos or ():
+            try:
+                gid = int(raw)
+            except (TypeError, ValueError):
+                raise KernelError(
+                    "identifiant d'entité invalide : {}".format(raw))
+            if gid in seen:
+                continue
+            seen.add(gid)
+            if gid < 0 or gid >= len(sk.Geometry):
+                raise KernelError("entité inconnue : {}".format(gid))
+            ids.append(gid)
+        if not ids:
+            raise KernelError("sélectionnez les entités à décaler")
+        dist = float(distance)
+        if dist <= 0:
+            raise KernelError("la distance doit être positive")
+        signed = -dist if reversed else dist
+
+        edges = []
+        for gid in ids:
+            try:
+                shape = sk.Geometry[gid].toShape()
+            except Exception as exc:  # noqa: BLE001
+                raise KernelError(_explain(exc))
+            found = [shape] if shape.ShapeType == "Edge" else list(shape.Edges)
+            if not found:
+                raise KernelError(
+                    "les entités à décaler doivent former une chaîne connexe")
+            edges.extend(found)
+        try:
+            chains = Part.sortEdges(edges)
+        except Exception:  # noqa: BLE001
+            raise KernelError(
+                "les entités à décaler doivent former une chaîne connexe")
+        if len(chains) != 1:
+            raise KernelError(
+                "les entités à décaler doivent former une chaîne connexe")
+        try:
+            wire = Part.Wire(chains[0])
+            offset_shape = wire.makeOffset2D(signed)
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError("décalage impossible : {}".format(_explain(exc)))
+
+        offset_edges = list(offset_shape.Edges)
+        if not offset_edges:
+            raise KernelError("décalage impossible : aucun contour produit")
+
+        # Tout ou rien : convertir d'abord, n'injecter qu'ensuite.
+        geoms = [self._geom_from_offset_edge(edge, Part, App)
+                 for edge in offset_edges]
+        for geom in geoms:
+            sk.addGeometry(geom, False)
+        return self.sketch_state(sketch)
+
+    @staticmethod
+    def _geom_from_offset_edge(edge, Part, App):
+        """Arête d'offset → géométrie d'esquisse (ligne, arc ou cercle)."""
+        import math
+        curve = edge.Curve
+        tid = curve.TypeId
+        V = App.Vector
+        if tid in ("Part::GeomLine", "Part::GeomLineSegment"):
+            verts = edge.Vertexes
+            if len(verts) != 2:
+                raise KernelError("géométrie non décalable pour l'instant")
+            return Part.LineSegment(
+                V(verts[0].Point.x, verts[0].Point.y, 0),
+                V(verts[1].Point.x, verts[1].Point.y, 0))
+        if tid == "Part::GeomCircle":
+            span = abs(edge.LastParameter - edge.FirstParameter)
+            full = (bool(getattr(edge, "Closed", False))
+                    or abs(span - 2 * math.pi) < 1e-4)
+            if full:
+                return Part.Circle(
+                    V(curve.Center.x, curve.Center.y, 0),
+                    V(0, 0, 1), float(curve.Radius))
+            p1 = edge.valueAt(edge.FirstParameter)
+            p2 = edge.valueAt(
+                0.5 * (edge.FirstParameter + edge.LastParameter))
+            p3 = edge.valueAt(edge.LastParameter)
+            return Part.ArcOfCircle(
+                V(p1.x, p1.y, 0), V(p2.x, p2.y, 0), V(p3.x, p3.y, 0))
+        raise KernelError("géométrie non décalable pour l'instant")
+
     def sketch_add_slot(self, sketch, x1, y1, x2, y2, width):
         """Rainure droite : deux arcs + deux lignes, tangences et rayons
         égaux posés d'emblée — le contour reste une rainure sous le solveur.
@@ -3583,7 +3679,7 @@ class Kernel:
                 not any(f["error"] for f in tree["features"])
                 and len(self.tessellate()["groups"]) > faces_now)
 
-            mark("p17: spline, ellipse, symétrie et répétition d'entités")
+            mark("p17: spline, ellipse, symétrie, répétition et décalage")
             self.new_part("Pièce esquisse confort")
             state = self.sketch_start()
             comfort = state["sketch"]
@@ -3604,6 +3700,56 @@ class Kernel:
             # (comportement addRectangularArray, sondé sur 1.0.2).
             report["p17_array_ok"] = len(state["entities"]) == 9
             self.sketch_finish(comfort)
+
+            state = self.sketch_start()
+            offset_sk = state["sketch"]
+            self.sketch_add_line(offset_sk, 0, 0, 40, 0)
+            self.sketch_add_line(offset_sk, 40, 0, 40, 30)
+            self.sketch_add_line(offset_sk, 40, 30, 0, 30)
+            state = self.sketch_add_line(offset_sk, 0, 30, 0, 0)
+            orig_lines = [e for e in state["entities"] if e["type"] == "line"]
+            before = len(state["entities"])
+            state = self.sketch_offset(offset_sk, [0, 1, 2, 3], 5.0)
+            new_ents = state["entities"][before:]
+            dist_ok = False
+            for new_line in new_ents:
+                if new_line["type"] != "line":
+                    continue
+                for orig in orig_lines:
+                    oh = abs(orig["p1"][1] - orig["p2"][1]) < 1e-6
+                    nh = abs(new_line["p1"][1] - new_line["p2"][1]) < 1e-6
+                    if oh and nh:
+                        gap = abs(orig["p1"][1] - new_line["p1"][1])
+                        if abs(gap - 5.0) < 1e-4:
+                            dist_ok = True
+                    ov = abs(orig["p1"][0] - orig["p2"][0]) < 1e-6
+                    nv = abs(new_line["p1"][0] - new_line["p2"][0]) < 1e-6
+                    if ov and nv:
+                        gap = abs(orig["p1"][0] - new_line["p1"][0])
+                        if abs(gap - 5.0) < 1e-4:
+                            dist_ok = True
+            report["p17_offset_ok"] = len(new_ents) >= 4 and dist_ok
+
+            state = self.sketch_add_circle(offset_sk, 80, 0, 10)
+            circ = next(e for e in state["entities"] if e["type"] == "circle")
+            known = {e["id"] for e in state["entities"]}
+            state = self.sketch_offset(offset_sk, [circ["id"]], 5.0)
+            report["p17_offset_circle_ok"] = any(
+                e["type"] == "circle" and e["id"] not in known
+                and (abs(e["r"] - 15.0) < 1e-4 or abs(e["r"] - 5.0) < 1e-4)
+                for e in state["entities"])
+
+            state = self.sketch_add_line(offset_sk, 200, 0, 220, 0)
+            id_a = state["entities"][-1]["id"]
+            state = self.sketch_add_line(offset_sk, 200, 30, 220, 30)
+            id_b = state["entities"][-1]["id"]
+            disjoint_ok = False
+            try:
+                self.sketch_offset(offset_sk, [id_a, id_b], 5.0)
+            except KernelError as exc:
+                disjoint_ok = "chaîne connexe" in str(exc)
+            report["p17_offset_disjoint_ok"] = disjoint_ok
+            self.sketch_finish(offset_sk)
 
             mark("p18: import STEP + export 3MF")
             tree = self.open_part(os.path.join(
@@ -3763,7 +3909,7 @@ _TRANSACTIONAL = frozenset({
     "sketch_add_arc", "sketch_add_slot", "sketch_add_polygon",
     "sketch_fillet", "sketch_trim", "sketch_constrain",
     "sketch_add_spline", "sketch_add_ellipse", "sketch_mirror",
-    "sketch_array", "array_component",
+    "sketch_array", "sketch_offset", "array_component",
 })
 
 

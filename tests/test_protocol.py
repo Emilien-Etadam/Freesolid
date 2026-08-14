@@ -316,7 +316,16 @@ def test_comfort_ops_declared():
     assert protocol.OPS["sketch_mirror"] == ("sketch", "geos", "axis")
     assert protocol.OPS["sketch_array"] == (
         "sketch", "geos", "dx", "dy", "cols", "rows")
+    assert protocol.OPS["sketch_offset"] == ("sketch", "geos", "distance")
     assert protocol.OPS["array_component"] == ("component", "count")
+    protocol.validate_request(
+        {"op": "sketch_offset",
+         "params": {"sketch": "Sketch", "geos": [0, 1, 2, 3],
+                    "distance": 5}})
+    protocol.validate_request(
+        {"op": "sketch_offset",
+         "params": {"sketch": "Sketch", "geos": [0], "distance": 5.0,
+                    "reversed": True}})
     protocol.validate_request(
         {"op": "add_joint",
          "params": {"component1": "A", "component2": "B", "type": "pivot",
@@ -411,6 +420,7 @@ def test_ops_snapshot_keys():
         "sketch_finish",
         "sketch_mirror",
         "sketch_move",
+        "sketch_offset",
         "sketch_set_dim",
         "sketch_start",
         "sketch_state",

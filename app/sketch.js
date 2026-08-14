@@ -6,6 +6,8 @@
 
 import * as THREE from "three";
 import { createLocalSolver } from "./solver.js";
+import { arcAngles } from "./geom2d.js";
+import { num } from "./num.js";
 
 export function createSketchMode(deps) {
   const { scene, camera, renderer, controls, call, say, refresh, panel } =
@@ -59,6 +61,7 @@ export function createSketchMode(deps) {
   };
 
   const SNAP_PX = 12;
+  let building = false; // construction multi-appels (rectangle) en cours
 
   // M3 : le solveur planegcs (WASM) côté client. Pendant un drag, la
   // résolution est locale (60 fps, zéro réseau) ; le serveur réconcilie
@@ -73,16 +76,6 @@ export function createSketchMode(deps) {
                     trim: "pointer", construction: "pointer",
                     spline: "crosshair", ellipse: "crosshair",
                     dim: "crosshair" };
-
-  // CCW sweep p1 -> p2 around c, as the engine stores arcs.
-  function arcAngles(entity) {
-    const a1 = Math.atan2(entity.p1[1] - entity.c[1],
-                          entity.p1[0] - entity.c[0]);
-    let a2 = Math.atan2(entity.p2[1] - entity.c[1],
-                        entity.p2[0] - entity.c[0]);
-    if (a2 <= a1) a2 += Math.PI * 2;
-    return { a1, a2 };
-  }
 
   function setCursor(name) {
     renderer.domElement.style.cursor = name;
@@ -326,7 +319,8 @@ export function createSketchMode(deps) {
     };
   }
 
-  function onClick(event) {
+  async function onClick(event) {
+    if (building) return;
     const local = toLocal(event);
     if (!local || !mode.state) return;
     const snapped = snap(local, event);
@@ -364,7 +358,12 @@ export function createSketchMode(deps) {
       } else {
         const a = mode.pendingRect;
         mode.pendingRect = null;
-        addRectangle(name, a, snapped);
+        building = true;
+        try {
+          await addRectangle(name, a, snapped);
+        } finally {
+          building = false;
+        }
       }
     } else if (mode.tool === "rectc") {
       if (!mode.pendingRectC) {
@@ -373,8 +372,13 @@ export function createSketchMode(deps) {
       } else {
         const c = mode.pendingRectC;
         mode.pendingRectC = null;
-        addRectangle(name,
-          { x: 2 * c.x - snapped.x, y: 2 * c.y - snapped.y }, snapped);
+        building = true;
+        try {
+          await addRectangle(name,
+            { x: 2 * c.x - snapped.x, y: 2 * c.y - snapped.y }, snapped);
+        } finally {
+          building = false;
+        }
       }
     } else if (mode.tool === "circle") {
       if (!mode.pendingCircle) {
@@ -469,7 +473,7 @@ export function createSketchMode(deps) {
       } else if (mode.pendingFillet.geo !== target) {
         const first = mode.pendingFillet;
         mode.pendingFillet = null;
-        const radius = parseFloat(
+        const radius = num(
           prompt("Rayon du congé d'esquisse (mm) :", "3") ?? "");
         if (!radius) return;
         safe(call("sketch_fillet", { sketch: name,
@@ -641,7 +645,12 @@ export function createSketchMode(deps) {
       });
       if (req.gen === moveGen) applyState(state);
     } catch (error) {
-      if (req.gen === moveGen) say(error.message, true);
+      if (req.gen === moveGen) {
+        say(error.message, true);
+        if (mode.state?.sketch) {
+          safe(call("sketch_state", { sketch: mode.state.sketch }));
+        }
+      }
     } finally {
       moveInFlight = false;
       if (pendingMove) flushSketchMoves();
@@ -767,7 +776,7 @@ export function createSketchMode(deps) {
         const raw = String(v.value ?? "").trim();
         if (raw && raw !== shown) {
           if (/^-?\d+([.,]\d+)?$/.test(raw)) {
-            const parsed = parseFloat(raw.replace(",", "."));
+            const parsed = num(raw);
             params.value = isAngle ? parsed * Math.PI / 180 : parsed;
           } else {
             params.expr = raw;
@@ -797,6 +806,7 @@ export function createSketchMode(deps) {
     if (!mode.active) return;
     // Taper dans un champ du panneau ne doit pas changer d'outil.
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
+    const key = event.key.toLowerCase();
     if (event.key === "Escape") {
       if (previewLine) previewLine.visible = false;
       setTool("select");
@@ -819,15 +829,15 @@ export function createSketchMode(deps) {
       } else {
         say("Suppr : survolez d'abord la géométrie à supprimer");
       }
-    } else if (event.key === "l") setTool("line");
-    else if (event.key === "r") setTool("rect");
-    else if (event.key === "c") setTool("circle");
-    else if (event.key === "a") setTool("arc3");
-    else if (event.key === "s") setTool("spline");
-    else if (event.key === "e") setTool("ellipse");
-    else if (event.key === "t") setTool("trim");
-    else if (event.key === "g") setTool("construction");
-    else if (event.key === "d") setTool("dim");
+    } else if (key === "l") setTool("line");
+    else if (key === "r") setTool("rect");
+    else if (key === "c") setTool("circle");
+    else if (key === "a") setTool("arc3");
+    else if (key === "s") setTool("spline");
+    else if (key === "e") setTool("ellipse");
+    else if (key === "t") setTool("trim");
+    else if (key === "g") setTool("construction");
+    else if (key === "d") setTool("dim");
   }
 
   // ---------- toolbar ----------
@@ -835,6 +845,7 @@ export function createSketchMode(deps) {
   const bar = document.getElementById("sketchbar");
 
   function setTool(tool) {
+    if (building) return;
     mode.tool = tool;
     mode.chain = null;
     mode.pendingCircle = null;
@@ -1023,7 +1034,7 @@ export function createSketchMode(deps) {
             "cotables ensuite.",
       onApply: (v) => safe(call("sketch_array", {
         sketch: mode.state.sketch, geos,
-        dx: parseFloat(v.dx) || 0, dy: parseFloat(v.dy) || 0,
+        dx: num(v.dx) ?? 0, dy: num(v.dy) ?? 0,
         cols: parseInt(v.cols, 10) || 1,
         rows: parseInt(v.rows, 10) || 1 })),
     });

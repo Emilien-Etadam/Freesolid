@@ -2,7 +2,7 @@
 
 Source : [@salusoft89/planegcs](https://www.npmjs.com/package/@salusoft89/planegcs) v1.2.0
 — le solveur de contraintes planegcs de FreeCAD (Sketcher), compilé en
-WebAssembly. Licence **LGPL-2.0-or-later** (fichier LICENSE ci-contre),
+WebAssembly. Licence **LGPL-2.1-or-later** (fichier LICENSE ci-contre),
 comme le reste des composants FreeCAD réutilisés par FreeSolid.
 
 Contenu : la distribution `dist/` du paquet npm telle quelle (fichiers

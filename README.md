@@ -138,7 +138,8 @@ this by AST inspection.
 FreeSolid is not affiliated with, endorsed by, or derived from any
 commercial CAD vendor. Vendor names appear only to describe who this addon
 is for, which is nominative use. No vendor icon, dialog or resource is
-reproduced — all icons are original.
+reproduced. The Qt addon's icons are original; the web UI reuses FreeCAD
+SVG icons under LGPL, documented in [`app/icons/README.md`](app/icons/README.md).
 
 An unrelated *FreeSOLID* existed in the 2000s: a collision-detection library
 (SOLID, *Software Library for Interference Detection*). It is dormant and in

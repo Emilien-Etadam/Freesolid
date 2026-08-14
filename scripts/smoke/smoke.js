@@ -95,6 +95,32 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("rectangle");
   await page.screenshot({ path: path.join(SHOTS, "1-esquisse.png") });
 
+  // 2b. Image d'esquisse — calque client, jamais envoyé au serveur.
+  // PNG 2×2 px via le sélecteur de fichier du bouton Image.
+  const png2x2 = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR4nGP4z8AAQmDqPwgAAEnICfchVbMlAAAAAElFTkSuQmCC",
+    "base64",
+  );
+  const chooserPromise = page.waitForEvent("filechooser", { timeout: 8000 });
+  await page.click("#sk-image");
+  const chooser = await chooserPromise;
+  await chooser.setFiles({
+    name: "scan.png",
+    mimeType: "image/png",
+    buffer: png2x2,
+  });
+  await page.waitForFunction(
+    () => document.querySelector("#panel .ptitle")?.textContent
+      === "Image d'esquisse",
+    null,
+    { timeout: 8000 },
+  );
+  await sleep(400);
+  await step("image esquisse");
+  await page.screenshot({ path: path.join(SHOTS, "1b-image-esquisse.png") });
+  await page.click('#panel [title^="OK"]');
+  await sleep(300);
+
   // 3. Drag du coin — solveur planegcs WASM dans le navigateur
   await page.click('[data-tool="select"]');
   await sleep(300);

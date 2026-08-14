@@ -172,8 +172,170 @@ export function createSketchMode(deps) {
 
   let previewLine = null;
 
+  // Calque d'image d'esquisse : mesh + texture alloués ici, jamais
+  // envoyés au serveur. Une seule image à la fois ; survit aux redraw,
+  // disparaît à l'exit.
+  const MAX_SKETCH_IMAGE_BYTES = 25 * 1024 * 1024;
+  let imageLayer = null; // { mesh, aspect, fileName, params }
+  let pendingImageUrl = null;
+  let imageLoadGen = 0;
+
+  function revokePendingImageUrl() {
+    if (!pendingImageUrl) return;
+    URL.revokeObjectURL(pendingImageUrl);
+    pendingImageUrl = null;
+  }
+
+  function disposeImageLayer() {
+    if (!imageLayer) return;
+    const mesh = imageLayer.mesh;
+    if (mesh) {
+      group.remove(mesh);
+      mesh.geometry?.dispose();
+      const mat = mesh.material;
+      if (mat?.userData?.own) { mat.map?.dispose(); mat.dispose(); }
+    }
+    imageLayer = null;
+  }
+
+  function applyImageLayer(values) {
+    if (!imageLayer?.mesh) return;
+    const width = Math.max(0.01, num(values.width) ?? 100);
+    const height = width / (imageLayer.aspect || 1);
+    const x = num(values.x) ?? 0;
+    const y = num(values.y) ?? 0;
+    const deg = num(values.rotation) ?? 0;
+    let opacity = num(values.opacity);
+    if (opacity === null) opacity = 0.5;
+    opacity = Math.min(1, Math.max(0.1, opacity));
+    imageLayer.mesh.position.set(x, y, 0);
+    imageLayer.mesh.rotation.set(0, 0, deg * Math.PI / 180);
+    imageLayer.mesh.scale.set(width, height, 1);
+    imageLayer.mesh.material.opacity = opacity;
+    imageLayer.params = { width, x, y, rotation: deg, opacity };
+  }
+
+  function openImagePanel() {
+    const params = imageLayer?.params ?? {
+      width: 100, x: 0, y: 0, rotation: 0, opacity: 0.5,
+    };
+    panel.open({
+      icon: "Sketcher_Sketch.svg",
+      title: "Image d'esquisse",
+      groups: [
+        {
+          label: "Placement",
+          rows: [
+            { type: "number", key: "width", label: "Largeur",
+              value: params.width, unit: "mm", min: 0.01 },
+            { type: "number", key: "x", label: "X",
+              value: params.x, unit: "mm" },
+            { type: "number", key: "y", label: "Y",
+              value: params.y, unit: "mm" },
+            { type: "number", key: "rotation", label: "Rotation",
+              value: params.rotation, unit: "°" },
+            { type: "number", key: "opacity", label: "Opacité",
+              value: params.opacity, min: 0.1, step: 0.05 },
+          ],
+        },
+        {
+          label: "Calque",
+          rows: [{
+            type: "list",
+            items: [{
+              label: imageLayer?.fileName || "image",
+              onDelete: () => {
+                disposeImageLayer();
+                say("Image d'esquisse supprimée.");
+                document.querySelector("#panel .pcancel")?.click();
+              },
+            }],
+          }],
+        },
+      ],
+      note: "L'image ne survit pas à la fermeture de l'esquisse — "
+        + "réimporter au besoin. Elle ne quitte pas le navigateur.",
+      onChange: (v) => applyImageLayer(v),
+      onApply: () => {},
+    });
+  }
+
+  function loadSketchImage(file) {
+    if (!mode.active) return;
+    if (file.size > MAX_SKETCH_IMAGE_BYTES) {
+      say("Image trop lourde (max 25 Mo).", true);
+      return;
+    }
+    const type = file.type || "";
+    const name = file.name || "";
+    const okType = type.startsWith("image/")
+      || /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
+    if (!okType) {
+      say("Fichier non reconnu comme image (PNG, JPEG, SVG…).", true);
+      return;
+    }
+
+    revokePendingImageUrl();
+    const url = URL.createObjectURL(file);
+    pendingImageUrl = url;
+    const gen = ++imageLoadGen;
+    const img = new Image();
+    img.onload = () => {
+      if (pendingImageUrl === url) {
+        URL.revokeObjectURL(url);
+        pendingImageUrl = null;
+      }
+      if (gen !== imageLoadGen || !mode.active) return;
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      if (!w || !h) {
+        say("Impossible de lire l'image (dimensions nulles).", true);
+        return;
+      }
+      const texture = new THREE.Texture(img);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.needsUpdate = true;
+      disposeImageLayer();
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0.5,
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      material.userData.own = true;
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
+      mesh.renderOrder = 0;
+      // Décor : ni snap, ni sélection, ni drag. nearestEntity() ne
+      // parcourt que les entités serveur ; ce no-op protège un
+      // éventuel raycast du groupe.
+      mesh.raycast = () => {};
+      imageLayer = {
+        mesh,
+        aspect: w / h,
+        fileName: name || "image",
+        params: { width: 100, x: 0, y: 0, rotation: 0, opacity: 0.5 },
+      };
+      applyImageLayer(imageLayer.params);
+      group.add(mesh);
+      openImagePanel();
+      say("Image d'esquisse posée — calque de travail, non enregistré.");
+    };
+    img.onerror = () => {
+      if (pendingImageUrl === url) {
+        URL.revokeObjectURL(url);
+        pendingImageUrl = null;
+      }
+      if (gen !== imageLoadGen) return;
+      say("Impossible de charger l'image.", true);
+    };
+    img.src = url;
+  }
+
   // Qui alloue dispose. Matériaux partagés (lineMaterial, etc.) : pas
   // de flag, jamais disposés. Sprites de cotes : userData.own = true.
+  // Image d'esquisse : retirée avant ce parcours (comme previewLine).
   function disposeSubtree(root) {
     root.traverse((obj) => {
       obj.geometry?.dispose();
@@ -186,10 +348,13 @@ export function createSketchMode(deps) {
 
   function redraw() {
     if (previewLine) group.remove(previewLine);
+    const imageMesh = imageLayer?.mesh;
+    if (imageMesh) group.remove(imageMesh);
     disposeSubtree(group);
     group.clear();
     group.matrix.copy(mode.matrix);
     group.matrixAutoUpdate = false;
+    if (imageMesh && mode.active) group.add(imageMesh);
     if (!mode.state) return;
 
     const points = [];
@@ -1068,6 +1233,18 @@ export function createSketchMode(deps) {
     });
   });
 
+  const imageInput = document.getElementById("sk-image-file");
+  document.getElementById("sk-image").addEventListener("click", () => {
+    if (!mode.active || !mode.state) return;
+    imageInput.value = "";
+    imageInput.click();
+  });
+  imageInput.addEventListener("change", () => {
+    const file = imageInput.files?.[0];
+    if (!file) return;
+    loadSketchImage(file);
+  });
+
   // Convertir les entités : le contour de la face porteuse arrive en
   // géométrie réelle bloquée — le point de départ SolidWorks classique.
   document.getElementById("sk-convert").addEventListener("click", () => {
@@ -1141,6 +1318,9 @@ export function createSketchMode(deps) {
     }
     document.removeEventListener("keydown", onKey);
     setCursor("");
+    imageLoadGen += 1;
+    revokePendingImageUrl();
+    disposeImageLayer();
     disposeSubtree(group);
     group.clear();
     previewLine = null;

@@ -1235,7 +1235,10 @@ export function createSketchMode(deps) {
 
   const imageInput = document.getElementById("sk-image-file");
   document.getElementById("sk-image").addEventListener("click", () => {
-    if (!mode.active || !mode.state) return;
+    if (!mode.active || !mode.state) {
+      say("Image d'esquisse : ouvrez d'abord une esquisse.", true);
+      return;
+    }
     imageInput.value = "";
     imageInput.click();
   });

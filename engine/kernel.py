@@ -11,6 +11,7 @@ addon's parameter paths.
 """
 
 import os
+import re
 import sys
 
 # The engine lives beside the freesolid package in the same repo; make the
@@ -25,6 +26,22 @@ from freesolid.vocab import label_for_type          # noqa: E402
 
 class KernelError(Exception):
     """Operation failed; message is designer-facing when translatable."""
+
+
+_BODY_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def parse_body_color(color):
+    """Valide une couleur d'affichage.
+
+    ``None`` / ``""`` reviennent au défaut. Sinon ``#rrggbb``.
+    """
+    if color is None or color == "":
+        return ""
+    if not isinstance(color, str) or _BODY_COLOR_RE.fullmatch(color) is None:
+        raise KernelError(
+            "couleur invalide « {} » — attendu #rrggbb".format(color))
+    return color
 
 
 def _explain(exc) -> str:
@@ -1132,6 +1149,23 @@ class Kernel:
         self._body = obj
         return self.get_tree()
 
+    def set_body_color(self, body, color):
+        """Couleur d'affichage d'un corps, persistée dans le .FCStd.
+
+        Headless : pas de ViewObject. Propriété custom ``FreeSolidColor``.
+        ``color`` = ``#rrggbb``, ou ``None`` / ``""`` pour le défaut.
+        """
+        doc = self._require_doc()
+        obj = doc.getObject(str(body))
+        if obj is None or obj.TypeId != "PartDesign::Body":
+            raise KernelError("corps inconnu : {}".format(body))
+        value = parse_body_color(color)
+        if "FreeSolidColor" not in obj.PropertiesList:
+            obj.addProperty("App::PropertyString", "FreeSolidColor",
+                            "FreeSolid", "Couleur d'affichage")
+        obj.FreeSolidColor = value
+        return self.get_tree()
+
     def add_boolean(self, tool, type="cut"):
         """Combiner deux corps — Soustraire / Ajouter / Intersection.
 
@@ -2178,6 +2212,7 @@ class Kernel:
                 "count": len([o for o in obj.Group
                               if o.isDerivedFrom("PartDesign::Feature")
                               or o.TypeId == "Sketcher::SketchObject"]),
+                "color": getattr(obj, "FreeSolidColor", "") or None,
             })
         surfaces = [{"name": o.Name, "label": o.Label}
                     for o in self._doc.Objects
@@ -2203,21 +2238,40 @@ class Kernel:
                 faces.append(
                     (i, [(v.x, v.y, v.z) for v in vertices], triangles))
         mesh = protocol.pack_mesh(faces)
+        mesh["color"] = getattr(body, "FreeSolidColor", "") or None
         # Les autres corps s'affichent estompés, non sélectionnables :
         # on travaille sur le corps actif, on voit la pièce entière.
-        other_faces = []
+        # Un maillage par corps (couleur propre) ; ``others`` reste le
+        # buffer combiné pour la compatibilité (selftest p9_others_shown).
+        other_bodies = []
         for obj in self._doc.Objects:
             if (obj.TypeId != "PartDesign::Body" or obj is body
                     or getattr(obj, "Shape", None) is None):
                 continue
+            other_faces = []
             for face in obj.Shape.Faces:
                 vertices, triangles = face.tessellate(float(deviation))
                 other_faces.append(
                     (0, [(v.x, v.y, v.z) for v in vertices], triangles))
-        if other_faces:
-            others = protocol.pack_mesh(other_faces)
-            mesh["others"] = {"positions": others["positions"],
-                              "indices": others["indices"]}
+            if not other_faces:
+                continue
+            packed = protocol.pack_mesh(other_faces)
+            other_bodies.append({
+                "name": obj.Name,
+                "color": getattr(obj, "FreeSolidColor", "") or None,
+                "positions": packed["positions"],
+                "indices": packed["indices"],
+            })
+        if other_bodies:
+            mesh["other_bodies"] = other_bodies
+            positions = []
+            indices = []
+            vertex_base = 0
+            for extra in other_bodies:
+                positions.extend(extra["positions"])
+                indices.extend(i + vertex_base for i in extra["indices"])
+                vertex_base += len(extra["positions"]) // 3
+            mesh["others"] = {"positions": positions, "indices": indices}
         # Les surfaces (Part::Feature) voyagent à part : rendu double face
         # translucide côté client, non sélectionnables.
         surface_faces = []
@@ -3652,6 +3706,24 @@ class Kernel:
             report["p9_others_shown"] = "others" in self.tessellate()
             tool_body = self._require_body().Name
             self.set_active_body(first_body)
+            tree = self.set_body_color(first_body, "#cc5533")
+            report["p9_color_ok"] = any(
+                b["name"] == first_body and b.get("color") == "#cc5533"
+                for b in tree["bodies"])
+            try:
+                self.set_body_color(first_body, "rouge")
+                report["p9_color_invalid_ok"] = False
+            except KernelError:
+                report["p9_color_invalid_ok"] = True
+            import tempfile
+            color_path = os.path.join(tempfile.gettempdir(),
+                                      "freesolid-selftest-color.FCStd")
+            self.save_part(color_path)
+            reopened = self.open_part(color_path)
+            report["p9_color_persist_ok"] = any(
+                b["name"] == first_body and b.get("color") == "#cc5533"
+                for b in reopened["bodies"])
+            self.set_active_body(first_body)
             faces_before = len(self.tessellate()["groups"])
             tree = self.add_boolean(tool=tool_body, type="cut")
             report["p9_boolean_ok"] = (
@@ -4044,7 +4116,7 @@ _TRANSACTIONAL = frozenset({
     "add_revolution", "add_groove", "add_mirror", "add_linear_pattern",
     "add_polar_pattern", "add_thickness", "add_draft", "add_hole",
     "add_datum_plane", "add_loft", "add_sweep", "add_helix",
-    "add_body", "add_boolean",
+    "add_body", "add_boolean", "set_body_color",
     "insert_component", "move_component", "add_joint", "solve_assembly",
     "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
     "surface_thicken", "add_curve3d", "sketch_convert", "add_text",

@@ -251,6 +251,26 @@ def test_multibody_ops_declared():
         {"op": "add_boolean", "params": {"tool": "Body001", "type": "cut"}})
 
 
+def test_set_body_color_declared():
+    assert protocol.OPS["set_body_color"] == ("body", "color")
+    protocol.validate_request(
+        {"op": "set_body_color",
+         "params": {"body": "Body", "color": "#cc5533"}})
+    protocol.validate_request(
+        {"op": "set_body_color",
+         "params": {"body": "Body", "color": None}})
+    protocol.validate_request(
+        {"op": "set_body_color",
+         "params": {"body": "Body", "color": ""}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "set_body_color", "params": {"body": "Body"}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "set_body_color",
+             "params": {"body": "", "color": "#cc5533"}})
+
+
 def test_joint_ops_declared():
     assert protocol.OPS["add_joint"] == ("component1", "component2")
     assert protocol.OPS["solve_assembly"] == ()
@@ -401,6 +421,7 @@ def test_ops_snapshot_keys():
         "save_part",
         "selftest",
         "set_active_body",
+        "set_body_color",
         "set_param",
         "set_params",
         "set_tip",

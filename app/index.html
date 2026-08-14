@@ -102,6 +102,12 @@
   }
   #tree li:hover { background: var(--panel-2); }
   #tree li.body { padding-left: 12px; font-weight: 600; }
+  #tree li.body .swatch {
+    display: inline-block;
+    width: 10px; height: 10px;
+    margin-right: 6px; vertical-align: -1px;
+    border: 1px solid var(--line); border-radius: 2px;
+  }
   #tree li.body.active { color: var(--accent); }
   #tree li.body:not(.active) { color: var(--ink-2); cursor: pointer; }
   #tree li img {
@@ -358,6 +364,8 @@
       </main>
   <div id="ctxmenu">
     <div id="ctx-rename">Renommer</div>
+    <div id="ctx-color" hidden>Couleur…</div>
+    <div id="ctx-color-reset" hidden>Couleur par défaut</div>
     <div id="ctx-rollback">Amener la barre de retour ici</div>
     <div id="ctx-end">Revenir à l'état final</div>
     <div id="ctx-delete" class="danger">Supprimer</div>
@@ -370,6 +378,8 @@
   </footer>
 
   <input type="file" id="sk-image-file" accept="image/*" hidden>
+  <input type="color" id="body-color-picker" value="#9fb2c4"
+    style="position:fixed;left:-9999px;width:0;height:0;opacity:0" tabindex="-1">
 
   <script type="importmap">
   {

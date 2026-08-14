@@ -12,13 +12,17 @@
 //     title: "Bossage/Base extrudé",
 //     groups: [{ label, rows: [row…] }],
 //     note?: string,
-//     onApply(values), onCancel?()
+//     onApply(values), onCancel?(), onChange?(values)
 //   }
 // Rows: { type: "number", key, label, value, unit?, min?, step?, showIf? }
 //       { type: "select", key, options: [[value, label]…], value, label? }
 //       { type: "check",  key, label, value }
-//       { type: "selection", key, label?, hint?, value? }   // face picks
+//       { type: "selection", key, label?, hint?, value?, accepts?, multiple? }
+//       { type: "text", key, label, value?, placeholder?, unit? }
+//       { type: "list", items: [{ label, onDelete? }], empty? }
 //       { type: "note", text }
+//
+// invalidateSelections() : vide les rows `selection` (ids périmés au rebuild).
 
 export function createPropertyPanel({ say, onClose }) {
   const aside = document.querySelector("aside");

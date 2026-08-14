@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createSketchMode } from "./sketch.js";
 import { createPropertyPanel } from "./panel.js";
+import { num } from "./num.js";
 
 const statusEl = document.getElementById("status");
 const pickEl = document.getElementById("pick");
@@ -18,8 +19,22 @@ async function call(op, params = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ op, params }),
   });
-  const payload = await response.json();
-  if (!payload.ok) throw new Error(payload.error + (payload.hint ? ` (${payload.hint})` : ""));
+  const text = await response.text();
+  let payload = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    payload = null;
+  }
+  // {ok:false} (HTTP 200 ou 4xx protocole) : message moteur / protocole.
+  if (payload && payload.ok === false) {
+    throw new Error(payload.error + (payload.hint ? ` (${payload.hint})` : ""));
+  }
+  if (!response.ok || !payload || payload.ok !== true) {
+    const excerpt = text.slice(0, 180).replace(/\s+/g, " ").trim();
+    throw new Error(
+      `HTTP ${response.status}${excerpt ? ` — ${excerpt}` : ""}`);
+  }
   return payload.result;
 }
 
@@ -1064,12 +1079,12 @@ document.getElementById("btn-text").addEventListener("click", () =>
     ],
     build: (v) => {
       const content = (v.content ?? "").trim();
-      const size = parseFloat(v.size);
-      const depth = parseFloat(v.depth);
+      const size = num(v.size);
+      const depth = num(v.depth);
       if (!content || !(size > 0) || !(depth > 0)) return null;
       return { op: "add_text", params: {
         text: content, face: v.sel.face, size, depth,
-        x: parseFloat(v.x) || 0, y: parseFloat(v.y) || 0,
+        x: num(v.x) ?? 0, y: num(v.y) ?? 0,
         emboss: !!v.emboss } };
     },
   })));
@@ -1110,7 +1125,7 @@ document.getElementById("btn-clip").addEventListener("click", () => {
     }],
     note: "N'enlève pas de matière : la pièce est seulement montrée " +
           "coupée à l'écran.",
-    onApply: (v) => setClip(v.axis, parseFloat(v.position) || 0, !!v.flip),
+    onApply: (v) => setClip(v.axis, num(v.position) ?? 0, !!v.flip),
   });
 });
 
@@ -1136,7 +1151,7 @@ surfacePanel("btn-surf-extrude", {
            unit: "mm" }],
   note: "Utilise la dernière esquisse — le profil peut être OUVERT.",
   build: (v) => {
-    const length = parseFloat(v.length);
+    const length = num(v.length);
     return length ? { op: "surface_extrude", params: { length } } : null;
   },
 });
@@ -1147,7 +1162,7 @@ surfacePanel("btn-surf-revolve", {
            unit: "°", min: 0.01 }],
   note: "Autour de l'axe vertical de la dernière esquisse.",
   build: (v) => {
-    const angle = parseFloat(v.angle);
+    const angle = num(v.angle);
     return angle ? { op: "surface_revolve", params: { angle } } : null;
   },
 });
@@ -1201,7 +1216,7 @@ document.getElementById("btn-surf-thicken").addEventListener("click", () =>
                  value: 2, unit: "mm" }] },
     ],
     onApply: (v) => {
-      const thickness = parseFloat(v.thickness);
+      const thickness = num(v.thickness);
       if (!v.surface || !thickness) {
         say("Épaissir : une surface et une épaisseur non nulle", true);
         return;
@@ -1218,9 +1233,9 @@ document.getElementById("btn-curve3d").addEventListener("click", () =>
       "ex. : 0,0,0 ; 0,0,30 ; 20,0,50", "0,0,0 ; 0,0,30 ; 20,0,50");
     if (!raw) return;
     const points = raw.split(";").map((p) =>
-      p.split(",").map((v) => parseFloat(v.trim())));
+      p.split(",").map((v) => num(v.trim())));
     if (points.length < 2
-        || points.some((p) => p.length !== 3 || p.some(Number.isNaN))) {
+        || points.some((p) => p.length !== 3 || p.some((n) => n === null))) {
       say("Courbe 3D : au moins deux points x,y,z valides", true);
       return;
     }
@@ -1415,10 +1430,10 @@ function openMovePanel() {
           "de contraintes d'assemblage viendra ensuite.",
     onApply: (v) => refreshAssembly(call("move_component", {
       component: comp.name,
-      x: parseFloat(v.x) || 0, y: parseFloat(v.y) || 0,
-      z: parseFloat(v.z) || 0,
-      yaw: parseFloat(v.yaw) || 0, pitch: parseFloat(v.pitch) || 0,
-      roll: parseFloat(v.roll) || 0,
+      x: num(v.x) ?? 0, y: num(v.y) ?? 0,
+      z: num(v.z) ?? 0,
+      yaw: num(v.yaw) ?? 0, pitch: num(v.pitch) ?? 0,
+      roll: num(v.roll) ?? 0,
     })),
   });
 }
@@ -1459,12 +1474,12 @@ document.getElementById("btn-joint").addEventListener("click", () => {
       type: v.type,
     };
     if (v.type === "distance" || MECHANICAL.includes(v.type)) {
-      const d = parseFloat(v.distance);
-      if (!(d >= 0)) return null;
+      const d = num(v.distance);
+      if (d === null || d < 0) return null;
       params.distance = d;
       if (["engrenages", "courroie"].includes(v.type)) {
-        const d2 = parseFloat(v.distance2);
-        if (!(d2 >= 0)) return null;
+        const d2 = num(v.distance2);
+        if (d2 === null || d2 < 0) return null;
         params.distance2 = d2;
       }
     }
@@ -1475,8 +1490,8 @@ document.getElementById("btn-joint").addEventListener("click", () => {
                                 ["lengthMax", "length_max"]]) {
       const raw = String(v[key] ?? "").trim();
       if (raw) {
-        const parsed = parseFloat(raw.replace(",", "."));
-        if (!Number.isNaN(parsed)) params[param] = parsed;
+        const parsed = num(raw);
+        if (parsed !== null) params[param] = parsed;
       }
     }
     return params;
@@ -1577,8 +1592,8 @@ document.getElementById("btn-array-comp").addEventListener("click", () => {
       if (!(count >= 2)) { say("Au moins 2 occurrences", true); return; }
       refreshAssembly(call("array_component", {
         component: comp.name, count,
-        dx: parseFloat(v.dx) || 0, dy: parseFloat(v.dy) || 0,
-        dz: parseFloat(v.dz) || 0 }));
+        dx: num(v.dx) ?? 0, dy: num(v.dy) ?? 0,
+        dz: num(v.dz) ?? 0 }));
     },
   });
 });
@@ -1726,8 +1741,8 @@ async function openEquationsPanel() {
           "ex. Variables.Largeur / 2. Retaper un nom existant le modifie.",
     onApply: async (v) => {
       const name = (v.name ?? "").trim();
-      const value = parseFloat(String(v.value ?? "").replace(",", "."));
-      if (!name || Number.isNaN(value)) return;
+      const value = num(v.value);
+      if (!name || value === null) return;
       try {
         await call("set_variable", { name, value });
         say(`${name} = ${value}`);
@@ -1778,7 +1793,7 @@ async function openEvaluatePanel() {
     note: "PLA ≈ 1,24 · PETG ≈ 1,27 · ABS ≈ 1,04 · Alu ≈ 2,70 · " +
           "Acier ≈ 7,85 — OK recalcule avec la densité saisie",
     onApply: (v) => {
-      const density = parseFloat(v.density);
+      const density = num(v.density);
       if (density > 0) {
         lastDensity = density;
         openEvaluatePanel();
@@ -1838,7 +1853,7 @@ function pocketBuild(v) {
   if (v.cond === "travers") {
     return { op: "add_pocket", params: { through: true, reversed } };
   }
-  const length = Math.abs(parseFloat(v.length));
+  const length = Math.abs(num(v.length) ?? 0);
   return length ? { op: "add_pocket", params: { length, reversed } } : null;
 }
 
@@ -1924,7 +1939,7 @@ document.getElementById("btn-fillet").addEventListener("click", () =>
     rows: [{ type: "number", key: "radius", label: "Rayon", value: 3,
              unit: "mm", min: 0.01 }],
     build: (v) => {
-      const radius = parseFloat(v.radius);
+      const radius = num(v.radius);
       return radius > 0
         ? { op: "add_fillet",
             params: { ...dressupParams(v.sel), radius } }
@@ -1942,7 +1957,7 @@ document.getElementById("btn-chamfer").addEventListener("click", () =>
     rows: [{ type: "number", key: "size", label: "Distance", value: 2,
              unit: "mm", min: 0.01 }],
     build: (v) => {
-      const size = parseFloat(v.size);
+      const size = num(v.size);
       return size > 0
         ? { op: "add_chamfer",
             params: { ...dressupParams(v.sel), size } }
@@ -1958,7 +1973,7 @@ document.getElementById("btn-shell").addEventListener("click", () =>
     rows: [{ type: "number", key: "thickness", label: "Épaisseur", value: 2,
              unit: "mm", min: 0.01 }],
     build: (v) => {
-      const thickness = parseFloat(v.thickness);
+      const thickness = num(v.thickness);
       return thickness > 0
         ? { op: "add_thickness",
             params: { face: v.sel.face, thickness } }
@@ -1977,33 +1992,33 @@ document.getElementById("btn-draft").addEventListener("click", () =>
       { type: "note", text: "Plan neutre : Plan de dessus" },
     ],
     build: (v) => {
-      const angle = parseFloat(v.angle);
+      const angle = num(v.angle);
       return angle > 0
         ? { op: "add_draft", params: { face: v.sel.face, angle } } : null;
     },
   })));
 
 function holeBuild(v) {
-  const diameter = parseFloat(v.diameter);
+  const diameter = num(v.diameter);
   if (!(diameter > 0)) return null;
   const params = { diameter, cut: v.cut };
   if (v.cond === "borgne") {
-    const depth = parseFloat(v.depth);
+    const depth = num(v.depth);
     if (!(depth > 0)) return null;
     params.depth = depth;
   } else {
     params.through = true;
   }
   if (v.cut !== "none") {
-    const cutDiameter = parseFloat(v.cutDiameter);
+    const cutDiameter = num(v.cutDiameter);
     if (!(cutDiameter > diameter)) return null; // le lamage englobe le trou
     params.cut_diameter = cutDiameter;
     if (v.cut === "lamage") {
-      const cutDepth = parseFloat(v.cutDepth);
+      const cutDepth = num(v.cutDepth);
       if (!(cutDepth > 0)) return null;
       params.cut_depth = cutDepth;
     } else {
-      const cutAngle = parseFloat(v.cutAngle);
+      const cutAngle = num(v.cutAngle);
       if (cutAngle > 0) params.cut_angle = cutAngle;
     }
   }
@@ -2119,8 +2134,8 @@ document.getElementById("btn-datum").addEventListener("click", () =>
     ],
     onApply: (v) => {
       const params = {
-        offset: parseFloat(v.offset) || 0,
-        angle: parseFloat(v.angle) || 0,
+        offset: num(v.offset) ?? 0,
+        angle: num(v.angle) ?? 0,
       };
       if (v.sel && v.sel.face != null) params.face = v.sel.face;
       else params.base = v.base;
@@ -2202,8 +2217,8 @@ document.getElementById("btn-sweep").addEventListener("click", () =>
   })));
 
 function helixBuild(v) {
-  const pitch = parseFloat(v.pitch);
-  const height = parseFloat(v.height);
+  const pitch = num(v.pitch);
+  const height = num(v.height);
   return pitch > 0 && height > 0
     ? { op: "add_helix", params: { pitch, height } } : null;
 }
@@ -2233,7 +2248,7 @@ document.getElementById("btn-helix").addEventListener("click", () =>
 
 function revolvedPanel(op, icon, title) {
   const build = (v) => {
-    const angle = parseFloat(v.angle);
+    const angle = num(v.angle);
     return angle ? { op, params: { angle } } : null;
   };
   panel.open({
@@ -2284,7 +2299,7 @@ document.getElementById("btn-mirror").addEventListener("click", () =>
   })));
 
 function linPatternBuild(v) {
-  const length = parseFloat(v.length);
+  const length = num(v.length);
   const count = parseInt(v.count, 10);
   return length && count >= 2
     ? { op: "add_linear_pattern", params: { axis: v.axis, length, count } }
@@ -2316,7 +2331,7 @@ document.getElementById("btn-linpattern").addEventListener("click", () =>
   })));
 
 function polPatternBuild(v) {
-  const angle = parseFloat(v.angle);
+  const angle = num(v.angle);
   const count = parseInt(v.count, 10);
   return angle && count >= 2
     ? { op: "add_polar_pattern", params: { count, angle } } : null;
@@ -2402,7 +2417,7 @@ document.getElementById("btn-export").addEventListener("click", async () => {
 });
 
 function padBuild(v) {
-  const length = Math.abs(parseFloat(v.length));
+  const length = Math.abs(num(v.length) ?? 0);
   if (!length) return null;
   return { op: "add_pad",
            params: { length, reversed: !!v.reversed,
@@ -2435,18 +2450,18 @@ document.getElementById("btn-pad").addEventListener("click", () =>
 document.getElementById("btn-selftest").addEventListener("click", async () => {
   const gen = ++viewGen;
   try {
-    say("Selftest en cours…");
+    say("Autotest en cours…");
     const report = await call("selftest");
     if (gen !== viewGen) return;
     renderTree(report.tree_after_pad);
     await updateViewport(gen);
     if (gen !== viewGen) return;
-    say(`Selftest OK — ${report.mesh_faces} faces, ` +
+    say(`Autotest OK — ${report.mesh_faces} faces, ` +
         `${report.mesh_triangles} triangles, reparam ${report.m0_reparam_ok ? "OK" : "ÉCHEC"}`);
     console.log("selftest", report);
   } catch (error) {
     if (gen !== viewGen) return;
-    say("Selftest : " + error.message, true);
+    say("Autotest : " + error.message, true);
   }
 });
 

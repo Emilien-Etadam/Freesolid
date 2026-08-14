@@ -756,6 +756,7 @@ class Kernel:
         path = self._user_path(path, (".dxf",), must_exist=False)
         created = []
         cleanup_errors = []
+        original = None
         try:
             page = doc.addObject("TechDraw::DrawPage", "Page")
             created.append(page)
@@ -786,10 +787,12 @@ class Kernel:
             doc.recompute()
             import TechDraw
             TechDraw.writeDXFPage(page, path)
-        except KernelError:
+        except KernelError as exc:
+            original = exc
             raise
         except Exception as exc:  # noqa: BLE001
-            raise KernelError(_explain(exc))
+            original = KernelError(_explain(exc))
+            raise original
         finally:
             for obj in reversed(created):
                 try:
@@ -802,9 +805,11 @@ class Kernel:
             except Exception:
                 pass
             if cleanup_errors:
-                raise KernelError(
-                    "mise en plan : nettoyage incomplet — {}".format(
-                        " ; ".join(cleanup_errors)))
+                note = "mise en plan : nettoyage incomplet — {}".format(
+                    " ; ".join(cleanup_errors))
+                if original is None:
+                    raise KernelError(note)
+                original.args = (original.args[0] + " — " + note,)
         if not os.path.exists(path):
             raise KernelError("l'export DXF n'a rien produit")
         return {"path": path, "size": os.path.getsize(path)}

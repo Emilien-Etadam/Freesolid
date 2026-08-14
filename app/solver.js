@@ -11,6 +11,8 @@
 // Tout état non traduisible (géométrie ou contrainte inconnue) rend le
 // modèle « non supporté » : l'appelant retombe sur le drag serveur.
 
+import { arcAngles } from "./geom2d.js";
+
 export function createLocalSolver(loadModule) {
   let wrapper = null;
   let status = "idle"; // idle | loading | ready | failed
@@ -62,15 +64,6 @@ export function createLocalSolver(loadModule) {
       { id: "ayp2", type: "point", x: 0, y: 1, fixed: true },
       { id: "gy", type: "line", p1_id: "ayp1", p2_id: "ayp2" },
     ];
-  }
-
-  function arcAngles(entity) {
-    const a1 = Math.atan2(entity.p1[1] - entity.c[1],
-                          entity.p1[0] - entity.c[0]);
-    let a2 = Math.atan2(entity.p2[1] - entity.c[1],
-                        entity.p2[0] - entity.c[0]);
-    if (a2 <= a1) a2 += Math.PI * 2;
-    return { a1, a2 };
   }
 
   function geometryPrimitives(state, blocked) {

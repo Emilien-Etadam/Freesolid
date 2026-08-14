@@ -95,7 +95,8 @@ let selectedEdges = new Set();
 
 let partMesh = null;
 let partEdges = null;
-let othersMesh = null; // les corps non actifs, estompés
+let othersMeshes = []; // corps non actifs, un mesh chacun
+let partBaseMaterial = null; // clone possédé — couleur du corps actif
 let meshGroups = [];
 let edgeGroups = [];
 let hoveredEdgeGroup = -1;
@@ -127,12 +128,31 @@ function disposeSubtree(root) {
   });
 }
 
+function hexColor(value) {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
+    ? value : null;
+}
+
+function ownedMaterial(source, color) {
+  const material = source.clone();
+  material.userData.own = true;
+  if (color) material.color.set(color);
+  return material;
+}
+
+function detachMesh(mesh) {
+  if (!mesh) return;
+  scene.remove(mesh);
+  disposeSubtree(mesh);
+}
+
 let lastClearedSelections = false;
 
 function showMesh(mesh) {
-  if (partMesh) { scene.remove(partMesh); partMesh.geometry.dispose(); }
-  if (othersMesh) { scene.remove(othersMesh); othersMesh.geometry.dispose(); }
-  partMesh = othersMesh = null;
+  detachMesh(partMesh);
+  for (const extra of othersMeshes) detachMesh(extra);
+  othersMeshes = [];
+  partMesh = partBaseMaterial = null;
   meshGroups = mesh.groups;
   hoveredGroup = -1;
   selectedFaceId = null; // ids shift after every feature: stale picks lie
@@ -151,14 +171,24 @@ function showMesh(mesh) {
     curvesLines.geometry.dispose();
     curvesLines = null;
   }
-  if (mesh.others?.indices.length) {
+  const othersList = mesh.other_bodies?.length
+    ? mesh.other_bodies
+    : (mesh.others?.indices.length
+      ? [{ color: null, positions: mesh.others.positions,
+           indices: mesh.others.indices }]
+      : []);
+  for (const extra of othersList) {
+    if (!extra.indices.length) continue;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position",
-      new THREE.Float32BufferAttribute(mesh.others.positions, 3));
-    geometry.setIndex(mesh.others.indices);
+      new THREE.Float32BufferAttribute(extra.positions, 3));
+    geometry.setIndex(extra.indices);
     geometry.computeVertexNormals();
-    othersMesh = new THREE.Mesh(geometry, othersMaterial);
-    scene.add(othersMesh);
+    const otherMesh = new THREE.Mesh(
+      geometry, ownedMaterial(othersMaterial, hexColor(extra.color)));
+    otherMesh.raycast = () => {};
+    scene.add(otherMesh);
+    othersMeshes.push(otherMesh);
   }
   if (mesh.surfaces?.indices.length) {
     const geometry = new THREE.BufferGeometry();
@@ -188,7 +218,9 @@ function showMesh(mesh) {
 
   geometry.computeBoundingSphere(); // les vues standard cadrent dessus
 
-  partMesh = new THREE.Mesh(geometry, [baseMaterial, hoverMaterial, selectedMaterial]);
+  partBaseMaterial = ownedMaterial(baseMaterial, hexColor(mesh.color));
+  partMesh = new THREE.Mesh(geometry,
+    [partBaseMaterial, hoverMaterial, selectedMaterial]);
   scene.add(partMesh);
   rebuildPlanes(); // les plans de base suivent la taille de la pièce
 }
@@ -374,6 +406,7 @@ function clearGhost() {
     ghostMesh = null;
   }
   baseMaterial.opacity = 1;
+  if (partBaseMaterial) partBaseMaterial.opacity = 1;
 }
 
 function showGhost(mesh) {
@@ -391,6 +424,7 @@ function showGhost(mesh) {
   ghostMesh = new THREE.Mesh(geometry, ghostMaterial);
   scene.add(ghostMesh);
   baseMaterial.opacity = 0.15; // la pièce s'efface derrière le résultat
+  if (partBaseMaterial) partBaseMaterial.opacity = 0.15;
 }
 
 // Chaque frappe dans le panneau relance l'aperçu, débouncé — le serveur
@@ -798,6 +832,12 @@ function renderTree(tree) {
     const bodyItem = document.createElement("li");
     bodyItem.className = "body" + (bodyInfo.active ? " active" : "");
     bodyItem.appendChild(treeIcon("PartDesign_Body.svg"));
+    if (hexColor(bodyInfo.color)) {
+      const swatch = document.createElement("span");
+      swatch.className = "swatch";
+      swatch.style.background = bodyInfo.color;
+      bodyItem.appendChild(swatch);
+    }
     bodyItem.appendChild(document.createTextNode(
       bodyInfo.label
       + (bodyInfo.active ? "" : ` — ${bodyInfo.count} élément(s)`)));
@@ -993,9 +1033,16 @@ async function editFeature(feature) {
 const menuEl = document.getElementById("ctxmenu");
 let menuFeature = null;
 
+function isBodyMenuTarget(feature) {
+  return feature != null && typeof feature.active === "boolean";
+}
+
 function openMenu(event, feature) {
   event.preventDefault();
   menuFeature = feature;
+  const onBody = isBodyMenuTarget(feature);
+  document.getElementById("ctx-color").hidden = !onBody;
+  document.getElementById("ctx-color-reset").hidden = !onBody;
   menuEl.style.display = "block";
   menuEl.style.left = Math.min(event.clientX, window.innerWidth - 200) + "px";
   menuEl.style.top = event.clientY + "px";
@@ -1008,6 +1055,22 @@ document.getElementById("ctx-rename").addEventListener("click", () => {
   if (label === null || !label.trim()) return;
   refreshAny(call("rename",
     { feature: menuFeature.name, label: label.trim() }));
+});
+
+document.getElementById("ctx-color").addEventListener("click", () => {
+  if (!menuFeature) return;
+  const bodyName = menuFeature.name;
+  const picker = document.getElementById("body-color-picker");
+  picker.value = hexColor(menuFeature.color) || "#9fb2c4";
+  picker.addEventListener("change", () => {
+    refresh(call("set_body_color", { body: bodyName, color: picker.value }));
+  }, { once: true });
+  picker.click();
+});
+
+document.getElementById("ctx-color-reset").addEventListener("click", () => {
+  if (!menuFeature) return;
+  refresh(call("set_body_color", { body: menuFeature.name, color: null }));
 });
 
 document.getElementById("ctx-rollback").addEventListener("click", () => {

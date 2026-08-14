@@ -71,6 +71,8 @@ OPS: dict[str, tuple[str, ...]] = {
     # Phase C — multi-corps.
     "add_body": (),                    # optional: name — devient le corps actif
     "set_active_body": _Req(("body", str)),
+    "set_body_color": _Req(("body", str), "color"),
+                                       # "#rrggbb" | null | "" (défaut)
     "add_boolean": _Req(("tool", str)),  # optional: type (cut|fuse|common)
     # Phase C — assemblage v1 (placements directs, sans solveur).
     "new_assembly": (),                # optional: name

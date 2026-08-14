@@ -6,6 +6,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createSketchMode } from "./sketch.js";
 import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
+import { FEATURES } from "./features.js";
 
 const statusEl = document.getElementById("status");
 const pickEl = document.getElementById("pick");
@@ -1056,39 +1057,6 @@ async function featureCommand(openPanel) {
   openPanel();
 }
 
-// ---------- gravure de texte ----------
-
-document.getElementById("btn-text").addEventListener("click", () =>
-  featureCommand(() => dressupPanel({
-    icon: "Draft_ShapeString.svg", title: "Texte",
-    selectionLabel: "Face d'appui",
-    group: "Texte",
-    rows: [
-      { type: "text", key: "content", label: "Texte", value: "",
-        placeholder: "REF-001" },
-      { type: "number", key: "size", label: "Hauteur", value: 8,
-        unit: "mm", min: 0.1 },
-      { type: "number", key: "depth", label: "Profondeur", value: 1,
-        unit: "mm", min: 0.01 },
-      { type: "check", key: "emboss", label: "En relief (bossage)",
-        value: false },
-      { type: "number", key: "x", label: "Décalage X", value: 0,
-        unit: "mm" },
-      { type: "number", key: "y", label: "Décalage Y", value: 0,
-        unit: "mm" },
-    ],
-    build: (v) => {
-      const content = (v.content ?? "").trim();
-      const size = num(v.size);
-      const depth = num(v.depth);
-      if (!content || !(size > 0) || !(depth > 0)) return null;
-      return { op: "add_text", params: {
-        text: content, face: v.sel.face, size, depth,
-        x: num(v.x) ?? 0, y: num(v.y) ?? 0,
-        emboss: !!v.emboss } };
-    },
-  })));
-
 // ---------- plan de coupe visuel ----------
 
 function setClip(axis, position, flip) {
@@ -1128,103 +1096,6 @@ document.getElementById("btn-clip").addEventListener("click", () => {
     onApply: (v) => setClip(v.axis, num(v.position) ?? 0, !!v.flip),
   });
 });
-
-// ---------- surfaces (phase D) ----------
-
-function surfacePanel(id, { icon, title, rows, note, build }) {
-  document.getElementById(id).addEventListener("click", () =>
-    featureCommand(() => panel.open({
-      icon, title,
-      groups: [{ label: "Paramètres", rows }],
-      note,
-      onApply: (v) => {
-        const built = build(v);
-        if (!built) { say("Valeurs invalides", true); return; }
-        refresh(call(built.op, built.params));
-      },
-    })));
-}
-
-surfacePanel("btn-surf-extrude", {
-  icon: "Surface_Filling.svg", title: "Surface extrudée",
-  rows: [{ type: "number", key: "length", label: "Longueur", value: 20,
-           unit: "mm" }],
-  note: "Utilise la dernière esquisse — le profil peut être OUVERT.",
-  build: (v) => {
-    const length = num(v.length);
-    return length ? { op: "surface_extrude", params: { length } } : null;
-  },
-});
-
-surfacePanel("btn-surf-revolve", {
-  icon: "PartDesign_Revolution.svg", title: "Surface de révolution",
-  rows: [{ type: "number", key: "angle", label: "Angle", value: 360,
-           unit: "°", min: 0.01 }],
-  note: "Autour de l'axe vertical de la dernière esquisse.",
-  build: (v) => {
-    const angle = num(v.angle);
-    return angle ? { op: "surface_revolve", params: { angle } } : null;
-  },
-});
-
-document.getElementById("btn-surf-loft").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "PartDesign_AdditiveLoft.svg",
-    title: "Surface lissée",
-    groups: [{ label: "Profils",
-      rows: [{ type: "selection", key: "profiles", accepts: ["sketch"],
-               multiple: true,
-               hint: "Cliquez les esquisses dans l'arbre, dans l'ordre" }] }],
-    onApply: (v) => {
-      const items = v.profiles?.items ?? [];
-      if (items.length < 2) {
-        say("Surface lissée : au moins deux profils", true);
-        return;
-      }
-      refresh(call("surface_loft",
-        { sketches: items.map((i) => i.name) }));
-    },
-  })));
-
-document.getElementById("btn-surf-sew").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "Part_3D_object.svg",
-    title: "Coudre",
-    groups: [{ label: "Surfaces",
-      rows: [{ type: "selection", key: "surfaces", accepts: ["surface"],
-               multiple: true,
-               hint: "Cliquez les surfaces dans l'arbre" }] }],
-    note: "Si la peau cousue est fermée, elle devient un solide.",
-    onApply: (v) => {
-      const items = v.surfaces?.items ?? [];
-      if (items.length < 2) { say("Coudre : au moins deux surfaces", true); return; }
-      refresh(call("surface_sew",
-        { surfaces: items.map((i) => i.name) }));
-    },
-  })));
-
-document.getElementById("btn-surf-thicken").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "PartDesign_Thickness.svg",
-    title: "Épaissir",
-    groups: [
-      { label: "Surface",
-        rows: [{ type: "selection", key: "surface", accepts: ["surface"],
-                 hint: "Cliquez une surface dans l'arbre" }] },
-      { label: "Paramètres",
-        rows: [{ type: "number", key: "thickness", label: "Épaisseur",
-                 value: 2, unit: "mm" }] },
-    ],
-    onApply: (v) => {
-      const thickness = num(v.thickness);
-      if (!v.surface || !thickness) {
-        say("Épaissir : une surface et une épaisseur non nulle", true);
-        return;
-      }
-      refresh(call("surface_thicken",
-        { surface: v.surface.name, thickness }));
-    },
-  })));
 
 document.getElementById("btn-curve3d").addEventListener("click", () =>
   featureCommand(() => {
@@ -1848,38 +1719,6 @@ document.getElementById("btn-sketch").addEventListener("click", () =>
     }
   }));
 
-function pocketBuild(v) {
-  const reversed = !!v.reversed;
-  if (v.cond === "travers") {
-    return { op: "add_pocket", params: { through: true, reversed } };
-  }
-  const length = Math.abs(num(v.length) ?? 0);
-  return length ? { op: "add_pocket", params: { length, reversed } } : null;
-}
-
-document.getElementById("btn-pocket").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "PartDesign_Pocket.svg",
-    title: "Enlèvement de matière extrudé",
-    groups: [{
-      label: "Direction 1",
-      rows: [
-        { type: "select", key: "cond", value: "travers",
-          options: [["travers", "À travers tout"], ["borgne", "Borgne"]] },
-        { type: "number", key: "length", label: "Profondeur", value: 10,
-          unit: "mm", min: 0.01, showIf: (v) => v.cond === "borgne" },
-        { type: "check", key: "reversed", label: "Inverser la direction",
-          value: false },
-      ],
-    }],
-    onChange: (v) => schedulePreview(pocketBuild(v)),
-    onApply: (v) => {
-      const built = pocketBuild(v);
-      if (!built) { say("Profondeur invalide", true); return; }
-      refresh(call(built.op, built.params));
-    },
-  })));
-
 // Habillages : la zone de sélection du panneau absorbe les clics de la
 // zone graphique (arêtes ou face selon la commande) — on peut ouvrir la
 // commande d'abord et cliquer ensuite, comme dans SolidWorks.
@@ -1893,217 +1732,47 @@ function currentSelection(accepts) {
   return null;
 }
 
-function hasSelection(sel) {
-  return !!sel && (sel.kind === "edges"
-    ? sel.edges.length > 0 : sel.face != null);
-}
-
-function dressupPanel({ icon, title, selectionLabel, group, rows, build,
-                        accepts = ["face"], hint }) {
-  panel.open({
-    icon, title,
-    groups: [
-      { label: selectionLabel,
-        rows: [{ type: "selection", key: "sel", accepts, hint,
-                 value: currentSelection(accepts) }] },
-      { label: group, rows },
-    ],
-    onChange: (v) =>
-      schedulePreview(hasSelection(v.sel) ? build(v) : null),
-    onApply: (v) => {
-      if (!hasSelection(v.sel)) {
-        say(`${title} : cliquez d'abord dans la zone graphique`, true);
-        return;
+// Registry : un bind unique pour tous les panneaux « ouvrir → éditer →
+// aperçu → OK ». Les panneaux bespoke (équations, assemblage, datum…)
+// restent plus bas.
+function bindFeature(entry) {
+  document.getElementById(entry.button).addEventListener("click", () =>
+    featureCommand(() => {
+      const ctx = { lastTree, selection: currentSelection };
+      const blocked = entry.guard?.(ctx);
+      if (blocked) { say(blocked, true); return; }
+      const spec = {
+        icon: entry.icon,
+        title: entry.title,
+        groups: entry.groups(ctx),
+        note: entry.note,
+        onApply: (v) => {
+          const built = entry.build(v, ctx);
+          if (!built) {
+            const msg = typeof entry.invalid === "function"
+              ? entry.invalid(v, ctx)
+              : (entry.invalid ?? "Valeurs invalides");
+            say(msg, true);
+            return;
+          }
+          const run = entry.refresh === "any" ? refreshAny : refresh;
+          run(call(built.op, built.params));
+        },
+      };
+      if (entry.preview !== false) {
+        spec.onChange = (v) => schedulePreview(entry.build(v, ctx));
       }
-      const built = build(v);
-      if (!built) { say("Valeur invalide", true); return; }
-      refresh(call(built.op, built.params));
-    },
-  });
+      panel.open(spec);
+    }));
 }
 
-// La sélection du panneau devient les params du moteur : arêtes précises
-// ou face entière (= toutes ses arêtes), les deux gestes SolidWorks.
-function dressupParams(sel) {
-  return sel.kind === "edges"
-    ? { edges: sel.edges } : { face: sel.face };
-}
-
-document.getElementById("btn-fillet").addEventListener("click", () =>
-  featureCommand(() => dressupPanel({
-    icon: "PartDesign_Fillet.svg", title: "Congé",
-    selectionLabel: "Éléments à arrondir",
-    accepts: ["edges", "face"],
-    hint: "Cliquez des arêtes (Ctrl = ajouter) ou une face",
-    group: "Paramètres du congé",
-    rows: [{ type: "number", key: "radius", label: "Rayon", value: 3,
-             unit: "mm", min: 0.01 }],
-    build: (v) => {
-      const radius = num(v.radius);
-      return radius > 0
-        ? { op: "add_fillet",
-            params: { ...dressupParams(v.sel), radius } }
-        : null;
-    },
-  })));
-
-document.getElementById("btn-chamfer").addEventListener("click", () =>
-  featureCommand(() => dressupPanel({
-    icon: "PartDesign_Chamfer.svg", title: "Chanfrein",
-    selectionLabel: "Éléments à chanfreiner",
-    accepts: ["edges", "face"],
-    hint: "Cliquez des arêtes (Ctrl = ajouter) ou une face",
-    group: "Paramètres du chanfrein",
-    rows: [{ type: "number", key: "size", label: "Distance", value: 2,
-             unit: "mm", min: 0.01 }],
-    build: (v) => {
-      const size = num(v.size);
-      return size > 0
-        ? { op: "add_chamfer",
-            params: { ...dressupParams(v.sel), size } }
-        : null;
-    },
-  })));
-
-document.getElementById("btn-shell").addEventListener("click", () =>
-  featureCommand(() => dressupPanel({
-    icon: "PartDesign_Thickness.svg", title: "Coque",
-    selectionLabel: "Faces à supprimer",
-    group: "Paramètres",
-    rows: [{ type: "number", key: "thickness", label: "Épaisseur", value: 2,
-             unit: "mm", min: 0.01 }],
-    build: (v) => {
-      const thickness = num(v.thickness);
-      return thickness > 0
-        ? { op: "add_thickness",
-            params: { face: v.sel.face, thickness } }
-        : null;
-    },
-  })));
-
-document.getElementById("btn-draft").addEventListener("click", () =>
-  featureCommand(() => dressupPanel({
-    icon: "PartDesign_Draft.svg", title: "Dépouille",
-    selectionLabel: "Faces à dépouiller",
-    group: "Angle de dépouille",
-    rows: [
-      { type: "number", key: "angle", label: "Angle", value: 3,
-        unit: "°", min: 0.01 },
-      { type: "note", text: "Plan neutre : Plan de dessus" },
-    ],
-    build: (v) => {
-      const angle = num(v.angle);
-      return angle > 0
-        ? { op: "add_draft", params: { face: v.sel.face, angle } } : null;
-    },
-  })));
-
-function holeBuild(v) {
-  const diameter = num(v.diameter);
-  if (!(diameter > 0)) return null;
-  const params = { diameter, cut: v.cut };
-  if (v.cond === "borgne") {
-    const depth = num(v.depth);
-    if (!(depth > 0)) return null;
-    params.depth = depth;
-  } else {
-    params.through = true;
-  }
-  if (v.cut !== "none") {
-    const cutDiameter = num(v.cutDiameter);
-    if (!(cutDiameter > diameter)) return null; // le lamage englobe le trou
-    params.cut_diameter = cutDiameter;
-    if (v.cut === "lamage") {
-      const cutDepth = num(v.cutDepth);
-      if (!(cutDepth > 0)) return null;
-      params.cut_depth = cutDepth;
-    } else {
-      const cutAngle = num(v.cutAngle);
-      if (cutAngle > 0) params.cut_angle = cutAngle;
-    }
-  }
-  return { op: "add_hole", params };
-}
-
-document.getElementById("btn-hole").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "PartDesign_Hole.svg",
-    title: "Assistant de perçage",
-    groups: [
-      {
-        label: "Type de perçage",
-        rows: [
-          { type: "select", key: "cut", value: "none",
-            options: [["none", "Perçage"], ["lamage", "Lamage"],
-                      ["fraisage", "Fraisage"]] },
-          { type: "number", key: "diameter", label: "Diamètre", value: 6,
-            unit: "mm", min: 0.01 },
-          { type: "number", key: "cutDiameter", label: "Ø de tête",
-            value: 11, unit: "mm", min: 0.01,
-            showIf: (v) => v.cut !== "none" },
-          { type: "number", key: "cutDepth", label: "Prof. lamage",
-            value: 3, unit: "mm", min: 0.01,
-            showIf: (v) => v.cut === "lamage" },
-          { type: "number", key: "cutAngle", label: "Angle", value: 90,
-            unit: "°", min: 1, showIf: (v) => v.cut === "fraisage" },
-        ],
-      },
-      {
-        label: "Condition de fin",
-        rows: [
-          { type: "select", key: "cond", value: "travers",
-            options: [["travers", "À travers tout"],
-                      ["borgne", "Borgne"]] },
-          { type: "number", key: "depth", label: "Profondeur", value: 15,
-            unit: "mm", min: 0.01, showIf: (v) => v.cond === "borgne" },
-        ],
-      },
-    ],
-    note: "Position : la dernière esquisse (un cercle par perçage). " +
-          "Le diamètre saisi remplace celui des cercles.",
-    onChange: (v) => schedulePreview(holeBuild(v)),
-    onApply: (v) => {
-      const built = holeBuild(v);
-      if (!built) { say("Valeurs du perçage invalides", true); return; }
-      refresh(call(built.op, built.params));
-    },
-  })));
+for (const entry of FEATURES) bindFeature(entry);
 
 document.getElementById("btn-body").addEventListener("click", () =>
   featureCommand(() => {
     const name = prompt("Nom du nouveau corps :", "Corps");
     if (name === null) return;
     refresh(call("add_body", name.trim() ? { name: name.trim() } : {}));
-  }));
-
-document.getElementById("btn-boolean").addEventListener("click", () =>
-  featureCommand(() => {
-    const others = (lastTree?.bodies ?? []).filter((b) => !b.active);
-    if (!others.length) {
-      say("Combiner : créez d'abord un second corps", true);
-      return;
-    }
-    const build = (v) => ({ op: "add_boolean",
-      params: { tool: v.tool, type: v.type } });
-    panel.open({
-      icon: "PartDesign_Boolean.svg",
-      title: "Combiner",
-      groups: [{
-        label: "Opération",
-        rows: [
-          { type: "select", key: "type", value: "cut",
-            options: [["cut", "Soustraire"], ["fuse", "Ajouter"],
-                      ["common", "Intersection"]] },
-          { type: "select", key: "tool", value: others[0].name,
-            label: "Corps outil",
-            options: others.map((b) => [b.name, b.label]) },
-        ],
-      }],
-      note: "S'applique au corps actif ; le corps outil est absorbé " +
-            "par l'opération.",
-      onChange: (v) => schedulePreview(build(v)),
-      onApply: (v) => refresh(call("add_boolean", build(v).params)),
-    });
   }));
 
 document.getElementById("btn-datum").addEventListener("click", () =>
@@ -2140,222 +1809,6 @@ document.getElementById("btn-datum").addEventListener("click", () =>
       if (v.sel && v.sel.face != null) params.face = v.sel.face;
       else params.base = v.base;
       refresh(call("add_datum_plane", params));
-    },
-  })));
-
-function loftBuild(v) {
-  const items = v.profiles?.items ?? [];
-  if (items.length < 2) return null;
-  return { op: "add_loft", params: {
-    sketches: items.map((i) => i.name),
-    subtractive: !!v.subtractive,
-    ruled: !!v.ruled,
-    closed: !!v.closed } };
-}
-
-document.getElementById("btn-loft").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "PartDesign_AdditiveLoft.svg",
-    title: "Bossage/Base lissé",
-    groups: [
-      { label: "Profils",
-        rows: [{ type: "selection", key: "profiles", accepts: ["sketch"],
-                 multiple: true,
-                 hint: "Cliquez les esquisses dans l'arbre, dans " +
-                       "l'ordre du lissage" }] },
-      { label: "Options",
-        rows: [
-          { type: "check", key: "subtractive",
-            label: "Enlèvement de matière", value: false },
-          { type: "check", key: "ruled", label: "Lissage droit (réglé)",
-            value: false },
-          { type: "check", key: "closed", label: "Boucle fermée",
-            value: false },
-        ] },
-    ],
-    onChange: (v) => schedulePreview(loftBuild(v)),
-    onApply: (v) => {
-      const built = loftBuild(v);
-      if (!built) { say("Lissage : au moins deux profils", true); return; }
-      refresh(call(built.op, built.params));
-    },
-  })));
-
-function sweepBuild(v) {
-  if (!v.profile || !v.spine) return null;
-  if (v.profile.name === v.spine.name) return null;
-  return { op: "add_sweep", params: {
-    profile: v.profile.name,
-    spine: v.spine.name,
-    subtractive: !!v.subtractive } };
-}
-
-document.getElementById("btn-sweep").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "PartDesign_AdditivePipe.svg",
-    title: "Bossage/Base balayé",
-    groups: [
-      { label: "Profil",
-        rows: [{ type: "selection", key: "profile", accepts: ["sketch"],
-                 hint: "Cliquez l'esquisse du profil dans l'arbre" }] },
-      { label: "Trajectoire",
-        rows: [{ type: "selection", key: "spine", accepts: ["sketch"],
-                 hint: "Puis l'esquisse de la trajectoire" }] },
-      { label: "Options",
-        rows: [{ type: "check", key: "subtractive",
-                 label: "Enlèvement de matière", value: false }] },
-    ],
-    onChange: (v) => schedulePreview(sweepBuild(v)),
-    onApply: (v) => {
-      const built = sweepBuild(v);
-      if (!built) {
-        say("Balayage : un profil puis une trajectoire (différents)", true);
-        return;
-      }
-      refresh(call(built.op, built.params));
-    },
-  })));
-
-function helixBuild(v) {
-  const pitch = num(v.pitch);
-  const height = num(v.height);
-  return pitch > 0 && height > 0
-    ? { op: "add_helix", params: { pitch, height } } : null;
-}
-
-document.getElementById("btn-helix").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "PartDesign_AdditiveHelix.svg",
-    title: "Hélice",
-    groups: [{
-      label: "Paramètres",
-      rows: [
-        { type: "number", key: "pitch", label: "Pas", value: 8,
-          unit: "mm", min: 0.01 },
-        { type: "number", key: "height", label: "Hauteur", value: 40,
-          unit: "mm", min: 0.01 },
-      ],
-    }],
-    note: "Le profil (dernière esquisse) tourne autour de l'axe " +
-          "vertical de son esquisse — dessinez-le décalé de l'axe.",
-    onChange: (v) => schedulePreview(helixBuild(v)),
-    onApply: (v) => {
-      const built = helixBuild(v);
-      if (!built) { say("Pas et hauteur doivent être positifs", true); return; }
-      refresh(call(built.op, built.params));
-    },
-  })));
-
-function revolvedPanel(op, icon, title) {
-  const build = (v) => {
-    const angle = num(v.angle);
-    return angle ? { op, params: { angle } } : null;
-  };
-  panel.open({
-    icon, title,
-    groups: [{
-      label: "Direction 1",
-      rows: [
-        { type: "number", key: "angle", label: "Angle", value: 360,
-          unit: "°", min: 0.01 },
-      ],
-    }],
-    note: "Axe de révolution : l'axe vertical de l'esquisse",
-    onChange: (v) => schedulePreview(build(v)),
-    onApply: (v) => {
-      const built = build(v);
-      if (!built) { say("Angle invalide", true); return; }
-      refresh(call(built.op, built.params));
-    },
-  });
-}
-
-document.getElementById("btn-revolution").addEventListener("click", () =>
-  featureCommand(() =>
-    revolvedPanel("add_revolution", "PartDesign_Revolution.svg",
-                  "Bossage/Base avec révolution")));
-
-document.getElementById("btn-groove").addEventListener("click", () =>
-  featureCommand(() =>
-    revolvedPanel("add_groove", "PartDesign_Groove.svg",
-                  "Enlèvement de matière avec révolution")));
-
-document.getElementById("btn-mirror").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "PartDesign_Mirrored.svg",
-    title: "Symétrie",
-    groups: [{
-      label: "Plan de symétrie",
-      rows: [
-        { type: "select", key: "plane", value: "YZ",
-          options: [["YZ", "Plan de droite"], ["XZ", "Plan de face"],
-                    ["XY", "Plan de dessus"]] },
-      ],
-    }],
-    note: "S'applique à la dernière fonction (bossage ou enlèvement)",
-    onChange: (v) =>
-      schedulePreview({ op: "add_mirror", params: { plane: v.plane } }),
-    onApply: (v) => refresh(call("add_mirror", { plane: v.plane })),
-  })));
-
-function linPatternBuild(v) {
-  const length = num(v.length);
-  const count = parseInt(v.count, 10);
-  return length && count >= 2
-    ? { op: "add_linear_pattern", params: { axis: v.axis, length, count } }
-    : null;
-}
-
-document.getElementById("btn-linpattern").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "PartDesign_LinearPattern.svg",
-    title: "Répétition linéaire",
-    groups: [{
-      label: "Direction 1",
-      rows: [
-        { type: "select", key: "axis", value: "X", label: "Direction",
-          options: [["X", "Axe X"], ["Y", "Axe Y"], ["Z", "Axe Z"]] },
-        { type: "number", key: "length", label: "Longueur totale",
-          value: 40, unit: "mm", min: 0.01 },
-        { type: "number", key: "count", label: "Nombre d'occurrences",
-          value: 3, min: 2, step: 1 },
-      ],
-    }],
-    note: "S'applique à la dernière fonction (bossage ou enlèvement)",
-    onChange: (v) => schedulePreview(linPatternBuild(v)),
-    onApply: (v) => {
-      const built = linPatternBuild(v);
-      if (!built) { say("Valeurs invalides", true); return; }
-      refresh(call(built.op, built.params));
-    },
-  })));
-
-function polPatternBuild(v) {
-  const angle = num(v.angle);
-  const count = parseInt(v.count, 10);
-  return angle && count >= 2
-    ? { op: "add_polar_pattern", params: { count, angle } } : null;
-}
-
-document.getElementById("btn-polpattern").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "PartDesign_PolarPattern.svg",
-    title: "Répétition circulaire",
-    groups: [{
-      label: "Direction 1",
-      rows: [
-        { type: "number", key: "angle", label: "Angle", value: 360,
-          unit: "°", min: 0.01 },
-        { type: "number", key: "count", label: "Nombre d'occurrences",
-          value: 4, min: 2, step: 1 },
-      ],
-    }],
-    note: "Axe : Z — s'applique à la dernière fonction",
-    onChange: (v) => schedulePreview(polPatternBuild(v)),
-    onApply: (v) => {
-      const built = polPatternBuild(v);
-      if (!built) { say("Valeurs invalides", true); return; }
-      refresh(call(built.op, built.params));
     },
   })));
 
@@ -2415,37 +1868,6 @@ document.getElementById("btn-export").addEventListener("click", async () => {
     say(error.message, true);
   }
 });
-
-function padBuild(v) {
-  const length = Math.abs(num(v.length) ?? 0);
-  if (!length) return null;
-  return { op: "add_pad",
-           params: { length, reversed: !!v.reversed,
-                     midplane: v.cond === "milieu" } };
-}
-
-document.getElementById("btn-pad").addEventListener("click", () =>
-  featureCommand(() => panel.open({
-    icon: "PartDesign_Pad.svg",
-    title: "Bossage/Base extrudé",
-    groups: [{
-      label: "Direction 1",
-      rows: [
-        { type: "select", key: "cond", value: "borgne",
-          options: [["borgne", "Borgne"], ["milieu", "Plan milieu"]] },
-        { type: "number", key: "length", label: "Profondeur", value: 10,
-          unit: "mm", min: 0.01 },
-        { type: "check", key: "reversed", label: "Inverser la direction",
-          value: false, showIf: (v) => v.cond !== "milieu" },
-      ],
-    }],
-    onChange: (v) => schedulePreview(padBuild(v)),
-    onApply: (v) => {
-      const built = padBuild(v);
-      if (!built) { say("Profondeur invalide", true); return; }
-      refresh(call(built.op, built.params));
-    },
-  })));
 
 document.getElementById("btn-selftest").addEventListener("click", async () => {
   const gen = ++viewGen;

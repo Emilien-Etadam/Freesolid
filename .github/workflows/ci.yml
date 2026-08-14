@@ -45,3 +45,75 @@ jobs:
       - name: Selftest
         shell: bash -el {0}
         run: PYTHONIOENCODING=utf-8 freecadcmd scripts/run-selftest.py
+
+  js-tests:
+    name: Tests JS (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax check
+        run: |
+          node --check app/main.js
+          node --check app/sketch.js
+          node --check app/panel.js
+          node --check app/solver.js
+          node --check app/geom2d.js
+          node --check app/num.js
+      # Node 22 n'exécute pas un répertoire passé tel quel ; le glob
+      # *.test.mjs est l'équivalent de `node --test tests/js/`.
+      - name: Unit tests
+        run: node --test tests/js/*.test.mjs
+
+  smoke:
+    name: Smoke navigateur (FreeCAD + Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: freecad
+          create-args: >-
+            python=3.11
+            freecad=1.0.0
+          cache-environment: true
+      - name: Installer les deps smoke + Chromium
+        working-directory: scripts/smoke
+        run: |
+          npm ci
+          npx playwright-core install --with-deps chromium
+      # bash -el : micromamba (freecadcmd). Node vient de setup-node
+      # (GITHUB_PATH) ; micromamba run évite de dépendre du PATH conda.
+      - name: Smoke
+        shell: bash -el {0}
+        run: |
+          PYTHONIOENCODING=utf-8 micromamba run -n freecad \
+            freecadcmd scripts/smoke/serve.py &
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -sf -X POST "http://127.0.0.1:8787/api" \
+                -H "Content-Type: application/json" \
+                --data '{"op":"ping","params":{}}' \
+                | grep -q '"ok": true'; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "timeout : serveur FreeSolid non prêt après 60 s"
+            exit 1
+          fi
+          node scripts/smoke/smoke.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-shots
+          path: scripts/smoke/shots/
+          if-no-files-found: ignore

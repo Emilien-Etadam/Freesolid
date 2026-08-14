@@ -1113,17 +1113,57 @@ document.getElementById("btn-curve3d").addEventListener("click", () =>
     refresh(call("add_curve3d", { points, spline: points.length >= 3 }));
   }));
 
-document.getElementById("btn-drawing").addEventListener("click", async () => {
-  const path = prompt("Mise en plan (chemin .dxf) :",
-                      "~/piece-freesolid.dxf");
-  if (!path) return;
-  try {
-    const out = await call("make_drawing", { path });
-    say(`Mise en plan exportée : ${out.path} ` +
-        `(${(out.size / 1024).toFixed(1)} Ko — Face, Dessus, Iso)`);
-  } catch (error) {
-    say(error.message, true);
-  }
+document.getElementById("btn-drawing").addEventListener("click", () => {
+  panel.open({
+    icon: "TechDraw_PageDefault.svg",
+    title: "Mise en plan",
+    groups: [
+      {
+        label: "Fichier",
+        rows: [
+          { type: "text", key: "path", label: "Chemin",
+            value: "~/piece-freesolid.dxf" },
+          { type: "number", key: "scale", label: "Échelle", value: "",
+            min: 0.01 },
+        ],
+      },
+      {
+        label: "Annotations",
+        rows: [
+          { type: "check", key: "dims", label: "Cotes d'encombrement",
+            value: true },
+          { type: "select", key: "section", value: "", label: "Coupe",
+            options: [["", "Aucune"], ["X", "X"], ["Y", "Y"],
+                      ["Z", "Z"]] },
+        ],
+      },
+    ],
+    note: "Trois vues (Face, Dessus, Iso) exportées en DXF.",
+    onApply: (v) => {
+      const path = (v.path ?? "").trim();
+      if (!path) {
+        say("Mise en plan : chemin du fichier requis", true);
+        return;
+      }
+      const params = { path, dims: !!v.dims };
+      const scale = num(v.scale);
+      if (scale) params.scale = scale;
+      if (v.section) params.section = v.section;
+      (async () => {
+        try {
+          const out = await call("make_drawing", params);
+          let extra = "";
+          if (params.dims && out.dims_ok === false) extra += " (sans cotes)";
+          if (params.section && out.section_ok === false) extra += " (sans coupe)";
+          say(`Mise en plan exportée : ${out.path} ` +
+              `(${(out.size / 1024).toFixed(1)} Ko — Face, Dessus, Iso)` +
+              extra);
+        } catch (error) {
+          say(error.message, true);
+        }
+      })();
+    },
+  });
 });
 
 // ---------- assemblage v1 ----------

@@ -292,6 +292,10 @@ def test_surface_and_drawing_ops_declared():
     protocol.validate_request(
         {"op": "add_curve3d",
          "params": {"points": [[0, 0, 0], [0, 0, 30]], "spline": False}})
+    protocol.validate_request(
+        {"op": "make_drawing",
+         "params": {"path": "/tmp/piece.dxf", "dims": True,
+                    "section": "Y", "scale": 2}})
 
 
 def test_convert_text_interference_ops_declared():

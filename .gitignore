@@ -1,5 +1,7 @@
-__pycache__/
+*.FCStd1
 *.py[cod]
 .pytest_cache/
 .venv/
-*.FCStd1
+__pycache__/
+scripts/smoke/node_modules/
+scripts/smoke/shots/

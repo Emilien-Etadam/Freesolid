@@ -1,0 +1,12 @@
+{
+  "name": "freesolid-smoke",
+  "private": true,
+  "description": "Smoke test navigateur FreeSolid (Playwright + Chromium)",
+  "scripts": {
+    "smoke": "node smoke.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.49.0",
+    "three": "0.160.0"
+  }
+}

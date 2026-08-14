@@ -97,7 +97,9 @@ OPS: dict[str, tuple[str, ...]] = {
     "mass_properties": (),             # optional: density (g/cm³)
     "measure": _Req(("a_kind", str), ("a_id", int),
                     ("b_kind", str), ("b_id", int)),  # face|edge + id
-    "make_drawing": _Req(("path", str)),  # optional: scale — 3 vues, export DXF
+    "make_drawing": _Req(("path", str)),
+                                       # optional: scale, dims (bool, défaut True),
+                                       # section ("X"|"Y"|"Z") — 3 vues + cotes + coupe, export DXF
     "add_text": _Req(("text", str), ("face", int)),
                                        # optional: size, depth, x, y, emboss, font
     "check_interference": (),          # assemblage : volumes communs par paires

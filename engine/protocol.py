@@ -171,6 +171,9 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_array": _Req(
         ("sketch", str), ("geos", list), ("dx", float), ("dy", float),
         ("cols", int), ("rows", int)),
+    "sketch_offset": _Req(
+        ("sketch", str), ("geos", list), ("distance", float)),
+                                       # optional: reversed
     "sketch_add_slot": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float), ("width", float)),

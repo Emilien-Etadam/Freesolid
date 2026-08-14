@@ -336,3 +336,190 @@ def test_pocket_accepts_length_or_through():
     protocol.validate_request({"op": "add_pocket", "params": {"length": 5}})
     protocol.validate_request({"op": "add_pocket", "params": {"through": True}})
     protocol.validate_request({"op": "add_pocket"})
+
+
+# -- P008 : snapshot, déclarations manquantes, types/bornes, preview ------
+
+def test_ops_snapshot_keys():
+    assert sorted(protocol.OPS) == [
+        "add_body",
+        "add_boolean",
+        "add_chamfer",
+        "add_curve3d",
+        "add_datum_plane",
+        "add_draft",
+        "add_fillet",
+        "add_groove",
+        "add_helix",
+        "add_hole",
+        "add_joint",
+        "add_linear_pattern",
+        "add_loft",
+        "add_mirror",
+        "add_pad",
+        "add_pocket",
+        "add_polar_pattern",
+        "add_rect_sketch",
+        "add_revolution",
+        "add_sweep",
+        "add_text",
+        "add_thickness",
+        "array_component",
+        "assembly_tree",
+        "check_interference",
+        "delete_feature",
+        "delete_variable",
+        "export_part",
+        "get_params",
+        "get_tree",
+        "insert_component",
+        "list_variables",
+        "make_drawing",
+        "mass_properties",
+        "measure",
+        "move_component",
+        "new_assembly",
+        "new_part",
+        "open_part",
+        "ping",
+        "preview",
+        "redo",
+        "rename",
+        "save_part",
+        "selftest",
+        "set_active_body",
+        "set_param",
+        "set_params",
+        "set_tip",
+        "set_variable",
+        "sketch_add_arc",
+        "sketch_add_circle",
+        "sketch_add_ellipse",
+        "sketch_add_line",
+        "sketch_add_polygon",
+        "sketch_add_slot",
+        "sketch_add_spline",
+        "sketch_array",
+        "sketch_constrain",
+        "sketch_constraints",
+        "sketch_convert",
+        "sketch_delete_constraint",
+        "sketch_delete_geo",
+        "sketch_dim",
+        "sketch_edit",
+        "sketch_fillet",
+        "sketch_finish",
+        "sketch_mirror",
+        "sketch_move",
+        "sketch_set_dim",
+        "sketch_start",
+        "sketch_state",
+        "sketch_toggle_construction",
+        "sketch_trim",
+        "solve_assembly",
+        "spike_assembly",
+        "surface_extrude",
+        "surface_loft",
+        "surface_revolve",
+        "surface_sew",
+        "surface_thicken",
+        "tessellate",
+        "tessellate_assembly",
+        "tessellate_edges",
+        "tip_to_end",
+        "undo",
+    ]
+
+
+def test_audit_missing_op_declarations():
+    assert protocol.OPS["set_param"] == ("feature", "prop", "value")
+    assert protocol.OPS["sketch_edit"] == ("feature",)
+    assert protocol.OPS["sketch_state"] == ("sketch",)
+    assert protocol.OPS["sketch_delete_geo"] == ("sketch", "geo")
+
+
+def test_pack_edges_empty():
+    assert protocol.pack_edges([]) == {
+        "positions": [], "indices": [], "groups": []}
+
+
+def test_float_param_accepts_int_refuses_bool_and_str():
+    protocol.validate_request({"op": "add_pad", "params": {"length": 10}})
+    protocol.validate_request({"op": "add_pad", "params": {"length": 10.5}})
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_request(
+            {"op": "add_pad", "params": {"length": "x"}})
+    assert str(excinfo.value) == 'paramètre length : nombre attendu, reçu "x"'
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "add_pad", "params": {"length": True}})
+
+
+def test_int_count_bounds_and_bool_refused():
+    protocol.validate_request(
+        {"op": "add_polar_pattern", "params": {"count": 1}})
+    protocol.validate_request(
+        {"op": "add_polar_pattern", "params": {"count": 10000}})
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_request(
+            {"op": "add_polar_pattern", "params": {"count": 0}})
+    assert "count" in str(excinfo.value)
+    assert "1" in str(excinfo.value) and "10000" in str(excinfo.value)
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "add_polar_pattern", "params": {"count": 10001}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "add_polar_pattern", "params": {"count": True}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "add_polar_pattern", "params": {"count": 1.5}})
+
+
+def test_empty_feature_name_refused():
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_request(
+            {"op": "get_params", "params": {"feature": ""}})
+    assert "feature" in str(excinfo.value)
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "get_params", "params": {"feature": "  "}})
+
+
+def test_set_param_value_stays_untyped():
+    protocol.validate_request(
+        {"op": "set_param",
+         "params": {"feature": "Pad", "prop": "Length", "value": 12}})
+    protocol.validate_request(
+        {"op": "set_param",
+         "params": {"feature": "Pad", "prop": "Length",
+                    "value": "Variables.epaisseur * 2"}})
+
+
+def test_preview_unknown_nested_op_refused():
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_request(
+            {"op": "preview",
+             "params": {"op": "no_such_op", "params": {}}})
+    assert "inconnue" in str(excinfo.value)
+
+
+def test_preview_of_preview_refused():
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_request(
+            {"op": "preview",
+             "params": {"op": "preview",
+                        "params": {"op": "add_pad",
+                                   "params": {"length": 1}}}})
+    assert str(excinfo.value) == "preview d'un preview refusé"
+
+
+def test_preview_nested_typed_params_refused():
+    protocol.validate_request(
+        {"op": "preview",
+         "params": {"op": "add_pad", "params": {"length": 10}}})
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_request(
+            {"op": "preview",
+             "params": {"op": "add_pad", "params": {"length": "x"}}})
+    assert str(excinfo.value) == 'paramètre length : nombre attendu, reçu "x"'

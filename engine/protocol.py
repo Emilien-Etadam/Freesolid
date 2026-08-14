@@ -10,12 +10,58 @@ Transport (M0) is HTTP JSON on localhost: requests are
 ``err(...)`` envelopes. No dependency on either side.
 """
 
+import json
 import os
 import tempfile
 
+class _Req(tuple):
+    """Tuple of required param names, with optional JSON types.
+
+    ``_Req(("length", float), "value")`` equals ``("length", "value")`` so
+    existing ``OPS[op] == (...)`` assertions keep working. ``.kinds`` maps
+    typed names to ``float``, ``int``, ``str``, ``list``, ``dict`` or
+    ``bool``. Bare names are presence-only (no type check, no coercion).
+    """
+
+    def __new__(cls, *items):
+        names = []
+        kinds = {}
+        for item in items:
+            if isinstance(item, str):
+                names.append(item)
+            else:
+                name, kind = item
+                names.append(name)
+                kinds[name] = kind
+        obj = super().__new__(cls, names)
+        obj.kinds = kinds
+        return obj
+
+
+#: Comptes / occurrences : entier ≥ 1, plafond anti-absurde.
+_COUNT_PARAMS = frozenset({"count", "cols", "rows", "sides"})
+_COUNT_MIN = 1
+_COUNT_MAX = 10000
+
+#: Noms d'objets / ops — str non vide (``text`` est du contenu, pas un nom).
+_NONEMPTY_STR_PARAMS = frozenset({
+    "op", "feature", "sketch", "body", "tool", "component",
+    "component1", "component2", "name", "label", "path", "prop",
+    "profile", "spine", "surface", "kind", "a_kind", "b_kind",
+})
+
+_TYPE_LABELS = {
+    float: "nombre",
+    int: "entier",
+    str: "texte",
+    list: "liste",
+    dict: "objet",
+    bool: "booléen",
+}
+
 #: Every operation the engine accepts, with the params it requires.
-#: (name -> tuple of required param names). Optional params are documented
-#: in the kernel docstrings.
+#: Values stay name-tuples; typed specs use ``(name, type)``. Optional
+#: params are documented in the kernel docstrings and are not typed here.
 OPS: dict[str, tuple[str, ...]] = {
     "ping": (),
     # Runs the full flow headless and returns stats — the same
@@ -24,103 +70,136 @@ OPS: dict[str, tuple[str, ...]] = {
     "new_part": (),                    # optional: name
     # Phase C — multi-corps.
     "add_body": (),                    # optional: name — devient le corps actif
-    "set_active_body": ("body",),
-    "add_boolean": ("tool",),          # optional: type (cut|fuse|common)
+    "set_active_body": _Req(("body", str)),
+    "add_boolean": _Req(("tool", str)),  # optional: type (cut|fuse|common)
     # Phase C — assemblage v1 (placements directs, sans solveur).
     "new_assembly": (),                # optional: name
-    "insert_component": ("path",),     # .FCStd — App::Link vers son corps
-    "move_component": ("component",),  # optional: x, y, z, yaw, pitch, roll
-    "array_component": ("component", "count"),  # optional: dx, dy, dz
+    "insert_component": _Req(("path", str)),  # .FCStd — App::Link vers son corps
+    "move_component": _Req(("component", str)),  # optional: x, y, z, yaw, pitch, roll
+    "array_component": _Req(("component", str), ("count", int)),  # optional: dx, dy, dz
     "assembly_tree": (),
     "tessellate_assembly": (),         # optional: deviation
     # Phase C3 — contraintes d'assemblage (joints natifs + solveur MbD).
-    "add_joint": ("component1", "component2"),  # optional: type (fixe|pivot|
+    "add_joint": _Req(("component1", str), ("component2", str)),
+                                       # optional: type (fixe|pivot|
                                        # cylindrique|glissiere|rotule|
                                        # distance), sub1, sub2, distance
     "solve_assembly": (),
     "spike_assembly": (),              # rapport : joints Assembly headless ?
     # Phase D — surfacique (API Part, hors historique PartDesign) + courbes.
-    "surface_extrude": ("length",),    # optional: sketch — profil ouvert OK
+    "surface_extrude": _Req(("length", float)),  # optional: sketch — profil ouvert OK
     "surface_revolve": (),             # optional: angle, sketch
-    "surface_loft": ("sketches",),
-    "surface_sew": ("surfaces",),      # coudre ; solidifie si fermé
-    "surface_thicken": ("surface", "thickness"),
-    "add_curve3d": ("points",),        # optional: spline — trajectoire 3D
+    "surface_loft": _Req(("sketches", list)),
+    "surface_sew": _Req(("surfaces", list)),  # coudre ; solidifie si fermé
+    "surface_thicken": _Req(("surface", str), ("thickness", float)),
+    "add_curve3d": _Req(("points", list)),  # optional: spline — trajectoire 3D
     # Phase E — évaluer + mise en plan.
     "mass_properties": (),             # optional: density (g/cm³)
-    "measure": ("a_kind", "a_id", "b_kind", "b_id"),  # face|edge + id
-    "make_drawing": ("path",),         # optional: scale — 3 vues, export DXF
-    "add_text": ("text", "face"),      # optional: size, depth, x, y, emboss, font
+    "measure": _Req(("a_kind", str), ("a_id", int),
+                    ("b_kind", str), ("b_id", int)),  # face|edge + id
+    "make_drawing": _Req(("path", str)),  # optional: scale — 3 vues, export DXF
+    "add_text": _Req(("text", str), ("face", int)),
+                                       # optional: size, depth, x, y, emboss, font
     "check_interference": (),          # assemblage : volumes communs par paires
     "undo": (),                        # une transaction = un Ctrl+Z
     "redo": (),
-    "export_part": ("path",),          # .stl ou .step selon l'extension
-    "preview": ("op", "params"),       # aperçu jaune : op exécutée puis annulée
-    "add_rect_sketch": ("width", "height"),   # optional: face (id) to attach
-    "add_pad": ("length",),            # optional: sketch, reversed, midplane
+    "export_part": _Req(("path", str)),  # .stl ou .step selon l'extension
+    "preview": _Req(("op", str), ("params", dict)),
+                                       # aperçu jaune : op exécutée puis annulée
+    "add_rect_sketch": _Req(("width", float), ("height", float)),
+                                       # optional: face (id) to attach
+    "add_pad": _Req(("length", float)),  # optional: sketch, reversed, midplane
     "add_pocket": (),                  # optional: length | through — sans profondeur = à travers tout ; reversed
-    "add_fillet": ("radius",),         # face OU edges (liste d'ids)
-    "add_chamfer": ("size",),          # face OU edges
+    "add_fillet": _Req(("radius", float)),  # face OU edges (liste d'ids)
+    "add_chamfer": _Req(("size", float)),  # face OU edges
     # Palier 2 — fonctions volumiques, aucune interaction nouvelle.
     "add_revolution": (),              # optional: angle (°), sketch
     "add_groove": (),                  # optional: angle (°), sketch
     "add_mirror": (),                  # optional: plane (XY|XZ|YZ)
-    "add_linear_pattern": ("length", "count"),   # optional: axis (X|Y|Z)
-    "add_polar_pattern": ("count",),   # optional: angle (°), axis
-    "add_thickness": ("face", "thickness"),
-    "add_draft": ("face", "angle"),    # plan neutre : Plan de dessus (XY)
+    "add_linear_pattern": _Req(("length", float), ("count", int)),
+                                       # optional: axis (X|Y|Z)
+    "add_polar_pattern": _Req(("count", int)),  # optional: angle (°), axis
+    "add_thickness": _Req(("face", int), ("thickness", float)),
+    "add_draft": _Req(("face", int), ("angle", float)),
+                                       # plan neutre : Plan de dessus (XY)
     # Phase B — références et ossature.
     "add_datum_plane": (),             # optional: base (XY|XZ|YZ) | face, offset, angle
-    "add_loft": ("sketches",),         # optional: subtractive, ruled, closed
-    "add_sweep": ("profile", "spine"),  # optional: subtractive
-    "add_helix": ("pitch", "height"),  # optional: sketch
-    "set_param": ("feature", "prop", "value"),
-    "set_params": ("feature", "values"),  # valeur numérique OU expression
+    "add_loft": _Req(("sketches", list)),  # optional: subtractive, ruled, closed
+    "add_sweep": _Req(("profile", str), ("spine", str)),  # optional: subtractive
+    "add_helix": _Req(("pitch", float), ("height", float)),  # optional: sketch
+    "set_param": _Req(("feature", str), ("prop", str), "value"),
+    "set_params": _Req(("feature", str), ("values", dict)),
+                                       # valeur numérique OU expression
     # Paramétrique — variables globales (App::VarSet) et équations.
     "list_variables": (),
-    "set_variable": ("name", "value"),
-    "delete_variable": ("name",),
-    "rename": ("feature", "label"),
-    "add_hole": ("diameter",),         # optional: depth | through, cut
+    "set_variable": _Req(("name", str), "value"),
+    "delete_variable": _Req(("name", str)),
+    "rename": _Req(("feature", str), ("label", str)),
+    "add_hole": _Req(("diameter", float)),  # optional: depth | through, cut
                                        # (none|lamage|fraisage), cut_diameter,
                                        # cut_depth, cut_angle
-    "get_params": ("feature",),        # editable numeric properties
-    "set_tip": ("feature",),           # move the rollback bar here
+    "get_params": _Req(("feature", str)),  # editable numeric properties
+    "set_tip": _Req(("feature", str)),  # move the rollback bar here
     "tip_to_end": (),                  # back to the final state
-    "delete_feature": ("feature",),
-    "save_part": ("path",),
-    "open_part": ("path",),
+    "delete_feature": _Req(("feature", str)),
+    "save_part": _Req(("path", str)),
+    "open_part": _Req(("path", str)),
     "get_tree": (),
     "tessellate": (),                  # optional: deviation
     "tessellate_edges": (),            # optional: deviation — picking d'arêtes
     # M2 — sketch editing. Geometry travels in sketch-local 2D; the state
     # carries the placement matrix that positions it in 3D.
     "sketch_start": (),                # optional: face | plane (XY|XZ|YZ) | datum (nom)
-    "sketch_edit": ("feature",),
-    "sketch_state": ("sketch",),
-    "sketch_add_line": ("sketch", "x1", "y1", "x2", "y2"),
-    "sketch_add_circle": ("sketch", "cx", "cy", "r"),
+    "sketch_edit": _Req(("feature", str)),
+    "sketch_state": _Req(("sketch", str)),
+    "sketch_add_line": _Req(
+        ("sketch", str), ("x1", float), ("y1", float),
+        ("x2", float), ("y2", float)),
+    "sketch_add_circle": _Req(
+        ("sketch", str), ("cx", float), ("cy", float), ("r", float)),
     # Palier 3 — outils d'esquisse avancés. Angles en radians, sens trigo.
-    "sketch_add_arc": ("sketch", "cx", "cy", "r", "a1", "a2"),
-    "sketch_add_spline": ("sketch", "points"),  # interpolée par les points
-    "sketch_add_ellipse": ("sketch", "cx", "cy", "rx", "ry"),  # optional: angle
-    "sketch_mirror": ("sketch", "geos", "axis"),  # copies symétriques
-    "sketch_array": ("sketch", "geos", "dx", "dy", "cols", "rows"),
-    "sketch_add_slot": ("sketch", "x1", "y1", "x2", "y2", "width"),
-    "sketch_add_polygon": ("sketch", "cx", "cy", "x", "y", "sides"),
-    "sketch_fillet": ("sketch", "geo1", "geo2",
-                      "x1", "y1", "x2", "y2", "radius"),
-    "sketch_trim": ("sketch", "geo", "x", "y"),
-    "sketch_constrain": ("sketch", "kind", "geo1"),  # optional: point1, geo2, point2, geo3
-    "sketch_move": ("sketch", "geo", "point", "x", "y"),
-    "sketch_dim": ("sketch", "geo"),   # optional: value, geo2, point, point2
-    "sketch_set_dim": ("sketch", "dim"),  # optional: value | expr, name
-    "sketch_constraints": ("sketch",),    # optional: geo — relations d'une entité
-    "sketch_delete_constraint": ("sketch", "constraint"),
-    "sketch_delete_geo": ("sketch", "geo"),
-    "sketch_toggle_construction": ("sketch", "geo"),
-    "sketch_convert": ("sketch",),     # optional: face — contour projeté, bloqué
-    "sketch_finish": ("sketch",),
+    "sketch_add_arc": _Req(
+        ("sketch", str), ("cx", float), ("cy", float), ("r", float),
+        ("a1", float), ("a2", float)),
+    "sketch_add_spline": _Req(("sketch", str), ("points", list)),
+                                       # interpolée par les points
+    "sketch_add_ellipse": _Req(
+        ("sketch", str), ("cx", float), ("cy", float),
+        ("rx", float), ("ry", float)),  # optional: angle
+    "sketch_mirror": _Req(("sketch", str), ("geos", list), ("axis", int)),
+                                       # copies symétriques
+    "sketch_array": _Req(
+        ("sketch", str), ("geos", list), ("dx", float), ("dy", float),
+        ("cols", int), ("rows", int)),
+    "sketch_add_slot": _Req(
+        ("sketch", str), ("x1", float), ("y1", float),
+        ("x2", float), ("y2", float), ("width", float)),
+    "sketch_add_polygon": _Req(
+        ("sketch", str), ("cx", float), ("cy", float),
+        ("x", float), ("y", float), ("sides", int)),
+    "sketch_fillet": _Req(
+        ("sketch", str), ("geo1", int), ("geo2", int),
+        ("x1", float), ("y1", float), ("x2", float), ("y2", float),
+        ("radius", float)),
+    "sketch_trim": _Req(
+        ("sketch", str), ("geo", int), ("x", float), ("y", float)),
+    "sketch_constrain": _Req(("sketch", str), ("kind", str), ("geo1", int)),
+                                       # optional: point1, geo2, point2, geo3
+    "sketch_move": _Req(
+        ("sketch", str), ("geo", int), ("point", int),
+        ("x", float), ("y", float)),
+    "sketch_dim": _Req(("sketch", str), ("geo", int)),
+                                       # optional: value, geo2, point, point2
+    "sketch_set_dim": _Req(("sketch", str), ("dim", int)),
+                                       # optional: value | expr, name
+    "sketch_constraints": _Req(("sketch", str)),
+                                       # optional: geo — relations d'une entité
+    "sketch_delete_constraint": _Req(("sketch", str), ("constraint", int)),
+    "sketch_delete_geo": _Req(("sketch", str), ("geo", int)),
+    "sketch_toggle_construction": _Req(("sketch", str), ("geo", int)),
+    "sketch_convert": _Req(("sketch", str)),
+                                       # optional: face — contour projeté, bloqué
+    "sketch_finish": _Req(("sketch", str)),
 }
 
 
@@ -128,11 +207,96 @@ class ProtocolError(Exception):
     """Malformed request. The message is safe to show to the client."""
 
 
+def _received(value) -> str:
+    """JSON-faithful rendering of a rejected value, for error messages."""
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return repr(value)
+
+
+def _is_bool(value) -> bool:
+    return isinstance(value, bool)
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not _is_bool(value)
+
+
+def _is_integral(value) -> bool:
+    if _is_bool(value):
+        return False
+    if isinstance(value, int):
+        return True
+    if isinstance(value, float):
+        return value.is_integer()
+    return False
+
+
+def _type_error(name: str, kind, value) -> None:
+    raise ProtocolError(
+        "paramètre {} : {} attendu, reçu {}".format(
+            name, _TYPE_LABELS[kind], _received(value)))
+
+
+def _check_param(name: str, kind, value) -> None:
+    """Raise ProtocolError if *value* does not match *kind*. No coercion."""
+    if kind is float:
+        if not _is_number(value):
+            _type_error(name, float, value)
+        return
+    if kind is int:
+        if not _is_integral(value):
+            _type_error(name, int, value)
+        if name in _COUNT_PARAMS:
+            number = int(value)
+            if number < _COUNT_MIN or number > _COUNT_MAX:
+                raise ProtocolError(
+                    "paramètre {} : entier entre {} et {} attendu, reçu {}"
+                    .format(name, _COUNT_MIN, _COUNT_MAX, _received(value)))
+        return
+    if kind is str:
+        if not isinstance(value, str):
+            _type_error(name, str, value)
+        if name in _NONEMPTY_STR_PARAMS and not value.strip():
+            raise ProtocolError(
+                "paramètre {} : nom non vide attendu, reçu {}".format(
+                    name, _received(value)))
+        return
+    if kind is list:
+        if not isinstance(value, list):
+            _type_error(name, list, value)
+        return
+    if kind is dict:
+        if not isinstance(value, dict):
+            _type_error(name, dict, value)
+        return
+    if kind is bool:
+        if not _is_bool(value):
+            _type_error(name, bool, value)
+        return
+    raise ProtocolError(
+        "paramètre {} : type de schéma inconnu".format(name))
+
+
+def _check_params(op: str, params: dict) -> None:
+    spec = OPS[op]
+    missing = [k for k in spec if k not in params]
+    if missing:
+        raise ProtocolError(
+            "{} : paramètre(s) manquant(s) : {}".format(op, ", ".join(missing)))
+    kinds = getattr(spec, "kinds", {})
+    for name, kind in kinds.items():
+        _check_param(name, kind, params[name])
+
+
 def validate_request(payload) -> tuple[str, dict]:
     """Check an incoming request, returning ``(op, params)``.
 
     Raises ``ProtocolError`` with an actionable message otherwise — the
-    client shows it verbatim, so it names what is missing.
+    client shows it verbatim, so it names what is missing or mistyped.
+    Values are not coerced. Nested ``preview`` ops are re-validated
+    against the same registry; ``preview`` of ``preview`` is refused.
     """
     if not isinstance(payload, dict):
         raise ProtocolError("la requête doit être un objet JSON")
@@ -147,10 +311,12 @@ def validate_request(payload) -> tuple[str, dict]:
     if not isinstance(params, dict):
         # Explicit None-check above: `or {}` would silently accept [] or "".
         raise ProtocolError("params doit être un objet JSON")
-    missing = [k for k in OPS[op] if k not in params]
-    if missing:
-        raise ProtocolError(
-            "{} : paramètre(s) manquant(s) : {}".format(op, ", ".join(missing)))
+    _check_params(op, params)
+    if op == "preview":
+        nested_op = params["op"]
+        if nested_op == "preview":
+            raise ProtocolError("preview d'un preview refusé")
+        validate_request({"op": nested_op, "params": params["params"]})
     return op, params
 
 

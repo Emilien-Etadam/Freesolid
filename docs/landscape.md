@@ -159,23 +159,15 @@ même chose pour nous :
   d'appariement devienne folle. C'est le morceau qu'on aurait mal réinventé,
   il est écrit, il est **sous notre licence**, et il est lisible.
 
-Deux questions décident de la suite, et aucune ne se tranche depuis la
-documentation — **à prouver par spike** (🟠), comme les assemblages et le
-surfacique l'ont été :
+Deux questions se posaient sur son fonctionnement — persistance du graphe
+dans le `.FCStd`, et fonctions PartDesign rééditables *vs* formes `Part`
+figées. Elles ont été **tranchées pour FreeSolid** le même jour, non pas en
+observant Nodes mais en décidant ce qu'on veut : graphe à part et optionnel,
+fonctions PartDesign rééditables, en mode cuisson. Voir
+[`nodes-macros.md`](nodes-macros.md).
 
-1. **Le graphe est-il persisté dans le `.FCStd`** ou vit-il à côté ? S'il
-   vit à côté, un fichier FreeSolid resterait un `.FCStd` standard avec un
-   graphe en annexe — acceptable, mais à décider en connaissance de cause.
-2. **Les nœuds produisent-ils des fonctions PartDesign** (donc de
-   l'historique rééditable) **ou des formes `Part` figées** ? Les
-   démonstrations (Voronoï sur solide, lissages itératifs, surfaces
-   frontières) sentent le `Part` brut. Si c'est le cas, la greffe reste un
-   monde parallèle dans le même document — exactement la situation du
-   surfacique avant le P016.
-
-Un spike headless répond aux deux : installer l'atelier, construire un
-graphe minimal, ouvrir le `.FCStd` produit et regarder les types d'objets.
-Une demi-journée, avant toute UI.
+Ce que Nodes garde d'utile après ces décisions : son modèle de données pour
+le jour où les *data trees* deviendront un besoin réel.
 
 ### Le point qui décide
 
@@ -237,6 +229,7 @@ géométrie**, ce qui est le bon signe.
   la vue graphe de l'arbre (gratuite), puis les macros, puis l'éditeur à
   fils qui n'est que leur interface graphique.
 
-Deux choses à faire avant d'engager quoi que ce soit : le **spike Nodes**
-(§3, deux questions à trancher sur un `.FCStd` réel) et le **choix du format
-de macro**, qui se décide maintenant parce qu'il est irréversible.
+Suite donnée le jour même : les partis pris sont posés dans
+[`nodes-macros.md`](nodes-macros.md) — graphe à part et optionnel, fonctions
+PartDesign rééditables, cuisson plutôt que lien vivant, et une vue en graphe
+du FeatureManager comme première brique.

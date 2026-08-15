@@ -632,12 +632,39 @@ class Kernel:
 
     # -- phase D : surfacique (API Part) + courbes 3D ---------------------
 
+    #: Objets document-level exposés dans la section Surfaces de l'arbre.
+    #: Les PartDesign::* dérivent aussi de Part::Feature — filtre exact.
+    _SURFACE_TYPE_IDS = frozenset({
+        "Part::Feature", "Part::Extrusion", "Part::Revolution",
+        "Part::Loft", "Part::Offset",
+    })
+
     def _add_surface(self, shape, label):
+        """Surface figée (Part::Feature) — couture, courbe 3D, legacy."""
         doc = self._require_doc()
         feature = doc.addObject("Part::Feature", "Surface")
         feature.Shape = shape
         feature.Label = label
         doc.recompute()
+        return self.get_tree()
+
+    def _add_part_surface(self, type_id, label, configure):
+        """Crée un objet Part paramétrique natif ; purge si le recompute
+        échoue — pas d'entrée cassée dans l'arbre."""
+        doc = self._require_doc()
+        obj = doc.addObject(type_id, "Surface")
+        obj.Label = label
+        try:
+            configure(obj)
+            self._recompute()
+        except Exception as exc:  # noqa: BLE001
+            try:
+                doc.removeObject(obj.Name)
+            except Exception:
+                pass
+            if isinstance(exc, KernelError):
+                raise
+            raise KernelError(_explain(exc))
         return self.get_tree()
 
     def _surface_source(self, sketch):
@@ -647,59 +674,110 @@ class Kernel:
             raise KernelError("l'esquisse est vide")
         return sk
 
+    def _surface_sketch_objects(self, obj):
+        """Esquisses sources d'une surface paramétrique Part."""
+        sketches = []
+        if obj.TypeId == "Part::Extrusion":
+            base = getattr(obj, "Base", None)
+            if base is not None and base.TypeId == "Sketcher::SketchObject":
+                sketches.append(base)
+        elif obj.TypeId == "Part::Revolution":
+            source = getattr(obj, "Source", None)
+            if (source is not None
+                    and source.TypeId == "Sketcher::SketchObject"):
+                sketches.append(source)
+        elif obj.TypeId == "Part::Loft":
+            for section in getattr(obj, "Sections", None) or []:
+                if (section is not None
+                        and section.TypeId == "Sketcher::SketchObject"):
+                    sketches.append(section)
+        return sketches
+
+    def _surface_tree_entry(self, obj):
+        sketches = self._surface_sketch_objects(obj)
+        entry = {
+            "name": obj.Name,
+            "label": obj.Label,
+            "type": obj.TypeId,
+            "sketches": [sk.Name for sk in sketches],
+        }
+        # Couture / courbe / fichiers legacy : pas d'objet paramétrique.
+        if obj.TypeId == "Part::Feature":
+            entry["static"] = True
+        if sketches:
+            entry["children"] = [{
+                "name": sk.Name,
+                "label": sk.Label,
+                "kind": label_for_type(sk.TypeId),
+                "type": sk.TypeId,
+                "error": "Invalid" in (sk.State or ()),
+            } for sk in sketches]
+        return entry
+
     def surface_extrude(self, length, sketch=None):
-        """Surface extrudée — le profil peut être OUVERT, c'est tout
-        l'intérêt du surfacique."""
+        """Surface extrudée paramétrique — profil ouvert OK."""
         sk = self._surface_source(sketch)
-        normal = sk.Placement.Rotation.multVec(self._app().Vector(0, 0, 1))
-        try:
-            shape = sk.Shape.extrude(normal.multiply(float(length)))
-        except Exception as exc:  # noqa: BLE001
-            raise KernelError(_explain(exc))
-        return self._add_surface(shape, "Surface extrudée")
+        App = self._app()
+        normal = sk.Placement.Rotation.multVec(App.Vector(0, 0, 1))
+        length = float(length)
+
+        def configure(obj):
+            obj.Base = sk
+            obj.DirMode = "Custom"
+            obj.Dir = normal
+            obj.LengthFwd = length
+            obj.Solid = False
+
+        return self._add_part_surface(
+            "Part::Extrusion", "Surface extrudée", configure)
 
     def surface_revolve(self, angle=360.0, sketch=None):
-        """Surface de révolution autour de l'axe vertical de l'esquisse."""
+        """Surface de révolution paramétrique — axe vertical d'esquisse."""
         sk = self._surface_source(sketch)
         App = self._app()
         base = sk.Placement.Base
         axis = sk.Placement.Rotation.multVec(App.Vector(0, 1, 0))
-        try:
-            shape = sk.Shape.revolve(base, axis, float(angle))
-        except Exception as exc:  # noqa: BLE001
-            raise KernelError(_explain(exc))
-        return self._add_surface(shape, "Surface de révolution")
+        angle = float(angle)
+
+        def configure(obj):
+            obj.Source = sk
+            obj.Axis = axis
+            obj.Base = base
+            obj.Angle = angle
+            obj.Solid = False
+
+        return self._add_part_surface(
+            "Part::Revolution", "Surface de révolution", configure)
 
     def surface_loft(self, sketches):
-        """Surface lissée entre plusieurs profils (ouverts ou fermés)."""
-        import Part
+        """Surface lissée paramétrique entre plusieurs profils."""
         if not isinstance(sketches, (list, tuple)) or len(sketches) < 2:
             raise KernelError("une surface lissée demande au moins deux "
                               "profils")
-        wires = []
+        sections = []
         for name in sketches:
             sk = self._get_sketch(str(name))
-            shape = sk.Shape
-            if shape.Wires:
-                wires.append(shape.Wires[0])
-            elif shape.Edges:
-                wires.append(Part.Wire(shape.Edges))
-            else:
+            if not sk.Shape.Edges:
                 raise KernelError("esquisse vide : {}".format(name))
-        try:
-            shape = Part.makeLoft(wires, False)
-        except Exception as exc:  # noqa: BLE001
-            raise KernelError(_explain(exc))
-        return self._add_surface(shape, "Surface lissée")
+            sections.append(sk)
+
+        def configure(obj):
+            obj.Sections = sections
+            obj.Solid = False
+            obj.Ruled = False
+
+        return self._add_part_surface(
+            "Part::Loft", "Surface lissée", configure)
 
     def _get_surface(self, name):
         obj = self._require_doc().getObject(str(name))
-        if obj is None or obj.TypeId != "Part::Feature":
+        if obj is None or obj.TypeId not in self._SURFACE_TYPE_IDS:
             raise KernelError("surface inconnue : {}".format(name))
         return obj
 
     def surface_sew(self, surfaces):
-        """Coudre des surfaces ; si la peau est fermée, elle devient un
+        """Coudre des surfaces ; reste figé (pas d'objet Part paramétrique
+        natif pour la couture). Si la peau est fermée, elle devient un
         solide — le geste « coudre puis solidifier » de SolidWorks."""
         import Part
         if not isinstance(surfaces, (list, tuple)) or len(surfaces) < 2:
@@ -720,17 +798,19 @@ class Kernel:
         return self._add_surface(shell, "Surface cousue")
 
     def surface_thicken(self, surface, thickness):
-        """Épaissir une surface en solide (offset rempli)."""
-        obj = self._get_surface(surface)
-        if float(thickness) == 0:
+        """Épaissir une surface en solide — Part::Offset paramétrique."""
+        src = self._get_surface(surface)
+        thickness = float(thickness)
+        if thickness == 0:
             raise KernelError("l'épaisseur ne peut pas être nulle")
-        try:
-            shape = obj.Shape.makeOffsetShape(
-                float(thickness), 1e-4, fill=True)
-        except Exception as exc:  # noqa: BLE001
-            raise KernelError(_explain(exc))
-        return self._add_surface(shape, "Épaississement")
 
+        def configure(obj):
+            obj.Source = src
+            obj.Value = thickness
+            obj.Fill = True
+
+        return self._add_part_surface(
+            "Part::Offset", "Épaississement", configure)
     def add_curve3d(self, points, spline=True):
         """Courbe 3D par points — le repli esquisse 3D : une trajectoire
         pour le balayage (B-spline interpolée, ou polyligne)."""
@@ -1766,9 +1846,9 @@ class Kernel:
     #: than full introspection: Pad alone carries a dozen numeric properties
     #: and prompting through Offset/TaperAngle/Length2 buries the one that
     #: matters.
-    _EDITABLE_PROPS = ("Length", "Radius", "Size", "Angle", "Thickness",
-                       "Value", "Occurrences", "Diameter", "Depth",
-                       "HoleCutDiameter", "HoleCutDepth")
+    _EDITABLE_PROPS = ("Length", "LengthFwd", "Radius", "Size", "Angle",
+                       "Thickness", "Value", "Occurrences", "Diameter",
+                       "Depth", "HoleCutDiameter", "HoleCutDepth")
 
     def get_params(self, feature):
         """Editable numeric properties of a feature, with current values."""
@@ -2168,6 +2248,13 @@ class Kernel:
             linked = profile[0] if isinstance(profile, tuple) else profile
             if linked is not None:
                 consumed[linked.Name] = obj.Name
+        # Esquisses pilotes d'une surface Part : imbriquées sous la surface,
+        # pas au premier niveau du corps (même geste que sous une fonction).
+        for obj in self._doc.Objects:
+            if obj.TypeId not in self._SURFACE_TYPE_IDS:
+                continue
+            for sk in self._surface_sketch_objects(obj):
+                consumed.setdefault(sk.Name, obj.Name)
 
         def entry(obj):
             item = {
@@ -2214,9 +2301,8 @@ class Kernel:
                               or o.TypeId == "Sketcher::SketchObject"]),
                 "color": getattr(obj, "FreeSolidColor", "") or None,
             })
-        surfaces = [{"name": o.Name, "label": o.Label}
-                    for o in self._doc.Objects
-                    if o.TypeId == "Part::Feature"]
+        surfaces = [self._surface_tree_entry(o) for o in self._doc.Objects
+                    if o.TypeId in self._SURFACE_TYPE_IDS]
         tip = body.Tip.Name if getattr(body, "Tip", None) else None
         return {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,
@@ -2272,12 +2358,12 @@ class Kernel:
                 indices.extend(i + vertex_base for i in extra["indices"])
                 vertex_base += len(extra["positions"]) // 3
             mesh["others"] = {"positions": positions, "indices": indices}
-        # Les surfaces (Part::Feature) voyagent à part : rendu double face
+        # Les surfaces (Part::*) voyagent à part : rendu double face
         # translucide côté client, non sélectionnables.
         surface_faces = []
         surface_lines = []
         for obj in self._doc.Objects:
-            if obj.TypeId != "Part::Feature":
+            if obj.TypeId not in self._SURFACE_TYPE_IDS:
                 continue
             shape = getattr(obj, "Shape", None)
             if shape is None:
@@ -3851,6 +3937,58 @@ class Kernel:
             report["p12_surface_loft_ok"] = (
                 any(s["label"] == "Surface lissée" for s in tree["surfaces"])
                 and len(tree["surfaces"]) > n_surfaces)
+
+            # Surfaces paramétriques : édition, suivi d'esquisse, expression,
+            # persistance après save/open.
+            self.new_part("Pièce surface edit")
+            state = self.sketch_start()
+            edit_sk = state["sketch"]
+            self.sketch_add_line(edit_sk, 0, 0, 40, 0)
+            self.sketch_finish(edit_sk)
+            tree = self.surface_extrude(20, sketch=edit_sk)
+            surf = tree["surfaces"][-1]
+            surf_obj = self._require_doc().getObject(surf["name"])
+            area_20 = float(surf_obj.Shape.Area)
+            self.set_params(surf["name"], {"LengthFwd": 40.0})
+            surf_obj = self._require_doc().getObject(surf["name"])
+            area_40 = float(surf_obj.Shape.Area)
+            report["p12_surface_edit_ok"] = (
+                surf.get("type") == "Part::Extrusion"
+                and edit_sk in (surf.get("sketches") or [])
+                and abs(area_40 - 2.0 * area_20) < 1e-3)
+            self.sketch_edit(edit_sk)
+            self.sketch_move(edit_sk, 0, 2, 80, 0)
+            self.sketch_finish(edit_sk)
+            surf_obj = self._require_doc().getObject(surf["name"])
+            area_follow = float(surf_obj.Shape.Area)
+            report["p12_surface_follows_sketch_ok"] = (
+                abs(area_follow - 2.0 * area_40) < 1e-2
+                and "Invalid" not in (surf_obj.State or ()))
+            self.set_params(surf["name"], {"LengthFwd": "15 * 2"})
+            surf_obj = self._require_doc().getObject(surf["name"])
+            length_expr = float(getattr(
+                surf_obj.LengthFwd, "Value", surf_obj.LengthFwd))
+            report["p12_surface_expr_ok"] = abs(length_expr - 30.0) < 1e-6
+            surf_path = os.path.join(tempfile.gettempdir(),
+                                     "freesolid-surface-edit.FCStd")
+            self.save_part(surf_path)
+            self.open_part(surf_path)
+            tree = self.get_tree()
+            reopened = next(
+                (s for s in tree["surfaces"]
+                 if s.get("type") == "Part::Extrusion"),
+                None)
+            if reopened is None:
+                report["p12_surface_reopen_ok"] = False
+            else:
+                self.set_params(reopened["name"], {"LengthFwd": 25.0})
+                reopened_obj = self._require_doc().getObject(reopened["name"])
+                length_re = float(getattr(
+                    reopened_obj.LengthFwd, "Value", reopened_obj.LengthFwd))
+                report["p12_surface_reopen_ok"] = (
+                    abs(length_re - 25.0) < 1e-6
+                    and bool(reopened_obj.Shape.Faces)
+                    and "Invalid" not in (reopened_obj.State or ()))
 
             mark("p12: courbe 3D + balayage dessus")
             curve_tree = self.add_curve3d(

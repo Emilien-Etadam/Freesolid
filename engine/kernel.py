@@ -1523,10 +1523,12 @@ class Kernel:
         if not isinstance(params, dict):
             raise KernelError("params doit être un objet JSON")
         doc.openTransaction("freesolid-preview")
+        self._previewing = True
         try:
             getattr(self, op)(**params)
             return self.tessellate()
         finally:
+            self._previewing = False
             try:
                 doc.abortTransaction()
             except Exception:
@@ -1851,9 +1853,14 @@ class Kernel:
             raise
         volume_after = float(body.Shape.Volume)
         if abs(volume_after - volume_before) < 1e-9:
-            body.Tip = previous_tip
-            doc.removeObject(feature.Name)
-            self._recompute()
+            # Sous aperçu, l'abort de la transaction restaure tout ; un
+            # removeObject d'une fonction aboutie DANS la transaction
+            # serait rejoué par l'abort — double-nettoyage qui peut
+            # ressusciter des objets (doublons observés dans l'arbre).
+            if not getattr(self, "_previewing", False):
+                body.Tip = previous_tip
+                doc.removeObject(feature.Name)
+                self._recompute()
             raise KernelError(
                 "cette face ne peut pas être dépouillée par rapport à ce "
                 "plan neutre — choisissez un autre plan neutre ou une autre face")

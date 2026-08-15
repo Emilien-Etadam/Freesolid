@@ -125,7 +125,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_polar_pattern": _Req(("count", int)),  # optional: angle (°), axis
     "add_thickness": _Req(("face", int), ("thickness", float)),
     "add_draft": _Req(("face", int), ("angle", float)),
-                                       # plan neutre : Plan de dessus (XY)
+                                       # optional: neutral (XY|XZ|YZ)
     # Phase B — références et ossature.
     "add_datum_plane": (),             # optional: base (XY|XZ|YZ) | face, offset, angle
     "add_loft": _Req(("sketches", list)),  # optional: subtractive, ruled, closed

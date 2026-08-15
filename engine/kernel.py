@@ -42,6 +42,17 @@ def parse_body_color(color):
     return color
 
 
+_NEUTRAL_PLANES = frozenset({"XY", "XZ", "YZ"})
+
+
+def parse_neutral_plane(neutral="XY"):
+    """Valide le plan neutre d'une dépouille (XY / XZ / YZ)."""
+    key = str(neutral).upper()
+    if key not in _NEUTRAL_PLANES:
+        raise KernelError("plan neutre inconnu : {}".format(neutral))
+    return key
+
+
 def _explain(exc) -> str:
     text = str(exc)
     return friendly_error(text) or text
@@ -1782,23 +1793,32 @@ class Kernel:
                              label_for_type("PartDesign::Thickness"),
                              "Value", thickness, face=face)
 
-    def add_draft(self, face, angle):
-        """Dépouille de la face cliquée ; plan neutre : Plan de dessus."""
+    def add_draft(self, face, angle, neutral="XY"):
+        """Dépouille de la face cliquée ; plan neutre XY/XZ/YZ."""
         body = self._require_body()
         doc = self._require_doc()
         tip = getattr(body, "Tip", None)
         if tip is None:
             raise KernelError("pas de solide à dépouiller")
+        role = self._PLANE_ROLES[parse_neutral_plane(neutral)]
+        volume_before = float(body.Shape.Volume)
         feature = body.newObject("PartDesign::Draft", "Draft")
         feature.Base = (tip, ["Face{}".format(int(face) + 1)])
         feature.Angle = float(angle)
-        feature.NeutralPlane = (self._origin_feature("XY_Plane"), [""])
+        feature.NeutralPlane = (self._origin_feature(role), [""])
         feature.Label = label_for_type("PartDesign::Draft")
         try:
             self._recompute()
         except KernelError:
             doc.removeObject(feature.Name)
             raise
+        volume_after = float(body.Shape.Volume)
+        if abs(volume_after - volume_before) < 1e-9:
+            doc.removeObject(feature.Name)
+            self._recompute()
+            raise KernelError(
+                "cette face ne peut pas être dépouillée par rapport à ce "
+                "plan neutre — choisissez un autre plan neutre ou une autre face")
         return self.get_tree()
 
     def _dressup(self, type_id, label, prop, value, face=None, edges=None):
@@ -3549,6 +3569,23 @@ class Kernel:
                 f["error"] for f in tree["features"])
 
             mark("p2: dépouille + coque")
+            self.new_part("Pièce coque")
+            self.add_rect_sketch(40, 40)
+            self.add_pad(20)
+            top = self._top_face_id()
+            try:
+                self.add_draft(face=top, angle=5, neutral="XY")
+                report["p2_draft_noop_refuse"] = False
+            except KernelError:
+                tree = self.get_tree()
+                report["p2_draft_noop_refuse"] = not any(
+                    f["type"] == "PartDesign::Draft" for f in tree["features"])
+            vol_before = float(self._require_body().Shape.Volume)
+            tree = self.add_draft(face=top, angle=5, neutral="XZ")
+            report["p2_draft_neutral_ok"] = (
+                not any(f["error"] for f in tree["features"])
+                and abs(float(self._require_body().Shape.Volume)
+                        - vol_before) > 1e-9)
             self.new_part("Pièce coque")
             self.add_rect_sketch(40, 40)
             self.add_pad(20)

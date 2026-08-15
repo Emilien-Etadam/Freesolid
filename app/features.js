@@ -366,12 +366,16 @@ export const FEATURES = [
     rows: [
       { type: "number", key: "angle", label: "Angle", value: 3,
         unit: "°", min: 0.01 },
-      { type: "note", text: "Plan neutre : Plan de dessus" },
+      { type: "select", key: "neutral", value: "XY", label: "Plan neutre",
+        options: [["XY", "Plan de dessus"], ["XZ", "Plan de face"],
+                  ["YZ", "Plan de droite"]] },
     ],
     build: (v) => {
       const angle = num(v.angle);
       return angle > 0
-        ? { op: "add_draft", params: { face: v.sel.face, angle } } : null;
+        ? { op: "add_draft",
+            params: { face: v.sel.face, angle, neutral: v.neutral } }
+        : null;
     },
   }),
   {

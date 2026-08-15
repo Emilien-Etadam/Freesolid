@@ -113,7 +113,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_rect_sketch": _Req(("width", float), ("height", float)),
                                        # optional: face (id) to attach
     "add_pad": _Req(("length", float)),  # optional: sketch, reversed, midplane
-    "add_pocket": (),                  # optional: length | through — sans profondeur = à travers tout ; reversed
+    "add_pocket": (),                  # optional: length | through — sans profondeur = à travers tout ; reversed, sketch
     "add_fillet": _Req(("radius", float)),  # face OU edges (liste d'ids)
     "add_chamfer": _Req(("size", float)),  # face OU edges
     # Palier 2 — fonctions volumiques, aucune interaction nouvelle.

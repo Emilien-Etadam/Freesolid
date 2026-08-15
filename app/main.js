@@ -7,6 +7,7 @@ import { createSketchMode } from "./sketch.js";
 import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
 import { FEATURES } from "./features.js";
+import { arcAngles } from "./geom2d.js";
 
 const statusEl = document.getElementById("status");
 const pickEl = document.getElementById("pick");
@@ -47,7 +48,13 @@ function say(text, isError = false) {
 // PropertyManager-style side panel — feature options live there, not in
 // prompt() dialogs. See panel.js for the SolidWorks anatomy. Closing the
 // panel (OK or cancel) always clears the yellow ghost preview.
-const panel = createPropertyPanel({ say, onClose: () => clearGhost() });
+const panel = createPropertyPanel({
+  say,
+  onClose: () => {
+    clearGhost();
+    sketchInfoOpen = false;
+  },
+});
 
 // ---------- viewport ----------
 
@@ -158,6 +165,8 @@ function showMesh(mesh) {
   selectedFaceId = null; // ids shift after every feature: stale picks lie
   const cleared = panel.invalidateSelections();
   lastClearedSelections = cleared > 0;
+  // Les noms/labels d'esquisse bougent aussi après une fonction.
+  clearSketchSelection({ quiet: true });
   if (lastClearedSelections) {
     say("Sélections réinitialisées — la géométrie a changé.");
   }
@@ -289,6 +298,11 @@ let planePicking = false;
 let selectedPlane = null;   // plan choisi dans l'arbre (sticky)
 let hoverPlane = null;      // survol en zone graphique pendant le picking
 let treeHoverPlane = null;  // survol d'une ligne de plan dans l'arbre
+let selectedSketch = null;  // { name, label } | null — esquisse sélectionnée
+let sketchHighlightGroup = null;
+const sketchHighlightMaterial = new THREE.LineBasicMaterial({
+  color: 0xd9924a, depthTest: false,
+});
 
 // Mêmes noms que vocab.ORIGIN_PLANES — affichés sur les plans eux-mêmes.
 const PLANE_LABELS = {
@@ -612,6 +626,8 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     }
     selectedFaceId = null;
     clearPlaneChoice();
+    clearSketchSelection({ quiet: true });
+    if (lastTree) renderTree(lastTree);
     repaintGroups();
     repaintEdges();
     panel.notifyPick("edges",
@@ -623,11 +639,15 @@ renderer.domElement.addEventListener("pointerup", (event) => {
   selectedEdges = new Set(); // une face (ou le vide) remplace les arêtes
   repaintEdges();
   repaintGroups();
+  clearSketchSelection({ quiet: true });
   if (selectedFaceId !== null) {
     clearPlaneChoice();
     // A command panel with a selection box absorbs the pick.
     panel.notifyPick("face", { kind: "face", face: selectedFaceId });
+  } else {
+    clearPlaneChoice();
   }
+  if (lastTree) renderTree(lastTree);
 });
 
 function resize() {
@@ -774,6 +794,7 @@ function refreshDatumGhost(hoverFeature) {
 }
 
 function onDatumRow(feature) {
+  clearSketchSelection({ quiet: true });
   selectedDatumFeature =
     selectedDatumFeature?.name === feature.name
       ? null
@@ -800,9 +821,163 @@ function treeIcon(file) {
 
 let lastTree = null;
 const expandedFeatures = new Set(); // les fonctions dépliées (persiste)
+let sketchInfoOpen = false;
+
+function clearSketchHighlight() {
+  if (!sketchHighlightGroup) return;
+  scene.remove(sketchHighlightGroup);
+  disposeSubtree(sketchHighlightGroup);
+  sketchHighlightGroup = null;
+}
+
+function drawSketchHighlight(state) {
+  clearSketchHighlight();
+  if (!state?.entities?.length) return;
+  const group = new THREE.Group();
+  group.renderOrder = 25;
+  group.matrixAutoUpdate = false;
+  group.matrix.set(...state.placement);
+  for (const entity of state.entities) {
+    let points = null;
+    if (entity.type === "line") {
+      points = [
+        new THREE.Vector3(entity.p1[0], entity.p1[1], 0),
+        new THREE.Vector3(entity.p2[0], entity.p2[1], 0)];
+    } else if (entity.type === "circle") {
+      points = [];
+      for (let i = 0; i <= 48; i++) {
+        const a = (i / 48) * Math.PI * 2;
+        points.push(new THREE.Vector3(
+          entity.c[0] + entity.r * Math.cos(a),
+          entity.c[1] + entity.r * Math.sin(a), 0));
+      }
+    } else if (entity.type === "arc") {
+      const { a1, a2 } = arcAngles(entity);
+      points = [];
+      for (let i = 0; i <= 32; i++) {
+        const a = a1 + (i / 32) * (a2 - a1);
+        points.push(new THREE.Vector3(
+          entity.c[0] + entity.r * Math.cos(a),
+          entity.c[1] + entity.r * Math.sin(a), 0));
+      }
+    } else if (entity.type === "poly" && entity.points?.length > 1) {
+      points = entity.points.map((p) => new THREE.Vector3(p[0], p[1], 0));
+    }
+    if (!points) continue;
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(points),
+      sketchHighlightMaterial);
+    line.renderOrder = 25;
+    group.add(line);
+  }
+  scene.add(group);
+  sketchHighlightGroup = group;
+}
+
+function sketchConsumerLabel(tree, sketchName) {
+  for (const feature of tree?.features ?? []) {
+    for (const child of feature.children ?? []) {
+      if (child.name === sketchName) return feature.label;
+    }
+  }
+  return null;
+}
+
+function clearSketchSelection({ quiet = false } = {}) {
+  const had = selectedSketch !== null || sketchHighlightGroup
+    || sketchInfoOpen;
+  selectedSketch = null;
+  clearSketchHighlight();
+  if (sketchInfoOpen) {
+    sketchInfoOpen = false;
+    if (panel.active) panel.close({ silent: true });
+  }
+  if (!had) return;
+  if (!quiet && lastTree) renderTree(lastTree);
+}
+
+async function selectSketchInTree(feature) {
+  const pick = { kind: "sketch", name: feature.name, label: feature.label };
+  if (panel.notifyPick("sketch", pick)) return; // loft/sweep absorbe
+  if (selectedSketch?.name === feature.name) {
+    clearSketchSelection();
+    say("Esquisse désélectionnée");
+    return;
+  }
+  // Autre sélection d'arbre : un seul focus à la fois.
+  selectedPlane = null;
+  selectedDatumFeature = null;
+  refreshDatumGhost(null);
+  updatePlaneVisibility();
+  selectedSketch = { name: feature.name, label: feature.label };
+  if (lastTree) renderTree(lastTree);
+  try {
+    const state = await call("sketch_state", { sketch: feature.name });
+    if (selectedSketch?.name !== feature.name) return; // course
+    drawSketchHighlight(state);
+    openSketchInfoPanel(state, feature);
+  } catch (error) {
+    say(error.message, true);
+    clearSketchSelection();
+  }
+}
+
+function openSketchInfoPanel(state, feature) {
+  const usedBy = sketchConsumerLabel(lastTree, feature.name);
+  const nEnt = state.entities?.length ?? 0;
+  const nCon = state.constraints?.length ?? 0;
+  const dof = state.dof;
+  const status = state.fullyConstrained
+    ? "totalement contrainte"
+    : dof !== null && dof !== undefined
+      ? `${dof} degré${dof === 1 ? "" : "s"} de liberté`
+      : "état inconnu";
+  sketchInfoOpen = true;
+  panel.open({
+    icon: "Sketcher_Sketch.svg",
+    title: state.label || feature.label,
+    noApply: true,
+    groups: [{
+      label: "Propriétés",
+      rows: [
+        { type: "note",
+          text: `Support : ${state.support || "—"}` },
+        { type: "note",
+          text: `Entités : ${nEnt} — Contraintes : ${nCon}` },
+        { type: "note", text: `État : ${status}` },
+        { type: "note",
+          text: `Utilisée par : ${usedBy ?? "libre"}` },
+      ],
+    }],
+    actions: [{
+      label: "✎",
+      title: "Modifier",
+      onClick: () => {
+        sketchInfoOpen = false;
+        const target = {
+          type: "Sketcher::SketchObject",
+          name: feature.name,
+          label: feature.label,
+        };
+        selectedSketch = null;
+        clearSketchHighlight();
+        if (lastTree) renderTree(lastTree);
+        editFeature(target);
+      },
+    }],
+    onCancel: () => {
+      // Fermer / Échap uniquement (open() remplace en silencieux).
+      sketchInfoOpen = false;
+      selectedSketch = null;
+      clearSketchHighlight();
+      if (lastTree) renderTree(lastTree);
+    },
+  });
+}
 
 function onPlaneRow(id) {
   if (planePicking) { pickPlane(id); return; }
+  clearSketchSelection({ quiet: true });
   selectedPlane = selectedPlane === id ? null : id;
   if (selectedPlane !== null) {
     selectedDatumFeature = null;
@@ -893,8 +1068,7 @@ function renderTree(tree) {
         row.title = `${child.kind} — double-clic : modifier l'esquisse`;
         row.addEventListener("dblclick", () => editFeature(child));
         row.addEventListener("contextmenu", (e) => openMenu(e, child));
-        row.addEventListener("click", () => panel.notifyPick("sketch",
-          { kind: "sketch", name: child.name, label: child.label }));
+        row.addEventListener("click", () => selectSketchInTree(child));
         treeEl.appendChild(row);
       }
     }
@@ -957,9 +1131,8 @@ function renderActiveBodyContents(tree) {
       item.addEventListener("mouseleave", () => refreshDatumGhost(null));
     }
     if (feature.type === "Sketcher::SketchObject") {
-      // Un lissage/balayage ouvert dans le panneau absorbe le clic.
-      item.addEventListener("click", () => panel.notifyPick("sketch",
-        { kind: "sketch", name: feature.name, label: feature.label }));
+      if (selectedSketch?.name === feature.name) item.classList.add("sel");
+      item.addEventListener("click", () => selectSketchInTree(feature));
     }
     treeEl.appendChild(item);
 
@@ -968,13 +1141,13 @@ function renderActiveBodyContents(tree) {
       for (const child of feature.children) {
         const row = document.createElement("li");
         row.className = "child" + (child.error ? " error" : "");
+        if (selectedSketch?.name === child.name) row.classList.add("sel");
         row.appendChild(treeIcon("Sketcher_Sketch.svg"));
         row.appendChild(document.createTextNode(child.label));
         row.title = `${child.kind} — double-clic : modifier l'esquisse`;
         row.addEventListener("dblclick", () => editFeature(child));
         row.addEventListener("contextmenu", (e) => openMenu(e, child));
-        row.addEventListener("click", () => panel.notifyPick("sketch",
-          { kind: "sketch", name: child.name, label: child.label }));
+        row.addEventListener("click", () => selectSketchInTree(child));
         treeEl.appendChild(row);
       }
     }
@@ -1886,7 +2059,11 @@ function currentSelection(accepts) {
 function bindFeature(entry) {
   document.getElementById(entry.button).addEventListener("click", () =>
     featureCommand(() => {
-      const ctx = { lastTree, selection: currentSelection };
+      const ctx = {
+        lastTree,
+        selection: currentSelection,
+        selectedSketch,
+      };
       const blocked = entry.guard?.(ctx);
       if (blocked) { say(blocked, true); return; }
       const spec = {

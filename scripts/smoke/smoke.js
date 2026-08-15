@@ -135,6 +135,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("drag coin");
   await page.screenshot({ path: path.join(SHOTS, "2-drag.png") });
 
+  // 3b. Drag d'arête — milieu du côté droit (après le drag coin, le
+  // rectangle a bougé : on vise le centre approximatif du canvas
+  // horizontalement à droite, loin des coins).
+  await page.mouse.move(cx + 50, cy);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) {
+    await page.mouse.move(cx + 50 + i * 5, cy + i * 2);
+    await sleep(25);
+  }
+  await page.mouse.up();
+  await sleep(1200);
+  await step("drag arête");
+  await page.screenshot({ path: path.join(SHOTS, "2b-drag-edge.png") });
+
   // 4. Bossage : onglet Fonctions, sortie auto d'esquisse, aperçu, OK
   await page.click('[data-tab="features"]');
   await sleep(400);

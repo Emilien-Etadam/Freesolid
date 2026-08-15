@@ -6,6 +6,30 @@
 
 import { num } from "./num.js";
 
+/** Message moteur quand aucune esquisse libre n'est disponible. */
+export const NO_SKETCH_AVAILABLE =
+  "aucune esquisse disponible — les esquisses existantes "
+  + "sont déjà utilisées par des fonctions, dessinez-en une "
+  + "nouvelle";
+
+/** Esquisses libres (non consommées) dans l'ordre du corps — comme
+ *  `_latest_sketch` côté moteur. */
+export function availableSketches(tree) {
+  return (tree?.features ?? []).filter(
+    (f) => f.type === "Sketcher::SketchObject");
+}
+
+export function latestAvailableSketch(tree) {
+  const sketches = availableSketches(tree);
+  return sketches.length ? sketches[sketches.length - 1] : null;
+}
+
+/** Profil affiché / utilisé : sélection d'arbre sinon dernière libre. */
+export function resolveProfileSketch(ctx) {
+  if (ctx.selectedSketch?.name) return ctx.selectedSketch;
+  return latestAvailableSketch(ctx.lastTree);
+}
+
 export function hasSelection(sel) {
   return !!sel && (sel.kind === "edges"
     ? sel.edges.length > 0 : sel.face != null);
@@ -34,8 +58,47 @@ function dressup({ button, icon, title, selectionLabel, group, rows, build,
   };
 }
 
-function revolved({ button, op, icon, title }) {
+/** Fonctions à profil d'esquisse : ligne « Profil : … », params.sketch
+ *  si présélection, garde si aucune esquisse disponible. */
+function withSketchProfile(entry) {
   return {
+    ...entry,
+    groups: (ctx) => {
+      const profile = resolveProfileSketch(ctx);
+      const groups = typeof entry.groups === "function"
+        ? entry.groups(ctx) : entry.groups;
+      return [
+        { label: "Profil",
+          rows: [{ type: "note",
+            text: profile
+              ? `Profil : ${profile.label}`
+              : "Profil : —" }] },
+        ...groups,
+      ];
+    },
+    build: (v, ctx) => {
+      const built = entry.build(v, ctx);
+      if (!built) return null;
+      if (ctx.selectedSketch?.name) {
+        built.params = { ...built.params, sketch: ctx.selectedSketch.name };
+      }
+      return built;
+    },
+    guard: (ctx) => {
+      const blocked = entry.guard?.(ctx);
+      if (blocked) return blocked;
+      return resolveProfileSketch(ctx) ? null : NO_SKETCH_AVAILABLE;
+    },
+    invalid: (v, ctx) => {
+      if (!resolveProfileSketch(ctx)) return NO_SKETCH_AVAILABLE;
+      return typeof entry.invalid === "function"
+        ? entry.invalid(v, ctx) : (entry.invalid ?? "Valeurs invalides");
+    },
+  };
+}
+
+function revolved({ button, op, icon, title }) {
+  return withSketchProfile({
     button, icon, title,
     groups: () => [{
       label: "Direction 1",
@@ -51,7 +114,7 @@ function revolved({ button, op, icon, title }) {
     },
     invalid: "Angle invalide",
     refresh: "part",
-  };
+  });
 }
 
 function surface({ button, icon, title, groups, note, build, invalid }) {
@@ -69,7 +132,7 @@ function surface({ button, icon, title, groups, note, build, invalid }) {
 }
 
 export const FEATURES = [
-  {
+  withSketchProfile({
     button: "btn-pad",
     icon: "PartDesign_Pad.svg",
     title: "Bossage/Base extrudé",
@@ -93,8 +156,8 @@ export const FEATURES = [
     },
     invalid: "Profondeur invalide",
     refresh: "part",
-  },
-  {
+  }),
+  withSketchProfile({
     button: "btn-pocket",
     icon: "PartDesign_Pocket.svg",
     title: "Enlèvement de matière extrudé",
@@ -119,7 +182,7 @@ export const FEATURES = [
     },
     invalid: "Profondeur invalide",
     refresh: "part",
-  },
+  }),
   revolved({
     button: "btn-revolution",
     op: "add_revolution",

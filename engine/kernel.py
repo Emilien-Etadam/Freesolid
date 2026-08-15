@@ -1476,7 +1476,8 @@ class Kernel:
                 "nouvelle")
         return sketches[-1]
 
-    def add_pocket(self, length=None, through=False, reversed=False):
+    def add_pocket(self, length=None, through=False, reversed=False,
+                   sketch=None):
         """Cut with the latest sketch — Extruded Cut, in SolidWorks terms.
 
         No length (or ``through``) means « À travers tout » — the option a
@@ -1485,7 +1486,8 @@ class Kernel:
         body = self._require_body()
         doc = self._require_doc()
         pocket = body.newObject("PartDesign::Pocket", "Pocket")
-        pocket.Profile = self._latest_sketch()
+        pocket.Profile = (self._get_sketch(sketch) if sketch is not None
+                          else self._latest_sketch())
         if through or length is None:
             pocket.Type = "ThroughAll"
         else:
@@ -2608,6 +2610,7 @@ class Kernel:
         return {
             "sketch": sk.Name,
             "label": sk.Label,
+            "support": self._sketch_support_label(sk),
             "entities": entities,
             "dims": dims,
             "constraints": constraints,
@@ -2615,6 +2618,25 @@ class Kernel:
             "fullyConstrained": bool(getattr(sk, "FullyConstrained", False)),
             "placement": [float(v) for v in matrix],
         }
+
+    @staticmethod
+    def _sketch_support_label(sk):
+        """Label du plan ou de la face d'appui — pour le panneau infos."""
+        support = (getattr(sk, "AttachmentSupport", None)
+                   or getattr(sk, "Support", None))
+        try:
+            for obj, subs in list(support or ()):
+                if obj is None:
+                    continue
+                label = obj.Label
+                for sub in subs or ():
+                    text = str(sub)
+                    if text.startswith("Face"):
+                        return "{} · {}".format(label, text)
+                return label
+        except Exception:
+            pass
+        return ""
 
     @staticmethod
     def _endpoints_of(geo):

@@ -12,6 +12,8 @@
 //     title: "Bossage/Base extrudé",
 //     groups: [{ label, rows: [row…] }],
 //     note?: string,
+//     noApply?: boolean,   // panneau info : pas de bouton OK
+//     actions?: [{ label, title?, className?, onClick(values) }],
 //     onApply(values), onCancel?(), onChange?(values)
 //   }
 // Rows: { type: "number", key, label, value, unit?, min?, step?, showIf? }
@@ -46,7 +48,10 @@ export function createPropertyPanel({ say, onClose }) {
   // ---------- lifecycle ----------
 
   function open(spec) {
-    if (active) close(false); // une commande à la fois, comme SolidWorks
+    // Remplacer un panneau ouvert : silencieux (la présélection d'arbre
+    // doit survivre, ex. esquisse → Bossage). Fermer/Échap passent par
+    // close(false) qui appelle onCancel.
+    if (active) close(false, { silent: true });
     active = { spec, values: {} };
     for (const group of spec.groups) {
       for (const row of group.rows ?? []) {
@@ -60,7 +65,7 @@ export function createPropertyPanel({ say, onClose }) {
     changed(); // premier aperçu avec les valeurs par défaut
   }
 
-  function close(apply) {
+  function close(apply, { silent = false } = {}) {
     if (!active) return;
     const { spec, values } = active;
     active = null;
@@ -68,12 +73,13 @@ export function createPropertyPanel({ say, onClose }) {
     document.removeEventListener("keydown", onKey, true);
     panelEl.innerHTML = "";
     onClose?.(); // efface l'aperçu avant d'appliquer ou d'abandonner
-    if (apply) spec.onApply({ ...values });
-    else spec.onCancel?.();
+    if (apply) spec.onApply?.({ ...values });
+    else if (!silent) spec.onCancel?.();
   }
 
   function onKey(event) {
     if (event.key === "Enter" && event.target.tagName !== "SELECT") {
+      if (active?.spec.noApply) return;
       event.preventDefault();
       event.stopPropagation(); // le mode esquisse écoute aussi le clavier
       close(true);
@@ -159,13 +165,30 @@ export function createPropertyPanel({ say, onClose }) {
     const icon = document.createElement("img");
     icon.src = "icons/" + spec.icon;
     icon.alt = "";
-    const ok = el("button", "pok", "✓");
-    ok.title = "OK (Entrée)";
-    ok.addEventListener("click", () => close(true));
-    const cancel = el("button", "pcancel", "✕");
-    cancel.title = "Annuler (Échap)";
+    head.append(icon, el("span", "ptitle", spec.title));
+    if (spec.actions) {
+      for (const action of spec.actions) {
+        const btn = el("button", action.className ?? "pok", action.label);
+        if (action.title) btn.title = action.title;
+        btn.addEventListener("click", () => {
+          const values = { ...active.values };
+          const run = action.onClick;
+          close(false, { silent: true });
+          run?.(values);
+        });
+        head.append(btn);
+      }
+    }
+    if (!spec.noApply) {
+      const ok = el("button", "pok", "✓");
+      ok.title = "OK (Entrée)";
+      ok.addEventListener("click", () => close(true));
+      head.append(ok);
+    }
+    const cancel = el("button", "pcancel", spec.noApply ? "Fermer" : "✕");
+    cancel.title = spec.noApply ? "Fermer (Échap)" : "Annuler (Échap)";
     cancel.addEventListener("click", () => close(false));
-    head.append(icon, el("span", "ptitle", spec.title), ok, cancel);
+    head.append(cancel);
     panelEl.append(head);
 
     for (const group of spec.groups) {
@@ -295,6 +318,7 @@ export function createPropertyPanel({ say, onClose }) {
 
   return {
     open,
+    close: (opts) => close(false, opts),
     notifyPick,
     invalidateSelections,
     get active() { return active !== null; },

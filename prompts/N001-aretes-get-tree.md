@@ -95,6 +95,27 @@ elle doit décrire les deux nouveaux champs et la règle d'arête.
   `bodies`, `surfaces`, `tip` gardent leur structure. On ajoute, on ne
   réorganise pas.
 
+## Coordination avec la série P
+
+N001 est **compatible avec P018, P019 et P020** — ils touchent `add_draft`,
+`app/solver.js` et `app/index.html`, aucun ne va près de `get_tree`. Ils
+peuvent avancer en parallèle sans se voir.
+
+**P021 est l'exception, et il faut l'ordonner.** Il ajoute lui aussi au
+payload de `get_tree` (`tree["variables"]`, en haut du dictionnaire de
+retour) et un point de contrôle dans la même section de rapport du selftest.
+Les deux changements sont purement additifs, donc le conflit serait textuel
+et non sémantique — mais autant l'éviter :
+
+> **Faire passer N001 avant P021.** N001 est plus court et pose le motif
+> (`get_tree` s'enrichit sans se réorganiser) que P021 réutilisera.
+
+À noter pour qui écrira la suite : les deux prompts se complètent. P021
+crée un dossier « Équations » listant les variables globales ; le champ
+`driven` de N001 dit **quelles fonctions chaque variable pilote**. De quoi
+afficher « utilisée par : Bossage1 » dans ce dossier, une fois les deux
+posés.
+
 ## Validation avant de pousser
 
 ```bash

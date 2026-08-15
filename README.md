@@ -1,7 +1,6 @@
 # FreeSolid
 
-Interface de CAO mécanique moderne (vocabulaire SolidWorks, look Plasticity)
-sur un moteur FreeCAD headless intact — les fichiers restent des `.FCStd`
+Interface de CAO mécanique moderne sur un moteur FreeCAD headless intact — les fichiers restent des `.FCStd`
 standard, ouvrables dans FreeCAD.
 
 ![FreeSolid — pièce après le smoke navigateur](docs/img/smoke.png)

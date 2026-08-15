@@ -20,16 +20,19 @@ Un seul processus sert l'API JSON et l'UI statique (`app/`).
 
 ## Ce qui marche aujourd'hui
 
-- **Esquisse** contrainte + solveur WASM (planegcs) à ~60 fps pendant le drag
+- **Esquisse** contrainte + solveur WASM (planegcs) à ~60 fps pendant le
+  drag ; décalage d'entités, symétrie, répétition, congé, ajustement
 - **PartDesign** : bossage/enlèvement, révolution, congé, chanfrein, coque,
   dépouille, perçage, lissage, balayage, hélice, répétitions
 - **Multi-corps** et couleurs d'affichage par corps
 - **Assemblage** : composants, joints, solveur MbD, interférences
-- **Surfacique** : extrusions/révolutions de profils ouverts, loft, coudre,
-  épaissir
+- **Surfacique** : extrusion/révolution de profils ouverts, lissage,
+  épaissir — **paramétrique et rééditable** (double-clic, expressions) ;
+  coudre reste figé
 - **Équations** et expressions (variables globales, cotes pilotées)
 - **Import/export** STEP, STL, 3MF ; sauvegarde/ouverture `.FCStd`
-- **Mise en plan** DXF cotée (vues Face / Dessus / Iso)
+- **Mise en plan** DXF cotée (vues Face / Dessus / Iso), coupe X/Y/Z
+  optionnelle
 - **Image d'esquisse** (calque de fond)
 
 ## Architecture

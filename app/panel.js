@@ -185,7 +185,9 @@ export function createPropertyPanel({ say, onClose }) {
       ok.addEventListener("click", () => close(true));
       head.append(ok);
     }
-    const cancel = el("button", "pcancel", spec.noApply ? "Fermer" : "✕");
+    const cancel = el("button",
+      spec.noApply ? "pcancel pcancel-text" : "pcancel",
+      spec.noApply ? "Fermer" : "✕");
     cancel.title = spec.noApply ? "Fermer (Échap)" : "Annuler (Échap)";
     cancel.addEventListener("click", () => close(false));
     head.append(cancel);

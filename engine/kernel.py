@@ -2606,6 +2606,12 @@ class Kernel:
             dof = int(sk.getLastDoF())
         except Exception:
             pass
+        if dof is None:
+            # FreeCAD 1.0 : propriété DoF (getLastDoF a disparu).
+            try:
+                dof = int(sk.DoF)
+            except Exception:
+                pass
         matrix = sk.Placement.Matrix.A
         return {
             "sketch": sk.Name,

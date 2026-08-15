@@ -822,6 +822,22 @@ function treeIcon(file) {
 let lastTree = null;
 const expandedFeatures = new Set(); // les fonctions dépliées (persiste)
 let sketchInfoOpen = false;
+let sketchClickTimer = null;
+
+/** Clic simple (éventuellement différé pour laisser passer le double-clic). */
+function onSketchRowClick(feature) {
+  clearTimeout(sketchClickTimer);
+  sketchClickTimer = setTimeout(() => selectSketchInTree(feature), 280);
+}
+
+function onSketchRowDblClick(feature) {
+  clearTimeout(sketchClickTimer);
+  sketchClickTimer = null;
+  // Entrer en édition sans passer par le toggle de sélection.
+  clearSketchSelection({ quiet: true });
+  if (lastTree) renderTree(lastTree);
+  editFeature(feature);
+}
 
 function clearSketchHighlight() {
   if (!sketchHighlightGroup) return;
@@ -950,8 +966,9 @@ function openSketchInfoPanel(state, feature) {
       ],
     }],
     actions: [{
-      label: "✎",
-      title: "Modifier",
+      label: "Modifier",
+      title: "Modifier l'esquisse",
+      className: "paction",
       onClick: () => {
         sketchInfoOpen = false;
         const target = {
@@ -1066,9 +1083,9 @@ function renderTree(tree) {
         row.appendChild(treeIcon("Sketcher_Sketch.svg"));
         row.appendChild(document.createTextNode(child.label));
         row.title = `${child.kind} — double-clic : modifier l'esquisse`;
-        row.addEventListener("dblclick", () => editFeature(child));
+        row.addEventListener("dblclick", () => onSketchRowDblClick(child));
         row.addEventListener("contextmenu", (e) => openMenu(e, child));
-        row.addEventListener("click", () => selectSketchInTree(child));
+        row.addEventListener("click", () => onSketchRowClick(child));
         treeEl.appendChild(row);
       }
     }
@@ -1118,7 +1135,13 @@ function renderActiveBodyContents(tree) {
     item.appendChild(document.createTextNode(feature.label));
     item.title = `${feature.kind} — double-clic : modifier · ` +
       "clic droit : barre de retour, supprimer";
-    item.addEventListener("dblclick", () => editFeature(feature));
+    item.addEventListener("dblclick", () => {
+      if (feature.type === "Sketcher::SketchObject") {
+        onSketchRowDblClick(feature);
+      } else {
+        editFeature(feature);
+      }
+    });
     item.addEventListener("contextmenu", (e) => openMenu(e, feature));
     if (feature.type === "PartDesign::Plane") {
       // Un plan de référence se choisit comme un plan d'origine.
@@ -1132,7 +1155,7 @@ function renderActiveBodyContents(tree) {
     }
     if (feature.type === "Sketcher::SketchObject") {
       if (selectedSketch?.name === feature.name) item.classList.add("sel");
-      item.addEventListener("click", () => selectSketchInTree(feature));
+      item.addEventListener("click", () => onSketchRowClick(feature));
     }
     treeEl.appendChild(item);
 
@@ -1145,9 +1168,9 @@ function renderActiveBodyContents(tree) {
         row.appendChild(treeIcon("Sketcher_Sketch.svg"));
         row.appendChild(document.createTextNode(child.label));
         row.title = `${child.kind} — double-clic : modifier l'esquisse`;
-        row.addEventListener("dblclick", () => editFeature(child));
+        row.addEventListener("dblclick", () => onSketchRowDblClick(child));
         row.addEventListener("contextmenu", (e) => openMenu(e, child));
-        row.addEventListener("click", () => selectSketchInTree(child));
+        row.addEventListener("click", () => onSketchRowClick(child));
         treeEl.appendChild(row);
       }
     }

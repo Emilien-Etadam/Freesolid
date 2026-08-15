@@ -138,6 +138,15 @@
   #panel .pok:hover { border-color: #6fbf8f; }
   #panel .pcancel { color: var(--error); border-color: #8a4a45; }
   #panel .pcancel:hover { border-color: var(--error); }
+  #panel .paction {
+    flex: none; height: 28px; padding: 0 8px;
+    font-size: 11px; border-radius: 4px;
+    color: var(--accent); border-color: var(--accent);
+  }
+  #panel .pcancel-text {
+    width: auto; min-width: 28px; padding: 0 8px;
+    border-radius: 4px; font-size: 11px;
+  }
   .pgroup {
     border: 1px solid var(--line); border-radius: 6px;
     margin: 8px; overflow: hidden;
@@ -191,7 +200,8 @@
     color: var(--ink-2); font-size: 10px;
   }
   #tree li.plane { color: var(--ink-2); }
-  #tree li.plane.sel { color: var(--accent); background: var(--panel-2); }
+  #tree li.plane.sel,
+  #tree li.sel { color: var(--accent); background: var(--panel-2); }
   #tree li.child { padding-left: 40px; }
   #tree li.sel-comp { color: var(--accent); background: var(--panel-2); }
   #tree li.error { color: var(--error); }

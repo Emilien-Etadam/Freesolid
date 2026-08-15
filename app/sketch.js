@@ -6,7 +6,7 @@
 
 import * as THREE from "three";
 import { createLocalSolver } from "./solver.js";
-import { arcAngles } from "./geom2d.js";
+import { arcAngles, distanceToEntity } from "./geom2d.js";
 import { num } from "./num.js";
 
 export function createSketchMode(deps) {
@@ -733,29 +733,30 @@ export function createSketchMode(deps) {
   }
 
   function nearestEntity(event) {
-    // Screen-space distance to segment midpoints / circle rims — coarse but
-    // honest for v1; proper hit-testing comes with hover highlighting.
+    // Distance réelle à la courbe (segment / |d−r|), seuil écran 18 px.
+    const local = toLocal(event);
+    if (!local) return null;
     let best = null, bestDistance = 18;
     for (const entity of mode.state.entities) {
-      let s;
-      if (entity.type === "line") {
-        s = toScreen((entity.p1[0] + entity.p2[0]) / 2,
-                     (entity.p1[1] + entity.p2[1]) / 2);
-      } else if (entity.type === "circle") {
-        s = toScreen(entity.c[0] + entity.r, entity.c[1]);
-      } else if (entity.type === "arc") {
-        const { a1, a2 } = arcAngles(entity);
-        const am = (a1 + a2) / 2;
-        s = toScreen(entity.c[0] + entity.r * Math.cos(am),
-                     entity.c[1] + entity.r * Math.sin(am));
-      } else if (entity.type === "poly" && entity.points?.length) {
-        const mid = entity.points[Math.floor(entity.points.length / 2)];
-        s = toScreen(mid[0], mid[1]);
-      } else continue;
-      const distance = Math.hypot(s.x - event.clientX, s.y - event.clientY);
-      if (distance < bestDistance) { best = entity.id; bestDistance = distance; }
+      const distLocal = distanceToEntity(local.x, local.y, entity);
+      if (!Number.isFinite(distLocal)) continue;
+      // Convertir en pixels via un voisinage local (dérivée approx.).
+      const s0 = toScreen(local.x, local.y);
+      const s1 = toScreen(local.x + 1, local.y);
+      const pxPerUnit = Math.hypot(s1.x - s0.x, s1.y - s0.y) || 1;
+      const distance = distLocal * pxPerUnit;
+      if (distance < bestDistance) {
+        best = entity.id;
+        bestDistance = distance;
+      }
     }
     return best;
+  }
+
+  function overEntity(event) {
+    const id = nearestEntity(event);
+    if (id == null) return null;
+    return mode.state.entities.find((e) => e.id === id) ?? null;
   }
 
   function onPointerDown(event) {
@@ -765,6 +766,51 @@ export function createSketchMode(deps) {
       mode.drag = { geo: p.geo, point: p.point };
       controls.enabled = false;
       setCursor("grabbing");
+      return;
+    }
+    // Drag d'arête entière (Sketcher point 0 = courbe).
+    const entity = overEntity(event);
+    if (!entity) return;
+    const local = toLocal(event);
+    if (!local) return;
+    mode.drag = {
+      geo: entity.id,
+      point: 0,
+      grab: { x: local.x, y: local.y },
+      base: snapshotEntity(entity),
+    };
+    controls.enabled = false;
+    setCursor("grabbing");
+  }
+
+  function snapshotEntity(entity) {
+    const snap = { type: entity.type };
+    if (entity.p1) snap.p1 = [...entity.p1];
+    if (entity.p2) snap.p2 = [...entity.p2];
+    if (entity.c) snap.c = [...entity.c];
+    if (entity.r != null) snap.r = entity.r;
+    if (entity.points) snap.points = entity.points.map((p) => [...p]);
+    return snap;
+  }
+
+  /** Cible abs. pour sketch_move point 0 : nouveau départ (ligne) ou centre. */
+  function wholeCurveTarget(drag, local) {
+    const dx = local.x - drag.grab.x, dy = local.y - drag.grab.y;
+    const b = drag.base;
+    if (b.type === "circle" || b.type === "arc") {
+      return { x: b.c[0] + dx, y: b.c[1] + dy };
+    }
+    return { x: b.p1[0] + dx, y: b.p1[1] + dy };
+  }
+
+  function applyWholeCurveLocal(entity, drag, local) {
+    const dx = local.x - drag.grab.x, dy = local.y - drag.grab.y;
+    const b = drag.base;
+    if (b.p1) entity.p1 = [b.p1[0] + dx, b.p1[1] + dy];
+    if (b.p2) entity.p2 = [b.p2[0] + dx, b.p2[1] + dy];
+    if (b.c) entity.c = [b.c[0] + dx, b.c[1] + dy];
+    if (b.points) {
+      entity.points = b.points.map((p) => [p[0] + dx, p[1] + dy]);
     }
   }
 
@@ -825,18 +871,21 @@ export function createSketchMode(deps) {
   function onPointerMove(event) {
     mode.lastMouse = { clientX: event.clientX, clientY: event.clientY };
     if (mode.tool === "select" && !mode.drag) {
-      setCursor(overEndpoint(event) ? "grab" : "default");
+      const hot = overEndpoint(event) || overEntity(event);
+      setCursor(hot ? "grab" : "default");
     }
     if (mode.drag) {
       const local = toLocal(event);
       if (!local) return;
+      const target = mode.drag.point === 0
+        ? wholeCurveTarget(mode.drag, local) : local;
       // M3 : résolution locale planegcs — toutes les contraintes tiennent
       // à 60 fps, zéro réseau ; le serveur réconcilie au pointerup.
       if (mode.solverOk) {
         const updates = localSolver.drag(
-          mode.drag.geo, mode.drag.point, local.x, local.y);
+          mode.drag.geo, mode.drag.point, target.x, target.y);
         if (updates) {
-          mode.dragLocal = local; // pour le sketch_move final
+          mode.dragLocal = target; // pour le sketch_move final
           redraw();
           return;
         }
@@ -848,7 +897,9 @@ export function createSketchMode(deps) {
       const entity = mode.state?.entities.find(
         (e) => e.id === mode.drag.geo);
       if (entity) {
-        if (mode.drag.point === 1 && entity.p1) {
+        if (mode.drag.point === 0) {
+          applyWholeCurveLocal(entity, mode.drag, local);
+        } else if (mode.drag.point === 1 && entity.p1) {
           entity.p1 = [local.x, local.y];
         } else if (mode.drag.point === 2 && entity.p2) {
           entity.p2 = [local.x, local.y];
@@ -857,7 +908,7 @@ export function createSketchMode(deps) {
         }
         redraw();
       }
-      enqueueSketchMove(local.x, local.y);
+      enqueueSketchMove(target.x, target.y);
     } else if (mode.tool === "line" && mode.chain && previewLine) {
       const local = toLocal(event);
       if (!local) return;

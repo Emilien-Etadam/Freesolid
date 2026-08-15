@@ -307,6 +307,11 @@ export function createLocalSolver(loadModule) {
 
   function drag(geo, pos, x, y) {
     if (!model || status !== "ready") return null;
+    // Courbe entière (point 0) : translation relative des extrémités
+    // (ligne) ou du centre (cercle/arc). Sinon fallback serveur.
+    if (pos === 0) {
+      return dragWholeCurve(geo, x, y);
+    }
     const target = pid(geo, pos);
     const primitives = model.primitives.concat([
       { id: "dragx", type: "coordinate_x", p_id: target, x,
@@ -314,6 +319,39 @@ export function createLocalSolver(loadModule) {
       { id: "dragy", type: "coordinate_y", p_id: target, y,
         temporary: true, driving: true },
     ]);
+    return solveWith(primitives);
+  }
+
+  function dragWholeCurve(geo, x, y) {
+    const entity = model.entities.find((e) => e.id === geo);
+    if (!entity) return null;
+    let temps;
+    if (entity.type === "line") {
+      const dx = x - entity.p1[0], dy = y - entity.p1[1];
+      temps = [
+        { id: "dragx", type: "coordinate_x", p_id: pid(geo, 1), x,
+          temporary: true, driving: true },
+        { id: "dragy", type: "coordinate_y", p_id: pid(geo, 1), y,
+          temporary: true, driving: true },
+        { id: "dragx2", type: "coordinate_x", p_id: pid(geo, 2),
+          x: entity.p2[0] + dx, temporary: true, driving: true },
+        { id: "dragy2", type: "coordinate_y", p_id: pid(geo, 2),
+          y: entity.p2[1] + dy, temporary: true, driving: true },
+      ];
+    } else if (entity.type === "circle" || entity.type === "arc") {
+      temps = [
+        { id: "dragx", type: "coordinate_x", p_id: pid(geo, 3), x,
+          temporary: true, driving: true },
+        { id: "dragy", type: "coordinate_y", p_id: pid(geo, 3), y,
+          temporary: true, driving: true },
+      ];
+    } else {
+      return null; // poly/spline : fallback serveur
+    }
+    return solveWith(model.primitives.concat(temps));
+  }
+
+  function solveWith(primitives) {
     try {
       wrapper.clear_data();
       wrapper.push_primitives_and_params(primitives);

@@ -429,6 +429,49 @@ describe("drag", () => {
     assert.equal(solver.drag(0, 1, 5, 6), null);
     assert.equal(mock.solveCalls, 0);
   });
+
+  it("point 0 (courbe entière) : translation des deux extrémités", async () => {
+    const { mock } = await loadAndCapture(state, {
+      geo: 0, pos: 0, x: 10, y: 5,
+    });
+    const dragx = mock.pushed.find((p) => p.id === "dragx");
+    const dragy = mock.pushed.find((p) => p.id === "dragy");
+    const dragx2 = mock.pushed.find((p) => p.id === "dragx2");
+    const dragy2 = mock.pushed.find((p) => p.id === "dragy2");
+    assert.deepEqual(dragx, {
+      id: "dragx", type: "coordinate_x", p_id: "g0p1",
+      x: 10, temporary: true, driving: true,
+    });
+    assert.deepEqual(dragy, {
+      id: "dragy", type: "coordinate_y", p_id: "g0p1",
+      y: 5, temporary: true, driving: true,
+    });
+    // p1 était [0,0] → delta (10,5) ; p2 était [40,0] → [50,5]
+    assert.deepEqual(dragx2, {
+      id: "dragx2", type: "coordinate_x", p_id: "g0p2",
+      x: 50, temporary: true, driving: true,
+    });
+    assert.deepEqual(dragy2, {
+      id: "dragy2", type: "coordinate_y", p_id: "g0p2",
+      y: 5, temporary: true, driving: true,
+    });
+  });
+
+  it("point 0 sur cercle : translation du centre", async () => {
+    const circ = sketch([circle(0, [5, 5], 3)], []);
+    const { mock } = await loadAndCapture(circ, {
+      geo: 0, pos: 0, x: 8, y: 9,
+    });
+    assert.deepEqual(mock.pushed.find((p) => p.id === "dragx"), {
+      id: "dragx", type: "coordinate_x", p_id: "g0p3",
+      x: 8, temporary: true, driving: true,
+    });
+    assert.deepEqual(mock.pushed.find((p) => p.id === "dragy"), {
+      id: "dragy", type: "coordinate_y", p_id: "g0p3",
+      y: 9, temporary: true, driving: true,
+    });
+    assert.equal(mock.pushed.find((p) => p.id === "dragx2"), undefined);
+  });
 });
 
 // Garde anti-dérive : un type listé dans le prompt mais oublié du tableau

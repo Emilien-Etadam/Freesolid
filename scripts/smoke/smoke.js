@@ -135,6 +135,39 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("drag coin");
   await page.screenshot({ path: path.join(SHOTS, "2-drag.png") });
 
+  // 3b. Drag d'arête — milieu du bord HAUT, loin des coins (le coin
+  // bas-droit a été tiré de (+48, +24), le bord haut n'a pas bougé :
+  // (cx−90, cy−70) → (cx+90, cy−70)). Vérifié sur la géométrie : le
+  // sketch_state doit réellement bouger, sinon le pas ment.
+  const sketchState = () => page.evaluate(async () => {
+    const r = await fetch("/api", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "sketch_state",
+                             params: { sketch: "Sketch" } }) });
+    const j = await r.json();
+    return j.ok ? j.result : null;
+  });
+  const flatten = (state) => (state?.entities ?? [])
+    .flatMap((e) => [...(e.p1 ?? []), ...(e.p2 ?? []), ...(e.c ?? [])]);
+  const beforeEdge = flatten(await sketchState());
+  await page.mouse.move(cx, cy - 70);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) {
+    await page.mouse.move(cx + i * 3, cy - 70 + i * 4);
+    await sleep(25);
+  }
+  await page.mouse.up();
+  await sleep(1200);
+  const afterEdge = flatten(await sketchState());
+  const moved = beforeEdge.length === afterEdge.length
+    && beforeEdge.some((v, i) => Math.abs(v - afterEdge[i]) > 1);
+  if (!moved) {
+    errors.push("drag d'arête : la géométrie n'a pas bougé "
+      + "(le pas a raté l'arête ou le drag est cassé)");
+  }
+  await step("drag arête");
+  await page.screenshot({ path: path.join(SHOTS, "2b-drag-edge.png") });
+
   // 4. Bossage : onglet Fonctions, sortie auto d'esquisse, aperçu, OK
   await page.click('[data-tab="features"]');
   await sleep(400);

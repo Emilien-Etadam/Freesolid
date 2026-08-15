@@ -22,7 +22,7 @@ jobs:
       # Byte-compiles everything, including the modules that import FreeCAD
       # at call time and therefore cannot be imported in CI.
       - name: Byte-compile
-        run: python -m compileall -q freesolid engine Init.py InitGui.py
+        run: python -m compileall -q engine
       - name: Unit tests
         run: python -m pytest -q
 

@@ -64,8 +64,7 @@ Le moteur tourne avec le Python de l'AppImage déjà installée — aucun
 environnement à monter :
 
 ```bash
-~/freesolid-test/squashfs-root/usr/bin/freecadcmd \
-    ~/freesolid-test/Mod/freesolid/engine/server.py
+freecadcmd engine/server.py
 # puis ouvrir http://localhost:8787
 ```
 

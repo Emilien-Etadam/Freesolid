@@ -2,7 +2,7 @@
 
 import pytest
 
-from freesolid import vocab
+from engine import vocab
 
 
 def test_commands_are_unique():

@@ -97,24 +97,27 @@ elle doit décrire les deux nouveaux champs et la règle d'arête.
 
 ## Coordination avec la série P
 
-N001 est **compatible avec P018, P019 et P020** — ils touchent `add_draft`,
-`app/solver.js` et `app/index.html`, aucun ne va près de `get_tree`. Ils
-peuvent avancer en parallèle sans se voir.
+**Décision du 2026-08-15 : la série N démarre une fois la série P terminée.**
+N001 arrive donc **après P021**, et pas avant — ce prompt est écrit avant
+lui, il faut le relire à la lumière du code tel qu'il sera.
 
-**P021 est l'exception, et il faut l'ordonner.** Il ajoute lui aussi au
-payload de `get_tree` (`tree["variables"]`, en haut du dictionnaire de
-retour) et un point de contrôle dans la même section de rapport du selftest.
-Les deux changements sont purement additifs, donc le conflit serait textuel
-et non sémantique — mais autant l'éviter :
+Deux points à vérifier au moment de l'exécuter, parce que P021 passe par le
+même endroit :
 
-> **Faire passer N001 avant P021.** N001 est plus court et pose le motif
-> (`get_tree` s'enrichit sans se réorganiser) que P021 réutilisera.
+- **`get_tree` aura déjà été enrichi** par P021 d'un `tree["variables"]` en
+  haut du dictionnaire de retour. Aucune contradiction — `deps` et `driven`
+  sont des champs *par entrée*, `variables` est un champ *de payload*. On
+  ajoute à côté, on ne réorganise rien, et la consigne « ne pas changer la
+  forme existante » s'applique aussi à ce que P021 aura posé.
+- **La section de rapport du selftest aura gagné `p7_tree_variables`.** Les
+  points de contrôle `n1_*` s'ajoutent à la suite, sans y toucher.
 
-À noter pour qui écrira la suite : les deux prompts se complètent. P021
-crée un dossier « Équations » listant les variables globales ; le champ
-`driven` de N001 dit **quelles fonctions chaque variable pilote**. De quoi
-afficher « utilisée par : Bossage1 » dans ce dossier, une fois les deux
-posés.
+Bénéfice à saisir une fois les deux en place : P021 crée un dossier
+« Équations » listant les variables globales, et le champ `driven` de N001
+dit **quelles fonctions chaque variable pilote**. De quoi afficher
+« utilisée par : Bossage1 » dans ce dossier — c'est la moitié du gestionnaire
+d'équations de SolidWorks, et elle devient gratuite. À traiter dans un prompt
+dédié, pas ici : le périmètre de N001 reste le moteur seul.
 
 ## Validation avant de pousser
 

@@ -57,9 +57,6 @@ PYTHONIOENCODING=utf-8 freecadcmd scripts/run-selftest.py
 # smoke navigateur (FreeCAD + Chromium) : scripts/smoke/
 ```
 
-Le mode de travail par prompts numérotés est décrit dans
-[`prompts/README.md`](prompts/README.md).
-
 ## Licences
 
 LGPL-2.1-or-later, comme FreeCAD.

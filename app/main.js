@@ -855,17 +855,49 @@ function renderTree(tree) {
     renderActiveBodyContents(tree);
   }
   // Les surfaces vivent hors des corps — section à part, cliquable pour
-  // alimenter Coudre / Épaissir / Balayage.
+  // alimenter Coudre / Épaissir / Balayage. Double-clic : éditer si
+  // paramétrique ; les figées (couture, legacy) refusent le panneau.
   for (const surface of tree.surfaces ?? []) {
     const item = document.createElement("li");
+    const children = surface.children ?? [];
+    const hasChildren = children.length > 0;
+    const arrow = document.createElement("span");
+    arrow.className = "arrow";
+    arrow.textContent = hasChildren
+      ? (expandedFeatures.has(surface.name) ? "▾" : "▸") : "";
+    if (hasChildren) {
+      arrow.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!expandedFeatures.delete(surface.name)) {
+          expandedFeatures.add(surface.name);
+        }
+        renderTree(lastTree);
+      });
+    }
+    item.appendChild(arrow);
     item.appendChild(treeIcon("Part_3D_object.svg"));
     item.appendChild(document.createTextNode(surface.label));
     item.title = "Surface / courbe — clic : sélectionner pour une " +
-      "commande · clic droit : renommer, supprimer";
+      "commande · double-clic : modifier · clic droit : renommer, supprimer";
     item.addEventListener("click", () => panel.notifyPick("surface",
       { kind: "surface", name: surface.name, label: surface.label }));
+    item.addEventListener("dblclick", () => editSurface(surface));
     item.addEventListener("contextmenu", (e) => openMenu(e, surface));
     treeEl.appendChild(item);
+    if (hasChildren && expandedFeatures.has(surface.name)) {
+      for (const child of children) {
+        const row = document.createElement("li");
+        row.className = "child" + (child.error ? " error" : "");
+        row.appendChild(treeIcon("Sketcher_Sketch.svg"));
+        row.appendChild(document.createTextNode(child.label));
+        row.title = `${child.kind} — double-clic : modifier l'esquisse`;
+        row.addEventListener("dblclick", () => editFeature(child));
+        row.addEventListener("contextmenu", (e) => openMenu(e, child));
+        row.addEventListener("click", () => panel.notifyPick("sketch",
+          { kind: "sketch", name: child.name, label: child.label }));
+        treeEl.appendChild(row);
+      }
+    }
   }
 }
 
@@ -962,6 +994,7 @@ function renderActiveBodyContents(tree) {
 // Property names -> designer-facing labels for the edit panel.
 const PROP_LABELS = {
   Length: ["Profondeur", "mm"],
+  LengthFwd: ["Longueur", "mm"],
   Radius: ["Rayon", "mm"],
   Size: ["Distance", "mm"],
   Angle: ["Angle", "°"],
@@ -973,6 +1006,18 @@ const PROP_LABELS = {
   HoleCutDiameter: ["Ø lamage/fraisage", "mm"],
   HoleCutDepth: ["Profondeur du lamage", "mm"],
 };
+
+async function editSurface(surface) {
+  if (surface.static || surface.type === "Part::Feature") {
+    say("Surface figée — non éditable");
+    return;
+  }
+  await editFeature({
+    name: surface.name,
+    label: surface.label,
+    type: surface.type,
+  });
+}
 
 async function editFeature(feature) {
   if (feature.type === "Sketcher::SketchObject") {

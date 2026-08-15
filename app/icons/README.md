@@ -11,6 +11,9 @@ répertoires :
 Licence : LGPL, héritée de FreeCAD — compatible avec la licence de ce projet
 (LGPL-2.1-or-later). Aucune ressource SolidWorks n'est utilisée ni imitée.
 
+Les fichiers `FreeSolid_*.svg` sont des icônes originales du projet (même
+licence), là où FreeCAD n'en fournit pas (relation colinéaire, réglages).
+
 Convention : chaque fichier garde son nom FreeCAD d'origine, pour retrouver
 sa source d'un simple grep dans le dépôt FreeCAD. Quand une nouvelle fonction
 est implémentée, son icône FreeCAD est ajoutée ici dans le même commit

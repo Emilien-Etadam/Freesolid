@@ -75,6 +75,93 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     process.exit(1);
   }
   await step("chargement");
+  await page.screenshot({ path: path.join(SHOTS, "0-ribbon-groupes.png") });
+  const featureGroups = await page.$$eval(
+    "#ribbon-features .ribbon-group-label",
+    (els) => els.map((e) => e.textContent),
+  );
+  const expectedGroups = [
+    "Esquisse", "Corps", "Fonctions", "Habillage", "Répétitions",
+  ];
+  if (featureGroups.join("|") !== expectedGroups.join("|")) {
+    errors.push("groupes Fonctions : " + featureGroups.join(", ")
+      + " (attendu " + expectedGroups.join(", ") + ")");
+  }
+
+  // 0. Ids des 22 panneaux (registry FEATURES) + bascule libellés du ruban.
+  const FEATURE_PANELS = [
+    { id: "btn-pad", tab: "features" },
+    { id: "btn-pocket", tab: "features" },
+    { id: "btn-revolution", tab: "features" },
+    { id: "btn-groove", tab: "features" },
+    { id: "btn-hole", tab: "features" },
+    { id: "btn-loft", tab: "features" },
+    { id: "btn-sweep", tab: "features" },
+    { id: "btn-helix", tab: "features" },
+    { id: "btn-text", tab: "features" },
+    { id: "btn-fillet", tab: "features" },
+    { id: "btn-chamfer", tab: "features" },
+    { id: "btn-shell", tab: "features" },
+    { id: "btn-draft", tab: "features" },
+    { id: "btn-linpattern", tab: "features" },
+    { id: "btn-polpattern", tab: "features" },
+    { id: "btn-mirror", tab: "features" },
+    { id: "btn-boolean", tab: "features" },
+    { id: "btn-surf-extrude", tab: "surfaces" },
+    { id: "btn-surf-revolve", tab: "surfaces" },
+    { id: "btn-surf-loft", tab: "surfaces" },
+    { id: "btn-surf-sew", tab: "surfaces" },
+    { id: "btn-surf-thicken", tab: "surfaces" },
+  ];
+  if (FEATURE_PANELS.length !== 22) {
+    errors.push("harnais : 22 panneaux attendus, "
+      + FEATURE_PANELS.length + " déclarés");
+  }
+  let opened = 0;
+  for (const { id, tab } of FEATURE_PANELS) {
+    const handle = await page.$("#" + id);
+    if (!handle) {
+      errors.push("bouton manquant : #" + id);
+      continue;
+    }
+    await page.click('[data-tab="' + tab + '"]');
+    await page.click("#" + id);
+    await sleep(400);
+    const panelOpen = await page.evaluate(() =>
+      document.querySelector("aside")?.classList.contains("panel-open"));
+    if (panelOpen) {
+      opened += 1;
+      await page.click('#panel [title^="Annuler"], #panel [title^="Fermer"]');
+      await sleep(150);
+    }
+  }
+  console.log("[panneaux] " + opened + "/" + FEATURE_PANELS.length
+    + " ouverts (les gardes sans esquisse / sans 2e corps n'ouvrent pas)");
+  if (opened < 15) {
+    errors.push("trop peu de panneaux ouverts : " + opened + "/22");
+  }
+  await page.click('[data-tab="features"]');
+  await sleep(200);
+
+  await page.click("#btn-settings");
+  await sleep(200);
+  await page.screenshot({ path: path.join(SHOTS, "0b-menu-reglages.png") });
+  await page.click('[data-ribbon-labels="icons-only"]');
+  await sleep(200);
+  const iconsOnly = await page.evaluate(() =>
+    document.body.classList.contains("ribbon-icons-only")
+    && localStorage.getItem("freesolid.ribbonLabels") === "icons-only");
+  if (!iconsOnly) errors.push("Icônes seules : classe ou localStorage absent");
+  await page.screenshot({ path: path.join(SHOTS, "0c-icones-seules.png") });
+  await page.click("#btn-settings");
+  await sleep(150);
+  await page.click('[data-ribbon-labels="icons-and-text"]');
+  await sleep(200);
+  const iconsAndText = await page.evaluate(() =>
+    !document.body.classList.contains("ribbon-icons-only")
+    && localStorage.getItem("freesolid.ribbonLabels") === "icons-and-text");
+  if (!iconsAndText) errors.push("Icônes et texte : classe encore posée");
+  await step("réglages ruban");
 
   // 1. Esquisse — choix du plan dans le viewport
   await page.click("#btn-sketch");

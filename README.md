@@ -7,8 +7,7 @@ standard, ouvrables dans FreeCAD.
 
 ## Démarrage
 
-Prérequis : FreeCAD ≥ 1.0 (`freecadcmd` dans le `PATH`, ou via micromamba /
-AppImage).
+Si vous avez déjà FreeCAD ≥ 1.0 :
 
 ```bash
 freecadcmd engine/server.py
@@ -16,6 +15,58 @@ freecadcmd engine/server.py
 ```
 
 Un seul processus sert l'API JSON et l'UI statique (`app/`).
+
+### Tutoriel pas à pas — Linux (aucun prérequis)
+
+Copiez-collez ce bloc entier dans un terminal (Ctrl+Alt+T l'ouvre sur la
+plupart des systèmes). Il télécharge FreeCAD (~800 Mo, une seule fois),
+récupère FreeSolid et lance le serveur :
+
+```bash
+cd ~
+curl -L -o FreeCAD.AppImage https://github.com/FreeCAD/FreeCAD/releases/download/1.0.2/FreeCAD_1.0.2-conda-Linux-x86_64-py311.AppImage
+chmod +x FreeCAD.AppImage
+./FreeCAD.AppImage --appimage-extract
+git clone https://github.com/Emilien-Etadam/Freesolid.git
+cd Freesolid
+~/squashfs-root/usr/bin/freecadcmd engine/server.py
+```
+
+Quand le terminal affiche « FreeSolid engine prêt », ouvrez
+**<http://localhost:8787>** dans votre navigateur. C'est tout.
+
+- Pour arrêter : `Ctrl+C` dans le terminal.
+- Les fois suivantes, seules les deux dernières lignes sont nécessaires :
+
+  ```bash
+  cd ~/Freesolid
+  ~/squashfs-root/usr/bin/freecadcmd engine/server.py
+  ```
+
+- Si `git` n'est pas installé (`git : commande introuvable`) :
+  `sudo apt install git` (Ubuntu/Debian) ou téléchargez le ZIP du dépôt
+  (bouton **Code → Download ZIP** sur GitHub) et décompressez-le dans
+  votre dossier personnel.
+
+### Tutoriel pas à pas — Windows
+
+1. Installez FreeCAD 1.0 depuis
+   [freecad.org/downloads](https://www.freecad.org/downloads.php)
+   (installeur classique, options par défaut).
+2. Sur la page GitHub du projet : bouton **Code → Download ZIP**, puis
+   clic droit sur le ZIP → **Extraire tout** vers votre dossier
+   `Documents`.
+3. Ouvrez PowerShell (menu Démarrer → tapez « PowerShell ») et
+   copiez-collez :
+
+   ```powershell
+   cd $env:USERPROFILE\Documents\Freesolid-main
+   & "C:\Program Files\FreeCAD 1.0\bin\freecadcmd.exe" engine\server.py
+   ```
+
+   (Si FreeCAD est installé ailleurs, adaptez le chemin — cherchez
+   `freecadcmd.exe` dans le dossier d'installation.)
+4. Ouvrez **<http://localhost:8787>** dans votre navigateur.
 
 ## Ce qui marche aujourd'hui
 

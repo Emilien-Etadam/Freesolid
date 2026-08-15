@@ -1793,6 +1793,29 @@ class Kernel:
                              label_for_type("PartDesign::Thickness"),
                              "Value", thickness, face=face)
 
+    def _tip_face_parallel_to(self, tip, plane, exclude_face=None):
+        """Face de ``tip`` parallèle à XY/XZ/YZ, hors ``exclude_face``.
+
+        PartDesign::Draft (FreeCAD 1.0 / OCCT) ignore souvent un plan
+        d'origine XZ/YZ comme plan neutre pour une face de calotte ; une
+        face du solide de même orientation fonctionne. Repli : plan
+        d'origine via ``_origin_feature``.
+        """
+        shape = getattr(tip, "Shape", None)
+        if shape is None or shape.isNull():
+            return None
+        axis = {"XY": 2, "XZ": 1, "YZ": 0}[plane]
+        exclude = None if exclude_face is None else int(exclude_face)
+        for index, face in enumerate(shape.Faces):
+            if exclude is not None and index == exclude:
+                continue
+            u0, u1, v0, v1 = face.ParameterRange
+            normal = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
+            component = (normal.x, normal.y, normal.z)[axis]
+            if abs(component) > 0.9:
+                return (tip, ["Face{}".format(index + 1)])
+        return None
+
     def add_draft(self, face, angle, neutral="XY"):
         """Dépouille de la face cliquée ; plan neutre XY/XZ/YZ."""
         body = self._require_body()
@@ -1800,20 +1823,35 @@ class Kernel:
         tip = getattr(body, "Tip", None)
         if tip is None:
             raise KernelError("pas de solide à dépouiller")
-        role = self._PLANE_ROLES[parse_neutral_plane(neutral)]
+        plane = parse_neutral_plane(neutral)
+        # XY : plan d'origine (comportement historique, OK pour les parois).
+        # XZ/YZ : une face du Tip parallèle — les plans d'origine XZ/YZ sont
+        # un no-op OCCT sur les faces de calotte (FreeCAD 1.0).
+        if plane == "XY":
+            neutral_ref = (self._origin_feature(self._PLANE_ROLES[plane]), [""])
+        else:
+            neutral_ref = self._tip_face_parallel_to(
+                tip, plane, exclude_face=face)
+            if neutral_ref is None:
+                neutral_ref = (
+                    self._origin_feature(self._PLANE_ROLES[plane]), [""])
         volume_before = float(body.Shape.Volume)
+        previous_tip = tip
         feature = body.newObject("PartDesign::Draft", "Draft")
         feature.Base = (tip, ["Face{}".format(int(face) + 1)])
         feature.Angle = float(angle)
-        feature.NeutralPlane = (self._origin_feature(role), [""])
+        feature.NeutralPlane = neutral_ref
         feature.Label = label_for_type("PartDesign::Draft")
         try:
             self._recompute()
         except KernelError:
+            if getattr(body, "Tip", None) is feature or body.Tip is None:
+                body.Tip = previous_tip
             doc.removeObject(feature.Name)
             raise
         volume_after = float(body.Shape.Volume)
         if abs(volume_after - volume_before) < 1e-9:
+            body.Tip = previous_tip
             doc.removeObject(feature.Name)
             self._recompute()
             raise KernelError(

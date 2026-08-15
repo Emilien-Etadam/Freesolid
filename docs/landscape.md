@@ -167,8 +167,10 @@ n'y a plus ni graphe à persister ni géométrie à générer — le graphe est 
 vue sur les fonctions existantes. Voir [`nodes-macros.md`](nodes-macros.md).
 
 Ce que Nodes garde d'utile après cette décision : son modèle de données
-`awkward`, pour le jour où les *data trees* deviendront un besoin réel — le
-seul terrain que « ne rien séparer » ferme.
+`awkward` pour les *data trees*, une fois que la **fonction graphe** de
+`nodes-macros.md` §3 aura un volume qui le justifie — les boucles et les
+listes, elles, sont retenues, encapsulées dans une fonction de l'arbre sur
+le modèle de l'esquisse.
 
 ### Le point qui décide
 

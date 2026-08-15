@@ -4,17 +4,20 @@ Décisions du 2026-08-15, à la suite du relevé Chili3D / Nodes de
 [`landscape.md`](landscape.md). Ce document fixe **ce qu'on construit et
 dans quel ordre** ; il ne décrit pas encore d'UI.
 
-Le parti pris tient en une phrase : **le graphe n'est pas un objet, c'est une
-vue**. Il n'y a rien à séparer du document, donc rien à resynchroniser.
+Le parti pris tient en une phrase : **rien ne se met à côté du document — ça
+s'y range, ou ça n'existe pas.** Ce qui donne deux objets distincts, à deux
+niveaux, et jamais un modèle parallèle :
 
-Trois choix en découlent :
+1. **La vue graphe** (§2) — le graphe *est* le document. Une vue sur les
+   fonctions réelles et leurs dépendances, ni fichier, ni format, ni
+   synchronisation. Ses nœuds sont de vraies fonctions PartDesign
+   rééditables, celles de l'arbre, pas des copies.
+2. **La fonction graphe** (§3) — une ligne de l'arbre qui encapsule un flux
+   de données, **boucles et listes comprises**, et rend une forme. Le modèle
+   de l'esquisse, transposé un étage plus haut.
 
-1. Le graphe **est** le document — pas un fichier à côté, pas un JSON rangé
-   dedans, pas un modèle parallèle.
-2. Ses nœuds sont de **vraies fonctions PartDesign rééditables** — ce sont
-   celles de l'arbre, pas des copies.
-3. La vue en graphe du FeatureManager n'est donc pas une étape préparatoire :
-   c'est **la chose elle-même**, d'abord en lecture, plus tard en édition.
+Le premier ne coûte presque rien et ne sait pas boucler ; le second sait
+boucler et coûte un évaluateur. Les deux partagent leur éditeur.
 
 ## 1. Ce que « ne rien séparer » fait disparaître
 
@@ -66,30 +69,100 @@ C'est aussi ce qui répond aux « curseurs » de Grasshopper sans rien
 inventer : un paramètre d'entrée du graphe est une **variable globale**, elle
 existe, elle est persistée, elle est déjà éditable dans le panneau Équations.
 
-## 3. Ce que ce modèle ne fera pas
+## 3. Les boucles et les listes : la fonction graphe
 
-Le prix de « ne rien séparer » est net, et il vaut mieux l'écrire maintenant
-que le découvrir : **le graphe ne peut exprimer que ce que le document sait
-exprimer.**
+Le modèle de la section 2 ne sait pas exprimer une boucle : semer 500
+perçages sur une surface gauche n'est pas une arête entre deux fonctions.
+Or c'est précisément l'intérêt du genre — sans listes, un éditeur de nœuds
+n'est qu'un arbre dessiné autrement.
 
-Tombent donc, tant qu'on s'y tient :
+**L'hybridation est possible, et son précédent est l'esquisse.**
 
-- les **nœuds intermédiaires sans objet de document** (un nœud « addition »
-  flottant) — sauf s'ils se ramènent à une expression, ce qui couvre le
-  plus gros des cas ;
-- les **boucles et les listes** — semer 500 perçages sur une surface gauche.
-  Ce sont les *data trees* de Grasshopper, et ils exigent un évaluateur qui
-  n'est pas celui de FreeCAD ;
-- la **géométrie générative** non paramétrique (Voronoï, remplissages
-  algorithmiques), qui est le terrain naturel de `j8sr0230/Nodes`.
+Un `Sketcher::SketchObject` est **une** ligne de l'arbre. Dedans : de la
+géométrie, des contraintes, un solveur, un mode d'édition dédié — tout un
+système que le reste du document ignore et n'a pas à connaître. Personne ne
+dit que l'esquisse « sépare le modèle » : elle l'**encapsule**. Le document
+ne voit qu'un profil consommé par un bossage.
 
-Ce n'est pas un manque à combler en douce : ce serait un second modèle, donc
-exactement ce que la phrase fondatrice du projet refuse. Si le besoin devient
-réel, il se traitera comme un chantier assumé et déclaré, avec le modèle
-`awkward` de `j8sr0230/Nodes` (LGPL-2.1, empruntable) comme point de départ —
-et pas avant. En attendant, c'est un écart à annoncer honnêtement, comme les
-esquisses 3D et les configurations le sont déjà dans
-[`grandes-lignes.md`](grandes-lignes.md).
+Une **fonction graphe** est la même chose, un étage au-dessus : une ligne de
+l'arbre, un éditeur de nœuds dédié à l'intérieur, boucles et listes
+comprises, et **une forme en sortie**.
+
+### Pourquoi ça ne réveille pas le problème des deux éditeurs
+
+Le conflit de la section 1 venait d'un graphe qui produisait **plusieurs
+fonctions éparpillées dans l'arbre**, chacune éditable des deux côtés. Une
+fonction graphe n'en produit **aucune** : ce qu'elle calcule reste dedans,
+comme les cercles et les contraintes restent dans l'esquisse. Un seul objet
+dans l'arbre, un seul éditeur pour cet objet, aucune resynchronisation.
+
+Les deux décisions cohabitent donc sans se gêner, à deux niveaux différents :
+
+| | Vue graphe du FeatureManager (§2) | Fonction graphe (ici) |
+|---|---|---|
+| Portée | tout le document | une fonction |
+| Modèle | aucun — c'est une vue | interne à la fonction, encapsulé |
+| Nœuds | les fonctions réelles | des opérations de calcul |
+| Boucles, listes | non | **oui** |
+| Sortie | — | une forme, consommée par l'arbre |
+
+Et elles partagent le composant de rendu : le même éditeur de nœuds, une
+fois sur des fonctions réelles, une fois sur un flux interne.
+
+### L'insertion dans l'historique — déjà écrite
+
+Le chemin d'une forme calculée hors PartDesign vers la chaîne PartDesign
+existe dans le dépôt, éprouvé par la gravure de texte
+(`kernel.py:1133-1143`) :
+
+1. construire la forme avec l'API `Part` ;
+2. `doc.addObject("Part::Feature", …)` + `.Shape = …` ;
+3. l'envelopper dans un `PartDesign::Body` via `BaseFeature` ;
+4. `add_boolean(tool=…, type="fuse"|"cut")` pour la combiner dans
+   l'historique.
+
+Une fonction graphe emprunte ce chemin tel quel. C'est ce qui rend
+l'hybridation crédible : le raccord au reste de la pièce n'est pas à
+inventer, il tourne déjà en production sur une autre fonction.
+
+### Persistance : surtout pas un `FeaturePython`
+
+La voie réflexe serait un `Part::FeaturePython` avec un `Proxy` Python. **À
+écarter** : FreeCAD sérialise le *chemin du module* du proxy et le
+réimporte à l'ouverture. Or le projet a retiré l'addon (P017) — le moteur
+est headless, rien n'est installé côté FreeCAD. Le module ne serait pas
+importable, et le fichier s'ouvrirait avec un objet cassé.
+
+Retenu à la place : un **`Part::Feature` ordinaire**, plus le graphe rangé
+en JSON dans une propriété custom — exactement le motif déjà en place pour
+`FreeSolidColor` (`kernel.py:1241`).
+
+- FreeCAD ouvre le fichier et voit **une forme normale**. Pas d'objet
+  cassé, pas de module manquant, pas de recalcul en échec.
+- FreeSolid relit la propriété, rouvre l'éditeur, recalcule, remplace la
+  forme.
+- Dans FreeCAD la fonction est figée — ce qu'elle serait de toute façon,
+  puisque son évaluateur est le nôtre.
+
+### Le prix, cette fois payé pour de bon
+
+C'est **un vrai évaluateur nouveau** — le premier du projet. Ce qui le rend
+acceptable est qu'il est *borné*, et il faut le tenir borné :
+
+- il ne voit qu'une fonction, jamais le document ;
+- il appelle l'API `Part`, jamais PartDesign — donc **la géométrie qu'il
+  produit est figée à l'intérieur**, même statut que le surfacique avant le
+  P016. Le paramétrique reste dehors, dans les entrées du graphe (variables
+  globales, expressions) et dans la chaîne qui consomme sa sortie ;
+- sa sortie est **une forme**, pas un morceau d'historique.
+
+Sur les *data trees* eux-mêmes : ne pas ajouter `awkward` au premier jour.
+Le moteur est en stdlib pure et c'est un choix structurant — des listes
+imbriquées Python et **une règle d'appariement documentée** (la partie qui
+rend Grasshopper déroutant, à écrire noir sur blanc avant de coder) suffisent
+tant que le volume reste raisonnable. `awkward` est l'optimisation de
+`j8sr0230/Nodes` pour la masse ; il est LGPL-2.1, donc empruntable le jour où
+le volume le justifiera, pas avant.
 
 ## 4. Les macros ne sont plus l'étage du dessous
 
@@ -137,12 +210,18 @@ signalée par un simple préfixe Σ, montre enfin **d'où** elle est pilotée.
 ## L'ordre
 
 1. **Arêtes dans `get_tree`** — géométriques et paramétriques, contrat et
-   tests. C'est la seule vraie dépendance de tout le reste.
+   tests. Seule vraie dépendance de tout le reste.
 2. **Vue graphe en lecture seule** — utile immédiatement, et c'est déjà le
-   composant final.
+   composant de rendu final, celui que la fonction graphe réutilisera.
 3. **Édition dans le graphe** — chaque geste retombe sur une opération
    existante ; rien de neuf côté moteur.
-4. **Macros** — sujet indépendant, à mener quand il aura sa propre valeur.
+4. **Fonction graphe** — le seul étage qui demande du neuf : l'évaluateur
+   borné, la règle d'appariement des listes, la propriété de persistance, et
+   le raccord par corps outil déjà éprouvé. À ouvrir sur un cas réel choisi
+   d'avance (semer des perçages sur une surface est un bon banc d'essai),
+   pas dans l'abstrait.
+5. **Macros** — sujet indépendant, à mener quand il aura sa propre valeur.
 
-Aucune étape ne demande d'écrire de la géométrie, et aucune n'ajoute quoi que
-ce soit dans le `.FCStd`.
+Les étapes 1 à 3 n'ajoutent rien dans le `.FCStd` et n'écrivent pas de
+géométrie. L'étape 4 est le vrai investissement, et elle est volontairement
+placée après pour arriver avec l'éditeur déjà construit.

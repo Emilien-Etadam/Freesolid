@@ -55,16 +55,19 @@
   .ribbon.active { display: flex; }
   .ribbon-group {
     display: flex; flex-direction: column;
+    flex: 0 0 auto;
     padding: 2px 10px 2px;
     border-right: 1px solid var(--line);
+    min-width: min-content;
   }
   .ribbon-group:last-child { border-right: none; }
   .ribbon-group-btns {
-    display: flex; align-items: center; flex-wrap: wrap;
+    display: flex; align-items: center; justify-content: center;
+    flex-wrap: wrap;
     gap: 4px; flex: 1;
   }
   .ribbon-group-label {
-    text-align: center;
+    text-align: center; white-space: nowrap;
     font-size: 10px; color: var(--ink-2);
     padding-top: 3px; line-height: 1.2;
     user-select: none;

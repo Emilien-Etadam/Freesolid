@@ -152,6 +152,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     document.body.classList.contains("ribbon-icons-only")
     && localStorage.getItem("freesolid.ribbonLabels") === "icons-only");
   if (!iconsOnly) errors.push("Icônes seules : classe ou localStorage absent");
+  const labelBoxes = await page.$$eval(
+    "#ribbon-features .ribbon-group",
+    (groups) => groups.map((g) => {
+      const label = g.querySelector(".ribbon-group-label");
+      const gr = g.getBoundingClientRect();
+      const lr = label.getBoundingClientRect();
+      return {
+        name: label.textContent,
+        w: Math.round(lr.width),
+        h: Math.round(lr.height),
+        overflow: lr.left < gr.left - 1 || lr.right > gr.right + 1,
+      };
+    }),
+  );
+  for (const box of labelBoxes) {
+    if (box.w < 8 || box.h < 8) {
+      errors.push("libellé invisible en icônes seules : " + box.name);
+    }
+    if (box.overflow) {
+      errors.push("libellé hors groupe en icônes seules : " + box.name);
+    }
+  }
   await page.screenshot({ path: path.join(SHOTS, "0c-icones-seules.png") });
   await page.click("#btn-settings");
   await sleep(150);

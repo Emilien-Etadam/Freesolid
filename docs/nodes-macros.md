@@ -4,154 +4,145 @@ Décisions du 2026-08-15, à la suite du relevé Chili3D / Nodes de
 [`landscape.md`](landscape.md). Ce document fixe **ce qu'on construit et
 dans quel ordre** ; il ne décrit pas encore d'UI.
 
-Trois choix sont posés :
+Le parti pris tient en une phrase : **le graphe n'est pas un objet, c'est une
+vue**. Il n'y a rien à séparer du document, donc rien à resynchroniser.
 
-1. Le graphe de nœuds est **à part**, façon Grasshopper, et **optionnel**.
-2. Ses nœuds produisent de **vraies fonctions PartDesign rééditables**, pas
-   des formes `Part` figées.
-3. Le FeatureManager gagne une **vue en graphe** de l'arbre existant.
+Trois choix en découlent :
 
-Le reste de ce document est la conséquence de ces trois choix — dont une
-difficulté que (1) et (2) créent ensemble et qu'il faut trancher avant
-d'écrire une ligne.
+1. Le graphe **est** le document — pas un fichier à côté, pas un JSON rangé
+   dedans, pas un modèle parallèle.
+2. Ses nœuds sont de **vraies fonctions PartDesign rééditables** — ce sont
+   celles de l'arbre, pas des copies.
+3. La vue en graphe du FeatureManager n'est donc pas une étape préparatoire :
+   c'est **la chose elle-même**, d'abord en lecture, plus tard en édition.
 
-## 1. La difficulté : deux éditeurs pour la même fonction
+## 1. Ce que « ne rien séparer » fait disparaître
 
-Grasshopper n'a pas ce problème parce que sa géométrie cuite est **muette** :
-pas d'historique, rien à rééditer, on relance le graphe et ça refait un
-objet neuf. En demandant des fonctions **rééditables**, on obtient l'inverse :
-le bossage produit par le graphe est un `PartDesign::Pad` normal, que le
-double-clic ouvre comme n'importe quel autre.
-
-D'où la question, qui n'a que trois réponses :
+La première rédaction de ce document posait le graphe comme un artefact
+distinct, et butait aussitôt sur une question sans bonne réponse :
 
 > L'utilisateur change la cote d'un bossage dans l'arbre, puis relance le
 > graphe. Qui gagne ?
 
-**(C) Ne pas trancher** est la mauvaise réponse : deux éditeurs sur le même
-objet, le dernier arrivé écrase, l'utilisateur perd son travail sans
-comprendre pourquoi. Restent (A) et (B).
+Il fallait alors choisir entre la **cuisson** (le graphe génère puis lâche
+prise — mais il ne pilote plus rien) et le **lien vivant** (le graphe reste
+propriétaire — mais il faut verrouiller les fonctions par une propriété
+custom que FreeCAD ignore, donc une édition faite dans FreeCAD périme le
+graphe en silence). Les deux étaient des consolations.
 
-### (A) Cuisson — le graphe génère puis lâche prise ✅ retenu
+**La question ne se pose que parce qu'il y a deux modèles.** Si le graphe
+*est* le document, il n'y a plus qu'un point de vérité : double-cliquer une
+cote dans l'arbre et tirer un fil dans le graphe sont deux gestes sur les
+mêmes objets, passés par les mêmes opérations du protocole. Rien à cuire,
+rien à verrouiller, rien à périmer.
 
-Le graphe produit les fonctions et **s'en détache**. Une fois cuites, elles
-appartiennent à l'utilisateur : double-clic, cotes, expressions, suppression,
-tout marche comme d'habitude. Relancer le graphe ne les touche pas — ça
-produit un **nouveau corps**.
+Ce qui tombe avec la séparation, et qu'on n'écrira donc pas : le format de
+graphe et son évaluateur, la persistance en `App::TextDocument`, le marquage
+des fonctions générées, la détection de désynchronisation, et la notion
+d'identité stable nœud → fonction. C'est-à-dire l'essentiel du travail.
 
-- Le `.FCStd` reste un document FreeCAD **strictement normal**. Aucune
-  métadonnée FreeSolid sur les fonctions, aucun verrou.
-- Rien de nouveau à persister, donc rien à faire fuir.
-- C'est le modèle mental que les utilisateurs de Grasshopper ont déjà :
-  *bake*, et après c'est à toi.
-- Prix assumé : le graphe est un **générateur**, pas un lien vivant. Changer
-  un paramètre dans le graphe ne met pas à jour la pièce déjà produite.
+Le `.FCStd` reste **strictement un document FreeCAD** : aucune métadonnée
+FreeSolid, aucune annexe. C'est la promesse du projet, tenue ici sans effort
+plutôt que défendue de justesse.
 
-### (B) Lien vivant — le graphe reste propriétaire ❌ écarté pour l'instant
+## 2. Les fils existent déjà — il y en a deux sortes
 
-Les fonctions issues du graphe seraient marquées et **non éditables au
-double-clic** ; pour les changer on rouvre le graphe. Un seul point de
-vérité, et c'est séduisant.
+Un graphe, c'est des nœuds et des arêtes. Les nœuds sont les objets du
+document. Les arêtes aussi sont déjà là, sous deux formes que FreeCAD
+distingue et que l'arbre plat mélange ou cache :
 
-Ça casse pourtant la promesse centrale du projet, de façon sournoise. Le
-marquage passerait par une propriété custom — le précédent existe,
-`FreeSolidColor` est déjà posé comme ça (`kernel.py:1241`) — mais **FreeCAD
-ignore ce marquage**. L'utilisateur ouvre son `.FCStd` dans FreeCAD, où rien
-ne signale que ces fonctions sont pilotées, les modifie, revient dans
-FreeSolid : le graphe est silencieusement périmé. Un désaccord de couleur est
-sans conséquence ; un désaccord sur qui possède une fonction n'en est pas un.
+| Arête | D'où elle vient | Ce qu'elle dit |
+|---|---|---|
+| **Géométrique** | `obj.OutList` — `Profile`, `AttachmentSupport`, `BaseFeature`, corps outils des booléens | *ce bossage consomme cette esquisse, qui s'attache à ce plan, qui dépend de cette face* |
+| **Paramétrique** | le moteur d'expressions — `ExpressionEngine`, déjà lu par `_expression_map` (`kernel.py:2166`) | *cette cote vaut `2*largeur + 5`, donc elle est pilotée par la variable `largeur`* |
 
-(B) n'est pas exclu à jamais — il est exclu **tant que le fichier doit rester
-ouvrable dans FreeCAD sans piège**. À rouvrir seulement si l'usage réclame
-un vrai lien vivant, et avec une réponse à ce problème-là.
+Le deuxième point mérite d'être vu pour ce qu'il est : **les expressions sont
+déjà le flux de données**. `D1@Bossage1 = 2*largeur + 5` est littéralement
+une arête entre le `App::VarSet` et une propriété de fonction. La phase A a
+construit la couche dataflow du projet sans l'appeler ainsi ; le graphe ne
+fait que la rendre visible.
 
-## 2. Où vit le graphe
+C'est aussi ce qui répond aux « curseurs » de Grasshopper sans rien
+inventer : un paramètre d'entrée du graphe est une **variable globale**, elle
+existe, elle est persistée, elle est déjà éditable dans le panneau Équations.
 
-Le graphe est logiquement à part, mais un fichier séparé se perd : c'est
-exactement le travers `.gh` + `.3dm` de Grasshopper, où envoyer le modèle
-sans le graphe est l'erreur la plus fréquente.
+## 3. Ce que ce modèle ne fera pas
 
-Piste retenue, **à valider par spike** : ranger le graphe **dans le `.FCStd`**
-sous forme d'un objet [`App::TextDocument`](https://wiki.freecadweb.org/Std_TextDocument/en)
-contenant son JSON. C'est un type FreeCAD standard, prévu pour du texte
-arbitraire, sérialisé dans le `.FCStd` comme le reste.
+Le prix de « ne rien séparer » est net, et il vaut mieux l'écrire maintenant
+que le découvrir : **le graphe ne peut exprimer que ce que le document sait
+exprimer.**
 
-On obtient les deux propriétés à la fois : le graphe voyage avec la pièce
-(un seul fichier à envoyer), et le document reste **standard** — FreeCAD
-l'ouvre, y voit un objet texte, ne casse rien. À l'opposé d'une propriété
-custom, un `App::TextDocument` ne prétend rien sur les fonctions : c'est une
-annexe, pas un verrou. Cohérent avec (A).
+Tombent donc, tant qu'on s'y tient :
 
-À vérifier au spike : qu'un `App::TextDocument` créé en headless survit à
-l'aller-retour sauvegarde/ouverture, et que sa présence ne gêne aucun
-recalcul. *(Un fil FreeCAD signale un cas d'incompatibilité avec des
-documents FEM — hors de notre périmètre, mais à confirmer.)*
+- les **nœuds intermédiaires sans objet de document** (un nœud « addition »
+  flottant) — sauf s'ils se ramènent à une expression, ce qui couvre le
+  plus gros des cas ;
+- les **boucles et les listes** — semer 500 perçages sur une surface gauche.
+  Ce sont les *data trees* de Grasshopper, et ils exigent un évaluateur qui
+  n'est pas celui de FreeCAD ;
+- la **géométrie générative** non paramétrique (Voronoï, remplissages
+  algorithmiques), qui est le terrain naturel de `j8sr0230/Nodes`.
 
-## 3. Ce que les nœuds sont réellement
+Ce n'est pas un manque à combler en douce : ce serait un second modèle, donc
+exactement ce que la phrase fondatrice du projet refuse. Si le besoin devient
+réel, il se traitera comme un chantier assumé et déclaré, avec le modèle
+`awkward` de `j8sr0230/Nodes` (LGPL-2.1, empruntable) comme point de départ —
+et pas avant. En attendant, c'est un écart à annoncer honnêtement, comme les
+esquisses 3D et les configurations le sont déjà dans
+[`grandes-lignes.md`](grandes-lignes.md).
 
-**Un nœud = une opération du protocole.** Le graphe n'évalue pas de
-géométrie : il produit une **liste ordonnée d'opérations** envoyée au moteur,
-qui construit de vraies fonctions PartDesign. Les fils portent des paramètres
-et des références de fonctions, jamais des solides.
+## 4. Les macros ne sont plus l'étage du dessous
 
-C'est ce qui rend le choix (2) — fonctions rééditables — presque gratuit :
-`add_pad` appelé par un graphe produit exactement le même `PartDesign::Pad`
-que `add_pad` appelé par un clic. Aucune voie de construction nouvelle,
-aucune géométrie à écrire, et les 88 opérations de `engine/protocol.py`
-revalident tout à l'identique.
+La rédaction précédente faisait du graphe « l'interface graphique des
+macros ». **C'est faux dès lors que le graphe est le document** : un graphe
+montre l'état d'une pièce, une macro rejoue une suite de gestes. Deux sujets
+distincts, qui ne se commandent plus l'un l'autre.
 
-Corollaire à ne pas perdre : **le graphe est l'interface graphique des
-macros**, pas un système parallèle. Il n'a de sens qu'une fois les macros
-faites, et il hérite de leur contrainte — une macro reste une liste
-d'opérations validées, jamais du Python exécuté (voir `landscape.md` §2).
+Les macros gardent leur intérêt propre et leur analyse (`landscape.md` §2) :
+les 88 opérations de `engine/protocol.py` sont déjà le langage,
+l'enregistrement se réduit à journaliser les requêtes reçues par
+`server.py`, la relecture à les re-poster. Le morceau dur reste la
+**résolution de références** — les ops désignent les fonctions par nom
+(`Bossage1`), donc rejouer sur un autre document ne marche pas tout seul.
 
-Ce que ce modèle ne donne pas d'emblée : les *data trees*, donc semer 500
-perçages sur une surface gauche. Étage au-dessus, à ouvrir seulement sur
-besoin réel ; `j8sr0230/Nodes` — LGPL-2.1 comme nous — a déjà résolu ce
-problème avec `awkward`, son code est empruntable le jour venu.
+Et la contrainte de format tient toujours, indépendamment du graphe : une
+macro est une **liste d'opérations validées, jamais du Python exécuté**.
+L'allowlist d'`Origin` de `server.py` laisse passer les requêtes sans en-tête
+`Origin` (curl, scripts locaux) ; tant que le contenu est de la donnée
+revalidée par `protocol.py`, la surface d'attaque est celle d'aujourd'hui.
 
-## 4. La vue en graphe du FeatureManager
+## 5. Le travail réel
 
-Décision 3, et c'est la brique à faire **en premier** : sans géométrie, sans
-macro, sans risque.
+Tout se ramène à une chose : **`get_tree` doit émettre les arêtes.**
 
-Une nuance de coût relevée dans le code, contre ce que laissait entendre le
-relevé initial : ce n'est pas gratuit. `get_tree` (`kernel.py:2234`)
-**n'émet pas les dépendances**. Il lit bien `Profile` pour imbriquer une
-esquisse consommée sous sa fonction, mais il jette le reste — plans
-d'attachement (`AttachmentSupport`), `BaseFeature`, corps outils des
-booléens. Le résultat est une liste plate à un niveau d'imbrication, pas un
-graphe.
-
-Le travail est donc :
+Aujourd'hui il ne le fait pas (`kernel.py:2234`). Il lit `Profile` dans le
+seul but d'imbriquer une esquisse consommée sous sa fonction, puis jette le
+reste — `AttachmentSupport`, `BaseFeature`, corps outils. Ce qu'il renvoie
+est une liste plate à un niveau d'imbrication, pas un graphe.
 
 | Étape | Où | Coût |
 |---|---|---|
-| Émettre les arêtes du graphe | `get_tree` : un champ `deps` par entrée, alimenté par `obj.OutList` filtré au corps | 🟢 faible — la donnée est dans FreeCAD, il suffit de ne plus la jeter |
-| Étendre le contrat | `protocol.py` + tests | 🟢 faible, mais c'est un changement de protocole : à faire proprement |
-| Dessiner le graphe | client | 🟧 le vrai morceau — disposition, lisibilité sur une pièce à 60 fonctions |
+| Arêtes géométriques | `get_tree` : champ `deps` par entrée, depuis `obj.OutList` filtré au corps | 🟢 la donnée est dans FreeCAD, il suffit de ne plus la jeter |
+| Arêtes paramétriques | même endroit, depuis `_expression_map` | 🟢 le lecteur existe déjà |
+| Contrat | `protocol.py` + tests | 🟢 faible, mais c'est un **changement de protocole** : à faire proprement |
+| Rendu du graphe | client | 🟧 le vrai morceau — disposition et lisibilité sur une pièce à 60 fonctions |
+| Édition dans le graphe | client → ops existantes | 🟧 ensuite, geste par geste, sans opération nouvelle côté moteur |
 
-Ce que ça rapporte tout de suite, indépendamment des nœuds : la réponse à
-« d'où vient cette face », que l'arbre plat cache. Une répétition qui
-référence une esquisse qui s'attache à un plan qui dépend d'une autre
-fonction, c'est illisible en liste et évident en graphe.
-
-Et surtout : **c'est le même composant de rendu que l'éditeur de nœuds**, en
-lecture seule. Le construire d'abord, c'est régler la disposition et la
-lisibilité sur des données qu'on a déjà, avant d'y brancher de l'édition.
+Ce que la seule lecture rapporte déjà, avant toute édition : la réponse à
+« d'où vient cette face ». Une répétition qui référence une esquisse
+attachée à un plan qui dépend d'une autre fonction est illisible en liste et
+évidente en graphe. Et une cote pilotée par une variable, aujourd'hui
+signalée par un simple préfixe Σ, montre enfin **d'où** elle est pilotée.
 
 ## L'ordre
 
-1. **Vue graphe du FeatureManager** — `deps` dans `get_tree`, rendu client
-   en lecture seule. Utile seul, et prépare le terrain.
-2. **Spike `App::TextDocument`** — aller-retour headless, une demi-journée.
-   Décide où vit le graphe.
-3. **Macros** — enregistrement des opérations, relecture, paramétrage par
-   expressions. Le morceau dur est la résolution de références (rejouer sur
-   un autre document).
-4. **Éditeur de nœuds** — l'interface graphique de l'étape 3, en mode
-   cuisson (A), rangé dans le document (étape 2), rendu avec le composant de
-   l'étape 1.
+1. **Arêtes dans `get_tree`** — géométriques et paramétriques, contrat et
+   tests. C'est la seule vraie dépendance de tout le reste.
+2. **Vue graphe en lecture seule** — utile immédiatement, et c'est déjà le
+   composant final.
+3. **Édition dans le graphe** — chaque geste retombe sur une opération
+   existante ; rien de neuf côté moteur.
+4. **Macros** — sujet indépendant, à mener quand il aura sa propre valeur.
 
-Chaque étape est utile sans la suivante, et aucune ne demande d'écrire de la
-géométrie.
+Aucune étape ne demande d'écrire de la géométrie, et aucune n'ajoute quoi que
+ce soit dans le `.FCStd`.

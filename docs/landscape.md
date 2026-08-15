@@ -161,13 +161,14 @@ même chose pour nous :
 
 Deux questions se posaient sur son fonctionnement — persistance du graphe
 dans le `.FCStd`, et fonctions PartDesign rééditables *vs* formes `Part`
-figées. Elles ont été **tranchées pour FreeSolid** le même jour, non pas en
-observant Nodes mais en décidant ce qu'on veut : graphe à part et optionnel,
-fonctions PartDesign rééditables, en mode cuisson. Voir
-[`nodes-macros.md`](nodes-macros.md).
+figées. Elles ont été **rendues sans objet pour FreeSolid** le même jour :
+en décidant que le graphe *est* le document et non un artefact à côté, il
+n'y a plus ni graphe à persister ni géométrie à générer — le graphe est une
+vue sur les fonctions existantes. Voir [`nodes-macros.md`](nodes-macros.md).
 
-Ce que Nodes garde d'utile après ces décisions : son modèle de données pour
-le jour où les *data trees* deviendront un besoin réel.
+Ce que Nodes garde d'utile après cette décision : son modèle de données
+`awkward`, pour le jour où les *data trees* deviendront un besoin réel — le
+seul terrain que « ne rien séparer » ferme.
 
 ### Le point qui décide
 
@@ -229,7 +230,9 @@ géométrie**, ce qui est le bon signe.
   la vue graphe de l'arbre (gratuite), puis les macros, puis l'éditeur à
   fils qui n'est que leur interface graphique.
 
-Suite donnée le jour même : les partis pris sont posés dans
-[`nodes-macros.md`](nodes-macros.md) — graphe à part et optionnel, fonctions
-PartDesign rééditables, cuisson plutôt que lien vivant, et une vue en graphe
-du FeatureManager comme première brique.
+Suite donnée le jour même dans [`nodes-macros.md`](nodes-macros.md), et elle
+resserre encore la doctrine : **le graphe n'est pas un objet, c'est une
+vue**. Rien à séparer du document, donc pas de format de graphe, pas
+d'évaluateur, pas de synchronisation — les arêtes existent déjà dans
+`OutList` et dans les expressions, il suffit que `get_tree` cesse de les
+jeter.

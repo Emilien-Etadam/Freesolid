@@ -1,10 +1,7 @@
 """SolidWorks <-> FreeCAD vocabulary.
 
-Single source of truth for the terminology mapping. Consumed by:
-
-- ``freesolid.commands.aliases`` — to register commands carrying the names
-  a mechanical designer already knows.
-- ``freesolid.ui.feature_manager`` — to label rows in the feature tree.
+Single source of truth for the terminology mapping. Consumed by the
+headless engine to label rows in the feature tree.
 
 Pure Python on purpose: no FreeCAD import, so it is unit-testable in CI.
 """

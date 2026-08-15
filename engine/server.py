@@ -1,9 +1,8 @@
 """HTTP server binding the protocol to the kernel — stdlib only.
 
-Run with the Python that has FreeCAD, typically the AppImage's freecadcmd:
+Run with the Python that has FreeCAD, typically freecadcmd:
 
-    ~/freesolid-test/squashfs-root/usr/bin/freecadcmd \
-        ~/freesolid-test/Mod/freesolid/engine/server.py
+    freecadcmd engine/server.py
 
 Then open http://localhost:8787 — the server also serves the static UI from
 ``app/``, so one process gives one working tab. Localhost only: this is a

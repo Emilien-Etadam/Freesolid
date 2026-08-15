@@ -7,7 +7,7 @@ Chaque fonction embarque son icône FreeCAD (`app/icons/`, noms d'origine)
 dans le même commit — voir `app/icons/README.md`.
 
 Le nom affiché est **toujours** le terme SolidWorks 2025 français
-(`freesolid/vocab.py` fait foi).
+(`engine/vocab.py` fait foi).
 
 ## Palier 1 — trivial (client seul, ou un seul op serveur)
 

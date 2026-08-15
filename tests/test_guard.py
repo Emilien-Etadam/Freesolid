@@ -2,7 +2,7 @@
 
 import pytest
 
-from freesolid.guard import friendly_error
+from engine.guard import friendly_error
 
 
 @pytest.mark.parametrize("raw,needle", [

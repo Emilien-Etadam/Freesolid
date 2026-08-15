@@ -2,26 +2,24 @@
 
 One ``Kernel`` instance owns one document. FreeCAD is imported inside
 methods (the module stays importable in CI), and every error surfaces
-through ``freesolid.guard.friendly_error`` when a translation exists — the
-web UI inherits the same designer-facing explanations as the Qt addon.
+through ``engine.guard.friendly_error`` when a translation exists — the
+web UI gets designer-facing explanations for known OCCT failures.
 
 Untested-against-FreeCAD code is assumed guilty until the ``selftest`` op
-has run on a real install — the same verification loop that debugged the
-addon's parameter paths.
+has run on a real install.
 """
 
 import os
 import re
 import sys
 
-# The engine lives beside the freesolid package in the same repo; make the
-# repo root importable when freecadcmd runs this file from anywhere.
+# Make the repo root importable when freecadcmd runs this file from anywhere.
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from freesolid.guard import friendly_error          # noqa: E402
-from freesolid.vocab import label_for_type          # noqa: E402
+from engine.guard import friendly_error          # noqa: E402
+from engine.vocab import label_for_type          # noqa: E402
 
 
 class KernelError(Exception):
@@ -2196,7 +2194,7 @@ class Kernel:
                 item["children"] = children
             items.append(item)
 
-        from freesolid.vocab import label_for_origin
+        from engine.vocab import label_for_origin
         # L'ordre SolidWorks : Plan de face, Plan de dessus, Plan de droite.
         planes = [{"id": wire,
                    "label": label_for_origin(self._PLANE_ROLES[wire])}

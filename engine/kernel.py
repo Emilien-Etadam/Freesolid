@@ -2628,13 +2628,19 @@ class Kernel:
     @staticmethod
     def _sketch_support_label(sk):
         """Label du plan ou de la face d'appui — pour le panneau infos."""
+        from engine.vocab import label_for_origin
         support = (getattr(sk, "AttachmentSupport", None)
                    or getattr(sk, "Support", None))
         try:
             for obj, subs in list(support or ()):
                 if obj is None:
                     continue
-                label = obj.Label
+                # Plan d'origine : vocabulaire SolidWorks (« Plan de
+                # face ») via le Name interne ; sinon label utilisateur.
+                name = getattr(obj, "Name", "") or ""
+                label = label_for_origin(name)
+                if label == name:
+                    label = obj.Label
                 for sub in subs or ():
                     text = str(sub)
                     if text.startswith("Face"):

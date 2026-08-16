@@ -201,9 +201,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (!iconsAndText) errors.push("Icônes et texte : classe encore posée");
   await step("réglages ruban");
 
-  // 1. Esquisse — choix du plan dans le viewport
-  await page.click("#btn-sketch");
-  await sleep(1200);
+  // 1. Esquisse — choix du plan dans le viewport. Le clic peut être
+  // avalé juste après le balayage des panneaux (menu/panneau en cours
+  // de fermeture) : réessayer tant que le statut ne change pas.
+  for (let i = 0; i < 4; i++) {
+    await page.click("#btn-sketch");
+    await sleep(1200);
+    if ((await status()).includes("Esquisse")) break;
+  }
   await step("choix plan");
   const canvas = await page.locator("#viewport canvas").first().boundingBox();
   const cx = canvas.x + canvas.width / 2, cy = canvas.y + canvas.height / 2;

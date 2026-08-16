@@ -220,6 +220,45 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("rectangle");
   await page.screenshot({ path: path.join(SHOTS, "1-esquisse.png") });
 
+  // 2-p025. Propriétés d'une ligne dans le PropertyManager.
+  await page.click('[data-tool="select"]');
+  await sleep(200);
+  await page.mouse.click(cx, cy - 70);
+  await page.waitForFunction(
+    () => document.querySelector("#panel .ptitle")?.textContent === "Ligne",
+    null,
+    { timeout: 8000 },
+  ).catch(() => {});
+  await sleep(300);
+  const entityTitle = await page.evaluate(
+    () => document.querySelector("#panel .ptitle")?.textContent ?? "");
+  if (entityTitle !== "Ligne") {
+    errors.push("P025 : titre panneau = « " + entityTitle + " » (attendu Ligne)");
+  }
+  const entityPanelText = await page.evaluate(
+    () => document.querySelector("#panel")?.innerText ?? "");
+  if (!/Longueur\s*:/.test(entityPanelText)
+      || !/\d+[.,]\d{2}\s*mm/.test(entityPanelText)) {
+    errors.push("P025 : longueur absente du panneau (« "
+      + entityPanelText.replace(/\s+/g, " ").slice(0, 180) + " »)");
+  }
+  const panelOpenAfterLine = await page.evaluate(
+    () => document.querySelector("aside")?.classList.contains("panel-open"));
+  if (!panelOpenAfterLine) {
+    errors.push("P025 : le PropertyManager devrait être ouvert sur la ligne");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "1a-entite-ligne.png") });
+  await page.mouse.click(cx + 90, cy);
+  await sleep(500);
+  const panelOpenAfterSecond = await page.evaluate(
+    () => document.querySelector("aside")?.classList.contains("panel-open"));
+  if (panelOpenAfterSecond) {
+    errors.push("P025 : le panneau devrait se fermer à la 2e entité");
+  }
+  await page.keyboard.press("Escape");
+  await sleep(250);
+  await step("propriétés entité");
+
   const sketchState = () => page.evaluate(async () => {
     const r = await fetch("/api", { method: "POST",
       headers: { "Content-Type": "application/json" },

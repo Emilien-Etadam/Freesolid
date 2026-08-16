@@ -68,3 +68,71 @@ export function chainClickAction(prev, next, snapPx) {
     ? "finish"
     : "add";
 }
+
+function fmtMm(value) {
+  return Number(value).toFixed(2);
+}
+
+function fmtXy(point) {
+  return `(${fmtMm(point[0])}, ${fmtMm(point[1])})`;
+}
+
+/** Titre PropertyManager — vocabulaire SolidWorks 2025, en français. */
+export function entityKindTitle(entity) {
+  if (!entity) return "Entité";
+  if (entity.type === "line") return "Ligne";
+  if (entity.type === "circle") return "Cercle";
+  if (entity.type === "arc") return "Arc";
+  if (entity.type === "poly") {
+    if (entity.kind === "ellipse") return "Ellipse";
+    if (entity.kind === "spline") return "Spline";
+    return "Polyligne";
+  }
+  return "Entité";
+}
+
+/**
+ * Propriétés d'entité en lecture seule (mm au 1/100, angle au 1/100 °).
+ * L'édition numérique passe par la cotation intelligente.
+ */
+export function entityPropertyLines(entity) {
+  if (!entity) return [];
+  if (entity.type === "line" && entity.p1 && entity.p2) {
+    const length = Math.hypot(
+      entity.p2[0] - entity.p1[0], entity.p2[1] - entity.p1[1]);
+    return [
+      `Longueur : ${fmtMm(length)} mm`,
+      `Départ : ${fmtXy(entity.p1)} mm`,
+      `Arrivée : ${fmtXy(entity.p2)} mm`,
+    ];
+  }
+  if (entity.type === "circle" && entity.c && entity.r != null) {
+    return [
+      `Centre : ${fmtXy(entity.c)} mm`,
+      `Rayon : ${fmtMm(entity.r)} mm`,
+      `Diamètre : ${fmtMm(entity.r * 2)} mm`,
+    ];
+  }
+  if (entity.type === "arc" && entity.c && entity.r != null
+      && entity.p1 && entity.p2) {
+    const { a1, a2 } = arcAngles(entity);
+    const sweepDeg = (a2 - a1) * 180 / Math.PI;
+    return [
+      `Centre : ${fmtXy(entity.c)} mm`,
+      `Rayon : ${fmtMm(entity.r)} mm`,
+      `Angle balayé : ${fmtMm(sweepDeg)} °`,
+    ];
+  }
+  if (entity.type === "poly" && entity.kind === "ellipse") {
+    const lines = [];
+    if (entity.c) lines.push(`Centre : ${fmtXy(entity.c)} mm`);
+    if (entity.rx != null) lines.push(`Grand rayon : ${fmtMm(entity.rx)} mm`);
+    if (entity.ry != null) lines.push(`Petit rayon : ${fmtMm(entity.ry)} mm`);
+    return lines;
+  }
+  if (entity.type === "poly") {
+    const n = entity.npoints ?? entity.points?.length ?? 0;
+    return [`Nombre de points : ${n}`];
+  }
+  return [];
+}

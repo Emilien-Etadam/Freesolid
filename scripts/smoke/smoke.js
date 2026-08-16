@@ -75,6 +75,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     process.exit(1);
   }
   await step("chargement");
+  const isOrtho = await page.evaluate(
+    () => window.__freesolidDebug?.isOrthographic === true);
+  if (!isOrtho) errors.push("caméra : projection orthographique absente");
   await page.screenshot({ path: path.join(SHOTS, "0-ribbon-groupes.png") });
   const featureGroups = await page.$$eval(
     "#ribbon-features .ribbon-group-label",
@@ -400,6 +403,75 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await step("barre de reprise redescendue");
   await page.screenshot({ path: path.join(SHOTS, "4c-reprise-bas.png") });
+
+  // 4d. Clic droit sur le bossage → Modifier ouvre le panneau d'édition.
+  const padRow = page.locator("#tree li.feat").first();
+  await padRow.click({ button: "right" });
+  await sleep(250);
+  const modifyHidden = await page.$eval("#ctx-modify", (el) => el.hidden);
+  if (modifyHidden) {
+    errors.push("Modifier : entrée masquée sur le bossage");
+  }
+  await page.click("#ctx-modify");
+  await sleep(1200);
+  const panelTitle = await page.evaluate(() =>
+    document.querySelector("#panel .ptitle")?.textContent ?? "");
+  if (!/Bossage/i.test(panelTitle)) {
+    errors.push("Modifier : panneau d'édition non ouvert ("
+      + panelTitle + ")");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "4d-modifier.png") });
+  await page.click('#panel [title^="Annuler"], #panel [title^="Fermer"]',
+    { timeout: 3000 }).catch(() => page.keyboard.press("Escape"));
+  await sleep(250);
+  await step("modifier au clic droit");
+
+  // 4e. Esquisse sur une face du bossage : aucun maillage volumique visible.
+  const volumeCount = () => page.evaluate(
+    () => window.__freesolidDebug?.volumeVisibleCount ?? -1);
+  const facesBeforeSketch = await volumeCount();
+  if (!(facesBeforeSketch > 0)) {
+    errors.push("esquisse sur face : aucun volume avant l'entrée ("
+      + facesBeforeSketch + ")");
+  }
+  let facePicked = false;
+  const tryPick = async (x, y) => {
+    await page.mouse.click(x, y);
+    await sleep(250);
+    const pick = (await page.textContent("#pick")) || "";
+    return pick.includes("Face");
+  };
+  facePicked = await tryPick(cx, cy);
+  if (!facePicked) {
+    for (const [dx, dy] of [[0, -40], [40, 0], [-40, 20], [0, 50], [20, -20]]) {
+      facePicked = await tryPick(cx + dx, cy + dy);
+      if (facePicked) break;
+    }
+  }
+  if (!facePicked) {
+    errors.push("esquisse sur face : aucune face du bossage sélectionnée");
+  }
+  await page.click("#btn-sketch");
+  await sleep(2000);
+  const hiddenCount = await volumeCount();
+  if (hiddenCount !== 0) {
+    errors.push("esquisse : volumes encore visibles (" + hiddenCount + ")");
+  }
+  const sketchTab = await page.evaluate(() =>
+    document.getElementById("sketchbar")?.classList.contains("active"));
+  if (!sketchTab) {
+    errors.push("esquisse sur face : le ruban Esquisse n'est pas actif");
+  }
+  await step("esquisse sans volume");
+  await page.screenshot({ path: path.join(SHOTS, "4e-esquisse-sans-volume.png") });
+  await page.click("#sk-cancel");
+  await sleep(1800);
+  const shownCount = await volumeCount();
+  if (!(shownCount > 0)) {
+    errors.push("sortie esquisse : volumes toujours masqués ("
+      + shownCount + ")");
+  }
+  await step("volumes rétablis");
 
   // 5. Undo / redo — jetons anti-course + invalidation des sélections
   await page.keyboard.press("Control+z");

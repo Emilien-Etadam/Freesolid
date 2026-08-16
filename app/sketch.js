@@ -1359,6 +1359,7 @@ export function createSketchMode(deps) {
       mode.savedCamera = {
         position: camera.position.clone(),
         target: controls.target.clone(),
+        zoom: camera.zoom,
       };
       const normal = new THREE.Vector3(0, 0, 1)
         .transformDirection(mode.matrix);
@@ -1398,6 +1399,8 @@ export function createSketchMode(deps) {
     if (mode.savedCamera) {
       camera.position.copy(mode.savedCamera.position);
       controls.target.copy(mode.savedCamera.target);
+      camera.zoom = mode.savedCamera.zoom;
+      camera.updateProjectionMatrix();
     }
     controls.enableRotate = true;
 

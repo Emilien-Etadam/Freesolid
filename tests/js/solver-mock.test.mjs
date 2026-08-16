@@ -430,14 +430,14 @@ describe("drag", () => {
     assert.equal(mock.solveCalls, 0);
   });
 
-  it("point 0 (courbe entière) : translation des deux extrémités", async () => {
+  it("point 0 (courbe entière) : p1 piloté + vecteur figé", async () => {
     const { mock } = await loadAndCapture(state, {
       geo: 0, pos: 0, x: 10, y: 5,
     });
     const dragx = mock.pushed.find((p) => p.id === "dragx");
     const dragy = mock.pushed.find((p) => p.id === "dragy");
-    const dragx2 = mock.pushed.find((p) => p.id === "dragx2");
-    const dragy2 = mock.pushed.find((p) => p.id === "dragy2");
+    const dragdx = mock.pushed.find((p) => p.id === "dragdx");
+    const dragdy = mock.pushed.find((p) => p.id === "dragdy");
     assert.deepEqual(dragx, {
       id: "dragx", type: "coordinate_x", p_id: "g0p1",
       x: 10, temporary: true, driving: true,
@@ -446,14 +446,20 @@ describe("drag", () => {
       id: "dragy", type: "coordinate_y", p_id: "g0p1",
       y: 5, temporary: true, driving: true,
     });
-    // p1 était [0,0] → delta (10,5) ; p2 était [40,0] → [50,5]
-    assert.deepEqual(dragx2, {
-      id: "dragx2", type: "coordinate_x", p_id: "g0p2",
-      x: 50, temporary: true, driving: true,
+    // Ligne [0,0]→[40,0] : vecteur (40, 0) figé, pas de coordinate_* sur p2.
+    assert.equal(mock.pushed.find((p) => p.id === "dragx2"), undefined);
+    assert.equal(mock.pushed.find((p) => p.id === "dragy2"), undefined);
+    assert.deepEqual(dragdx, {
+      id: "dragdx", type: "difference",
+      param1: { o_id: "g0p1", prop: "x" },
+      param2: { o_id: "g0p2", prop: "x" },
+      difference: 40, temporary: true, driving: true,
     });
-    assert.deepEqual(dragy2, {
-      id: "dragy2", type: "coordinate_y", p_id: "g0p2",
-      y: 5, temporary: true, driving: true,
+    assert.deepEqual(dragdy, {
+      id: "dragdy", type: "difference",
+      param1: { o_id: "g0p1", prop: "y" },
+      param2: { o_id: "g0p2", prop: "y" },
+      difference: 0, temporary: true, driving: true,
     });
   });
 

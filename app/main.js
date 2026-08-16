@@ -120,11 +120,29 @@ function sketchScreenPoint() {
   };
 }
 
+function surfaceScreenPoint() {
+  const mesh = surfaceMeshes[0];
+  if (!mesh) return null;
+  mesh.geometry.computeBoundingSphere();
+  const center = mesh.geometry.boundingSphere?.center;
+  if (!center) return null;
+  const projected = center.clone().project(camera);
+  const rect = renderer.domElement.getBoundingClientRect();
+  return {
+    name: mesh.userData.surface?.name ?? null,
+    label: mesh.userData.surface?.label ?? null,
+    x: (projected.x * 0.5 + 0.5) * rect.width + rect.left,
+    y: (-projected.y * 0.5 + 0.5) * rect.height + rect.top,
+  };
+}
+
 window.__freesolidDebug = {
   get volumeVisibleCount() { return volumeVisibleCount(); },
   get isOrthographic() { return camera.isOrthographicCamera === true; },
   get sketchLineCount() { return sketchLineMeshes.length; },
   get sketchScreenPoint() { return sketchScreenPoint(); },
+  get surfaceMeshCount() { return surfaceMeshes.length; },
+  get surfaceScreenPoint() { return surfaceScreenPoint(); },
 };
 
 scene.add(new THREE.HemisphereLight(0xdde4ec, 0x30343a, 1.0));
@@ -167,18 +185,19 @@ const othersMaterial = new THREE.MeshStandardMaterial({
   color: 0x5f6b78, metalness: 0.1, roughness: 0.7,
   transparent: true, opacity: 0.45, depthWrite: false,
 });
-// Surfaces : double face translucide sarcelle — lisibles des deux côtés.
-const surfacesMaterial = new THREE.MeshStandardMaterial({
-  color: 0x4fb8a8, metalness: 0.1, roughness: 0.6,
-  transparent: true, opacity: 0.55, side: THREE.DoubleSide,
-  depthWrite: false,
-});
+// Surfaces : même teinte que le solide, DoubleSide (peau ouverte).
+const surfaceHoverMaterial = hoverMaterial.clone();
+surfaceHoverMaterial.side = THREE.DoubleSide;
+const surfaceSelectedMaterial = selectedMaterial.clone();
+surfaceSelectedMaterial.side = THREE.DoubleSide;
 const curvesMaterial = new THREE.LineBasicMaterial({ color: 0x4fb8a8 });
 const sketchesMaterial = new THREE.LineBasicMaterial({ color: 0x8fa8c8 });
-let surfacesMesh = null;
+let surfaceMeshes = []; // un mesh par surface, sélectionnable
 let curvesLines = null;
 let sketchLineMeshes = []; // esquisses libres, un LineSegments chacune
 let hoveredSketch = null;  // { name, label } | null
+let hoveredSurface = null; // { name, label } | null
+let selectedSurface = null; // { name, label } | null
 
 // Qui alloue dispose. Les matériaux partagés (constantes de module) ne
 // portent pas le flag et ne sont jamais disposés ; tout matériau créé
@@ -211,6 +230,16 @@ function detachMesh(mesh) {
   disposeSubtree(mesh);
 }
 
+function detachSurfaceMeshes() {
+  for (const mesh of surfaceMeshes) {
+    mesh.removeFromParent();
+    mesh.geometry.dispose();
+    const base = mesh.userData.baseMaterial;
+    if (base?.userData?.own) base.dispose();
+  }
+  surfaceMeshes = [];
+}
+
 let lastClearedSelections = false;
 
 function showMesh(mesh) {
@@ -225,14 +254,13 @@ function showMesh(mesh) {
   lastClearedSelections = cleared > 0;
   // Les noms/labels d'esquisse bougent aussi après une fonction.
   clearSketchSelection({ quiet: true });
+  cancelPendingSurfaceClick();
+  selectedSurface = null;
   if (lastClearedSelections) {
     say("Sélections réinitialisées — la géométrie a changé.");
   }
-  if (surfacesMesh) {
-    surfacesMesh.removeFromParent();
-    surfacesMesh.geometry.dispose();
-    surfacesMesh = null;
-  }
+  detachSurfaceMeshes();
+  hoveredSurface = null;
   if (curvesLines) {
     scene.remove(curvesLines);
     curvesLines.geometry.dispose();
@@ -260,14 +288,22 @@ function showMesh(mesh) {
     volumesGroup.add(otherMesh);
     othersMeshes.push(otherMesh);
   }
-  if (mesh.surfaces?.indices.length) {
+  for (const surface of Array.isArray(mesh.surfaces) ? mesh.surfaces : []) {
+    if (!surface.indices?.length) continue;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position",
-      new THREE.Float32BufferAttribute(mesh.surfaces.positions, 3));
-    geometry.setIndex(mesh.surfaces.indices);
+      new THREE.Float32BufferAttribute(surface.positions, 3));
+    geometry.setIndex(surface.indices);
     geometry.computeVertexNormals();
-    surfacesMesh = new THREE.Mesh(geometry, surfacesMaterial);
-    volumesGroup.add(surfacesMesh);
+    const material = ownedMaterial(baseMaterial);
+    material.side = THREE.DoubleSide;
+    material.transparent = false;
+    material.opacity = 1;
+    const surfMesh = new THREE.Mesh(geometry, material);
+    surfMesh.userData.surface = { name: surface.name, label: surface.label };
+    surfMesh.userData.baseMaterial = material;
+    volumesGroup.add(surfMesh);
+    surfaceMeshes.push(surfMesh);
   }
   if (mesh.curves?.indices.length) {
     const geometry = new THREE.BufferGeometry();
@@ -557,6 +593,24 @@ function pickHoveredSketch() {
   return hit?.object.userData.sketch ?? null;
 }
 
+function pickHoveredSurfaceHit() {
+  if (!surfaceMeshes.length) return null;
+  return raycaster.intersectObjects(surfaceMeshes, false)[0] ?? null;
+}
+
+function repaintSurfaces() {
+  for (const mesh of surfaceMeshes) {
+    const name = mesh.userData.surface?.name;
+    if (selectedSurface?.name === name) {
+      mesh.material = surfaceSelectedMaterial;
+    } else if (hoveredSurface?.name === name) {
+      mesh.material = surfaceHoverMaterial;
+    } else {
+      mesh.material = mesh.userData.baseMaterial;
+    }
+  }
+}
+
 // Face hover: triangle index -> group -> engine faceId. By construction.
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -578,21 +632,24 @@ renderer.domElement.addEventListener("pointermove", (event) => {
     renderer.domElement.style.cursor = id ? "pointer" : "";
     return;
   }
-  if (!partMesh && !sketchLineMeshes.length) return;
+  if (!partMesh && !sketchLineMeshes.length && !surfaceMeshes.length) return;
   raycaster.setFromCamera(pointer, camera);
 
   // L'esquisse libre gagne sur la face (et l'arête) derrière elle :
-  // le geste vise le profil, pas le solide.
+  // le geste vise le profil, pas le solide. Priorité en pixels, inchangée.
   const sketchHit = pickHoveredSketch();
 
   let edgeGroupIndex = -1;
   let groupIndex = -1;
-  if (!sketchHit && partMesh) {
-    const faceHit = raycaster.intersectObject(partMesh)[0];
-    if (partEdges) {
+  let surfaceHit = null;
+  if (!sketchHit) {
+    const faceHit = partMesh
+      ? raycaster.intersectObject(partMesh)[0] : undefined;
+    let edgeHit;
+    if (partMesh && partEdges) {
       const { radius } = partCenterRadius();
       raycaster.params.Line.threshold = linePickThreshold();
-      const edgeHit = raycaster.intersectObject(partEdges)[0];
+      edgeHit = raycaster.intersectObject(partEdges)[0];
       if (edgeHit && (!faceHit
           || edgeHit.distance <= faceHit.distance + radius * 0.02)) {
         edgeGroupIndex = edgeGroups.findIndex(
@@ -605,16 +662,30 @@ renderer.domElement.addEventListener("pointermove", (event) => {
       groupIndex = meshGroups.findIndex(
         (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
     }
+    const surfHit = pickHoveredSurfaceHit();
+    if (surfHit) {
+      const solidHit = edgeGroupIndex >= 0 ? edgeHit : faceHit;
+      if (!solidHit || surfHit.distance < solidHit.distance) {
+        surfaceHit = surfHit.object.userData.surface;
+        groupIndex = -1;
+        edgeGroupIndex = -1;
+      }
+    }
   }
+  const surfaceName = surfaceHit?.name ?? null;
   if (groupIndex !== hoveredGroup || edgeGroupIndex !== hoveredEdgeGroup
-      || sketchHit?.name !== hoveredSketch?.name) {
+      || sketchHit?.name !== hoveredSketch?.name
+      || surfaceName !== hoveredSurface?.name) {
     hoveredGroup = groupIndex;
     hoveredEdgeGroup = edgeGroupIndex;
     hoveredSketch = sketchHit;
+    hoveredSurface = surfaceHit;
     renderer.domElement.style.cursor =
-      groupIndex >= 0 || edgeGroupIndex >= 0 || sketchHit ? "pointer" : "";
+      groupIndex >= 0 || edgeGroupIndex >= 0 || sketchHit || surfaceHit
+        ? "pointer" : "";
     repaintGroups();
     repaintEdges();
+    repaintSurfaces();
   }
 });
 
@@ -628,6 +699,8 @@ function repaintGroups() {
   const parts = [];
   if (hoveredSketch) {
     parts.push(hoveredSketch.label);
+  } else if (hoveredSurface) {
+    parts.push(hoveredSurface.label);
   } else if (hoveredEdgeGroup >= 0) {
     parts.push(`Arête ${edgeGroups[hoveredEdgeGroup].edgeId}`);
   } else if (hoveredGroup >= 0) {
@@ -637,6 +710,8 @@ function repaintGroups() {
     parts.push(`sél. ${selectedEdges.size} arête(s) — Ctrl+clic : ajouter`);
   } else if (selectedFaceId !== null) {
     parts.push(`sél. Face ${selectedFaceId}`);
+  } else if (selectedSurface) {
+    parts.push(`sél. ${selectedSurface.label}`);
   }
   pickEl.textContent = parts.join(" · ");
 }
@@ -719,9 +794,22 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     selectedFaceId = null;
     selectedEdges = new Set();
     clearPlaneChoice();
+    cancelPendingSurfaceClick();
+    clearSurfaceSelection({ quiet: true });
     repaintGroups();
     repaintEdges();
     selectSketch(hoveredSketch);
+    return;
+  }
+
+  if (hoveredSurface) {
+    selectedFaceId = null;
+    selectedEdges = new Set();
+    clearPlaneChoice();
+    clearSketchSelection({ quiet: true });
+    repaintGroups();
+    repaintEdges();
+    onSurfaceClick(hoveredSurface);
     return;
   }
 
@@ -734,7 +822,9 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     }
     selectedFaceId = null;
     clearPlaneChoice();
+    cancelPendingSurfaceClick();
     clearSketchSelection({ quiet: true });
+    clearSurfaceSelection({ quiet: true });
     if (lastTree) renderTree(lastTree);
     repaintGroups();
     repaintEdges();
@@ -745,9 +835,11 @@ renderer.domElement.addEventListener("pointerup", (event) => {
 
   selectedFaceId = hoveredGroup >= 0 ? meshGroups[hoveredGroup].faceId : null;
   selectedEdges = new Set(); // une face (ou le vide) remplace les arêtes
+  cancelPendingSurfaceClick();
+  clearSketchSelection({ quiet: true });
+  clearSurfaceSelection({ quiet: true });
   repaintEdges();
   repaintGroups();
-  clearSketchSelection({ quiet: true });
   if (selectedFaceId !== null) {
     clearPlaneChoice();
     // A command panel with a selection box absorbs the pick.
@@ -756,6 +848,11 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     clearPlaneChoice();
   }
   if (lastTree) renderTree(lastTree);
+});
+
+renderer.domElement.addEventListener("dblclick", () => {
+  if (sketchMode.active || assemblyState || planePicking || measuring) return;
+  if (hoveredSurface) onSurfaceDblClick(hoveredSurface);
 });
 
 function resize() {
@@ -917,7 +1014,9 @@ function refreshDatumGhost(hoverFeature) {
 }
 
 function onDatumRow(feature) {
+  cancelPendingSurfaceClick();
   clearSketchSelection({ quiet: true });
+  clearSurfaceSelection({ quiet: true });
   selectedDatumFeature =
     selectedDatumFeature?.name === feature.name
       ? null
@@ -948,6 +1047,7 @@ const folderState = Object.create(null); // dossiers tête, mémoire de session
 const folderPrevCounts = Object.create(null); // compteurs du rendu précédent
 let sketchInfoOpen = false;
 let sketchClickTimer = null;
+let surfaceClickTimer = null;
 
 /** Clic simple (éventuellement différé pour laisser passer le double-clic). */
 function onSketchRowClick(feature) {
@@ -1037,6 +1137,63 @@ function clearSketchSelection({ quiet = false } = {}) {
   if (!quiet && lastTree) renderTree(lastTree);
 }
 
+function cancelPendingSurfaceClick() {
+  clearTimeout(surfaceClickTimer);
+  surfaceClickTimer = null;
+}
+
+function surfaceRecord(ref) {
+  const name = ref?.name;
+  if (!name) return null;
+  return (lastTree?.surfaces ?? []).find((s) => s.name === name) ?? ref;
+}
+
+function onSurfaceClick(surface) {
+  clearTimeout(surfaceClickTimer);
+  const target = { name: surface.name, label: surface.label };
+  surfaceClickTimer = setTimeout(() => selectSurface(target), 280);
+}
+
+function onSurfaceDblClick(ref) {
+  cancelPendingSurfaceClick();
+  const surface = surfaceRecord(ref);
+  if (!surface) return;
+  clearSurfaceSelection({ quiet: true });
+  if (lastTree) renderTree(lastTree);
+  editSurface(surface);
+}
+
+function clearSurfaceSelection({ quiet = false } = {}) {
+  const had = selectedSurface !== null;
+  selectedSurface = null;
+  repaintSurfaces();
+  if (!had) return;
+  if (!quiet && lastTree) renderTree(lastTree);
+}
+
+function selectSurface(surface) {
+  const pick = { kind: "surface", name: surface.name, label: surface.label };
+  if (panel.notifyPick("surface", pick)) return;
+  if (selectedSurface?.name === surface.name) {
+    clearSurfaceSelection();
+    say("Surface désélectionnée");
+    return;
+  }
+  selectedPlane = null;
+  selectedDatumFeature = null;
+  refreshDatumGhost(null);
+  updatePlaneVisibility();
+  selectedFaceId = null;
+  selectedEdges = new Set();
+  clearSketchSelection({ quiet: true });
+  selectedSurface = { name: surface.name, label: surface.label };
+  if (lastTree) renderTree(lastTree);
+  repaintGroups();
+  repaintEdges();
+  repaintSurfaces();
+  say(surface.label);
+}
+
 async function selectSketch(feature) {
   const pick = { kind: "sketch", name: feature.name, label: feature.label };
   if (panel.notifyPick("sketch", pick)) return; // loft/sweep absorbe
@@ -1050,6 +1207,8 @@ async function selectSketch(feature) {
   selectedDatumFeature = null;
   refreshDatumGhost(null);
   updatePlaneVisibility();
+  cancelPendingSurfaceClick();
+  clearSurfaceSelection({ quiet: true });
   selectedSketch = { name: feature.name, label: feature.label };
   if (lastTree) renderTree(lastTree);
   try {
@@ -1119,7 +1278,9 @@ function openSketchInfoPanel(state, feature) {
 
 function onPlaneRow(id) {
   if (planePicking) { pickPlane(id); return; }
+  cancelPendingSurfaceClick();
   clearSketchSelection({ quiet: true });
+  clearSurfaceSelection({ quiet: true });
   selectedPlane = selectedPlane === id ? null : id;
   if (selectedPlane !== null) {
     selectedDatumFeature = null;
@@ -1156,6 +1317,32 @@ function chronologicalHistory(features, surfaces) {
     return a.index - b.index;
   });
   return rows;
+}
+
+// Les surfaces ne sont pas dans la chaîne PartDesign : si leur `order`
+// les placerait après la barre, on les hisse juste avant (ordre relatif
+// conservé). Barre en bout de chaîne = barre tout en bas.
+function splitHistoryAroundBar(features, surfaces, tip) {
+  const history = chronologicalHistory(features, surfaces);
+  if (!tip && features.length > 0) {
+    return {
+      bar: "start",
+      before: history.filter((row) => row.surface),
+      after: history.filter((row) => !row.surface),
+    };
+  }
+  const tipIndex = history.findIndex(
+    (row) => !row.surface && row.item.name === tip);
+  if (tipIndex < 0) {
+    return { bar: "none", before: history, after: [] };
+  }
+  const rest = history.slice(tipIndex + 1);
+  return {
+    bar: "middle",
+    before: history.slice(0, tipIndex + 1)
+      .concat(rest.filter((row) => row.surface)),
+    after: rest.filter((row) => !row.surface),
+  };
 }
 
 function rememberFolderCount(key, count) {
@@ -1237,7 +1424,8 @@ function appendBodyRow(bodyInfo) {
 
 function appendSurfaceRow(surface, { inFolder = true } = {}) {
   const item = document.createElement("li");
-  item.className = "surface" + (inFolder ? " in-folder" : "");
+  item.className = "surface" + (inFolder ? " in-folder" : "")
+    + (selectedSurface?.name === surface.name ? " sel" : "");
   const children = surface.children ?? [];
   const hasChildren = children.length > 0;
   const arrow = document.createElement("span");
@@ -1259,9 +1447,8 @@ function appendSurfaceRow(surface, { inFolder = true } = {}) {
   item.title = "Surface / courbe — clic : sélectionner pour une " +
     "commande · double-clic : modifier · clic droit : modifier, " +
     "renommer, supprimer";
-  item.addEventListener("click", () => panel.notifyPick("surface",
-    { kind: "surface", name: surface.name, label: surface.label }));
-  item.addEventListener("dblclick", () => editSurface(surface));
+  item.addEventListener("click", () => onSurfaceClick(surface));
+  item.addEventListener("dblclick", () => onSurfaceDblClick(surface));
   item.addEventListener("contextmenu", (event) => openMenu(event, surface));
   treeEl.appendChild(item);
   if (hasChildren && expandedFeatures.has(surface.name)) {
@@ -1479,87 +1666,84 @@ function renderActiveBodyContents(tree) {
   }
 
   const features = tree.features ?? [];
-  const history = chronologicalHistory(features, tree.surfaces ?? []);
-  const showBarAtStart = !tree.tip && features.length > 0;
-  if (showBarAtStart) appendRollbackBar(tree);
-  let afterTip = showBarAtStart;
+  const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip);
+  if (split.bar === "start") appendRollbackBar(tree);
+  for (const row of split.before) {
+    if (row.surface) appendSurfaceRow(row.item, { inFolder: false });
+    else appendFeatureHistoryRow(row.item, false);
+  }
+  if (split.bar === "middle") appendRollbackBar(tree);
+  for (const row of split.after) {
+    if (row.surface) appendSurfaceRow(row.item, { inFolder: false });
+    else appendFeatureHistoryRow(row.item, true);
+  }
+}
 
-  for (const { item, surface } of history) {
-    if (surface) {
-      appendSurfaceRow(item, { inFolder: false });
-      continue;
-    }
-    const feature = item;
-    const row = document.createElement("li");
-    row.classList.add("feat");
-    row.dataset.feat = feature.name;
-    if (feature.error) row.classList.add("error");
-    if (afterTip) row.classList.add("rolled-back");
-    const hasChildren = !!feature.children?.length;
-    const arrow = document.createElement("span");
-    arrow.className = "arrow";
-    arrow.textContent = hasChildren
-      ? (expandedFeatures.has(feature.name) ? "▾" : "▸") : "";
-    if (hasChildren) {
-      arrow.addEventListener("click", (event) => {
-        event.stopPropagation();
-        if (!expandedFeatures.delete(feature.name)) {
-          expandedFeatures.add(feature.name);
-        }
-        renderTree(lastTree);
-      });
-    }
-    row.appendChild(arrow);
-    const icon = TREE_ICONS[feature.type];
-    if (icon) row.appendChild(treeIcon(icon));
-    row.appendChild(document.createTextNode(feature.label));
-    row.title = `${feature.kind} — double-clic : modifier · ` +
-      "clic droit : modifier, barre de retour, supprimer";
-    row.addEventListener("dblclick", () => {
-      if (feature.type === "Sketcher::SketchObject") {
-        onSketchRowDblClick(feature);
-      } else {
-        editFeature(feature);
+function appendFeatureHistoryRow(feature, rolledBack) {
+  const row = document.createElement("li");
+  row.classList.add("feat");
+  row.dataset.feat = feature.name;
+  if (feature.error) row.classList.add("error");
+  if (rolledBack) row.classList.add("rolled-back");
+  const hasChildren = !!feature.children?.length;
+  const arrow = document.createElement("span");
+  arrow.className = "arrow";
+  arrow.textContent = hasChildren
+    ? (expandedFeatures.has(feature.name) ? "▾" : "▸") : "";
+  if (hasChildren) {
+    arrow.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!expandedFeatures.delete(feature.name)) {
+        expandedFeatures.add(feature.name);
       }
+      renderTree(lastTree);
     });
-    row.addEventListener("contextmenu", (event) => openMenu(event, feature));
-    if (feature.type === "PartDesign::Plane") {
-      // Un plan de référence se choisit comme un plan d'origine.
-      row.classList.add("plane");
-      if (selectedDatumFeature?.name === feature.name) {
-        row.classList.add("sel");
-      }
-      row.addEventListener("click", () => onDatumRow(feature));
-      row.addEventListener("mouseenter", () => refreshDatumGhost(feature));
-      row.addEventListener("mouseleave", () => refreshDatumGhost(null));
-    }
+  }
+  row.appendChild(arrow);
+  const icon = TREE_ICONS[feature.type];
+  if (icon) row.appendChild(treeIcon(icon));
+  row.appendChild(document.createTextNode(feature.label));
+  row.title = `${feature.kind} — double-clic : modifier · ` +
+    "clic droit : modifier, barre de retour, supprimer";
+  row.addEventListener("dblclick", () => {
     if (feature.type === "Sketcher::SketchObject") {
-      if (selectedSketch?.name === feature.name) row.classList.add("sel");
-      row.addEventListener("click", () => onSketchRowClick(feature));
+      onSketchRowDblClick(feature);
+    } else {
+      editFeature(feature);
     }
-    treeEl.appendChild(row);
-
-    // L'esquisse consommée vit sous sa fonction, à la SolidWorks.
-    if (hasChildren && expandedFeatures.has(feature.name)) {
-      for (const child of feature.children) {
-        const childRow = document.createElement("li");
-        childRow.className = "child" + (child.error ? " error" : "");
-        if (afterTip) childRow.classList.add("rolled-back");
-        if (selectedSketch?.name === child.name) childRow.classList.add("sel");
-        childRow.appendChild(treeIcon("Sketcher_Sketch.svg"));
-        childRow.appendChild(document.createTextNode(child.label));
-        childRow.title = `${child.kind} — double-clic : modifier l'esquisse · ` +
-        "clic droit : modifier";
-        childRow.addEventListener("dblclick", () => onSketchRowDblClick(child));
-        childRow.addEventListener("contextmenu", (event) => openMenu(event, child));
-        childRow.addEventListener("click", () => onSketchRowClick(child));
-        treeEl.appendChild(childRow);
-      }
+  });
+  row.addEventListener("contextmenu", (event) => openMenu(event, feature));
+  if (feature.type === "PartDesign::Plane") {
+    // Un plan de référence se choisit comme un plan d'origine.
+    row.classList.add("plane");
+    if (selectedDatumFeature?.name === feature.name) {
+      row.classList.add("sel");
     }
+    row.addEventListener("click", () => onDatumRow(feature));
+    row.addEventListener("mouseenter", () => refreshDatumGhost(feature));
+    row.addEventListener("mouseleave", () => refreshDatumGhost(null));
+  }
+  if (feature.type === "Sketcher::SketchObject") {
+    if (selectedSketch?.name === feature.name) row.classList.add("sel");
+    row.addEventListener("click", () => onSketchRowClick(feature));
+  }
+  treeEl.appendChild(row);
 
-    if (feature.name === tree.tip) {
-      appendRollbackBar(tree);
-      afterTip = true;
+  // L'esquisse consommée vit sous sa fonction, à la SolidWorks.
+  if (hasChildren && expandedFeatures.has(feature.name)) {
+    for (const child of feature.children) {
+      const childRow = document.createElement("li");
+      childRow.className = "child" + (child.error ? " error" : "");
+      if (rolledBack) childRow.classList.add("rolled-back");
+      if (selectedSketch?.name === child.name) childRow.classList.add("sel");
+      childRow.appendChild(treeIcon("Sketcher_Sketch.svg"));
+      childRow.appendChild(document.createTextNode(child.label));
+      childRow.title = `${child.kind} — double-clic : modifier l'esquisse · ` +
+      "clic droit : modifier";
+      childRow.addEventListener("dblclick", () => onSketchRowDblClick(child));
+      childRow.addEventListener("contextmenu", (event) => openMenu(event, child));
+      childRow.addEventListener("click", () => onSketchRowClick(child));
+      treeEl.appendChild(childRow);
     }
   }
 }

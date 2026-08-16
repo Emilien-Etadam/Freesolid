@@ -651,7 +651,50 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("P027 : « Surface extrudée » absente de l'historique "
       + "(vu : " + historySurf.join(" | ") + ")");
   }
-  await step("surface dans l'historique");
+  const barOrder = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("#tree li")];
+    const hist = nodes.findIndex((el) =>
+      el.classList.contains("surface") && !el.classList.contains("in-folder")
+      && el.textContent.includes("Surface extrudée"));
+    const bar = nodes.findIndex((el) => el.classList.contains("rollback"));
+    const rolled = hist >= 0 && nodes[hist].classList.contains("rolled-back");
+    return { hist, bar, rolled };
+  });
+  if (!(barOrder.hist >= 0 && barOrder.bar > barOrder.hist)) {
+    errors.push("P028 : « Surface extrudée » devrait être au-dessus de la "
+      + "barre (hist=" + barOrder.hist + " barre=" + barOrder.bar + ")");
+  }
+  if (barOrder.rolled) {
+    errors.push("P028 : la surface d'historique ne doit pas être rolled-back");
+  }
+  await page.waitForFunction(
+    () => (window.__freesolidDebug?.surfaceMeshCount ?? 0) >= 1,
+    { timeout: 8000 }).catch(() => {});
+  await page.click("#view-fit");
+  await sleep(400);
+  const surfPt = await page.evaluate(
+    () => window.__freesolidDebug?.surfaceScreenPoint ?? null);
+  if (!surfPt) {
+    errors.push("P028 : pas de point cliquable sur la surface");
+  } else {
+    await page.mouse.move(surfPt.x, surfPt.y);
+    await sleep(200);
+    await page.mouse.click(surfPt.x, surfPt.y);
+    await sleep(500);
+    const pickText = await page.evaluate(
+      () => document.getElementById("pick")?.textContent ?? "");
+    if (!pickText.includes(surfPt.label)) {
+      errors.push("P028 : #pick « " + pickText + " » (attendu le label « "
+        + surfPt.label + " »)");
+    }
+    const treeSel = await page.$$eval("#tree li.sel",
+      (els) => els.map((el) => el.textContent));
+    if (!treeSel.some((text) => text.includes(surfPt.label))) {
+      errors.push("P028 : pas de ligne .sel dans l'arbre ("
+        + treeSel.join(", ") + ")");
+    }
+  }
+  await step("surface cliquée dans le viewport");
   await page.screenshot({ path: path.join(SHOTS, "6-surface-historique.png") });
 
   console.log(errors.length

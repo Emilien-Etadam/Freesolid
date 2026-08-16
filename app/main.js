@@ -1302,6 +1302,10 @@ function isSurfaceType(type) {
     && (type.startsWith("Part::") || type.startsWith("Surface::"));
 }
 
+function isFreeSketchType(type) {
+  return type === "Sketcher::SketchObject";
+}
+
 function chronologicalHistory(features, surfaces) {
   const rows = [];
   for (const [index, item] of features.entries()) {
@@ -1319,16 +1323,21 @@ function chronologicalHistory(features, surfaces) {
   return rows;
 }
 
-// Les surfaces ne sont pas dans la chaîne PartDesign : si leur `order`
-// les placerait après la barre, on les hisse juste avant (ordre relatif
-// conservé). Barre en bout de chaîne = barre tout en bas.
+// Surfaces et esquisses libres : hors chaîne PartDesign. Si leur
+// `order` les placerait après la barre, on les hisse juste avant
+// (ordre chronologique relatif conservé). Barre en bout de chaîne =
+// barre tout en bas, esquisses et surfaces comprises.
+function isLiftedHistoryRow(row) {
+  return row.surface || isFreeSketchType(row.item.type);
+}
+
 function splitHistoryAroundBar(features, surfaces, tip) {
   const history = chronologicalHistory(features, surfaces);
   if (!tip && features.length > 0) {
     return {
       bar: "start",
-      before: history.filter((row) => row.surface),
-      after: history.filter((row) => !row.surface),
+      before: history.filter(isLiftedHistoryRow),
+      after: history.filter((row) => !isLiftedHistoryRow(row)),
     };
   }
   const tipIndex = history.findIndex(
@@ -1340,8 +1349,8 @@ function splitHistoryAroundBar(features, surfaces, tip) {
   return {
     bar: "middle",
     before: history.slice(0, tipIndex + 1)
-      .concat(rest.filter((row) => row.surface)),
-    after: rest.filter((row) => !row.surface),
+      .concat(rest.filter(isLiftedHistoryRow)),
+    after: rest.filter((row) => !isLiftedHistoryRow(row)),
   };
 }
 
@@ -1482,7 +1491,7 @@ function tipTargetBefore(index, features) {
   for (let i = index - 1; i >= 0; i--) {
     const type = features[i].type;
     // Esquisses libres et surfaces : pas dans la chaîne PartDesign.
-    if (type === "Sketcher::SketchObject" || isSurfaceType(type)) continue;
+    if (isFreeSketchType(type) || isSurfaceType(type)) continue;
     return features[i].name;
   }
   return null;
@@ -1684,7 +1693,10 @@ function appendFeatureHistoryRow(feature, rolledBack) {
   row.classList.add("feat");
   row.dataset.feat = feature.name;
   if (feature.error) row.classList.add("error");
-  if (rolledBack) row.classList.add("rolled-back");
+  // Une esquisse libre n'est jamais reculée : hors chaîne PartDesign.
+  if (rolledBack && !isFreeSketchType(feature.type)) {
+    row.classList.add("rolled-back");
+  }
   const hasChildren = !!feature.children?.length;
   const arrow = document.createElement("span");
   arrow.className = "arrow";

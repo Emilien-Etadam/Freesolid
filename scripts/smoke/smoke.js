@@ -578,6 +578,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(400);
   const skPt = await page.evaluate(
     () => window.__freesolidDebug?.sketchScreenPoint ?? null);
+  const freeSketchBar = await page.evaluate((label) => {
+    const nodes = [...document.querySelectorAll("#tree li")];
+    const sketch = nodes.findIndex((el) => {
+      if (!el.classList.contains("feat")) return false;
+      const text = el.textContent || "";
+      if (label) return text.includes(label);
+      return text.includes("Esquisse");
+    });
+    const bar = nodes.findIndex((el) => el.classList.contains("rollback"));
+    const rolled = sketch >= 0 && nodes[sketch].classList.contains("rolled-back");
+    return { sketch, bar, rolled };
+  }, skPt?.label ?? null);
+  if (!(freeSketchBar.sketch >= 0 && freeSketchBar.bar > freeSketchBar.sketch)) {
+    errors.push("P029 : l'esquisse libre devrait être au-dessus de la "
+      + "barre (esquisse=" + freeSketchBar.sketch
+      + " barre=" + freeSketchBar.bar + ")");
+  }
+  if (freeSketchBar.rolled) {
+    errors.push("P029 : l'esquisse libre ne doit pas être rolled-back");
+  }
   if (!skPt) {
     errors.push("esquisse viewport : pas de point cliquable sur l'esquisse");
   } else {

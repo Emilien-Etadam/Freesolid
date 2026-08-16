@@ -131,7 +131,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       document.querySelector("aside")?.classList.contains("panel-open"));
     if (panelOpen) {
       opened += 1;
-      await page.click('#panel [title^="Annuler"], #panel [title^="Fermer"]');
+      // Le bouton peut disparaître entre la détection et le clic
+      // (re-render du panneau) : repli Échap au lieu d'un timeout de 30 s.
+      await page.click('#panel [title^="Annuler"], #panel [title^="Fermer"]',
+        { timeout: 3000 }).catch(() => page.keyboard.press("Escape"));
       await sleep(150);
     }
   }
@@ -143,10 +146,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('[data-tab="features"]');
   await sleep(200);
 
+  const settingsItem = async (value) => {
+    // Un clic parasite (fermeture de panneau) peut avoir refermé le
+    // menu : le rouvrir si l'entrée n'est pas visible.
+    const item = page.locator('[data-ribbon-labels="' + value + '"]');
+    if (!(await item.isVisible())) {
+      await page.click("#btn-settings");
+      await sleep(200);
+    }
+    await item.click({ timeout: 5000 });
+  };
   await page.click("#btn-settings");
   await sleep(200);
   await page.screenshot({ path: path.join(SHOTS, "0b-menu-reglages.png") });
-  await page.click('[data-ribbon-labels="icons-only"]');
+  await settingsItem("icons-only");
   await sleep(200);
   const iconsOnly = await page.evaluate(() =>
     document.body.classList.contains("ribbon-icons-only")
@@ -177,7 +190,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.screenshot({ path: path.join(SHOTS, "0c-icones-seules.png") });
   await page.click("#btn-settings");
   await sleep(150);
-  await page.click('[data-ribbon-labels="icons-and-text"]');
+  await settingsItem("icons-and-text");
   await sleep(200);
   const iconsAndText = await page.evaluate(() =>
     !document.body.classList.contains("ribbon-icons-only")

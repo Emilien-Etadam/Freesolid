@@ -201,9 +201,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (!iconsAndText) errors.push("Icônes et texte : classe encore posée");
   await step("réglages ruban");
 
-  // 1. Esquisse — choix du plan dans le viewport. Le clic peut être
-  // avalé juste après le balayage des panneaux (menu/panneau en cours
-  // de fermeture) : réessayer tant que le statut ne change pas.
+  // 1. Esquisse — choix du plan dans le viewport. Deux courses possibles
+  // juste après le balayage des panneaux : le clic #btn-sketch avalé, ou
+  // pris en compte EN RETARD (après le clic de plan). Robuste aux deux :
+  // réessayer le clic de plan jusqu'à l'activation réelle du ruban
+  // Esquisse, en relançant #btn-sketch si le mode choix de plan retombe.
+  const sketchbarActive = () => page.evaluate(() =>
+    document.getElementById("sketchbar")?.classList.contains("active")
+    === true);
   for (let i = 0; i < 4; i++) {
     await page.click("#btn-sketch");
     await sleep(1200);
@@ -212,8 +217,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("choix plan");
   const canvas = await page.locator("#viewport canvas").first().boundingBox();
   const cx = canvas.x + canvas.width / 2, cy = canvas.y + canvas.height / 2;
-  await page.mouse.click(cx, cy - 40);
-  await sleep(1800);
+  for (let i = 0; i < 5 && !(await sketchbarActive()); i++) {
+    if (!(await status()).includes("cliquez un plan") && i > 0) {
+      await page.click("#btn-sketch");
+      await sleep(1000);
+    }
+    await page.mouse.click(cx, cy - 40);
+    await sleep(1800);
+  }
   await step("esquisse ouverte");
 
   // 2. Rectangle
@@ -578,6 +589,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(400);
   const skPt = await page.evaluate(
     () => window.__freesolidDebug?.sketchScreenPoint ?? null);
+  const freeSketchBar = await page.evaluate((label) => {
+    const nodes = [...document.querySelectorAll("#tree li")];
+    const sketch = nodes.findIndex((el) => {
+      if (!el.classList.contains("feat")) return false;
+      const text = el.textContent || "";
+      if (label) return text.includes(label);
+      return text.includes("Esquisse");
+    });
+    const bar = nodes.findIndex((el) => el.classList.contains("rollback"));
+    const rolled = sketch >= 0 && nodes[sketch].classList.contains("rolled-back");
+    return { sketch, bar, rolled };
+  }, skPt?.label ?? null);
+  if (!(freeSketchBar.sketch >= 0 && freeSketchBar.bar > freeSketchBar.sketch)) {
+    errors.push("P029 : l'esquisse libre devrait être au-dessus de la "
+      + "barre (esquisse=" + freeSketchBar.sketch
+      + " barre=" + freeSketchBar.bar + ")");
+  }
+  if (freeSketchBar.rolled) {
+    errors.push("P029 : l'esquisse libre ne doit pas être rolled-back");
+  }
   if (!skPt) {
     errors.push("esquisse viewport : pas de point cliquable sur l'esquisse");
   } else {

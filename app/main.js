@@ -8,6 +8,7 @@ import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
 import { FEATURES } from "./features.js";
 import { arcAngles } from "./geom2d.js";
+import { splitHistoryAroundBar } from "./history.js";
 
 const statusEl = document.getElementById("status");
 const pickEl = document.getElementById("pick");
@@ -326,6 +327,8 @@ function showMesh(mesh) {
   }
   if (!mesh.indices.length) {
     applyVolumeVisibility();
+    rebuildPlanes();
+    repaintGroups();
     return;
   }
 
@@ -344,6 +347,7 @@ function showMesh(mesh) {
   volumesGroup.add(partMesh);
   applyVolumeVisibility();
   rebuildPlanes(); // les plans de base suivent la taille de la pièce
+  repaintGroups();
 }
 
 // Les vraies arêtes BREP du moteur (pas une silhouette approchée) :
@@ -1297,61 +1301,30 @@ function onPlaneRow(id) {
     : "Plan désélectionné");
 }
 
-function isSurfaceType(type) {
-  return typeof type === "string"
-    && (type.startsWith("Part::") || type.startsWith("Surface::"));
-}
-
-function isFreeSketchType(type) {
-  return type === "Sketcher::SketchObject";
-}
-
-function chronologicalHistory(features, surfaces) {
-  const rows = [];
-  for (const [index, item] of features.entries()) {
-    rows.push({ item, surface: false, index });
+function dropRolledBackSelection(tree) {
+  let dropped = false;
+  if (selectedSurface) {
+    const surf = (tree.surfaces ?? []).find(
+      (item) => item.name === selectedSurface.name);
+    if (!surf || surf.rolled_back) {
+      selectedSurface = null;
+      dropped = true;
+    }
   }
-  for (const [index, item] of surfaces.entries()) {
-    rows.push({ item, surface: true, index: features.length + index });
+  if (selectedSketch) {
+    const feat = (tree.features ?? []).find(
+      (item) => item.name === selectedSketch.name);
+    if (feat?.type === "Sketcher::SketchObject" && feat.rolled_back) {
+      selectedSketch = null;
+      clearSketchHighlight();
+      dropped = true;
+    }
   }
-  rows.sort((a, b) => {
-    const oa = typeof a.item.order === "number" ? a.item.order : a.index + 1e6;
-    const ob = typeof b.item.order === "number" ? b.item.order : b.index + 1e6;
-    if (oa !== ob) return oa - ob;
-    return a.index - b.index;
-  });
-  return rows;
-}
-
-// Surfaces et esquisses libres : hors chaîne PartDesign. Si leur
-// `order` les placerait après la barre, on les hisse juste avant
-// (ordre chronologique relatif conservé). Barre en bout de chaîne =
-// barre tout en bas, esquisses et surfaces comprises.
-function isLiftedHistoryRow(row) {
-  return row.surface || isFreeSketchType(row.item.type);
-}
-
-function splitHistoryAroundBar(features, surfaces, tip) {
-  const history = chronologicalHistory(features, surfaces);
-  if (!tip && features.length > 0) {
-    return {
-      bar: "start",
-      before: history.filter(isLiftedHistoryRow),
-      after: history.filter((row) => !isLiftedHistoryRow(row)),
-    };
+  if (dropped) {
+    hoveredSurface = null;
+    hoveredSketch = null;
+    repaintGroups();
   }
-  const tipIndex = history.findIndex(
-    (row) => !row.surface && row.item.name === tip);
-  if (tipIndex < 0) {
-    return { bar: "none", before: history, after: [] };
-  }
-  const rest = history.slice(tipIndex + 1);
-  return {
-    bar: "middle",
-    before: history.slice(0, tipIndex + 1)
-      .concat(rest.filter(isLiftedHistoryRow)),
-    after: rest.filter((row) => !isLiftedHistoryRow(row)),
-  };
 }
 
 function rememberFolderCount(key, count) {
@@ -1431,10 +1404,12 @@ function appendBodyRow(bodyInfo) {
   treeEl.appendChild(bodyItem);
 }
 
-function appendSurfaceRow(surface, { inFolder = true } = {}) {
+function appendSurfaceRow(surface, { inFolder = true, rolledBack = false } = {}) {
   const item = document.createElement("li");
   item.className = "surface" + (inFolder ? " in-folder" : "")
-    + (selectedSurface?.name === surface.name ? " sel" : "");
+    + (selectedSurface?.name === surface.name ? " sel" : "")
+    + (rolledBack ? " rolled-back" : "");
+  if (!inFolder) item.dataset.hist = surface.name;
   const children = surface.children ?? [];
   const hasChildren = children.length > 0;
   const arrow = document.createElement("span");
@@ -1464,7 +1439,8 @@ function appendSurfaceRow(surface, { inFolder = true } = {}) {
     for (const child of children) {
       const row = document.createElement("li");
       row.className = "child" + (inFolder ? " in-folder" : "")
-        + (child.error ? " error" : "");
+        + (child.error ? " error" : "")
+        + (rolledBack ? " rolled-back" : "");
       row.appendChild(treeIcon("Sketcher_Sketch.svg"));
       row.appendChild(document.createTextNode(child.label));
       row.title = `${child.kind} — double-clic : modifier l'esquisse · ` +
@@ -1487,29 +1463,21 @@ function appendRollbackBar(tree) {
   treeEl.appendChild(bar);
 }
 
-function tipTargetBefore(index, features) {
-  for (let i = index - 1; i >= 0; i--) {
-    const type = features[i].type;
-    // Esquisses libres et surfaces : pas dans la chaîne PartDesign.
-    if (isFreeSketchType(type) || isSurfaceType(type)) continue;
-    return features[i].name;
+function applyRollbackSlot(index, history) {
+  if (index <= 0) {
+    refresh(call("set_tip", {}));
+    return;
   }
-  return null;
-}
-
-function applyRollbackSlot(index, features) {
-  if (index >= features.length) {
+  if (index >= history.length) {
     refresh(call("tip_to_end"));
     return;
   }
-  const target = tipTargetBefore(index, features);
-  refresh(target
-    ? call("set_tip", { feature: target })
-    : call("set_tip", {}));
+  const target = history[index - 1];
+  refresh(call("set_tip", { feature: target.item.name }));
 }
 
 function rollbackSlotPositions() {
-  const rows = [...treeEl.querySelectorAll("li.feat")];
+  const rows = [...treeEl.querySelectorAll("li[data-hist]")];
   if (!rows.length) return [];
   const slots = [{ y: rows[0].getBoundingClientRect().top, index: 0 }];
   for (let i = 0; i < rows.length; i++) {
@@ -1555,9 +1523,10 @@ function bindRollbackDrag(bar, tree) {
     event.preventDefault();
     const startX = event.clientX;
     const startY = event.clientY;
-    const features = tree.features ?? [];
-    const tipIndex = features.findIndex((feature) => feature.name === tree.tip);
-    const currentSlot = tipIndex >= 0 ? tipIndex + 1 : 0;
+    const split = splitHistoryAroundBar(
+      tree.features ?? [], tree.surfaces ?? [], tree.tip);
+    const history = split.before.concat(split.after);
+    const currentSlot = split.before.length;
     let dragging = false;
     try {
       bar.setPointerCapture(event.pointerId);
@@ -1586,7 +1555,7 @@ function bindRollbackDrag(bar, tree) {
       if (!slots.length) return;
       const slot = nearestRollbackSlot(upEvent.clientY, slots);
       if (slot.index === currentSlot) return;
-      applyRollbackSlot(slot.index, features);
+      applyRollbackSlot(slot.index, history);
     };
     bar.addEventListener("pointermove", onMove);
     bar.addEventListener("pointerup", onUp);
@@ -1596,6 +1565,7 @@ function bindRollbackDrag(bar, tree) {
 
 function renderTree(tree) {
   clearAssemblyView(); // un arbre de pièce = le mode assemblage s'efface
+  dropRolledBackSelection(tree);
   lastTree = tree;
   treeHoverPlane = null;
   treeEl.innerHTML = "";
@@ -1676,15 +1646,26 @@ function renderActiveBodyContents(tree) {
 
   const features = tree.features ?? [];
   const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip);
-  if (split.bar === "start") appendRollbackBar(tree);
-  for (const row of split.before) {
-    if (row.surface) appendSurfaceRow(row.item, { inFolder: false });
-    else appendFeatureHistoryRow(row.item, false);
-  }
-  if (split.bar === "middle") appendRollbackBar(tree);
-  for (const row of split.after) {
-    if (row.surface) appendSurfaceRow(row.item, { inFolder: false });
-    else appendFeatureHistoryRow(row.item, true);
+  if (split.bar !== "none") {
+    for (const row of split.before) {
+      if (row.surface) {
+        appendSurfaceRow(row.item, {
+          inFolder: false, rolledBack: !!row.item.rolled_back,
+        });
+      } else {
+        appendFeatureHistoryRow(row.item, false);
+      }
+    }
+    appendRollbackBar(tree);
+    for (const row of split.after) {
+      if (row.surface) {
+        appendSurfaceRow(row.item, {
+          inFolder: false, rolledBack: true,
+        });
+      } else {
+        appendFeatureHistoryRow(row.item, true);
+      }
+    }
   }
 }
 
@@ -1692,11 +1673,9 @@ function appendFeatureHistoryRow(feature, rolledBack) {
   const row = document.createElement("li");
   row.classList.add("feat");
   row.dataset.feat = feature.name;
+  row.dataset.hist = feature.name;
   if (feature.error) row.classList.add("error");
-  // Une esquisse libre n'est jamais reculée : hors chaîne PartDesign.
-  if (rolledBack && !isFreeSketchType(feature.type)) {
-    row.classList.add("rolled-back");
-  }
+  if (rolledBack) row.classList.add("rolled-back");
   const hasChildren = !!feature.children?.length;
   const arrow = document.createElement("span");
   arrow.className = "arrow";

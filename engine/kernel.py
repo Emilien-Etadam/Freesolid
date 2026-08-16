@@ -2497,6 +2497,11 @@ class Kernel:
     #: sends identical coordinates; this only recognizes that decision.
     _SNAP_TOL = 1e-7
 
+    def _coincident_2d(self, x1, y1, x2, y2):
+        import math
+        return math.hypot(float(x2) - float(x1),
+                          float(y2) - float(y1)) < self._SNAP_TOL
+
     def _get_sketch(self, name):
         obj = self._require_doc().getObject(name)
         if obj is None or obj.TypeId != "Sketcher::SketchObject":
@@ -2704,6 +2709,9 @@ class Kernel:
     def sketch_add_line(self, sketch, x1, y1, x2, y2):
         import Part
         sk = self._get_sketch(sketch)
+        if self._coincident_2d(x1, y1, x2, y2):
+            raise KernelError(
+                "segment de longueur nulle — les deux points coïncident")
         V = self._app().Vector
         gid = sk.addGeometry(Part.LineSegment(
             V(float(x1), float(y1), 0), V(float(x2), float(y2), 0)), False)
@@ -2737,6 +2745,11 @@ class Kernel:
                 x, y = (float(v) for v in p)
             except Exception:
                 raise KernelError("point invalide : {}".format(p))
+            if vectors and self._coincident_2d(
+                    vectors[-1].x, vectors[-1].y, x, y):
+                raise KernelError(
+                    "segment de longueur nulle — deux points de contrôle "
+                    "consécutifs coïncident")
             vectors.append(App.Vector(x, y, 0))
         try:
             curve = Part.BSplineCurve()
@@ -3442,7 +3455,45 @@ class Kernel:
         """Close the sketch: recompute and hand back the feature tree."""
         self._get_sketch(sketch)
         self._recompute()
-        return self.get_tree()
+        tree = self.get_tree()
+        tree["open_profile"] = self._sketch_open_profile(sketch)
+        return tree
+
+    def _sketch_open_profile(self, sketch):
+        """True si la géométrie réelle ne forme aucune boucle fermée.
+
+        Esquisse vide ou 100 % construction : False — rien d'anormal,
+        pas de message côté client. Au moins une boucle fermée : False.
+        """
+        import Part
+        sk = self._get_sketch(sketch)
+        edges = []
+        for gid, geo in enumerate(sk.Geometry):
+            if self._is_construction(sk, gid, geo):
+                continue
+            try:
+                shape = geo.toShape()
+            except Exception:
+                continue
+            if getattr(shape, "ShapeType", None) == "Edge":
+                edges.append(shape)
+            else:
+                edges.extend(list(getattr(shape, "Edges", ()) or ()))
+        if not edges:
+            return False
+        try:
+            chains = Part.sortEdges(edges)
+        except Exception:
+            return True
+        for chain in chains:
+            try:
+                if Part.Wire(chain).isClosed():
+                    return False
+            except Exception:
+                continue
+        if any(bool(getattr(edge, "Closed", False)) for edge in edges):
+            return False
+        return True
 
     def _top_face_id(self):
         """Index of the upward-facing face with the highest centroid.
@@ -4252,6 +4303,31 @@ class Kernel:
             mark("p3: arc, rainure, polygone")
             import math
             self.new_part("Pièce esquisse avancée")
+
+            state = self.sketch_start()
+            zero_sk = state["sketch"]
+            n_before = len(state["entities"])
+            refused = False
+            try:
+                self.sketch_add_line(zero_sk, 17.8, -15.1, 17.8, -15.1)
+            except KernelError as exc:
+                refused = "longueur nulle" in str(exc)
+            n_after = len(self.sketch_state(zero_sk)["entities"])
+            report["p3_zero_line_refused"] = refused and n_after == n_before
+
+            self.sketch_add_line(zero_sk, 0, 0, 40, 0)
+            open_tree = self.sketch_finish(zero_sk)
+            state = self.sketch_start()
+            rect_sk = state["sketch"]
+            self.sketch_add_line(rect_sk, 0, 0, 80, 0)
+            self.sketch_add_line(rect_sk, 80, 0, 80, 40)
+            self.sketch_add_line(rect_sk, 80, 40, 0, 40)
+            self.sketch_add_line(rect_sk, 0, 40, 0, 0)
+            closed_tree = self.sketch_finish(rect_sk)
+            report["p3_open_profile_flag"] = (
+                open_tree.get("open_profile") is True
+                and closed_tree.get("open_profile") is False)
+
             state = self.sketch_start()
             adv = state["sketch"]
             state = self.sketch_add_arc(adv, 0, 0, 20, 0, math.pi / 2)

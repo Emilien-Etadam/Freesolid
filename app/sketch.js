@@ -6,7 +6,7 @@
 
 import * as THREE from "three";
 import { createLocalSolver } from "./solver.js";
-import { arcAngles, distanceToEntity } from "./geom2d.js";
+import { arcAngles, chainClickAction, distanceToEntity } from "./geom2d.js";
 import { num } from "./num.js";
 
 export function createSketchMode(deps) {
@@ -512,6 +512,14 @@ export function createSketchMode(deps) {
         say("Ligne : cliquez le point suivant (Échap pour terminer)");
       } else {
         const from = mode.chain;
+        const prevScreen = toScreen(from.x, from.y);
+        // Double-clic (2e clic sur le point venant d'être posé) : terminer
+        // la chaîne comme Échap, sans segment de longueur nulle.
+        if (chainClickAction(prevScreen,
+            { x: event.clientX, y: event.clientY }, SNAP_PX) === "finish") {
+          setTool("select");
+          return;
+        }
         mode.chain = snapped.onPoint ? null : { x: snapped.x, y: snapped.y };
         safe(call("sketch_add_line", { sketch: name,
           x1: from.x, y1: from.y, x2: snapped.x, y2: snapped.y }));
@@ -653,6 +661,14 @@ export function createSketchMode(deps) {
       }
     } else if (mode.tool === "spline") {
       mode.pendingSpline = mode.pendingSpline ?? [];
+      const last = mode.pendingSpline[mode.pendingSpline.length - 1];
+      if (last) {
+        const prevScreen = toScreen(last.x, last.y);
+        if (chainClickAction(prevScreen,
+            { x: event.clientX, y: event.clientY }, SNAP_PX) === "finish") {
+          return;
+        }
+      }
       mode.pendingSpline.push({ x: snapped.x, y: snapped.y });
       say(`Spline : ${mode.pendingSpline.length} point(s) — ` +
           "Entrée pour terminer (min 3), Échap pour annuler");
@@ -1387,7 +1403,17 @@ export function createSketchMode(deps) {
 
     if (keep && mode.state) {
       mode.lastFinished = mode.state.sketch;
-      await refresh(call("sketch_finish", { sketch: mode.state.sketch }));
+      try {
+        const tree = await call("sketch_finish",
+          { sketch: mode.state.sketch });
+        await refresh(Promise.resolve(tree));
+        if (tree.open_profile) {
+          say("Esquisse fermée — contour ouvert : utilisable comme "
+              + "trajectoire ou surface, pas comme profil de bossage.");
+        }
+      } catch (error) {
+        say(error.message, true);
+      }
     } else {
       await refresh(call("get_tree"));
     }

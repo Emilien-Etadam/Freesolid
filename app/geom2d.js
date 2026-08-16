@@ -53,3 +53,18 @@ export function distanceToEntity(x, y, entity) {
   }
   return Infinity;
 }
+
+/**
+ * Clic en chaîne (ligne / spline) : "add" le point, ou "finish" si le
+ * curseur est dans le seuil de snap du précédent.
+ *
+ * prev / next sont en pixels écran (même espace que SNAP_PX).
+ * prev null = premier point de la chaîne → toujours "add".
+ * Seuil strict (< snapPx), identique au snap des extrémités.
+ */
+export function chainClickAction(prev, next, snapPx) {
+  if (prev == null) return "add";
+  return Math.hypot(next.x - prev.x, next.y - prev.y) < snapPx
+    ? "finish"
+    : "add";
+}

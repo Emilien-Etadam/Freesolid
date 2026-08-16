@@ -307,8 +307,9 @@ export function createLocalSolver(loadModule) {
 
   function drag(geo, pos, x, y) {
     if (!model || status !== "ready") return null;
-    // Courbe entière (point 0) : translation relative des extrémités
-    // (ligne) ou du centre (cercle/arc). Sinon fallback serveur.
+    // Courbe entière (point 0) : ligne rigide (p1 suit le curseur,
+    // vecteur p2−p1 figé) ou translation du centre (cercle/arc).
+    // Sinon fallback serveur.
     if (pos === 0) {
       return dragWholeCurve(geo, x, y);
     }
@@ -327,16 +328,26 @@ export function createLocalSolver(loadModule) {
     if (!entity) return null;
     let temps;
     if (entity.type === "line") {
-      const dx = x - entity.p1[0], dy = y - entity.p1[1];
+      // Ligne rigide : p1 suit le curseur ; le vecteur p2−p1 est figé
+      // (difference = param2 − param1, même ordre que DistanceX/Y).
+      // Quatre coordinate_* absolues sur p1 et p2 laissaient deux
+      // solutions au rectangle (étirement vs translation d'ensemble).
+      const dx = entity.p2[0] - entity.p1[0];
+      const dy = entity.p2[1] - entity.p1[1];
+      const p1 = pid(geo, 1), p2 = pid(geo, 2);
       temps = [
-        { id: "dragx", type: "coordinate_x", p_id: pid(geo, 1), x,
+        { id: "dragx", type: "coordinate_x", p_id: p1, x,
           temporary: true, driving: true },
-        { id: "dragy", type: "coordinate_y", p_id: pid(geo, 1), y,
+        { id: "dragy", type: "coordinate_y", p_id: p1, y,
           temporary: true, driving: true },
-        { id: "dragx2", type: "coordinate_x", p_id: pid(geo, 2),
-          x: entity.p2[0] + dx, temporary: true, driving: true },
-        { id: "dragy2", type: "coordinate_y", p_id: pid(geo, 2),
-          y: entity.p2[1] + dy, temporary: true, driving: true },
+        { id: "dragdx", type: "difference",
+          param1: { o_id: p1, prop: "x" },
+          param2: { o_id: p2, prop: "x" },
+          difference: dx, temporary: true, driving: true },
+        { id: "dragdy", type: "difference",
+          param1: { o_id: p1, prop: "y" },
+          param2: { o_id: p2, prop: "y" },
+          difference: dy, temporary: true, driving: true },
       ];
     } else if (entity.type === "circle" || entity.type === "arc") {
       temps = [

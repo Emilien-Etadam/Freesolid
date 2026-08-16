@@ -201,9 +201,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (!iconsAndText) errors.push("Icônes et texte : classe encore posée");
   await step("réglages ruban");
 
-  // 1. Esquisse — choix du plan dans le viewport
-  await page.click("#btn-sketch");
-  await sleep(1200);
+  // 1. Esquisse — choix du plan dans le viewport. Le clic peut être
+  // avalé juste après le balayage des panneaux (menu/panneau en cours
+  // de fermeture) : réessayer tant que le statut ne change pas.
+  for (let i = 0; i < 4; i++) {
+    await page.click("#btn-sketch");
+    await sleep(1200);
+    if ((await status()).includes("Esquisse")) break;
+  }
   await step("choix plan");
   const canvas = await page.locator("#viewport canvas").first().boundingBox();
   const cx = canvas.x + canvas.width / 2, cy = canvas.y + canvas.height / 2;
@@ -355,7 +360,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // sketch_state doit réellement bouger, sinon le pas ment.
   const flatten = (state) => (state?.entities ?? [])
     .flatMap((e) => [...(e.p1 ?? []), ...(e.p2 ?? []), ...(e.c ?? [])]);
-  const beforeEdge = flatten(await sketchState());
+  const horizontalsOf = (state) => (state?.entities ?? []).filter((e) =>
+    e.type === "line" && e.p1 && e.p2
+    && Math.abs(e.p1[1] - e.p2[1]) < 1);
+  const yOf = (e) => (e.p1[1] + e.p2[1]) / 2;
+  const beforeState = await sketchState();
+  const beforeEdge = flatten(beforeState);
+  const beforeHoriz = horizontalsOf(beforeState);
   await page.mouse.move(cx, cy - 70);
   await page.mouse.down();
   for (let i = 1; i <= 10; i++) {
@@ -364,12 +375,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await page.mouse.up();
   await sleep(1200);
-  const afterEdge = flatten(await sketchState());
+  const afterState = await sketchState();
+  const afterEdge = flatten(afterState);
   const moved = beforeEdge.length === afterEdge.length
     && beforeEdge.some((v, i) => Math.abs(v - afterEdge[i]) > 1);
   if (!moved) {
     errors.push("drag d'arête : la géométrie n'a pas bougé "
       + "(le pas a raté l'arête ou le drag est cassé)");
+  }
+  // Le drag du bord haut a aussi une composante X (ddl restant : largeur /
+  // translation). L'étirement change la hauteur ; le Y du bord bas doit
+  // rester. Une translation d'ensemble ferait bouger les deux Y.
+  let yStayed = 0;
+  for (const h of beforeHoriz) {
+    const after = (afterState?.entities ?? []).find((e) => e.id === h.id);
+    if (after && Math.abs(yOf(h) - yOf(after)) <= 1) yStayed += 1;
+  }
+  if (yStayed < 1) {
+    errors.push("drag d'arête : le bord bas a bougé "
+      + "(étirement attendu, pas une translation d'ensemble)");
   }
   await step("drag arête");
   await page.screenshot({ path: path.join(SHOTS, "2b-drag-edge.png") });

@@ -143,7 +143,8 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # (none|lamage|fraisage), cut_diameter,
                                        # cut_depth, cut_angle
     "get_params": _Req(("feature", str)),  # editable numeric properties
-    "set_tip": _Req(("feature", str)),  # move the rollback bar here
+    "set_tip": (),                     # optional: feature — absent = barre
+                                       # avant la première fonction
     "tip_to_end": (),                  # back to the final state
     "delete_feature": _Req(("feature", str)),
     "save_part": _Req(("path", str)),

@@ -2463,9 +2463,10 @@ class Kernel:
                 indices.extend(i + vertex_base for i in extra["indices"])
                 vertex_base += len(extra["positions"]) // 3
             mesh["others"] = {"positions": positions, "indices": indices}
-        # Les surfaces (Part::*) voyagent à part : rendu double face
-        # translucide côté client, non sélectionnables.
-        surface_faces = []
+        # Surfaces (Part::*) : un maillage par objet, comme les esquisses
+        # libres — le client les rend opaques et sélectionnables. Les
+        # courbes 3D (pas de Faces) restent un buffer combiné.
+        surfaces_out = []
         surface_lines = []
         for obj in self._doc.Objects:
             if obj.TypeId not in self._SURFACE_TYPE_IDS:
@@ -2473,12 +2474,21 @@ class Kernel:
             shape = getattr(obj, "Shape", None)
             if shape is None:
                 continue
-            for face in shape.Faces:
-                vertices, triangles = face.tessellate(float(deviation))
-                surface_faces.append(
-                    (0, [(v.x, v.y, v.z) for v in vertices], triangles))
-            if not shape.Faces:
-                # une courbe 3D : polylignes
+            if shape.Faces:
+                surface_faces = []
+                for face in shape.Faces:
+                    vertices, triangles = face.tessellate(float(deviation))
+                    surface_faces.append(
+                        (0, [(v.x, v.y, v.z) for v in vertices], triangles))
+                packed = protocol.pack_mesh(surface_faces)
+                if packed["positions"]:
+                    surfaces_out.append({
+                        "name": obj.Name,
+                        "label": obj.Label,
+                        "positions": packed["positions"],
+                        "indices": packed["indices"],
+                    })
+            else:
                 for i, edge in enumerate(shape.Edges):
                     try:
                         points = edge.discretize(Deviation=0.1)
@@ -2486,10 +2496,8 @@ class Kernel:
                         continue
                     surface_lines.append(
                         (i, [(p.x, p.y, p.z) for p in points]))
-        if surface_faces:
-            packed = protocol.pack_mesh(surface_faces)
-            mesh["surfaces"] = {"positions": packed["positions"],
-                                "indices": packed["indices"]}
+        if surfaces_out:
+            mesh["surfaces"] = surfaces_out
         if surface_lines:
             packed = protocol.pack_edges(surface_lines)
             mesh["curves"] = {"positions": packed["positions"],
@@ -4192,6 +4200,13 @@ class Kernel:
                 bool(tree["bodies"])
                 and tree["bodies"][0].get("has_solid") is False)
             surf = tree["surfaces"][0]
+            mesh = self.tessellate()
+            surf_meshes = mesh.get("surfaces") or []
+            report["p12_surface_mesh"] = (
+                isinstance(surf_meshes, list)
+                and len(surf_meshes) == 1
+                and surf_meshes[0].get("name") == surf["name"]
+                and len(surf_meshes[0].get("positions") or []) > 0)
             sk_child = next(
                 (c for c in surf.get("children") or []
                  if c.get("name") == surf_sk1),

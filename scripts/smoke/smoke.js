@@ -473,6 +473,58 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await step("volumes rétablis");
 
+  // 4f. P024 — esquisse libre décalée, cliquable dans le viewport.
+  await page.locator("#tree li.plane").first().click();
+  await sleep(300);
+  await page.click("#btn-sketch");
+  await sleep(1800);
+  await step("esquisse libre ouverte");
+  await page.click('[data-tool="rect"]');
+  const freeRect = { x1: cx + 160, y1: cy - 40, x2: cx + 240, y2: cy + 20 };
+  await page.mouse.click(freeRect.x1, freeRect.y1);
+  await sleep(400);
+  await page.mouse.click(freeRect.x2, freeRect.y2);
+  await sleep(800);
+  await page.click("#sk-finish");
+  try {
+    await page.waitForFunction(
+      () => (window.__freesolidDebug?.sketchLineCount ?? 0) >= 1,
+      null,
+      { timeout: 10000 },
+    );
+  } catch {
+    errors.push("esquisse viewport : aucune ligne d'esquisse après Terminer");
+  }
+  await sleep(400);
+  const skPt = await page.evaluate(
+    () => window.__freesolidDebug?.sketchScreenPoint ?? null);
+  if (!skPt) {
+    errors.push("esquisse viewport : pas de point cliquable sur l'esquisse");
+  } else {
+    await page.mouse.move(skPt.x, skPt.y);
+    await sleep(200);
+    await page.mouse.click(skPt.x, skPt.y);
+    await sleep(1500);
+    const infoTitle = await page.evaluate(() =>
+      document.querySelector("#panel .ptitle")?.textContent ?? "");
+    if (infoTitle !== skPt.label) {
+      errors.push("esquisse viewport : panneau infos titre « "
+        + infoTitle + " » (attendu « " + skPt.label + " »)");
+    }
+    const treeSel = await page.$$eval("#tree li.sel",
+      (els) => els.map((el) => el.textContent));
+    if (!treeSel.some((text) => text.includes(skPt.label))) {
+      errors.push("esquisse viewport : pas de ligne .sel dans l'arbre ("
+        + treeSel.join(", ") + ")");
+    }
+    await page.screenshot({
+      path: path.join(SHOTS, "4f-esquisse-viewport.png"),
+    });
+    await page.keyboard.press("Escape");
+    await sleep(400);
+  }
+  await step("esquisse cliquée dans le viewport");
+
   // 5. Undo / redo — jetons anti-course + invalidation des sélections
   await page.keyboard.press("Control+z");
   await sleep(2500);

@@ -1451,13 +1451,12 @@ class Kernel:
             raise
         return self.get_tree()
 
-    def _latest_sketch(self):
-        """The newest sketch not yet consumed by a feature.
+    def _free_sketches(self):
+        """Esquisses du corps actif non consommées par une fonction.
 
-        Root cause of the "passage esquisse → extrusion" confusion: reusing
-        an already-extruded profile fails downstream with a cryptic error.
-        A profile is used once; the next feature takes the next fresh
-        sketch, exactly the SolidWorks mental model.
+        Mêmes candidates que ``_latest_sketch`` : une esquisse dont le
+        ``Profile`` d'une fonction pointe dessus est repliée, comme
+        SolidWorks la range sous le bossage.
         """
         body = self._require_body()
         used = set()
@@ -1466,9 +1465,19 @@ class Kernel:
             linked = profile[0] if isinstance(profile, tuple) else profile
             if linked is not None:
                 used.add(linked.Name)
-        sketches = [o for o in body.Group
-                    if o.TypeId == "Sketcher::SketchObject"
-                    and o.Name not in used]
+        return [o for o in body.Group
+                if o.TypeId == "Sketcher::SketchObject"
+                and o.Name not in used]
+
+    def _latest_sketch(self):
+        """The newest sketch not yet consumed by a feature.
+
+        Root cause of the "passage esquisse → extrusion" confusion: reusing
+        an already-extruded profile fails downstream with a cryptic error.
+        A profile is used once; the next feature takes the next fresh
+        sketch, exactly the SolidWorks mental model.
+        """
+        sketches = self._free_sketches()
         if not sketches:
             raise KernelError(
                 "aucune esquisse disponible — les esquisses existantes "
@@ -2465,6 +2474,32 @@ class Kernel:
             packed = protocol.pack_edges(surface_lines)
             mesh["curves"] = {"positions": packed["positions"],
                               "indices": packed["indices"]}
+        # Esquisses libres : polylignes 3D pour le viewport. Le Shape
+        # d'un SketchObject est déjà posé dans l'espace et n'inclut pas
+        # la géométrie de construction (Construction / getConstruction).
+        sketches_out = []
+        for sk in self._free_sketches():
+            shape = getattr(sk, "Shape", None)
+            if shape is None or not shape.Edges:
+                continue
+            lines = []
+            for i, edge in enumerate(shape.Edges):
+                try:
+                    points = edge.discretize(Deviation=0.1)
+                except Exception:
+                    continue
+                lines.append((i, [(p.x, p.y, p.z) for p in points]))
+            packed = protocol.pack_edges(lines)
+            if not packed["positions"]:
+                continue
+            sketches_out.append({
+                "name": sk.Name,
+                "label": sk.Label,
+                "positions": packed["positions"],
+                "indices": packed["indices"],
+            })
+        if sketches_out:
+            mesh["sketches"] = sketches_out
         return mesh
 
     def tessellate_edges(self, deviation=0.05):
@@ -3546,9 +3581,20 @@ class Kernel:
             mark("m0: pièce + esquisse contrainte + bossage")
             tree = self.new_part("Pièce de test")
             report["m0_planes"] = [p["label"] for p in tree["planes"]]
-            self.add_rect_sketch(100, 60)
+            tree = self.add_rect_sketch(100, 60)
+            sk_free = next(
+                f["name"] for f in tree["features"]
+                if f["type"] == "Sketcher::SketchObject")
+            mesh = self.tessellate()
+            found = next((s for s in mesh.get("sketches") or []
+                          if s["name"] == sk_free), None)
+            free_ok = bool(found and found.get("positions"))
             tree = self.add_pad(10)
             mesh = self.tessellate()
+            report["p3_free_sketch_in_mesh"] = (
+                free_ok
+                and not any(s["name"] == sk_free
+                            for s in mesh.get("sketches") or []))
             report["m0_faces"] = len(mesh["groups"])
 
             mark("m0: reparamétrage 10 → 25")

@@ -1348,6 +1348,65 @@ for (const tab of document.querySelectorAll("header .tab")) {
 document.addEventListener("freesolid:sketch-enter", () => showTab("sketch"));
 document.addEventListener("freesolid:sketch-exit", () => showTab("features"));
 
+// ---------- réglages du ruban (libellés) ----------
+
+const RIBBON_LABELS_KEY = "freesolid.ribbonLabels";
+const RIBBON_LABELS_DEFAULT = "icons-and-text";
+
+function readRibbonLabels() {
+  try {
+    const stored = localStorage.getItem(RIBBON_LABELS_KEY);
+    if (stored === "icons-only" || stored === "icons-and-text") return stored;
+  } catch {
+    // localStorage peut être indisponible (mode privé strict).
+  }
+  return RIBBON_LABELS_DEFAULT;
+}
+
+function applyRibbonLabels(mode) {
+  const iconsOnly = mode === "icons-only";
+  document.body.classList.toggle("ribbon-icons-only", iconsOnly);
+  for (const item of document.querySelectorAll("#settings-menu [data-ribbon-labels]")) {
+    item.classList.toggle("on", item.dataset.ribbonLabels === mode);
+  }
+  try {
+    localStorage.setItem(RIBBON_LABELS_KEY, mode);
+  } catch {
+    // même repli que la lecture : le réglage tient pour la session.
+  }
+}
+
+const settingsMenu = document.getElementById("settings-menu");
+const settingsBtn = document.getElementById("btn-settings");
+
+function closeSettingsMenu() {
+  settingsMenu.style.display = "none";
+}
+
+function openSettingsMenu() {
+  const rect = settingsBtn.getBoundingClientRect();
+  settingsMenu.style.display = "block";
+  settingsMenu.style.left =
+    Math.min(rect.left, window.innerWidth - 220) + "px";
+  settingsMenu.style.top = (rect.bottom + 4) + "px";
+}
+
+applyRibbonLabels(readRibbonLabels());
+
+settingsBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (settingsMenu.style.display === "block") closeSettingsMenu();
+  else openSettingsMenu();
+});
+settingsMenu.addEventListener("click", (event) => event.stopPropagation());
+for (const item of settingsMenu.querySelectorAll("[data-ribbon-labels]")) {
+  item.addEventListener("click", () => {
+    applyRibbonLabels(item.dataset.ribbonLabels);
+    closeSettingsMenu();
+  });
+}
+document.addEventListener("click", closeSettingsMenu);
+
 // Cliquer une fonction pendant une esquisse la termine d'abord — le
 // réflexe SolidWorks : on dessine, puis on clique Bossage, sans passer
 // par un bouton « quitter l'esquisse ».

@@ -398,6 +398,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("drag arête");
   await page.screenshot({ path: path.join(SHOTS, "2b-drag-edge.png") });
 
+  // P027 — avant le bossage, aucun solide : compteur honnête.
+  const folderTextsBeforePad = await page.locator("#tree li.folder")
+    .allTextContents();
+  if (!folderTextsBeforePad.some((t) => t.includes("Corps volumiques (0)"))) {
+    errors.push("P027 : attendu « Corps volumiques (0) » avant le bossage"
+      + " (vu : " + folderTextsBeforePad.join(" | ") + ")");
+  }
+
   // 4. Bossage : onglet Fonctions, sortie auto d'esquisse, aperçu, OK
   await page.click('[data-tab="features"]');
   await sleep(400);
@@ -418,6 +426,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       errors.push("dossier FeatureManager manquant : " + name
         + " (vu : " + folderJoined + ")");
     }
+  }
+  if (!folderTexts.some((t) => t.includes("Corps volumiques (1)"))) {
+    errors.push("P027 : attendu « Corps volumiques (1) » après le bossage"
+      + " (vu : " + folderJoined + ")");
+  }
+  const bodyRowsAfterPad = await page.locator("#tree li.body").count();
+  if (bodyRowsAfterPad < 1) {
+    errors.push("P027 : dossier Corps volumiques devrait être déplié "
+      + "après le bossage (ligne de corps invisible)");
   }
   await page.waitForSelector("#tree li.rollback", { timeout: 8000 });
   await page.waitForSelector("#tree li.feat", { timeout: 8000 });
@@ -596,6 +613,46 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(2500);
   await step("après Ctrl+Y");
   await page.screenshot({ path: path.join(SHOTS, "5-final.png") });
+
+  // 6. P027 — esquisse libre → Surface extrudée dans l'historique.
+  await page.locator("#tree li.plane").first().click();
+  await sleep(300);
+  await page.click("#btn-sketch");
+  await sleep(1800);
+  await page.click('[data-tool="line"]');
+  await page.mouse.click(cx - 200, cy - 30);
+  await sleep(300);
+  await page.mouse.click(cx - 120, cy - 30);
+  await sleep(400);
+  await page.click("#sk-finish");
+  await sleep(1500);
+  await page.click('[data-tab="surfaces"]');
+  await sleep(300);
+  await page.click("#btn-surf-extrude");
+  await sleep(1500);
+  await page.click('#panel [title^="OK"]');
+  await sleep(3000);
+  const folderAfterSurf = await page.locator("#tree li.folder")
+    .allTextContents();
+  const folderAfterSurfJoined = folderAfterSurf.join(" | ");
+  if (!folderAfterSurf.some((t) => t.includes("Corps surfaciques (1)"))) {
+    errors.push("P027 : attendu « Corps surfaciques (1) » après extrusion"
+      + " (vu : " + folderAfterSurfJoined + ")");
+  }
+  const folderSurfRows = await page.locator("#tree li.surface.in-folder")
+    .allTextContents();
+  if (!folderSurfRows.some((t) => t.includes("Surface extrudée"))) {
+    errors.push("P027 : dossier Corps surfaciques devrait être déplié "
+      + "avec la surface (vu : " + folderSurfRows.join(" | ") + ")");
+  }
+  const historySurf = await page.locator("#tree li.surface:not(.in-folder)")
+    .allTextContents();
+  if (!historySurf.some((t) => t.includes("Surface extrudée"))) {
+    errors.push("P027 : « Surface extrudée » absente de l'historique "
+      + "(vu : " + historySurf.join(" | ") + ")");
+  }
+  await step("surface dans l'historique");
+  await page.screenshot({ path: path.join(SHOTS, "6-surface-historique.png") });
 
   console.log(errors.length
     ? "ERREURS:\n" + errors.join("\n")

@@ -945,6 +945,7 @@ function treeIcon(file) {
 let lastTree = null;
 const expandedFeatures = new Set(); // les fonctions dépliées (persiste)
 const folderState = Object.create(null); // dossiers tête, mémoire de session
+const folderPrevCounts = Object.create(null); // compteurs du rendu précédent
 let sketchInfoOpen = false;
 let sketchClickTimer = null;
 
@@ -1135,6 +1136,36 @@ function onPlaneRow(id) {
     : "Plan désélectionné");
 }
 
+function isSurfaceType(type) {
+  return typeof type === "string"
+    && (type.startsWith("Part::") || type.startsWith("Surface::"));
+}
+
+function chronologicalHistory(features, surfaces) {
+  const rows = [];
+  for (const [index, item] of features.entries()) {
+    rows.push({ item, surface: false, index });
+  }
+  for (const [index, item] of surfaces.entries()) {
+    rows.push({ item, surface: true, index: features.length + index });
+  }
+  rows.sort((a, b) => {
+    const oa = typeof a.item.order === "number" ? a.item.order : a.index + 1e6;
+    const ob = typeof b.item.order === "number" ? b.item.order : b.index + 1e6;
+    if (oa !== ob) return oa - ob;
+    return a.index - b.index;
+  });
+  return rows;
+}
+
+function rememberFolderCount(key, count) {
+  const prev = folderPrevCounts[key];
+  if (typeof prev === "number" && count > prev) {
+    folderState[key] = true;
+  }
+  folderPrevCounts[key] = count;
+}
+
 function folderIsOpen(key, defaultOpen) {
   return Object.prototype.hasOwnProperty.call(folderState, key)
     ? folderState[key]
@@ -1177,7 +1208,10 @@ function appendFolder(key, label, count, icon, defaultOpen, extra = {}) {
 
 function appendBodyRow(bodyInfo) {
   const bodyItem = document.createElement("li");
-  bodyItem.className = "body in-folder" + (bodyInfo.active ? " active" : "");
+  const empty = bodyInfo.has_solid !== true;
+  bodyItem.className = "body in-folder"
+    + (bodyInfo.active ? " active" : "")
+    + (empty ? " empty" : "");
   bodyItem.appendChild(treeIcon("PartDesign_Body.svg"));
   if (hexColor(bodyInfo.color)) {
     const swatch = document.createElement("span");
@@ -1185,9 +1219,10 @@ function appendBodyRow(bodyInfo) {
     swatch.style.background = bodyInfo.color;
     bodyItem.appendChild(swatch);
   }
-  bodyItem.appendChild(document.createTextNode(
-    bodyInfo.label
-    + (bodyInfo.active ? "" : ` — ${bodyInfo.count} élément(s)`)));
+  const suffix = empty
+    ? " — vide"
+    : (bodyInfo.active ? "" : ` — ${bodyInfo.count} élément(s)`);
+  bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix));
   if (!bodyInfo.active && bodyInfo.name) {
     bodyItem.title = "Clic : activer ce corps";
     bodyItem.addEventListener("click", () =>
@@ -1200,9 +1235,9 @@ function appendBodyRow(bodyInfo) {
   treeEl.appendChild(bodyItem);
 }
 
-function appendSurfaceRow(surface) {
+function appendSurfaceRow(surface, { inFolder = true } = {}) {
   const item = document.createElement("li");
-  item.className = "in-folder";
+  item.className = "surface" + (inFolder ? " in-folder" : "");
   const children = surface.children ?? [];
   const hasChildren = children.length > 0;
   const arrow = document.createElement("span");
@@ -1232,7 +1267,8 @@ function appendSurfaceRow(surface) {
   if (hasChildren && expandedFeatures.has(surface.name)) {
     for (const child of children) {
       const row = document.createElement("li");
-      row.className = "child in-folder" + (child.error ? " error" : "");
+      row.className = "child" + (inFolder ? " in-folder" : "")
+        + (child.error ? " error" : "");
       row.appendChild(treeIcon("Sketcher_Sketch.svg"));
       row.appendChild(document.createTextNode(child.label));
       row.title = `${child.kind} — double-clic : modifier l'esquisse · ` +
@@ -1257,9 +1293,10 @@ function appendRollbackBar(tree) {
 
 function tipTargetBefore(index, features) {
   for (let i = index - 1; i >= 0; i--) {
-    if (features[i].type !== "Sketcher::SketchObject") {
-      return features[i].name;
-    }
+    const type = features[i].type;
+    // Esquisses libres et surfaces : pas dans la chaîne PartDesign.
+    if (type === "Sketcher::SketchObject" || isSurfaceType(type)) continue;
+    return features[i].name;
   }
   return null;
 }
@@ -1371,14 +1408,19 @@ function renderTree(tree) {
     ?? [{ name: null, label: tree.body, active: true, count: 0 }];
   const surfaces = tree.surfaces ?? [];
   const variables = tree.variables ?? [];
+  const solidCount = bodies.filter((body) => body.has_solid === true).length;
   const bodiesDefaultOpen = bodies.length > 1
     || bodies.some((body) => body.error);
   const surfacesDefaultOpen = surfaces.some((surface) => surface.error
     || (surface.children ?? []).some((child) => child.error));
 
+  rememberFolderCount("bodies", solidCount);
+  rememberFolderCount("surfaces", surfaces.length);
+  rememberFolderCount("equations", variables.length);
+
   // Ordre SolidWorks : dossiers en tête, puis plans, puis fonctions.
   const bodiesOpen = appendFolder(
-    "bodies", "Corps volumiques", bodies.length, "PartDesign_Body.svg",
+    "bodies", "Corps volumiques", solidCount, "PartDesign_Body.svg",
     bodiesDefaultOpen,
     { title: "Corps de la pièce — clic : déplier" });
   if (bodiesOpen) {
@@ -1437,16 +1479,22 @@ function renderActiveBodyContents(tree) {
   }
 
   const features = tree.features ?? [];
+  const history = chronologicalHistory(features, tree.surfaces ?? []);
   const showBarAtStart = !tree.tip && features.length > 0;
   if (showBarAtStart) appendRollbackBar(tree);
   let afterTip = showBarAtStart;
 
-  for (const feature of features) {
-    const item = document.createElement("li");
-    item.classList.add("feat");
-    item.dataset.feat = feature.name;
-    if (feature.error) item.classList.add("error");
-    if (afterTip) item.classList.add("rolled-back");
+  for (const { item, surface } of history) {
+    if (surface) {
+      appendSurfaceRow(item, { inFolder: false });
+      continue;
+    }
+    const feature = item;
+    const row = document.createElement("li");
+    row.classList.add("feat");
+    row.dataset.feat = feature.name;
+    if (feature.error) row.classList.add("error");
+    if (afterTip) row.classList.add("rolled-back");
     const hasChildren = !!feature.children?.length;
     const arrow = document.createElement("span");
     arrow.className = "arrow";
@@ -1461,51 +1509,51 @@ function renderActiveBodyContents(tree) {
         renderTree(lastTree);
       });
     }
-    item.appendChild(arrow);
+    row.appendChild(arrow);
     const icon = TREE_ICONS[feature.type];
-    if (icon) item.appendChild(treeIcon(icon));
-    item.appendChild(document.createTextNode(feature.label));
-    item.title = `${feature.kind} — double-clic : modifier · ` +
+    if (icon) row.appendChild(treeIcon(icon));
+    row.appendChild(document.createTextNode(feature.label));
+    row.title = `${feature.kind} — double-clic : modifier · ` +
       "clic droit : modifier, barre de retour, supprimer";
-    item.addEventListener("dblclick", () => {
+    row.addEventListener("dblclick", () => {
       if (feature.type === "Sketcher::SketchObject") {
         onSketchRowDblClick(feature);
       } else {
         editFeature(feature);
       }
     });
-    item.addEventListener("contextmenu", (event) => openMenu(event, feature));
+    row.addEventListener("contextmenu", (event) => openMenu(event, feature));
     if (feature.type === "PartDesign::Plane") {
       // Un plan de référence se choisit comme un plan d'origine.
-      item.classList.add("plane");
+      row.classList.add("plane");
       if (selectedDatumFeature?.name === feature.name) {
-        item.classList.add("sel");
+        row.classList.add("sel");
       }
-      item.addEventListener("click", () => onDatumRow(feature));
-      item.addEventListener("mouseenter", () => refreshDatumGhost(feature));
-      item.addEventListener("mouseleave", () => refreshDatumGhost(null));
+      row.addEventListener("click", () => onDatumRow(feature));
+      row.addEventListener("mouseenter", () => refreshDatumGhost(feature));
+      row.addEventListener("mouseleave", () => refreshDatumGhost(null));
     }
     if (feature.type === "Sketcher::SketchObject") {
-      if (selectedSketch?.name === feature.name) item.classList.add("sel");
-      item.addEventListener("click", () => onSketchRowClick(feature));
+      if (selectedSketch?.name === feature.name) row.classList.add("sel");
+      row.addEventListener("click", () => onSketchRowClick(feature));
     }
-    treeEl.appendChild(item);
+    treeEl.appendChild(row);
 
     // L'esquisse consommée vit sous sa fonction, à la SolidWorks.
     if (hasChildren && expandedFeatures.has(feature.name)) {
       for (const child of feature.children) {
-        const row = document.createElement("li");
-        row.className = "child" + (child.error ? " error" : "");
-        if (afterTip) row.classList.add("rolled-back");
-        if (selectedSketch?.name === child.name) row.classList.add("sel");
-        row.appendChild(treeIcon("Sketcher_Sketch.svg"));
-        row.appendChild(document.createTextNode(child.label));
-        row.title = `${child.kind} — double-clic : modifier l'esquisse · ` +
+        const childRow = document.createElement("li");
+        childRow.className = "child" + (child.error ? " error" : "");
+        if (afterTip) childRow.classList.add("rolled-back");
+        if (selectedSketch?.name === child.name) childRow.classList.add("sel");
+        childRow.appendChild(treeIcon("Sketcher_Sketch.svg"));
+        childRow.appendChild(document.createTextNode(child.label));
+        childRow.title = `${child.kind} — double-clic : modifier l'esquisse · ` +
         "clic droit : modifier";
-        row.addEventListener("dblclick", () => onSketchRowDblClick(child));
-        row.addEventListener("contextmenu", (event) => openMenu(event, child));
-        row.addEventListener("click", () => onSketchRowClick(child));
-        treeEl.appendChild(row);
+        childRow.addEventListener("dblclick", () => onSketchRowDblClick(child));
+        childRow.addEventListener("contextmenu", (event) => openMenu(event, child));
+        childRow.addEventListener("click", () => onSketchRowClick(child));
+        treeEl.appendChild(childRow);
       }
     }
 

@@ -132,6 +132,9 @@
   }
   #tree li.body.active { color: var(--accent); }
   #tree li.body:not(.active) { color: var(--ink-2); cursor: pointer; }
+  #tree li.body.empty,
+  #tree li.body.empty.active { color: var(--ink-2); }
+  #tree li.body.empty img { opacity: 0.4; }
   #tree li img {
     width: 15px; height: 15px;
     vertical-align: -3px; margin-right: 6px;

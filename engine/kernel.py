@@ -702,13 +702,15 @@ class Kernel:
                     sketches.append(section)
         return sketches
 
-    def _surface_tree_entry(self, obj):
+    def _surface_tree_entry(self, obj, order_of=None):
         sketches = self._surface_sketch_objects(obj)
+        order_of = order_of if order_of is not None else {}
         entry = {
             "name": obj.Name,
             "label": obj.Label,
             "type": obj.TypeId,
             "sketches": [sk.Name for sk in sketches],
+            "order": order_of.get(obj.Name, -1),
         }
         # Couture / courbe / fichiers legacy : pas d'objet paramétrique.
         if obj.TypeId == "Part::Feature":
@@ -720,6 +722,7 @@ class Kernel:
                 "kind": label_for_type(sk.TypeId),
                 "type": sk.TypeId,
                 "error": "Invalid" in (sk.State or ()),
+                "order": order_of.get(sk.Name, -1),
             } for sk in sketches]
         return entry
 
@@ -2315,6 +2318,19 @@ class Kernel:
             raise
         return self.get_tree()
 
+    def _body_has_solid(self, body):
+        """Vrai si le corps porte un solide OCCT réel (état affiché)."""
+        shape = getattr(body, "Shape", None)
+        if shape is None:
+            return False
+        try:
+            if shape.isNull():
+                return False
+            solids = shape.Solids
+        except Exception:  # noqa: BLE001 — Shape OCCT parfois inaccessible
+            return False
+        return bool(solids)
+
     def get_tree(self):
         """The feature tree, in the vocabulary the designer knows.
 
@@ -2323,6 +2339,7 @@ class Kernel:
         cluttering the top level.
         """
         body = self._require_body()
+        order_of = {obj.Name: i for i, obj in enumerate(self._doc.Objects)}
 
         consumed = {}  # sketch name -> name of the feature using it
         for obj in body.Group:
@@ -2345,6 +2362,7 @@ class Kernel:
                 "kind": label_for_type(obj.TypeId),
                 "type": obj.TypeId,
                 "error": "Invalid" in (obj.State or ()),
+                "order": order_of.get(obj.Name, -1),
             }
             if obj.TypeId == "PartDesign::Plane":
                 # Le client dessine le plan de référence dans le viewport.
@@ -2382,8 +2400,10 @@ class Kernel:
                               if o.isDerivedFrom("PartDesign::Feature")
                               or o.TypeId == "Sketcher::SketchObject"]),
                 "color": getattr(obj, "FreeSolidColor", "") or None,
+                "has_solid": self._body_has_solid(obj),
             })
-        surfaces = [self._surface_tree_entry(o) for o in self._doc.Objects
+        surfaces = [self._surface_tree_entry(o, order_of)
+                    for o in self._doc.Objects
                     if o.TypeId in self._SURFACE_TYPE_IDS]
         tip = body.Tip.Name if getattr(body, "Tip", None) else None
         # Variables dans le même appel : le FeatureManager affiche le
@@ -3630,6 +3650,9 @@ class Kernel:
                           if s["name"] == sk_free), None)
             free_ok = bool(found and found.get("positions"))
             tree = self.add_pad(10)
+            report["m0_body_solid"] = (
+                bool(tree["bodies"])
+                and tree["bodies"][0].get("has_solid") is True)
             mesh = self.tessellate()
             report["p3_free_sketch_in_mesh"] = (
                 free_ok
@@ -4165,6 +4188,19 @@ class Kernel:
             self.sketch_finish(surf_sk1)
             tree = self.surface_extrude(20, sketch=surf_sk1)
             report["p12_surface_ok"] = len(tree["surfaces"]) == 1
+            report["p12_body_not_solid"] = (
+                bool(tree["bodies"])
+                and tree["bodies"][0].get("has_solid") is False)
+            surf = tree["surfaces"][0]
+            sk_child = next(
+                (c for c in surf.get("children") or []
+                 if c.get("name") == surf_sk1),
+                None)
+            report["p12_surface_order"] = (
+                isinstance(surf.get("order"), int)
+                and sk_child is not None
+                and isinstance(sk_child.get("order"), int)
+                and surf["order"] > sk_child["order"])
             state = self.sketch_start()
             surf_sk2 = state["sketch"]
             self.sketch_add_line(surf_sk2, 0, 0, 0, 30)

@@ -2606,7 +2606,8 @@ class Kernel:
                     "p1": [geo.StartPoint.x, geo.StartPoint.y],
                     "p2": [geo.EndPoint.x, geo.EndPoint.y]}
             else:
-                entity = {"id": gid, "type": "other", "kind": geo.TypeId}
+                type_id = geo.TypeId
+                entity = {"id": gid, "type": "other", "kind": type_id}
                 try:
                     # Splines, ellipses, coniques : une polyligne suffit
                     # au client pour afficher et viser n'importe quelle
@@ -2616,6 +2617,7 @@ class Kernel:
                     entity["points"] = [[p.x, p.y] for p in points]
                 except Exception:
                     pass
+                self._enrich_poly_entity(entity, geo, type_id)
             entity["construction"] = self._is_construction(sk, gid, geo)
             entities.append(entity)
         import re
@@ -2705,6 +2707,39 @@ class Kernel:
         except Exception:
             pass
         return ""
+
+    @staticmethod
+    def _enrich_poly_entity(entity, geo, type_id):
+        """Champs du panneau propriétés (P025) : ellipse, spline, polyligne."""
+        if type_id in ("Part::GeomEllipse", "Part::GeomArcOfEllipse"):
+            entity["kind"] = "ellipse"
+            try:
+                center = geo.Center
+                entity["c"] = [float(center.x), float(center.y)]
+                entity["rx"] = float(geo.MajorRadius)
+                entity["ry"] = float(geo.MinorRadius)
+            except Exception:
+                pass
+            return
+        if "BSpline" in type_id or "Bezier" in type_id:
+            entity["kind"] = "spline"
+            npoints = None
+            try:
+                npoints = int(geo.NbPoles)
+            except Exception:
+                getter = getattr(geo, "getPoles", None)
+                if callable(getter):
+                    try:
+                        npoints = len(getter())
+                    except Exception:
+                        pass
+            if npoints is None and entity.get("points"):
+                npoints = len(entity["points"])
+            if npoints is not None:
+                entity["npoints"] = npoints
+            return
+        if entity.get("points"):
+            entity["npoints"] = len(entity["points"])
 
     @staticmethod
     def _endpoints_of(geo):
@@ -4275,11 +4310,21 @@ class Kernel:
             comfort = state["sketch"]
             state = self.sketch_add_spline(
                 comfort, [[0, 0], [10, 8], [20, -4], [30, 6]])
-            report["p17_spline_ok"] = any(
-                e["type"] == "poly" for e in state["entities"])
+            spline = next((e for e in state["entities"]
+                           if e.get("kind") == "spline"), None)
+            report["p17_spline_ok"] = (
+                spline is not None
+                and spline.get("type") == "poly"
+                and (spline.get("npoints") or 0) >= 3)
             state = self.sketch_add_ellipse(comfort, 50, 0, 12, 6,
                                             angle=15)
-            report["p17_ellipse_ok"] = len(state["entities"]) == 2
+            ellipse = next((e for e in state["entities"]
+                            if e.get("kind") == "ellipse"), None)
+            report["p17_ellipse_ok"] = (
+                len(state["entities"]) == 2
+                and ellipse is not None
+                and abs(ellipse.get("rx", 0) - 12) < 1e-4
+                and abs(ellipse.get("ry", 0) - 6) < 1e-4)
             self.sketch_add_line(comfort, 0, 20, 20, 30)   # géo 2
             self.sketch_add_line(comfort, 0, 40, 40, 40)   # géo 3 : axe
             state = self.sketch_mirror(comfort, [2], 3)

@@ -13,6 +13,7 @@
 //     groups: [{ label, rows: [row…] }],
 //     note?: string,
 //     noApply?: boolean,   // panneau info : pas de bouton OK
+//     autoFocus?: boolean, // false : ne pas voler le focus clavier
 //     actions?: [{ label, title?, className?, onClick(values) }],
 //     onApply(values), onCancel?(), onChange?(values)
 //   }
@@ -61,7 +62,9 @@ export function createPropertyPanel({ say, onClose }) {
     render();
     aside.classList.add("panel-open");
     document.addEventListener("keydown", onKey, true);
-    panelEl.querySelector("input, select")?.focus();
+    if (spec.autoFocus !== false) {
+      panelEl.querySelector("input, select")?.focus();
+    }
     changed(); // premier aperçu avec les valeurs par défaut
   }
 

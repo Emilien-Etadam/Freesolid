@@ -6,7 +6,10 @@
 
 import * as THREE from "three";
 import { createLocalSolver } from "./solver.js";
-import { arcAngles, chainClickAction, distanceToEntity } from "./geom2d.js";
+import {
+  arcAngles, chainClickAction, distanceToEntity,
+  entityKindTitle, entityPropertyLines,
+} from "./geom2d.js";
 import { num } from "./num.js";
 
 export function createSketchMode(deps) {
@@ -61,7 +64,22 @@ export function createSketchMode(deps) {
   };
 
   const SNAP_PX = 12;
+  const DRAG_CLICK_PX = 3; // en-dessous : clic, pas un drag
   let building = false; // construction multi-appels (rectangle) en cours
+
+  const ENTITY_ICONS = {
+    Ligne: "Sketcher_CreateLine.svg",
+    Cercle: "Sketcher_CreateCircle.svg",
+    Arc: "Sketcher_CreateArc.svg",
+    Spline: "Sketcher_CreateBSpline.svg",
+    Ellipse: "Sketcher_CreateEllipseByCenter.svg",
+    Polyligne: "Sketcher_CreateLine.svg",
+    Entité: "Sketcher_Sketch.svg",
+  };
+
+  let entityPanelOpen = false;
+  let entityPanelGeo = null;
+  let entityPanelGen = 0;
 
   // M3 : le solveur planegcs (WASM) côté client. Pendant un drag, la
   // résolution est locale (60 fps, zéro réseau) ; le serveur réconcilie
@@ -219,6 +237,7 @@ export function createSketchMode(deps) {
     const params = imageLayer?.params ?? {
       width: 100, x: 0, y: 0, rotation: 0, opacity: 0.5,
     };
+    abandonEntityPanel();
     panel.open({
       icon: "Sketcher_Sketch.svg",
       title: "Image d'esquisse",
@@ -445,10 +464,13 @@ export function createSketchMode(deps) {
         : "Esquisse : en édition");
   }
 
-  function applyState(state) {
+  function applyState(state, { keepSelection = false } = {}) {
+    const prevSelection = keepSelection ? mode.selection : [];
     mode.state = state;
-    // Geometry ids may have shifted (trim, delete): stale picks lie.
-    mode.selection = [];
+    // Geometry ids may have shifted (trim, delete): stale picks lie,
+    // unless the appelant garantit que les ids tiennent (move, cote…).
+    const ids = new Set((state.entities ?? []).map((e) => e.id));
+    mode.selection = prevSelection.filter((s) => ids.has(s.geo));
     mode.pendingDim = null;
     mode.pendingFillet = null;
     mode.matrix.set(...state.placement);
@@ -459,13 +481,14 @@ export function createSketchMode(deps) {
     mode.plane.setFromNormalAndCoplanarPoint(normal, origin);
     mode.solverOk = localSolver.ready && localSolver.load(state);
     redraw();
+    if (!mode.drag && entityPanelOpen) syncEntityPanel({ refresh: true });
   }
 
   // ---------- gestures ----------
 
-  async function safe(promise) {
+  async function safe(promise, opts) {
     try {
-      applyState(await promise);
+      applyState(await promise, opts);
     } catch (error) {
       say(error.message, true);
     }
@@ -506,6 +529,7 @@ export function createSketchMode(deps) {
             "relation, symétrie ou répétition ; clic dans le vide = vider");
       }
       redraw();
+      syncEntityPanel();
     } else if (mode.tool === "line") {
       if (!mode.chain) {
         mode.chain = { x: snapped.x, y: snapped.y };
@@ -780,6 +804,8 @@ export function createSketchMode(deps) {
     const p = overEndpoint(event);
     if (p) {
       mode.drag = { geo: p.geo, point: p.point };
+      mode.dragMoved = false;
+      mode.dragScreen = { x: event.clientX, y: event.clientY };
       controls.enabled = false;
       setCursor("grabbing");
       return;
@@ -795,6 +821,8 @@ export function createSketchMode(deps) {
       grab: { x: local.x, y: local.y },
       base: snapshotEntity(entity),
     };
+    mode.dragMoved = false;
+    mode.dragScreen = { x: event.clientX, y: event.clientY };
     controls.enabled = false;
     setCursor("grabbing");
   }
@@ -870,12 +898,13 @@ export function createSketchMode(deps) {
         sketch: req.sketch, geo: req.geo, point: req.point,
         x: req.x, y: req.y,
       });
-      if (req.gen === moveGen) applyState(state);
+      if (req.gen === moveGen) applyState(state, { keepSelection: true });
     } catch (error) {
       if (req.gen === moveGen) {
         say(error.message, true);
         if (mode.state?.sketch) {
-          safe(call("sketch_state", { sketch: mode.state.sketch }));
+          safe(call("sketch_state", { sketch: mode.state.sketch }),
+            { keepSelection: true });
         }
       }
     } finally {
@@ -891,6 +920,11 @@ export function createSketchMode(deps) {
       setCursor(hot ? "grab" : "default");
     }
     if (mode.drag) {
+      if (mode.dragScreen
+          && Math.hypot(event.clientX - mode.dragScreen.x,
+                        event.clientY - mode.dragScreen.y) > DRAG_CLICK_PX) {
+        mode.dragMoved = true;
+      }
       const local = toLocal(event);
       if (!local) return;
       const target = mode.drag.point === 0
@@ -971,11 +1005,15 @@ export function createSketchMode(deps) {
       if (mode.solverOk && mode.dragLocal && mode.state) {
         enqueueSketchMove(mode.dragLocal.x, mode.dragLocal.y);
       }
+      const moved = !!mode.dragMoved;
       mode.dragLocal = null;
       mode.drag = null;
-      mode.justDragged = true; // le click qui suit n'est pas une sélection
+      mode.dragMoved = false;
+      mode.dragScreen = null;
+      mode.justDragged = moved; // un vrai drag ne doit pas sélectionner
       controls.enabled = true;
       setCursor("grab");
+      if (moved) syncEntityPanel({ refresh: true });
     }
   }
 
@@ -986,6 +1024,7 @@ export function createSketchMode(deps) {
     const shown = dim.expr
       || (isAngle ? (dim.value * 180 / Math.PI).toFixed(2)
                   : String(+dim.value.toFixed(4)));
+    abandonEntityPanel();
     panel.open({
       icon: "Constraint_Dimension.svg",
       title: "Cote" + (dim.name ? ` — ${dim.name}` : ""),
@@ -1124,6 +1163,7 @@ export function createSketchMode(deps) {
     };
     say(hints[tool]);
     redraw();
+    syncEntityPanel();
   }
 
   bar.addEventListener("click", (event) => {
@@ -1131,6 +1171,138 @@ export function createSketchMode(deps) {
     const tool = event.target.dataset?.tool;
     if (tool) setTool(tool);
   });
+
+  function uniqueSelectionGeos() {
+    const seen = [];
+    for (const pick of mode.selection) {
+      if (!seen.includes(pick.geo)) seen.push(pick.geo);
+    }
+    return seen;
+  }
+
+  function abandonEntityPanel() {
+    entityPanelOpen = false;
+    entityPanelGeo = null;
+    entityPanelGen += 1;
+  }
+
+  function closeEntityPanel() {
+    entityPanelGen += 1;
+    if (!entityPanelOpen) return;
+    entityPanelOpen = false;
+    entityPanelGeo = null;
+    if (panel.active) panel.close({ silent: true });
+  }
+
+  function constraintItemLabel(constraint) {
+    return constraint.label
+      + (constraint.name ? ` « ${constraint.name} »` : "")
+      + (constraint.value !== undefined
+         ? " = " + (constraint.type === "Angle"
+             ? (constraint.value * 180 / Math.PI).toFixed(1) + "°"
+             : constraint.value.toFixed(2))
+         : "");
+  }
+
+  function syncEntityPanel({ refresh = false } = {}) {
+    if (!mode.active || mode.drag) return;
+    const geos = uniqueSelectionGeos();
+    if (geos.length !== 1) {
+      closeEntityPanel();
+      return;
+    }
+    const geo = geos[0];
+    if (entityPanelOpen && entityPanelGeo === geo && !refresh) return;
+    openEntityPanel(geo);
+  }
+
+  async function openEntityPanel(geo) {
+    const gen = ++entityPanelGen;
+    const entity = mode.state?.entities.find((e) => e.id === geo);
+    if (!entity || !mode.state) {
+      closeEntityPanel();
+      return;
+    }
+    let listed = { constraints: [] };
+    try {
+      listed = await call("sketch_constraints",
+        { sketch: mode.state.sketch, geo });
+    } catch (error) {
+      say(error.message, true);
+    }
+    if (gen !== entityPanelGen || !mode.active) return;
+    if (uniqueSelectionGeos()[0] !== geo) return;
+
+    const title = entityKindTitle(entity);
+    const propRows = entityPropertyLines(entity).map((text) => (
+      { type: "note", text }));
+    propRows.push({
+      type: "note",
+      text: `Construction : ${entity.construction ? "oui" : "non"}`,
+    });
+    const constraints = listed.constraints ?? [];
+    entityPanelOpen = true;
+    entityPanelGeo = geo;
+    panel.open({
+      icon: ENTITY_ICONS[title] ?? ENTITY_ICONS.Entité,
+      title,
+      noApply: true,
+      autoFocus: false,
+      groups: [
+        { label: "Propriétés", rows: propRows },
+        {
+          label: "Relations",
+          rows: [{
+            type: "list",
+            empty: "— aucune relation sur cette entité —",
+            items: constraints.map((c) => ({
+              label: constraintItemLabel(c),
+              onDelete: async () => {
+                try {
+                  applyState(await call("sketch_delete_constraint", {
+                    sketch: mode.state.sketch, constraint: c.id,
+                  }), { keepSelection: true });
+                } catch (error) {
+                  say(error.message, true);
+                }
+              },
+            })),
+          }],
+        },
+      ],
+      note: "Pour piloter une valeur : Cotation intelligente (D).",
+      actions: [
+        {
+          label: "Construction",
+          title: entity.construction
+            ? "Géométrie de construction — cliquer pour basculer en réelle"
+            : "Géométrie réelle — cliquer pour basculer en construction",
+          className: "paction",
+          onClick: () => {
+            safe(call("sketch_toggle_construction",
+              { sketch: mode.state.sketch, geo }),
+            { keepSelection: true });
+          },
+        },
+        {
+          label: "Supprimer",
+          title: "Supprimer l'entité (Suppr)",
+          className: "paction",
+          onClick: () => {
+            safe(call("sketch_delete_geo",
+              { sketch: mode.state.sketch, geo }));
+          },
+        },
+      ],
+      onCancel: () => {
+        abandonEntityPanel();
+        if (mode.selection.length) {
+          mode.selection = [];
+          redraw();
+        }
+      },
+    });
+  }
 
   // ---------- relations manuelles ----------
 
@@ -1171,54 +1343,12 @@ export function createSketchMode(deps) {
 
   async function openRelationsPanel() {
     if (!mode.state) return;
-    if (mode.selection.length !== 1) {
+    if (uniqueSelectionGeos().length !== 1) {
       say("Relations : sélectionnez d'abord UNE entité " +
           "(outil Sélectionner)", true);
       return;
     }
-    const geo = mode.selection[0].geo;
-    let listed;
-    try {
-      listed = await call("sketch_constraints",
-        { sketch: mode.state.sketch, geo });
-    } catch (error) {
-      say(error.message, true);
-      return;
-    }
-    panel.open({
-      icon: "Sketcher_ToggleConstraint.svg",
-      title: `Relations — entité ${geo}`,
-      groups: [{
-        label: "Relations de l'entité",
-        rows: [{
-          type: "list",
-          empty: "— aucune relation sur cette entité —",
-          items: listed.constraints.map((c) => ({
-            label: c.label
-              + (c.name ? ` « ${c.name} »` : "")
-              + (c.value !== undefined
-                 ? " = " + (c.type === "Angle"
-                     ? (c.value * 180 / Math.PI).toFixed(1) + "°"
-                     : c.value.toFixed(2))
-                 : ""),
-            onDelete: async () => {
-              try {
-                applyState(await call("sketch_delete_constraint",
-                  { sketch: mode.state.sketch, constraint: c.id }));
-                mode.selection = [{ geo }];
-                redraw();
-                openRelationsPanel(); // ré-ouvre avec la liste à jour
-              } catch (error) {
-                say(error.message, true);
-              }
-            },
-          })),
-        }],
-      }],
-      note: "✕ supprime la relation — la sortie des esquisses " +
-            "sur-contraintes",
-      onApply: () => {},
-    });
+    await openEntityPanel(uniqueSelectionGeos()[0]);
   }
 
   document.getElementById("sk-relations")
@@ -1246,6 +1376,7 @@ export function createSketchMode(deps) {
       return;
     }
     const geos = mode.selection.map((s) => s.geo);
+    abandonEntityPanel();
     panel.open({
       icon: "Sketcher_RectangularArray.svg",
       title: "Répétition d'entités",
@@ -1279,6 +1410,7 @@ export function createSketchMode(deps) {
       return;
     }
     const geos = mode.selection.map((s) => s.geo);
+    abandonEntityPanel();
     panel.open({
       icon: "Sketcher_Copy.svg",
       title: "Décaler les entités",
@@ -1382,6 +1514,7 @@ export function createSketchMode(deps) {
 
   async function exit(keep) {
     if (!mode.active) return;
+    closeEntityPanel();
     mode.active = false;
     document.dispatchEvent(new Event("freesolid:sketch-exit"));
     for (const [type, handler] of listeners) {

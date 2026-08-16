@@ -1934,14 +1934,22 @@ class Kernel:
             params.append(entry)
         return {"feature": feature, "label": obj.Label, "params": params}
 
-    def set_tip(self, feature):
+    def set_tip(self, feature=None):
         """Move the rollback bar: the part rebuilds up to this feature.
+
+        Without *feature* (or an empty name), the bar sits before the
+        first feature — every PartDesign feature is rolled back, like
+        dragging the bar to the top of the FeatureManager.
 
         Only PartDesign features qualify: setting Tip to a sketch made
         FreeCAD log "Linked object is not a PartDesign feature" on every
         recompute (seen on 1.1.3 via the tree's context menu).
         """
         body = self._require_body()
+        if feature is None or not str(feature).strip():
+            body.Tip = None
+            self._recompute()
+            return self.get_tree()
         obj = self._require_doc().getObject(feature)
         if obj is None:
             raise KernelError("fonction inconnue : {}".format(feature))
@@ -2369,9 +2377,12 @@ class Kernel:
         surfaces = [self._surface_tree_entry(o) for o in self._doc.Objects
                     if o.TypeId in self._SURFACE_TYPE_IDS]
         tip = body.Tip.Name if getattr(body, "Tip", None) else None
+        # Variables dans le même appel : le FeatureManager affiche le
+        # dossier Équations sans round-trip list_variables.
         return {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,
-                "surfaces": surfaces}
+                "surfaces": surfaces,
+                "variables": self.list_variables()["variables"]}
 
     def tessellate(self, deviation=0.1):
         """Per-face tessellation of the body's current shape.
@@ -3789,6 +3800,10 @@ class Kernel:
             report["p7_list_variables_ok"] = any(
                 v["name"] == "coef" and abs(v["value"] - 2.0) < 1e-9
                 for v in listed["variables"])
+            tree = self.get_tree()
+            report["p7_tree_variables"] = any(
+                v["name"] == "coef" and abs(v["value"] - 2.0) < 1e-9
+                for v in tree.get("variables", []))
             self.set_variable("jetable", 1.0)
             listed = self.list_variables()
             self.delete_variable("jetable")

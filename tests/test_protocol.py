@@ -96,9 +96,17 @@ def test_m1_ops_declare_their_required_params():
     assert protocol.OPS["save_part"] == ("path",)
     assert protocol.OPS["open_part"] == ("path",)
     assert protocol.OPS["get_params"] == ("feature",)
-    assert protocol.OPS["set_tip"] == ("feature",)
+    # feature optionnel : absent = barre avant la première fonction.
+    assert protocol.OPS["set_tip"] == ()
     assert protocol.OPS["tip_to_end"] == ()
     assert protocol.OPS["delete_feature"] == ("feature",)
+
+
+def test_set_tip_feature_is_optional():
+    assert protocol.validate_request({"op": "set_tip"})[0] == "set_tip"
+    _op, params = protocol.validate_request(
+        {"op": "set_tip", "params": {"feature": "Pad"}})
+    assert params["feature"] == "Pad"
 
 
 def test_sketch_face_param_stays_optional():

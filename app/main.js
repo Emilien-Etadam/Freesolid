@@ -821,6 +821,7 @@ function treeIcon(file) {
 
 let lastTree = null;
 const expandedFeatures = new Set(); // les fonctions dépliées (persiste)
+const folderState = Object.create(null); // dossiers tête, mémoire de session
 let sketchInfoOpen = false;
 let sketchClickTimer = null;
 
@@ -1011,85 +1012,283 @@ function onPlaneRow(id) {
     : "Plan désélectionné");
 }
 
+function folderIsOpen(key, defaultOpen) {
+  return Object.prototype.hasOwnProperty.call(folderState, key)
+    ? folderState[key]
+    : defaultOpen;
+}
+
+function toggleFolder(key, defaultOpen) {
+  folderState[key] = !folderIsOpen(key, defaultOpen);
+  if (lastTree) renderTree(lastTree);
+}
+
+function appendFolder(key, label, count, icon, defaultOpen, extra = {}) {
+  const open = folderIsOpen(key, defaultOpen);
+  const item = document.createElement("li");
+  item.className = "folder" + (count === 0 ? " empty" : "");
+  item.dataset.folder = key;
+  const arrow = document.createElement("span");
+  arrow.className = "arrow";
+  arrow.textContent = open ? "▾" : "▸";
+  arrow.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleFolder(key, defaultOpen);
+  });
+  item.appendChild(arrow);
+  item.appendChild(treeIcon(icon));
+  item.appendChild(document.createTextNode(`${label} (${count})`));
+  if (extra.title) item.title = extra.title;
+  if (extra.clickToggles !== false) {
+    item.addEventListener("click", () => toggleFolder(key, defaultOpen));
+  }
+  if (extra.onDblClick) {
+    item.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      extra.onDblClick();
+    });
+  }
+  treeEl.appendChild(item);
+  return open;
+}
+
+function appendBodyRow(bodyInfo) {
+  const bodyItem = document.createElement("li");
+  bodyItem.className = "body in-folder" + (bodyInfo.active ? " active" : "");
+  bodyItem.appendChild(treeIcon("PartDesign_Body.svg"));
+  if (hexColor(bodyInfo.color)) {
+    const swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.background = bodyInfo.color;
+    bodyItem.appendChild(swatch);
+  }
+  bodyItem.appendChild(document.createTextNode(
+    bodyInfo.label
+    + (bodyInfo.active ? "" : ` — ${bodyInfo.count} élément(s)`)));
+  if (!bodyInfo.active && bodyInfo.name) {
+    bodyItem.title = "Clic : activer ce corps";
+    bodyItem.addEventListener("click", () =>
+      refresh(call("set_active_body", { body: bodyInfo.name })));
+  }
+  if (bodyInfo.name) {
+    bodyItem.addEventListener("contextmenu",
+      (event) => openMenu(event, bodyInfo));
+  }
+  treeEl.appendChild(bodyItem);
+}
+
+function appendSurfaceRow(surface) {
+  const item = document.createElement("li");
+  item.className = "in-folder";
+  const children = surface.children ?? [];
+  const hasChildren = children.length > 0;
+  const arrow = document.createElement("span");
+  arrow.className = "arrow";
+  arrow.textContent = hasChildren
+    ? (expandedFeatures.has(surface.name) ? "▾" : "▸") : "";
+  if (hasChildren) {
+    arrow.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!expandedFeatures.delete(surface.name)) {
+        expandedFeatures.add(surface.name);
+      }
+      renderTree(lastTree);
+    });
+  }
+  item.appendChild(arrow);
+  item.appendChild(treeIcon("Part_3D_object.svg"));
+  item.appendChild(document.createTextNode(surface.label));
+  item.title = "Surface / courbe — clic : sélectionner pour une " +
+    "commande · double-clic : modifier · clic droit : renommer, supprimer";
+  item.addEventListener("click", () => panel.notifyPick("surface",
+    { kind: "surface", name: surface.name, label: surface.label }));
+  item.addEventListener("dblclick", () => editSurface(surface));
+  item.addEventListener("contextmenu", (event) => openMenu(event, surface));
+  treeEl.appendChild(item);
+  if (hasChildren && expandedFeatures.has(surface.name)) {
+    for (const child of children) {
+      const row = document.createElement("li");
+      row.className = "child in-folder" + (child.error ? " error" : "");
+      row.appendChild(treeIcon("Sketcher_Sketch.svg"));
+      row.appendChild(document.createTextNode(child.label));
+      row.title = `${child.kind} — double-clic : modifier l'esquisse`;
+      row.addEventListener("dblclick", () => onSketchRowDblClick(child));
+      row.addEventListener("contextmenu", (event) => openMenu(event, child));
+      row.addEventListener("click", () => onSketchRowClick(child));
+      treeEl.appendChild(row);
+    }
+  }
+}
+
+function appendRollbackBar(tree) {
+  const bar = document.createElement("li");
+  bar.className = "rollback";
+  bar.textContent = "▲ barre de retour arrière ▲";
+  bar.title = "Glisser pour déplacer · double-clic : revenir à l'état final";
+  bar.addEventListener("dblclick", () => refresh(call("tip_to_end")));
+  bindRollbackDrag(bar, tree);
+  treeEl.appendChild(bar);
+}
+
+function tipTargetBefore(index, features) {
+  for (let i = index - 1; i >= 0; i--) {
+    if (features[i].type !== "Sketcher::SketchObject") {
+      return features[i].name;
+    }
+  }
+  return null;
+}
+
+function applyRollbackSlot(index, features) {
+  if (index >= features.length) {
+    refresh(call("tip_to_end"));
+    return;
+  }
+  const target = tipTargetBefore(index, features);
+  refresh(target
+    ? call("set_tip", { feature: target })
+    : call("set_tip", {}));
+}
+
+function rollbackSlotPositions() {
+  const rows = [...treeEl.querySelectorAll("li.feat")];
+  if (!rows.length) return [];
+  const slots = [{ y: rows[0].getBoundingClientRect().top, index: 0 }];
+  for (let i = 0; i < rows.length; i++) {
+    slots.push({
+      y: rows[i].getBoundingClientRect().bottom,
+      index: i + 1,
+    });
+  }
+  return slots;
+}
+
+function nearestRollbackSlot(clientY, slots) {
+  let best = slots[0];
+  let bestDist = Infinity;
+  for (const slot of slots) {
+    const dist = Math.abs(clientY - slot.y);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = slot;
+    }
+  }
+  return best;
+}
+
+function showInsertMark(slot) {
+  let mark = treeEl.querySelector("li.insert-mark");
+  if (!mark) {
+    mark = document.createElement("li");
+    mark.className = "insert-mark";
+    treeEl.appendChild(mark);
+  }
+  const treeRect = treeEl.getBoundingClientRect();
+  mark.style.top = `${slot.y - treeRect.top}px`;
+}
+
+function hideInsertMark() {
+  treeEl.querySelector("li.insert-mark")?.remove();
+}
+
+function bindRollbackDrag(bar, tree) {
+  bar.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const features = tree.features ?? [];
+    const tipIndex = features.findIndex((feature) => feature.name === tree.tip);
+    const currentSlot = tipIndex >= 0 ? tipIndex + 1 : 0;
+    let dragging = false;
+    try {
+      bar.setPointerCapture(event.pointerId);
+    } catch {
+      // Capture indisponible (pointeur déjà relâché) : le drag s'arrête.
+    }
+
+    const onMove = (moveEvent) => {
+      const dist = Math.hypot(
+        moveEvent.clientX - startX, moveEvent.clientY - startY);
+      if (!dragging && dist < 5) return;
+      dragging = true;
+      bar.classList.add("dragging");
+      const slots = rollbackSlotPositions();
+      if (!slots.length) return;
+      showInsertMark(nearestRollbackSlot(moveEvent.clientY, slots));
+    };
+    const onUp = (upEvent) => {
+      bar.removeEventListener("pointermove", onMove);
+      bar.removeEventListener("pointerup", onUp);
+      bar.removeEventListener("pointercancel", onUp);
+      hideInsertMark();
+      bar.classList.remove("dragging");
+      if (!dragging) return;
+      const slots = rollbackSlotPositions();
+      if (!slots.length) return;
+      const slot = nearestRollbackSlot(upEvent.clientY, slots);
+      if (slot.index === currentSlot) return;
+      applyRollbackSlot(slot.index, features);
+    };
+    bar.addEventListener("pointermove", onMove);
+    bar.addEventListener("pointerup", onUp);
+    bar.addEventListener("pointercancel", onUp);
+  });
+}
+
 function renderTree(tree) {
   clearAssemblyView(); // un arbre de pièce = le mode assemblage s'efface
   lastTree = tree;
   treeHoverPlane = null;
   treeEl.innerHTML = "";
 
-  // Tous les corps de la pièce ; clic sur un corps inactif = l'activer.
   const bodies = tree.bodies
     ?? [{ name: null, label: tree.body, active: true, count: 0 }];
-  for (const bodyInfo of bodies) {
-    const bodyItem = document.createElement("li");
-    bodyItem.className = "body" + (bodyInfo.active ? " active" : "");
-    bodyItem.appendChild(treeIcon("PartDesign_Body.svg"));
-    if (hexColor(bodyInfo.color)) {
-      const swatch = document.createElement("span");
-      swatch.className = "swatch";
-      swatch.style.background = bodyInfo.color;
-      bodyItem.appendChild(swatch);
-    }
-    bodyItem.appendChild(document.createTextNode(
-      bodyInfo.label
-      + (bodyInfo.active ? "" : ` — ${bodyInfo.count} élément(s)`)));
-    if (!bodyInfo.active && bodyInfo.name) {
-      bodyItem.title = "Clic : activer ce corps";
-      bodyItem.addEventListener("click", () =>
-        refresh(call("set_active_body", { body: bodyInfo.name })));
-    }
-    if (bodyInfo.name) {
-      bodyItem.addEventListener("contextmenu",
-        (e) => openMenu(e, bodyInfo));
-    }
-    treeEl.appendChild(bodyItem);
-    if (!bodyInfo.active) continue;
-    renderActiveBodyContents(tree);
+  const surfaces = tree.surfaces ?? [];
+  const variables = tree.variables ?? [];
+  const bodiesDefaultOpen = bodies.length > 1
+    || bodies.some((body) => body.error);
+  const surfacesDefaultOpen = surfaces.some((surface) => surface.error
+    || (surface.children ?? []).some((child) => child.error));
+
+  // Ordre SolidWorks : dossiers en tête, puis plans, puis fonctions.
+  const bodiesOpen = appendFolder(
+    "bodies", "Corps volumiques", bodies.length, "PartDesign_Body.svg",
+    bodiesDefaultOpen,
+    { title: "Corps de la pièce — clic : déplier" });
+  if (bodiesOpen) {
+    for (const bodyInfo of bodies) appendBodyRow(bodyInfo);
   }
-  // Les surfaces vivent hors des corps — section à part, cliquable pour
-  // alimenter Coudre / Épaissir / Balayage. Double-clic : éditer si
-  // paramétrique ; les figées (couture, legacy) refusent le panneau.
-  for (const surface of tree.surfaces ?? []) {
-    const item = document.createElement("li");
-    const children = surface.children ?? [];
-    const hasChildren = children.length > 0;
-    const arrow = document.createElement("span");
-    arrow.className = "arrow";
-    arrow.textContent = hasChildren
-      ? (expandedFeatures.has(surface.name) ? "▾" : "▸") : "";
-    if (hasChildren) {
-      arrow.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!expandedFeatures.delete(surface.name)) {
-          expandedFeatures.add(surface.name);
-        }
-        renderTree(lastTree);
-      });
-    }
-    item.appendChild(arrow);
-    item.appendChild(treeIcon("Part_3D_object.svg"));
-    item.appendChild(document.createTextNode(surface.label));
-    item.title = "Surface / courbe — clic : sélectionner pour une " +
-      "commande · double-clic : modifier · clic droit : renommer, supprimer";
-    item.addEventListener("click", () => panel.notifyPick("surface",
-      { kind: "surface", name: surface.name, label: surface.label }));
-    item.addEventListener("dblclick", () => editSurface(surface));
-    item.addEventListener("contextmenu", (e) => openMenu(e, surface));
-    treeEl.appendChild(item);
-    if (hasChildren && expandedFeatures.has(surface.name)) {
-      for (const child of children) {
-        const row = document.createElement("li");
-        row.className = "child" + (child.error ? " error" : "");
-        row.appendChild(treeIcon("Sketcher_Sketch.svg"));
-        row.appendChild(document.createTextNode(child.label));
-        row.title = `${child.kind} — double-clic : modifier l'esquisse`;
-        row.addEventListener("dblclick", () => onSketchRowDblClick(child));
-        row.addEventListener("contextmenu", (e) => openMenu(e, child));
-        row.addEventListener("click", () => onSketchRowClick(child));
-        treeEl.appendChild(row);
-      }
+
+  const surfacesOpen = appendFolder(
+    "surfaces", "Corps surfaciques", surfaces.length, "Part_3D_object.svg",
+    surfacesDefaultOpen,
+    { title: "Surfaces et courbes — clic : déplier" });
+  if (surfacesOpen) {
+    for (const surface of surfaces) appendSurfaceRow(surface);
+  }
+
+  const equationsOpen = appendFolder(
+    "equations", "Équations", variables.length, "VarSet.svg", false,
+    {
+      clickToggles: false,
+      title: "Double-clic : ouvrir les équations",
+      onDblClick: openEquationsPanel,
+    });
+  if (equationsOpen) {
+    for (const variable of variables) {
+      const row = document.createElement("li");
+      row.className = "in-folder";
+      row.appendChild(treeIcon("VarSet.svg"));
+      row.appendChild(document.createTextNode(
+        `${variable.name} = ${variable.value}`));
+      row.title = "Double-clic : ouvrir les équations";
+      row.addEventListener("dblclick", openEquationsPanel);
+      treeEl.appendChild(row);
     }
   }
+
+  renderActiveBodyContents(tree);
 }
 
 function renderActiveBodyContents(tree) {
@@ -1112,17 +1311,25 @@ function renderActiveBodyContents(tree) {
     treeEl.appendChild(item);
   }
 
-  for (const feature of tree.features) {
+  const features = tree.features ?? [];
+  const showBarAtStart = !tree.tip && features.length > 0;
+  if (showBarAtStart) appendRollbackBar(tree);
+  let afterTip = showBarAtStart;
+
+  for (const feature of features) {
     const item = document.createElement("li");
-    if (feature.error) item.className = "error";
+    item.classList.add("feat");
+    item.dataset.feat = feature.name;
+    if (feature.error) item.classList.add("error");
+    if (afterTip) item.classList.add("rolled-back");
     const hasChildren = !!feature.children?.length;
     const arrow = document.createElement("span");
     arrow.className = "arrow";
     arrow.textContent = hasChildren
       ? (expandedFeatures.has(feature.name) ? "▾" : "▸") : "";
     if (hasChildren) {
-      arrow.addEventListener("click", (e) => {
-        e.stopPropagation();
+      arrow.addEventListener("click", (event) => {
+        event.stopPropagation();
         if (!expandedFeatures.delete(feature.name)) {
           expandedFeatures.add(feature.name);
         }
@@ -1142,7 +1349,7 @@ function renderActiveBodyContents(tree) {
         editFeature(feature);
       }
     });
-    item.addEventListener("contextmenu", (e) => openMenu(e, feature));
+    item.addEventListener("contextmenu", (event) => openMenu(event, feature));
     if (feature.type === "PartDesign::Plane") {
       // Un plan de référence se choisit comme un plan d'origine.
       item.classList.add("plane");
@@ -1164,24 +1371,21 @@ function renderActiveBodyContents(tree) {
       for (const child of feature.children) {
         const row = document.createElement("li");
         row.className = "child" + (child.error ? " error" : "");
+        if (afterTip) row.classList.add("rolled-back");
         if (selectedSketch?.name === child.name) row.classList.add("sel");
         row.appendChild(treeIcon("Sketcher_Sketch.svg"));
         row.appendChild(document.createTextNode(child.label));
         row.title = `${child.kind} — double-clic : modifier l'esquisse`;
         row.addEventListener("dblclick", () => onSketchRowDblClick(child));
-        row.addEventListener("contextmenu", (e) => openMenu(e, child));
+        row.addEventListener("contextmenu", (event) => openMenu(event, child));
         row.addEventListener("click", () => onSketchRowClick(child));
         treeEl.appendChild(row);
       }
     }
 
     if (feature.name === tree.tip) {
-      const bar = document.createElement("li");
-      bar.className = "rollback";
-      bar.textContent = "▲ barre de retour arrière ▲";
-      bar.title = "Double-clic : revenir à l'état final";
-      bar.addEventListener("dblclick", () => refresh(call("tip_to_end")));
-      treeEl.appendChild(bar);
+      appendRollbackBar(tree);
+      afterTip = true;
     }
   }
 }

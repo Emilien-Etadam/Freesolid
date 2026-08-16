@@ -116,7 +116,7 @@
     color: var(--ink-2);
     padding: 10px 12px 6px;
   }
-  #tree { list-style: none; }
+  #tree { list-style: none; position: relative; }
   #tree li {
     padding: 5px 12px 5px 22px;
     cursor: pointer;
@@ -136,6 +136,13 @@
     width: 15px; height: 15px;
     vertical-align: -3px; margin-right: 6px;
   }
+  #tree li.folder { font-weight: 600; }
+  #tree li.folder.empty { color: var(--ink-2); }
+  #tree li.in-folder { padding-left: 36px; }
+  #tree li.body.in-folder { padding-left: 36px; }
+  #tree li.child.in-folder { padding-left: 52px; }
+  #tree li.rolled-back { color: var(--ink-2); }
+  #tree li.rolled-back img { opacity: 0.4; }
 
   /* PropertyManager : remplace l'arbre pendant une commande, comme SW. */
   aside.panel-open h2, aside.panel-open #tree { display: none; }
@@ -233,8 +240,21 @@
     border-top: 1px dashed var(--accent);
     border-bottom: 1px dashed var(--accent);
     margin: 3px 10px; padding: 2px;
-    cursor: default;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
   }
+  #tree li.rollback.dragging { cursor: grabbing; }
+  #tree li.insert-mark {
+    position: absolute;
+    left: 10px; right: 10px;
+    height: 0; padding: 0; margin: 0;
+    border: none;
+    border-top: 2px solid var(--accent);
+    pointer-events: none;
+    z-index: 2;
+  }
+  #tree li.insert-mark:hover { background: none; }
 
   main { grid-area: viewport; position: relative; }
   main canvas { display: block; }

@@ -102,9 +102,29 @@ function volumeVisibleCount() {
   return n;
 }
 
+function sketchScreenPoint() {
+  const lines = sketchLineMeshes[0];
+  if (!lines) return null;
+  const pos = lines.geometry.getAttribute("position");
+  if (!pos || pos.count < 2) return null;
+  const a = new THREE.Vector3().fromBufferAttribute(pos, 0);
+  const b = new THREE.Vector3().fromBufferAttribute(pos, 1);
+  const mid = a.add(b).multiplyScalar(0.5);
+  mid.project(camera);
+  const rect = renderer.domElement.getBoundingClientRect();
+  return {
+    name: lines.userData.sketch?.name ?? null,
+    label: lines.userData.sketch?.label ?? null,
+    x: (mid.x * 0.5 + 0.5) * rect.width + rect.left,
+    y: (-mid.y * 0.5 + 0.5) * rect.height + rect.top,
+  };
+}
+
 window.__freesolidDebug = {
   get volumeVisibleCount() { return volumeVisibleCount(); },
   get isOrthographic() { return camera.isOrthographicCamera === true; },
+  get sketchLineCount() { return sketchLineMeshes.length; },
+  get sketchScreenPoint() { return sketchScreenPoint(); },
 };
 
 scene.add(new THREE.HemisphereLight(0xdde4ec, 0x30343a, 1.0));
@@ -154,8 +174,11 @@ const surfacesMaterial = new THREE.MeshStandardMaterial({
   depthWrite: false,
 });
 const curvesMaterial = new THREE.LineBasicMaterial({ color: 0x4fb8a8 });
+const sketchesMaterial = new THREE.LineBasicMaterial({ color: 0x8fa8c8 });
 let surfacesMesh = null;
 let curvesLines = null;
+let sketchLineMeshes = []; // esquisses libres, un LineSegments chacune
+let hoveredSketch = null;  // { name, label } | null
 
 // Qui alloue dispose. Les matériaux partagés (constantes de module) ne
 // portent pas le flag et ne sont jamais disposés ; tout matériau créé
@@ -215,6 +238,9 @@ function showMesh(mesh) {
     curvesLines.geometry.dispose();
     curvesLines = null;
   }
+  for (const lines of sketchLineMeshes) detachMesh(lines);
+  sketchLineMeshes = [];
+  hoveredSketch = null;
   const othersList = mesh.other_bodies?.length
     ? mesh.other_bodies
     : (mesh.others?.indices.length
@@ -250,6 +276,17 @@ function showMesh(mesh) {
     geometry.setIndex(mesh.curves.indices);
     curvesLines = new THREE.LineSegments(geometry, curvesMaterial);
     scene.add(curvesLines);
+  }
+  for (const sketch of mesh.sketches ?? []) {
+    if (!sketch.indices?.length) continue;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position",
+      new THREE.Float32BufferAttribute(sketch.positions, 3));
+    geometry.setIndex(sketch.indices);
+    const lines = new THREE.LineSegments(geometry, sketchesMaterial);
+    lines.userData.sketch = { name: sketch.name, label: sketch.label };
+    volumesGroup.add(lines);
+    sketchLineMeshes.push(lines);
   }
   if (!mesh.indices.length) {
     applyVolumeVisibility();
@@ -509,6 +546,17 @@ function schedulePreview(built) {
   }, 250);
 }
 
+function linePickThreshold() {
+  return ORTHO_HEIGHT / (camera.zoom * Math.max(container.clientHeight, 1)) * 8;
+}
+
+function pickHoveredSketch() {
+  if (!sketchLineMeshes.length) return null;
+  raycaster.params.Line.threshold = linePickThreshold();
+  const hit = raycaster.intersectObjects(sketchLineMeshes, false)[0];
+  return hit?.object.userData.sketch ?? null;
+}
+
 // Face hover: triangle index -> group -> engine faceId. By construction.
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -530,51 +578,57 @@ renderer.domElement.addEventListener("pointermove", (event) => {
     renderer.domElement.style.cursor = id ? "pointer" : "";
     return;
   }
-  if (!partMesh) return;
+  if (!partMesh && !sketchLineMeshes.length) return;
   raycaster.setFromCamera(pointer, camera);
-  const faceHit = raycaster.intersectObject(partMesh)[0];
 
-  // Les arêtes d'abord : plus précises sous le curseur. Une arête cachée
-  // derrière une face plus proche perd — pas de sélection à travers la
-  // matière.
+  // L'esquisse libre gagne sur la face (et l'arête) derrière elle :
+  // le geste vise le profil, pas le solide.
+  const sketchHit = pickHoveredSketch();
+
   let edgeGroupIndex = -1;
-  if (partEdges) {
-    const { radius } = partCenterRadius();
-    const pixel = ORTHO_HEIGHT / (camera.zoom * Math.max(container.clientHeight, 1));
-    raycaster.params.Line.threshold = pixel * 8;
-    const edgeHit = raycaster.intersectObject(partEdges)[0];
-    if (edgeHit && (!faceHit
-        || edgeHit.distance <= faceHit.distance + radius * 0.02)) {
-      edgeGroupIndex = edgeGroups.findIndex(
-        (g) => edgeHit.index >= g.start
-            && edgeHit.index < g.start + g.count);
+  let groupIndex = -1;
+  if (!sketchHit && partMesh) {
+    const faceHit = raycaster.intersectObject(partMesh)[0];
+    if (partEdges) {
+      const { radius } = partCenterRadius();
+      raycaster.params.Line.threshold = linePickThreshold();
+      const edgeHit = raycaster.intersectObject(partEdges)[0];
+      if (edgeHit && (!faceHit
+          || edgeHit.distance <= faceHit.distance + radius * 0.02)) {
+        edgeGroupIndex = edgeGroups.findIndex(
+          (g) => edgeHit.index >= g.start
+              && edgeHit.index < g.start + g.count);
+      }
+    }
+    if (edgeGroupIndex < 0 && faceHit) {
+      const indexPosition = faceHit.faceIndex * 3;
+      groupIndex = meshGroups.findIndex(
+        (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
     }
   }
-
-  let groupIndex = -1;
-  if (edgeGroupIndex < 0 && faceHit) {
-    const indexPosition = faceHit.faceIndex * 3;
-    groupIndex = meshGroups.findIndex(
-      (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
-  }
-  if (groupIndex !== hoveredGroup || edgeGroupIndex !== hoveredEdgeGroup) {
+  if (groupIndex !== hoveredGroup || edgeGroupIndex !== hoveredEdgeGroup
+      || sketchHit?.name !== hoveredSketch?.name) {
     hoveredGroup = groupIndex;
     hoveredEdgeGroup = edgeGroupIndex;
+    hoveredSketch = sketchHit;
     renderer.domElement.style.cursor =
-      groupIndex >= 0 || edgeGroupIndex >= 0 ? "pointer" : "";
+      groupIndex >= 0 || edgeGroupIndex >= 0 || sketchHit ? "pointer" : "";
     repaintGroups();
     repaintEdges();
   }
 });
 
 function repaintGroups() {
-  if (!partMesh) return;
-  partMesh.geometry.groups.forEach((g, i) => {
-    const isSelected = meshGroups[i].faceId === selectedFaceId;
-    g.materialIndex = isSelected ? 2 : (i === hoveredGroup ? 1 : 0);
-  });
+  if (partMesh) {
+    partMesh.geometry.groups.forEach((g, i) => {
+      const isSelected = meshGroups[i].faceId === selectedFaceId;
+      g.materialIndex = isSelected ? 2 : (i === hoveredGroup ? 1 : 0);
+    });
+  }
   const parts = [];
-  if (hoveredEdgeGroup >= 0) {
+  if (hoveredSketch) {
+    parts.push(hoveredSketch.label);
+  } else if (hoveredEdgeGroup >= 0) {
     parts.push(`Arête ${edgeGroups[hoveredEdgeGroup].edgeId}`);
   } else if (hoveredGroup >= 0) {
     parts.push(`Face ${meshGroups[hoveredGroup].faceId}`);
@@ -660,6 +714,16 @@ renderer.domElement.addEventListener("pointerup", (event) => {
       if (lastTree) renderTree(lastTree);
     }
   };
+
+  if (hoveredSketch) {
+    selectedFaceId = null;
+    selectedEdges = new Set();
+    clearPlaneChoice();
+    repaintGroups();
+    repaintEdges();
+    selectSketch(hoveredSketch);
+    return;
+  }
 
   if (hoveredEdgeGroup >= 0) {
     const id = edgeGroups[hoveredEdgeGroup].edgeId;
@@ -887,7 +951,7 @@ let sketchClickTimer = null;
 /** Clic simple (éventuellement différé pour laisser passer le double-clic). */
 function onSketchRowClick(feature) {
   clearTimeout(sketchClickTimer);
-  sketchClickTimer = setTimeout(() => selectSketchInTree(feature), 280);
+  sketchClickTimer = setTimeout(() => selectSketch(feature), 280);
 }
 
 function onSketchRowDblClick(feature) {
@@ -972,7 +1036,7 @@ function clearSketchSelection({ quiet = false } = {}) {
   if (!quiet && lastTree) renderTree(lastTree);
 }
 
-async function selectSketchInTree(feature) {
+async function selectSketch(feature) {
   const pick = { kind: "sketch", name: feature.name, label: feature.label };
   if (panel.notifyPick("sketch", pick)) return; // loft/sweep absorbe
   if (selectedSketch?.name === feature.name) {

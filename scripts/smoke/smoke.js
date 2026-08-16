@@ -302,6 +302,63 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("bossage appliqué");
   await page.screenshot({ path: path.join(SHOTS, "4-bossage.png") });
 
+  // 4b. FeatureManager — dossiers en tête + barre de reprise glissée.
+  const folderTexts = await page.locator("#tree li.folder").allTextContents();
+  const folderJoined = folderTexts.join(" | ");
+  for (const name of ["Corps volumiques", "Corps surfaciques", "Équations"]) {
+    if (!folderTexts.some((t) => t.includes(name))) {
+      errors.push("dossier FeatureManager manquant : " + name
+        + " (vu : " + folderJoined + ")");
+    }
+  }
+  await page.waitForSelector("#tree li.rollback", { timeout: 8000 });
+  await page.waitForSelector("#tree li.feat", { timeout: 8000 });
+  const faceCount = async () => page.evaluate(async () => {
+    const r = await fetch("/api", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "tessellate", params: {} }) });
+    const j = await r.json();
+    return j.ok ? (j.result.groups ?? []).length : -1;
+  });
+  const facesBefore = await faceCount();
+  if (facesBefore < 1) {
+    errors.push("barre de reprise : pas de solide après le bossage");
+  }
+  const dragRollback = async (fromSel, toY) => {
+    const box = await page.locator(fromSel).boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    const steps = 8;
+    for (let i = 1; i <= steps; i++) {
+      await page.mouse.move(x, y + (toY - y) * (i / steps));
+      await sleep(30);
+    }
+    await page.mouse.up();
+  };
+  const padBox = await page.locator("#tree li.feat").first().boundingBox();
+  await dragRollback("#tree li.rollback", padBox.y - 8);
+  await sleep(2500);
+  const facesRolled = await faceCount();
+  if (!(facesRolled === 0 || facesRolled < facesBefore)) {
+    errors.push("barre de reprise : le solide devrait disparaître "
+      + `(faces ${facesBefore} → ${facesRolled})`);
+  }
+  await step("barre de reprise remontée");
+  await page.screenshot({ path: path.join(SHOTS, "4b-reprise-haut.png") });
+
+  const padBox2 = await page.locator("#tree li.feat").first().boundingBox();
+  await dragRollback("#tree li.rollback", padBox2.y + padBox2.height + 10);
+  await sleep(2500);
+  const facesRestored = await faceCount();
+  if (facesRestored < 1) {
+    errors.push("barre de reprise : le solide devrait revenir "
+      + `(faces ${facesRestored})`);
+  }
+  await step("barre de reprise redescendue");
+  await page.screenshot({ path: path.join(SHOTS, "4c-reprise-bas.png") });
+
   // 5. Undo / redo — jetons anti-course + invalidation des sélections
   await page.keyboard.press("Control+z");
   await sleep(2500);

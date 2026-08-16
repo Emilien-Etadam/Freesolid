@@ -355,17 +355,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // sketch_state doit réellement bouger, sinon le pas ment.
   const flatten = (state) => (state?.entities ?? [])
     .flatMap((e) => [...(e.p1 ?? []), ...(e.p2 ?? []), ...(e.c ?? [])]);
-  const bottomEdgeOf = (state) => {
-    const horizontals = (state?.entities ?? []).filter((e) =>
-      e.type === "line" && e.p1 && e.p2
-      && Math.abs(e.p1[1] - e.p2[1]) < 1);
-    if (!horizontals.length) return null;
-    return horizontals.reduce((best, e) =>
-      (e.p1[1] + e.p2[1] < best.p1[1] + best.p2[1]) ? e : best);
-  };
+  const horizontalsOf = (state) => (state?.entities ?? []).filter((e) =>
+    e.type === "line" && e.p1 && e.p2
+    && Math.abs(e.p1[1] - e.p2[1]) < 1);
+  const yOf = (e) => (e.p1[1] + e.p2[1]) / 2;
   const beforeState = await sketchState();
   const beforeEdge = flatten(beforeState);
-  const beforeBottom = bottomEdgeOf(beforeState);
+  const beforeHoriz = horizontalsOf(beforeState);
   await page.mouse.move(cx, cy - 70);
   await page.mouse.down();
   for (let i = 1; i <= 10; i++) {
@@ -382,13 +378,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("drag d'arête : la géométrie n'a pas bougé "
       + "(le pas a raté l'arête ou le drag est cassé)");
   }
-  const afterBottom = beforeBottom
-    && (afterState?.entities ?? []).find((e) => e.id === beforeBottom.id);
-  const endpointShift = (a, b) => Math.hypot(
-    (a?.[0] ?? 0) - (b?.[0] ?? 0), (a?.[1] ?? 0) - (b?.[1] ?? 0));
-  if (!beforeBottom || !afterBottom
-      || endpointShift(beforeBottom.p1, afterBottom.p1) > 1
-      || endpointShift(beforeBottom.p2, afterBottom.p2) > 1) {
+  // Le drag du bord haut a aussi une composante X (ddl restant : largeur /
+  // translation). L'étirement change la hauteur ; le Y du bord bas doit
+  // rester. Une translation d'ensemble ferait bouger les deux Y.
+  let yStayed = 0;
+  for (const h of beforeHoriz) {
+    const after = (afterState?.entities ?? []).find((e) => e.id === h.id);
+    if (after && Math.abs(yOf(h) - yOf(after)) <= 1) yStayed += 1;
+  }
+  if (yStayed < 1) {
     errors.push("drag d'arête : le bord bas a bougé "
       + "(étirement attendu, pas une translation d'ensemble)");
   }

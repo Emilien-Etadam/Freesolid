@@ -217,6 +217,56 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("rectangle");
   await page.screenshot({ path: path.join(SHOTS, "1-esquisse.png") });
 
+  const sketchState = () => page.evaluate(async () => {
+    const r = await fetch("/api", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "sketch_state",
+                             params: { sketch: "Sketch" } }) });
+    const j = await r.json();
+    return j.ok ? j.result : null;
+  });
+
+  // 2a. P022 — double-clic sur le 2e point d'une ligne : pas de segment nul.
+  const idsBeforeLine = new Set(
+    ((await sketchState())?.entities ?? []).map((e) => e.id));
+  await page.click('[data-tool="line"]');
+  await sleep(200);
+  const lineA = { x: cx + 130, y: cy - 40 };
+  const lineB = { x: cx + 180, y: cy - 40 };
+  await page.mouse.click(lineA.x, lineA.y);
+  await sleep(300);
+  await page.mouse.click(lineB.x, lineB.y);
+  await sleep(400);
+  await page.mouse.dblclick(lineB.x, lineB.y);
+  await sleep(800);
+  const afterLine = await sketchState();
+  const zeroSeg = (afterLine?.entities ?? []).some((e) => {
+    if (e.type !== "line" || !e.p1 || !e.p2) return false;
+    return Math.hypot(e.p1[0] - e.p2[0], e.p1[1] - e.p2[1]) < 1e-6;
+  });
+  if (zeroSeg) {
+    errors.push("double-clic ligne : un segment de longueur nulle a été créé");
+  }
+  const addedLine = (afterLine?.entities ?? [])
+    .find((e) => !idsBeforeLine.has(e.id));
+  if (!addedLine) {
+    errors.push("ligne de test : aucun segment ajouté");
+  } else {
+    await page.click('[data-tool="select"]');
+    await sleep(150);
+    await page.mouse.move((lineA.x + lineB.x) / 2, lineA.y);
+    await sleep(100);
+    await page.keyboard.press("Delete");
+    await sleep(800);
+    const afterDelete = await sketchState();
+    const stillThere = (afterDelete?.entities ?? [])
+      .some((e) => e.id === addedLine.id);
+    if (stillThere) {
+      errors.push("ligne de test : la ligne ajoutée n'a pas été supprimée");
+    }
+  }
+  await step("ligne sans segment nul");
+
   // 2b. Image d'esquisse — calque client, jamais envoyé au serveur.
   // PNG 2×2 px via le sélecteur de fichier du bouton Image.
   const png2x2 = Buffer.from(
@@ -261,14 +311,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // bas-droit a été tiré de (+48, +24), le bord haut n'a pas bougé :
   // (cx−90, cy−70) → (cx+90, cy−70)). Vérifié sur la géométrie : le
   // sketch_state doit réellement bouger, sinon le pas ment.
-  const sketchState = () => page.evaluate(async () => {
-    const r = await fetch("/api", { method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "sketch_state",
-                             params: { sketch: "Sketch" } }) });
-    const j = await r.json();
-    return j.ok ? j.result : null;
-  });
   const flatten = (state) => (state?.entities ?? [])
     .flatMap((e) => [...(e.p1 ?? []), ...(e.p2 ?? []), ...(e.c ?? [])]);
   const beforeEdge = flatten(await sketchState());

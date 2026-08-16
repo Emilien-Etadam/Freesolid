@@ -65,12 +65,47 @@ container.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x17191c);
 
-const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 5000);
+// Hauteur du frustum (unités monde) à zoom = 1. Le zoom OrbitControls
+// et « Zoom au mieux » ajustent camera.zoom, pas la distance.
+const ORTHO_HEIGHT = 200;
+const camera = new THREE.OrthographicCamera(
+  -ORTHO_HEIGHT / 2, ORTHO_HEIGHT / 2,
+  ORTHO_HEIGHT / 2, -ORTHO_HEIGHT / 2,
+  0.1, 10000);
 camera.position.set(160, -160, 120);
 camera.up.set(0, 0, 1); // CAD is Z-up
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+
+// Maillages volumiques (corps, autres corps, surfaces, arêtes, aperçu).
+// Masqués en bloc pendant l'esquisse — visible=false sur le groupe,
+// jamais de dispose.
+const volumesGroup = new THREE.Group();
+volumesGroup.name = "volumes";
+scene.add(volumesGroup);
+let sketchHidesVolumes = false;
+
+function applyVolumeVisibility() {
+  volumesGroup.visible = !sketchHidesVolumes;
+}
+
+function volumeVisibleCount() {
+  if (!volumesGroup.visible) return 0;
+  let n = 0;
+  volumesGroup.traverse((obj) => {
+    if (obj !== volumesGroup && (obj.isMesh || obj.isLineSegments)
+        && obj.visible) {
+      n += 1;
+    }
+  });
+  return n;
+}
+
+window.__freesolidDebug = {
+  get volumeVisibleCount() { return volumeVisibleCount(); },
+  get isOrthographic() { return camera.isOrthographicCamera === true; },
+};
 
 scene.add(new THREE.HemisphereLight(0xdde4ec, 0x30343a, 1.0));
 const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -149,7 +184,7 @@ function ownedMaterial(source, color) {
 
 function detachMesh(mesh) {
   if (!mesh) return;
-  scene.remove(mesh);
+  mesh.removeFromParent();
   disposeSubtree(mesh);
 }
 
@@ -171,7 +206,7 @@ function showMesh(mesh) {
     say("Sélections réinitialisées — la géométrie a changé.");
   }
   if (surfacesMesh) {
-    scene.remove(surfacesMesh);
+    surfacesMesh.removeFromParent();
     surfacesMesh.geometry.dispose();
     surfacesMesh = null;
   }
@@ -196,7 +231,7 @@ function showMesh(mesh) {
     const otherMesh = new THREE.Mesh(
       geometry, ownedMaterial(othersMaterial, hexColor(extra.color)));
     otherMesh.raycast = () => {};
-    scene.add(otherMesh);
+    volumesGroup.add(otherMesh);
     othersMeshes.push(otherMesh);
   }
   if (mesh.surfaces?.indices.length) {
@@ -206,7 +241,7 @@ function showMesh(mesh) {
     geometry.setIndex(mesh.surfaces.indices);
     geometry.computeVertexNormals();
     surfacesMesh = new THREE.Mesh(geometry, surfacesMaterial);
-    scene.add(surfacesMesh);
+    volumesGroup.add(surfacesMesh);
   }
   if (mesh.curves?.indices.length) {
     const geometry = new THREE.BufferGeometry();
@@ -216,7 +251,10 @@ function showMesh(mesh) {
     curvesLines = new THREE.LineSegments(geometry, curvesMaterial);
     scene.add(curvesLines);
   }
-  if (!mesh.indices.length) return;
+  if (!mesh.indices.length) {
+    applyVolumeVisibility();
+    return;
+  }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position",
@@ -230,7 +268,8 @@ function showMesh(mesh) {
   partBaseMaterial = ownedMaterial(baseMaterial, hexColor(mesh.color));
   partMesh = new THREE.Mesh(geometry,
     [partBaseMaterial, hoverMaterial, selectedMaterial]);
-  scene.add(partMesh);
+  volumesGroup.add(partMesh);
+  applyVolumeVisibility();
   rebuildPlanes(); // les plans de base suivent la taille de la pièce
 }
 
@@ -242,7 +281,10 @@ const edgeHoverMaterial = new THREE.LineBasicMaterial({ color: 0x4f8fdb });
 const edgeSelectedMaterial = new THREE.LineBasicMaterial({ color: 0xd9924a });
 
 function showEdgeLines(data) {
-  if (partEdges) { scene.remove(partEdges); partEdges.geometry.dispose(); }
+  if (partEdges) {
+    partEdges.removeFromParent();
+    partEdges.geometry.dispose();
+  }
   partEdges = null;
   edgeGroups = data.groups;
   hoveredEdgeGroup = -1;
@@ -255,7 +297,8 @@ function showEdgeLines(data) {
   for (const g of data.groups) geometry.addGroup(g.start, g.count, 0);
   partEdges = new THREE.LineSegments(geometry,
     [edgeBaseMaterial, edgeHoverMaterial, edgeSelectedMaterial]);
-  scene.add(partEdges);
+  volumesGroup.add(partEdges);
+  applyVolumeVisibility();
 }
 
 function repaintEdges() {
@@ -415,7 +458,7 @@ function clearGhost() {
   clearTimeout(previewTimer);
   previewTimer = null;
   if (ghostMesh) {
-    scene.remove(ghostMesh);
+    ghostMesh.removeFromParent();
     ghostMesh.geometry.dispose();
     ghostMesh = null;
   }
@@ -425,7 +468,7 @@ function clearGhost() {
 
 function showGhost(mesh) {
   if (ghostMesh) {
-    scene.remove(ghostMesh);
+    ghostMesh.removeFromParent();
     ghostMesh.geometry.dispose();
     ghostMesh = null;
   }
@@ -436,7 +479,8 @@ function showGhost(mesh) {
   geometry.setIndex(mesh.indices);
   geometry.computeVertexNormals();
   ghostMesh = new THREE.Mesh(geometry, ghostMaterial);
-  scene.add(ghostMesh);
+  volumesGroup.add(ghostMesh);
+  applyVolumeVisibility();
   baseMaterial.opacity = 0.15; // la pièce s'efface derrière le résultat
   if (partBaseMaterial) partBaseMaterial.opacity = 0.15;
 }
@@ -496,8 +540,8 @@ renderer.domElement.addEventListener("pointermove", (event) => {
   let edgeGroupIndex = -1;
   if (partEdges) {
     const { radius } = partCenterRadius();
-    raycaster.params.Line.threshold =
-      camera.position.distanceTo(controls.target) * 0.008;
+    const pixel = ORTHO_HEIGHT / (camera.zoom * Math.max(container.clientHeight, 1));
+    raycaster.params.Line.threshold = pixel * 8;
     const edgeHit = raycaster.intersectObject(partEdges)[0];
     if (edgeHit && (!faceHit
         || edgeHit.distance <= faceHit.distance + radius * 0.02)) {
@@ -654,7 +698,11 @@ function resize() {
   const w = container.clientWidth, h = container.clientHeight;
   renderer.setSize(w, h);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  camera.aspect = w / h;
+  const aspect = h > 0 ? w / h : 1;
+  camera.left = -ORTHO_HEIGHT * aspect / 2;
+  camera.right = ORTHO_HEIGHT * aspect / 2;
+  camera.top = ORTHO_HEIGHT / 2;
+  camera.bottom = -ORTHO_HEIGHT / 2;
   camera.updateProjectionMatrix();
 }
 new ResizeObserver(resize).observe(container);
@@ -679,18 +727,29 @@ function partCenterRadius() {
   return { center: sphere.center.clone(), radius: Math.max(sphere.radius, 1) };
 }
 
+function fitOrthoZoom(radius) {
+  const w = container.clientWidth || 1;
+  const h = container.clientHeight || 1;
+  const aspect = w / h;
+  const needed = 2 * Math.max(radius, 1) * 1.25;
+  camera.zoom = Math.min(ORTHO_HEIGHT * aspect, ORTHO_HEIGHT) / needed;
+  camera.updateProjectionMatrix();
+}
+
 // direction = d'où l'on regarde ; null = garder l'angle actuel (zoom au mieux).
 function frameView(direction, up) {
   const { center, radius } = partCenterRadius();
-  const distance =
-    1.25 * radius / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   if (up) camera.up.set(...up);
   const dir = direction
     ? new THREE.Vector3(...direction).normalize()
     : camera.position.clone().sub(controls.target).normalize();
+  if (dir.lengthSq() < 1e-12) dir.set(1, -1, 1).normalize();
+  // Distance : near/far et orbite uniquement — la taille vient du zoom.
+  const distance = Math.max(radius * 2.5, 80);
   controls.target.copy(center);
   camera.position.copy(center).addScaledVector(dir, distance);
   camera.lookAt(center);
+  fitOrthoZoom(radius);
 }
 
 // Vue de face = normale au Plan de face (XZ), etc. — mêmes plans que le vocab.
@@ -1099,7 +1158,8 @@ function appendSurfaceRow(surface) {
   item.appendChild(treeIcon("Part_3D_object.svg"));
   item.appendChild(document.createTextNode(surface.label));
   item.title = "Surface / courbe — clic : sélectionner pour une " +
-    "commande · double-clic : modifier · clic droit : renommer, supprimer";
+    "commande · double-clic : modifier · clic droit : modifier, " +
+    "renommer, supprimer";
   item.addEventListener("click", () => panel.notifyPick("surface",
     { kind: "surface", name: surface.name, label: surface.label }));
   item.addEventListener("dblclick", () => editSurface(surface));
@@ -1111,7 +1171,8 @@ function appendSurfaceRow(surface) {
       row.className = "child in-folder" + (child.error ? " error" : "");
       row.appendChild(treeIcon("Sketcher_Sketch.svg"));
       row.appendChild(document.createTextNode(child.label));
-      row.title = `${child.kind} — double-clic : modifier l'esquisse`;
+      row.title = `${child.kind} — double-clic : modifier l'esquisse · ` +
+        "clic droit : modifier";
       row.addEventListener("dblclick", () => onSketchRowDblClick(child));
       row.addEventListener("contextmenu", (event) => openMenu(event, child));
       row.addEventListener("click", () => onSketchRowClick(child));
@@ -1341,7 +1402,7 @@ function renderActiveBodyContents(tree) {
     if (icon) item.appendChild(treeIcon(icon));
     item.appendChild(document.createTextNode(feature.label));
     item.title = `${feature.kind} — double-clic : modifier · ` +
-      "clic droit : barre de retour, supprimer";
+      "clic droit : modifier, barre de retour, supprimer";
     item.addEventListener("dblclick", () => {
       if (feature.type === "Sketcher::SketchObject") {
         onSketchRowDblClick(feature);
@@ -1375,7 +1436,8 @@ function renderActiveBodyContents(tree) {
         if (selectedSketch?.name === child.name) row.classList.add("sel");
         row.appendChild(treeIcon("Sketcher_Sketch.svg"));
         row.appendChild(document.createTextNode(child.label));
-        row.title = `${child.kind} — double-clic : modifier l'esquisse`;
+        row.title = `${child.kind} — double-clic : modifier l'esquisse · ` +
+        "clic droit : modifier";
         row.addEventListener("dblclick", () => onSketchRowDblClick(child));
         row.addEventListener("contextmenu", (event) => openMenu(event, child));
         row.addEventListener("click", () => onSketchRowClick(child));
@@ -1482,10 +1544,37 @@ function isBodyMenuTarget(feature) {
   return feature != null && typeof feature.active === "boolean";
 }
 
+function isFrozenSurface(feature) {
+  return !!(feature?.static || feature?.type === "Part::Feature");
+}
+
+function canModifyMenuTarget(feature) {
+  if (!feature || isBodyMenuTarget(feature)) return false;
+  const type = feature.type;
+  if (!type || type === "PartDesign::Plane") return false;
+  if (isFrozenSurface(feature)) return false;
+  if (type === "Sketcher::SketchObject") return true;
+  return type.startsWith("PartDesign::")
+    || type.startsWith("Part::")
+    || type.startsWith("Surface::");
+}
+
+function modifyMenuTarget(feature) {
+  if (feature.type === "Sketcher::SketchObject") {
+    onSketchRowDblClick(feature);
+  } else if (feature.type.startsWith("Part::")
+             || feature.type.startsWith("Surface::")) {
+    editSurface(feature);
+  } else {
+    editFeature(feature);
+  }
+}
+
 function openMenu(event, feature) {
   event.preventDefault();
   menuFeature = feature;
   const onBody = isBodyMenuTarget(feature);
+  document.getElementById("ctx-modify").hidden = !canModifyMenuTarget(feature);
   document.getElementById("ctx-color").hidden = !onBody;
   document.getElementById("ctx-color-reset").hidden = !onBody;
   menuEl.style.display = "block";
@@ -1493,6 +1582,11 @@ function openMenu(event, feature) {
   menuEl.style.top = event.clientY + "px";
 }
 document.addEventListener("click", () => { menuEl.style.display = "none"; });
+
+document.getElementById("ctx-modify").addEventListener("click", () => {
+  if (!menuFeature || !canModifyMenuTarget(menuFeature)) return;
+  modifyMenuTarget(menuFeature);
+});
 
 document.getElementById("ctx-rename").addEventListener("click", () => {
   if (!menuFeature) return;
@@ -1549,8 +1643,16 @@ function showTab(name) {
 for (const tab of document.querySelectorAll("header .tab")) {
   tab.addEventListener("click", () => showTab(tab.dataset.tab));
 }
-document.addEventListener("freesolid:sketch-enter", () => showTab("sketch"));
-document.addEventListener("freesolid:sketch-exit", () => showTab("features"));
+document.addEventListener("freesolid:sketch-enter", () => {
+  sketchHidesVolumes = true;
+  applyVolumeVisibility();
+  showTab("sketch");
+});
+document.addEventListener("freesolid:sketch-exit", () => {
+  sketchHidesVolumes = false;
+  applyVolumeVisibility();
+  showTab("features");
+});
 
 // ---------- réglages du ruban (libellés) ----------
 

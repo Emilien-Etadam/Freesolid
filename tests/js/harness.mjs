@@ -50,7 +50,7 @@ export function isConstraintPrimitive(primitive) {
 
 export function withoutDrag(primitives) {
   return primitives.filter(
-    (primitive) => primitive.id !== "dragx" && primitive.id !== "dragy");
+    (primitive) => !String(primitive.id).startsWith("drag"));
 }
 
 export function translated(pushed) {

@@ -59,6 +59,17 @@ function freeRectangle(w, h) {
   return sketch(rectangleEntities(w, h), cornerCoincident());
 }
 
+/** Mêmes contraintes que l'outil rectangle (coïncidences + H/V). */
+function rectangleHV(w, h) {
+  return sketch(rectangleEntities(w, h), [
+    ...cornerCoincident(),
+    constraint("Horizontal", [0], [0]),
+    constraint("Horizontal", [2], [0]),
+    constraint("Vertical", [1], [0]),
+    constraint("Vertical", [3], [0]),
+  ]);
+}
+
 function almost(actual, expected, message) {
   assert.ok(
     Math.abs(actual - expected) < EPS,
@@ -81,6 +92,29 @@ describe("WASM planegcs", () => {
     almost(se[1], 10, "coin tiré Y");
     almost(nw[0], sw[0], "gauche verticale");
     almost(nw[1], ne[1], "haut horizontal");
+  });
+
+  it("rectangle H/V : drag du bord gauche étire, le droit ne bouge pas", async () => {
+    const solver = await wasmSolver();
+    const w = 40, h = 30;
+    const state = rectangleHV(w, h);
+    assert.equal(solver.load(state), true);
+    // Bord gauche = geo 3, p1 = [0, h]. Cible : −15 en x, y inchangé.
+    const updates = solver.drag(3, 0, -15, h);
+    assert.ok(updates, "le solveur doit converger");
+    const { se, ne, sw, nw } = corners(updates);
+    const tight = 0.01;
+    const near = (actual, expected, message) => {
+      assert.ok(
+        Math.abs(actual - expected) < tight,
+        `${message}: ${actual} ≉ ${expected} (±${tight})`);
+    };
+    near(se[0], w, "droit bas X");
+    near(se[1], 0, "droit bas Y");
+    near(ne[0], w, "droit haut X");
+    near(ne[1], h, "droit haut Y");
+    near(sw[0], -15, "gauche bas X");
+    near(nw[0], -15, "gauche haut X");
   });
 
   it("rectangle libre : le coin suit la souris", async () => {

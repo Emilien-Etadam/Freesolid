@@ -355,7 +355,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // sketch_state doit réellement bouger, sinon le pas ment.
   const flatten = (state) => (state?.entities ?? [])
     .flatMap((e) => [...(e.p1 ?? []), ...(e.p2 ?? []), ...(e.c ?? [])]);
-  const beforeEdge = flatten(await sketchState());
+  const bottomEdgeOf = (state) => {
+    const horizontals = (state?.entities ?? []).filter((e) =>
+      e.type === "line" && e.p1 && e.p2
+      && Math.abs(e.p1[1] - e.p2[1]) < 1);
+    if (!horizontals.length) return null;
+    return horizontals.reduce((best, e) =>
+      (e.p1[1] + e.p2[1] < best.p1[1] + best.p2[1]) ? e : best);
+  };
+  const beforeState = await sketchState();
+  const beforeEdge = flatten(beforeState);
+  const beforeBottom = bottomEdgeOf(beforeState);
   await page.mouse.move(cx, cy - 70);
   await page.mouse.down();
   for (let i = 1; i <= 10; i++) {
@@ -364,12 +374,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await page.mouse.up();
   await sleep(1200);
-  const afterEdge = flatten(await sketchState());
+  const afterState = await sketchState();
+  const afterEdge = flatten(afterState);
   const moved = beforeEdge.length === afterEdge.length
     && beforeEdge.some((v, i) => Math.abs(v - afterEdge[i]) > 1);
   if (!moved) {
     errors.push("drag d'arête : la géométrie n'a pas bougé "
       + "(le pas a raté l'arête ou le drag est cassé)");
+  }
+  const afterBottom = beforeBottom
+    && (afterState?.entities ?? []).find((e) => e.id === beforeBottom.id);
+  const endpointShift = (a, b) => Math.hypot(
+    (a?.[0] ?? 0) - (b?.[0] ?? 0), (a?.[1] ?? 0) - (b?.[1] ?? 0));
+  if (!beforeBottom || !afterBottom
+      || endpointShift(beforeBottom.p1, afterBottom.p1) > 1
+      || endpointShift(beforeBottom.p2, afterBottom.p2) > 1) {
+    errors.push("drag d'arête : le bord bas a bougé "
+      + "(étirement attendu, pas une translation d'ensemble)");
   }
   await step("drag arête");
   await page.screenshot({ path: path.join(SHOTS, "2b-drag-edge.png") });

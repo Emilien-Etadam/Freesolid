@@ -2485,9 +2485,14 @@ class Kernel:
             lines = []
             for i, edge in enumerate(shape.Edges):
                 try:
-                    points = edge.discretize(Deviation=0.1)
+                    # Deviation= est rejeté sur les arêtes d'esquisse
+                    # (keyword OCCT : Deflection).
+                    points = edge.discretize(Deflection=0.1)
                 except Exception:
-                    continue
+                    try:
+                        points = edge.discretize(Number=24)
+                    except Exception:
+                        continue
                 lines.append((i, [(p.x, p.y, p.z) for p in points]))
             packed = protocol.pack_edges(lines)
             if not packed["positions"]:

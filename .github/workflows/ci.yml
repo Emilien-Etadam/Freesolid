@@ -57,6 +57,7 @@ jobs:
       - name: Syntax check
         run: |
           node --check app/main.js
+          node --check app/history.js
           node --check app/features.js
           node --check app/sketch.js
           node --check app/panel.js

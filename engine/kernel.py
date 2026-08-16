@@ -53,6 +53,49 @@ def parse_neutral_plane(neutral="XY"):
     return key
 
 
+#: Lignes hors chaîne PartDesign — flag ``FreeSolidRolledBack``.
+_ROLLBACK_KINDS = frozenset({"sketch", "surface"})
+
+#: Propriété custom persistée dans le .FCStd (source de vérité du recul).
+_ROLLED_BACK_PROP = "FreeSolidRolledBack"
+
+
+def rollback_plan(history, target_name=None):
+    """Calcule les flags de recul et le Tip à partir des lignes d'historique.
+
+    *history* : séquence de dicts ``{name, order, kind}`` déjà triée par
+    ``order``, avec ``kind`` ∈ ``{"feature", "sketch", "surface"}``.
+    *target_name* : dernière ligne visible, ou ``None`` (barre en tête).
+
+    Retour : ``(flags, tip)`` — ``flags`` mappe chaque nom sketch/surface
+    vers un booléen reculé ; ``tip`` est le nom de la dernière fonction
+    volumique visible, ou ``None``.
+    """
+    if target_name is None:
+        flags = {row["name"]: True
+                 for row in history
+                 if row["kind"] in _ROLLBACK_KINDS}
+        return flags, None
+    target_order = None
+    for row in history:
+        if row["name"] == target_name:
+            target_order = row["order"]
+            break
+    if target_order is None:
+        raise KernelError(
+            "« {} » n'est pas une ligne d'historique — la barre de "
+            "retour se pose sur une fonction, une esquisse libre ou "
+            "une surface".format(target_name))
+    flags = {}
+    tip = None
+    for row in history:
+        if row["kind"] in _ROLLBACK_KINDS:
+            flags[row["name"]] = row["order"] > target_order
+        elif row["kind"] == "feature" and row["order"] <= target_order:
+            tip = row["name"]
+    return flags, tip
+
+
 def _explain(exc) -> str:
     text = str(exc)
     return friendly_error(text) or text
@@ -724,6 +767,7 @@ class Kernel:
                 "error": "Invalid" in (sk.State or ()),
                 "order": order_of.get(sk.Name, -1),
             } for sk in sketches]
+        entry["rolled_back"] = self._is_rolled_back(obj)
         return entry
 
     def surface_extrude(self, length, sketch=None):
@@ -1454,12 +1498,99 @@ class Kernel:
             raise
         return self.get_tree()
 
+    def _consumed_sketches(self):
+        """Esquisse → nom du parent (fonction PartDesign ou surface)."""
+        body = self._require_body()
+        consumed = {}
+        for obj in body.Group:
+            profile = getattr(obj, "Profile", None)
+            linked = profile[0] if isinstance(profile, tuple) else profile
+            if linked is not None:
+                consumed[linked.Name] = obj.Name
+        for obj in self._doc.Objects:
+            if obj.TypeId not in self._SURFACE_TYPE_IDS:
+                continue
+            for sk in self._surface_sketch_objects(obj):
+                consumed.setdefault(sk.Name, obj.Name)
+        return consumed
+
+    def _is_rolled_back(self, obj):
+        return bool(getattr(obj, _ROLLED_BACK_PROP, False))
+
+    def _set_rolled_back(self, obj, rolled):
+        """Pose le flag (source de vérité) et miroir ``Visibility``."""
+        rolled = bool(rolled)
+        if _ROLLED_BACK_PROP not in obj.PropertiesList:
+            obj.addProperty("App::PropertyBool", _ROLLED_BACK_PROP,
+                            "FreeSolid", "Reculé par la barre de retour")
+        setattr(obj, _ROLLED_BACK_PROP, rolled)
+        if hasattr(obj, "Visibility"):
+            obj.Visibility = not rolled
+
+    def _history_kind(self, obj, consumed):
+        """``feature`` / ``sketch`` / ``surface``, ou None si hors historique."""
+        if obj.TypeId in self._SURFACE_TYPE_IDS:
+            return "surface"
+        if obj.TypeId == "Sketcher::SketchObject":
+            return None if obj.Name in consumed else "sketch"
+        if obj.isDerivedFrom("PartDesign::Feature"):
+            return "feature"
+        return None
+
+    def _history_lines(self):
+        """Lignes d'historique top-niveau, triées par index dans le document."""
+        doc = self._require_doc()
+        body = self._require_body()
+        consumed = self._consumed_sketches()
+        lines = []
+        for obj in body.Group:
+            kind = self._history_kind(obj, consumed)
+            if kind in ("feature", "sketch"):
+                lines.append(obj)
+        for obj in doc.Objects:
+            if obj.TypeId in self._SURFACE_TYPE_IDS:
+                lines.append(obj)
+        order_of = {o.Name: i for i, o in enumerate(doc.Objects)}
+        lines.sort(key=lambda o: order_of.get(o.Name, -1))
+        return lines
+
+    def _history_rows(self, lines=None):
+        doc = self._require_doc()
+        consumed = self._consumed_sketches()
+        order_of = {o.Name: i for i, o in enumerate(doc.Objects)}
+        rows = []
+        for obj in (lines if lines is not None else self._history_lines()):
+            kind = self._history_kind(obj, consumed)
+            if kind is None:
+                continue
+            rows.append({
+                "name": obj.Name,
+                "order": order_of.get(obj.Name, -1),
+                "kind": kind,
+            })
+        return rows
+
+    def _apply_rollback_flags(self, flags):
+        """Applique ``flags`` (nom → reculé) aux surfaces, esquisses libres
+        et esquisses sources des surfaces reculées."""
+        doc = self._require_doc()
+        for name, rolled in flags.items():
+            obj = doc.getObject(name)
+            if obj is None:
+                continue
+            self._set_rolled_back(obj, rolled)
+            if obj.TypeId in self._SURFACE_TYPE_IDS:
+                for sk in self._surface_sketch_objects(obj):
+                    self._set_rolled_back(sk, rolled)
+
     def _free_sketches(self):
         """Esquisses du corps actif non consommées par une fonction.
 
         Mêmes candidates que ``_latest_sketch`` : une esquisse dont le
         ``Profile`` d'une fonction pointe dessus est repliée, comme
-        SolidWorks la range sous le bossage.
+        SolidWorks la range sous le bossage. Les esquisses reculées par
+        la barre de retour sont exclues — on ne référence pas ce qui
+        est sous la barre.
         """
         body = self._require_body()
         used = set()
@@ -1470,7 +1601,8 @@ class Kernel:
                 used.add(linked.Name)
         return [o for o in body.Group
                 if o.TypeId == "Sketcher::SketchObject"
-                and o.Name not in used]
+                and o.Name not in used
+                and not self._is_rolled_back(o)]
 
     def _latest_sketch(self):
         """The newest sketch not yet consumed by a feature.
@@ -1947,40 +2079,55 @@ class Kernel:
         return {"feature": feature, "label": obj.Label, "params": params}
 
     def set_tip(self, feature=None):
-        """Move the rollback bar: the part rebuilds up to this feature.
+        """Déplace la barre de retour : l'historique se reconstruit
+        jusqu'à cette ligne (fonction, esquisse libre ou surface).
 
-        Without *feature* (or an empty name), the bar sits before the
-        first feature — every PartDesign feature is rolled back, like
-        dragging the bar to the top of the FeatureManager.
-
-        Only PartDesign features qualify: setting Tip to a sketch made
-        FreeCAD log "Linked object is not a PartDesign feature" on every
-        recompute (seen on 1.1.3 via the tree's context menu).
+        Sans *feature* (ou nom vide), la barre se pose avant la première
+        ligne — tout est reculé, comme un glisser tout en haut du
+        FeatureManager. ``body.Tip`` ne couvre que la chaîne PartDesign ;
+        les surfaces et esquisses libres portent ``FreeSolidRolledBack``.
         """
         body = self._require_body()
+        history = self._history_lines()
         if feature is None or not str(feature).strip():
+            flags, tip_name = rollback_plan(self._history_rows(history), None)
             body.Tip = None
+            self._apply_rollback_flags(flags)
             self._recompute()
             return self.get_tree()
-        obj = self._require_doc().getObject(feature)
+        obj = self._require_doc().getObject(str(feature))
         if obj is None:
             raise KernelError("fonction inconnue : {}".format(feature))
-        if not obj.isDerivedFrom("PartDesign::Feature"):
+        names = {line.Name for line in history}
+        if obj.Name not in names:
             raise KernelError(
-                "la barre de retour se pose sur une fonction (bossage, "
-                "enlèvement…), pas sur une esquisse")
-        body.Tip = obj
+                "« {} » n'est pas une ligne d'historique — la barre de "
+                "retour se pose sur une fonction, une esquisse libre ou "
+                "une surface".format(obj.Label))
+        flags, tip_name = rollback_plan(
+            self._history_rows(history), obj.Name)
+        if tip_name is None:
+            body.Tip = None
+        else:
+            tip_obj = self._require_doc().getObject(tip_name)
+            body.Tip = tip_obj
+        self._apply_rollback_flags(flags)
         self._recompute()
         return self.get_tree()
 
     def tip_to_end(self):
-        """Rollback bar back to the last feature — the final state."""
+        """Barre de retour en bout d'historique — l'état final."""
         body = self._require_body()
-        features = [o for o in body.Group
-                    if o.isDerivedFrom("PartDesign::Feature")]
-        if not features:
+        history = self._history_lines()
+        if not history:
             raise KernelError("aucune fonction dans la pièce")
-        body.Tip = features[-1]
+        flags, tip_name = rollback_plan(
+            self._history_rows(history), history[-1].Name)
+        if tip_name is None:
+            body.Tip = None
+        else:
+            body.Tip = self._require_doc().getObject(tip_name)
+        self._apply_rollback_flags(flags)
         self._recompute()
         return self.get_tree()
 
@@ -2341,19 +2488,7 @@ class Kernel:
         body = self._require_body()
         order_of = {obj.Name: i for i, obj in enumerate(self._doc.Objects)}
 
-        consumed = {}  # sketch name -> name of the feature using it
-        for obj in body.Group:
-            profile = getattr(obj, "Profile", None)
-            linked = profile[0] if isinstance(profile, tuple) else profile
-            if linked is not None:
-                consumed[linked.Name] = obj.Name
-        # Esquisses pilotes d'une surface Part : imbriquées sous la surface,
-        # pas au premier niveau du corps (même geste que sous une fonction).
-        for obj in self._doc.Objects:
-            if obj.TypeId not in self._SURFACE_TYPE_IDS:
-                continue
-            for sk in self._surface_sketch_objects(obj):
-                consumed.setdefault(sk.Name, obj.Name)
+        consumed = self._consumed_sketches()
 
         def entry(obj):
             item = {
@@ -2368,6 +2503,8 @@ class Kernel:
                 # Le client dessine le plan de référence dans le viewport.
                 item["placement"] = [
                     float(v) for v in obj.Placement.Matrix.A]
+            if obj.TypeId == "Sketcher::SketchObject":
+                item["rolled_back"] = self._is_rolled_back(obj)
             return item
 
         items = []
@@ -2470,6 +2607,8 @@ class Kernel:
         surface_lines = []
         for obj in self._doc.Objects:
             if obj.TypeId not in self._SURFACE_TYPE_IDS:
+                continue
+            if self._is_rolled_back(obj):
                 continue
             shape = getattr(obj, "Shape", None)
             if shape is None:
@@ -4318,6 +4457,74 @@ class Kernel:
             tree = self.add_sweep(profile=pipe_sk, spine=curve_name)
             report["p12_sweep_on_curve_ok"] = not any(
                 f["error"] for f in tree["features"])
+
+            mark("p30: barre de retour — surfaces et esquisses libres")
+            self.new_part("Pièce reprise P030")
+            self.add_rect_sketch(40, 20)
+            tree = self.add_pad(10)
+            pad_name = next(f["name"] for f in tree["features"]
+                            if f["type"] == "PartDesign::Pad")
+            state = self.sketch_start()
+            free_sk = state["sketch"]
+            self.sketch_add_line(free_sk, 0, 0, 30, 0)
+            self.sketch_finish(free_sk)
+            state = self.sketch_start()
+            surf_sk = state["sketch"]
+            self.sketch_add_line(surf_sk, 0, 0, 20, 0)
+            self.sketch_finish(surf_sk)
+            tree = self.surface_extrude(15, sketch=surf_sk)
+            surf_name = tree["surfaces"][-1]["name"]
+
+            tree = self.set_tip(free_sk)
+            free_entry = next(f for f in tree["features"]
+                              if f["name"] == free_sk)
+            surf_entry = next(s for s in tree["surfaces"]
+                              if s["name"] == surf_name)
+            report["p30_set_tip_on_sketch"] = (
+                tree["tip"] == pad_name
+                and free_entry.get("rolled_back") is not True
+                and surf_entry.get("rolled_back") is True)
+            mesh = self.tessellate()
+            report["p30_rolled_surface_absent_mesh"] = not any(
+                s.get("name") == surf_name
+                for s in mesh.get("surfaces") or [])
+
+            tree = self.set_tip(surf_name)
+            surf_entry = next(s for s in tree["surfaces"]
+                              if s["name"] == surf_name)
+            report["p30_set_tip_on_surface"] = (
+                tree["tip"] == pad_name
+                and surf_entry.get("rolled_back") is not True)
+
+            tree = self.set_tip(pad_name)
+            free_entry = next(f for f in tree["features"]
+                              if f["name"] == free_sk)
+            mesh = self.tessellate()
+            report["p30_rolled_sketch_absent_mesh"] = (
+                free_entry.get("rolled_back") is True
+                and not any(s.get("name") == free_sk
+                            for s in mesh.get("sketches") or []))
+            try:
+                self.add_pad(5)
+                report["p30_rolled_sketch_not_reusable"] = False
+            except KernelError as exc:
+                report["p30_rolled_sketch_not_reusable"] = (
+                    "aucune esquisse disponible" in str(exc))
+
+            tree = self.tip_to_end()
+            mesh = self.tessellate()
+            free_entry = next(f for f in tree["features"]
+                              if f["name"] == free_sk)
+            surf_entry = next(s for s in tree["surfaces"]
+                              if s["name"] == surf_name)
+            report["p30_tip_to_end_restores"] = (
+                tree["tip"] == pad_name
+                and free_entry.get("rolled_back") is not True
+                and surf_entry.get("rolled_back") is not True
+                and any(s.get("name") == surf_name
+                        for s in mesh.get("surfaces") or [])
+                and any(s.get("name") == free_sk
+                        for s in mesh.get("sketches") or []))
 
             mark("p13: mise en plan DXF (3 vues, cotes, coupe)")
             self.new_part("Pièce plan")

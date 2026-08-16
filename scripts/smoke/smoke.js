@@ -728,6 +728,90 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("surface cliquée dans le viewport");
   await page.screenshot({ path: path.join(SHOTS, "6-surface-historique.png") });
 
+  // P030 — glisser la barre au-dessus des surfaces et esquisses libres.
+  const rollTargets = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("#tree li[data-hist]")];
+    const sketch = nodes.find((el) => el.classList.contains("feat")
+      && (el.textContent || "").includes("Esquisse"));
+    const surface = nodes.find((el) => el.classList.contains("surface")
+      && (el.textContent || "").includes("Surface extrudée"));
+    return {
+      sketchTop: sketch ? sketch.getBoundingClientRect().top : null,
+      surfaceTop: surface ? surface.getBoundingClientRect().top : null,
+    };
+  });
+  const aboveRollY = Math.min(
+    rollTargets.sketchTop ?? Infinity,
+    rollTargets.surfaceTop ?? Infinity,
+  );
+  if (!Number.isFinite(aboveRollY)) {
+    errors.push("P030 : pas de ligne d'esquisse/surface data-hist");
+  } else {
+    await dragRollback("#tree li.rollback", aboveRollY - 8);
+    await sleep(2500);
+  }
+  const afterRoll = await page.evaluate(() => {
+    const rolled = [...document.querySelectorAll("#tree li.rolled-back")]
+      .filter((el) => el.hasAttribute("data-hist"))
+      .map((el) => el.textContent || "");
+    return {
+      rolled,
+      surfaceMeshCount: window.__freesolidDebug?.surfaceMeshCount ?? -1,
+      sketchLineCount: window.__freesolidDebug?.sketchLineCount ?? -1,
+    };
+  });
+  if (!afterRoll.rolled.some((text) => text.includes("Surface"))) {
+    errors.push("P030 : la surface devrait être .rolled-back (vu : "
+      + afterRoll.rolled.join(" | ") + ")");
+  }
+  if (!afterRoll.rolled.some((text) => text.includes("Esquisse"))) {
+    errors.push("P030 : l'esquisse libre devrait être .rolled-back (vu : "
+      + afterRoll.rolled.join(" | ") + ")");
+  }
+  if (afterRoll.surfaceMeshCount !== 0) {
+    errors.push("P030 : surfaceMeshCount=" + afterRoll.surfaceMeshCount
+      + " (attendu 0 sous la barre)");
+  }
+  if (afterRoll.sketchLineCount !== 0) {
+    errors.push("P030 : sketchLineCount=" + afterRoll.sketchLineCount
+      + " (attendu 0 sous la barre)");
+  }
+  await step("P030 barre au-dessus surfaces/esquisses");
+  await page.screenshot({ path: path.join(SHOTS, "6b-p030-reprise-haut.png") });
+
+  const lastHistBottom = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("#tree li[data-hist]")];
+    const last = nodes[nodes.length - 1];
+    return last ? last.getBoundingClientRect().bottom : null;
+  });
+  if (lastHistBottom != null) {
+    await dragRollback("#tree li.rollback", lastHistBottom + 10);
+    await sleep(2500);
+  }
+  const restored = await page.evaluate(() => {
+    const rolled = [...document.querySelectorAll("#tree li.rolled-back")]
+      .filter((el) => el.hasAttribute("data-hist"));
+    return {
+      rolled: rolled.length,
+      surfaceMeshCount: window.__freesolidDebug?.surfaceMeshCount ?? -1,
+      sketchLineCount: window.__freesolidDebug?.sketchLineCount ?? -1,
+    };
+  });
+  if (restored.rolled !== 0) {
+    errors.push("P030 : encore " + restored.rolled
+      + " ligne(s) .rolled-back après descente de la barre");
+  }
+  if (!(restored.surfaceMeshCount >= 1)) {
+    errors.push("P030 : surfaceMeshCount restauré="
+      + restored.surfaceMeshCount);
+  }
+  if (!(restored.sketchLineCount >= 1)) {
+    errors.push("P030 : sketchLineCount restauré="
+      + restored.sketchLineCount);
+  }
+  await step("P030 barre redescendue");
+  await page.screenshot({ path: path.join(SHOTS, "6c-p030-reprise-bas.png") });
+
   console.log(errors.length
     ? "ERREURS:\n" + errors.join("\n")
     : "AUCUNE ERREUR console/page");

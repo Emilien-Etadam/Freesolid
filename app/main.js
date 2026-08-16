@@ -327,6 +327,8 @@ function showMesh(mesh) {
   }
   if (!mesh.indices.length) {
     applyVolumeVisibility();
+    rebuildPlanes();
+    repaintGroups();
     return;
   }
 
@@ -345,6 +347,7 @@ function showMesh(mesh) {
   volumesGroup.add(partMesh);
   applyVolumeVisibility();
   rebuildPlanes(); // les plans de base suivent la taille de la pièce
+  repaintGroups();
 }
 
 // Les vraies arêtes BREP du moteur (pas une silhouette approchée) :
@@ -1299,11 +1302,13 @@ function onPlaneRow(id) {
 }
 
 function dropRolledBackSelection(tree) {
+  let dropped = false;
   if (selectedSurface) {
     const surf = (tree.surfaces ?? []).find(
       (item) => item.name === selectedSurface.name);
     if (!surf || surf.rolled_back) {
       selectedSurface = null;
+      dropped = true;
     }
   }
   if (selectedSketch) {
@@ -1312,7 +1317,13 @@ function dropRolledBackSelection(tree) {
     if (feat?.type === "Sketcher::SketchObject" && feat.rolled_back) {
       selectedSketch = null;
       clearSketchHighlight();
+      dropped = true;
     }
+  }
+  if (dropped) {
+    hoveredSurface = null;
+    hoveredSketch = null;
+    repaintGroups();
   }
 }
 

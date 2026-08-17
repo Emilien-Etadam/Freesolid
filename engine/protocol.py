@@ -104,6 +104,9 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # section ("X"|"Y"|"Z") — 3 vues + cotes + coupe, export DXF
     "add_text": _Req(("text", str), ("face", int)),
                                        # optional: size, depth, x, y, emboss, font
+    "edit_text": _Req(("feature", str)),
+                                       # optional: text, size, depth, x, y
+                                       # — absents = inchangés
     "check_interference": (),          # assemblage : volumes communs par paires
     "undo": (),                        # une transaction = un Ctrl+Z
     "redo": (),

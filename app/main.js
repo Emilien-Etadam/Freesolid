@@ -1773,6 +1773,37 @@ async function editFeature(feature) {
     sketchMode.enter(call("sketch_edit", { feature: feature.name }));
     return;
   }
+  if (feature.text) {
+    // Gravure rééditable (P032) : panneau dédié -> edit_text.
+    const t = feature.text;
+    panel.open({
+      icon: TREE_ICONS[feature.type] ?? "PartDesign_Body.svg",
+      title: feature.label,
+      groups: [{
+        label: "Gravure",
+        rows: [
+          { type: "text", key: "text", label: "Texte", value: t.text },
+          { type: "number", key: "size", label: "Taille", unit: "mm",
+            value: t.size },
+          { type: "number", key: "depth", label: "Profondeur", unit: "mm",
+            value: t.depth },
+          { type: "number", key: "x", label: "X", unit: "mm", value: t.x },
+          { type: "number", key: "y", label: "Y", unit: "mm", value: t.y },
+        ],
+      }],
+      onApply: (v) => {
+        refresh(call("edit_text", {
+          feature: feature.name,
+          text: String(v.text ?? t.text),
+          size: num(v.size) ?? t.size,
+          depth: num(v.depth) ?? t.depth,
+          x: num(v.x) ?? t.x,
+          y: num(v.y) ?? t.y,
+        }));
+      },
+    });
+    return;
+  }
   try {
     const info = await call("get_params", { feature: feature.name });
     if (!info.params.length) {

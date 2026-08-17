@@ -128,6 +128,18 @@ def selftest_summary(report):
     }
 
 
+def parse_user_number(text):
+    """« 6,5 » est un nombre (virgule décimale française), pas une équation.
+
+    Retour : float, ou None si le texte n'est pas un nombre — l'appelant
+    tente alors le chemin expression. Fonction pure, sans FreeCAD.
+    """
+    try:
+        return float(str(text).strip().replace(",", "."))
+    except ValueError:
+        return None
+
+
 class Kernel:
     """Owns one FreeCAD document and executes protocol operations."""
 
@@ -1163,36 +1175,32 @@ class Kernel:
         raise KernelError("aucune police .ttf sur ce système — passez "
                           "font=/chemin/vers/police.ttf")
 
-    def add_text(self, text, face, size=8.0, depth=1.0, x=0.0, y=0.0,
-                 emboss=False, font=None):
-        """Gravure (ou bossage) de texte sur une face plane — marquage de
-        pièces. Le texte devient un corps outil combiné dans l'historique
-        (soustraction pour graver, ajout pour embosser)."""
+    def _build_text_solid(self, text, base, size, depth, emboss, x, y,
+                          font=None):
+        """Solide des glyphes, posé par ``base`` (placement sur la face).
+
+        Géométrie pure — ne touche pas au document, donc un échec (police,
+        texte vide) ne laisse aucune trace.
+        """
         import Part
         App = self._app()
-        body = self._require_body()
-        doc = self._require_doc()
         text = str(text)
         if not text.strip():
             raise KernelError("texte vide")
-        faces = body.Shape.Faces
-        index = int(face)
-        if index < 0 or index >= len(faces):
-            raise KernelError("face inconnue : {}".format(face))
-        target = faces[index]
-        u0, u1, v0, v1 = target.ParameterRange
-        normal = target.normalAt((u0 + u1) / 2, (v0 + v1) / 2).normalize()
-        center = target.CenterOfMass
-        base = App.Placement(center, App.Rotation(App.Vector(0, 0, 1),
-                                                  normal))
+        normal = base.Rotation.multVec(App.Vector(0, 0, 1))
         chars = Part.makeWireString(text, self._find_font(font),
                                     float(size), 0)
         glyph_faces = []
         for char_wires in chars:
             if not char_wires:
                 continue
+            # FaceMakerBullseye : contours + trous de police correctement
+            # orientés. Part.Face(wires) sortait des faces d'aire NÉGATIVE
+            # (solides retournés, booléens invalides — la gravure « AB »
+            # sur plaque 60×20 rendait un corps de 17 mm³, vu P032).
             try:
-                glyph_faces.append(Part.Face(char_wires))
+                glyph_faces.append(
+                    Part.makeFace(char_wires, "Part::FaceMakerBullseye"))
             except Exception:
                 for wire in char_wires:
                     glyph_faces.append(Part.Face(wire))
@@ -1215,12 +1223,59 @@ class Kernel:
         text_solid = solids[0]
         for solid in solids[1:]:
             text_solid = text_solid.fuse(solid)
+        return text_solid
+
+    _TEXT_PROPS = (
+        ("FreeSolidTextString", "App::PropertyString"),
+        ("FreeSolidTextSize", "App::PropertyFloat"),
+        ("FreeSolidTextDepth", "App::PropertyFloat"),
+        ("FreeSolidTextX", "App::PropertyFloat"),
+        ("FreeSolidTextY", "App::PropertyFloat"),
+        ("FreeSolidTextEmboss", "App::PropertyBool"),
+        ("FreeSolidTextFont", "App::PropertyString"),
+        ("FreeSolidTextPlacement", "App::PropertyPlacement"),
+    )
+
+    def _mark_text_tool(self, obj):
+        """Artefact interne d'une gravure : caché de l'arbre et du viewport."""
+        if "FreeSolidTextTool" not in obj.PropertiesList:
+            obj.addProperty("App::PropertyBool", "FreeSolidTextTool",
+                            "FreeSolid", "Outil interne d'une gravure")
+        obj.FreeSolidTextTool = True
+
+    def _is_text_tool(self, obj):
+        return bool(getattr(obj, "FreeSolidTextTool", False))
+
+    def add_text(self, text, face, size=8.0, depth=1.0, x=0.0, y=0.0,
+                 emboss=False, font=None):
+        """Gravure (ou bossage) de texte sur une face plane — marquage de
+        pièces. Le texte devient un corps outil combiné dans l'historique
+        (soustraction pour graver, ajout pour embosser). Les paramètres
+        sont persistés sur la ligne « Gravure » : rééditables (edit_text)."""
+        App = self._app()
+        body = self._require_body()
+        doc = self._require_doc()
+        text = str(text)
+        faces = body.Shape.Faces
+        index = int(face)
+        if index < 0 or index >= len(faces):
+            raise KernelError("face inconnue : {}".format(face))
+        target = faces[index]
+        u0, u1, v0, v1 = target.ParameterRange
+        normal = target.normalAt((u0 + u1) / 2, (v0 + v1) / 2).normalize()
+        center = target.CenterOfMass
+        base = App.Placement(center, App.Rotation(App.Vector(0, 0, 1),
+                                                  normal))
+        text_solid = self._build_text_solid(text, base, size, depth,
+                                            emboss, x, y, font)
         shape_feature = doc.addObject("Part::Feature", "TextShape")
         shape_feature.Shape = text_solid
         shape_feature.Label = "Forme du texte"
+        self._mark_text_tool(shape_feature)
         tool_body = doc.addObject("PartDesign::Body", "TextBody")
         tool_body.Label = "Corps texte"
         tool_body.BaseFeature = shape_feature
+        self._mark_text_tool(tool_body)
         doc.recompute()
         try:
             self.add_boolean(tool=tool_body.Name,
@@ -1237,6 +1292,77 @@ class Kernel:
         if tip is not None:
             tip.Label = "{} « {} »".format(
                 "Texte en relief" if emboss else "Gravure", text[:15])
+            for prop, prop_type in self._TEXT_PROPS:
+                if prop not in tip.PropertiesList:
+                    tip.addProperty(prop_type, prop, "FreeSolid",
+                                    "Paramètre de la gravure")
+            tip.FreeSolidTextString = text
+            tip.FreeSolidTextSize = float(size)
+            tip.FreeSolidTextDepth = float(depth)
+            tip.FreeSolidTextX = float(x)
+            tip.FreeSolidTextY = float(y)
+            tip.FreeSolidTextEmboss = bool(emboss)
+            tip.FreeSolidTextFont = str(font or "")
+            tip.FreeSolidTextPlacement = base
+        return self.get_tree()
+
+    def edit_text(self, feature, text=None, size=None, depth=None,
+                  x=None, y=None):
+        """Rééditer une gravure : texte, taille, profondeur, position.
+
+        La forme des glyphes est reconstruite d'abord (géométrie pure) —
+        si elle échoue, la pièce n'est pas modifiée. Les gravures créées
+        avant P032 n'ont pas leurs paramètres persistés : refus explicite.
+        """
+        doc = self._require_doc()
+        obj = doc.getObject(str(feature))
+        if obj is None:
+            raise KernelError("fonction inconnue : {}".format(feature))
+        if "FreeSolidTextString" not in obj.PropertiesList:
+            raise KernelError(
+                "cette gravure date d'une version antérieure — "
+                "supprimez-la puis recréez le texte")
+        tool_body = next(
+            (o for o in (getattr(obj, "Group", None) or [])
+             if o.TypeId == "PartDesign::Body"), None)
+        shape_feature = getattr(tool_body, "BaseFeature", None)
+        if tool_body is None or shape_feature is None:
+            raise KernelError(
+                "gravure incomplète — le corps outil du texte est absent")
+        new_text = obj.FreeSolidTextString if text is None else str(text)
+        new_size = (obj.FreeSolidTextSize if size is None
+                    else float(size))
+        new_depth = (obj.FreeSolidTextDepth if depth is None
+                     else float(depth))
+        new_x = obj.FreeSolidTextX if x is None else float(x)
+        new_y = obj.FreeSolidTextY if y is None else float(y)
+        if new_size <= 0 or new_depth <= 0:
+            raise KernelError(
+                "taille et profondeur doivent être positives")
+        emboss = bool(obj.FreeSolidTextEmboss)
+        base = obj.FreeSolidTextPlacement
+        text_solid = self._build_text_solid(
+            new_text, base, new_size, new_depth, emboss, new_x, new_y,
+            obj.FreeSolidTextFont or None)
+        old_shape = shape_feature.Shape
+        shape_feature.Shape = text_solid
+        try:
+            self._recompute()
+        except KernelError as exc:
+            shape_feature.Shape = old_shape
+            try:
+                self._recompute()
+            except KernelError:
+                pass
+            raise KernelError(
+                "{} — la gravure n'a pas été modifiée".format(exc))
+        obj.FreeSolidTextString = new_text
+        obj.FreeSolidTextSize = new_size
+        obj.FreeSolidTextDepth = new_depth
+        obj.FreeSolidTextX = new_x
+        obj.FreeSolidTextY = new_y
+        obj.Label = "{} « {} »".format(
+            "Texte en relief" if emboss else "Gravure", new_text[:15])
         return self.get_tree()
 
     # -- phase E : évaluer ------------------------------------------------
@@ -1575,7 +1701,8 @@ class Kernel:
             if kind in ("feature", "sketch"):
                 lines.append(obj)
         for obj in doc.Objects:
-            if obj.TypeId in self._SURFACE_TYPE_IDS:
+            if (obj.TypeId in self._SURFACE_TYPE_IDS
+                    and not self._is_text_tool(obj)):
                 lines.append(obj)
         order_of = {o.Name: i for i, o in enumerate(doc.Objects)}
         lines.sort(key=lambda o: order_of.get(o.Name, -1))
@@ -2298,27 +2425,10 @@ class Kernel:
         """Set one property on one feature by internal name, and recompute.
 
         This is the whole parametric promise in one operation: the UI edits
-        ``Pad.Length`` and the part rebuilds.
+        ``Pad.Length`` and the part rebuilds. Même atomicité que
+        ``set_params`` : un refus ne modifie pas la pièce.
         """
-        doc = self._require_doc()
-        obj = doc.getObject(feature)
-        if obj is None:
-            raise KernelError("fonction inconnue : {}".format(feature))
-        prop = str(prop)
-        if prop not in self._EDITABLE_PROPS:
-            raise KernelError("propriété non éditable : {}".format(prop))
-        if not hasattr(obj, prop):
-            raise KernelError("{} n'a pas de propriété {}".format(
-                obj.Label, prop))
-        current = getattr(obj, prop, None)
-        if isinstance(current, int) and not isinstance(current, bool):
-            value = int(value)  # Occurrences : FreeCAD refuse 4.0
-        try:
-            setattr(obj, prop, value)
-        except Exception as exc:  # noqa: BLE001
-            raise KernelError(_explain(exc))
-        self._recompute()
-        return self.get_tree()
+        return self.set_params(feature, {str(prop): value})
 
     def set_params(self, feature, values):
         """Set several properties at once, one recompute — the edit panel
@@ -2334,6 +2444,12 @@ class Kernel:
             raise KernelError("fonction inconnue : {}".format(feature))
         if not isinstance(values, dict):
             raise KernelError("values doit être un objet JSON")
+        # Atomicité : une expression était stockée AVANT que le recompute
+        # ne la valide — un identifiant inconnu (« _ ») laissait la pièce
+        # Invalid pour toujours (barre bloquée, cascade « Tool shape is
+        # null »). On mémorise l'état pour tout restaurer sur refus.
+        exprs_before = dict(obj.ExpressionEngine or [])
+        previous = []  # (prop, ancienne expression ou None, ancienne valeur)
         for prop, value in values.items():
             prop = str(prop)
             if prop not in self._EDITABLE_PROPS:
@@ -2341,15 +2457,18 @@ class Kernel:
             if not hasattr(obj, prop):
                 raise KernelError("{} n'a pas de propriété {}".format(
                     obj.Label, prop))
+            previous.append((prop, exprs_before.get(prop),
+                             getattr(obj, prop, None)))
             if isinstance(value, str):
-                text = value.strip()
-                try:
-                    value = float(text)
-                except ValueError:
-                    text = self._user_expression(text)
+                number = parse_user_number(value)
+                if number is not None:
+                    value = number  # « 6,5 » est un nombre, pas une équation
+                else:
+                    text = self._user_expression(value.strip())
                     try:
                         obj.setExpression(prop, text)
                     except Exception as exc:  # noqa: BLE001
+                        self._restore_props(obj, previous)
                         raise KernelError(_explain(exc))
                     continue
             # Valeur numérique : une expression existante reprendrait la
@@ -2364,9 +2483,33 @@ class Kernel:
             try:
                 setattr(obj, prop, value)
             except Exception as exc:  # noqa: BLE001
+                self._restore_props(obj, previous)
                 raise KernelError(_explain(exc))
-        self._recompute()
+        try:
+            self._recompute()
+        except KernelError as exc:
+            self._restore_props(obj, previous)
+            try:
+                self._recompute()
+            except KernelError:
+                pass  # l'état d'origine était déjà sain : ne pas masquer exc
+            raise KernelError(
+                "{} — la pièce n'a pas été modifiée".format(exc))
         return self.get_tree()
+
+    @staticmethod
+    def _restore_props(obj, previous):
+        """Défait ``set_params`` : remet liaisons et valeurs mémorisées."""
+        for prop, old_expr, old_value in reversed(previous):
+            try:
+                obj.setExpression(prop, old_expr)  # None efface la liaison
+            except Exception:
+                pass
+            if old_expr is None and old_value is not None:
+                try:
+                    setattr(obj, prop, old_value)
+                except Exception:
+                    pass
 
     # -- paramétrique : variables globales + équations -------------------
 
@@ -2537,6 +2680,15 @@ class Kernel:
                     float(v) for v in obj.Placement.Matrix.A]
             if obj.TypeId == "Sketcher::SketchObject":
                 item["rolled_back"] = self._is_rolled_back(obj)
+            if "FreeSolidTextString" in obj.PropertiesList:
+                # Gravure rééditable : le panneau client édite ces valeurs.
+                item["text"] = {
+                    "text": obj.FreeSolidTextString,
+                    "size": float(obj.FreeSolidTextSize),
+                    "depth": float(obj.FreeSolidTextDepth),
+                    "x": float(obj.FreeSolidTextX),
+                    "y": float(obj.FreeSolidTextY),
+                }
             return item
 
         items = []
@@ -2561,6 +2713,8 @@ class Kernel:
         for obj in self._doc.Objects:
             if obj.TypeId != "PartDesign::Body":
                 continue
+            if self._is_text_tool(obj):
+                continue  # corps outil d'une gravure : artefact interne
             bodies.append({
                 "name": obj.Name,
                 "label": obj.Label,
@@ -2573,7 +2727,8 @@ class Kernel:
             })
         surfaces = [self._surface_tree_entry(o, order_of)
                     for o in self._doc.Objects
-                    if o.TypeId in self._SURFACE_TYPE_IDS]
+                    if o.TypeId in self._SURFACE_TYPE_IDS
+                    and not self._is_text_tool(o)]
         tip = body.Tip.Name if getattr(body, "Tip", None) else None
         # Variables dans le même appel : le FeatureManager affiche le
         # dossier Équations sans round-trip list_variables.
@@ -2606,7 +2761,8 @@ class Kernel:
         other_bodies = []
         for obj in self._doc.Objects:
             if (obj.TypeId != "PartDesign::Body" or obj is body
-                    or getattr(obj, "Shape", None) is None):
+                    or getattr(obj, "Shape", None) is None
+                    or self._is_text_tool(obj)):
                 continue
             other_faces = []
             for face in obj.Shape.Faces:
@@ -2640,7 +2796,7 @@ class Kernel:
         for obj in self._doc.Objects:
             if obj.TypeId not in self._SURFACE_TYPE_IDS:
                 continue
-            if self._is_rolled_back(obj):
+            if self._is_rolled_back(obj) or self._is_text_tool(obj):
                 continue
             shape = getattr(obj, "Shape", None)
             if shape is None:
@@ -4590,9 +4746,15 @@ class Kernel:
             faces_now = len(self.tessellate()["groups"])
             tree = self.add_text("AB", face=self._top_face_id(),
                                  size=8, depth=1)
+            # Volume et validité, pas seulement le compte de faces : la
+            # gravure « AB » rendait un corps invalide de 17 mm³ (faces de
+            # glyphes d'aire négative) sans que ce test le voie (P032).
+            plate = self._require_body().Shape
             report["p15_text_ok"] = (
                 not any(f["error"] for f in tree["features"])
-                and len(self.tessellate()["groups"]) > faces_now)
+                and len(self.tessellate()["groups"]) > faces_now
+                and plate.isValid()
+                and 5900.0 < float(plate.Volume) < 5999.9)
 
             mark("p17: spline, ellipse, symétrie, répétition et décalage")
             self.new_part("Pièce esquisse confort")
@@ -5037,6 +5199,57 @@ class Kernel:
                 and _volume() > 0
                 and len(self.tessellate()["groups"]) >= 20)
 
+            mark("p32: refus atomique, virgule, gravure rééditable")
+            vitrine_pp = next(f["name"] for f in tree["features"]
+                              if f["type"] == "PartDesign::PolarPattern")
+            vitrine_pad = next(f["name"] for f in tree["features"]
+                               if f["type"] == "PartDesign::Pad")
+            # Une expression inconnue est refusée SANS corrompre la pièce
+            # (avant P032 : liaison stockée, pièce Invalid, barre bloquée).
+            try:
+                self.set_params(vitrine_pp, {"Occurrences": "inconnu_p32"})
+                report["p32_expr_refus_atomique"] = False
+            except KernelError:
+                obj = self._require_doc().getObject(vitrine_pp)
+                intact = not dict(obj.ExpressionEngine or [])
+                self.set_tip(vitrine_pad)     # la barre bouge encore
+                tree = self.tip_to_end()
+                report["p32_expr_refus_atomique"] = (
+                    intact and not any(f["error"]
+                                       for f in tree["features"]))
+            # « 15,5 » est un nombre (virgule française), pas une équation.
+            self.set_params(vitrine_pad, {"Length": "15,5"})
+            obj = self._require_doc().getObject(vitrine_pad)
+            report["p32_virgule_nombre"] = (
+                not dict(obj.ExpressionEngine or [])
+                and abs(float(obj.Length) - 15.5) < 1e-9)
+            self.set_params(vitrine_pad, {"Length": 14})
+            # La gravure se réédite : autre texte -> autre géométrie.
+            gravure = next(f["name"] for f in self.get_tree()["features"]
+                           if f["type"] == "PartDesign::Boolean")
+            tris_before = len(self.tessellate()["indices"])
+            vol_before_edit = _volume()
+            tree = self.edit_text(gravure, text="OK")
+            vitrine_shape = self._require_body().Shape
+            report["p32_gravure_editable"] = (
+                not any(f["error"] for f in tree["features"])
+                and len(self.tessellate()["indices"]) != tris_before
+                and any(f.get("text", {}).get("text") == "OK"
+                        for f in tree["features"])
+                # volume sain : la pièce entière, pas le texte seul
+                and vitrine_shape.isValid()
+                and abs(_volume() - vol_before_edit) < 100.0)
+            tree = self.edit_text(gravure, text="FS")
+            # Les artefacts internes de la gravure restent hors de l'arbre.
+            report["p32_forme_texte_cachee"] = (
+                not any(s["label"] == "Forme du texte"
+                        for s in tree["surfaces"])
+                and not any(b["label"] == "Corps texte"
+                            for b in tree["bodies"]))
+            # L'état vitrine (14, « FS ») est restauré : re-sauver pour
+            # que le bilan rouvre exactement la pièce attendue.
+            self.save_part(vitrine_path)
+
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce
             # qui montre ce que l'Autotest a testé, pas sur la plaque m1.5.
@@ -5068,7 +5281,7 @@ _TRANSACTIONAL = frozenset({
     "insert_component", "move_component", "add_joint", "solve_assembly",
     "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
     "surface_thicken", "add_curve3d", "sketch_convert", "add_text",
-    "make_drawing",
+    "edit_text", "make_drawing",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",

@@ -410,6 +410,7 @@ def test_ops_snapshot_keys():
         "check_interference",
         "delete_feature",
         "delete_variable",
+        "edit_text",
         "export_part",
         "get_params",
         "get_tree",

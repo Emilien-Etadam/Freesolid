@@ -846,6 +846,55 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("autotest");
   await page.screenshot({ path: path.join(SHOTS, "7-autotest.png") });
 
+  // 8. P032 — gravure rééditable, artefacts internes cachés.
+  const treeTexts = await page.evaluate(() =>
+    [...document.querySelectorAll("#tree li")].map((el) => el.textContent || ""));
+  if (treeTexts.some((t) => t.includes("Forme du texte"))) {
+    errors.push("P032 : « Forme du texte » ne doit plus apparaître dans l'arbre");
+  }
+  if (treeTexts.some((t) => t.includes("Corps texte"))) {
+    errors.push("P032 : « Corps texte » ne doit plus apparaître dans l'arbre");
+  }
+  const gravRow = await page.evaluateHandle(() =>
+    [...document.querySelectorAll("#tree li[data-hist]")]
+      .find((el) => (el.textContent || "").includes("Gravure")) || null);
+  if (!gravRow.asElement()) {
+    errors.push("P032 : ligne Gravure introuvable dans l'arbre");
+  } else {
+    await gravRow.asElement().dblclick();
+    await sleep(2000);
+    const filled = await page.evaluate(() => {
+      const input = [...document.querySelectorAll("#panel input")]
+        .find((el) => el.value === "FS");
+      if (!input) return false;
+      input.value = "OK";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    });
+    if (!filled) {
+      errors.push("P032 : champ Texte (valeur FS) introuvable dans le panneau");
+      await page.keyboard.press("Escape");
+    } else {
+      await page.click('#panel [title^="OK"]');
+      await sleep(3500);
+      const st = await status();
+      if (/erreur|échec|refus/i.test(st)) {
+        errors.push("P032 : statut après édition de la gravure : « "
+          + st + " »");
+      }
+      const renamed = await page.evaluate(() =>
+        [...document.querySelectorAll("#tree li[data-hist]")]
+          .some((el) => (el.textContent || "").includes("Gravure « OK »")));
+      if (!renamed) {
+        errors.push("P032 : la ligne Gravure devrait afficher « OK » "
+          + "après édition");
+      }
+    }
+  }
+  await step("gravure rééditée");
+  await page.screenshot({ path: path.join(SHOTS, "8-gravure-editee.png") });
+
   console.log(errors.length
     ? "ERREURS:\n" + errors.join("\n")
     : "AUCUNE ERREUR console/page");

@@ -5005,10 +5005,42 @@ class Kernel:
                 and [(f["type"], f["name"], f["label"])
                      for f in tree["features"]] == sig_chain)
 
+            mark("p31: pièce vitrine")
+            # Chaque fonction est testée sur une pièce jetable : sans cette
+            # étape, l'Autotest finissait sur la pièce la plus banale
+            # (plaque m1.5). Une seule pièce enchaîne ici des fonctions
+            # visibles ; le bilan la rouvre pour le viewport. Le chanfrein
+            # est écarté exprès : sur coque/dépouille, ChFi3d a déjà
+            # segfaulté (voir p4).
+            self.new_part("Pièce vitrine")
+            self.add_rect_sketch(80, 80)
+            self.add_pad(14)
+            self.add_draft(face=self._side_face_id(), angle=5)
+            self.add_fillet(3, face=self._top_face_id())
+            self.add_rect_sketch(40, 40, face=self._top_face_id())
+            self.add_pocket(6)
+            state = self.sketch_start(face=self._top_face_id())
+            vitrine_sk = state["sketch"]
+            self.sketch_add_circle(vitrine_sk, 28, 28, 3)
+            self.sketch_finish(vitrine_sk)
+            self.add_hole(diameter=6, through=True, cut="lamage",
+                          cut_diameter=11, cut_depth=3)
+            self.add_polar_pattern(count=4, angle=360.0, axis="Z")
+            tree = self.add_text("FS", face=self._top_face_id(),
+                                 size=8, depth=1, x=0, y=-30)
+            vitrine_path = os.path.join(tempfile.gettempdir(),
+                                        "freesolid-selftest-vitrine.FCStd")
+            self.save_part(vitrine_path)
+            report["p31_vitrine_ok"] = (
+                not any(f["error"] for f in tree["features"])
+                and tree["bodies"][0].get("has_solid") is True
+                and _volume() > 0
+                and len(self.tessellate()["groups"]) >= 20)
+
             mark("bilan")
-            # Reopen the saved part so the viewport ends on real geometry,
-            # not on the last sketch-only test document.
-            self.open_part(path)
+            # Rouvrir la pièce vitrine : le viewport finit sur une pièce
+            # qui montre ce que l'Autotest a testé, pas sur la plaque m1.5.
+            self.open_part(vitrine_path)
             report["tree_after_pad"] = self.get_tree()
             mesh = self.tessellate()
             report["mesh_faces"] = len(mesh["groups"])

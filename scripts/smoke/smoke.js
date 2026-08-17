@@ -835,6 +835,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("Autotest : attendu « vérifications — OK », vu « "
       + selftestStatus + " »");
   }
+  // La pièce vitrine doit rester à l'écran : un arbre riche, pas la
+  // plaque m1.5 (P031, demande visuelle).
+  const vitrineRows = await page.evaluate(() =>
+    document.querySelectorAll("#tree li[data-hist]").length);
+  if (vitrineRows < 7) {
+    errors.push("Autotest : pièce vitrine attendue dans l'arbre "
+      + `(≥ 7 lignes d'historique, vu ${vitrineRows})`);
+  }
   await step("autotest");
   await page.screenshot({ path: path.join(SHOTS, "7-autotest.png") });
 

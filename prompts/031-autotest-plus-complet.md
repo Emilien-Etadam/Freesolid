@@ -49,7 +49,19 @@ complet ». L'Autotest = le bouton du ruban → op `selftest` du moteur.
    la réimporter, comparer les volumes à 0,1 % (`p31_step_roundtrip`).
 5. **Annuler en chaîne** : 3 fonctions, 3 × `undo`, 3 × `redo`,
    volume et arbre identiques à l'état initial (`p31_undo_chain`).
-6. **`bilan` récapitule** : fonction pure module-niveau
+6. **Pièce vitrine finale** : aujourd'hui le bilan rouvre la pièce
+   enregistrée en m1.5 (plaque + enlèvement + congé) — chaque fonction
+   étant testée sur une pièce jetable, l'Autotest finit sur la pièce
+   la plus banale. Ajouter une étape `p31: pièce vitrine` juste avant
+   le bilan : construire **une seule pièce** enchaînant ~8 fonctions
+   visibles dans un ordre robuste (ex. bossage, dépouille, coque,
+   esquisse sur face + enlèvement, congé, perçage lamé, répétition
+   circulaire, gravure de texte), l'enregistrer, et faire rouvrir
+   **cette pièce** par le bilan pour le viewport. Indicateur
+   `p31_vitrine_ok` : aucune fonction en erreur, `has_solid` vrai,
+   volume > 0. Si un enchaînement s'avère fragile sur 1.0.2, retirer
+   la fonction fautive plutôt que d'affaiblir les assertions.
+7. **`bilan` récapitule** : fonction pure module-niveau
    `selftest_summary(report)` (sans FreeCAD) qui compte les
    indicateurs booléens top-niveau et liste les échecs ; l'étape
    `bilan` pose `report["bilan"] = {"verifications": N, "ok": M,
@@ -79,6 +91,8 @@ Le clic Autotest devient lisible sans ouvrir la console :
 - `node --check app/main.js`.
 - `scripts/smoke/smoke.js` — nouveau pas final : cliquer
   `#btn-selftest`, attendre (jusqu'à 240 s) que le statut commence par
-  « Autotest », vérifier qu'il contient « vérifications — OK » et
-  qu'aucune erreur console n'apparaît.
+  « Autotest », vérifier qu'il contient « vérifications — OK », que
+  le viewport affiche la pièce vitrine (nombre de faces du mesh
+  nettement supérieur à la plaque : ≥ 20 groupes) et qu'aucune
+  erreur console n'apparaît.
 - Commit(s) préfixés `[P031]`. Ne pas toucher `app/vendor/`.

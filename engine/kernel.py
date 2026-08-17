@@ -1905,6 +1905,11 @@ class Kernel:
         feature.Originals = [original]
         configure(feature)
         feature.Label = label_for_type(type_id)
+        # FreeCAD 1.0 laisse le Tip sur l'original après newObject d'un
+        # Transformed : la répétition existe alors sans devenir le solide
+        # du corps (volume inchangé). Un Body n'a qu'un solide — les copies
+        # disjointes sont jetées ; on pose le Tip pour que la fusion compte.
+        body.Tip = feature
         try:
             self._recompute()
         except KernelError:
@@ -4888,23 +4893,25 @@ class Kernel:
             self.new_part("Pièce miroir P031")
             state = self.sketch_start()
             mir_sk = state["sketch"]
-            for line in ((10, -10, 30, -10), (30, -10, 30, 10),
-                         (30, 10, 10, 10), (10, 10, 10, -10)):
+            # 20×20 à cheval sur YZ (x=-5..15) : un Body n'a qu'un solide,
+            # les copies disjointes sont jetées — le chevauchement fusionne.
+            for line in ((-5, -10, 15, -10), (15, -10, 15, 10),
+                         (15, 10, -5, 10), (-5, 10, -5, -10)):
                 self.sketch_add_line(mir_sk, *line)
             self.sketch_finish(mir_sk)
             self.add_pad(10, sketch=mir_sk)
             vol_before_mirror = _volume()
             self.add_mirror(plane="YZ")
             report["p31_volume_miroir"] = _close(
-                _volume(), 2.0 * vol_before_mirror)
+                _volume(), vol_before_mirror * 1.5)
 
             self.new_part("Pièce répétition P031")
             self.add_rect_sketch(20, 20)
             self.add_pad(10)
             vol_before_pattern = _volume()
-            self.add_linear_pattern(length=40, count=2, axis="X")
+            self.add_linear_pattern(length=10, count=2, axis="X")
             report["p31_volume_repetition"] = _close(
-                _volume(), 2.0 * vol_before_pattern)
+                _volume(), vol_before_pattern * 1.5)
 
             self.new_part("Pièce combiner P031")
             self.add_rect_sketch(40, 40)

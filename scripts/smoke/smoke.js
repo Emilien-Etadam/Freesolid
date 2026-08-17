@@ -812,6 +812,40 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("P030 barre redescendue");
   await page.screenshot({ path: path.join(SHOTS, "6c-p030-reprise-bas.png") });
 
+  // 7. P031 — Autotest lisible : statut + vérifications vertes.
+  await page.click("#btn-selftest");
+  try {
+    await page.waitForFunction(
+      () => {
+        const text = (document.querySelector("#status")?.textContent || "")
+          .trim();
+        return text.startsWith("Autotest") && !text.includes("en cours");
+      },
+      null,
+      { timeout: 240000 },
+    );
+  } catch {
+    errors.push("Autotest : statut jamais prêt après 240 s (« "
+      + await status() + " »)");
+  }
+  const selftestStatus = await status();
+  if (!selftestStatus.startsWith("Autotest")) {
+    errors.push("Autotest : statut = « " + selftestStatus + " »");
+  } else if (!selftestStatus.includes("vérifications — OK")) {
+    errors.push("Autotest : attendu « vérifications — OK », vu « "
+      + selftestStatus + " »");
+  }
+  // La pièce vitrine doit rester à l'écran : un arbre riche, pas la
+  // plaque m1.5 (P031, demande visuelle).
+  const vitrineRows = await page.evaluate(() =>
+    document.querySelectorAll("#tree li[data-hist]").length);
+  if (vitrineRows < 7) {
+    errors.push("Autotest : pièce vitrine attendue dans l'arbre "
+      + `(≥ 7 lignes d'historique, vu ${vitrineRows})`);
+  }
+  await step("autotest");
+  await page.screenshot({ path: path.join(SHOTS, "7-autotest.png") });
+
   console.log(errors.length
     ? "ERREURS:\n" + errors.join("\n")
     : "AUCUNE ERREUR console/page");

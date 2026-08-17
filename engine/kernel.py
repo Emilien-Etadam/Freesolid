@@ -101,6 +101,33 @@ def _explain(exc) -> str:
     return friendly_error(text) or text
 
 
+def selftest_summary(report):
+    """Récapitulatif des indicateurs booléens top-niveau d'un rapport.
+
+    Les valeurs non booléennes (étapes, entiers, dicts imbriqués) sont
+    ignorées. Retour : ``verifications``, ``ok``, ``echecs`` (noms faux).
+    Fonction pure — pas d'import FreeCAD.
+    """
+    if not isinstance(report, dict):
+        report = {}
+    echecs = []
+    ok = 0
+    verifications = 0
+    for name, value in report.items():
+        if not isinstance(value, bool):
+            continue
+        verifications += 1
+        if value:
+            ok += 1
+        else:
+            echecs.append(name)
+    return {
+        "verifications": verifications,
+        "ok": ok,
+        "echecs": echecs,
+    }
+
+
 class Kernel:
     """Owns one FreeCAD document and executes protocol operations."""
 
@@ -1878,6 +1905,11 @@ class Kernel:
         feature.Originals = [original]
         configure(feature)
         feature.Label = label_for_type(type_id)
+        # FreeCAD 1.0 laisse le Tip sur l'original après newObject d'un
+        # Transformed : la répétition existe alors sans devenir le solide
+        # du corps (volume inchangé). Un Body n'a qu'un solide — les copies
+        # disjointes sont jetées ; on pose le Tip pour que la fusion compte.
+        body.Tip = feature
         try:
             self._recompute()
         except KernelError:
@@ -4787,14 +4819,233 @@ class Kernel:
                     self._doc.UndoMode == 1
                     and 0 < self._doc.UndoCount <= 80)
 
+            def _refused(action, needle):
+                try:
+                    action()
+                    return False
+                except KernelError as exc:
+                    return needle in str(exc)
+
+            def _close(actual, expected, tol=1e-6):
+                scale = abs(float(expected)) or 1.0
+                return abs(float(actual) - float(expected)) <= tol * scale
+
+            def _volume():
+                return float(self._require_body().Shape.Volume)
+
+            def _dispatch(op, **params):
+                out = dispatch(self, op, params)
+                if not out["ok"]:
+                    raise KernelError(out["error"])
+                return out["result"]
+
+            mark("p31: gardes — les refus parlent français")
+            self.new_part("Pièce gardes P031")
+            body_name = self._require_body().Name
+            report["p31_refus_sans_esquisse"] = _refused(
+                lambda: self.add_pad(10), "aucune esquisse disponible")
+            report["p31_refus_dernier_corps"] = _refused(
+                lambda: self.delete_feature(body_name),
+                "impossible de supprimer le dernier")
+            report["p31_refus_tip_hors_historique"] = _refused(
+                lambda: self.set_tip(body_name), "ligne d'historique")
+            report["p31_refus_delete_inconnue"] = _refused(
+                lambda: self.delete_feature("PasUneFonction"),
+                "fonction inconnue")
+            report["p31_refus_param_inconnue"] = _refused(
+                lambda: self.set_param("PasUneFonction", "Length", 1),
+                "fonction inconnue")
+            report["p31_refus_rename_inconnue"] = _refused(
+                lambda: self.rename("PasUneFonction", "x"),
+                "fonction inconnue")
+            report["p31_refus_esquisse_inconnue"] = _refused(
+                lambda: self.sketch_state("PasUneEsquisse"),
+                "esquisse inconnue")
+            missing = os.path.join(tempfile.gettempdir(),
+                                   "freesolid-absent-p31.FCStd")
+            if os.path.isfile(missing):
+                os.remove(missing)
+            report["p31_refus_open_inexistant"] = _refused(
+                lambda: self.open_part(missing), "fichier introuvable")
+            report["p31_refus_combiner"] = _refused(
+                lambda: self.add_boolean(tool="PasUnCorps"),
+                "corps outil inconnu")
+            report["p31_refus_nom_vide"] = _refused(
+                lambda: self.rename(body_name, "   "),
+                "le nom ne peut pas être vide")
+            report["p31_refus_cote_nulle"] = _refused(
+                lambda: self.add_rect_sketch(0, 10),
+                "largeur et hauteur doivent être positives")
+            report["p31_refus_plan_esquisse"] = _refused(
+                lambda: self.sketch_start(plane="AB"),
+                "plan inconnu")
+
+            mark("p31: vérités géométriques")
+            self.new_part("Pièce volumes P031")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            report["p31_volume_pad"] = _close(_volume(), 12000.0)
+            report["p31_faces_pad"] = len(self.tessellate()["groups"]) == 6
+            self.add_rect_sketch(10, 10, face=self._top_face_id())
+            self.add_pocket(through=True)
+            report["p31_volume_pocket"] = _close(_volume(), 11000.0)
+
+            self.new_part("Pièce miroir P031")
+            state = self.sketch_start()
+            mir_sk = state["sketch"]
+            # 20×20 à cheval sur YZ (x=-5..15) : un Body n'a qu'un solide,
+            # les copies disjointes sont jetées — le chevauchement fusionne.
+            for line in ((-5, -10, 15, -10), (15, -10, 15, 10),
+                         (15, 10, -5, 10), (-5, 10, -5, -10)):
+                self.sketch_add_line(mir_sk, *line)
+            self.sketch_finish(mir_sk)
+            self.add_pad(10, sketch=mir_sk)
+            vol_before_mirror = _volume()
+            self.add_mirror(plane="YZ")
+            report["p31_volume_miroir"] = _close(
+                _volume(), vol_before_mirror * 1.5)
+
+            self.new_part("Pièce répétition P031")
+            self.add_rect_sketch(20, 20)
+            self.add_pad(10)
+            vol_before_pattern = _volume()
+            self.add_linear_pattern(length=10, count=2, axis="X")
+            report["p31_volume_repetition"] = _close(
+                _volume(), vol_before_pattern * 1.5)
+
+            self.new_part("Pièce combiner P031")
+            self.add_rect_sketch(40, 40)
+            self.add_pad(10)
+            first_body = self._require_body().Name
+            vol_host = _volume()
+            self.add_body("Corps outil")
+            self.add_rect_sketch(20, 20)
+            self.add_pad(10)
+            tool_body = self._require_body().Name
+            vol_tool = _volume()
+            self.set_active_body(first_body)
+            self.add_boolean(tool=tool_body, type="cut")
+            report["p31_volume_combiner"] = _close(
+                _volume(), vol_host - vol_tool)
+
+            mark("p31: aller-retour complet")
+            self.new_part("Pièce roundtrip P031")
+            self.set_variable("hauteur", 10.0)
+            self.add_rect_sketch(40, 30)
+            tree = self.add_pad(10)
+            pad_name = next(f["name"] for f in tree["features"]
+                            if f["type"] == "PartDesign::Pad")
+            self.set_params(pad_name, {"Length": "Variables.hauteur"})
+            tree = self.rename(pad_name, "Bossage principal")
+            body_name = self._require_body().Name
+            tree = self.set_body_color(body_name, "#336699")
+            state = self.sketch_start()
+            free_sk = state["sketch"]
+            self.sketch_add_line(free_sk, 0, 0, 25, 0)
+            self.sketch_finish(free_sk)
+            state = self.sketch_start()
+            surf_sk = state["sketch"]
+            self.sketch_add_line(surf_sk, 0, 0, 18, 0)
+            self.sketch_finish(surf_sk)
+            tree = self.surface_extrude(12, sketch=surf_sk)
+            surf_name = tree["surfaces"][-1]["name"]
+            tree = self.set_tip(pad_name)
+            vol_before_save = _volume()
+            round_path = os.path.join(tempfile.gettempdir(),
+                                      "freesolid-selftest-p31.FCStd")
+            self.save_part(round_path)
+            reopened = self.open_part(round_path)
+            report["p31_reopen_variables"] = any(
+                v["name"] == "hauteur" and abs(v["value"] - 10.0) < 1e-9
+                for v in reopened.get("variables", []))
+            report["p31_reopen_label"] = any(
+                f["name"] == pad_name and f["label"] == "Bossage principal"
+                for f in reopened["features"])
+            report["p31_reopen_couleur"] = any(
+                b["name"] == body_name and b.get("color") == "#336699"
+                for b in reopened["bodies"])
+            free_entry = next(f for f in reopened["features"]
+                              if f["name"] == free_sk)
+            surf_entry = next(s for s in reopened["surfaces"]
+                              if s["name"] == surf_name)
+            report["p31_reopen_rolled_back"] = (
+                free_entry.get("rolled_back") is True
+                and surf_entry.get("rolled_back") is True)
+            report["p31_reopen_tip"] = reopened.get("tip") == pad_name
+            report["p31_reopen_volume"] = _close(_volume(), vol_before_save)
+
+            mark("p31: aller-retour STEP")
+            self.new_part("Pièce STEP P031")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            vol_step = _volume()
+            step_path = os.path.join(tempfile.gettempdir(),
+                                     "freesolid-selftest-p31.step")
+            self.export_part(step_path)
+            self.open_part(step_path)
+            report["p31_step_roundtrip"] = _close(
+                _volume(), vol_step, tol=0.001)
+
+            mark("p31: annuler en chaîne")
+            self.new_part("Pièce undo P031")
+            _dispatch("add_rect_sketch", width=30, height=20)
+            _dispatch("add_pad", length=10)
+            tree = _dispatch("add_fillet", radius=2, face=self._top_face_id())
+            vol_chain = _volume()
+            sig_chain = [(f["type"], f["name"], f["label"])
+                         for f in tree["features"]]
+            self.undo()
+            self.undo()
+            self.undo()
+            self.redo()
+            self.redo()
+            tree = self.redo()
+            report["p31_undo_chain"] = (
+                _close(_volume(), vol_chain)
+                and [(f["type"], f["name"], f["label"])
+                     for f in tree["features"]] == sig_chain)
+
+            mark("p31: pièce vitrine")
+            # Chaque fonction est testée sur une pièce jetable : sans cette
+            # étape, l'Autotest finissait sur la pièce la plus banale
+            # (plaque m1.5). Une seule pièce enchaîne ici des fonctions
+            # visibles ; le bilan la rouvre pour le viewport. Le chanfrein
+            # est écarté exprès : sur coque/dépouille, ChFi3d a déjà
+            # segfaulté (voir p4).
+            self.new_part("Pièce vitrine")
+            self.add_rect_sketch(80, 80)
+            self.add_pad(14)
+            self.add_draft(face=self._side_face_id(), angle=5)
+            self.add_fillet(3, face=self._top_face_id())
+            self.add_rect_sketch(40, 40, face=self._top_face_id())
+            self.add_pocket(6)
+            state = self.sketch_start(face=self._top_face_id())
+            vitrine_sk = state["sketch"]
+            self.sketch_add_circle(vitrine_sk, 28, 28, 3)
+            self.sketch_finish(vitrine_sk)
+            self.add_hole(diameter=6, through=True, cut="lamage",
+                          cut_diameter=11, cut_depth=3)
+            self.add_polar_pattern(count=4, angle=360.0, axis="Z")
+            tree = self.add_text("FS", face=self._top_face_id(),
+                                 size=8, depth=1, x=0, y=-30)
+            vitrine_path = os.path.join(tempfile.gettempdir(),
+                                        "freesolid-selftest-vitrine.FCStd")
+            self.save_part(vitrine_path)
+            report["p31_vitrine_ok"] = (
+                not any(f["error"] for f in tree["features"])
+                and tree["bodies"][0].get("has_solid") is True
+                and _volume() > 0
+                and len(self.tessellate()["groups"]) >= 20)
+
             mark("bilan")
-            # Reopen the saved part so the viewport ends on real geometry,
-            # not on the last sketch-only test document.
-            self.open_part(path)
+            # Rouvrir la pièce vitrine : le viewport finit sur une pièce
+            # qui montre ce que l'Autotest a testé, pas sur la plaque m1.5.
+            self.open_part(vitrine_path)
             report["tree_after_pad"] = self.get_tree()
             mesh = self.tessellate()
             report["mesh_faces"] = len(mesh["groups"])
             report["mesh_triangles"] = len(mesh["indices"]) // 3
+            report["bilan"] = selftest_summary(report)
             return report
         except KernelError as exc:
             raise KernelError("échec à l'étape « {} » : {}".format(

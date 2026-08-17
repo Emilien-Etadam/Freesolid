@@ -2878,8 +2878,29 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
     renderTree(report.tree_after_pad);
     await updateViewport(gen);
     if (gen !== viewGen) return;
-    say(`Autotest OK — ${report.mesh_faces} faces, ` +
-        `${report.mesh_triangles} triangles, reparam ${report.m0_reparam_ok ? "OK" : "ÉCHEC"}`);
+    const bilan = report.bilan;
+    const echecs = Array.isArray(bilan?.echecs) ? bilan.echecs : [];
+    if (bilan && typeof bilan.verifications === "number"
+        && typeof bilan.ok === "number") {
+      const failed = echecs.length > 0;
+      const nSteps = Array.isArray(report.steps) ? report.steps.length : 0;
+      say(`Autotest : ${nSteps} étapes, ${bilan.ok}/${bilan.verifications}` +
+          ` vérifications — ${failed ? "ÉCHEC" : "OK"}`, failed);
+      if (failed) {
+        panel.open({
+          icon: "view-measurement.svg",
+          title: "Autotest",
+          noApply: true,
+          groups: [{
+            label: "Indicateurs en échec",
+            rows: echecs.map((name) => ({ type: "note", text: name })),
+          }],
+        });
+      }
+    } else {
+      say(`Autotest OK — ${report.mesh_faces} faces, ` +
+          `${report.mesh_triangles} triangles, reparam ${report.m0_reparam_ok ? "OK" : "ÉCHEC"}`);
+    }
     console.log("selftest", report);
   } catch (error) {
     if (gen !== viewGen) return;

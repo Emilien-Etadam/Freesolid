@@ -601,6 +601,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("N003 : la géométrie a bougé à la coupure ("
       + lengthBeforeCut + " → " + afterCut.length.value + ")");
   }
+  // Reposer la profondeur d'origine : 25 mm décalerait le picking P028.
+  await page.evaluate(async (feature) => {
+    await fetch("/api", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "set_params",
+        params: { feature, values: { Length: 10 } } }) });
+  }, afterWire.feature);
+  await sleep(1200);
   await page.screenshot({ path: path.join(SHOTS, "4a3-graphe-coupure.png") });
   await step("fil paramétrique");
 

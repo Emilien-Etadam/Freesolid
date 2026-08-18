@@ -832,6 +832,131 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await step("esquisse cliquée dans le viewport");
 
+  // N005 — poser un bossage depuis la palette du graphe, puis le supprimer.
+  const facesBeforeN005 = await faceCount();
+  await page.click("#btn-graph");
+  await page.waitForSelector("#graph-view.open .graph-node", { timeout: 8000 });
+  const n005Before = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
+    const pads = nodes.filter((n) => /Pad/i.test(n.getAttribute("data-name") || "")
+      || /Bossage/i.test(n.textContent || ""));
+    return {
+      padCount: pads.length,
+      padNames: pads.map((n) => n.getAttribute("data-name") || ""),
+    };
+  });
+  const n005Sketch = skPt?.label
+    ? page.locator("#graph-view .graph-node").filter({ hasText: skPt.label }).first()
+    : page.locator("#graph-view .graph-node[data-role='sketch']").last();
+  const n005SketchName = await n005Sketch.getAttribute("data-name");
+  await n005Sketch.click();
+  await sleep(500);
+  await page.click("#btn-graph-add");
+  await page.waitForSelector(
+    "#graph-palette .graph-palette-item[data-button='btn-pad']",
+    { timeout: 8000 },
+  );
+  const paletteState = await page.evaluate(() => {
+    const items = [...document.querySelectorAll("#graph-palette .graph-palette-item")];
+    const fillet = items.find((el) => el.dataset.button === "btn-fillet");
+    return {
+      count: items.length,
+      filletDisabled: fillet?.classList.contains("disabled") === true,
+      filletReason: fillet?.querySelector(".graph-palette-reason")?.textContent
+        || "",
+    };
+  });
+  if (paletteState.count !== 22) {
+    errors.push("N005 : palette " + paletteState.count + " items (attendu 22)");
+  }
+  if (!paletteState.filletDisabled) {
+    errors.push("N005 : Congé devrait être grisé sans face sélectionnée");
+  }
+  if (!paletteState.filletReason) {
+    errors.push("N005 : Congé grisé sans raison visible");
+  }
+  await page.click("#graph-palette .graph-palette-item[data-button='btn-pad']");
+  await sleep(2500);
+  const n005Panel = await page.evaluate(() =>
+    document.querySelector("#panel .ptitle")?.textContent ?? "");
+  if (!/Bossage/i.test(n005Panel)) {
+    errors.push("N005 : panneau bossage non ouvert (" + n005Panel + ")");
+  } else {
+    await page.click('#panel [title^="OK"]');
+    await sleep(3000);
+  }
+  const n005AfterAdd = await page.evaluate((beforeNames) => {
+    const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
+    const pads = nodes.filter((n) => /Pad/i.test(n.getAttribute("data-name") || "")
+      || /Bossage/i.test(n.textContent || ""));
+    const added = pads.find((n) =>
+      !beforeNames.includes(n.getAttribute("data-name") || ""));
+    const edges = [...document.querySelectorAll("#graph-view .graph-edge")]
+      .map((e) => ({
+        from: e.getAttribute("data-from") || "",
+        to: e.getAttribute("data-to") || "",
+        kind: e.getAttribute("data-kind") || "",
+      }));
+    return {
+      padCount: pads.length,
+      newName: added?.getAttribute("data-name") || "",
+      edges,
+    };
+  }, n005Before.padNames);
+  const facesAfterN005Add = await faceCount();
+  if (n005AfterAdd.padCount !== n005Before.padCount + 1) {
+    errors.push("N005 : attendu un nœud bossage de plus ("
+      + n005Before.padCount + " → " + n005AfterAdd.padCount + ")");
+  }
+  if (n005SketchName && n005AfterAdd.newName) {
+    const linked = n005AfterAdd.edges.some((e) => e.kind === "geom"
+      && e.from === n005SketchName && e.to === n005AfterAdd.newName);
+    if (!linked) {
+      errors.push("N005 : pas d'arête esquisse→bossage ("
+        + JSON.stringify(n005AfterAdd.edges) + ")");
+    }
+  }
+  if (!(facesAfterN005Add > facesBeforeN005)) {
+    errors.push("N005 : le volume devrait augmenter ("
+      + facesBeforeN005 + " → " + facesAfterN005Add + ")");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "4g-graphe-bossage.png") });
+  if (n005AfterAdd.newName) {
+    await page.locator(
+      "#graph-view .graph-node[data-name='" + n005AfterAdd.newName + "']",
+    ).click();
+    await sleep(200);
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.keyboard.press("Delete");
+    await sleep(3000);
+  } else {
+    errors.push("N005 : impossible de supprimer, nœud bossage introuvable");
+  }
+  const n005AfterDel = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
+    const pads = nodes.filter((n) => /Pad/i.test(n.getAttribute("data-name") || "")
+      || /Bossage/i.test(n.textContent || ""));
+    return { padCount: pads.length };
+  });
+  const facesAfterN005Del = await faceCount();
+  if (n005AfterDel.padCount !== n005Before.padCount) {
+    errors.push("N005 : après suppression, " + n005AfterDel.padCount
+      + " bossage(s) (attendu " + n005Before.padCount + ")");
+  }
+  if (facesAfterN005Del !== facesBeforeN005) {
+    errors.push("N005 : le volume devrait revenir à l'état d'avant ("
+      + facesBeforeN005 + " → " + facesAfterN005Del + ")");
+  }
+  await page.keyboard.press("Escape");
+  await sleep(300);
+  const n005GraphClosed = await page.evaluate(() =>
+    !document.getElementById("graph-view")?.classList.contains("open"));
+  if (!n005GraphClosed) {
+    await page.click("#btn-graph");
+    await sleep(200);
+  }
+  await step("nœuds constructifs");
+
   // 5. Undo / redo — jetons anti-course + invalidation des sélections
   await page.keyboard.press("Control+z");
   await sleep(2500);

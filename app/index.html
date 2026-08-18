@@ -103,6 +103,49 @@
   }
   #viewbar button { padding: 5px; border: none; background: none; }
   #viewbar button:hover { background: var(--panel-2); }
+  #viewbar button.on { color: var(--accent); }
+
+  #graph-view {
+    display: none;
+    position: absolute; inset: 0; z-index: 3;
+    background: rgba(23, 25, 28, 0.94);
+    overflow: hidden;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+  }
+  #graph-view.open { display: block; }
+  #graph-view.dragging { cursor: grabbing; }
+  #graph-svg { width: 100%; height: 100%; display: block; }
+  #graph-empty, #graph-cap {
+    position: absolute; left: 16px; bottom: 14px;
+    margin: 0; color: var(--ink-2); font-size: 12px;
+    pointer-events: none;
+  }
+  #graph-cap { left: auto; right: 16px; color: var(--ink); }
+  .graph-edge {
+    fill: none; stroke: var(--ink-2); stroke-width: 1.6;
+    pointer-events: none;
+  }
+  .graph-edge.param {
+    stroke: #6fbf8f; stroke-dasharray: 7 5; stroke-width: 1.7;
+  }
+  .graph-edge.dim { opacity: 0.14; }
+  .graph-edge.lit { opacity: 1; stroke-width: 2.4; }
+  .graph-node { cursor: pointer; }
+  .graph-node .shape {
+    fill: var(--panel-2); stroke: var(--line); stroke-width: 1.4;
+  }
+  .graph-node.variable .shape { fill: #243328; stroke: #4a7c5d; }
+  .graph-node.plane .shape { fill: var(--panel); stroke: var(--ink-2); }
+  .graph-node.body .shape { fill: var(--panel); stroke: var(--accent); }
+  .graph-node.sel .shape { stroke: var(--accent); stroke-width: 2.2; }
+  .graph-node.dim { opacity: 0.28; }
+  .graph-node.lit { opacity: 1; }
+  .graph-node text {
+    fill: var(--ink); font: 11px/1 system-ui, "Segoe UI", sans-serif;
+    pointer-events: none;
+  }
 
   aside {
     grid-area: tree;
@@ -487,6 +530,14 @@
       <button id="view-right" title="Vue de droite (Ctrl+4)"><img src="icons/view-right.svg" alt=""></button>
       <button id="view-fit" title="Zoom au mieux (F)"><img src="icons/zoom-fit-best.svg" alt=""></button>
       <button id="btn-clip" title="Plan de coupe visuel — voir l'intérieur sans couper la pièce"><img src="icons/Std_ToggleClipPlane.svg" alt=""></button>
+      <button id="btn-graph" title="Vue en graphe — dépendances des fonctions (lecture seule)"><img src="icons/Geoassembly.svg" alt=""></button>
+    </div>
+    <div id="graph-view">
+      <svg id="graph-svg" xmlns="http://www.w3.org/2000/svg" aria-label="Vue en graphe">
+        <g id="graph-world"></g>
+      </svg>
+      <p id="graph-empty" hidden>Aucun nœud à afficher</p>
+      <p id="graph-cap" hidden></p>
     </div>
       </main>
   <div id="ctxmenu">

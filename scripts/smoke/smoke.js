@@ -429,6 +429,54 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("bossage appliqué");
   await page.screenshot({ path: path.join(SHOTS, "4-bossage.png") });
 
+  // N002 — vue en graphe lecture seule, depuis lastTree.
+  await page.click("#btn-graph");
+  await page.waitForSelector("#graph-view.open .graph-node", { timeout: 8000 });
+  const graphInfo = await page.evaluate(() => {
+    const view = document.getElementById("graph-view");
+    const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
+    const edges = [...document.querySelectorAll("#graph-view .graph-edge")];
+    return {
+      open: view?.classList.contains("open") === true,
+      labels: nodes.map((n) => (n.textContent || "").trim()),
+      names: nodes.map((n) => n.getAttribute("data-name") || ""),
+      edges: edges.map((e) => ({
+        from: e.getAttribute("data-from") || "",
+        to: e.getAttribute("data-to") || "",
+        kind: e.getAttribute("data-kind") || "",
+      })),
+    };
+  });
+  if (!graphInfo.open) errors.push("N002 : graphe non ouvert");
+  const hasSketch = graphInfo.names.some((n) => /Sketch/i.test(n))
+    || graphInfo.labels.some((t) => /Esquisse/i.test(t));
+  const hasPad = graphInfo.names.some((n) => /Pad/i.test(n))
+    || graphInfo.labels.some((t) => /Bossage/i.test(t));
+  if (!hasSketch || !hasPad) {
+    errors.push("N002 : esquisse et bossage attendus dans le graphe ("
+      + graphInfo.labels.join(", ") + ")");
+  }
+  const linked = graphInfo.edges.some((e) =>
+    (/Sketch/i.test(e.from) && /Pad/i.test(e.to))
+    || (/Sketch/i.test(e.to) && /Pad/i.test(e.from)));
+  if (!linked) {
+    errors.push("N002 : pas d'arête esquisse–bossage ("
+      + JSON.stringify(graphInfo.edges) + ")");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "4a-graphe.png") });
+  await page.keyboard.press("Escape");
+  await sleep(300);
+  let graphClosed = await page.evaluate(() =>
+    !document.getElementById("graph-view")?.classList.contains("open"));
+  if (!graphClosed) {
+    await page.click("#btn-graph");
+    await sleep(200);
+    graphClosed = await page.evaluate(() =>
+      !document.getElementById("graph-view")?.classList.contains("open"));
+    errors.push("N002 : Échap n'a pas fermé le graphe");
+  }
+  await step("vue graphe");
+
   // 4b. FeatureManager — dossiers en tête + barre de reprise glissée.
   const folderTexts = await page.locator("#tree li.folder").allTextContents();
   const folderJoined = folderTexts.join(" | ");

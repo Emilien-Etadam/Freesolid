@@ -9,6 +9,7 @@ Untested-against-FreeCAD code is assumed guilty until the ``selftest`` op
 has run on a real install.
 """
 
+import json
 import os
 import re
 import sys
@@ -19,6 +20,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from engine.guard import friendly_error          # noqa: E402
+from engine.nodegraph import GraphError, evaluate as evaluate_graph  # noqa: E402
 from engine.protocol import dangling_deps, visible_deps  # noqa: E402
 from engine.vocab import label_for_type          # noqa: E402
 
@@ -1273,6 +1275,12 @@ class Kernel:
         ("FreeSolidTextPlacement", "App::PropertyPlacement"),
     )
 
+    _GRAPH_PROPS = (
+        ("FreeSolidGraphJson", "App::PropertyString"),
+        ("FreeSolidGraphMode", "App::PropertyString"),
+    )
+    _GRAPH_JSON_MAX = 1_000_000
+
     def _mark_text_tool(self, obj):
         """Artefact interne d'une gravure : caché de l'arbre et du viewport."""
         if "FreeSolidTextTool" not in obj.PropertiesList:
@@ -1280,8 +1288,22 @@ class Kernel:
                             "FreeSolid", "Outil interne d'une gravure")
         obj.FreeSolidTextTool = True
 
-    def _is_text_tool(self, obj):
-        return bool(getattr(obj, "FreeSolidTextTool", False))
+    def _mark_graph_tool(self, obj):
+        """Artefact interne d'une fonction graphe : caché de l'arbre."""
+        if "FreeSolidGraphTool" not in obj.PropertiesList:
+            obj.addProperty("App::PropertyBool", "FreeSolidGraphTool",
+                            "FreeSolid",
+                            "Outil interne d'une fonction graphe")
+        obj.FreeSolidGraphTool = True
+
+    def _is_internal_tool(self, obj):
+        """Artefact interne (gravure ou fonction graphe) : hors de l'arbre.
+
+        Un seul test, deux propriétés. Deux prédicats parallèles
+        divergeraient — c'est le défaut que N001b a dû corriger.
+        """
+        return bool(getattr(obj, "FreeSolidTextTool", False)
+                    or getattr(obj, "FreeSolidGraphTool", False))
 
     def add_text(self, text, face, size=8.0, depth=1.0, x=0.0, y=0.0,
                  emboss=False, font=None):
@@ -1401,6 +1423,167 @@ class Kernel:
         obj.Label = "{} « {} »".format(
             "Texte en relief" if emboss else "Gravure", new_text[:15])
         return self.get_tree()
+
+    def _current_variables(self):
+        return {item["name"]: item["value"]
+                for item in self.list_variables()["variables"]}
+
+    def _dump_graph_json(self, graph):
+        try:
+            payload = json.dumps(graph, ensure_ascii=False)
+        except (TypeError, ValueError) as exc:
+            raise KernelError(
+                "graphe non sérialisable : {}".format(exc))
+        if len(payload) > self._GRAPH_JSON_MAX:
+            raise KernelError(
+                "graphe trop volumineux ({} caractères, max. {})".format(
+                    len(payload), self._GRAPH_JSON_MAX))
+        return payload
+
+    def _evaluate_graph(self, graph):
+        try:
+            return evaluate_graph(graph, self._current_variables())
+        except GraphError as exc:
+            raise KernelError(str(exc)) from exc
+
+    def _build_graph_solid(self, instructions):
+        import Part
+        App = self._app()
+        solids = []
+        for inst in instructions:
+            point = App.Vector(float(inst["x"]), float(inst["y"]),
+                               float(inst["z"]))
+            kind = inst.get("shape")
+            if kind == "cylinder":
+                solid = Part.makeCylinder(
+                    float(inst["radius"]), float(inst["height"]), point)
+            elif kind == "box":
+                solid = Part.makeBox(
+                    float(inst["length"]), float(inst["width"]),
+                    float(inst["height"]), point)
+            else:
+                raise KernelError(
+                    "instruction de forme inconnue : {}".format(kind))
+            solids.append(solid)
+        if not solids:
+            raise KernelError("le graphe ne produit aucune forme")
+        result = solids[0]
+        for extra in solids[1:]:
+            result = result.fuse(extra)
+        return result
+
+    def _graph_tool_parts(self, obj):
+        tool_body = next(
+            (item for item in (getattr(obj, "Group", None) or [])
+             if item.TypeId == "PartDesign::Body"), None)
+        shape_feature = getattr(tool_body, "BaseFeature", None)
+        if tool_body is None or shape_feature is None:
+            raise KernelError(
+                "fonction graphe incomplète — le corps outil est absent")
+        return tool_body, shape_feature
+
+    def _persist_graph(self, obj, graph, mode, label):
+        payload = self._dump_graph_json(graph)
+        for prop, prop_type in self._GRAPH_PROPS:
+            if prop not in obj.PropertiesList:
+                obj.addProperty(prop_type, prop, "FreeSolid",
+                                "Paramètre de la fonction graphe")
+        obj.FreeSolidGraphJson = payload
+        obj.FreeSolidGraphMode = mode
+        obj.Label = label
+
+    def add_graph_feature(self, graph, mode="cut"):
+        """Insère la forme d'un graphe dans l'historique, par la route
+        du corps outil (même patron que la gravure).
+
+        ``mode`` : ``fuse`` (bossage) ou ``cut`` (enlèvement). Le graphe
+        est évalué **avant** toute modification du document.
+        """
+        mode = str(mode)
+        if mode not in ("fuse", "cut"):
+            raise KernelError(
+                "mode inconnu « {} » — attendu fuse ou cut".format(mode))
+        instructions = self._evaluate_graph(graph)
+        solid = self._build_graph_solid(instructions)
+        body = self._require_body()
+        doc = self._require_doc()
+        shape_feature = doc.addObject("Part::Feature", "GraphShape")
+        shape_feature.Shape = solid
+        shape_feature.Label = "Forme du graphe"
+        self._mark_graph_tool(shape_feature)
+        tool_body = doc.addObject("PartDesign::Body", "GraphBody")
+        tool_body.Label = "Corps graphe"
+        tool_body.BaseFeature = shape_feature
+        self._mark_graph_tool(tool_body)
+        doc.recompute()
+        try:
+            self.add_boolean(tool=tool_body.Name, type=mode)
+        except KernelError:
+            for name in (tool_body.Name, shape_feature.Name):
+                try:
+                    doc.removeObject(name)
+                except Exception:
+                    pass
+            doc.recompute()
+            raise
+        tip = getattr(body, "Tip", None)
+        if tip is not None:
+            self._persist_graph(
+                tip, graph, mode,
+                "Fonction graphe — Bossage" if mode == "fuse"
+                else "Fonction graphe — Enlèvement")
+        return self.get_tree()
+
+    def edit_graph_feature(self, feature, graph):
+        """Réévalue une fonction graphe et remplace sa forme.
+
+        Atomique : le graphe est évalué et la géométrie reconstruite
+        **d'abord** ; si l'un ou l'autre échoue, la pièce n'est pas
+        modifiée.
+        """
+        doc = self._require_doc()
+        obj = doc.getObject(str(feature))
+        if obj is None:
+            raise KernelError("fonction inconnue : {}".format(feature))
+        if "FreeSolidGraphJson" not in obj.PropertiesList:
+            raise KernelError("cette fonction n'est pas une fonction graphe")
+        instructions = self._evaluate_graph(graph)
+        solid = self._build_graph_solid(instructions)
+        _, shape_feature = self._graph_tool_parts(obj)
+        old_shape = shape_feature.Shape
+        shape_feature.Shape = solid
+        try:
+            self._recompute()
+        except KernelError as exc:
+            shape_feature.Shape = old_shape
+            try:
+                self._recompute()
+            except KernelError:
+                pass
+            raise KernelError(
+                "{} — la fonction graphe n'a pas été modifiée".format(exc))
+        mode = getattr(obj, "FreeSolidGraphMode", "") or "cut"
+        self._persist_graph(
+            obj, graph, mode,
+            "Fonction graphe — Bossage" if mode == "fuse"
+            else "Fonction graphe — Enlèvement")
+        return self.get_tree()
+
+    def get_graph_feature(self, feature):
+        """Rend le graphe persisté sur la ligne d'arbre."""
+        obj = self._require_doc().getObject(str(feature))
+        if obj is None:
+            raise KernelError("fonction inconnue : {}".format(feature))
+        if "FreeSolidGraphJson" not in obj.PropertiesList:
+            raise KernelError("cette fonction n'est pas une fonction graphe")
+        try:
+            parsed = json.loads(obj.FreeSolidGraphJson or "")
+        except (TypeError, ValueError):
+            raise KernelError("graphe persisté illisible")
+        if not isinstance(parsed, dict):
+            raise KernelError("graphe persisté illisible")
+        mode = getattr(obj, "FreeSolidGraphMode", "") or "cut"
+        return {"graph": parsed, "mode": mode}
 
     # -- phase E : évaluer ------------------------------------------------
 
@@ -1747,7 +1930,7 @@ class Kernel:
                 lines.append(obj)
         for obj in doc.Objects:
             if (obj.TypeId in self._SURFACE_TYPE_IDS
-                    and not self._is_text_tool(obj)):
+                    and not self._is_internal_tool(obj)):
                 lines.append(obj)
         order_of = {o.Name: i for i, o in enumerate(doc.Objects)}
         lines.sort(key=lambda o: order_of.get(o.Name, -1))
@@ -2703,7 +2886,7 @@ class Kernel:
 
         Fonction, esquisse, plan de référence, surface ou corps déjà
         présents dans la réponse — pas l'Origin, le VarSet, ni les
-        artefacts internes d'une gravure.
+        artefacts internes (gravure, fonction graphe).
         """
         names = set()
         origin = getattr(body, "Origin", None)
@@ -2719,10 +2902,10 @@ class Kernel:
         for obj in body.Group:
             names.add(obj.Name)
         for obj in self._doc.Objects:
-            if obj.TypeId == "PartDesign::Body" and not self._is_text_tool(obj):
+            if obj.TypeId == "PartDesign::Body" and not self._is_internal_tool(obj):
                 names.add(obj.Name)
             elif (obj.TypeId in self._SURFACE_TYPE_IDS
-                    and not self._is_text_tool(obj)):
+                    and not self._is_internal_tool(obj)):
                 names.add(obj.Name)
                 for sketch in self._surface_sketch_objects(obj):
                     names.add(sketch.Name)
@@ -2786,6 +2969,13 @@ class Kernel:
                     "x": float(obj.FreeSolidTextX),
                     "y": float(obj.FreeSolidTextY),
                 }
+            if "FreeSolidGraphJson" in obj.PropertiesList:
+                try:
+                    parsed = json.loads(obj.FreeSolidGraphJson or "")
+                except (TypeError, ValueError):
+                    parsed = None
+                if isinstance(parsed, dict):
+                    item["graph"] = parsed
             deps = visible_deps(
                 [o.Name for o in (getattr(obj, "OutList", None) or ())],
                 known_names,
@@ -2828,8 +3018,8 @@ class Kernel:
         for obj in self._doc.Objects:
             if obj.TypeId != "PartDesign::Body":
                 continue
-            if self._is_text_tool(obj):
-                continue  # corps outil d'une gravure : artefact interne
+            if self._is_internal_tool(obj):
+                continue  # corps outil interne : artefact hors arbre
             bodies.append({
                 "name": obj.Name,
                 "label": obj.Label,
@@ -2843,7 +3033,7 @@ class Kernel:
         surfaces = [self._surface_tree_entry(o, order_of, known_names)
                     for o in self._doc.Objects
                     if o.TypeId in self._SURFACE_TYPE_IDS
-                    and not self._is_text_tool(o)]
+                    and not self._is_internal_tool(o)]
         tip = body.Tip.Name if getattr(body, "Tip", None) else None
         # Variables dans le même appel : le FeatureManager affiche le
         # dossier Équations sans round-trip list_variables.
@@ -2877,7 +3067,7 @@ class Kernel:
         for obj in self._doc.Objects:
             if (obj.TypeId != "PartDesign::Body" or obj is body
                     or getattr(obj, "Shape", None) is None
-                    or self._is_text_tool(obj)):
+                    or self._is_internal_tool(obj)):
                 continue
             other_faces = []
             for face in obj.Shape.Faces:
@@ -2911,7 +3101,7 @@ class Kernel:
         for obj in self._doc.Objects:
             if obj.TypeId not in self._SURFACE_TYPE_IDS:
                 continue
-            if self._is_rolled_back(obj) or self._is_text_tool(obj):
+            if self._is_rolled_back(obj) or self._is_internal_tool(obj):
                 continue
             shape = getattr(obj, "Shape", None)
             if shape is None:
@@ -5399,6 +5589,104 @@ class Kernel:
                 bool(xz_name) and xz_name in datum.get("deps", []))
             report["n1b_arbre_coherent"] = not dangling_deps(tree)
 
+            mark("n4: fonction graphe — perçage, réédition, refus atomique")
+            import math
+
+            def _n4_node(ident, kind, **fields):
+                node = {"id": ident, "type": kind}
+                node.update(fields)
+                return node
+
+            def _n4_grid(cols, rows):
+                # Grille écrite à la main : série en X diffusée sur une
+                # série en Y (appariement récursif), cylindres en cut.
+                return {
+                    "nodes": [
+                        _n4_node("ny", "nombre", value=rows),
+                        _n4_node("one", "nombre", value=1),
+                        _n4_node("zero", "nombre", value=0),
+                        _n4_node("x0", "nombre", value=-20),
+                        _n4_node("dx", "nombre", value=20),
+                        _n4_node("nx", "nombre", value=cols),
+                        _n4_node("y0", "nombre", value=-10),
+                        _n4_node("dy", "nombre", value=20),
+                        _n4_node("z", "nombre", value=-6),
+                        _n4_node("ones", "serie"),
+                        _n4_node("zeros", "calcul", op="*"),
+                        _n4_node("xstart", "calcul", op="+"),
+                        _n4_node("xs", "serie"),
+                        _n4_node("ys", "serie"),
+                        _n4_node("pts", "point"),
+                        _n4_node("cyl", "cylindre", rayon=3, hauteur=20),
+                    ],
+                    "edges": [
+                        {"from": "one", "to": "ones", "input": "depart"},
+                        {"from": "one", "to": "ones", "input": "pas"},
+                        {"from": "ny", "to": "ones", "input": "nombre"},
+                        {"from": "zero", "to": "zeros", "input": "a"},
+                        {"from": "ones", "to": "zeros", "input": "b"},
+                        {"from": "x0", "to": "xstart", "input": "a"},
+                        {"from": "zeros", "to": "xstart", "input": "b"},
+                        {"from": "xstart", "to": "xs", "input": "depart"},
+                        {"from": "dx", "to": "xs", "input": "pas"},
+                        {"from": "nx", "to": "xs", "input": "nombre"},
+                        {"from": "y0", "to": "ys", "input": "depart"},
+                        {"from": "dy", "to": "ys", "input": "pas"},
+                        {"from": "ny", "to": "ys", "input": "nombre"},
+                        {"from": "xs", "to": "pts", "input": "x"},
+                        {"from": "ys", "to": "pts", "input": "y"},
+                        {"from": "z", "to": "pts", "input": "z"},
+                        {"from": "pts", "to": "cyl", "input": "ancrage"},
+                    ],
+                    "output": "cyl",
+                }
+
+            self.new_part("Pièce graphe N004")
+            self.add_rect_sketch(80, 50)
+            self.add_pad(8)
+            vol_plaque = _volume()
+            hole_vol = math.pi * 3.0 * 3.0 * 8.0
+            tree = self.add_graph_feature(_n4_grid(3, 2), mode="cut")
+            graphe = next(f for f in tree["features"] if f.get("graph"))
+            vol_perce = _volume()
+            shape = self._require_body().Shape
+            report["n4_graphe_perce"] = (
+                not any(f["error"] for f in tree["features"])
+                and shape.isValid()
+                and abs((vol_plaque - vol_perce) - 6 * hole_vol) < 25.0)
+            stored = self.get_graph_feature(graphe["name"])
+            report["n4_graphe_persiste"] = (
+                stored.get("mode") == "cut"
+                and stored.get("graph", {}).get("output") == "cyl")
+
+            tree = self.edit_graph_feature(graphe["name"], _n4_grid(2, 2))
+            vol_reedite = _volume()
+            report["n4_graphe_reedite"] = (
+                not any(f["error"] for f in tree["features"])
+                and self._require_body().Shape.isValid()
+                and abs((vol_plaque - vol_reedite) - 4 * hole_vol) < 25.0
+                and abs(vol_reedite - vol_perce) > 50.0)
+
+            invalid = _n4_grid(2, 2)
+            invalid["output"] = "fantome"
+            try:
+                self.edit_graph_feature(graphe["name"], invalid)
+                report["n4_graphe_refus_atomique"] = False
+            except KernelError:
+                report["n4_graphe_refus_atomique"] = (
+                    abs(_volume() - vol_reedite) < 1e-6
+                    and not any(f["error"]
+                                for f in self.get_tree()["features"]))
+
+            tree = self.get_tree()
+            report["n4_arbre_propre"] = (
+                not any(s["label"] == "Forme du graphe"
+                        for s in tree["surfaces"])
+                and not any(b["label"] == "Corps graphe"
+                            for b in tree["bodies"])
+                and not dangling_deps(tree)
+                and any(f.get("graph") for f in tree["features"]))
+
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce
             # qui montre ce que l'Autotest a testé, pas sur la plaque m1.5.
@@ -5430,7 +5718,7 @@ _TRANSACTIONAL = frozenset({
     "insert_component", "move_component", "add_joint", "solve_assembly",
     "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
     "surface_thicken", "add_curve3d", "sketch_convert", "add_text",
-    "edit_text", "make_drawing",
+    "edit_text", "add_graph_feature", "edit_graph_feature", "make_drawing",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",

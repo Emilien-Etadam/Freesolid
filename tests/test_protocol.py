@@ -341,6 +341,24 @@ def test_convert_text_interference_ops_declared():
                     "distance": 20, "distance2": 10}})
 
 
+def test_graph_feature_ops_declared():
+    assert protocol.OPS["add_graph_feature"] == ("graph", "mode")
+    assert protocol.OPS["edit_graph_feature"] == ("feature", "graph")
+    assert protocol.OPS["get_graph_feature"] == ("feature",)
+    protocol.validate_request(
+        {"op": "add_graph_feature",
+         "params": {"graph": {"nodes": [], "edges": [], "output": "c"},
+                    "mode": "cut"}})
+    protocol.validate_request(
+        {"op": "edit_graph_feature",
+         "params": {"feature": "Boolean",
+                    "graph": {"nodes": [], "edges": [], "output": "c"}}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "add_graph_feature",
+             "params": {"graph": [], "mode": "cut"}})
+
+
 def test_comfort_ops_declared():
     assert protocol.OPS["sketch_add_spline"] == ("sketch", "points")
     assert protocol.OPS["sketch_add_ellipse"] == (
@@ -390,6 +408,7 @@ def test_ops_snapshot_keys():
         "add_datum_plane",
         "add_draft",
         "add_fillet",
+        "add_graph_feature",
         "add_groove",
         "add_helix",
         "add_hole",
@@ -410,8 +429,10 @@ def test_ops_snapshot_keys():
         "check_interference",
         "delete_feature",
         "delete_variable",
+        "edit_graph_feature",
         "edit_text",
         "export_part",
+        "get_graph_feature",
         "get_params",
         "get_tree",
         "insert_component",

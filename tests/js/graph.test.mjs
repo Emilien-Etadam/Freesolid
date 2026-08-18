@@ -1,7 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildGraph } from "../../app/graph.js";
+import {
+  buildGraph,
+  expressionForVariable,
+  freezeDrivenValues,
+  isParamWireSource,
+  isParamWireTarget,
+  paramChoiceCaption,
+} from "../../app/graph.js";
 
 function byName(graph) {
   return Object.fromEntries(graph.nodes.map((node) => [node.name, node]));
@@ -153,5 +160,71 @@ describe("buildGraph", () => {
     assert.deepEqual(buildGraph({ features: [], surfaces: [],
       planes: [], bodies: [], variables: [] }),
       { nodes: [], edges: [] });
+  });
+});
+
+describe("fil paramétrique", () => {
+  it("seule une variable est une source, seule une fonction est une cible", () => {
+    assert.equal(isParamWireSource("variable"), true);
+    assert.equal(isParamWireSource("feature"), false);
+    assert.equal(isParamWireSource("sketch"), false);
+    assert.equal(isParamWireTarget("feature"), true);
+    assert.equal(isParamWireTarget("sketch"), false);
+    assert.equal(isParamWireTarget("plane"), false);
+    assert.equal(isParamWireTarget("datum"), false);
+    assert.equal(isParamWireTarget("surface"), false);
+    assert.equal(isParamWireTarget("body"), false);
+    assert.equal(isParamWireTarget("variable"), false);
+  });
+
+  it("l'expression posée préfixe le VarSet, pas l'identifiant nu", () => {
+    assert.equal(expressionForVariable("largeur"), "Variables.largeur");
+    assert.equal(expressionForVariable(""), "");
+    assert.equal(expressionForVariable(null), "");
+  });
+
+  it("une coupure fige la valeur courante des cotes pilotées, pas zéro", () => {
+    const values = freezeDrivenValues([
+      { prop: "Length", value: 25, expr: "Variables.largeur" },
+      { prop: "Angle", value: 12 },
+      { prop: "Radius", value: 3, expr: "2 * largeur + 5" },
+    ], "largeur");
+    assert.deepEqual(values, { Length: 25, Radius: 3 });
+    assert.equal(values.Length === 0, false);
+  });
+
+  it("une coupure ne prend pas larg pour largeur", () => {
+    const values = freezeDrivenValues([
+      { prop: "Length", value: 20, expr: "2 * largeur + 5" },
+      { prop: "Angle", value: 8, expr: "larg" },
+    ], "largeur");
+    assert.deepEqual(values, { Length: 20 });
+  });
+
+  it("sans expression, sans tableau, sans identifiant → rien à figer", () => {
+    assert.deepEqual(freezeDrivenValues(null, "largeur"), {});
+    assert.deepEqual(freezeDrivenValues([], "largeur"), {});
+    assert.deepEqual(freezeDrivenValues(
+      [{ prop: "Length", value: 10 }], "largeur"), {});
+    assert.deepEqual(freezeDrivenValues(
+      [{ prop: "Length", value: 10, expr: "Variables.largeur" }], ""), {});
+  });
+
+  it("le libellé du choix réutilise PROP_LABELS et signale une cote déjà pilotée", () => {
+    const labels = { Length: ["Profondeur", "mm"], Occurrences: ["Nombre d'occurrences", ""] };
+    assert.equal(
+      paramChoiceCaption({ prop: "Length", value: 10 }, labels),
+      "Profondeur (mm)",
+    );
+    assert.equal(
+      paramChoiceCaption(
+        { prop: "Length", value: 25, expr: "Variables.largeur" }, labels),
+      "Profondeur (mm) — déjà « Variables.largeur »",
+    );
+    assert.equal(
+      paramChoiceCaption({ prop: "Occurrences", value: 3 }, labels),
+      "Nombre d'occurrences",
+    );
+    assert.equal(paramChoiceCaption(null, labels), "");
   });
 });

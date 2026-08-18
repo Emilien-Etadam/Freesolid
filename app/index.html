@@ -124,28 +124,50 @@
   }
   #graph-cap { left: auto; right: 16px; color: var(--ink); }
   .graph-edge {
-    fill: none; stroke: var(--ink-2); stroke-width: 1.6;
+    fill: none;
+  }
+  .graph-edge .graph-edge-line {
+    stroke: var(--ink-2); stroke-width: 1.6;
     pointer-events: none;
   }
-  .graph-edge.param {
+  .graph-edge.param .graph-edge-line {
     stroke: #6fbf8f; stroke-dasharray: 7 5; stroke-width: 1.7;
   }
+  .graph-edge .graph-edge-hit {
+    stroke: transparent; stroke-width: 14;
+    fill: none;
+    pointer-events: stroke;
+  }
+  .graph-edge.geom .graph-edge-hit { cursor: not-allowed; }
+  .graph-edge.param .graph-edge-hit { cursor: pointer; }
   .graph-edge.dim { opacity: 0.14; }
-  .graph-edge.lit { opacity: 1; stroke-width: 2.4; }
+  .graph-edge.lit .graph-edge-line { stroke-width: 2.4; }
+  .graph-edge.param.sel .graph-edge-line {
+    stroke: var(--accent); stroke-width: 2.6;
+  }
+  .graph-edge.preview .graph-edge-line {
+    stroke: #6fbf8f; stroke-dasharray: 5 4; stroke-width: 1.8;
+  }
   .graph-node { cursor: pointer; }
   .graph-node .shape {
     fill: var(--panel-2); stroke: var(--line); stroke-width: 1.4;
   }
   .graph-node.variable .shape { fill: #243328; stroke: #4a7c5d; }
+  .graph-node.variable { cursor: crosshair; }
   .graph-node.plane .shape { fill: var(--panel); stroke: var(--ink-2); }
   .graph-node.body .shape { fill: var(--panel); stroke: var(--accent); }
   .graph-node.sel .shape { stroke: var(--accent); stroke-width: 2.2; }
   .graph-node.dim { opacity: 0.28; }
   .graph-node.lit { opacity: 1; }
+  .graph-node.drop-ok .shape { stroke: #6fbf8f; stroke-width: 2.2; }
+  .graph-node.drop-hover .shape { stroke: #8fd9a8; stroke-width: 2.6; }
+  .graph-node.drop-no { opacity: 0.32; cursor: not-allowed; }
+  .graph-node.wiring-from .shape { stroke: #6fbf8f; }
   .graph-node text {
     fill: var(--ink); font: 11px/1 system-ui, "Segoe UI", sans-serif;
     pointer-events: none;
   }
+  #graph-view.wiring { cursor: crosshair; }
 
   aside {
     grid-area: tree;
@@ -320,7 +342,7 @@
   footer .err { color: var(--error); }
   footer .push { margin-left: auto; }
 
-  #ctxmenu, #settings-menu {
+  #ctxmenu, #settings-menu, #graph-edge-menu, #param-pick {
     position: fixed; z-index: 10; display: none;
     background: var(--panel-2);
     border: 1px solid var(--line);
@@ -328,13 +350,23 @@
     box-shadow: 0 10px 28px rgba(0,0,0,0.5);
     min-width: 190px; padding: 4px;
   }
-  #ctxmenu div, #settings-menu .menu-item {
+  #param-pick { min-width: 240px; }
+  #ctxmenu div, #settings-menu .menu-item, #graph-edge-menu div,
+  #param-pick .menu-item {
     padding: 6px 10px; border-radius: 4px; cursor: pointer;
   }
-  #ctxmenu div:hover, #settings-menu .menu-item:hover {
+  #ctxmenu div:hover, #settings-menu .menu-item:hover,
+  #graph-edge-menu div:hover, #param-pick .menu-item:hover {
     background: var(--panel); color: var(--accent);
   }
-  #ctxmenu div.danger:hover { color: var(--error); }
+  #ctxmenu div.danger:hover, #graph-edge-menu div.danger:hover {
+    color: var(--error);
+  }
+  #param-pick .menu-label {
+    padding: 6px 10px 2px;
+    font-size: 11px; font-weight: 600; color: var(--ink-2);
+    cursor: default; user-select: none;
+  }
   #settings-menu .menu-label {
     padding: 6px 10px 2px;
     font-size: 11px; font-weight: 600; color: var(--ink-2);
@@ -530,7 +562,7 @@
       <button id="view-right" title="Vue de droite (Ctrl+4)"><img src="icons/view-right.svg" alt=""></button>
       <button id="view-fit" title="Zoom au mieux (F)"><img src="icons/zoom-fit-best.svg" alt=""></button>
       <button id="btn-clip" title="Plan de coupe visuel — voir l'intérieur sans couper la pièce"><img src="icons/Std_ToggleClipPlane.svg" alt=""></button>
-      <button id="btn-graph" title="Vue en graphe — dépendances des fonctions (lecture seule)"><img src="icons/Geoassembly.svg" alt=""></button>
+      <button id="btn-graph" title="Vue en graphe — dépendances des fonctions"><img src="icons/Geoassembly.svg" alt=""></button>
     </div>
     <div id="graph-view">
       <svg id="graph-svg" xmlns="http://www.w3.org/2000/svg" aria-label="Vue en graphe">
@@ -549,6 +581,10 @@
     <div id="ctx-end">Revenir à l'état final</div>
     <div id="ctx-delete" class="danger">Supprimer</div>
   </div>
+  <div id="graph-edge-menu">
+    <div id="ctx-unlink" class="danger">Supprimer la liaison</div>
+  </div>
+  <div id="param-pick"></div>
   <div id="settings-menu">
     <div class="menu-label">Libellés du ruban</div>
     <div class="menu-item" data-ribbon-labels="icons-and-text">Icônes et texte</div>

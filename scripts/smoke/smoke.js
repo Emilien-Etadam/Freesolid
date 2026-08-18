@@ -429,6 +429,32 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("bossage appliqué");
   await page.screenshot({ path: path.join(SHOTS, "4-bossage.png") });
 
+  // N003 — variable avant d'ouvrir le graphe, pour tirer un fil.
+  await page.click("#btn-equations");
+  await page.waitForFunction(
+    () => document.querySelector("#panel .ptitle")?.textContent === "Équations",
+    null,
+    { timeout: 8000 },
+  );
+  await page.locator("#panel .prow", { hasText: "Nom" }).locator("input")
+    .fill("largeur");
+  await page.locator("#panel .prow", { hasText: "Valeur" }).locator("input")
+    .fill("25");
+  await page.click('#panel [title^="OK"]');
+  await sleep(1500);
+  const listedVars = await page.evaluate(async () => {
+    const r = await fetch("/api", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "list_variables", params: {} }) });
+    const j = await r.json();
+    return j.ok ? j.result.variables : [];
+  });
+  if (!listedVars.some((v) => v.name === "largeur")) {
+    errors.push("N003 : variable largeur absente ("
+      + JSON.stringify(listedVars) + ")");
+  }
+  await step("variable largeur");
+
   // N002 — vue en graphe lecture seule, depuis lastTree.
   await page.click("#btn-graph");
   await page.waitForSelector("#graph-view.open .graph-node", { timeout: 8000 });
@@ -464,6 +490,128 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       + JSON.stringify(graphInfo.edges) + ")");
   }
   await page.screenshot({ path: path.join(SHOTS, "4a-graphe.png") });
+
+  // N003 — tirer un fil variable → bossage, choisir la profondeur, couper.
+  const varNode = page.locator("#graph-view .graph-node.variable").first();
+  const padNode = page.locator("#graph-view .graph-node").filter({
+    hasText: /Bossage/,
+  }).first();
+  const varBox = await varNode.boundingBox();
+  const padNodeBox = await padNode.boundingBox();
+  if (!varBox || !padNodeBox) {
+    errors.push("N003 : nœud variable ou bossage introuvable pour le drag");
+  } else {
+    await page.mouse.move(varBox.x + varBox.width / 2,
+      varBox.y + varBox.height / 2);
+    await page.mouse.down();
+    const steps = 12;
+    for (let i = 1; i <= steps; i++) {
+      const x = varBox.x + varBox.width / 2
+        + (padNodeBox.x + padNodeBox.width / 2 - varBox.x - varBox.width / 2)
+          * (i / steps);
+      const y = varBox.y + varBox.height / 2
+        + (padNodeBox.y + padNodeBox.height / 2 - varBox.y - varBox.height / 2)
+          * (i / steps);
+      await page.mouse.move(x, y);
+      await sleep(20);
+    }
+    await page.mouse.up();
+    await page.waitForSelector("#param-pick .menu-item[data-prop='Length']", {
+      timeout: 8000,
+    }).catch(() => {});
+    const pickVisible = await page.evaluate(() =>
+      document.getElementById("param-pick")?.style.display === "block");
+    if (!pickVisible) {
+      errors.push("N003 : sélecteur de cote absent après le dépôt du fil");
+    } else {
+      await page.click("#param-pick .menu-item[data-prop='Length']");
+      await sleep(2500);
+    }
+  }
+  const afterWire = await page.evaluate(async () => {
+    const edges = [...document.querySelectorAll("#graph-view .graph-edge")]
+      .map((e) => ({
+        from: e.getAttribute("data-from") || "",
+        to: e.getAttribute("data-to") || "",
+        kind: e.getAttribute("data-kind") || "",
+      }));
+    const pad = [...document.querySelectorAll("#graph-view .graph-node")]
+      .find((n) => /Pad/i.test(n.getAttribute("data-name") || "")
+        || /Bossage/i.test(n.textContent || ""));
+    const feature = pad?.getAttribute("data-name") || "Pad";
+    const r = await fetch("/api", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "get_params",
+                             params: { feature } }) });
+    const j = await r.json();
+    const length = (j.ok ? j.result.params : [])
+      .find((p) => p.prop === "Length") || null;
+    return { edges, length, feature };
+  });
+  const paramEdge = afterWire.edges.find((e) => e.kind === "param"
+    && /largeur/i.test(e.from));
+  if (!paramEdge) {
+    errors.push("N003 : arête param largeur→bossage absente ("
+      + JSON.stringify(afterWire.edges) + ")");
+  }
+  if (!(afterWire.length && Math.abs(afterWire.length.value - 25) < 1e-6
+        && afterWire.length.expr)) {
+    errors.push("N003 : la profondeur devrait suivre largeur=25 ("
+      + JSON.stringify(afterWire.length) + ")");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "4a2-graphe-param.png") });
+
+  const lengthBeforeCut = afterWire.length?.value;
+  const paramSel = page.locator("#graph-view .graph-edge.param").first();
+  if (await paramSel.count()) {
+    await paramSel.click({ button: "right" });
+    await sleep(250);
+    const unlinkVisible = await page.evaluate(() =>
+      document.getElementById("graph-edge-menu")?.style.display === "block");
+    if (!unlinkVisible) {
+      errors.push("N003 : menu « Supprimer la liaison » absent");
+    } else {
+      await page.click("#ctx-unlink");
+      await sleep(2500);
+    }
+  } else {
+    errors.push("N003 : pas d'arête param à couper");
+  }
+  const afterCut = await page.evaluate(async (feature) => {
+    const paramCount = document.querySelectorAll(
+      "#graph-view .graph-edge.param").length;
+    const r = await fetch("/api", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "get_params",
+                             params: { feature } }) });
+    const j = await r.json();
+    const length = (j.ok ? j.result.params : [])
+      .find((p) => p.prop === "Length") || null;
+    return { paramCount, length };
+  }, afterWire.feature);
+  if (afterCut.paramCount !== 0) {
+    errors.push("N003 : l'arête param devrait disparaître après coupure");
+  }
+  if (afterCut.length?.expr) {
+    errors.push("N003 : l'expression devrait être retirée après coupure ("
+      + afterCut.length.expr + ")");
+  }
+  if (lengthBeforeCut != null && afterCut.length
+      && Math.abs(afterCut.length.value - lengthBeforeCut) > 1e-6) {
+    errors.push("N003 : la géométrie a bougé à la coupure ("
+      + lengthBeforeCut + " → " + afterCut.length.value + ")");
+  }
+  // Reposer la profondeur d'origine : 25 mm décalerait le picking P028.
+  await page.evaluate(async (feature) => {
+    await fetch("/api", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "set_params",
+        params: { feature, values: { Length: 10 } } }) });
+  }, afterWire.feature);
+  await sleep(1200);
+  await page.screenshot({ path: path.join(SHOTS, "4a3-graphe-coupure.png") });
+  await step("fil paramétrique");
+
   await page.keyboard.press("Escape");
   await sleep(300);
   let graphClosed = await page.evaluate(() =>

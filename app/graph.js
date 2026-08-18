@@ -238,3 +238,71 @@ export function buildGraph(tree) {
 
   return { nodes: orderedNodes, edges: kept };
 }
+
+/** Un fil paramétrique part d'une variable — pas d'une arête géométrique. */
+export function isParamWireSource(role) {
+  return role === "variable";
+}
+
+/**
+ * Arrivée d'un fil paramétrique : une fonction aux cotes éditables.
+ * Esquisse, plan, surface, corps : visibles comme non cibles, pas après coup.
+ */
+export function isParamWireTarget(role) {
+  return role === "feature";
+}
+
+/**
+ * Expression envoyée à `set_params` pour lier une cote à une variable.
+ * Le moteur d'expressions FreeCAD résout le VarSet (`Variables.nom`), pas
+ * l'identifiant nu — c'est le même préfixe que le panneau Équations.
+ */
+export function expressionForVariable(name) {
+  if (typeof name !== "string" || !name) return "";
+  return `Variables.${name}`;
+}
+
+/**
+ * Valeurs numériques qui figent une coupure : les cotes de `get_params`
+ * dont l'expression cite `variableName`. La géométrie ne bouge pas —
+ * on écrit la valeur courante, on ne remet pas à zéro.
+ * @param {object[]|null|undefined} params
+ * @param {string} variableName
+ * @returns {Record<string, number>}
+ */
+export function freezeDrivenValues(params, variableName) {
+  if (typeof variableName !== "string" || !variableName) return {};
+  const values = {};
+  const names = [variableName];
+  for (const param of listOf(params)) {
+    if (!param || typeof param !== "object") continue;
+    if (typeof param.prop !== "string" || !param.prop) continue;
+    if (typeof param.expr !== "string" || !param.expr) continue;
+    if (!citedVariables(param.expr, names).length) continue;
+    if (typeof param.value !== "number" || !Number.isFinite(param.value)) {
+      continue;
+    }
+    values[param.prop] = param.value;
+  }
+  return values;
+}
+
+/**
+ * Libellé d'une cote dans le sélecteur au dépôt du fil.
+ * `labels` est `PROP_LABELS` du client — on n'en tient pas une seconde table.
+ * @param {object|null|undefined} param
+ * @param {Record<string, [string, string]>|null|undefined} labels
+ */
+export function paramChoiceCaption(param, labels) {
+  if (!param || typeof param !== "object" || typeof param.prop !== "string") {
+    return "";
+  }
+  const pair = labels && typeof labels === "object" ? labels[param.prop] : null;
+  const label = Array.isArray(pair) && pair[0] ? pair[0] : param.prop;
+  const unit = Array.isArray(pair) ? (pair[1] ?? "") : "mm";
+  const withUnit = unit ? `${label} (${unit})` : label;
+  if (typeof param.expr === "string" && param.expr) {
+    return `${withUnit} — déjà « ${param.expr} »`;
+  }
+  return withUnit;
+}

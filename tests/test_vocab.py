@@ -56,3 +56,13 @@ def test_english_labels_available():
     assert vocab.label_for_type("PartDesign::Pad", lang="en") == \
         "Extruded Boss/Base"
     assert vocab.label_for_origin("XY_Plane", lang="en") == "Top Plane"
+
+
+def test_graph_node_labels_are_french():
+    assert vocab.graph_node_label("cylindre") == "Cylindre"
+    assert vocab.graph_node_label("boite") == "Boîte"
+    assert vocab.graph_node_label("serie") == "Série"
+    assert vocab.graph_input_label("rayon") == "Rayon"
+    assert vocab.graph_input_label("ancrage") == "Ancrage"
+    assert vocab.graph_field_label("value") == "Valeur"
+    assert vocab.graph_node_label("cylindre", lang="en") == "Cylinder"

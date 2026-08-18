@@ -107,6 +107,10 @@ OPS: dict[str, tuple[str, ...]] = {
     "edit_text": _Req(("feature", str)),
                                        # optional: text, size, depth, x, y
                                        # — absents = inchangés
+    "add_graph_feature": _Req(("graph", dict), ("mode", str)),
+                                       # mode : fuse | cut
+    "edit_graph_feature": _Req(("feature", str), ("graph", dict)),
+    "get_graph_feature": _Req(("feature", str)),
     "check_interference": (),          # assemblage : volumes communs par paires
     "undo": (),                        # une transaction = un Ctrl+Z
     "redo": (),

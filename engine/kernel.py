@@ -19,6 +19,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from engine.guard import friendly_error          # noqa: E402
+from engine.protocol import dangling_deps, visible_deps  # noqa: E402
 from engine.vocab import label_for_type          # noqa: E402
 
 
@@ -799,9 +800,29 @@ class Kernel:
                     sketches.append(section)
         return sketches
 
-    def _surface_tree_entry(self, obj, order_of=None):
+    def _surface_tree_entry(self, obj, order_of=None, known_names=None):
+        """Entrée d'arbre d'une surface.
+
+        ``known_names`` : noms des nœuds dessinables du payload, pour
+        filtrer les arêtes comme le fait ``entry()`` côté fonctions. Passé
+        par l'appelant — ne pas le recalculer par surface.
+        """
         sketches = self._surface_sketch_objects(obj)
         order_of = order_of if order_of is not None else {}
+        known_names = known_names if known_names is not None else set()
+
+        def wire(item, source):
+            deps = visible_deps(
+                [o.Name for o in (getattr(source, "OutList", None) or ())],
+                known_names,
+            )
+            if deps:
+                item["deps"] = deps
+            driven = self._expression_map(source)
+            if driven:
+                item["driven"] = driven
+            return item
+
         entry = {
             "name": obj.Name,
             "label": obj.Label,
@@ -809,18 +830,19 @@ class Kernel:
             "sketches": [sk.Name for sk in sketches],
             "order": order_of.get(obj.Name, -1),
         }
+        wire(entry, obj)
         # Couture / courbe / fichiers legacy : pas d'objet paramétrique.
         if obj.TypeId == "Part::Feature":
             entry["static"] = True
         if sketches:
-            entry["children"] = [{
+            entry["children"] = [wire({
                 "name": sk.Name,
                 "label": sk.Label,
                 "kind": label_for_type(sk.TypeId),
                 "type": sk.TypeId,
                 "error": "Invalid" in (sk.State or ()),
                 "order": order_of.get(sk.Name, -1),
-            } for sk in sketches]
+            }, sk) for sk in sketches]
         entry["rolled_back"] = self._is_rolled_back(obj)
         return entry
 
@@ -1567,6 +1589,14 @@ class Kernel:
     #: Wire names for the body's origin planes — Dessus/Face/Droite in the
     #: client, following vocab.ORIGIN_PLANES (FreeCAD is Z-up).
     _PLANE_ROLES = {"XY": "XY_Plane", "XZ": "XZ_Plane", "YZ": "YZ_Plane"}
+
+    def _origin_feature_or_none(self, role):
+        """``_origin_feature`` sans lever — pour l'arbre, où un plan
+        introuvable ne doit pas faire échouer tout le payload."""
+        try:
+            return self._origin_feature(role)
+        except KernelError:
+            return None
 
     def _origin_feature(self, role):
         """One of the body's origin planes/axes, by role (XY_Plane, Z_Axis…)."""
@@ -2668,17 +2698,69 @@ class Kernel:
             return False
         return bool(solids)
 
-    def get_tree(self):
-        """The feature tree, in the vocabulary the designer knows.
+    def _tree_known_names(self, body):
+        """Noms des nœuds dessinables du payload ``get_tree``.
 
-        SolidWorks shape: the three base planes come first, and a sketch
-        consumed by a feature nests under it as a child instead of
-        cluttering the top level.
+        Fonction, esquisse, plan de référence, surface ou corps déjà
+        présents dans la réponse — pas l'Origin, le VarSet, ni les
+        artefacts internes d'une gravure.
+        """
+        names = set()
+        origin = getattr(body, "Origin", None)
+        for feature in getattr(origin, "OriginFeatures", None) or ():
+            role = getattr(feature, "Role", "")
+            if role in self._PLANE_ROLES.values():
+                names.add(feature.Name)
+        # Tout ``body.Group`` : ``get_tree`` émet chaque objet du corps —
+        # une esquisse consommée revient en ``children``, un plan ou un axe
+        # de référence n'est pas un ``PartDesign::Feature`` mais reste un
+        # nœud. Filtrer ici ferait diverger l'ensemble des cibles de ce que
+        # le payload expose, et perdrait des arêtes réelles en silence.
+        for obj in body.Group:
+            names.add(obj.Name)
+        for obj in self._doc.Objects:
+            if obj.TypeId == "PartDesign::Body" and not self._is_text_tool(obj):
+                names.add(obj.Name)
+            elif (obj.TypeId in self._SURFACE_TYPE_IDS
+                    and not self._is_text_tool(obj)):
+                names.add(obj.Name)
+                for sketch in self._surface_sketch_objects(obj):
+                    names.add(sketch.Name)
+        return names
+
+    def get_tree(self):
+        """Arbre de fonctions, vocabulaire du concepteur.
+
+        Forme SolidWorks : les trois plans de référence d'abord, et une
+        esquisse consommée par une fonction se range dessous en
+        ``children`` plutôt que de polluer le premier niveau.
+
+        Chaque entrée — fonction du corps, esquisse imbriquée, surface et
+        esquisse de surface — peut porter deux champs, omis quand ils sont
+        vides :
+
+        - ``deps`` — noms internes des nœuds dont elle dépend
+          (``OutList`` filtré). Une arête n'est émise que si sa cible
+          est elle-même un nœud du même payload : fonction, esquisse,
+          plan de référence, surface ou corps. Aucune arête pendante.
+        - ``driven`` — ``{chemin de propriété: expression}``, les
+          propriétés pilotées. Chaîne brute, sans parsing des variables.
+
+        Les plans de référence sont adressables : chaque entrée de
+        ``planes`` porte le ``name`` de l'objet, seule adresse par
+        laquelle une arête peut les désigner — ``id`` reste ``"XZ"`` quand
+        le nom prend un suffixe en multi-corps.
+
+        La cohérence de l'ensemble se vérifie par
+        ``protocol.dangling_deps`` : elle confronte chaque arête à ce que
+        le payload expose vraiment, et non à l'ensemble de noms qui a
+        servi à la filtrer. Le selftest la passe sur la pièce vitrine.
         """
         body = self._require_body()
         order_of = {obj.Name: i for i, obj in enumerate(self._doc.Objects)}
 
         consumed = self._consumed_sketches()
+        known_names = self._tree_known_names(body)
 
         def entry(obj):
             item = {
@@ -2704,6 +2786,15 @@ class Kernel:
                     "x": float(obj.FreeSolidTextX),
                     "y": float(obj.FreeSolidTextY),
                 }
+            deps = visible_deps(
+                [o.Name for o in (getattr(obj, "OutList", None) or ())],
+                known_names,
+            )
+            if deps:
+                item["deps"] = deps
+            driven = self._expression_map(obj)
+            if driven:
+                item["driven"] = driven
             return item
 
         items = []
@@ -2721,9 +2812,18 @@ class Kernel:
 
         from engine.vocab import label_for_origin
         # L'ordre SolidWorks : Plan de face, Plan de dessus, Plan de droite.
-        planes = [{"id": wire,
-                   "label": label_for_origin(self._PLANE_ROLES[wire])}
-                  for wire in ("XZ", "XY", "YZ")]
+        # ``name`` : le nom d'objet réel, seule adresse par laquelle une
+        # arête peut désigner un plan de référence (``id`` ne suffit pas —
+        # en multi-corps FreeCAD suffixe le nom, « XZ_Plane001 »).
+        planes = []
+        for wire in ("XZ", "XY", "YZ"):
+            role = self._PLANE_ROLES[wire]
+            feature = self._origin_feature_or_none(role)
+            planes.append({
+                "id": wire,
+                "label": label_for_origin(role),
+                "name": feature.Name if feature is not None else "",
+            })
         bodies = []
         for obj in self._doc.Objects:
             if obj.TypeId != "PartDesign::Body":
@@ -2740,7 +2840,7 @@ class Kernel:
                 "color": getattr(obj, "FreeSolidColor", "") or None,
                 "has_solid": self._body_has_solid(obj),
             })
-        surfaces = [self._surface_tree_entry(o, order_of)
+        surfaces = [self._surface_tree_entry(o, order_of, known_names)
                     for o in self._doc.Objects
                     if o.TypeId in self._SURFACE_TYPE_IDS
                     and not self._is_text_tool(o)]
@@ -5264,6 +5364,40 @@ class Kernel:
             # L'état vitrine (14, « FS ») est restauré : re-sauver pour
             # que le bilan rouvre exactement la pièce attendue.
             self.save_part(vitrine_path)
+
+            # Filet permanent : sur la pièce vitrine, qui exerce le plus
+            # de fonctions (gravure comprise, dont les artefacts sont
+            # masqués), aucune arête ne doit désigner un nœud absent du
+            # payload. Toute fonction future qui l'oublierait tombe ici.
+            report["n1b_aucune_arete_pendante"] = not dangling_deps(
+                self.get_tree())
+
+            mark("n1: arêtes de dépendance dans get_tree")
+            self.new_part("Pièce nœuds N001")
+            tree = self.add_rect_sketch(80, 50)
+            sketch_name = next(
+                f["name"] for f in tree["features"]
+                if f["type"] == "Sketcher::SketchObject")
+            tree = self.add_pad(12)
+            pad = next(f for f in tree["features"]
+                       if f["type"] == "PartDesign::Pad")
+            report["n1_deps_pad_sketch"] = (
+                sketch_name in pad.get("deps", []))
+            self.set_params(pad["name"], {"Length": "12 + 3"})
+            pad = next(f for f in self.get_tree()["features"]
+                       if f["type"] == "PartDesign::Pad")
+            report["n1_driven_ok"] = "Length" in pad.get("driven", {})
+            # Un plan de référence n'est désignable que par son ``name`` :
+            # ``id`` reste « XZ » là où le nom prend un suffixe en
+            # multi-corps. Sans ce champ, l'arête était pendante.
+            tree = self.add_datum_plane(base="XZ")
+            xz_name = next(pl["name"] for pl in tree["planes"]
+                           if pl["id"] == "XZ")
+            datum = next(f for f in tree["features"]
+                         if f["type"] == "PartDesign::Plane")
+            report["n1b_deps_plan_origine"] = (
+                bool(xz_name) and xz_name in datum.get("deps", []))
+            report["n1b_arbre_coherent"] = not dangling_deps(tree)
 
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce

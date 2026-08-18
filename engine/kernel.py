@@ -262,7 +262,8 @@ class Kernel:
     def new_assembly(self, name="Assemblage"):
         """Nouveau document d'assemblage : des pièces .FCStd insérées par
         référence (App::Link) dans un Assembly::AssemblyObject, avec le
-        groupe de joints du solveur natif (spike validé sur 1.1.3)."""
+        groupe de joints du solveur natif (plateforme de référence 1.1.3,
+        repli 1.0.2)."""
         App = self._app()
         self._close_current()
         self._doc = App.newDocument("FreeSolidAsm")
@@ -342,15 +343,19 @@ class Kernel:
                     pass
             raise KernelError(
                 "aucun corps PartDesign dans {}".format(path))
-        link = doc.addObject("App::Link", "Component")
+        try:
+            asm = self._assembly_object()
+        except KernelError:
+            asm = None  # assemblage ancien format : lien à la racine
+        if asm is not None:
+            # 1.1.3 : newObject évite « The graph must be a DAG ».
+            link = asm.newObject("App::Link", "Component")
+        else:
+            link = doc.addObject("App::Link", "Component")
         link.LinkedObject = bodies[0]
         link.Label = os.path.splitext(os.path.basename(path))[0]
         existing = [o for o in doc.Objects
                     if o.TypeId == "App::Link" and o is not link]
-        try:
-            self._assembly_object().addObject(link)
-        except KernelError:
-            pass  # assemblage ancien format : lien à la racine
         if not existing:
             # Le premier composant est fixé, comme dans SolidWorks.
             try:
@@ -429,32 +434,42 @@ class Kernel:
                 "cette version ne propose pas « {} » — disponibles : "
                 "{}".format(target, ", ".join(allowed)))
         joint.JointType = target
-        # Références : la propriété attend LE couple (objet, [sous-éléments])
-        # — « Expect input sequence of size 2 » si on l'emballe dans une
-        # liste (vu sur 1.1.3). Forme UI ancrée à l'assemblage d'abord,
-        # repli sur la forme directe.
-        for ref_prop, name, sub in (
-                ("Reference1", component1, sub1),
-                ("Reference2", component2, sub2)):
-            link = links[name]
+        # 1.1.3 : forme directe doublée via setJointConnectors. Un sub vide
+        # se double aussi (["", ""]) — banc natif : Face2+Face2 → centre.
+        # 1.0.2 lève AttributeError ('NoneType' … 'Placement') : repli.
+        refs = []
+        for name, sub in ((component1, sub1), (component2, sub2)):
             sub_name = str(sub) if sub else ""
-            forms = [
-                (asm, ["{}.{}".format(link.Name, sub_name)
-                       if sub_name else "{}.".format(link.Name)]),
-                (link, [sub_name] if sub_name else [""]),
-            ]
-            assigned = False
-            last_error = None
-            for form in forms:
-                try:
-                    setattr(joint, ref_prop, form)
-                    assigned = True
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    last_error = exc
-            if not assigned:
-                doc.removeObject(joint.Name)
-                raise KernelError(_explain(last_error))
+            refs.append((links[name], [sub_name, sub_name]))
+        try:
+            joint.Proxy.setJointConnectors(joint, refs)
+        except Exception:  # noqa: BLE001 - 1.0.2 n'a pas l'API
+            # Références : la propriété attend LE couple
+            # (objet, [sous-éléments]) — « Expect input sequence of size 2 »
+            # si on l'emballe dans une liste (vu sur 1.1.3). Forme UI ancrée
+            # à l'assemblage d'abord, repli sur la forme directe.
+            for ref_prop, name, sub in (
+                    ("Reference1", component1, sub1),
+                    ("Reference2", component2, sub2)):
+                link = links[name]
+                sub_name = str(sub) if sub else ""
+                forms = [
+                    (asm, ["{}.{}".format(link.Name, sub_name)
+                           if sub_name else "{}.".format(link.Name)]),
+                    (link, [sub_name] if sub_name else [""]),
+                ]
+                assigned = False
+                last_error = None
+                for form in forms:
+                    try:
+                        setattr(joint, ref_prop, form)
+                        assigned = True
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        last_error = exc
+                if not assigned:
+                    doc.removeObject(joint.Name)
+                    raise KernelError(_explain(last_error))
         if distance is not None and hasattr(joint, "Distance"):
             joint.Distance = float(distance)
         if distance2 is not None and hasattr(joint, "Distance2"):

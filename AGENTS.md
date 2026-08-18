@@ -13,19 +13,17 @@ corps de fonctions / méthodes.
 
 ### FreeCAD headless
 
-- Installé via micromamba dans l'environnement `freecad` (**FreeCAD 1.0.0**).
+- Installé via micromamba dans l'environnement `freecad` (**FreeCAD 1.1.x**
+  — conda-forge livre 1.1.0 ; la référence AppImage est 1.1.3).
   Binaire micromamba : `~/.local/bin/micromamba` (racine par défaut
   `~/micromamba`, donc `MAMBA_ROOT_PREFIX` n'a pas besoin d'être exporté).
 - Lancer une commande FreeCAD :
   `~/.local/bin/micromamba run -n freecad freecadcmd <script.py>`
-- **Version — ne pas prendre 1.1.x pour le selftest.** La CI épingle
-  `freecad=1.0.0`. Sur FreeCAD **1.1.0**, le solveur d'assemblage MbD se
-  comporte différemment : un joint « fixe » ne repositionne pas le
-  composant, donc `p10_joint_solved` et `p16_interference_found` échouent.
-  C'est une différence de comportement du moteur (M4 « à re-scoper »), pas
-  un bug du dépôt. Rester en `1.0.x`.
+- **Version — plateforme de référence 1.1.3**, repli 1.0.2 via le kernel
+  (`setJointConnectors` puis propriétés `Reference1`/`Reference2`). La CI
+  épingle `freecad=1.1` (conda-forge n'a pas encore 1.1.3).
 - Réinstaller l'env si le snapshot ne l'a pas conservé :
-  `~/.local/bin/micromamba create -y -n freecad -c conda-forge freecad=1.0.0`
+  `~/.local/bin/micromamba create -y -n freecad -c conda-forge freecad=1.1`
 
 ### Lancer / tester
 

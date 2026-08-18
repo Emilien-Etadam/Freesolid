@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   buildGraph,
+  countEdgeCrossings,
+  edgeCurvePath,
   expressionForVariable,
   freezeDrivenValues,
   isParamWireSource,
@@ -226,5 +228,45 @@ describe("fil paramétrique", () => {
       "Nombre d'occurrences",
     );
     assert.equal(paramChoiceCaption(null, labels), "");
+  });
+});
+
+describe("lisibilité du graphe", () => {
+  const crossingTree = {
+    features: [
+      { name: "A", label: "A", order: 0 },
+      { name: "B", label: "B", order: 1 },
+      { name: "C", label: "C", order: 2, deps: ["B"] },
+      { name: "D", label: "D", order: 3, deps: ["A"] },
+    ],
+  };
+
+  it("le barycentre réduit les croisements par rapport au tri par order", () => {
+    const ordered = buildGraph(crossingTree, { reduceCrossings: false });
+    const reduced = buildGraph(crossingTree);
+    const before = countEdgeCrossings(ordered);
+    const after = countEdgeCrossings(reduced);
+    assert.equal(before, 1);
+    assert.ok(after < before, `croisements ${after} ≮ ${before}`);
+    assert.equal(after, 0);
+  });
+
+  it("reste déterministe après réduction de croisements", () => {
+    const a = buildGraph(crossingTree);
+    const b = buildGraph(crossingTree);
+    assert.deepEqual(
+      a.nodes.map((n) => ({ name: n.name, x: n.x, y: n.y, layer: n.layer })),
+      b.nodes.map((n) => ({ name: n.name, x: n.x, y: n.y, layer: n.layer })),
+    );
+  });
+
+  it("la courbe d'arête est une Bézier cubique à poignées horizontales", () => {
+    assert.equal(
+      edgeCurvePath(0, 10, 200, 50),
+      "M 0,10 C 90,10 110,50 200,50",
+    );
+    const short = edgeCurvePath(0, 0, 20, 0);
+    assert.match(short, /^M 0,0 C /);
+    assert.equal(edgeCurvePath(0, 0, 20, 0), edgeCurvePath(0, 0, 20, 0));
   });
 });

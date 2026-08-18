@@ -1,14 +1,17 @@
 // Graphe de dépendances du FeatureManager — module pur.
 // Pas de DOM, pas de window, pas de réseau. Entrée : l'arbre `get_tree`.
 //
-// Disposition : couche = plus long chemin depuis les racines ; à
-// l'intérieur d'une couche, ordre par le champ `order` de l'arbre.
-// Pas de minimisation de croisements en v1 — manque assumé, pas un oubli.
+// Disposition : couches par plus long chemin (Sugiyama, étape 1), puis
+// réduction de croisements par barycentre (étapes 2–3). Dagre a été
+// écarté : son ESM CDN ne s'importe pas sous node --test (pas d'https:).
 
 const COL_GAP = 200;
 const ROW_GAP = 72;
 const ORIGIN_X = 48;
 const ORIGIN_Y = 48;
+const CROSSING_PASSES = 8;
+const NODE_HALF_W = 74;
+const VAR_HALF_W = 54;
 
 const IDENTIFIER = /[A-Za-z_][A-Za-z0-9_]*/g;
 
@@ -141,12 +144,151 @@ function longestLayers(names, incoming) {
   return memo;
 }
 
+function compareNodes(a, b) {
+  if (a.order !== b.order) return a.order - b.order;
+  if (a.name < b.name) return -1;
+  if (a.name > b.name) return 1;
+  return 0;
+}
+
+function barycenterOf(neighbors, indexOf, fallback) {
+  let sum = 0;
+  let count = 0;
+  for (const name of neighbors) {
+    const index = indexOf.get(name);
+    if (index === undefined) continue;
+    sum += index;
+    count += 1;
+  }
+  return count ? sum / count : fallback;
+}
+
+function indexInBucket(bucket) {
+  const indexOf = new Map();
+  for (const [index, node] of bucket.entries()) {
+    indexOf.set(node.name, index);
+  }
+  return indexOf;
+}
+
+function sortLayerByBarycenter(bucket, neighborMap, neighborIndex) {
+  const keyed = bucket.map((node, index) => ({
+    node,
+    index,
+    bary: barycenterOf(neighborMap.get(node.name) ?? [], neighborIndex, index),
+  }));
+  keyed.sort((a, b) => {
+    if (a.bary !== b.bary) return a.bary - b.bary;
+    return a.index - b.index;
+  });
+  return keyed.map((item) => item.node);
+}
+
+function reduceCrossings(byLayer, layerIds, edges) {
+  const preds = new Map();
+  const succs = new Map();
+  for (const layer of layerIds) {
+    for (const node of byLayer.get(layer)) {
+      preds.set(node.name, []);
+      succs.set(node.name, []);
+    }
+  }
+  for (const edge of edges) {
+    if (!preds.has(edge.to) || !succs.has(edge.from)) continue;
+    succs.get(edge.from).push(edge.to);
+    preds.get(edge.to).push(edge.from);
+  }
+
+  for (let pass = 0; pass < CROSSING_PASSES; pass++) {
+    for (let i = 1; i < layerIds.length; i++) {
+      const prev = byLayer.get(layerIds[i - 1]);
+      const cur = byLayer.get(layerIds[i]);
+      byLayer.set(layerIds[i],
+        sortLayerByBarycenter(cur, preds, indexInBucket(prev)));
+    }
+    for (let i = layerIds.length - 2; i >= 0; i--) {
+      const next = byLayer.get(layerIds[i + 1]);
+      const cur = byLayer.get(layerIds[i]);
+      byLayer.set(layerIds[i],
+        sortLayerByBarycenter(cur, succs, indexInBucket(next)));
+    }
+  }
+}
+
+function assignCoordinates(byLayer, layerIds) {
+  for (const layer of layerIds) {
+    const bucket = byLayer.get(layer);
+    for (const [index, node] of bucket.entries()) {
+      node.x = ORIGIN_X + layer * COL_GAP;
+      node.y = ORIGIN_Y + index * ROW_GAP;
+    }
+  }
+}
+
+function orientation(p, q, r) {
+  const value = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
+  if (Math.abs(value) < 1e-9) return 0;
+  return value > 0 ? 1 : 2;
+}
+
+function segmentsCross(p1, q1, p2, q2) {
+  const o1 = orientation(p1, q1, p2);
+  const o2 = orientation(p1, q1, q2);
+  const o3 = orientation(p2, q2, p1);
+  const o4 = orientation(p2, q2, q1);
+  if (o1 === 0 || o2 === 0 || o3 === 0 || o4 === 0) return false;
+  return o1 !== o2 && o3 !== o4;
+}
+
+/**
+ * Nombre de paires d'arêtes qui se coupent (segments entre centres).
+ * Les arêtes qui partagent une extrémité ne comptent pas.
+ */
+export function countEdgeCrossings(graph) {
+  const byName = new Map((graph?.nodes ?? []).map((node) => [node.name, node]));
+  const segs = [];
+  for (const edge of graph?.edges ?? []) {
+    const a = byName.get(edge.from);
+    const b = byName.get(edge.to);
+    if (!a || !b) continue;
+    segs.push({ from: edge.from, to: edge.to, a, b });
+  }
+  let count = 0;
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      const p = segs[i];
+      const q = segs[j];
+      if (p.from === q.from || p.from === q.to
+          || p.to === q.from || p.to === q.to) continue;
+      if (segmentsCross(p.a, p.b, q.a, q.b)) count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Courbe de Bézier cubique à poignées horizontales.
+ * `d` suit l'écart horizontal, borné pour éviter les boucles.
+ */
+export function edgeCurvePath(x1, y1, x2, y2) {
+  const span = x2 - x1;
+  const sign = span < 0 ? -1 : 1;
+  const d = sign * Math.min(Math.max(Math.abs(span) * 0.45, 16), 90);
+  return `M ${x1},${y1} C ${x1 + d},${y1} ${x2 - d},${y2} ${x2},${y2}`;
+}
+
+export function edgeAttachX(role, goingRight) {
+  const half = role === "variable" ? VAR_HALF_W : NODE_HALF_W;
+  return goingRight ? half : -half;
+}
+
 /**
  * Construit le graphe positionné d'un arbre `get_tree`.
  * @param {object|null|undefined} tree
+ * @param {{ reduceCrossings?: boolean }} [options]
  * @returns {{ nodes: object[], edges: object[] }}
  */
-export function buildGraph(tree) {
+export function buildGraph(tree, options = {}) {
   if (tree == null || typeof tree !== "object") {
     return { nodes: [], edges: [] };
   }
@@ -212,18 +354,13 @@ export function buildGraph(tree) {
   }
   const layerIds = [...byLayer.keys()].sort((a, b) => a - b);
   for (const layer of layerIds) {
-    const bucket = byLayer.get(layer);
-    bucket.sort((a, b) => {
-      if (a.order !== b.order) return a.order - b.order;
-      if (a.name < b.name) return -1;
-      if (a.name > b.name) return 1;
-      return 0;
-    });
-    for (const [index, node] of bucket.entries()) {
-      node.x = ORIGIN_X + layer * COL_GAP;
-      node.y = ORIGIN_Y + index * ROW_GAP;
-    }
+    byLayer.get(layer).sort(compareNodes);
   }
+  const reduce = options.reduceCrossings !== false;
+  if (reduce && layerIds.length > 1) {
+    reduceCrossings(byLayer, layerIds, kept);
+  }
+  assignCoordinates(byLayer, layerIds);
 
   const orderedNodes = [];
   for (const layer of layerIds) {

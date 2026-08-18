@@ -11,6 +11,8 @@ import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
 import {
   buildGraph,
+  edgeAttachX,
+  edgeCurvePath,
   expressionForVariable,
   freezeDrivenValues,
   isParamWireSource,
@@ -998,6 +1000,13 @@ const TREE_ICONS = {
   "PartDesign::AdditivePipe": "PartDesign_AdditivePipe.svg",
   "PartDesign::SubtractivePipe": "PartDesign_SubtractivePipe.svg",
   "PartDesign::AdditiveHelix": "PartDesign_AdditiveHelix.svg",
+  "PartDesign::Boolean": "PartDesign_Boolean.svg",
+  "PartDesign::Body": "PartDesign_Body.svg",
+  "Part::Extrusion": "Part_3D_object.svg",
+  "Part::Revolution": "Part_3D_object.svg",
+  "Part::Loft": "Part_3D_object.svg",
+  "Part::Feature": "Part_3D_object.svg",
+  "Part::Offset": "Part_3D_object.svg",
 };
 
 // ---------- plans de référence (fantôme + sélection d'esquisse) ----------
@@ -1060,6 +1069,24 @@ function treeIcon(file) {
   img.src = "icons/" + file;
   img.alt = "";
   return img;
+}
+
+function graphIconFile(node) {
+  if (node?.type && TREE_ICONS[node.type]) return TREE_ICONS[node.type];
+  if (node?.role === "sketch") return TREE_ICONS["Sketcher::SketchObject"];
+  if (node?.role === "datum") return TREE_ICONS["PartDesign::Plane"];
+  if (node?.role === "plane") return "Std_Plane.svg";
+  if (node?.role === "surface") return "Part_3D_object.svg";
+  if (node?.role === "variable") return "VarSet.svg";
+  if (node?.role === "body") return TREE_ICONS["PartDesign::Body"];
+  return TREE_ICONS["PartDesign::Body"];
+}
+
+function svgGraphIcon(file, x, y) {
+  return svgEl("image", {
+    href: "icons/" + file,
+    x, y, width: 16, height: 16,
+  });
 }
 
 let lastTree = null;
@@ -2143,7 +2170,7 @@ function applyGraphTransform() {
 
 function graphLabelText(text) {
   const label = String(text ?? "");
-  return label.length > 22 ? `${label.slice(0, 21)}…` : label;
+  return label.length > 16 ? `${label.slice(0, 15)}…` : label;
 }
 
 function isGraphNodeSelected(node) {
@@ -2355,10 +2382,10 @@ function moveGraphWire(event) {
     graphMoved = true;
     graphView.classList.add("wiring");
     const preview = svgEl("g", { class: "graph-edge param preview" });
-    preview.appendChild(svgEl("line", {
+    preview.appendChild(svgEl("path", {
       class: "graph-edge-line",
-      x1: graphWiring.x, y1: graphWiring.y,
-      x2: graphWiring.x, y2: graphWiring.y,
+      d: edgeCurvePath(graphWiring.x, graphWiring.y,
+                       graphWiring.x, graphWiring.y),
     }));
     graphWorld.insertBefore(preview, graphWorld.firstChild);
     graphWiring.preview = preview;
@@ -2367,8 +2394,8 @@ function moveGraphWire(event) {
   const world = clientToGraphWorld(event.clientX, event.clientY);
   const line = graphWiring.preview?.querySelector(".graph-edge-line");
   if (line) {
-    line.setAttribute("x2", String(world.x));
-    line.setAttribute("y2", String(world.y));
+    line.setAttribute("d",
+      edgeCurvePath(graphWiring.x, graphWiring.y, world.x, world.y));
   }
   const hover = graphNodeAt(event.clientX, event.clientY);
   setParamDropHighlights(hover?.dataset.name ?? null);
@@ -2442,6 +2469,16 @@ async function unlinkParamEdge(edge) {
   refresh(call("set_params", { feature: edge.to, values }));
 }
 
+function graphEdgeEnds(a, b) {
+  const goingRight = b.x >= a.x;
+  return {
+    x1: a.x + edgeAttachX(a.role, goingRight),
+    y1: a.y,
+    x2: b.x + edgeAttachX(b.role, !goingRight),
+    y2: b.y,
+  };
+}
+
 function appendGraphShape(group, node) {
   const role = node.role || "feature";
   group.classList.add(role);
@@ -2449,11 +2486,13 @@ function appendGraphShape(group, node) {
     group.appendChild(svgEl("ellipse", {
       class: "shape", cx: 0, cy: 0, rx: 54, ry: 20,
     }));
+    group.appendChild(svgGraphIcon(graphIconFile(node), -42, -8));
   } else {
     group.appendChild(svgEl("rect", {
       class: "shape", x: -74, y: -16, width: 148, height: 32,
       rx: role === "body" ? 2 : 8,
     }));
+    group.appendChild(svgGraphIcon(graphIconFile(node), -66, -8));
   }
 }
 
@@ -2505,27 +2544,19 @@ function renderGraph(data) {
     const a = byName.get(edge.from);
     const b = byName.get(edge.to);
     if (!a || !b) continue;
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const nx = dx / len;
-    const ny = dy / len;
-    const gap = 30;
-    const x1 = a.x + nx * gap;
-    const y1 = a.y + ny * gap;
-    const x2 = b.x - nx * gap;
-    const y2 = b.y - ny * gap;
+    const { x1, y1, x2, y2 } = graphEdgeEnds(a, b);
+    const d = edgeCurvePath(x1, y1, x2, y2);
     const group = svgEl("g", {
       class: `graph-edge ${edge.kind}`,
       "data-from": edge.from,
       "data-to": edge.to,
       "data-kind": edge.kind,
     });
-    group.appendChild(svgEl("line", {
-      class: "graph-edge-hit", x1, y1, x2, y2,
+    group.appendChild(svgEl("path", {
+      class: "graph-edge-hit", d,
     }));
-    group.appendChild(svgEl("line", {
-      class: "graph-edge-line", x1, y1, x2, y2,
+    group.appendChild(svgEl("path", {
+      class: "graph-edge-line", d,
     }));
     const title = edge.kind === "param"
       ? "Liaison paramétrique"
@@ -2558,8 +2589,10 @@ function renderGraph(data) {
     });
     if (isGraphNodeSelected(node)) group.classList.add("sel");
     appendGraphShape(group, node);
+    const isVar = node.role === "variable";
     const label = svgEl("text", {
-      x: 0, y: 0, "text-anchor": "middle", "dominant-baseline": "middle",
+      x: isVar ? -20 : -44, y: 0,
+      "text-anchor": "start", "dominant-baseline": "middle",
     });
     label.textContent = graphLabelText(node.label);
     group.appendChild(label);

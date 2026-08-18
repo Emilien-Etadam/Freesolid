@@ -497,8 +497,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     hasText: /Bossage/,
   }).first();
   const varBox = await varNode.boundingBox();
-  const padBox = await padNode.boundingBox();
-  if (!varBox || !padBox) {
+  const padNodeBox = await padNode.boundingBox();
+  if (!varBox || !padNodeBox) {
     errors.push("N003 : nœud variable ou bossage introuvable pour le drag");
   } else {
     await page.mouse.move(varBox.x + varBox.width / 2,
@@ -507,10 +507,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const steps = 12;
     for (let i = 1; i <= steps; i++) {
       const x = varBox.x + varBox.width / 2
-        + (padBox.x + padBox.width / 2 - varBox.x - varBox.width / 2)
+        + (padNodeBox.x + padNodeBox.width / 2 - varBox.x - varBox.width / 2)
           * (i / steps);
       const y = varBox.y + varBox.height / 2
-        + (padBox.y + padBox.height / 2 - varBox.y - varBox.height / 2)
+        + (padNodeBox.y + padNodeBox.height / 2 - varBox.y - varBox.height / 2)
           * (i / steps);
       await page.mouse.move(x, y);
       await sleep(20);

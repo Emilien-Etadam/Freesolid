@@ -13,17 +13,16 @@ corps de fonctions / méthodes.
 
 ### FreeCAD headless
 
-- Installé via micromamba dans l'environnement `freecad` (**FreeCAD 1.1.x**
-  — conda-forge livre 1.1.0 ; la référence AppImage est 1.1.3).
+- Installé via micromamba dans l'environnement `freecad` (**FreeCAD 1.1.3**).
   Binaire micromamba : `~/.local/bin/micromamba` (racine par défaut
   `~/micromamba`, donc `MAMBA_ROOT_PREFIX` n'a pas besoin d'être exporté).
 - Lancer une commande FreeCAD :
   `~/.local/bin/micromamba run -n freecad freecadcmd <script.py>`
 - **Version — plateforme de référence 1.1.3**, repli 1.0.2 via le kernel
   (`setJointConnectors` puis propriétés `Reference1`/`Reference2`). La CI
-  épingle `freecad=1.1` (conda-forge n'a pas encore 1.1.3).
+  épingle `freecad=1.1.3` (conda-forge).
 - Réinstaller l'env si le snapshot ne l'a pas conservé :
-  `~/.local/bin/micromamba create -y -n freecad -c conda-forge freecad=1.1`
+  `~/.local/bin/micromamba create -y -n freecad -c conda-forge freecad=1.1.3`
 
 ### Lancer / tester
 

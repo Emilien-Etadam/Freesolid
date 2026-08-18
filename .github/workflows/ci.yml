@@ -34,12 +34,11 @@ jobs:
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: freecad
-          # Plateforme de référence 1.1.3 (AppImage). conda-forge n'a pas
-          # 1.1.3 : `freecad=1.1` installe 1.1.0, dernière 1.1.x packagée.
+          # Plateforme de référence 1.1.3 (conda-forge + AppImage).
           # Le kernel pose les joints via setJointConnectors (repli 1.0.x).
           create-args: >-
             python=3.11
-            freecad=1.1
+            freecad=1.1.3
           cache-environment: true
       - name: Selftest
         shell: bash -el {0}
@@ -82,7 +81,7 @@ jobs:
           environment-name: freecad
           create-args: >-
             python=3.11
-            freecad=1.1
+            freecad=1.1.3
           cache-environment: true
       - name: Installer les deps smoke + Chromium
         working-directory: scripts/smoke

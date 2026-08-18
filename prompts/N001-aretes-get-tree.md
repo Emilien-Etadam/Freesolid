@@ -10,17 +10,18 @@ et sans elles il n'y a ni vue en graphe ni éditeur de nœuds.
 
 ## Le constat
 
-`Kernel.get_tree` (`engine/kernel.py:2234`) construit une liste plate à un
-seul niveau d'imbrication. Il lit bien `Profile` — mais dans l'unique but de
-ranger une esquisse consommée sous la fonction qui la consomme, puis il
-abandonne tout le reste : `AttachmentSupport`, `BaseFeature`, corps outils
-des booléens, et les expressions.
+`Kernel.get_tree` (`engine/kernel.py:2671`) construit une liste plate à un
+seul niveau d'imbrication. La seule dépendance qu'il exploite passe par
+`_consumed_sketches()` (`kernel.py:1669`), et dans l'unique but de ranger une
+esquisse consommée sous la fonction qui la consomme. Tout le reste est
+abandonné : `AttachmentSupport`, `BaseFeature`, corps outils des booléens, et
+les expressions.
 
 Les données existent pourtant déjà des deux côtés :
 
 - **arêtes géométriques** — `obj.OutList`, que FreeCAD tient à jour ;
 - **arêtes paramétriques** — `obj.ExpressionEngine`, déjà lu par le helper
-  `Kernel._expression_map` (`engine/kernel.py:2166`).
+  `Kernel._expression_map` (`engine/kernel.py:2590`).
 
 ## Le livrable
 
@@ -95,29 +96,44 @@ elle doit décrire les deux nouveaux champs et la règle d'arête.
   `bodies`, `surfaces`, `tip` gardent leur structure. On ajoute, on ne
   réorganise pas.
 
-## Coordination avec la série P
+## L'état du code au moment de l'exécuter
 
-**Décision du 2026-08-15 : la série N démarre une fois la série P terminée.**
-N001 arrive donc **après P021**, et pas avant — ce prompt est écrit avant
-lui, il faut le relire à la lumière du code tel qu'il sera.
+Ce prompt a été écrit avant la fin de la série P, puis **relu contre le code
+réel après le P033**. Les points suivants sont vérifiés, pas supposés.
 
-Deux points à vérifier au moment de l'exécuter, parce que P021 passe par le
-même endroit :
+- **`get_tree` renvoie déjà `variables`** au niveau du payload (P021). Aucune
+  contradiction : `deps` et `driven` sont des champs *par entrée*,
+  `variables` est un champ *de payload*. On ajoute à côté.
+- **L'entrée s'est enrichie** depuis : `order`, `rolled_back` sur les
+  esquisses, `text` sur les gravures rééditables (P032), `placement` sur les
+  plans. Raison de plus pour appliquer la consigne à la lettre — **on ajoute
+  deux clés, on ne réorganise rien.**
+- **`selftest_summary` (`kernel.py:104`) collecte automatiquement** tous les
+  booléens de premier niveau du rapport. Les points de contrôle `n1_*` sont
+  donc comptés sans rien déclarer.
+- **Plateforme de référence : FreeCAD 1.1.3** depuis le P033.
 
-- **`get_tree` aura déjà été enrichi** par P021 d'un `tree["variables"]` en
-  haut du dictionnaire de retour. Aucune contradiction — `deps` et `driven`
-  sont des champs *par entrée*, `variables` est un champ *de payload*. On
-  ajoute à côté, on ne réorganise rien, et la consigne « ne pas changer la
-  forme existante » s'applique aussi à ce que P021 aura posé.
-- **La section de rapport du selftest aura gagné `p7_tree_variables`.** Les
-  points de contrôle `n1_*` s'ajoutent à la suite, sans y toucher.
+### Le piège : les nœuds volontairement cachés
 
-Bénéfice à saisir une fois les deux en place : P021 crée un dossier
-« Équations » listant les variables globales, et le champ `driven` de N001
-dit **quelles fonctions chaque variable pilote**. De quoi afficher
-« utilisée par : Bossage1 » dans ce dossier — c'est la moitié du gestionnaire
-d'équations de SolidWorks, et elle devient gratuite. À traiter dans un prompt
-dédié, pas ici : le périmètre de N001 reste le moteur seul.
+`get_tree` **masque** les corps outils des gravures et leur `Part::Feature`
+via `_is_text_tool()` — ce sont des artefacts internes, et c'est délibéré.
+
+Conséquence directe sur la règle d'arête : le `OutList` du booléen d'une
+gravure pointe vers un objet **absent du payload**, donc l'arête est
+écartée. Une fonction de gravure apparaîtra sans arête sortante.
+
+**C'est le comportement voulu, pas un manque à combler.** Ne pas exposer les
+corps outils pour « réparer » le graphe : ce serait faire remonter dans
+l'arbre ce que le P032 a pris soin d'en sortir. La règle d'arête et le
+masquage disent la même chose — un nœud non dessinable n'a pas d'arête.
+
+### Ce que ça ouvre ensuite
+
+P021 a créé le dossier « Équations » listant les variables globales ; le
+champ `driven` dit **quelles fonctions chaque variable pilote**. De quoi
+afficher « utilisée par : Bossage1 » — la moitié du gestionnaire d'équations
+de SolidWorks, devenue gratuite. À traiter dans un prompt dédié, pas ici :
+le périmètre de N001 reste le moteur seul.
 
 ## Validation avant de pousser
 
@@ -127,9 +143,8 @@ python3 -m pytest -q
 PYTHONIOENCODING=utf-8 freecadcmd scripts/run-selftest.py   # si FreeCAD dispo
 ```
 
-Le selftest exige FreeCAD **1.0.x** (voir `AGENTS.md` — 1.1 fait diverger
-l'assemblage). S'il n'est pas disponible, le signaler dans le message de
-commit.
+Plateforme de référence depuis le P033 : **FreeCAD 1.1.3** (`AGENTS.md`).
+Si FreeCAD n'est pas disponible, le signaler dans le message de commit.
 
 ## Commit
 

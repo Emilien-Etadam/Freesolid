@@ -9,6 +9,7 @@ import { num } from "./num.js";
 import { FEATURES } from "./features.js";
 import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
+import { buildGraph } from "./graph.js";
 
 const statusEl = document.getElementById("status");
 const pickEl = document.getElementById("pick");
@@ -954,6 +955,9 @@ document.addEventListener("keydown", (event) => {
     measuring = false;
     measureFirst = null;
     say("Mesure annulée.");
+  } else if (event.key === "Escape" && graphOpen) {
+    event.preventDefault();
+    closeGraph();
   }
 });
 
@@ -1622,6 +1626,7 @@ function renderTree(tree) {
   }
 
   renderActiveBodyContents(tree);
+  syncGraphFromTree();
 }
 
 function renderActiveBodyContents(tree) {
@@ -1770,6 +1775,7 @@ async function editSurface(surface) {
 
 async function editFeature(feature) {
   if (feature.type === "Sketcher::SketchObject") {
+    closeGraph();
     sketchMode.enter(call("sketch_edit", { feature: feature.name }));
     return;
   }
@@ -2084,6 +2090,328 @@ document.getElementById("btn-clip").addEventListener("click", () => {
   });
 });
 
+// ---------- vue en graphe (lecture seule, depuis lastTree) ----------
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const graphView = document.getElementById("graph-view");
+const graphSvg = document.getElementById("graph-svg");
+const graphWorld = document.getElementById("graph-world");
+const graphEmpty = document.getElementById("graph-empty");
+const graphCap = document.getElementById("graph-cap");
+const graphBtn = document.getElementById("btn-graph");
+const GRAPH_HINT_AT = 60;
+
+let graphOpen = false;
+let graphPanX = 0;
+let graphPanY = 0;
+let graphZoom = 1;
+let graphDragging = false;
+let graphMoved = false;
+let graphDragX = 0;
+let graphDragY = 0;
+
+function svgEl(tag, attrs = {}) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value != null) el.setAttribute(key, String(value));
+  }
+  return el;
+}
+
+function applyGraphTransform() {
+  graphWorld.setAttribute(
+    "transform",
+    `translate(${graphPanX} ${graphPanY}) scale(${graphZoom})`);
+}
+
+function graphLabelText(text) {
+  const label = String(text ?? "");
+  return label.length > 22 ? `${label.slice(0, 21)}…` : label;
+}
+
+function isGraphNodeSelected(node) {
+  if (selectedSketch?.name === node.name) return true;
+  if (selectedDatumFeature?.name === node.name) return true;
+  if (selectedSurface?.name === node.name) return true;
+  if (selectedPlane != null) {
+    const plane = (lastTree?.planes ?? [])
+      .find((item) => item.id === selectedPlane);
+    if (plane?.name === node.name) return true;
+  }
+  return false;
+}
+
+function lookupGraphTarget(name) {
+  if (!lastTree || !name) return null;
+  for (const plane of lastTree.planes ?? []) {
+    if (plane.name === name) return { kind: "plane", plane };
+  }
+  for (const feature of lastTree.features ?? []) {
+    if (feature.name === name) {
+      if (feature.type === "Sketcher::SketchObject") {
+        return { kind: "sketch", feature };
+      }
+      if (feature.type === "PartDesign::Plane") {
+        return { kind: "datum", feature };
+      }
+      return { kind: "feature", feature };
+    }
+    for (const child of feature.children ?? []) {
+      if (child.name === name) return { kind: "sketch", feature: child };
+    }
+  }
+  for (const surface of lastTree.surfaces ?? []) {
+    if (surface.name === name) return { kind: "surface", surface };
+    for (const child of surface.children ?? []) {
+      if (child.name === name) return { kind: "sketch", feature: child };
+    }
+  }
+  for (const variable of lastTree.variables ?? []) {
+    if (variable.name === name) return { kind: "variable", variable };
+  }
+  return null;
+}
+
+function onGraphNodeClick(name) {
+  const target = lookupGraphTarget(name);
+  if (!target) return;
+  if (target.kind === "sketch") onSketchRowClick(target.feature);
+  else if (target.kind === "datum") onDatumRow(target.feature);
+  else if (target.kind === "surface") onSurfaceClick(target.surface);
+  else if (target.kind === "plane") onPlaneRow(target.plane.id);
+}
+
+function onGraphNodeDblClick(name) {
+  const target = lookupGraphTarget(name);
+  if (!target) return;
+  if (target.kind === "sketch") onSketchRowDblClick(target.feature);
+  else if (target.kind === "surface") onSurfaceDblClick(target.surface);
+  else if (target.kind === "feature" || target.kind === "datum") {
+    editFeature(target.feature);
+  } else if (target.kind === "variable") {
+    openEquationsPanel();
+  }
+}
+
+function setGraphHover(name) {
+  const incident = new Set();
+  if (name) {
+    incident.add(name);
+    for (const edge of graphWorld.querySelectorAll(".graph-edge")) {
+      if (edge.dataset.from === name) incident.add(edge.dataset.to);
+      if (edge.dataset.to === name) incident.add(edge.dataset.from);
+    }
+  }
+  for (const edge of graphWorld.querySelectorAll(".graph-edge")) {
+    const hit = !!name && (edge.dataset.from === name
+      || edge.dataset.to === name);
+    edge.classList.toggle("lit", hit);
+    edge.classList.toggle("dim", !!name && !hit);
+  }
+  for (const node of graphWorld.querySelectorAll(".graph-node")) {
+    const hit = incident.has(node.dataset.name);
+    node.classList.toggle("lit", hit);
+    node.classList.toggle("dim", !!name && !hit);
+  }
+}
+
+function appendGraphShape(group, node) {
+  const role = node.role || "feature";
+  group.classList.add(role);
+  if (role === "variable") {
+    group.appendChild(svgEl("ellipse", {
+      class: "shape", cx: 0, cy: 0, rx: 54, ry: 20,
+    }));
+  } else {
+    group.appendChild(svgEl("rect", {
+      class: "shape", x: -74, y: -16, width: 148, height: 32,
+      rx: role === "body" ? 2 : 8,
+    }));
+  }
+}
+
+function fitGraphView(data) {
+  const width = graphSvg.clientWidth || 800;
+  const height = graphSvg.clientHeight || 600;
+  if (!data.nodes.length) {
+    graphPanX = 0;
+    graphPanY = 0;
+    graphZoom = 1;
+    applyGraphTransform();
+    return;
+  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const node of data.nodes) {
+    minX = Math.min(minX, node.x - 80);
+    maxX = Math.max(maxX, node.x + 80);
+    minY = Math.min(minY, node.y - 28);
+    maxY = Math.max(maxY, node.y + 28);
+  }
+  const gw = Math.max(maxX - minX, 1);
+  const gh = Math.max(maxY - minY, 1);
+  const pad = 56;
+  graphZoom = Math.min((width - pad * 2) / gw, (height - pad * 2) / gh, 1.35);
+  graphZoom = Math.max(graphZoom, 0.3);
+  graphPanX = (width - gw * graphZoom) / 2 - minX * graphZoom;
+  graphPanY = (height - gh * graphZoom) / 2 - minY * graphZoom;
+  applyGraphTransform();
+}
+
+function renderGraph(data) {
+  graphWorld.replaceChildren();
+  const empty = data.nodes.length === 0;
+  graphEmpty.hidden = !empty;
+  if (data.nodes.length >= GRAPH_HINT_AT) {
+    graphCap.hidden = false;
+    graphCap.textContent =
+      `Graphe : ${data.nodes.length} nœuds — zoomez et faites glisser.`;
+  } else {
+    graphCap.hidden = true;
+    graphCap.textContent = "";
+  }
+
+  const byName = new Map(data.nodes.map((node) => [node.name, node]));
+  for (const edge of data.edges) {
+    const a = byName.get(edge.from);
+    const b = byName.get(edge.to);
+    if (!a || !b) continue;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = dx / len;
+    const ny = dy / len;
+    const gap = 30;
+    const line = svgEl("line", {
+      class: `graph-edge ${edge.kind}`,
+      x1: a.x + nx * gap, y1: a.y + ny * gap,
+      x2: b.x - nx * gap, y2: b.y - ny * gap,
+      "data-from": edge.from,
+      "data-to": edge.to,
+      "data-kind": edge.kind,
+    });
+    graphWorld.appendChild(line);
+  }
+
+  for (const node of data.nodes) {
+    const group = svgEl("g", {
+      class: "graph-node",
+      transform: `translate(${node.x} ${node.y})`,
+      "data-name": node.name,
+    });
+    if (isGraphNodeSelected(node)) group.classList.add("sel");
+    appendGraphShape(group, node);
+    const label = svgEl("text", {
+      x: 0, y: 0, "text-anchor": "middle", "dominant-baseline": "middle",
+    });
+    label.textContent = graphLabelText(node.label);
+    group.appendChild(label);
+    group.appendChild(svgEl("title")).textContent =
+      `${node.label} — ${node.kind}`;
+    group.addEventListener("pointerenter", () => setGraphHover(node.name));
+    group.addEventListener("pointerleave", () => setGraphHover(null));
+    group.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (graphMoved) return;
+      onGraphNodeClick(node.name);
+    });
+    group.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      onGraphNodeDblClick(node.name);
+    });
+    graphWorld.appendChild(group);
+  }
+  applyGraphTransform();
+}
+
+function syncGraphFromTree() {
+  if (!graphOpen) return;
+  renderGraph(buildGraph(lastTree));
+}
+
+function closeGraph() {
+  if (!graphOpen) return;
+  graphOpen = false;
+  graphView.classList.remove("open", "dragging");
+  graphBtn.classList.remove("on");
+  graphWorld.replaceChildren();
+  graphEmpty.hidden = true;
+  graphCap.hidden = true;
+}
+
+function openGraph() {
+  if (!lastTree) {
+    say("Vue en graphe : ouvrez d'abord une pièce", true);
+    return;
+  }
+  graphOpen = true;
+  graphView.classList.add("open");
+  graphBtn.classList.add("on");
+  const data = buildGraph(lastTree);
+  renderGraph(data);
+  fitGraphView(data);
+  say(data.nodes.length
+    ? "Vue en graphe — lecture seule. Échap pour fermer."
+    : "Vue en graphe — aucun nœud. Échap pour fermer.");
+}
+
+graphBtn.addEventListener("click", () => {
+  if (graphOpen) closeGraph();
+  else openGraph();
+});
+
+graphView.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+  graphMoved = false;
+  if (event.target.closest(".graph-node")) return;
+  event.preventDefault();
+  try {
+    graphView.setPointerCapture(event.pointerId);
+  } catch {
+    // Capture indisponible (pointeur déjà relâché) : le drag s'arrête.
+  }
+  graphDragging = true;
+  graphDragX = event.clientX;
+  graphDragY = event.clientY;
+  graphView.classList.add("dragging");
+});
+
+graphView.addEventListener("pointermove", (event) => {
+  if (!graphDragging) return;
+  const dx = event.clientX - graphDragX;
+  const dy = event.clientY - graphDragY;
+  if (!graphMoved && Math.hypot(dx, dy) < 4) return;
+  graphMoved = true;
+  graphPanX += dx;
+  graphPanY += dy;
+  graphDragX = event.clientX;
+  graphDragY = event.clientY;
+  applyGraphTransform();
+});
+
+const endGraphDrag = () => {
+  graphDragging = false;
+  graphView.classList.remove("dragging");
+};
+graphView.addEventListener("pointerup", endGraphDrag);
+graphView.addEventListener("pointercancel", endGraphDrag);
+
+graphView.addEventListener("wheel", (event) => {
+  event.preventDefault();
+  const rect = graphSvg.getBoundingClientRect();
+  const px = event.clientX - rect.left;
+  const py = event.clientY - rect.top;
+  const wx = (px - graphPanX) / graphZoom;
+  const wy = (py - graphPanY) / graphZoom;
+  const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+  graphZoom = Math.min(3, Math.max(0.25, graphZoom * factor));
+  graphPanX = px - wx * graphZoom;
+  graphPanY = py - wy * graphZoom;
+  applyGraphTransform();
+}, { passive: false });
+
 document.getElementById("btn-curve3d").addEventListener("click", () =>
   featureCommand(() => {
     const raw = prompt(
@@ -2260,6 +2588,7 @@ async function refreshAny(treePromise) {
 
 function renderAssemblyTree(tree) {
   lastTree = null; // le mode pièce est inactif
+  closeGraph();
   treeEl.innerHTML = "";
   const head = document.createElement("li");
   head.className = "body active";

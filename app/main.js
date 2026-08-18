@@ -3157,6 +3157,21 @@ window.__freesolidDebug.setGraphLiteral = (id, key, value) => {
   renderGraphFunction();
   return true;
 };
+window.__freesolidDebug.wireGraph = (from, to, input) => {
+  if (!graphFn.draft) return { ok: false, error: "pas de brouillon" };
+  const result = connectGraphEdge(
+    graphFn.draft, from, to, input, graphFn.vocabulary);
+  if (result.ok) {
+    graphFn.draft = result.draft;
+    graphFn.errorNode = null;
+    renderGraphFunction();
+  }
+  return result;
+};
+window.__freesolidDebug.graphFeatureEdges = () =>
+  (graphFn.draft?.edges ?? []).map((edge) => ({
+    from: edge.from, to: edge.to, input: edge.input,
+  }));
 window.__freesolidDebug.applyGraphFeature = () => applyGraphFeature();
 
 function closeGraph() {

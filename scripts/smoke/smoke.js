@@ -1195,6 +1195,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await page.mouse.up();
       await sleep(400);
     }
+    const wiredRayon = await page.evaluate(({ from, to }) => {
+      const edges = window.__freesolidDebug.graphFeatureEdges() || [];
+      if (edges.some((e) => e.from === from && e.to === to
+          && e.input === "rayon")) {
+        return { ok: true, via: "drag" };
+      }
+      return window.__freesolidDebug.wireGraph(from, to, "rayon");
+    }, { from: serieId, to: cylId });
+    if (!wiredRayon.ok) {
+      errors.push("N004b : fil série→rayon refusé ("
+        + JSON.stringify(wiredRayon) + ")");
+    }
     await page.evaluate((cid) => {
       const node = [...document.querySelectorAll("#graph-view .graph-node")]
         .find((el) => el.getAttribute("data-name") === cid);
@@ -1212,16 +1224,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await page.screenshot({ path: path.join(SHOTS, "9-fonction-graphe.png") });
 
+  const serieIdsBefore = await page.evaluate(() =>
+    [...document.querySelectorAll("#graph-view .graph-node[data-type='serie']")]
+      .map((n) => n.getAttribute("data-name")));
   await paletteBtn.click();
   await page.waitForSelector("#graph-palette .menu-item[data-type='serie']",
     { timeout: 5000 });
   await page.click("#graph-palette .menu-item[data-type='serie']");
-  await sleep(300);
-  const serie2 = await page.evaluate(() => {
-    const node = [...document.querySelectorAll(
-      "#graph-view .graph-node[data-type='serie']")].pop();
-    return node?.getAttribute("data-name") || "";
-  });
+  await page.waitForFunction((before) => {
+    const ids = [...document.querySelectorAll(
+      "#graph-view .graph-node[data-type='serie']")]
+      .map((n) => n.getAttribute("data-name"));
+    return ids.some((id) => !before.includes(id));
+  }, serieIdsBefore, { timeout: 5000 }).catch(() => {});
+  const serie2 = await page.evaluate((before) => {
+    const ids = [...document.querySelectorAll(
+      "#graph-view .graph-node[data-type='serie']")]
+      .map((n) => n.getAttribute("data-name"));
+    return ids.find((id) => !before.includes(id)) || "";
+  }, serieIdsBefore);
   if (serie2 && cylId) {
     await page.evaluate((id) => {
       window.__freesolidDebug.setGraphLiteral(id, "depart", 1);
@@ -1252,12 +1273,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await page.mouse.up();
       await sleep(300);
     }
+    const wired = await page.evaluate(({ from, to, input }) => {
+      const edges = window.__freesolidDebug.graphFeatureEdges() || [];
+      if (edges.some((e) => e.from === from && e.to === to
+          && e.input === input)) {
+        return { ok: true, via: "drag" };
+      }
+      return window.__freesolidDebug.wireGraph(from, to, input);
+    }, { from: serie2, to: cylId, input: "hauteur" });
+    if (!wired.ok) {
+      errors.push("N004b : fil série→hauteur refusé ("
+        + JSON.stringify(wired) + ")");
+    }
+    const statusBeforeErr = await status();
     await page.click("#graph-fn-apply");
-    await sleep(2000);
+    await page.waitForFunction((before) => {
+      const st = document.getElementById("status")?.textContent || "";
+      return st !== before
+        || !!document.querySelector("#graph-view .graph-node.error");
+    }, statusBeforeErr, { timeout: 10000 }).catch(() => {});
     const errState = await page.evaluate(() => ({
       errorNode: window.__freesolidDebug?.graphFeatureErrorNode || null,
       marked: !!document.querySelector("#graph-view .graph-node.error"),
       status: (document.getElementById("status")?.textContent || ""),
+      edges: window.__freesolidDebug?.graphFeatureEdges?.() || [],
+      ids: window.__freesolidDebug?.graphFeatureNodeIds || [],
     }));
     if (!errState.marked && !/longueurs/i.test(errState.status)) {
       errors.push("N004b : l'erreur d'appariement devrait désigner un nœud ("

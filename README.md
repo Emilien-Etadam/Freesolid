@@ -24,7 +24,7 @@ récupère FreeSolid et lance le serveur :
 
 ```bash
 cd ~
-curl -L -o FreeCAD.AppImage https://github.com/FreeCAD/FreeCAD/releases/download/1.0.2/FreeCAD_1.0.2-conda-Linux-x86_64-py311.AppImage
+curl -L -o FreeCAD.AppImage https://github.com/FreeCAD/FreeCAD/releases/download/1.1.3/FreeCAD_1.1.3-Linux-x86_64-py311.AppImage
 chmod +x FreeCAD.AppImage
 ./FreeCAD.AppImage --appimage-extract
 git clone https://github.com/Emilien-Etadam/Freesolid.git

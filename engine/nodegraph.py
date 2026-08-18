@@ -66,6 +66,60 @@ _NODE_INPUTS = {
     "boite": ("longueur", "largeur", "hauteur", "ancrage"),
 }
 
+#: Champs propres au nœud — pas des ports. L'évaluateur les lit sur
+#: le dict du nœud (``value``, ``name``, ``op``).
+_NODE_FIELDS = {
+    "nombre": (("value", "number"),),
+    "variable": (("name", "text"),),
+    "calcul": (("op", "op"),),
+}
+
+_POINT_INPUTS = frozenset({"ancrage"})
+_NODE_SHAPES = frozenset({"cylindre", "boite"})
+
+
+def vocabulary():
+    """Types de nœuds, libellés français et ports — lecture seule.
+
+    Les ports viennent de ``_NODE_INPUTS`` ; les mots de ``engine.vocab``.
+    C'est le contrat de l'opération ``graph_vocabulary``.
+    """
+    from engine.vocab import (
+        GRAPH_NODE_LABELS,
+        graph_field_label,
+        graph_input_label,
+        graph_node_label,
+    )
+
+    missing = [kind for kind in _NODE_INPUTS if kind not in GRAPH_NODE_LABELS]
+    if missing:
+        raise RuntimeError(
+            "libellé manquant pour le type de nœud « {} »".format(
+                missing[0]))
+    entries = []
+    for kind, ports in _NODE_INPUTS.items():
+        inputs = []
+        for key in ports:
+            item = {"key": key, "label": graph_input_label(key)}
+            if key in _POINT_INPUTS:
+                item["kind"] = "point"
+            inputs.append(item)
+        entry = {
+            "type": kind,
+            "label": graph_node_label(kind),
+            "inputs": inputs,
+            "shape": kind in _NODE_SHAPES,
+        }
+        fields = _NODE_FIELDS.get(kind, ())
+        if fields:
+            entry["fields"] = [
+                {"key": key, "label": graph_field_label(key),
+                 "kind": kind_name}
+                for key, kind_name in fields
+            ]
+        entries.append(entry)
+    return entries
+
 _OPS = {
     "+": lambda a, b: a + b,
     "-": lambda a, b: a - b,

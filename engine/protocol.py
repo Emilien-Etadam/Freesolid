@@ -111,6 +111,7 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # mode : fuse | cut
     "edit_graph_feature": _Req(("feature", str), ("graph", dict)),
     "get_graph_feature": _Req(("feature", str)),
+    "graph_vocabulary": (),             # lecture : types, libellés, ports
     "check_interference": (),          # assemblage : volumes communs par paires
     "undo": (),                        # une transaction = un Ctrl+Z
     "redo": (),

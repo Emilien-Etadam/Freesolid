@@ -1585,6 +1585,14 @@ class Kernel:
         mode = getattr(obj, "FreeSolidGraphMode", "") or "cut"
         return {"graph": parsed, "mode": mode}
 
+    def graph_vocabulary(self):
+        """Types de nœuds de la fonction graphe, libellés et ports.
+
+        Lecture seule, sans document. Le client n'en tient pas de copie.
+        """
+        from engine.nodegraph import vocabulary
+        return vocabulary()
+
     # -- phase E : évaluer ------------------------------------------------
 
     def mass_properties(self, density=1.24):

@@ -345,6 +345,7 @@ def test_graph_feature_ops_declared():
     assert protocol.OPS["add_graph_feature"] == ("graph", "mode")
     assert protocol.OPS["edit_graph_feature"] == ("feature", "graph")
     assert protocol.OPS["get_graph_feature"] == ("feature",)
+    assert protocol.OPS["graph_vocabulary"] == ()
     protocol.validate_request(
         {"op": "add_graph_feature",
          "params": {"graph": {"nodes": [], "edges": [], "output": "c"},
@@ -353,6 +354,8 @@ def test_graph_feature_ops_declared():
         {"op": "edit_graph_feature",
          "params": {"feature": "Boolean",
                     "graph": {"nodes": [], "edges": [], "output": "c"}}})
+    protocol.validate_request({"op": "graph_vocabulary", "params": {}})
+    protocol.validate_request({"op": "graph_vocabulary"})
     with pytest.raises(protocol.ProtocolError):
         protocol.validate_request(
             {"op": "add_graph_feature",
@@ -435,6 +438,7 @@ def test_ops_snapshot_keys():
         "get_graph_feature",
         "get_params",
         "get_tree",
+        "graph_vocabulary",
         "insert_component",
         "list_variables",
         "make_drawing",

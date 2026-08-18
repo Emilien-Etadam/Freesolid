@@ -592,3 +592,51 @@ def test_visible_deps_empty():
     assert protocol.visible_deps([], {"A"}) == []
     assert protocol.visible_deps(["Origin"], {"Pad"}) == []
     assert protocol.visible_deps(["Pad"], []) == []
+
+
+def test_dangling_deps_coherent_tree_is_empty():
+    tree = {
+        "features": [{"name": "Pad", "deps": ["Sketch"],
+                      "children": [{"name": "Sketch"}]}],
+        "planes": [{"id": "XZ", "name": "XZ_Plane"}],
+        "surfaces": [],
+        "bodies": [{"name": "Body"}],
+    }
+    assert protocol.dangling_deps(tree) == []
+
+
+def test_dangling_deps_reports_unknown_target():
+    tree = {"features": [{"name": "Pad", "deps": ["Sketch", "Fantome"]},
+                         {"name": "Sketch"}]}
+    assert protocol.dangling_deps(tree) == [("Pad", "Fantome")]
+
+
+def test_dangling_deps_resolves_targets_from_every_section():
+    """La régression du N001 : la cible peut vivre hors de ``features``.
+
+    Un plan n'était exposé que par son ``id``, une surface et une esquisse
+    imbriquée vivent dans leur propre section — chercher les cibles dans
+    les seules fonctions déclarerait ces trois arêtes pendantes.
+    """
+    tree = {
+        "features": [{"name": "Pad",
+                      "deps": ["XZ_Plane", "Surface", "SketchSurf"]}],
+        "planes": [{"id": "XZ", "name": "XZ_Plane"}],
+        "surfaces": [{"name": "Surface",
+                      "children": [{"name": "SketchSurf"}]}],
+    }
+    assert protocol.dangling_deps(tree) == []
+
+
+def test_dangling_deps_walks_children_as_sources():
+    tree = {"features": [{"name": "Pad",
+                          "children": [{"name": "Sketch",
+                                        "deps": ["Disparu"]}]}]}
+    assert protocol.dangling_deps(tree) == [("Sketch", "Disparu")]
+
+
+def test_dangling_deps_tolerates_missing_sections():
+    assert protocol.dangling_deps({}) == []
+    assert protocol.dangling_deps({"features": None}) == []
+    assert protocol.dangling_deps(None) == []
+    assert protocol.dangling_deps({"features": [{"name": "Pad"}]}) == []

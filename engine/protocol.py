@@ -461,6 +461,52 @@ def visible_deps(dep_names, known_names):
     return names
 
 
+def dangling_deps(tree):
+    """Arêtes de ``tree`` dont la cible n'est aucun nœud du payload.
+
+    Retour : liste de ``(nom du nœud source, nom de cible non résolue)``,
+    dans l'ordre de parcours, vide quand l'arbre est cohérent.
+
+    L'invariant que ``visible_deps`` promet — aucune arête pendante — se
+    vérifie contre ce que le payload **expose**, jamais contre l'ensemble
+    de noms qui a servi à le filtrer : c'est précisément là que les deux
+    peuvent diverger. Toute section porteuse de noms compte donc comme
+    cible légitime : ``features``, ``surfaces`` et leurs ``children``,
+    ``planes``, ``bodies``.
+
+    Fonction pure sur un dictionnaire — pas d'import FreeCAD.
+    """
+    if not isinstance(tree, dict):
+        return []
+
+    def walk(items):
+        """Entrées d'une section, enfants compris."""
+        for item in items or ():
+            if not isinstance(item, dict):
+                continue
+            yield item
+            for child in walk(item.get("children")):
+                yield child
+
+    sections = (tree.get("features"), tree.get("surfaces"),
+                tree.get("planes"), tree.get("bodies"))
+    known = set()
+    for section in sections:
+        for item in walk(section):
+            name = item.get("name")
+            if name:
+                known.add(name)
+
+    pendantes = []
+    for section in sections:
+        for item in walk(section):
+            source = item.get("name") or ""
+            for target in item.get("deps") or ():
+                if target not in known:
+                    pendantes.append((source, target))
+    return pendantes
+
+
 def pack_mesh(face_meshes) -> dict:
     """Flatten per-face tessellations into one indexed buffer.
 

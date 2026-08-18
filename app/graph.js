@@ -443,3 +443,449 @@ export function paramChoiceCaption(param, labels) {
   }
   return withUnit;
 }
+
+const FN_COL_GAP = 220;
+const FN_ROW_GAP = 110;
+const FN_ORIGIN_X = 56;
+const FN_ORIGIN_Y = 72;
+const FN_NODE_WIDTH = 168;
+const FN_HEADER = 28;
+const FN_ROW = 22;
+
+function listOfSpec(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function specByType(vocabulary) {
+  const map = new Map();
+  for (const spec of listOfSpec(vocabulary)) {
+    if (spec && typeof spec.type === "string") map.set(spec.type, spec);
+  }
+  return map;
+}
+
+function isPointLiteral(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value)
+    && Number.isFinite(Number(value.x))
+    && Number.isFinite(Number(value.y))
+    && Number.isFinite(Number(value.z));
+}
+
+function isNumberLiteral(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/** Valeur initiale d'un port : point d'ancrage ou nombre. */
+export function defaultPortLiteral(input) {
+  if (input && input.kind === "point") return { x: 0, y: 0, z: 0 };
+  return 1;
+}
+
+/** Valeur initiale d'un champ propre au nœud (valeur, nom, opération). */
+export function defaultFieldValue(field) {
+  const kind = field && field.kind;
+  if (kind === "text") return "";
+  if (kind === "op") return "+";
+  return 1;
+}
+
+/**
+ * Graphe minimal valide — un cylindre — pour créer la fonction.
+ * Ce n'est pas une table de types : une instance, prête à remplir.
+ */
+export function minimalGraphFeature() {
+  return {
+    nodes: [{
+      id: "cyl",
+      type: "cylindre",
+      rayon: 10,
+      hauteur: 20,
+      ancrage: { x: 0, y: 0, z: 0 },
+      pos: [240, 80],
+    }],
+    edges: [],
+    output: "cyl",
+  };
+}
+
+export function cloneGraphDraft(draft) {
+  return JSON.parse(JSON.stringify(draft ?? { nodes: [], edges: [], output: "" }));
+}
+
+export function nextGraphNodeId(nodes) {
+  const used = new Set(listOfSpec(nodes).map((node) => String(node.id)));
+  let index = 1;
+  while (used.has(`n${index}`)) index += 1;
+  return `n${index}`;
+}
+
+export function newGraphNode(spec, id, pos) {
+  const node = {
+    id: String(id),
+    type: spec.type,
+    pos: [pos?.x ?? 0, pos?.y ?? 0],
+  };
+  for (const field of listOfSpec(spec.fields)) {
+    node[field.key] = defaultFieldValue(field);
+  }
+  for (const input of listOfSpec(spec.inputs)) {
+    node[input.key] = defaultPortLiteral(input);
+  }
+  return node;
+}
+
+export function functionNodeSize(spec) {
+  const rows = Math.max(
+    listOfSpec(spec?.inputs).length,
+    listOfSpec(spec?.fields).length,
+    1,
+  );
+  return {
+    width: FN_NODE_WIDTH,
+    height: FN_HEADER + rows * FN_ROW + 8,
+  };
+}
+
+export function functionPortLayout(spec, size) {
+  const width = size?.width ?? FN_NODE_WIDTH;
+  const height = size?.height ?? FN_HEADER + FN_ROW;
+  const inputs = listOfSpec(spec?.inputs).map((input, index) => ({
+    key: input.key,
+    label: input.label,
+    kind: input.kind,
+    x: -width / 2,
+    y: -height / 2 + FN_HEADER + index * FN_ROW,
+  }));
+  return {
+    inputs,
+    output: { x: width / 2, y: 0 },
+  };
+}
+
+function wiredInputsOf(draft) {
+  const map = new Map();
+  for (const edge of listOfSpec(draft?.edges)) {
+    if (!edge || typeof edge.to !== "string" || typeof edge.input !== "string") {
+      continue;
+    }
+    if (!map.has(edge.to)) map.set(edge.to, new Set());
+    map.get(edge.to).add(edge.input);
+  }
+  return map;
+}
+
+/**
+ * JSON envoyé à `edit_graph_feature`.
+ * Un fil vers un port inconnu est refusé ici, avant le moteur.
+ * Un port sans fil prend le littéral du nœud. La sortie est unique.
+ * `pos` est conservé : c'est le JSON persisté.
+ * @returns {{ ok: true, graph: object } | { ok: false, error: string, node: string|null }}
+ */
+export function composeGraphPayload(draft, vocabulary) {
+  const specs = specByType(vocabulary);
+  const nodesIn = listOfSpec(draft?.nodes);
+  const byId = new Map();
+  for (const raw of nodesIn) {
+    if (!raw || raw.id == null || typeof raw.type !== "string") {
+      return { ok: false, error: "nœud invalide", node: null };
+    }
+    const ident = String(raw.id);
+    if (byId.has(ident)) {
+      return { ok: false, error: `nœud en double : « ${ident} »`, node: ident };
+    }
+    byId.set(ident, raw);
+  }
+
+  const output = draft?.output;
+  if (output == null || output === "") {
+    return { ok: false, error: "la sortie désignée est absente", node: null };
+  }
+  if (Array.isArray(output)) {
+    return { ok: false, error: "la sortie désignée doit être unique", node: null };
+  }
+  const outputId = String(output);
+  if (!byId.has(outputId)) {
+    return {
+      ok: false,
+      error: `nœud de sortie inconnu « ${outputId} »`,
+      node: outputId,
+    };
+  }
+
+  const wired = wiredInputsOf(draft);
+  const edges = [];
+  const seenPorts = new Set();
+  for (const edge of listOfSpec(draft?.edges)) {
+    if (!edge || typeof edge !== "object") {
+      return { ok: false, error: "arête invalide", node: null };
+    }
+    const src = String(edge.from ?? "");
+    const dst = String(edge.to ?? "");
+    const port = edge.input;
+    if (!byId.has(src)) {
+      return { ok: false, error: `arête depuis un nœud inconnu « ${src} »`, node: src };
+    }
+    if (!byId.has(dst)) {
+      return { ok: false, error: `arête vers un nœud inconnu « ${dst} »`, node: dst };
+    }
+    const spec = specs.get(byId.get(dst).type);
+    const allowed = new Set(listOfSpec(spec?.inputs).map((item) => item.key));
+    if (typeof port !== "string" || !allowed.has(port)) {
+      return {
+        ok: false,
+        error: `nœud « ${dst} » : entrée inconnue « ${port} »`,
+        node: dst,
+      };
+    }
+    const key = `${dst}\0${port}`;
+    if (seenPorts.has(key)) {
+      return {
+        ok: false,
+        error: `nœud « ${dst} » : entrée « ${port} » branchée deux fois`,
+        node: dst,
+      };
+    }
+    seenPorts.add(key);
+    edges.push({ from: src, to: dst, input: port });
+  }
+
+  const nodes = [];
+  for (const raw of nodesIn) {
+    const ident = String(raw.id);
+    const spec = specs.get(raw.type);
+    if (!spec) {
+      return {
+        ok: false,
+        error: `nœud « ${ident} » : type inconnu « ${raw.type} »`,
+        node: ident,
+      };
+    }
+    const node = { id: ident, type: raw.type };
+    if (Array.isArray(raw.pos) && raw.pos.length === 2
+        && Number.isFinite(Number(raw.pos[0]))
+        && Number.isFinite(Number(raw.pos[1]))) {
+      node.pos = [Number(raw.pos[0]), Number(raw.pos[1])];
+    }
+    for (const field of listOfSpec(spec.fields)) {
+      if (raw[field.key] !== undefined) node[field.key] = raw[field.key];
+    }
+    const taken = wired.get(ident) ?? new Set();
+    for (const input of listOfSpec(spec.inputs)) {
+      if (taken.has(input.key)) continue;
+      if (!(input.key in raw)) continue;
+      const value = raw[input.key];
+      if (input.kind === "point") {
+        if (!isPointLiteral(value)) {
+          return {
+            ok: false,
+            error: `nœud « ${ident} » : littéral invalide pour « ${input.key} »`,
+            node: ident,
+          };
+        }
+        node[input.key] = {
+          x: Number(value.x), y: Number(value.y), z: Number(value.z),
+        };
+        continue;
+      }
+      if (!isNumberLiteral(value) && typeof value !== "number") {
+        const asNum = typeof value === "string" ? Number(value) : NaN;
+        if (!Number.isFinite(asNum)) {
+          return {
+            ok: false,
+            error: `nœud « ${ident} » : littéral invalide pour « ${input.key} »`,
+            node: ident,
+          };
+        }
+        node[input.key] = asNum;
+        continue;
+      }
+      node[input.key] = Number(value);
+    }
+    nodes.push(node);
+  }
+
+  return { ok: true, graph: { nodes, edges, output: outputId } };
+}
+
+/**
+ * Pose un fil sur un port nommé. Un port inconnu est refusé.
+ * Un second fil sur le même port remplace le premier.
+ */
+export function connectGraphEdge(draft, from, to, input, vocabulary) {
+  const specs = specByType(vocabulary);
+  const dest = listOfSpec(draft?.nodes).find((node) => String(node.id) === String(to));
+  if (!dest) {
+    return { ok: false, error: `nœud inconnu « ${to} »`, node: String(to) };
+  }
+  const spec = specs.get(dest.type);
+  const allowed = new Set(listOfSpec(spec?.inputs).map((item) => item.key));
+  if (!allowed.has(input)) {
+    return {
+      ok: false,
+      error: `nœud « ${to} » : entrée inconnue « ${input} »`,
+      node: String(to),
+    };
+  }
+  if (String(from) === String(to)) {
+    return { ok: false, error: "un nœud ne se branche pas sur lui-même", node: String(to) };
+  }
+  const next = cloneGraphDraft(draft);
+  next.edges = listOfSpec(next.edges).filter(
+    (edge) => !(String(edge.to) === String(to) && edge.input === input));
+  next.edges.push({ from: String(from), to: String(to), input });
+  return { ok: true, draft: next };
+}
+
+export function disconnectGraphEdge(draft, from, to, input) {
+  const next = cloneGraphDraft(draft);
+  next.edges = listOfSpec(next.edges).filter((edge) => !(
+    String(edge.from) === String(from)
+    && String(edge.to) === String(to)
+    && edge.input === input
+  ));
+  return next;
+}
+
+export function removeGraphNode(draft, id) {
+  const ident = String(id);
+  const next = cloneGraphDraft(draft);
+  next.nodes = listOfSpec(next.nodes).filter((node) => String(node.id) !== ident);
+  next.edges = listOfSpec(next.edges).filter((edge) =>
+    String(edge.from) !== ident && String(edge.to) !== ident);
+  if (String(next.output) === ident) {
+    const fallback = next.nodes.find((node) => node.type === "cylindre"
+      || node.type === "boite") ?? next.nodes[0];
+    next.output = fallback ? String(fallback.id) : "";
+  }
+  return next;
+}
+
+export function graphDraftsEqual(a, b) {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+/**
+ * Identifiant du nœud nommé par un GraphError français.
+ * Le message est « nœud « id (type) » : … ».
+ */
+export function nodeIdFromGraphError(message) {
+  const text = String(message ?? "");
+  const labeled = text.match(/nœud « ([^»]+?) \(/);
+  if (labeled) return labeled[1];
+  const duplicate = text.match(/nœud en double : « ([^»]+) »/);
+  if (duplicate) return duplicate[1];
+  const unknownOut = text.match(/nœud de sortie inconnu « ([^»]+) »/);
+  if (unknownOut) return unknownOut[1];
+  return null;
+}
+
+export function isGraphFeature(item) {
+  return !!(item && typeof item === "object" && item.graph
+    && typeof item.graph === "object");
+}
+
+/**
+ * Disposition du graphe interne : `pos` persisté, sinon couches.
+ * Les nœuds portent `name` (= id) pour le rendu partagé.
+ */
+export function layoutFunctionGraph(draft, vocabulary) {
+  const specs = specByType(vocabulary);
+  const rawNodes = listOfSpec(draft?.nodes);
+  const wired = wiredInputsOf(draft);
+  const incoming = new Map();
+  const names = [];
+  for (const raw of rawNodes) {
+    const ident = String(raw.id);
+    names.push(ident);
+    incoming.set(ident, []);
+  }
+  for (const edge of listOfSpec(draft?.edges)) {
+    const src = String(edge.from ?? "");
+    const dst = String(edge.to ?? "");
+    if (!incoming.has(dst) || !incoming.has(src)) continue;
+    incoming.get(dst).push(src);
+  }
+  const layers = longestLayers(names, incoming);
+
+  const placed = [];
+  const byLayer = new Map();
+  for (const raw of rawNodes) {
+    const ident = String(raw.id);
+    const spec = specs.get(raw.type) ?? {
+      type: raw.type, label: raw.type, inputs: [], fields: [],
+    };
+    const size = functionNodeSize(spec);
+    const ports = functionPortLayout(spec, size);
+    const hasPos = Array.isArray(raw.pos) && raw.pos.length === 2
+      && Number.isFinite(Number(raw.pos[0]))
+      && Number.isFinite(Number(raw.pos[1]));
+    const layer = layers.get(ident) ?? 0;
+    const node = {
+      name: ident,
+      id: ident,
+      type: raw.type,
+      label: spec.label || raw.type,
+      kind: spec.label || raw.type,
+      role: spec.shape ? "shape" : "compute",
+      shape: !!spec.shape,
+      output: String(draft?.output) === ident,
+      spec,
+      width: size.width,
+      height: size.height,
+      ports,
+      layer,
+      x: hasPos ? Number(raw.pos[0]) : FN_ORIGIN_X + layer * FN_COL_GAP,
+      y: hasPos ? Number(raw.pos[1]) : 0,
+      hasPos,
+      literals: {},
+      fields: {},
+    };
+    const taken = wired.get(ident) ?? new Set();
+    node.inputs = ports.inputs.map((port) => ({
+      ...port,
+      wired: taken.has(port.key),
+      value: raw[port.key],
+    }));
+    for (const field of listOfSpec(spec.fields)) {
+      node.fields[field.key] = raw[field.key];
+    }
+    placed.push(node);
+    if (!hasPos) {
+      const bucket = byLayer.get(layer);
+      if (bucket) bucket.push(node);
+      else byLayer.set(layer, [node]);
+    }
+  }
+  const layerIds = [...byLayer.keys()].sort((a, b) => a - b);
+  for (const layer of layerIds) {
+    const bucket = byLayer.get(layer);
+    for (const [index, node] of bucket.entries()) {
+      node.y = FN_ORIGIN_Y + index * FN_ROW_GAP;
+    }
+  }
+
+  const edges = [];
+  const known = new Set(placed.map((node) => node.name));
+  for (const edge of listOfSpec(draft?.edges)) {
+    const src = String(edge.from ?? "");
+    const dst = String(edge.to ?? "");
+    if (!known.has(src) || !known.has(dst)) continue;
+    edges.push({
+      from: src, to: dst, input: edge.input, kind: "data",
+    });
+  }
+  return { nodes: placed, edges };
+}
+
+/** Attache d'un fil de fonction graphe : sortie → port d'entrée nommé. */
+export function functionEdgeEnds(fromNode, toNode, input) {
+  const start = fromNode.ports?.output ?? { x: (fromNode.width ?? 148) / 2, y: 0 };
+  const port = (toNode.inputs ?? []).find((item) => item.key === input);
+  const end = port ?? { x: -((toNode.width ?? 148) / 2), y: 0 };
+  return {
+    x1: fromNode.x + start.x,
+    y1: fromNode.y + start.y,
+    x2: toNode.x + end.x,
+    y2: toNode.y + end.y,
+  };
+}

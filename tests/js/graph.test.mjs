@@ -3,12 +3,22 @@ import assert from "node:assert/strict";
 
 import {
   buildGraph,
+  composeGraphPayload,
+  connectGraphEdge,
   countEdgeCrossings,
+  defaultPortLiteral,
   edgeCurvePath,
   expressionForVariable,
   freezeDrivenValues,
+  functionEdgeEnds,
+  isGraphFeature,
   isParamWireSource,
   isParamWireTarget,
+  layoutFunctionGraph,
+  minimalGraphFeature,
+  newGraphNode,
+  nextGraphNodeId,
+  nodeIdFromGraphError,
   paramChoiceCaption,
 } from "../../app/graph.js";
 
@@ -268,5 +278,137 @@ describe("lisibilité du graphe", () => {
     const short = edgeCurvePath(0, 0, 20, 0);
     assert.match(short, /^M 0,0 C /);
     assert.equal(edgeCurvePath(0, 0, 20, 0), edgeCurvePath(0, 0, 20, 0));
+  });
+});
+
+const VOCAB = [
+  { type: "nombre", label: "Nombre", inputs: [],
+    fields: [{ key: "value", label: "Valeur", kind: "number" }], shape: false },
+  { type: "serie", label: "Série", inputs: [
+    { key: "depart", label: "Départ" },
+    { key: "pas", label: "Pas" },
+    { key: "nombre", label: "Nombre" },
+  ], shape: false },
+  { type: "point", label: "Point", inputs: [
+    { key: "x", label: "X" }, { key: "y", label: "Y" }, { key: "z", label: "Z" },
+  ], shape: false },
+  { type: "cylindre", label: "Cylindre", inputs: [
+    { key: "rayon", label: "Rayon" },
+    { key: "hauteur", label: "Hauteur" },
+    { key: "ancrage", label: "Ancrage", kind: "point" },
+  ], shape: true },
+];
+
+describe("composition du graphe interne", () => {
+  it("un fil vers un port inconnu est refusé avant l'envoi", () => {
+    const draft = {
+      nodes: [
+        { id: "s", type: "serie", depart: 0, pas: 10, nombre: 3 },
+        { id: "c", type: "cylindre", rayon: 3, hauteur: 10,
+          ancrage: { x: 0, y: 0, z: 0 } },
+      ],
+      edges: [{ from: "s", to: "c", input: "diametre" }],
+      output: "c",
+    };
+    const result = composeGraphPayload(draft, VOCAB);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /entrée inconnue « diametre »/);
+    assert.equal(result.node, "c");
+    const wired = connectGraphEdge(draft, "s", "c", "diametre", VOCAB);
+    assert.equal(wired.ok, false);
+    assert.match(wired.error, /entrée inconnue/);
+  });
+
+  it("un port sans fil prend son littéral", () => {
+    const draft = {
+      nodes: [
+        { id: "s", type: "serie", depart: 0, pas: 5, nombre: 2 },
+        { id: "c", type: "cylindre", rayon: 4, hauteur: 12,
+          ancrage: { x: 1, y: 2, z: 3 } },
+      ],
+      edges: [{ from: "s", to: "c", input: "rayon" }],
+      output: "c",
+    };
+    const result = composeGraphPayload(draft, VOCAB);
+    assert.equal(result.ok, true);
+    const cyl = result.graph.nodes.find((node) => node.id === "c");
+    assert.equal("rayon" in cyl, false);
+    assert.equal(cyl.hauteur, 12);
+    assert.deepEqual(cyl.ancrage, { x: 1, y: 2, z: 3 });
+    assert.deepEqual(result.graph.edges, [
+      { from: "s", to: "c", input: "rayon" },
+    ]);
+    assert.equal(result.graph.output, "c");
+  });
+
+  it("la sortie désignée est unique", () => {
+    const draft = {
+      nodes: [
+        { id: "a", type: "cylindre", rayon: 1, hauteur: 1,
+          ancrage: { x: 0, y: 0, z: 0 } },
+        { id: "b", type: "cylindre", rayon: 2, hauteur: 2,
+          ancrage: { x: 0, y: 0, z: 0 } },
+      ],
+      edges: [],
+      output: ["a", "b"],
+    };
+    const result = composeGraphPayload(draft, VOCAB);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /unique/);
+  });
+
+  it("conserve pos dans le JSON persisté", () => {
+    const draft = minimalGraphFeature();
+    const result = composeGraphPayload(draft, VOCAB);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.graph.nodes[0].pos, [240, 80]);
+  });
+
+  it("newGraphNode pose les littéraux par défaut du vocabulaire", () => {
+    const spec = VOCAB.find((item) => item.type === "cylindre");
+    const node = newGraphNode(spec, nextGraphNodeId([]), { x: 10, y: 20 });
+    assert.equal(node.id, "n1");
+    assert.equal(node.rayon, 1);
+    assert.deepEqual(node.ancrage, { x: 0, y: 0, z: 0 });
+    assert.deepEqual(node.pos, [10, 20]);
+    assert.equal(defaultPortLiteral({ kind: "point" }).x, 0);
+  });
+
+  it("le nœud fautif d'un GraphError est l'identifiant, pas le type", () => {
+    assert.equal(
+      nodeIdFromGraphError("nœud « pts (point) » : listes de longueurs 3 et 5"),
+      "pts",
+    );
+    assert.equal(
+      nodeIdFromGraphError("cycle détecté dans le graphe (nœud « a (calcul) »)"),
+      "a",
+    );
+    assert.equal(nodeIdFromGraphError("le graphe n'a pas de nœud de sortie"),
+      null);
+  });
+
+  it("isGraphFeature lit le champ graph de l'arbre, pas le type FreeCAD", () => {
+    assert.equal(isGraphFeature({ graph: { nodes: [] } }), true);
+    assert.equal(isGraphFeature({ type: "PartDesign::Boolean" }), false);
+  });
+
+  it("layoutFunctionGraph attache les fils aux ports nommés", () => {
+    const draft = {
+      nodes: [
+        { id: "s", type: "serie", depart: 0, pas: 1, nombre: 2, pos: [0, 0] },
+        { id: "c", type: "cylindre", rayon: 3, hauteur: 8,
+          ancrage: { x: 0, y: 0, z: 0 }, pos: [200, 0] },
+      ],
+      edges: [{ from: "s", to: "c", input: "rayon" }],
+      output: "c",
+    };
+    const laid = layoutFunctionGraph(draft, VOCAB);
+    const byName = Object.fromEntries(laid.nodes.map((n) => [n.name, n]));
+    assert.equal(byName.c.output, true);
+    assert.equal(byName.s.inputs.find((p) => p.key === "depart").wired, false);
+    assert.equal(byName.c.inputs.find((p) => p.key === "rayon").wired, true);
+    const ends = functionEdgeEnds(byName.s, byName.c, "rayon");
+    assert.equal(ends.x1, byName.s.x + byName.s.ports.output.x);
+    assert.equal(ends.y2, byName.c.y + byName.c.inputs[0].y);
   });
 });

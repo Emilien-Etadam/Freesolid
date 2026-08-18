@@ -9,7 +9,14 @@ import { num } from "./num.js";
 import { FEATURES } from "./features.js";
 import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
-import { buildGraph } from "./graph.js";
+import {
+  buildGraph,
+  expressionForVariable,
+  freezeDrivenValues,
+  isParamWireSource,
+  isParamWireTarget,
+  paramChoiceCaption,
+} from "./graph.js";
 
 const statusEl = document.getElementById("status");
 const pickEl = document.getElementById("pick");
@@ -957,7 +964,13 @@ document.addEventListener("keydown", (event) => {
     say("Mesure annulée.");
   } else if (event.key === "Escape" && graphOpen) {
     event.preventDefault();
-    closeGraph();
+    if (paramPickEl.style.display === "block") closeParamPicker();
+    else if (graphWiring) cancelGraphWire();
+    else closeGraph();
+  } else if (graphOpen && (event.key === "Delete" || event.key === "Suppr")
+             && graphSelectedEdge) {
+    event.preventDefault();
+    unlinkParamEdge(graphSelectedEdge);
   }
 });
 
@@ -2090,7 +2103,7 @@ document.getElementById("btn-clip").addEventListener("click", () => {
   });
 });
 
-// ---------- vue en graphe (lecture seule, depuis lastTree) ----------
+// ---------- vue en graphe (depuis lastTree) ----------
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const graphView = document.getElementById("graph-view");
@@ -2099,6 +2112,8 @@ const graphWorld = document.getElementById("graph-world");
 const graphEmpty = document.getElementById("graph-empty");
 const graphCap = document.getElementById("graph-cap");
 const graphBtn = document.getElementById("btn-graph");
+const paramPickEl = document.getElementById("param-pick");
+const graphEdgeMenu = document.getElementById("graph-edge-menu");
 const GRAPH_HINT_AT = 60;
 
 let graphOpen = false;
@@ -2109,6 +2124,8 @@ let graphDragging = false;
 let graphMoved = false;
 let graphDragX = 0;
 let graphDragY = 0;
+let graphWiring = null; // { from, x, y, started, preview }
+let graphSelectedEdge = null; // { from, to, kind }
 
 function svgEl(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
@@ -2166,9 +2183,24 @@ function lookupGraphTarget(name) {
       if (child.name === name) return { kind: "sketch", feature: child };
     }
   }
+  for (const body of lastTree.bodies ?? []) {
+    if (body.name === name) return { kind: "body", body };
+  }
   for (const variable of lastTree.variables ?? []) {
     if (variable.name === name) return { kind: "variable", variable };
   }
+  return null;
+}
+
+function graphMenuTarget(name) {
+  const target = lookupGraphTarget(name);
+  if (!target) return null;
+  if (target.kind === "feature" || target.kind === "sketch"
+      || target.kind === "datum") {
+    return target.feature;
+  }
+  if (target.kind === "surface") return target.surface;
+  if (target.kind === "body") return target.body;
   return null;
 }
 
@@ -2194,6 +2226,7 @@ function onGraphNodeDblClick(name) {
 }
 
 function setGraphHover(name) {
+  if (graphWiring) return;
   const incident = new Set();
   if (name) {
     incident.add(name);
@@ -2213,6 +2246,200 @@ function setGraphHover(name) {
     node.classList.toggle("lit", hit);
     node.classList.toggle("dim", !!name && !hit);
   }
+}
+
+function clientToGraphWorld(clientX, clientY) {
+  const rect = graphSvg.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left - graphPanX) / graphZoom,
+    y: (clientY - rect.top - graphPanY) / graphZoom,
+  };
+}
+
+function graphNodeAt(clientX, clientY) {
+  const hit = document.elementFromPoint(clientX, clientY);
+  return hit?.closest?.(".graph-node") ?? null;
+}
+
+function placeGraphMenu(el, clientX, clientY) {
+  el.style.display = "block";
+  el.style.left = Math.min(clientX, window.innerWidth - 220) + "px";
+  el.style.top = Math.min(clientY, window.innerHeight - 80) + "px";
+}
+
+function closeParamPicker() {
+  paramPickEl.style.display = "none";
+  paramPickEl.replaceChildren();
+}
+
+function closeGraphEdgeMenu() {
+  graphEdgeMenu.style.display = "none";
+}
+
+function selectGraphEdge(edge) {
+  graphSelectedEdge = edge && edge.kind === "param"
+    ? { from: edge.from, to: edge.to, kind: "param" }
+    : null;
+  applyGraphEdgeSelection();
+}
+
+function applyGraphEdgeSelection() {
+  for (const edge of graphWorld.querySelectorAll(".graph-edge")) {
+    const hit = !!graphSelectedEdge
+      && edge.dataset.kind === "param"
+      && edge.dataset.from === graphSelectedEdge.from
+      && edge.dataset.to === graphSelectedEdge.to;
+    edge.classList.toggle("sel", hit);
+  }
+}
+
+function clearParamDropHighlights() {
+  graphView.classList.remove("wiring");
+  for (const node of graphWorld.querySelectorAll(".graph-node")) {
+    node.classList.remove("drop-ok", "drop-no", "drop-hover", "wiring-from");
+  }
+}
+
+function setParamDropHighlights(hoverName) {
+  const source = graphWiring?.from;
+  for (const node of graphWorld.querySelectorAll(".graph-node")) {
+    const isSource = node.dataset.name === source;
+    const valid = !isSource && isParamWireTarget(node.dataset.role);
+    node.classList.toggle("wiring-from", isSource);
+    node.classList.toggle("drop-ok", valid);
+    node.classList.toggle("drop-no", !valid);
+    node.classList.toggle("drop-hover",
+      valid && hoverName != null && node.dataset.name === hoverName);
+  }
+}
+
+function cancelGraphWire() {
+  if (graphWiring?.preview) graphWiring.preview.remove();
+  graphWiring = null;
+  clearParamDropHighlights();
+}
+
+function startGraphWire(node, event) {
+  cancelGraphWire();
+  closeParamPicker();
+  closeGraphEdgeMenu();
+  graphMoved = false;
+  graphWiring = {
+    from: node.name,
+    x: node.x,
+    y: node.y,
+    started: false,
+    preview: null,
+  };
+  try {
+    graphView.setPointerCapture(event.pointerId);
+  } catch {
+    // Capture indisponible : le fil s'arrête au pointerup du nœud.
+  }
+}
+
+function moveGraphWire(event) {
+  if (!graphWiring) return;
+  const origin = {
+    x: graphWiring.x * graphZoom + graphPanX,
+    y: graphWiring.y * graphZoom + graphPanY,
+  };
+  const rect = graphSvg.getBoundingClientRect();
+  const screenX = origin.x + rect.left;
+  const screenY = origin.y + rect.top;
+  if (!graphWiring.started) {
+    if (Math.hypot(event.clientX - screenX, event.clientY - screenY) < 4) {
+      return;
+    }
+    graphWiring.started = true;
+    graphMoved = true;
+    graphView.classList.add("wiring");
+    const preview = svgEl("g", { class: "graph-edge param preview" });
+    preview.appendChild(svgEl("line", {
+      class: "graph-edge-line",
+      x1: graphWiring.x, y1: graphWiring.y,
+      x2: graphWiring.x, y2: graphWiring.y,
+    }));
+    graphWorld.insertBefore(preview, graphWorld.firstChild);
+    graphWiring.preview = preview;
+    setParamDropHighlights(null);
+  }
+  const world = clientToGraphWorld(event.clientX, event.clientY);
+  const line = graphWiring.preview?.querySelector(".graph-edge-line");
+  if (line) {
+    line.setAttribute("x2", String(world.x));
+    line.setAttribute("y2", String(world.y));
+  }
+  const hover = graphNodeAt(event.clientX, event.clientY);
+  setParamDropHighlights(hover?.dataset.name ?? null);
+}
+
+async function finishGraphWire(event) {
+  if (!graphWiring) return;
+  const wiring = graphWiring;
+  const started = wiring.started;
+  const hover = graphNodeAt(event.clientX, event.clientY);
+  cancelGraphWire();
+  if (!started) return;
+  const role = hover?.dataset.role;
+  const name = hover?.dataset.name;
+  if (!name || !isParamWireTarget(role) || name === wiring.from) return;
+  await openParamPicker(name, wiring.from, event.clientX, event.clientY);
+}
+
+async function openParamPicker(featureName, variableName, clientX, clientY) {
+  closeParamPicker();
+  let info;
+  try {
+    info = await call("get_params", { feature: featureName });
+  } catch (error) {
+    say(error.message, true);
+    return;
+  }
+  const params = Array.isArray(info.params) ? info.params : [];
+  if (!params.length) {
+    say(`${info.label ?? featureName} : aucune cote éditable`, true);
+    return;
+  }
+  const heading = document.createElement("div");
+  heading.className = "menu-label";
+  heading.textContent = "Cote à piloter";
+  paramPickEl.appendChild(heading);
+  for (const param of params) {
+    const item = document.createElement("div");
+    item.className = "menu-item";
+    item.dataset.prop = param.prop;
+    item.textContent = paramChoiceCaption(param, PROP_LABELS);
+    item.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeParamPicker();
+      refresh(call("set_params", {
+        feature: featureName,
+        values: { [param.prop]: expressionForVariable(variableName) },
+      }));
+    });
+    paramPickEl.appendChild(item);
+  }
+  placeGraphMenu(paramPickEl, clientX, clientY);
+}
+
+async function unlinkParamEdge(edge) {
+  if (!edge || edge.kind !== "param") return;
+  closeGraphEdgeMenu();
+  let info;
+  try {
+    info = await call("get_params", { feature: edge.to });
+  } catch (error) {
+    say(error.message, true);
+    return;
+  }
+  const values = freezeDrivenValues(info.params, edge.from);
+  if (!Object.keys(values).length) {
+    say("Aucune cote à délier sur cette liaison", true);
+    return;
+  }
+  graphSelectedEdge = null;
+  refresh(call("set_params", { feature: edge.to, values }));
 }
 
 function appendGraphShape(group, node) {
@@ -2284,15 +2511,42 @@ function renderGraph(data) {
     const nx = dx / len;
     const ny = dy / len;
     const gap = 30;
-    const line = svgEl("line", {
+    const x1 = a.x + nx * gap;
+    const y1 = a.y + ny * gap;
+    const x2 = b.x - nx * gap;
+    const y2 = b.y - ny * gap;
+    const group = svgEl("g", {
       class: `graph-edge ${edge.kind}`,
-      x1: a.x + nx * gap, y1: a.y + ny * gap,
-      x2: b.x - nx * gap, y2: b.y - ny * gap,
       "data-from": edge.from,
       "data-to": edge.to,
       "data-kind": edge.kind,
     });
-    graphWorld.appendChild(line);
+    group.appendChild(svgEl("line", {
+      class: "graph-edge-hit", x1, y1, x2, y2,
+    }));
+    group.appendChild(svgEl("line", {
+      class: "graph-edge-line", x1, y1, x2, y2,
+    }));
+    const title = edge.kind === "param"
+      ? "Liaison paramétrique"
+      : "Liaison géométrique — non modifiable pour l'instant";
+    group.appendChild(svgEl("title")).textContent = title;
+    if (edge.kind === "param") {
+      group.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (graphMoved) return;
+        selectGraphEdge(edge);
+      });
+      group.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        selectGraphEdge(edge);
+        closeParamPicker();
+        menuEl.style.display = "none";
+        placeGraphMenu(graphEdgeMenu, event.clientX, event.clientY);
+      });
+    }
+    graphWorld.appendChild(group);
   }
 
   for (const node of data.nodes) {
@@ -2300,6 +2554,7 @@ function renderGraph(data) {
       class: "graph-node",
       transform: `translate(${node.x} ${node.y})`,
       "data-name": node.name,
+      "data-role": node.role || "feature",
     });
     if (isGraphNodeSelected(node)) group.classList.add("sel");
     appendGraphShape(group, node);
@@ -2312,18 +2567,35 @@ function renderGraph(data) {
       `${node.label} — ${node.kind}`;
     group.addEventListener("pointerenter", () => setGraphHover(node.name));
     group.addEventListener("pointerleave", () => setGraphHover(null));
+    group.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      if (!isParamWireSource(node.role)) return;
+      event.stopPropagation();
+      startGraphWire(node, event);
+    });
     group.addEventListener("click", (event) => {
       event.stopPropagation();
       if (graphMoved) return;
+      selectGraphEdge(null);
       onGraphNodeClick(node.name);
     });
     group.addEventListener("dblclick", (event) => {
       event.stopPropagation();
       onGraphNodeDblClick(node.name);
     });
+    group.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const feature = graphMenuTarget(node.name);
+      if (!feature) return;
+      closeParamPicker();
+      closeGraphEdgeMenu();
+      openMenu(event, feature);
+    });
     graphWorld.appendChild(group);
   }
   applyGraphTransform();
+  applyGraphEdgeSelection();
 }
 
 function syncGraphFromTree() {
@@ -2333,8 +2605,12 @@ function syncGraphFromTree() {
 
 function closeGraph() {
   if (!graphOpen) return;
+  cancelGraphWire();
+  closeParamPicker();
+  closeGraphEdgeMenu();
+  graphSelectedEdge = null;
   graphOpen = false;
-  graphView.classList.remove("open", "dragging");
+  graphView.classList.remove("open", "dragging", "wiring");
   graphBtn.classList.remove("on");
   graphWorld.replaceChildren();
   graphEmpty.hidden = true;
@@ -2353,7 +2629,7 @@ function openGraph() {
   renderGraph(data);
   fitGraphView(data);
   say(data.nodes.length
-    ? "Vue en graphe — lecture seule. Échap pour fermer."
+    ? "Vue en graphe — tirez un fil d'une variable vers une fonction. Échap pour fermer."
     : "Vue en graphe — aucun nœud. Échap pour fermer.");
 }
 
@@ -2366,6 +2642,9 @@ graphView.addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
   graphMoved = false;
   if (event.target.closest(".graph-node")) return;
+  if (event.target.closest(".graph-edge.param")) return;
+  closeParamPicker();
+  closeGraphEdgeMenu();
   event.preventDefault();
   try {
     graphView.setPointerCapture(event.pointerId);
@@ -2379,6 +2658,10 @@ graphView.addEventListener("pointerdown", (event) => {
 });
 
 graphView.addEventListener("pointermove", (event) => {
+  if (graphWiring) {
+    moveGraphWire(event);
+    return;
+  }
   if (!graphDragging) return;
   const dx = event.clientX - graphDragX;
   const dy = event.clientY - graphDragY;
@@ -2391,12 +2674,40 @@ graphView.addEventListener("pointermove", (event) => {
   applyGraphTransform();
 });
 
-const endGraphDrag = () => {
+const endGraphDrag = (event) => {
   graphDragging = false;
   graphView.classList.remove("dragging");
+  if (graphWiring) finishGraphWire(event);
 };
 graphView.addEventListener("pointerup", endGraphDrag);
-graphView.addEventListener("pointercancel", endGraphDrag);
+graphView.addEventListener("pointercancel", (event) => {
+  graphDragging = false;
+  graphView.classList.remove("dragging");
+  cancelGraphWire();
+});
+
+graphView.addEventListener("click", () => {
+  if (graphMoved) return;
+  selectGraphEdge(null);
+});
+
+graphView.addEventListener("contextmenu", (event) => {
+  if (event.target.closest(".graph-node")
+      || event.target.closest(".graph-edge.param")) return;
+  event.preventDefault();
+});
+
+document.getElementById("ctx-unlink").addEventListener("click", (event) => {
+  event.stopPropagation();
+  unlinkParamEdge(graphSelectedEdge);
+});
+
+paramPickEl.addEventListener("click", (event) => event.stopPropagation());
+graphEdgeMenu.addEventListener("click", (event) => event.stopPropagation());
+document.addEventListener("click", () => {
+  closeParamPicker();
+  closeGraphEdgeMenu();
+});
 
 graphView.addEventListener("wheel", (event) => {
   event.preventDefault();

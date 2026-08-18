@@ -832,6 +832,169 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await step("esquisse cliquée dans le viewport");
 
+  // N005 — esquisse sur une face du solide (un bossage disjoint
+  // depuis l'esquisse libre 4f est refusé par PartDesign), puis
+  // palette du graphe : poser le bossage et le supprimer.
+  let n005Face = await tryPick(cx, cy);
+  if (!n005Face) {
+    for (const [dx, dy] of [[0, -40], [40, 0], [-40, 20], [0, 50], [20, -20]]) {
+      n005Face = await tryPick(cx + dx, cy + dy);
+      if (n005Face) break;
+    }
+  }
+  let n005SketchName = null;
+  if (!n005Face) {
+    errors.push("N005 : aucune face pour l'esquisse du bossage");
+  } else {
+    await page.click("#btn-sketch");
+    await sleep(1800);
+    await page.click('[data-tool="rect"]');
+    await page.mouse.click(cx - 22, cy - 22);
+    await sleep(300);
+    await page.mouse.click(cx + 22, cy + 22);
+    await sleep(600);
+    await page.click("#sk-finish");
+    await sleep(1800);
+    const profile = await page.evaluate(async () => {
+      const r = await fetch("/api", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "get_tree", params: {} }) });
+      const j = await r.json();
+      const free = (j.ok ? (j.result.features ?? []) : []).filter((f) =>
+        f.type === "Sketcher::SketchObject" && !f.rolled_back);
+      return free.length
+        ? { name: free[free.length - 1].name,
+            label: free[free.length - 1].label }
+        : null;
+    });
+    n005SketchName = profile?.name || null;
+    if (!n005SketchName) {
+      errors.push("N005 : esquisse sur face absente de l'arbre");
+    }
+  }
+  const facesBeforeN005 = await faceCount();
+  await page.click("#btn-graph");
+  await page.waitForSelector("#graph-view.open .graph-node", { timeout: 8000 });
+  const n005Before = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
+    const pads = nodes.filter((n) => /Pad/i.test(n.getAttribute("data-name") || "")
+      || /Bossage/i.test(n.textContent || ""));
+    return {
+      padCount: pads.length,
+      padNames: pads.map((n) => n.getAttribute("data-name") || ""),
+    };
+  });
+  const n005Sketch = n005SketchName
+    ? page.locator("#graph-view .graph-node[data-name='" + n005SketchName + "']")
+    : page.locator("#graph-view .graph-node[data-role='sketch']").last();
+  await n005Sketch.click();
+  await sleep(500);
+  await page.click("#btn-graph-add");
+  await page.waitForSelector(
+    "#graph-palette .graph-palette-item[data-button='btn-pad']",
+    { timeout: 8000 },
+  );
+  const paletteState = await page.evaluate(() => {
+    const items = [...document.querySelectorAll("#graph-palette .graph-palette-item")];
+    const fillet = items.find((el) => el.dataset.button === "btn-fillet");
+    return {
+      count: items.length,
+      filletDisabled: fillet?.classList.contains("disabled") === true,
+      filletReason: fillet?.querySelector(".graph-palette-reason")?.textContent
+        || "",
+    };
+  });
+  if (paletteState.count !== 22) {
+    errors.push("N005 : palette " + paletteState.count + " items (attendu 22)");
+  }
+  if (!paletteState.filletDisabled) {
+    errors.push("N005 : Congé devrait être grisé sans face sélectionnée");
+  }
+  if (!paletteState.filletReason) {
+    errors.push("N005 : Congé grisé sans raison visible");
+  }
+  await page.click("#graph-palette .graph-palette-item[data-button='btn-pad']");
+  await sleep(2500);
+  const n005Panel = await page.evaluate(() =>
+    document.querySelector("#panel .ptitle")?.textContent ?? "");
+  if (!/Bossage/i.test(n005Panel)) {
+    errors.push("N005 : panneau bossage non ouvert (" + n005Panel + ")");
+  } else {
+    await page.click('#panel [title^="OK"]');
+    await sleep(3000);
+  }
+  const n005AfterAdd = await page.evaluate((beforeNames) => {
+    const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
+    const pads = nodes.filter((n) => /Pad/i.test(n.getAttribute("data-name") || "")
+      || /Bossage/i.test(n.textContent || ""));
+    const added = pads.find((n) =>
+      !beforeNames.includes(n.getAttribute("data-name") || ""));
+    const edges = [...document.querySelectorAll("#graph-view .graph-edge")]
+      .map((e) => ({
+        from: e.getAttribute("data-from") || "",
+        to: e.getAttribute("data-to") || "",
+        kind: e.getAttribute("data-kind") || "",
+      }));
+    return {
+      padCount: pads.length,
+      newName: added?.getAttribute("data-name") || "",
+      edges,
+    };
+  }, n005Before.padNames);
+  const facesAfterN005Add = await faceCount();
+  if (n005AfterAdd.padCount !== n005Before.padCount + 1) {
+    errors.push("N005 : attendu un nœud bossage de plus ("
+      + n005Before.padCount + " → " + n005AfterAdd.padCount + ")");
+  }
+  if (n005SketchName && n005AfterAdd.newName) {
+    const linked = n005AfterAdd.edges.some((e) => e.kind === "geom"
+      && e.from === n005SketchName && e.to === n005AfterAdd.newName);
+    if (!linked) {
+      errors.push("N005 : pas d'arête esquisse→bossage ("
+        + JSON.stringify(n005AfterAdd.edges) + ")");
+    }
+  }
+  if (!(facesAfterN005Add > facesBeforeN005)) {
+    errors.push("N005 : le volume devrait augmenter ("
+      + facesBeforeN005 + " → " + facesAfterN005Add + ")");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "4g-graphe-bossage.png") });
+  if (n005AfterAdd.newName) {
+    await page.locator(
+      "#graph-view .graph-node[data-name='" + n005AfterAdd.newName + "']",
+    ).click({ force: true });
+    await sleep(200);
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.keyboard.press("Delete");
+    await sleep(3000);
+  } else {
+    errors.push("N005 : impossible de supprimer, nœud bossage introuvable");
+  }
+  const n005AfterDel = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
+    const pads = nodes.filter((n) => /Pad/i.test(n.getAttribute("data-name") || "")
+      || /Bossage/i.test(n.textContent || ""));
+    return { padCount: pads.length };
+  });
+  const facesAfterN005Del = await faceCount();
+  if (n005AfterDel.padCount !== n005Before.padCount) {
+    errors.push("N005 : après suppression, " + n005AfterDel.padCount
+      + " bossage(s) (attendu " + n005Before.padCount + ")");
+  }
+  if (facesAfterN005Del !== facesBeforeN005) {
+    errors.push("N005 : le volume devrait revenir à l'état d'avant ("
+      + facesBeforeN005 + " → " + facesAfterN005Del + ")");
+  }
+  await page.keyboard.press("Escape");
+  await sleep(300);
+  const n005GraphClosed = await page.evaluate(() =>
+    !document.getElementById("graph-view")?.classList.contains("open"));
+  if (!n005GraphClosed) {
+    await page.click("#btn-graph");
+    await sleep(200);
+  }
+  await step("nœuds constructifs");
+
   // 5. Undo / redo — jetons anti-course + invalidation des sélections
   await page.keyboard.press("Control+z");
   await sleep(2500);

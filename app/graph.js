@@ -5,6 +5,13 @@
 // réduction de croisements par barycentre (étapes 2–3). Dagre a été
 // écarté : son ESM CDN ne s'importe pas sous node --test (pas d'https:).
 
+import { splitHistoryAroundBar } from "./history.js";
+import {
+  hasSelection,
+  NO_SKETCH_AVAILABLE,
+  resolveProfileSketch,
+} from "./features.js";
+
 const COL_GAP = 200;
 const ROW_GAP = 72;
 const ORIGIN_X = 48;
@@ -81,10 +88,26 @@ function addNode(nodes, item, role, fallbackOrder) {
     role,
     type: item.type,
     order,
+    afterBar: false,
     layer: 0,
     x: 0,
     y: 0,
   });
+}
+
+/** Noms des fonctions (et esquisses enfants) situés après la barre de reprise. */
+function namesAfterBar(tree) {
+  const split = splitHistoryAroundBar(
+    listOf(tree.features), listOf(tree.surfaces), tree.tip);
+  const names = new Set();
+  for (const row of split.after) {
+    const item = row?.item;
+    if (item?.name) names.add(item.name);
+    for (const child of listOf(item?.children)) {
+      if (child?.name) names.add(child.name);
+    }
+  }
+  return names;
 }
 
 function edgeKey(from, to, kind) {
@@ -362,6 +385,11 @@ export function buildGraph(tree, options = {}) {
   }
   assignCoordinates(byLayer, layerIds);
 
+  const afterBar = namesAfterBar(tree);
+  for (const node of nodes.values()) {
+    node.afterBar = afterBar.has(node.name);
+  }
+
   const orderedNodes = [];
   for (const layer of layerIds) {
     orderedNodes.push(...byLayer.get(layer));
@@ -379,6 +407,76 @@ export function buildGraph(tree, options = {}) {
 /** Un fil paramétrique part d'une variable — pas d'une arête géométrique. */
 export function isParamWireSource(role) {
   return role === "variable";
+}
+
+/** Un fil constructif part d'une esquisse vers le fond (palette). */
+export function isConstructWireSource(role) {
+  return role === "sketch";
+}
+
+/** Habillage : il faut une face ou des arêtes prises dans le viewport. */
+export const GRAPH_DRESSUP_REASON =
+  "sélectionnez d'abord une face ou une arête dans la zone graphique";
+
+/**
+ * Profil qui partira avec la création : esquisse sélectionnée, sinon
+ * dernière libre — le même `resolveProfileSketch` que le ruban.
+ * @param {{ selectedSketch?: { name?: string }|null, lastTree?: object|null }} [ctx]
+ * @returns {{ name: string, label?: string }|null}
+ */
+export function graphCreateProfile(ctx) {
+  return resolveProfileSketch(ctx ?? {}) ?? null;
+}
+
+/**
+ * Une entrée de `FEATURES` est-elle posable depuis le graphe, dans ce
+ * contexte ? Les habillages réclament une face ; les fonctions à profil
+ * réclament une esquisse. Le reste est posable (la garde du panneau tranche).
+ * @param {object|null|undefined} entry
+ * @param {{ selectedSketch?: object|null, lastTree?: object|null, selection?: object|null }} [ctx]
+ * @returns {{ enabled: boolean, reason: string|null, profile: object|null }}
+ */
+export function graphFeaturePlaceable(entry, ctx = {}) {
+  if (!entry || typeof entry !== "object") {
+    return { enabled: false, reason: "", profile: null };
+  }
+  if (entry.dressup) {
+    if (!hasSelection(ctx.selection)) {
+      return { enabled: false, reason: GRAPH_DRESSUP_REASON, profile: null };
+    }
+    return { enabled: true, reason: null, profile: null };
+  }
+  if (entry.sketchProfile) {
+    const profile = graphCreateProfile(ctx);
+    if (!profile) {
+      return { enabled: false, reason: NO_SKETCH_AVAILABLE, profile: null };
+    }
+    return { enabled: true, reason: null, profile };
+  }
+  return { enabled: true, reason: null, profile: graphCreateProfile(ctx) };
+}
+
+/**
+ * Palette du graphe : une ligne par entrée de `FEATURES`, icône et titre
+ * repris tels quels. `enabled` / `reason` portent les murs visibles.
+ * @param {object[]|null|undefined} features
+ * @param {{ selectedSketch?: object|null, lastTree?: object|null, selection?: object|null }} [ctx]
+ */
+export function graphPaletteItems(features, ctx = {}) {
+  const list = Array.isArray(features) ? features : [];
+  return list.map((entry) => {
+    const placed = graphFeaturePlaceable(entry, ctx);
+    return {
+      button: entry.button,
+      icon: entry.icon,
+      title: entry.title,
+      dressup: !!entry.dressup,
+      sketchProfile: !!entry.sketchProfile,
+      enabled: placed.enabled,
+      reason: placed.reason,
+      profile: placed.profile,
+    };
+  });
 }
 
 /**

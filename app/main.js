@@ -15,6 +15,8 @@ import {
   edgeCurvePath,
   expressionForVariable,
   freezeDrivenValues,
+  graphPaletteItems,
+  isConstructWireSource,
   isParamWireSource,
   isParamWireTarget,
   paramChoiceCaption,
@@ -966,13 +968,15 @@ document.addEventListener("keydown", (event) => {
     say("Mesure annulée.");
   } else if (event.key === "Escape" && graphOpen) {
     event.preventDefault();
-    if (paramPickEl.style.display === "block") closeParamPicker();
+    if (graphPalette.style.display === "block") closeGraphPalette();
+    else if (paramPickEl.style.display === "block") closeParamPicker();
     else if (graphWiring) cancelGraphWire();
     else closeGraph();
-  } else if (graphOpen && (event.key === "Delete" || event.key === "Suppr")
-             && graphSelectedEdge) {
+  } else if (graphOpen && (event.key === "Delete" || event.key === "Suppr")) {
     event.preventDefault();
-    unlinkParamEdge(graphSelectedEdge);
+    if (graphPalette.style.display === "block") return;
+    if (graphSelectedEdge) unlinkParamEdge(graphSelectedEdge);
+    else deleteSelectedGraphNode();
   }
 });
 
@@ -1982,10 +1986,15 @@ document.getElementById("ctx-rollback").addEventListener("click", () => {
 document.getElementById("ctx-end").addEventListener("click", () =>
   refresh(call("tip_to_end")));
 document.getElementById("ctx-delete").addEventListener("click", () => {
-  if (!menuFeature) return;
-  if (confirm(`Supprimer « ${menuFeature.label} » ?`))
-    refreshAny(call("delete_feature", { feature: menuFeature.name }));
+  deleteFeatureWithConfirm(menuFeature);
 });
+
+function deleteFeatureWithConfirm(feature) {
+  if (!feature) return;
+  if (confirm(`Supprimer « ${feature.label} » ?`)) {
+    refreshAny(call("delete_feature", { feature: feature.name }));
+  }
+}
 
 // ---------- ruban à onglets (CommandManager) ----------
 
@@ -2139,6 +2148,8 @@ const graphWorld = document.getElementById("graph-world");
 const graphEmpty = document.getElementById("graph-empty");
 const graphCap = document.getElementById("graph-cap");
 const graphBtn = document.getElementById("btn-graph");
+const graphAddBtn = document.getElementById("btn-graph-add");
+const graphPalette = document.getElementById("graph-palette");
 const paramPickEl = document.getElementById("param-pick");
 const graphEdgeMenu = document.getElementById("graph-edge-menu");
 const GRAPH_HINT_AT = 60;
@@ -2151,8 +2162,11 @@ let graphDragging = false;
 let graphMoved = false;
 let graphDragX = 0;
 let graphDragY = 0;
-let graphWiring = null; // { from, x, y, started, preview }
+let graphWiring = null; // { from, kind, x, y, started, preview }
 let graphSelectedEdge = null; // { from, to, kind }
+let graphSelectedName = null;
+let graphPaletteProfile = null;
+let graphFitNames = "";
 
 function svgEl(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
@@ -2174,6 +2188,7 @@ function graphLabelText(text) {
 }
 
 function isGraphNodeSelected(node) {
+  if (graphSelectedName && node.name === graphSelectedName) return true;
   if (selectedSketch?.name === node.name) return true;
   if (selectedDatumFeature?.name === node.name) return true;
   if (selectedSurface?.name === node.name) return true;
@@ -2290,8 +2305,15 @@ function graphNodeAt(clientX, clientY) {
 
 function placeGraphMenu(el, clientX, clientY) {
   el.style.display = "block";
-  el.style.left = Math.min(clientX, window.innerWidth - 220) + "px";
-  el.style.top = Math.min(clientY, window.innerHeight - 80) + "px";
+  const pad = 8;
+  const w = el.offsetWidth || 220;
+  const h = el.offsetHeight || 80;
+  const left = Math.min(Math.max(clientX, pad),
+    Math.max(pad, window.innerWidth - w - pad));
+  const top = Math.min(Math.max(clientY, pad),
+    Math.max(pad, window.innerHeight - h - pad));
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
 }
 
 function closeParamPicker() {
@@ -2301,6 +2323,102 @@ function closeParamPicker() {
 
 function closeGraphEdgeMenu() {
   graphEdgeMenu.style.display = "none";
+}
+
+function closeGraphPalette() {
+  graphPalette.style.display = "none";
+  graphPalette.replaceChildren();
+  graphPaletteProfile = null;
+}
+
+function graphPlacementCtx(profileOverride) {
+  return {
+    lastTree,
+    selectedSketch: profileOverride ?? selectedSketch,
+    selection: currentSelection(["face", "edges"]),
+  };
+}
+
+function openGraphPalette({ profileSketch = null, clientX, clientY } = {}) {
+  closeGraphPalette();
+  closeParamPicker();
+  closeGraphEdgeMenu();
+  menuEl.style.display = "none";
+  graphPaletteProfile = profileSketch?.name
+    ? profileSketch
+    : (selectedSketch?.name
+      ? { name: selectedSketch.name, label: selectedSketch.label }
+      : null);
+  const ctx = graphPlacementCtx(graphPaletteProfile);
+  const items = graphPaletteItems(FEATURES, ctx);
+
+  const heading = document.createElement("div");
+  heading.className = "menu-label";
+  heading.textContent = "Ajouter une fonction";
+  graphPalette.appendChild(heading);
+  if (graphPaletteProfile?.name) {
+    const profile = document.createElement("div");
+    profile.className = "menu-label";
+    profile.textContent = `Profil : ${graphPaletteProfile.label
+      ?? graphPaletteProfile.name}`;
+    graphPalette.appendChild(profile);
+  }
+
+  for (const item of items) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "graph-palette-item" + (item.enabled ? "" : " disabled");
+    row.dataset.button = item.button;
+    if (!item.enabled) {
+      row.setAttribute("aria-disabled", "true");
+      row.title = item.reason;
+    }
+    const img = document.createElement("img");
+    img.src = "icons/" + item.icon;
+    img.alt = "";
+    row.appendChild(img);
+    const body = document.createElement("span");
+    body.className = "graph-palette-body";
+    const title = document.createElement("span");
+    title.className = "graph-palette-title";
+    title.textContent = item.title;
+    body.appendChild(title);
+    if (!item.enabled && item.reason) {
+      const why = document.createElement("span");
+      why.className = "graph-palette-reason";
+      why.textContent = item.reason;
+      body.appendChild(why);
+    }
+    row.appendChild(body);
+    row.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!item.enabled) {
+        say(item.reason, true);
+        return;
+      }
+      const profile = graphPaletteProfile;
+      const entry = FEATURES.find((feat) => feat.button === item.button);
+      closeGraphPalette();
+      if (!entry) return;
+      featureCommand(() => openFeaturePanel(entry, profile));
+    });
+    graphPalette.appendChild(row);
+  }
+
+  const wall = document.createElement("div");
+  wall.className = "menu-label graph-palette-wall";
+  wall.textContent = "L'historique est linéaire — la fonction se pose "
+    + "à la barre de reprise.";
+  graphPalette.appendChild(wall);
+
+  placeGraphMenu(graphPalette, clientX ?? 24, clientY ?? 56);
+}
+
+function deleteSelectedGraphNode() {
+  if (!graphSelectedName) return;
+  const feature = graphMenuTarget(graphSelectedName);
+  if (!feature) return;
+  deleteFeatureWithConfirm(feature);
 }
 
 function selectGraphEdge(edge) {
@@ -2329,9 +2447,11 @@ function clearParamDropHighlights() {
 
 function setParamDropHighlights(hoverName) {
   const source = graphWiring?.from;
+  const construct = graphWiring?.kind === "construct";
   for (const node of graphWorld.querySelectorAll(".graph-node")) {
     const isSource = node.dataset.name === source;
-    const valid = !isSource && isParamWireTarget(node.dataset.role);
+    const valid = !construct && !isSource
+      && isParamWireTarget(node.dataset.role);
     node.classList.toggle("wiring-from", isSource);
     node.classList.toggle("drop-ok", valid);
     node.classList.toggle("drop-no", !valid);
@@ -2343,16 +2463,19 @@ function setParamDropHighlights(hoverName) {
 function cancelGraphWire() {
   if (graphWiring?.preview) graphWiring.preview.remove();
   graphWiring = null;
+  graphView.classList.remove("wiring-construct");
   clearParamDropHighlights();
 }
 
-function startGraphWire(node, event) {
+function startGraphWire(node, event, kind) {
   cancelGraphWire();
   closeParamPicker();
   closeGraphEdgeMenu();
+  closeGraphPalette();
   graphMoved = false;
   graphWiring = {
     from: node.name,
+    kind,
     x: node.x,
     y: node.y,
     started: false,
@@ -2381,7 +2504,12 @@ function moveGraphWire(event) {
     graphWiring.started = true;
     graphMoved = true;
     graphView.classList.add("wiring");
-    const preview = svgEl("g", { class: "graph-edge param preview" });
+    if (graphWiring.kind === "construct") {
+      graphView.classList.add("wiring-construct");
+    }
+    const preview = svgEl("g", {
+      class: `graph-edge ${graphWiring.kind === "param" ? "param" : "geom"} preview`,
+    });
     preview.appendChild(svgEl("path", {
       class: "graph-edge-line",
       d: edgeCurvePath(graphWiring.x, graphWiring.y,
@@ -2408,6 +2536,24 @@ async function finishGraphWire(event) {
   const hover = graphNodeAt(event.clientX, event.clientY);
   cancelGraphWire();
   if (!started) return;
+  if (wiring.kind === "construct") {
+    const droppedOn = hover?.dataset.name;
+    if (droppedOn && droppedOn !== wiring.from) {
+      say("On ne recâble pas une fonction existante — le profil se pose "
+        + "à la création.");
+      return;
+    }
+    const target = lookupGraphTarget(wiring.from);
+    const profile = target?.kind === "sketch"
+      ? { name: target.feature.name, label: target.feature.label }
+      : null;
+    openGraphPalette({
+      profileSketch: profile,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+    return;
+  }
   const role = hover?.dataset.role;
   const name = hover?.dataset.name;
   if (!name || !isParamWireTarget(role) || name === wiring.from) return;
@@ -2560,8 +2706,9 @@ function renderGraph(data) {
     }));
     const title = edge.kind === "param"
       ? "Liaison paramétrique"
-      : "Liaison géométrique — non modifiable pour l'instant";
+      : "Liaison géométrique — le profil se pose à la création, on ne recâble pas";
     group.appendChild(svgEl("title")).textContent = title;
+    if (a.afterBar || b.afterBar) group.classList.add("rolled-back");
     if (edge.kind === "param") {
       group.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -2588,6 +2735,7 @@ function renderGraph(data) {
       "data-role": node.role || "feature",
     });
     if (isGraphNodeSelected(node)) group.classList.add("sel");
+    if (node.afterBar) group.classList.add("rolled-back");
     appendGraphShape(group, node);
     const isVar = node.role === "variable";
     const label = svgEl("text", {
@@ -2602,15 +2750,23 @@ function renderGraph(data) {
     group.addEventListener("pointerleave", () => setGraphHover(null));
     group.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
-      if (!isParamWireSource(node.role)) return;
-      event.stopPropagation();
-      startGraphWire(node, event);
+      if (isParamWireSource(node.role)) {
+        event.stopPropagation();
+        startGraphWire(node, event, "param");
+        return;
+      }
+      if (isConstructWireSource(node.role)) {
+        event.stopPropagation();
+        startGraphWire(node, event, "construct");
+      }
     });
     group.addEventListener("click", (event) => {
       event.stopPropagation();
       if (graphMoved) return;
       selectGraphEdge(null);
+      graphSelectedName = node.name;
       onGraphNodeClick(node.name);
+      applyGraphNodeSelection();
     });
     group.addEventListener("dblclick", (event) => {
       event.stopPropagation();
@@ -2631,9 +2787,21 @@ function renderGraph(data) {
   applyGraphEdgeSelection();
 }
 
+function applyGraphNodeSelection() {
+  for (const node of graphWorld.querySelectorAll(".graph-node")) {
+    node.classList.toggle("sel", isGraphNodeSelected({ name: node.dataset.name }));
+  }
+}
+
 function syncGraphFromTree() {
   if (!graphOpen) return;
-  renderGraph(buildGraph(lastTree));
+  const data = buildGraph(lastTree);
+  renderGraph(data);
+  const names = data.nodes.map((node) => node.name).join("\0");
+  if (names !== graphFitNames) {
+    graphFitNames = names;
+    fitGraphView(data);
+  }
 }
 
 function closeGraph() {
@@ -2641,7 +2809,10 @@ function closeGraph() {
   cancelGraphWire();
   closeParamPicker();
   closeGraphEdgeMenu();
+  closeGraphPalette();
   graphSelectedEdge = null;
+  graphSelectedName = null;
+  graphFitNames = "";
   graphOpen = false;
   graphView.classList.remove("open", "dragging", "wiring");
   graphBtn.classList.remove("on");
@@ -2659,10 +2830,12 @@ function openGraph() {
   graphView.classList.add("open");
   graphBtn.classList.add("on");
   const data = buildGraph(lastTree);
+  graphFitNames = data.nodes.map((node) => node.name).join("\0");
   renderGraph(data);
   fitGraphView(data);
   say(data.nodes.length
-    ? "Vue en graphe — tirez un fil d'une variable vers une fonction. Échap pour fermer."
+    ? "Vue en graphe — double-clic : poser une fonction. "
+      + "Fil depuis une esquisse ou une variable. Échap pour fermer."
     : "Vue en graphe — aucun nœud. Échap pour fermer.");
 }
 
@@ -2676,8 +2849,11 @@ graphView.addEventListener("pointerdown", (event) => {
   graphMoved = false;
   if (event.target.closest(".graph-node")) return;
   if (event.target.closest(".graph-edge.param")) return;
+  if (event.target.closest("#graph-bar")) return;
+  if (event.target.closest("#graph-palette")) return;
   closeParamPicker();
   closeGraphEdgeMenu();
+  closeGraphPalette();
   event.preventDefault();
   try {
     graphView.setPointerCapture(event.pointerId);
@@ -2719,9 +2895,22 @@ graphView.addEventListener("pointercancel", (event) => {
   cancelGraphWire();
 });
 
-graphView.addEventListener("click", () => {
+graphView.addEventListener("click", (event) => {
   if (graphMoved) return;
+  if (event.target.closest(".graph-node")) return;
+  if (event.target.closest("#graph-palette")) return;
+  if (event.target.closest("#graph-bar")) return;
   selectGraphEdge(null);
+  graphSelectedName = null;
+  applyGraphNodeSelection();
+});
+
+graphView.addEventListener("dblclick", (event) => {
+  if (event.target.closest(".graph-node")) return;
+  if (event.target.closest("#graph-bar")) return;
+  if (event.target.closest("#graph-palette")) return;
+  if (event.target.closest(".graph-edge")) return;
+  openGraphPalette({ clientX: event.clientX, clientY: event.clientY });
 });
 
 graphView.addEventListener("contextmenu", (event) => {
@@ -2737,9 +2926,23 @@ document.getElementById("ctx-unlink").addEventListener("click", (event) => {
 
 paramPickEl.addEventListener("click", (event) => event.stopPropagation());
 graphEdgeMenu.addEventListener("click", (event) => event.stopPropagation());
+graphPalette.addEventListener("click", (event) => event.stopPropagation());
+graphPalette.addEventListener("pointerdown", (event) => event.stopPropagation());
 document.addEventListener("click", () => {
   closeParamPicker();
   closeGraphEdgeMenu();
+  closeGraphPalette();
+});
+
+graphAddBtn.addEventListener("pointerdown", (event) => event.stopPropagation());
+graphAddBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (graphPalette.style.display === "block") {
+    closeGraphPalette();
+    return;
+  }
+  const rect = graphAddBtn.getBoundingClientRect();
+  openGraphPalette({ clientX: rect.left, clientY: rect.bottom + 4 });
 });
 
 graphView.addEventListener("wheel", (event) => {
@@ -3435,39 +3638,41 @@ function currentSelection(accepts) {
 // Registry : un bind unique pour tous les panneaux « ouvrir → éditer →
 // aperçu → OK ». Les panneaux bespoke (équations, assemblage, datum…)
 // restent plus bas.
+function openFeaturePanel(entry, sketchOverride) {
+  const ctx = {
+    lastTree,
+    selection: currentSelection,
+    selectedSketch: sketchOverride ?? selectedSketch,
+  };
+  const blocked = entry.guard?.(ctx);
+  if (blocked) { say(blocked, true); return; }
+  const spec = {
+    icon: entry.icon,
+    title: entry.title,
+    groups: entry.groups(ctx),
+    note: entry.note,
+    onApply: (v) => {
+      const built = entry.build(v, ctx);
+      if (!built) {
+        const msg = typeof entry.invalid === "function"
+          ? entry.invalid(v, ctx)
+          : (entry.invalid ?? "Valeurs invalides");
+        say(msg, true);
+        return;
+      }
+      const run = entry.refresh === "any" ? refreshAny : refresh;
+      run(call(built.op, built.params));
+    },
+  };
+  if (entry.preview !== false) {
+    spec.onChange = (v) => schedulePreview(entry.build(v, ctx));
+  }
+  panel.open(spec);
+}
+
 function bindFeature(entry) {
   document.getElementById(entry.button).addEventListener("click", () =>
-    featureCommand(() => {
-      const ctx = {
-        lastTree,
-        selection: currentSelection,
-        selectedSketch,
-      };
-      const blocked = entry.guard?.(ctx);
-      if (blocked) { say(blocked, true); return; }
-      const spec = {
-        icon: entry.icon,
-        title: entry.title,
-        groups: entry.groups(ctx),
-        note: entry.note,
-        onApply: (v) => {
-          const built = entry.build(v, ctx);
-          if (!built) {
-            const msg = typeof entry.invalid === "function"
-              ? entry.invalid(v, ctx)
-              : (entry.invalid ?? "Valeurs invalides");
-            say(msg, true);
-            return;
-          }
-          const run = entry.refresh === "any" ? refreshAny : refresh;
-          run(call(built.op, built.params));
-        },
-      };
-      if (entry.preview !== false) {
-        spec.onChange = (v) => schedulePreview(entry.build(v, ctx));
-      }
-      panel.open(spec);
-    }));
+    featureCommand(() => openFeaturePanel(entry)));
 }
 
 for (const entry of FEATURES) bindFeature(entry);

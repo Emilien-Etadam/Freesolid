@@ -44,6 +44,7 @@ function dressup({ button, icon, title, selectionLabel, group, rows, build,
                    accepts = ["face"], hint }) {
   return {
     button, icon, title,
+    dressup: true,
     groups: (ctx) => [
       { label: selectionLabel,
         rows: [{ type: "selection", key: "sel", accepts, hint,
@@ -63,6 +64,7 @@ function dressup({ button, icon, title, selectionLabel, group, rows, build,
 function withSketchProfile(entry) {
   return {
     ...entry,
+    sketchProfile: true,
     groups: (ctx) => {
       const profile = resolveProfileSketch(ctx);
       const groups = typeof entry.groups === "function"

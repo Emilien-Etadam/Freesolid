@@ -7,10 +7,16 @@ import {
   edgeCurvePath,
   expressionForVariable,
   freezeDrivenValues,
+  GRAPH_DRESSUP_REASON,
+  graphCreateProfile,
+  graphFeaturePlaceable,
+  graphPaletteItems,
+  isConstructWireSource,
   isParamWireSource,
   isParamWireTarget,
   paramChoiceCaption,
 } from "../../app/graph.js";
+import { FEATURES, NO_SKETCH_AVAILABLE } from "../../app/features.js";
 
 function byName(graph) {
   return Object.fromEntries(graph.nodes.map((node) => [node.name, node]));
@@ -163,6 +169,33 @@ describe("buildGraph", () => {
       planes: [], bodies: [], variables: [] }),
       { nodes: [], edges: [] });
   });
+
+  it("les nœuds après la barre portent afterBar, pas les variables", () => {
+    const graph = buildGraph({
+      tip: "Pad",
+      variables: [{ name: "largeur", value: 20 }],
+      planes: [{ id: "XZ", name: "XZ_Plane", label: "Plan de face" }],
+      features: [
+        { name: "Sketch", label: "Esquisse1", kind: "Esquisse",
+          type: "Sketcher::SketchObject", order: 0 },
+        { name: "Pad", label: "Bossage1", kind: "Bossage/Base extrudé",
+          type: "PartDesign::Pad", order: 1, deps: ["Sketch"] },
+        { name: "Fillet", label: "Congé1", kind: "Congé",
+          type: "PartDesign::Fillet", order: 2, deps: ["Pad"],
+          children: [{
+            name: "SketchIn", label: "Esquisse2", kind: "Esquisse",
+            type: "Sketcher::SketchObject", order: 3,
+          }] },
+      ],
+    });
+    const nodes = byName(graph);
+    assert.equal(nodes.Pad.afterBar, false);
+    assert.equal(nodes.Sketch.afterBar, false);
+    assert.equal(nodes.Fillet.afterBar, true);
+    assert.equal(nodes.SketchIn.afterBar, true);
+    assert.equal(nodes.largeur.afterBar, false);
+    assert.equal(nodes.XZ_Plane.afterBar, false);
+  });
 });
 
 describe("fil paramétrique", () => {
@@ -177,6 +210,13 @@ describe("fil paramétrique", () => {
     assert.equal(isParamWireTarget("surface"), false);
     assert.equal(isParamWireTarget("body"), false);
     assert.equal(isParamWireTarget("variable"), false);
+  });
+
+  it("un fil constructif ne part que d'une esquisse", () => {
+    assert.equal(isConstructWireSource("sketch"), true);
+    assert.equal(isConstructWireSource("feature"), false);
+    assert.equal(isConstructWireSource("variable"), false);
+    assert.equal(isConstructWireSource("plane"), false);
   });
 
   it("l'expression posée préfixe le VarSet, pas l'identifiant nu", () => {
@@ -268,5 +308,95 @@ describe("lisibilité du graphe", () => {
     const short = edgeCurvePath(0, 0, 20, 0);
     assert.match(short, /^M 0,0 C /);
     assert.equal(edgeCurvePath(0, 0, 20, 0), edgeCurvePath(0, 0, 20, 0));
+  });
+});
+
+describe("palette constructive", () => {
+  const pad = FEATURES.find((entry) => entry.button === "btn-pad");
+  const fillet = FEATURES.find((entry) => entry.button === "btn-fillet");
+  const combine = FEATURES.find((entry) => entry.button === "btn-boolean");
+  const sketch = { name: "Sketch", label: "Esquisse1" };
+  const treeWithSketch = {
+    features: [{ name: "Sketch", type: "Sketcher::SketchObject" }],
+  };
+  const faceSel = { kind: "face", face: 0 };
+  const edgeSel = { kind: "edges", edges: [1, 2] };
+
+  it("FEATURES porte les marqueurs dressup / sketchProfile, sans table parallèle", () => {
+    assert.equal(FEATURES.length, 22);
+    assert.equal(pad?.sketchProfile, true);
+    assert.equal(pad?.dressup, undefined);
+    assert.equal(fillet?.dressup, true);
+    assert.equal(fillet?.sketchProfile, undefined);
+    assert.equal(combine?.dressup, undefined);
+    assert.equal(combine?.sketchProfile, undefined);
+    assert.equal(FEATURES.filter((entry) => entry.dressup).length, 5);
+    assert.equal(FEATURES.filter((entry) => entry.sketchProfile).length, 4);
+  });
+
+  it("le profil de création est l'esquisse sélectionnée, sinon la dernière libre", () => {
+    assert.deepEqual(
+      graphCreateProfile({ selectedSketch: sketch, lastTree: treeWithSketch }),
+      sketch,
+    );
+    assert.equal(
+      graphCreateProfile({ selectedSketch: sketch, lastTree: { features: [] } })
+        ?.name,
+      "Sketch",
+    );
+    assert.equal(
+      graphCreateProfile({ selectedSketch: null, lastTree: treeWithSketch })
+        ?.name,
+      "Sketch",
+    );
+    assert.equal(graphCreateProfile({ lastTree: { features: [] } }), null);
+    assert.equal(graphCreateProfile(null), null);
+  });
+
+  it("un habillage est grisé sans face, actif avec une face ou des arêtes", () => {
+    const none = graphFeaturePlaceable(fillet, { selection: null });
+    assert.equal(none.enabled, false);
+    assert.equal(none.reason, GRAPH_DRESSUP_REASON);
+    const face = graphFeaturePlaceable(fillet, { selection: faceSel });
+    assert.equal(face.enabled, true);
+    assert.equal(face.reason, null);
+    const edges = graphFeaturePlaceable(fillet, { selection: edgeSel });
+    assert.equal(edges.enabled, true);
+  });
+
+  it("un bossage est grisé sans esquisse, actif avec une esquisse sélectionnée", () => {
+    const none = graphFeaturePlaceable(pad, { lastTree: { features: [] } });
+    assert.equal(none.enabled, false);
+    assert.equal(none.reason, NO_SKETCH_AVAILABLE);
+    assert.equal(none.profile, null);
+    const selected = graphFeaturePlaceable(pad, {
+      selectedSketch: sketch, lastTree: { features: [] },
+    });
+    assert.equal(selected.enabled, true);
+    assert.equal(selected.profile?.name, "Sketch");
+    const latest = graphFeaturePlaceable(pad, {
+      selectedSketch: null, lastTree: treeWithSketch,
+    });
+    assert.equal(latest.enabled, true);
+    assert.equal(latest.profile?.name, "Sketch");
+  });
+
+  it("la palette reprend icône et titre de FEATURES, et le profil de la création", () => {
+    const items = graphPaletteItems(FEATURES, {
+      selectedSketch: sketch,
+      lastTree: { features: [] },
+      selection: null,
+    });
+    assert.equal(items.length, 22);
+    const padItem = items.find((item) => item.button === "btn-pad");
+    const filletItem = items.find((item) => item.button === "btn-fillet");
+    assert.equal(padItem.title, pad.title);
+    assert.equal(padItem.icon, pad.icon);
+    assert.equal(padItem.enabled, true);
+    assert.equal(padItem.profile?.name, "Sketch");
+    assert.equal(filletItem.title, fillet.title);
+    assert.equal(filletItem.enabled, false);
+    assert.equal(filletItem.reason, GRAPH_DRESSUP_REASON);
+    assert.deepEqual(graphPaletteItems(null), []);
   });
 });

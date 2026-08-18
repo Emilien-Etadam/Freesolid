@@ -2166,6 +2166,7 @@ let graphWiring = null; // { from, kind, x, y, started, preview }
 let graphSelectedEdge = null; // { from, to, kind }
 let graphSelectedName = null;
 let graphPaletteProfile = null;
+let graphFitNames = "";
 
 function svgEl(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
@@ -2794,7 +2795,13 @@ function applyGraphNodeSelection() {
 
 function syncGraphFromTree() {
   if (!graphOpen) return;
-  renderGraph(buildGraph(lastTree));
+  const data = buildGraph(lastTree);
+  renderGraph(data);
+  const names = data.nodes.map((node) => node.name).join("\0");
+  if (names !== graphFitNames) {
+    graphFitNames = names;
+    fitGraphView(data);
+  }
 }
 
 function closeGraph() {
@@ -2805,6 +2812,7 @@ function closeGraph() {
   closeGraphPalette();
   graphSelectedEdge = null;
   graphSelectedName = null;
+  graphFitNames = "";
   graphOpen = false;
   graphView.classList.remove("open", "dragging", "wiring");
   graphBtn.classList.remove("on");
@@ -2822,6 +2830,7 @@ function openGraph() {
   graphView.classList.add("open");
   graphBtn.classList.add("on");
   const data = buildGraph(lastTree);
+  graphFitNames = data.nodes.map((node) => node.name).join("\0");
   renderGraph(data);
   fitGraphView(data);
   say(data.nodes.length

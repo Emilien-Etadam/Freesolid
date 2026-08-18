@@ -832,7 +832,46 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await step("esquisse cliquée dans le viewport");
 
-  // N005 — poser un bossage depuis la palette du graphe, puis le supprimer.
+  // N005 — esquisse sur une face du solide (un bossage disjoint
+  // depuis l'esquisse libre 4f est refusé par PartDesign), puis
+  // palette du graphe : poser le bossage et le supprimer.
+  let n005Face = await tryPick(cx, cy);
+  if (!n005Face) {
+    for (const [dx, dy] of [[0, -40], [40, 0], [-40, 20], [0, 50], [20, -20]]) {
+      n005Face = await tryPick(cx + dx, cy + dy);
+      if (n005Face) break;
+    }
+  }
+  let n005SketchName = null;
+  if (!n005Face) {
+    errors.push("N005 : aucune face pour l'esquisse du bossage");
+  } else {
+    await page.click("#btn-sketch");
+    await sleep(1800);
+    await page.click('[data-tool="rect"]');
+    await page.mouse.click(cx - 22, cy - 22);
+    await sleep(300);
+    await page.mouse.click(cx + 22, cy + 22);
+    await sleep(600);
+    await page.click("#sk-finish");
+    await sleep(1800);
+    const profile = await page.evaluate(async () => {
+      const r = await fetch("/api", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "get_tree", params: {} }) });
+      const j = await r.json();
+      const free = (j.ok ? (j.result.features ?? []) : []).filter((f) =>
+        f.type === "Sketcher::SketchObject" && !f.rolled_back);
+      return free.length
+        ? { name: free[free.length - 1].name,
+            label: free[free.length - 1].label }
+        : null;
+    });
+    n005SketchName = profile?.name || null;
+    if (!n005SketchName) {
+      errors.push("N005 : esquisse sur face absente de l'arbre");
+    }
+  }
   const facesBeforeN005 = await faceCount();
   await page.click("#btn-graph");
   await page.waitForSelector("#graph-view.open .graph-node", { timeout: 8000 });
@@ -845,10 +884,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       padNames: pads.map((n) => n.getAttribute("data-name") || ""),
     };
   });
-  const n005Sketch = skPt?.label
-    ? page.locator("#graph-view .graph-node").filter({ hasText: skPt.label }).first()
+  const n005Sketch = n005SketchName
+    ? page.locator("#graph-view .graph-node[data-name='" + n005SketchName + "']")
     : page.locator("#graph-view .graph-node[data-role='sketch']").last();
-  const n005SketchName = await n005Sketch.getAttribute("data-name");
   await n005Sketch.click();
   await sleep(500);
   await page.click("#btn-graph-add");
@@ -924,7 +962,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (n005AfterAdd.newName) {
     await page.locator(
       "#graph-view .graph-node[data-name='" + n005AfterAdd.newName + "']",
-    ).click();
+    ).click({ force: true });
     await sleep(200);
     page.once("dialog", (dialog) => dialog.accept());
     await page.keyboard.press("Delete");

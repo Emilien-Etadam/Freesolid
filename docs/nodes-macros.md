@@ -220,7 +220,15 @@ signalée par un simple préfixe Σ, montre enfin **d'où** elle est pilotée.
    le raccord par corps outil déjà éprouvé. À ouvrir sur un cas réel choisi
    d'avance (semer des perçages sur une surface est un bon banc d'essai),
    pas dans l'abstrait.
-5. **Macros** — sujet indépendant, à mener quand il aura sa propre valeur.
+5. **Nœuds constructifs** — poser un nœud crée une vraie fonction
+   PartDesign, en supprimer un la supprime. C'est l'aboutissement du §2 :
+   le graphe cesse de regarder le document pour le modifier. Aucune
+   opération nouvelle — la palette `FEATURES` et le panneau du ruban
+   suffisent. Trois murs à rendre visibles plutôt qu'à contourner : les
+   fonctions d'habillage réclament une face prise dans le viewport, une
+   fonction existante ne se recâble pas, et l'historique reste linéaire —
+   le graphe est un historique dessiné en graphe, pas une toile libre.
+6. **Macros** — sujet indépendant, à mener quand il aura sa propre valeur.
 
 Les étapes 1 à 3 n'ajoutent rien dans le `.FCStd` et n'écrivent pas de
 géométrie. L'étape 4 est le vrai investissement, et elle est volontairement

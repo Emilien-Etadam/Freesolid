@@ -19,6 +19,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from engine.guard import friendly_error          # noqa: E402
+from engine.protocol import visible_deps         # noqa: E402
 from engine.vocab import label_for_type          # noqa: E402
 
 
@@ -2668,17 +2669,55 @@ class Kernel:
             return False
         return bool(solids)
 
-    def get_tree(self):
-        """The feature tree, in the vocabulary the designer knows.
+    def _tree_known_names(self, body):
+        """Noms des nœuds dessinables du payload ``get_tree``.
 
-        SolidWorks shape: the three base planes come first, and a sketch
-        consumed by a feature nests under it as a child instead of
-        cluttering the top level.
+        Fonction, esquisse, plan de référence, surface ou corps déjà
+        présents dans la réponse — pas l'Origin, le VarSet, ni les
+        artefacts internes d'une gravure.
+        """
+        names = set()
+        origin = getattr(body, "Origin", None)
+        for feature in getattr(origin, "OriginFeatures", None) or ():
+            role = getattr(feature, "Role", "")
+            if role in self._PLANE_ROLES.values():
+                names.add(feature.Name)
+        for obj in body.Group:
+            if (obj.TypeId == "Sketcher::SketchObject"
+                    or obj.isDerivedFrom("PartDesign::Feature")):
+                names.add(obj.Name)
+        for obj in self._doc.Objects:
+            if obj.TypeId == "PartDesign::Body" and not self._is_text_tool(obj):
+                names.add(obj.Name)
+            elif (obj.TypeId in self._SURFACE_TYPE_IDS
+                    and not self._is_text_tool(obj)):
+                names.add(obj.Name)
+                for sketch in self._surface_sketch_objects(obj):
+                    names.add(sketch.Name)
+        return names
+
+    def get_tree(self):
+        """Arbre de fonctions, vocabulaire du concepteur.
+
+        Forme SolidWorks : les trois plans de référence d'abord, et une
+        esquisse consommée par une fonction se range dessous en
+        ``children`` plutôt que de polluer le premier niveau.
+
+        Chaque entrée (fonction du corps **et** esquisse imbriquée)
+        peut porter deux champs, omis quand ils sont vides :
+
+        - ``deps`` — noms internes des nœuds dont elle dépend
+          (``OutList`` filtré). Une arête n'est émise que si sa cible
+          est elle-même un nœud du même payload : fonction, esquisse,
+          plan de référence, surface ou corps. Aucune arête pendante.
+        - ``driven`` — ``{chemin de propriété: expression}``, les
+          propriétés pilotées. Chaîne brute, sans parsing des variables.
         """
         body = self._require_body()
         order_of = {obj.Name: i for i, obj in enumerate(self._doc.Objects)}
 
         consumed = self._consumed_sketches()
+        known_names = self._tree_known_names(body)
 
         def entry(obj):
             item = {
@@ -2704,6 +2743,15 @@ class Kernel:
                     "x": float(obj.FreeSolidTextX),
                     "y": float(obj.FreeSolidTextY),
                 }
+            deps = visible_deps(
+                [o.Name for o in (getattr(obj, "OutList", None) or ())],
+                known_names,
+            )
+            if deps:
+                item["deps"] = deps
+            driven = self._expression_map(obj)
+            if driven:
+                item["driven"] = driven
             return item
 
         items = []
@@ -5264,6 +5312,22 @@ class Kernel:
             # L'état vitrine (14, « FS ») est restauré : re-sauver pour
             # que le bilan rouvre exactement la pièce attendue.
             self.save_part(vitrine_path)
+
+            mark("n1: arêtes de dépendance dans get_tree")
+            self.new_part("Pièce nœuds N001")
+            tree = self.add_rect_sketch(80, 50)
+            sketch_name = next(
+                f["name"] for f in tree["features"]
+                if f["type"] == "Sketcher::SketchObject")
+            tree = self.add_pad(12)
+            pad = next(f for f in tree["features"]
+                       if f["type"] == "PartDesign::Pad")
+            report["n1_deps_pad_sketch"] = (
+                sketch_name in pad.get("deps", []))
+            self.set_params(pad["name"], {"Length": "12 + 3"})
+            pad = next(f for f in self.get_tree()["features"]
+                       if f["type"] == "PartDesign::Pad")
+            report["n1_driven_ok"] = "Length" in pad.get("driven", {})
 
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce

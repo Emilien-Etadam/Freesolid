@@ -443,6 +443,24 @@ def resolve_user_path(path, extensions, must_exist=False):
     return resolved
 
 
+def visible_deps(dep_names, known_names):
+    """Noms de ``dep_names`` qui désignent un nœud de ``known_names``.
+
+    Dédoublonne en conservant l'ordre d'entrée. Les cibles absentes de
+    ``known_names`` (Origin, VarSet, artefacts internes) sont écartées :
+    une arête n'est émise que si sa cible est elle-même un nœud du payload.
+    """
+    known = set(known_names)
+    seen = set()
+    names = []
+    for name in dep_names:
+        if name not in known or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
+
+
 def pack_mesh(face_meshes) -> dict:
     """Flatten per-face tessellations into one indexed buffer.
 

@@ -567,3 +567,28 @@ def test_preview_nested_typed_params_refused():
             {"op": "preview",
              "params": {"op": "add_pad", "params": {"length": "x"}}})
     assert str(excinfo.value) == 'paramètre length : nombre attendu, reçu "x"'
+
+
+def test_visible_deps_keeps_known_targets():
+    assert protocol.visible_deps(
+        ["Sketch001", "XZ_Plane"], {"Sketch001", "XZ_Plane", "Pad"}
+    ) == ["Sketch001", "XZ_Plane"]
+
+
+def test_visible_deps_drops_unknown_targets():
+    assert protocol.visible_deps(
+        ["Sketch001", "Origin", "VarSet", "TextBody"],
+        {"Sketch001", "Pad"},
+    ) == ["Sketch001"]
+
+
+def test_visible_deps_dedupes_preserving_order():
+    assert protocol.visible_deps(
+        ["B", "A", "B", "C", "A"], {"A", "B", "C"}
+    ) == ["B", "A", "C"]
+
+
+def test_visible_deps_empty():
+    assert protocol.visible_deps([], {"A"}) == []
+    assert protocol.visible_deps(["Origin"], {"Pad"}) == []
+    assert protocol.visible_deps(["Pad"], []) == []

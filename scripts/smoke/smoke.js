@@ -905,8 +905,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         || "",
     };
   });
-  if (paletteState.count !== 22) {
-    errors.push("N005 : palette " + paletteState.count + " items (attendu 22)");
+  if (paletteState.count !== 23) {
+    errors.push("N005 : palette " + paletteState.count + " items (attendu 23)");
   }
   if (!paletteState.filletDisabled) {
     errors.push("N005 : Congé devrait être grisé sans face sélectionnée");

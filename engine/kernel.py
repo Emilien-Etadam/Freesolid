@@ -104,6 +104,45 @@ def _explain(exc) -> str:
     return friendly_error(text) or text
 
 
+def weighted_center_of_mass(contributions):
+    """Centre de gravité pondéré — contributions ``(masse, (x, y, z))``.
+
+    Fonction pure (sans FreeCAD) pour les solides d'un compound.
+    """
+    total = 0.0
+    cx = cy = cz = 0.0
+    for weight, (x, y, z) in contributions:
+        weight = float(weight)
+        if weight <= 0:
+            continue
+        total += weight
+        cx += float(x) * weight
+        cy += float(y) * weight
+        cz += float(z) * weight
+    if total <= 0:
+        return None
+    return cx / total, cy / total, cz / total
+
+
+def _shape_center_of_mass(shape):
+    """Centre de gravité d'une forme — les compounds n'ont pas toujours l'attribut."""
+    try:
+        com = shape.CenterOfMass
+        return float(com.x), float(com.y), float(com.z)
+    except AttributeError:
+        contributions = []
+        for solid in shape.Solids:
+            volume = float(solid.Volume)
+            if volume <= 0:
+                continue
+            c = solid.CenterOfMass
+            contributions.append((volume, (c.x, c.y, c.z)))
+        com = weighted_center_of_mass(contributions)
+        if com is None:
+            raise KernelError("pas de solide à évaluer")
+        return com
+
+
 def selftest_summary(report):
     """Récapitulatif des indicateurs booléens top-niveau d'un rapport.
 
@@ -1600,17 +1639,29 @@ class Kernel:
         centre de gravité, encombrement — l'onglet Évaluer."""
         body = self._require_body()
         shape = getattr(body, "Shape", None)
-        if shape is None or not shape.Solids:
+        if shape is None:
             raise KernelError("pas de solide à évaluer")
-        volume = float(shape.Volume)  # mm³
-        com = shape.CenterOfMass
-        box = shape.BoundBox
+        try:
+            solids = shape.Solids
+        except Exception:  # noqa: BLE001 — forme OCCT inaccessible
+            solids = []
+        if not solids:
+            raise KernelError("pas de solide à évaluer")
+        try:
+            volume = float(shape.Volume)  # mm³ — s'additionne sur un compound
+            area = float(shape.Area)
+            com_x, com_y, com_z = _shape_center_of_mass(shape)
+            box = shape.BoundBox
+        except KernelError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc)) from exc
         return {
             "volume_mm3": volume,
-            "area_mm2": float(shape.Area),
+            "area_mm2": area,
             "density": float(density),
             "mass_g": volume / 1000.0 * float(density),
-            "center_of_mass": [com.x, com.y, com.z],
+            "center_of_mass": [com_x, com_y, com_z],
             "bounding_box": [box.XLength, box.YLength, box.ZLength],
         }
 
@@ -5706,6 +5757,13 @@ class Kernel:
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce
             # qui montre ce que l'Autotest a testé, pas sur la plaque m1.5.
             self.open_part(vitrine_path)
+            mark("n4e: mass_properties après ouverture pièce gravure")
+            eval_mp = self.mass_properties()
+            report["n4e_evaluer_apres_ouverture"] = (
+                eval_mp["volume_mm3"] > 0
+                and len(eval_mp.get("center_of_mass") or []) == 3
+                and all(math.isfinite(x)
+                        for x in eval_mp["center_of_mass"]))
             report["tree_after_pad"] = self.get_tree()
             mesh = self.tessellate()
             report["mesh_faces"] = len(mesh["groups"])

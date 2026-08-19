@@ -20,7 +20,9 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from engine.guard import friendly_error          # noqa: E402
-from engine.nodegraph import GraphError, evaluate as evaluate_graph  # noqa: E402
+from engine.nodegraph import (  # noqa: E402
+    GraphError, evaluate as evaluate_graph, migrate_graph,
+)
 from engine.protocol import dangling_deps, visible_deps  # noqa: E402
 from engine.vocab import label_for_type          # noqa: E402
 
@@ -1468,6 +1470,7 @@ class Kernel:
                 for item in self.list_variables()["variables"]}
 
     def _dump_graph_json(self, graph):
+        graph = migrate_graph(graph)
         try:
             payload = json.dumps(graph, ensure_ascii=False)
         except (TypeError, ValueError) as exc:
@@ -1622,7 +1625,7 @@ class Kernel:
         if not isinstance(parsed, dict):
             raise KernelError("graphe persisté illisible")
         mode = getattr(obj, "FreeSolidGraphMode", "") or "cut"
-        return {"graph": parsed, "mode": mode}
+        return {"graph": migrate_graph(parsed), "mode": mode}
 
     def graph_vocabulary(self):
         """Types de nœuds de la fonction graphe, libellés et ports.
@@ -5678,11 +5681,11 @@ class Kernel:
                         _n4_node("dy", "nombre", value=20),
                         _n4_node("z", "nombre", value=-6),
                         _n4_node("ones", "serie"),
-                        _n4_node("zeros", "calcul", op="*"),
-                        _n4_node("xstart", "calcul", op="+"),
+                        _n4_node("zeros", "multiplication"),
+                        _n4_node("xstart", "addition"),
                         _n4_node("xs", "serie"),
                         _n4_node("ys", "serie"),
-                        _n4_node("pts", "point"),
+                        _n4_node("pts", "vecteur"),
                         _n4_node("cyl", "cylindre", rayon=3, hauteur=20),
                     ],
                     "edges": [

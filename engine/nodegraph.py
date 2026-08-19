@@ -10,20 +10,14 @@ Un graphe est un dict ``{"nodes": [...], "edges": [...], "output": <id>}``.
 
 Chaque nœud : ``{"id": <str|int>, "type": <str>, ...}``.
 
-Types :
+Le catalogue complet — types, ports, catégories, icônes, état
+implémenté — vit dans ``engine.vocab.GRAPH_NODES``. Ici, seulement
+l'évaluation des catégories pures (nombre, vecteur, liste) et des deux
+générateurs déjà là (cylindre, boîte).
 
-- ``nombre``    : littéral. Champ ``value`` (nombre). Sortie : nombre.
-- ``variable``  : champ ``name``. Sortie : valeur courante dans
-                  ``variables``.
-- ``serie``     : entrées ``depart``, ``pas``, ``nombre``. Sortie : liste
-                  de nombres ``[depart, depart+pas, ...]``.
-- ``calcul``    : champ ``op`` ∈ {``+``, ``-``, ``*``, ``/``} ; entrées
-                  ``a``, ``b``. Sortie : nombre ou liste.
-- ``point``     : entrées ``x``, ``y``, ``z``. Sortie : point ou liste
-                  de points.
-- ``cylindre``  : entrées ``rayon``, ``hauteur``, ``ancrage`` (point).
-- ``boite``     : entrées ``longueur``, ``largeur``, ``hauteur``,
-                  ``ancrage``.
+Alias N004, migrés à l'évaluation : ``calcul`` + ``op`` → addition /
+soustraction / multiplication / division ; ``point`` (composition) →
+``vecteur``.
 
 Une entrée se résout par une arête ``{"from", "to", "input"}``, ou à
 défaut par un littéral du même nom sur le nœud (nombre scalaire).
@@ -51,41 +45,48 @@ from __future__ import annotations
 import math
 
 from engine.protocol import _COUNT_MAX
+from engine.vocab import GRAPH_NODE_BY_TYPE, GRAPH_NODES
 
 
 COUNT_MAX = _COUNT_MAX
 _MAX_DEPTH = 32
 
 _NODE_INPUTS = {
-    "nombre": (),
-    "variable": (),
-    "serie": ("depart", "pas", "nombre"),
-    "calcul": ("a", "b"),
-    "point": ("x", "y", "z"),
-    "cylindre": ("rayon", "hauteur", "ancrage"),
-    "boite": ("longueur", "largeur", "hauteur", "ancrage"),
+    spec.type: tuple(port.key for port in spec.inputs)
+    for spec in GRAPH_NODES
 }
-
-#: Champs propres au nœud — pas des ports. L'évaluateur les lit sur
-#: le dict du nœud (``value``, ``name``, ``op``).
 _NODE_FIELDS = {
-    "nombre": (("value", "number"),),
-    "variable": (("name", "text"),),
-    "calcul": (("op", "op"),),
+    spec.type: tuple((field.key, field.kind) for field in spec.fields)
+    for spec in GRAPH_NODES
+    if spec.fields
 }
+_POINT_INPUTS = frozenset(
+    port.key
+    for spec in GRAPH_NODES
+    for port in spec.inputs
+    if port.kind == "point"
+)
+_NODE_SHAPES = frozenset(spec.type for spec in GRAPH_NODES if spec.shape)
+_IMPLEMENTED = frozenset(spec.type for spec in GRAPH_NODES if spec.implemented)
 
-_POINT_INPUTS = frozenset({"ancrage"})
-_NODE_SHAPES = frozenset({"cylindre", "boite"})
+_LEGACY_CALC = {
+    "+": "addition",
+    "-": "soustraction",
+    "*": "multiplication",
+    "/": "division",
+}
+_LIST_OPS = frozenset({"flatten", "simplify", "graft", "unwrap", "wrap"})
 
 
 def vocabulary():
     """Types de nœuds, libellés français et ports — lecture seule.
 
-    Les ports viennent de ``_NODE_INPUTS`` ; les mots de ``engine.vocab``.
+    Les ports et l'état viennent de ``engine.vocab.GRAPH_NODES``.
     C'est le contrat de l'opération ``graph_vocabulary``.
     """
     from engine.vocab import (
         GRAPH_NODE_LABELS,
+        graph_category_label,
         graph_field_label,
         graph_input_label,
         graph_node_label,
@@ -97,20 +98,26 @@ def vocabulary():
             "libellé manquant pour le type de nœud « {} »".format(
                 missing[0]))
     entries = []
-    for kind, ports in _NODE_INPUTS.items():
+    for spec in GRAPH_NODES:
         inputs = []
-        for key in ports:
-            item = {"key": key, "label": graph_input_label(key)}
-            if key in _POINT_INPUTS:
-                item["kind"] = "point"
+        for port in spec.inputs:
+            item = {"key": port.key, "label": graph_input_label(port.key)}
+            if port.kind != "number":
+                item["kind"] = port.kind
             inputs.append(item)
         entry = {
-            "type": kind,
-            "label": graph_node_label(kind),
+            "type": spec.type,
+            "label": graph_node_label(spec.type),
+            "category": spec.category,
+            "category_label": graph_category_label(spec.category),
+            "icon": spec.icon,
             "inputs": inputs,
-            "shape": kind in _NODE_SHAPES,
+            "shape": spec.shape,
+            "implemented": spec.implemented,
         }
-        fields = _NODE_FIELDS.get(kind, ())
+        if not spec.implemented:
+            entry["reason"] = spec.reason
+        fields = _NODE_FIELDS.get(spec.type, ())
         if fields:
             entry["fields"] = [
                 {"key": key, "label": graph_field_label(key),
@@ -120,11 +127,49 @@ def vocabulary():
         entries.append(entry)
     return entries
 
-_OPS = {
-    "+": lambda a, b: a + b,
-    "-": lambda a, b: a - b,
-    "*": lambda a, b: a * b,
-    "/": lambda a, b: a / b,
+
+def migrate_graph(graph):
+    """Réécrit les types N004 vers le catalogue N006.
+
+    ``calcul`` + ``op`` devient addition/soustraction/multiplication/
+    division. ``point`` (composition x,y,z) devient ``vecteur`` — le
+    type ``point`` du catalogue est le générateur de sommet, pas encore
+    implémenté.
+    """
+    if not isinstance(graph, dict):
+        return graph
+    raw_nodes = graph.get("nodes")
+    if not isinstance(raw_nodes, list):
+        return graph
+    nodes = []
+    for raw in raw_nodes:
+        if not isinstance(raw, dict):
+            nodes.append(raw)
+            continue
+        node = dict(raw)
+        kind = node.get("type")
+        if kind == "point":
+            node["type"] = "vecteur"
+        elif kind == "calcul":
+            node["type"] = _LEGACY_CALC.get(node.get("op"), "addition")
+            node.pop("op", None)
+        nodes.append(node)
+    migrated = dict(graph)
+    migrated["nodes"] = nodes
+    return migrated
+
+_BINARY_OPS = {
+    "addition": lambda a, b: a + b,
+    "soustraction": lambda a, b: a - b,
+    "multiplication": lambda a, b: a * b,
+    "division": lambda a, b: a / b,
+    "puissance": lambda a, b: a ** b,
+}
+
+_UNARY_OPS = {
+    "sinus": math.sin,
+    "cosinus": math.cos,
+    "tangente": math.tan,
 }
 
 
@@ -141,7 +186,7 @@ def evaluate(graph, variables):
     Retour        : ``[{"shape": "box"|"cylinder", ...}]`` — des
                     instructions, pas des formes.
     """
-    return _Evaluator(graph, variables).run()
+    return _Evaluator(migrate_graph(graph), variables).run()
 
 
 def _label(node):
@@ -237,6 +282,33 @@ def _check_ceiling(value, node):
         raise GraphError(
             "nœud « {} » : plafond de {} éléments dépassé ({}) — "
             "aucune troncature".format(_label(node), COUNT_MAX, count))
+
+
+def _flatten_list(value, node):
+    """Aplatit toutes les listes imbriquées, sans toucher points ni formes."""
+    if not isinstance(value, list):
+        return [value]
+    out = []
+    for item in value:
+        if isinstance(item, list):
+            out.extend(_flatten_list(item, node))
+        else:
+            out.append(item)
+        if len(out) > COUNT_MAX:
+            raise GraphError(
+                "nœud « {} » : plafond de {} éléments dépassé ({}) — "
+                "aucune troncature".format(_label(node), COUNT_MAX, len(out)))
+    return out
+
+
+def _simplify_list(value):
+    """Effondre les listes d'un seul élément, récursivement."""
+    if not isinstance(value, list):
+        return value
+    simplified = [_simplify_list(item) for item in value]
+    if len(simplified) == 1:
+        return simplified[0]
+    return simplified
 
 
 def _apply(fn, args, node, depth):
@@ -401,19 +473,47 @@ class _Evaluator:
             return _as_number(self.variables[name], node)
         if kind == "serie":
             return _apply(self._serie_fn(node), self._inputs(node), node, 0)
-        if kind == "calcul":
-            op = node.get("op")
-            if op not in _OPS:
-                raise GraphError(
-                    "nœud « {} » : opération inconnue « {} » — "
-                    "attendu +, -, * ou /".format(_label(node), op))
-            return _apply(self._calcul_fn(op, node), self._inputs(node), node, 0)
-        if kind == "point":
+        if kind in _BINARY_OPS:
+            return _apply(
+                self._binary_fn(kind, node), self._inputs(node), node, 0)
+        if kind in _UNARY_OPS:
+            return _apply(
+                self._unary_fn(kind, node), self._inputs(node), node, 0)
+        if kind == "plage":
+            return _apply(self._plage_fn(node), self._inputs(node), node, 0)
+        if kind == "vecteur":
             return _apply(self._point_fn(node), self._inputs(node), node, 0)
+        if kind == "addition_vecteur":
+            return _apply(self._vec_add_fn(node), self._inputs(node), node, 0)
+        if kind == "soustraction_vecteur":
+            return _apply(self._vec_sub_fn(node), self._inputs(node), node, 0)
+        if kind == "echelle_vecteur":
+            return _apply(self._vec_scale_fn(node), self._inputs(node), node, 0)
+        if kind == "longueur_vecteur":
+            return _apply(self._vec_length_fn(node), self._inputs(node), node, 0)
+        if kind == "produit_vectoriel":
+            return _apply(self._vec_cross_fn(node), self._inputs(node), node, 0)
+        if kind == "vecteur_x":
+            return (1.0, 0.0, 0.0)
+        if kind == "vecteur_y":
+            return (0.0, 1.0, 0.0)
+        if kind == "vecteur_z":
+            return (0.0, 0.0, 1.0)
+        if kind == "longueur_liste":
+            return self._list_length(self._inputs(node)[0], node)
+        if kind == "decalage":
+            values = self._inputs(node)
+            return self._list_shift(values[0], values[1], node)
+        if kind == "option_liste":
+            return self._list_option(node, self._inputs(node)[0])
         if kind == "cylindre":
             return _apply(self._cylinder_fn(node), self._inputs(node), node, 0)
         if kind == "boite":
             return _apply(self._box_fn(node), self._inputs(node), node, 0)
+        spec = GRAPH_NODE_BY_TYPE.get(kind)
+        if spec is not None and not spec.implemented:
+            raise GraphError(
+                "nœud « {} » : {}".format(_label(node), spec.reason))
         raise GraphError(
             "nœud « {} » : type inconnu « {} »".format(_label(node), kind))
 
@@ -435,6 +535,9 @@ class _Evaluator:
     def _literal(self, value, node, port):
         if _is_number(value) or _is_point(value):
             return value
+        if isinstance(value, list):
+            _check_ceiling(value, node)
+            return value
         raise GraphError(
             "nœud « {} » : littéral invalide pour « {} » ({})".format(
                 _label(node), port, _preview(value)))
@@ -450,18 +553,137 @@ class _Evaluator:
             return [start + i * step for i in range(count)]
         return _run
 
-    def _calcul_fn(self, op, node):
-        fn = _OPS[op]
+    def _binary_fn(self, kind, node):
+        fn = _BINARY_OPS[kind]
 
         def _run(left, right):
             a = _as_number(left, node)
             b = _as_number(right, node)
-            if op == "/" and b == 0:
+            if kind == "division" and b == 0:
                 raise GraphError(
                     "nœud « {} » : division par zéro".format(_label(node)))
-            return fn(a, b)
+            try:
+                result = fn(a, b)
+            except (ValueError, OverflowError) as exc:
+                raise GraphError(
+                    "nœud « {} » : {}".format(_label(node), exc)) from exc
+            return _as_number(result, node)
 
         return _run
+
+    def _unary_fn(self, kind, node):
+        fn = _UNARY_OPS[kind]
+
+        def _run(value):
+            number = _as_number(value, node)
+            return _as_number(fn(number), node)
+
+        return _run
+
+    def _plage_fn(self, node):
+        def _run(depart, fin, pas):
+            start = _as_number(depart, node)
+            stop = _as_number(fin, node)
+            step = _as_number(pas, node)
+            if step == 0:
+                raise GraphError(
+                    "nœud « {} » : pas nul".format(_label(node)))
+            values = []
+            current = start
+            if step > 0:
+                while current < stop:
+                    values.append(current)
+                    current += step
+                    if len(values) > COUNT_MAX:
+                        break
+            else:
+                while current > stop:
+                    values.append(current)
+                    current += step
+                    if len(values) > COUNT_MAX:
+                        break
+            if not values:
+                raise GraphError(
+                    "nœud « {} » : plage vide".format(_label(node)))
+            if len(values) > COUNT_MAX:
+                raise GraphError(
+                    "nœud « {} » : plafond de {} éléments dépassé ({}) — "
+                    "aucune troncature".format(
+                        _label(node), COUNT_MAX, len(values)))
+            return values
+        return _run
+
+    def _vec_add_fn(self, node):
+        def _run(left, right):
+            a = _as_point(left, node)
+            b = _as_point(right, node)
+            return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
+        return _run
+
+    def _vec_sub_fn(self, node):
+        def _run(left, right):
+            a = _as_point(left, node)
+            b = _as_point(right, node)
+            return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+        return _run
+
+    def _vec_scale_fn(self, node):
+        def _run(vector, factor):
+            point = _as_point(vector, node)
+            scale = _as_number(factor, node)
+            return (point[0] * scale, point[1] * scale, point[2] * scale)
+        return _run
+
+    def _vec_length_fn(self, node):
+        def _run(vector):
+            x, y, z = _as_point(vector, node)
+            return math.hypot(x, y, z)
+        return _run
+
+    def _vec_cross_fn(self, node):
+        def _run(left, right):
+            a = _as_point(left, node)
+            b = _as_point(right, node)
+            return (
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0],
+            )
+        return _run
+
+    def _list_length(self, value, node):
+        if isinstance(value, list):
+            length = len(value)
+            _check_ceiling(value, node)
+            return float(length)
+        return 1.0
+
+    def _list_shift(self, value, offset, node):
+        items = list(value) if isinstance(value, list) else [value]
+        if not items:
+            return []
+        count = len(items)
+        shift = int(round(_as_number(offset, node))) % count
+        return items[shift:] + items[:shift]
+
+    def _list_option(self, node, value):
+        op = node.get("op", "flatten")
+        if op not in _LIST_OPS:
+            raise GraphError(
+                "nœud « {} » : opération de liste inconnue « {} »".format(
+                    _label(node), op))
+        if op == "flatten":
+            return _flatten_list(value, node)
+        if op == "wrap":
+            return [value]
+        if op == "unwrap":
+            if isinstance(value, list) and len(value) == 1:
+                return value[0]
+            return value
+        if op == "graft":
+            items = value if isinstance(value, list) else [value]
+            return [[item] for item in items]
+        return _simplify_list(value)
 
     def _point_fn(self, node):
         def _run(x, y, z):

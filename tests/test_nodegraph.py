@@ -3,7 +3,7 @@
 import pytest
 
 from engine.nodegraph import (
-    COUNT_MAX, GraphError, _NODE_INPUTS, evaluate, vocabulary,
+    COUNT_MAX, GraphError, _NODE_INPUTS, evaluate, migrate_graph, vocabulary,
 )
 from engine import vocab
 
@@ -345,21 +345,161 @@ def test_grille_de_cylindres():
 
 def test_vocabulary_matches_evaluator_inputs():
     """Un type ajouté d'un seul côté casse ce test — c'est le but."""
+    from pathlib import Path
+
     entries = vocabulary()
     types = {entry["type"]: entry for entry in entries}
+    declared = {spec.type: spec for spec in vocab.GRAPH_NODES}
     assert set(types) == set(_NODE_INPUTS)
     assert set(types) == set(vocab.GRAPH_NODE_LABELS)
+    assert set(types) == set(declared)
+    assert len(vocab.GRAPH_NODES) == len(declared)
+    icons_dir = Path(__file__).resolve().parents[1] / "app" / "icons"
+    allowed_same = {"a", "b", "x", "y", "z", "u", "v"}
     for kind, ports in _NODE_INPUTS.items():
+        spec = declared[kind]
         keys = tuple(item["key"] for item in types[kind]["inputs"])
         assert keys == ports
-        for item in types[kind]["inputs"]:
+        assert keys == tuple(port.key for port in spec.inputs)
+        for item, port in zip(types[kind]["inputs"], spec.inputs):
             assert item["label"] == vocab.graph_input_label(item["key"])
-            assert item["label"] != item["key"] or item["key"] in (
-                "a", "b", "x", "y", "z")
+            assert item["label"] != item["key"] or item["key"] in allowed_same
+            if port.kind == "number":
+                assert "kind" not in item
+            else:
+                assert item["kind"] == port.kind
         assert types[kind]["label"] == vocab.graph_node_label(kind)
-        assert types[kind]["shape"] is (kind in ("cylindre", "boite"))
+        assert types[kind]["shape"] is spec.shape
+        assert types[kind]["implemented"] is spec.implemented
+        assert types[kind]["category"] == spec.category
+        assert types[kind]["category_label"] == vocab.graph_category_label(
+            spec.category)
+        assert types[kind]["icon"] == spec.icon
+        assert (icons_dir / spec.icon).is_file(), spec.icon
+        if spec.implemented:
+            assert "reason" not in types[kind]
+        else:
+            assert types[kind]["reason"] == spec.reason
+            assert spec.reason.strip()
     cylindre = types["cylindre"]
     ancrage = next(item for item in cylindre["inputs"]
                    if item["key"] == "ancrage")
     assert ancrage["kind"] == "point"
     assert types["nombre"]["fields"][0]["key"] == "value"
+    assert types["addition"]["inputs"][0]["key"] == "a"
+    assert "calcul" not in types
+    assert types["vecteur"]["implemented"] is True
+    assert types["point"]["implemented"] is False
+    assert types["sphere"]["implemented"] is False
+
+
+def test_migrate_calcul_et_point():
+    graph = _g(
+        [
+            _n("deux", "nombre", value=2),
+            _n("x", "calcul", op="*"),
+            _n("xs", "serie", depart=0, pas=1, nombre=3),
+        ],
+        [_e("xs", "x", "a"), _e("deux", "x", "b")],
+        "x",
+    )
+    migrated = migrate_graph(graph)
+    types = {node["id"]: node["type"] for node in migrated["nodes"]}
+    assert types["x"] == "multiplication"
+    assert "op" not in migrated["nodes"][1]
+    graph["nodes"].append(_n("p", "point", x=1, y=2, z=3))
+    graph["output"] = "p"
+    migrated = migrate_graph(graph)
+    kinds = {node["id"]: node["type"] for node in migrated["nodes"]}
+    assert kinds["p"] == "vecteur"
+
+
+def test_listes_longueur_aplatir_decalage():
+    graph = _g(
+        [
+            _n("xs", "serie", depart=0, pas=1, nombre=4),
+            _n("len", "longueur_liste"),
+            _n("cyl", "cylindre", hauteur=1,
+               ancrage={"x": 0, "y": 0, "z": 0}),
+        ],
+        [_e("xs", "len", "liste"), _e("len", "cyl", "rayon")],
+        "cyl",
+    )
+    out = evaluate(graph, {})
+    assert out[0]["radius"] == 4.0
+
+    flat = evaluate(_g(
+        [
+            _n("flat", "option_liste", op="flatten",
+               liste=[[1, 2], [3]]),
+            _n("len", "longueur_liste"),
+            _n("cyl", "cylindre", hauteur=1,
+               ancrage={"x": 0, "y": 0, "z": 0}),
+        ],
+        [_e("flat", "len", "liste"), _e("len", "cyl", "rayon")],
+        "cyl",
+    ), {})
+    assert flat[0]["radius"] == 3.0
+
+    shifted = evaluate(_g(
+        [
+            _n("xs", "serie", depart=0, pas=1, nombre=3),
+            _n("s", "decalage", decalage=1),
+            _n("p", "vecteur", y=0, z=0),
+            _n("cyl", "cylindre", rayon=1, hauteur=1),
+        ],
+        [
+            _e("xs", "s", "liste"),
+            _e("s", "p", "x"),
+            _e("p", "cyl", "ancrage"),
+        ],
+        "cyl",
+    ), {})
+    assert [round(item["x"]) for item in shifted] == [1, 2, 0]
+
+
+def test_vecteur_et_plage():
+    graph = _g(
+        [
+            _n("xs", "plage", depart=1, fin=4, pas=1),
+            _n("vx", "vecteur_x"),
+            _n("scale", "echelle_vecteur", facteur=10),
+            _n("cyl", "cylindre", hauteur=2),
+        ],
+        [
+            _e("vx", "scale", "vecteur"),
+            _e("xs", "cyl", "rayon"),
+            _e("scale", "cyl", "ancrage"),
+        ],
+        "cyl",
+    )
+    out = evaluate(graph, {})
+    assert [round(item["radius"]) for item in out] == [1, 2, 3]
+    assert all(item["x"] == 10 and item["y"] == 0 and item["z"] == 0
+               for item in out)
+
+
+def test_noeud_non_implemente_cite_sa_raison():
+    graph = _g(
+        [_n("s", "sphere", rayon=1, point={"x": 0, "y": 0, "z": 0})],
+        [],
+        "s",
+    )
+    with pytest.raises(GraphError, match=r"API Part"):
+        evaluate(graph, {})
+
+
+def test_alias_calcul_s_evalue_encore():
+    graph = _g(
+        [
+            _n("a", "nombre", value=8),
+            _n("b", "nombre", value=2),
+            _n("q", "calcul", op="/"),
+            _n("cyl", "cylindre", hauteur=1,
+               ancrage={"x": 0, "y": 0, "z": 0}),
+        ],
+        [_e("a", "q", "a"), _e("b", "q", "b"), _e("q", "cyl", "rayon")],
+        "cyl",
+    )
+    out = evaluate(graph, {})
+    assert out[0]["radius"] == 4.0

@@ -480,6 +480,41 @@ export function graphPaletteItems(features, ctx = {}) {
 }
 
 /**
+ * Palette de la fonction graphe : tout le catalogue, groupé par
+ * catégorie. Un nœud non implémenté reste visible, grisé, avec sa raison.
+ * @param {object[]|null|undefined} vocabulary
+ */
+export function graphNodePaletteGroups(vocabulary) {
+  const groups = [];
+  const byCat = new Map();
+  for (const spec of listOfSpec(vocabulary)) {
+    if (!spec || typeof spec.type !== "string") continue;
+    const category = spec.category || "";
+    if (!byCat.has(category)) {
+      const group = {
+        category,
+        label: spec.category_label || category,
+        items: [],
+      };
+      byCat.set(category, group);
+      groups.push(group);
+    }
+    const implemented = spec.implemented !== false;
+    byCat.get(category).items.push({
+      type: spec.type,
+      title: spec.label || spec.type,
+      icon: spec.icon || "",
+      enabled: implemented,
+      reason: implemented
+        ? null
+        : (spec.reason || "pas encore implémenté"),
+      spec,
+    });
+  }
+  return groups;
+}
+
+/**
  * Arrivée d'un fil paramétrique : une fonction aux cotes éditables.
  * Esquisse, plan, surface, corps : visibles comme non cibles, pas après coup.
  */
@@ -573,17 +608,29 @@ function isNumberLiteral(value) {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-/** Valeur initiale d'un port : point d'ancrage ou nombre. */
+/** Valeur initiale d'un port : point d'ancrage, liste, ou nombre. */
 export function defaultPortLiteral(input) {
-  if (input && input.kind === "point") return { x: 0, y: 0, z: 0 };
+  if (input && (input.kind === "point" || input.kind === "vector")) {
+    return { x: 0, y: 0, z: 0 };
+  }
+  if (input && input.kind === "list") return 1;
   return 1;
 }
+
+export const LIST_SOCKET_OPS = [
+  { value: "flatten", label: "Aplatir" },
+  { value: "simplify", label: "Simplifier" },
+  { value: "graft", label: "Greffer" },
+  { value: "unwrap", label: "Déplier" },
+  { value: "wrap", label: "Envelopper" },
+];
 
 /** Valeur initiale d'un champ propre au nœud (valeur, nom, opération). */
 export function defaultFieldValue(field) {
   const kind = field && field.kind;
   if (kind === "text") return "";
   if (kind === "op") return "+";
+  if (kind === "list_op") return "flatten";
   return 1;
 }
 
@@ -758,6 +805,14 @@ export function composeGraphPayload(draft, vocabulary) {
         node: ident,
       };
     }
+    if (spec.implemented === false) {
+      return {
+        ok: false,
+        error: spec.reason
+          || `nœud « ${ident} » : pas encore implémenté`,
+        node: ident,
+      };
+    }
     const node = { id: ident, type: raw.type };
     if (Array.isArray(raw.pos) && raw.pos.length === 2
         && Number.isFinite(Number(raw.pos[0]))
@@ -772,7 +827,7 @@ export function composeGraphPayload(draft, vocabulary) {
       if (taken.has(input.key)) continue;
       if (!(input.key in raw)) continue;
       const value = raw[input.key];
-      if (input.kind === "point") {
+      if (input.kind === "point" || input.kind === "vector") {
         if (!isPointLiteral(value)) {
           return {
             ok: false,
@@ -784,6 +839,12 @@ export function composeGraphPayload(draft, vocabulary) {
           x: Number(value.x), y: Number(value.y), z: Number(value.z),
         };
         continue;
+      }
+      if (input.kind === "list") {
+        if (Array.isArray(value)) {
+          node[input.key] = value;
+          continue;
+        }
       }
       if (!isNumberLiteral(value) && typeof value !== "number") {
         const asNum = typeof value === "string" ? Number(value) : NaN;
@@ -926,6 +987,7 @@ export function layoutFunctionGraph(draft, vocabulary) {
       kind: spec.label || raw.type,
       role: spec.shape ? "shape" : "compute",
       shape: !!spec.shape,
+      icon: spec.icon || "",
       output: String(draft?.output) === ident,
       spec,
       width: size.width,

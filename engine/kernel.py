@@ -5866,6 +5866,11 @@ class Kernel:
             fillet_subs = [
                 name for names in (fillet.get("dep_subs") or {}).values()
                 for name in names]
+            # Dépouille sur une boîte neuve : après congé, la face
+            # latérale n'est plus dépouillable (constat n7).
+            self.new_part("Pièce nœuds N007 dépouille")
+            self.add_rect_sketch(80, 50)
+            self.add_pad(12)
             tree = self.add_draft(face=self._side_face_id(), angle=5)
             draft = next(f for f in tree["features"]
                          if f["type"] == "PartDesign::Draft")

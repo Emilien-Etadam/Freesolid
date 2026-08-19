@@ -2,7 +2,10 @@
 
 import pytest
 
-from engine.nodegraph import COUNT_MAX, GraphError, evaluate
+from engine.nodegraph import (
+    COUNT_MAX, GraphError, _NODE_INPUTS, evaluate, vocabulary,
+)
+from engine import vocab
 
 
 def _n(ident, kind, **fields):
@@ -338,3 +341,25 @@ def test_grille_de_cylindres():
     ]
     assert all(item["shape"] == "cylinder" for item in out)
     assert all(item["radius"] == 3 and item["height"] == 20 for item in out)
+
+
+def test_vocabulary_matches_evaluator_inputs():
+    """Un type ajouté d'un seul côté casse ce test — c'est le but."""
+    entries = vocabulary()
+    types = {entry["type"]: entry for entry in entries}
+    assert set(types) == set(_NODE_INPUTS)
+    assert set(types) == set(vocab.GRAPH_NODE_LABELS)
+    for kind, ports in _NODE_INPUTS.items():
+        keys = tuple(item["key"] for item in types[kind]["inputs"])
+        assert keys == ports
+        for item in types[kind]["inputs"]:
+            assert item["label"] == vocab.graph_input_label(item["key"])
+            assert item["label"] != item["key"] or item["key"] in (
+                "a", "b", "x", "y", "z")
+        assert types[kind]["label"] == vocab.graph_node_label(kind)
+        assert types[kind]["shape"] is (kind in ("cylindre", "boite"))
+    cylindre = types["cylindre"]
+    ancrage = next(item for item in cylindre["inputs"]
+                   if item["key"] == "ancrage")
+    assert ancrage["kind"] == "point"
+    assert types["nombre"]["fields"][0]["key"] == "value"

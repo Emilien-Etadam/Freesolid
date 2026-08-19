@@ -91,7 +91,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       + " (attendu " + expectedGroups.join(", ") + ")");
   }
 
-  // 0. Ids des 22 panneaux (registry FEATURES) + bascule libellés du ruban.
+  // 0. Ids des 23 panneaux (registry FEATURES) + bascule libellés du ruban.
   const FEATURE_PANELS = [
     { id: "btn-pad", tab: "features" },
     { id: "btn-pocket", tab: "features" },
@@ -102,6 +102,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-sweep", tab: "features" },
     { id: "btn-helix", tab: "features" },
     { id: "btn-text", tab: "features" },
+    { id: "btn-graph-feature", tab: "features" },
     { id: "btn-fillet", tab: "features" },
     { id: "btn-chamfer", tab: "features" },
     { id: "btn-shell", tab: "features" },
@@ -116,8 +117,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-surf-sew", tab: "surfaces" },
     { id: "btn-surf-thicken", tab: "surfaces" },
   ];
-  if (FEATURE_PANELS.length !== 22) {
-    errors.push("harnais : 22 panneaux attendus, "
+  if (FEATURE_PANELS.length !== 23) {
+    errors.push("harnais : 23 panneaux attendus, "
       + FEATURE_PANELS.length + " déclarés");
   }
   let opened = 0;
@@ -144,7 +145,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   console.log("[panneaux] " + opened + "/" + FEATURE_PANELS.length
     + " ouverts (les gardes sans esquisse / sans 2e corps n'ouvrent pas)");
   if (opened < 15) {
-    errors.push("trop peu de panneaux ouverts : " + opened + "/22");
+    errors.push("trop peu de panneaux ouverts : " + opened + "/23");
   }
   await page.click('[data-tab="features"]');
   await sleep(200);
@@ -904,8 +905,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         || "",
     };
   });
-  if (paletteState.count !== 22) {
-    errors.push("N005 : palette " + paletteState.count + " items (attendu 22)");
+  if (paletteState.count !== 23) {
+    errors.push("N005 : palette " + paletteState.count + " items (attendu 23)");
   }
   if (!paletteState.filletDisabled) {
     errors.push("N005 : Congé devrait être grisé sans face sélectionnée");
@@ -1253,6 +1254,248 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await step("gravure rééditée");
   await page.screenshot({ path: path.join(SHOTS, "8-gravure-editee.png") });
+
+  // N004b — éditeur de la fonction graphe : créer, poser, câbler, appliquer,
+  // erreur d'appariement désignée, pièce intacte.
+  const isVolume = (v) => typeof v === "number" && Number.isFinite(v);
+  const volumeOf = async () => page.evaluate(async () => {
+    const r = await fetch("/api", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "mass_properties", params: {} }) });
+    const j = await r.json();
+    return j.ok ? j.result.volume_mm3 : ("REFUS: " + (j.error ?? "?"));
+  });
+  const volBeforeGraph = await volumeOf();
+  await page.click('[data-tab="features"]');
+  await sleep(200);
+  await page.click("#btn-graph-feature");
+  await page.waitForFunction(
+    () => document.querySelector("#panel .ptitle")?.textContent
+      === "Fonction graphe",
+    null,
+    { timeout: 8000 },
+  );
+  await page.locator("#panel select").first().selectOption("fuse");
+  await page.click('#panel [title^="OK"]');
+  await page.waitForFunction(
+    () => window.__freesolidDebug?.graphFeatureActive === true,
+    null,
+    { timeout: 15000 },
+  );
+  const volAfterCreate = await volumeOf();
+  if (!isVolume(volBeforeGraph) || !isVolume(volAfterCreate)
+      || volAfterCreate <= volBeforeGraph + 50) {
+    errors.push("N004b : le bossage graphe devrait augmenter le volume ("
+      + volBeforeGraph + " → " + volAfterCreate + ")");
+  }
+  const hint = await page.textContent("#graph-fn-hint");
+  if (!/figée/i.test(hint || "") || !/booléen/i.test(hint || "")) {
+    errors.push("N004b : le mode doit dire que la géométrie est figée "
+      + "et que le résultat est une forme (" + hint + ")");
+  }
+
+  const paletteBtn = page.locator("#graph-fn-palette");
+  await paletteBtn.click();
+  await page.waitForSelector("#graph-palette .menu-item[data-type='serie']",
+    { timeout: 5000 });
+  await page.click("#graph-palette .menu-item[data-type='serie']");
+  await sleep(300);
+  await paletteBtn.click();
+  await page.waitForSelector("#graph-palette .menu-item[data-type='cylindre']",
+    { timeout: 5000 });
+  await page.click("#graph-palette .menu-item[data-type='cylindre']");
+  await sleep(400);
+
+  const placed = await page.evaluate(() => {
+    const ids = window.__freesolidDebug?.graphFeatureNodeIds ?? [];
+    const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
+    return {
+      ids,
+      types: nodes.map((n) => n.getAttribute("data-type") || ""),
+    };
+  });
+  if (!placed.types.includes("serie") || !placed.types.includes("cylindre")) {
+    errors.push("N004b : série et cylindre absents après pose ("
+      + JSON.stringify(placed) + ")");
+  }
+  const serieId = await page.evaluate(() => {
+    const node = [...document.querySelectorAll(
+      "#graph-view .graph-node[data-type='serie']")].pop();
+    return node?.getAttribute("data-name") || "";
+  });
+  const cylId = await page.evaluate(() => {
+    const node = [...document.querySelectorAll(
+      "#graph-view .graph-node[data-type='cylindre']")].pop();
+    return node?.getAttribute("data-name") || "";
+  });
+  if (serieId && cylId) {
+    await page.evaluate(({ serieId: sid, cylId: cid }) => {
+      window.__freesolidDebug.setGraphLiteral(sid, "depart", 8);
+      window.__freesolidDebug.setGraphLiteral(sid, "pas", 4);
+      window.__freesolidDebug.setGraphLiteral(sid, "nombre", 2);
+    }, { serieId, cylId });
+    const outPort = page.locator(
+      `#graph-view .graph-port.out[data-node="${serieId}"]`);
+    const inPort = page.locator(
+      `#graph-view .graph-port.in[data-node="${cylId}"][data-key="rayon"]`);
+    const outBox = await outPort.boundingBox();
+    const inBox = await inPort.boundingBox();
+    if (!outBox || !inBox) {
+      errors.push("N004b : ports série/cylindre introuvables pour le fil");
+    } else {
+      await page.mouse.move(outBox.x + outBox.width / 2,
+        outBox.y + outBox.height / 2);
+      await page.mouse.down();
+      const steps = 10;
+      for (let i = 1; i <= steps; i++) {
+        await page.mouse.move(
+          outBox.x + outBox.width / 2
+            + (inBox.x + inBox.width / 2 - outBox.x - outBox.width / 2)
+              * (i / steps),
+          outBox.y + outBox.height / 2
+            + (inBox.y + inBox.height / 2 - outBox.y - outBox.height / 2)
+              * (i / steps));
+        await sleep(20);
+      }
+      await page.mouse.up();
+      await sleep(400);
+    }
+    const wiredRayon = await page.evaluate(({ from, to }) => {
+      const edges = window.__freesolidDebug.graphFeatureEdges() || [];
+      if (edges.some((e) => e.from === from && e.to === to
+          && e.input === "rayon")) {
+        return { ok: true, via: "drag" };
+      }
+      return window.__freesolidDebug.wireGraph(from, to, "rayon");
+    }, { from: serieId, to: cylId });
+    if (!wiredRayon.ok) {
+      errors.push("N004b : fil série→rayon refusé ("
+        + JSON.stringify(wiredRayon) + ")");
+    }
+    await page.evaluate((cid) => {
+      const node = [...document.querySelectorAll("#graph-view .graph-node")]
+        .find((el) => el.getAttribute("data-name") === cid);
+      node?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    }, cylId);
+    await page.click("#graph-fn-apply");
+    await sleep(3500);
+  } else {
+    errors.push("N004b : identifiants série/cylindre manquants");
+  }
+  const volAfterApply = await volumeOf();
+  if (!isVolume(volAfterApply) || Math.abs(volAfterApply - volAfterCreate) < 1) {
+    errors.push("N004b : appliquer le graphe devrait changer le volume ("
+      + volAfterCreate + " → " + volAfterApply + ")");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "9-fonction-graphe.png") });
+
+  const serieIdsBefore = await page.evaluate(() =>
+    [...document.querySelectorAll("#graph-view .graph-node[data-type='serie']")]
+      .map((n) => n.getAttribute("data-name")));
+  await paletteBtn.click();
+  await page.waitForSelector("#graph-palette .menu-item[data-type='serie']",
+    { timeout: 5000 });
+  await page.click("#graph-palette .menu-item[data-type='serie']");
+  await page.waitForFunction((before) => {
+    const ids = [...document.querySelectorAll(
+      "#graph-view .graph-node[data-type='serie']")]
+      .map((n) => n.getAttribute("data-name"));
+    return ids.some((id) => !before.includes(id));
+  }, serieIdsBefore, { timeout: 5000 }).catch(() => {});
+  const serie2 = await page.evaluate((before) => {
+    const ids = [...document.querySelectorAll(
+      "#graph-view .graph-node[data-type='serie']")]
+      .map((n) => n.getAttribute("data-name"));
+    return ids.find((id) => !before.includes(id)) || "";
+  }, serieIdsBefore);
+  if (serie2 && cylId) {
+    await page.evaluate((id) => {
+      window.__freesolidDebug.setGraphLiteral(id, "depart", 1);
+      window.__freesolidDebug.setGraphLiteral(id, "pas", 1);
+      window.__freesolidDebug.setGraphLiteral(id, "nombre", 5);
+    }, serie2);
+    const outPort = page.locator(
+      `#graph-view .graph-port.out[data-node="${serie2}"]`);
+    const inPort = page.locator(
+      `#graph-view .graph-port.in[data-node="${cylId}"][data-key="hauteur"]`);
+    const outBox = await outPort.boundingBox();
+    const inBox = await inPort.boundingBox();
+    if (outBox && inBox) {
+      await page.mouse.move(outBox.x + outBox.width / 2,
+        outBox.y + outBox.height / 2);
+      await page.mouse.down();
+      const steps = 10;
+      for (let i = 1; i <= steps; i++) {
+        await page.mouse.move(
+          outBox.x + outBox.width / 2
+            + (inBox.x + inBox.width / 2 - outBox.x - outBox.width / 2)
+              * (i / steps),
+          outBox.y + outBox.height / 2
+            + (inBox.y + inBox.height / 2 - outBox.y - outBox.height / 2)
+              * (i / steps));
+        await sleep(20);
+      }
+      await page.mouse.up();
+      await sleep(300);
+    }
+    const wired = await page.evaluate(({ from, to, input }) => {
+      const edges = window.__freesolidDebug.graphFeatureEdges() || [];
+      if (edges.some((e) => e.from === from && e.to === to
+          && e.input === input)) {
+        return { ok: true, via: "drag" };
+      }
+      return window.__freesolidDebug.wireGraph(from, to, input);
+    }, { from: serie2, to: cylId, input: "hauteur" });
+    if (!wired.ok) {
+      errors.push("N004b : fil série→hauteur refusé ("
+        + JSON.stringify(wired) + ")");
+    }
+    const statusBeforeErr = await status();
+    await page.click("#graph-fn-apply");
+    await page.waitForFunction((before) => {
+      const st = document.getElementById("status")?.textContent || "";
+      return st !== before
+        || !!document.querySelector("#graph-view .graph-node.error");
+    }, statusBeforeErr, { timeout: 10000 }).catch(() => {});
+    const errState = await page.evaluate(() => ({
+      errorNode: window.__freesolidDebug?.graphFeatureErrorNode || null,
+      marked: !!document.querySelector("#graph-view .graph-node.error"),
+      status: (document.getElementById("status")?.textContent || ""),
+      edges: window.__freesolidDebug?.graphFeatureEdges?.() || [],
+      ids: window.__freesolidDebug?.graphFeatureNodeIds || [],
+    }));
+    if (!errState.marked && !/longueurs/i.test(errState.status)) {
+      errors.push("N004b : l'erreur d'appariement devrait désigner un nœud ("
+        + JSON.stringify(errState) + ")");
+    }
+    if (errState.marked && cylId
+        && errState.errorNode && errState.errorNode !== cylId) {
+      errors.push("N004b : nœud fautif attendu " + cylId + ", reçu "
+        + errState.errorNode);
+    }
+    const volAfterError = await volumeOf();
+    if (isVolume(volAfterApply) && isVolume(volAfterError)
+        && Math.abs(volAfterError - volAfterApply) > 1e-3) {
+      errors.push("N004b : la pièce a changé malgré le refus ("
+        + volAfterApply + " → " + volAfterError + ")");
+    }
+    const modeStill = await page.evaluate(
+      () => window.__freesolidDebug?.graphFeatureActive === true);
+    if (!modeStill) {
+      errors.push("N004b : le mode s'est fermé sur l'erreur");
+    }
+  } else {
+    errors.push("N004b : deuxième série absente pour l'appariement");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "9b-fonction-graphe-erreur.png") });
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.click("#graph-fn-close");
+  await page.waitForFunction(
+    () => window.__freesolidDebug?.graphFeatureActive !== true,
+    null,
+    { timeout: 8000 },
+  ).catch(() => {});
+  await step("fonction graphe");
 
   console.log(errors.length
     ? "ERREURS:\n" + errors.join("\n")

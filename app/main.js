@@ -11,15 +11,27 @@ import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
 import {
   buildGraph,
+  cloneGraphDraft,
+  composeGraphPayload,
+  connectGraphEdge,
+  disconnectGraphEdge,
   edgeAttachX,
   edgeCurvePath,
   expressionForVariable,
   freezeDrivenValues,
+  functionEdgeEnds,
+  graphDraftsEqual,
   graphPaletteItems,
   isConstructWireSource,
+  isGraphFeature,
   isParamWireSource,
   isParamWireTarget,
+  layoutFunctionGraph,
+  newGraphNode,
+  nextGraphNodeId,
+  nodeIdFromGraphError,
   paramChoiceCaption,
+  removeGraphNode,
 } from "./graph.js";
 
 const statusEl = document.getElementById("status");
@@ -156,6 +168,12 @@ window.__freesolidDebug = {
   get sketchScreenPoint() { return sketchScreenPoint(); },
   get surfaceMeshCount() { return surfaceMeshes.length; },
   get surfaceScreenPoint() { return surfaceScreenPoint(); },
+  get graphFeatureActive() { return graphFn.active; },
+  get graphFeatureErrorNode() { return graphFn.errorNode; },
+  get graphFeatureOutput() { return graphFn.draft?.output ?? null; },
+  get graphFeatureNodeIds() {
+    return (graphFn.draft?.nodes ?? []).map((node) => String(node.id));
+  },
 };
 
 scene.add(new THREE.HemisphereLight(0xdde4ec, 0x30343a, 1.0));
@@ -966,6 +984,12 @@ document.addEventListener("keydown", (event) => {
     measuring = false;
     measureFirst = null;
     say("Mesure annulée.");
+  } else if (event.key === "Escape" && graphFn.active) {
+    event.preventDefault();
+    if (literalEditEl.style.display === "block") closeLiteralEditor();
+    else if (graphPalette.style.display === "block") closeGraphPalette();
+    else if (graphWiring) cancelGraphWire();
+    else exitGraphFeature();
   } else if (event.key === "Escape" && graphOpen) {
     event.preventDefault();
     if (graphPalette.style.display === "block") closeGraphPalette();
@@ -975,7 +999,8 @@ document.addEventListener("keydown", (event) => {
   } else if (graphOpen && (event.key === "Delete" || event.key === "Suppr")) {
     event.preventDefault();
     if (graphPalette.style.display === "block") return;
-    if (graphSelectedEdge) unlinkParamEdge(graphSelectedEdge);
+    if (graphFn.active) deleteGraphFnSelection();
+    else if (graphSelectedEdge) unlinkParamEdge(graphSelectedEdge);
     else deleteSelectedGraphNode();
   }
 });
@@ -1076,6 +1101,14 @@ function treeIcon(file) {
 }
 
 function graphIconFile(node) {
+  if (node?.role === "compute" || node?.role === "shape") {
+    if (node.type === "cylindre") return "PartDesign_AdditiveHelix.svg";
+    if (node.type === "boite") return "Part_3D_object.svg";
+    if (node.type === "serie") return "PartDesign_LinearPattern.svg";
+    if (node.type === "variable") return "VarSet.svg";
+    if (node.type === "point") return "Constraint_PointOnMidPoint.svg";
+    return "Geoassembly.svg";
+  }
   if (node?.type && TREE_ICONS[node.type]) return TREE_ICONS[node.type];
   if (node?.role === "sketch") return TREE_ICONS["Sketcher::SketchObject"];
   if (node?.role === "datum") return TREE_ICONS["PartDesign::Plane"];
@@ -1740,7 +1773,9 @@ function appendFeatureHistoryRow(feature, rolledBack) {
     });
   }
   row.appendChild(arrow);
-  const icon = TREE_ICONS[feature.type];
+  const icon = isGraphFeature(feature)
+    ? "Geoassembly.svg"
+    : TREE_ICONS[feature.type];
   if (icon) row.appendChild(treeIcon(icon));
   row.appendChild(document.createTextNode(feature.label));
   row.title = `${feature.kind} — double-clic : modifier · ` +
@@ -1818,6 +1853,10 @@ async function editSurface(surface) {
 }
 
 async function editFeature(feature) {
+  if (isGraphFeature(feature)) {
+    enterGraphFeature(feature);
+    return;
+  }
   if (feature.type === "Sketcher::SketchObject") {
     closeGraph();
     sketchMode.enter(call("sketch_edit", { feature: feature.name }));
@@ -1986,15 +2025,10 @@ document.getElementById("ctx-rollback").addEventListener("click", () => {
 document.getElementById("ctx-end").addEventListener("click", () =>
   refresh(call("tip_to_end")));
 document.getElementById("ctx-delete").addEventListener("click", () => {
-  deleteFeatureWithConfirm(menuFeature);
+  if (!menuFeature) return;
+  if (confirm(`Supprimer « ${menuFeature.label} » ?`))
+    refreshAny(call("delete_feature", { feature: menuFeature.name }));
 });
-
-function deleteFeatureWithConfirm(feature) {
-  if (!feature) return;
-  if (confirm(`Supprimer « ${feature.label} » ?`)) {
-    refreshAny(call("delete_feature", { feature: feature.name }));
-  }
-}
 
 // ---------- ruban à onglets (CommandManager) ----------
 
@@ -2095,6 +2129,10 @@ async function featureCommand(openPanel) {
         "pièce (un assemblage est en cours)", true);
     return;
   }
+  if (graphFn.active) {
+    say("Fermez d'abord la fonction graphe (Échap ou Fermer)", true);
+    return;
+  }
   if (sketchMode.active) await sketchMode.finish();
   openPanel();
 }
@@ -2152,7 +2190,11 @@ const graphAddBtn = document.getElementById("btn-graph-add");
 const graphPalette = document.getElementById("graph-palette");
 const paramPickEl = document.getElementById("param-pick");
 const graphEdgeMenu = document.getElementById("graph-edge-menu");
+const literalEditEl = document.getElementById("graph-literal-edit");
+const graphFnBar = document.getElementById("graph-fn-bar");
 const GRAPH_HINT_AT = 60;
+const GRAPH_FN_HINT =
+  "Fonction graphe — la géométrie produite est figée. Échap pour fermer.";
 
 let graphOpen = false;
 let graphPanX = 0;
@@ -2163,10 +2205,20 @@ let graphMoved = false;
 let graphDragX = 0;
 let graphDragY = 0;
 let graphWiring = null; // { from, kind, x, y, started, preview }
-let graphSelectedEdge = null; // { from, to, kind }
+let graphSelectedEdge = null; // { from, to, kind, input? }
 let graphSelectedName = null;
 let graphPaletteProfile = null;
 let graphFitNames = "";
+let graphFn = {
+  active: false,
+  feature: null,
+  draft: null,
+  saved: null,
+  vocabulary: [],
+  errorNode: null,
+  selected: null,
+  draggingNode: null,
+};
 
 function svgEl(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
@@ -2188,6 +2240,7 @@ function graphLabelText(text) {
 }
 
 function isGraphNodeSelected(node) {
+  if (graphFn.active) return graphFn.selected === node.name;
   if (graphSelectedName && node.name === graphSelectedName) return true;
   if (selectedSketch?.name === node.name) return true;
   if (selectedDatumFeature?.name === node.name) return true;
@@ -2247,6 +2300,12 @@ function graphMenuTarget(name) {
 }
 
 function onGraphNodeClick(name) {
+  if (graphFn.active) {
+    graphFn.selected = name;
+    selectGraphEdge(null);
+    renderGraphFunction();
+    return;
+  }
   const target = lookupGraphTarget(name);
   if (!target) return;
   if (target.kind === "sketch") onSketchRowClick(target.feature);
@@ -2256,6 +2315,12 @@ function onGraphNodeClick(name) {
 }
 
 function onGraphNodeDblClick(name) {
+  if (graphFn.active) {
+    graphFn.draft.output = name;
+    graphFn.selected = name;
+    renderGraphFunction();
+    return;
+  }
   const target = lookupGraphTarget(name);
   if (!target) return;
   if (target.kind === "sketch") onSketchRowDblClick(target.feature);
@@ -2325,12 +2390,6 @@ function closeGraphEdgeMenu() {
   graphEdgeMenu.style.display = "none";
 }
 
-function closeGraphPalette() {
-  graphPalette.style.display = "none";
-  graphPalette.replaceChildren();
-  graphPaletteProfile = null;
-}
-
 function graphPlacementCtx(profileOverride) {
   return {
     lastTree,
@@ -2339,101 +2398,25 @@ function graphPlacementCtx(profileOverride) {
   };
 }
 
-function openGraphPalette({ profileSketch = null, clientX, clientY } = {}) {
-  closeGraphPalette();
-  closeParamPicker();
-  closeGraphEdgeMenu();
-  menuEl.style.display = "none";
-  graphPaletteProfile = profileSketch?.name
-    ? profileSketch
-    : (selectedSketch?.name
-      ? { name: selectedSketch.name, label: selectedSketch.label }
-      : null);
-  const ctx = graphPlacementCtx(graphPaletteProfile);
-  const items = graphPaletteItems(FEATURES, ctx);
-
-  const heading = document.createElement("div");
-  heading.className = "menu-label";
-  heading.textContent = "Ajouter une fonction";
-  graphPalette.appendChild(heading);
-  if (graphPaletteProfile?.name) {
-    const profile = document.createElement("div");
-    profile.className = "menu-label";
-    profile.textContent = `Profil : ${graphPaletteProfile.label
-      ?? graphPaletteProfile.name}`;
-    graphPalette.appendChild(profile);
-  }
-
-  for (const item of items) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "graph-palette-item" + (item.enabled ? "" : " disabled");
-    row.dataset.button = item.button;
-    if (!item.enabled) {
-      row.setAttribute("aria-disabled", "true");
-      row.title = item.reason;
-    }
-    const img = document.createElement("img");
-    img.src = "icons/" + item.icon;
-    img.alt = "";
-    row.appendChild(img);
-    const body = document.createElement("span");
-    body.className = "graph-palette-body";
-    const title = document.createElement("span");
-    title.className = "graph-palette-title";
-    title.textContent = item.title;
-    body.appendChild(title);
-    if (!item.enabled && item.reason) {
-      const why = document.createElement("span");
-      why.className = "graph-palette-reason";
-      why.textContent = item.reason;
-      body.appendChild(why);
-    }
-    row.appendChild(body);
-    row.addEventListener("click", (event) => {
-      event.stopPropagation();
-      if (!item.enabled) {
-        say(item.reason, true);
-        return;
-      }
-      const profile = graphPaletteProfile;
-      const entry = FEATURES.find((feat) => feat.button === item.button);
-      closeGraphPalette();
-      if (!entry) return;
-      featureCommand(() => openFeaturePanel(entry, profile));
-    });
-    graphPalette.appendChild(row);
-  }
-
-  const wall = document.createElement("div");
-  wall.className = "menu-label graph-palette-wall";
-  wall.textContent = "L'historique est linéaire — la fonction se pose "
-    + "à la barre de reprise.";
-  graphPalette.appendChild(wall);
-
-  placeGraphMenu(graphPalette, clientX ?? 24, clientY ?? 56);
-}
-
-function deleteSelectedGraphNode() {
-  if (!graphSelectedName) return;
-  const feature = graphMenuTarget(graphSelectedName);
-  if (!feature) return;
-  deleteFeatureWithConfirm(feature);
-}
-
 function selectGraphEdge(edge) {
-  graphSelectedEdge = edge && edge.kind === "param"
-    ? { from: edge.from, to: edge.to, kind: "param" }
-    : null;
+  if (edge && (edge.kind === "param" || edge.kind === "data")) {
+    graphSelectedEdge = {
+      from: edge.from, to: edge.to, kind: edge.kind, input: edge.input,
+    };
+  } else {
+    graphSelectedEdge = null;
+  }
   applyGraphEdgeSelection();
 }
 
 function applyGraphEdgeSelection() {
   for (const edge of graphWorld.querySelectorAll(".graph-edge")) {
     const hit = !!graphSelectedEdge
-      && edge.dataset.kind === "param"
+      && edge.dataset.kind === graphSelectedEdge.kind
       && edge.dataset.from === graphSelectedEdge.from
-      && edge.dataset.to === graphSelectedEdge.to;
+      && edge.dataset.to === graphSelectedEdge.to
+      && (graphSelectedEdge.input == null
+          || edge.dataset.input === graphSelectedEdge.input);
     edge.classList.toggle("sel", hit);
   }
 }
@@ -2443,9 +2426,16 @@ function clearParamDropHighlights() {
   for (const node of graphWorld.querySelectorAll(".graph-node")) {
     node.classList.remove("drop-ok", "drop-no", "drop-hover", "wiring-from");
   }
+  for (const port of graphWorld.querySelectorAll(".graph-port")) {
+    port.classList.remove("drop-ok", "drop-hover");
+  }
 }
 
 function setParamDropHighlights(hoverName) {
+  if (graphWiring?.kind === "port") {
+    setDataDropHighlights(hoverName);
+    return;
+  }
   const source = graphWiring?.from;
   const construct = graphWiring?.kind === "construct";
   for (const node of graphWorld.querySelectorAll(".graph-node")) {
@@ -2460,6 +2450,24 @@ function setParamDropHighlights(hoverName) {
   }
 }
 
+function setDataDropHighlights(hoverPort) {
+  const source = graphWiring?.from;
+  for (const node of graphWorld.querySelectorAll(".graph-node")) {
+    node.classList.toggle("wiring-from", node.dataset.name === source);
+    node.classList.remove("drop-ok", "drop-no", "drop-hover");
+  }
+  for (const port of graphWorld.querySelectorAll(".graph-port.in")) {
+    const key = `${port.dataset.node}:${port.dataset.key}`;
+    port.classList.toggle("drop-ok", true);
+    port.classList.toggle("drop-hover", hoverPort === key);
+  }
+}
+
+function graphPortAt(clientX, clientY) {
+  const hit = document.elementFromPoint(clientX, clientY);
+  return hit?.closest?.(".graph-port") ?? null;
+}
+
 function cancelGraphWire() {
   if (graphWiring?.preview) graphWiring.preview.remove();
   graphWiring = null;
@@ -2467,17 +2475,21 @@ function cancelGraphWire() {
   clearParamDropHighlights();
 }
 
-function startGraphWire(node, event, kind) {
+function startGraphWire(node, event, kind = "param") {
   cancelGraphWire();
   closeParamPicker();
   closeGraphEdgeMenu();
   closeGraphPalette();
+  closeLiteralEditor();
   graphMoved = false;
+  const origin = kind === "port" && node.ports?.output
+    ? { x: node.x + node.ports.output.x, y: node.y + node.ports.output.y }
+    : { x: node.x, y: node.y };
   graphWiring = {
     from: node.name,
     kind,
-    x: node.x,
-    y: node.y,
+    x: origin.x,
+    y: origin.y,
     started: false,
     preview: null,
   };
@@ -2507,9 +2519,9 @@ function moveGraphWire(event) {
     if (graphWiring.kind === "construct") {
       graphView.classList.add("wiring-construct");
     }
-    const preview = svgEl("g", {
-      class: `graph-edge ${graphWiring.kind === "param" ? "param" : "geom"} preview`,
-    });
+    const edgeKind = graphWiring.kind === "param" ? "param"
+      : graphWiring.kind === "port" ? "data" : "geom";
+    const preview = svgEl("g", { class: `graph-edge ${edgeKind} preview` });
     preview.appendChild(svgEl("path", {
       class: "graph-edge-line",
       d: edgeCurvePath(graphWiring.x, graphWiring.y,
@@ -2525,6 +2537,13 @@ function moveGraphWire(event) {
     line.setAttribute("d",
       edgeCurvePath(graphWiring.x, graphWiring.y, world.x, world.y));
   }
+  if (graphWiring.kind === "port") {
+    const port = graphPortAt(event.clientX, event.clientY);
+    const key = port?.dataset.side === "in"
+      ? `${port.dataset.node}:${port.dataset.key}` : null;
+    setDataDropHighlights(key);
+    return;
+  }
   const hover = graphNodeAt(event.clientX, event.clientY);
   setParamDropHighlights(hover?.dataset.name ?? null);
 }
@@ -2533,6 +2552,25 @@ async function finishGraphWire(event) {
   if (!graphWiring) return;
   const wiring = graphWiring;
   const started = wiring.started;
+  if (wiring.kind === "port") {
+    const port = graphPortAt(event.clientX, event.clientY);
+    cancelGraphWire();
+    if (!started) return;
+    if (port?.dataset.side !== "in") return;
+    const result = connectGraphEdge(
+      graphFn.draft, wiring.from, port.dataset.node, port.dataset.key,
+      graphFn.vocabulary);
+    if (!result.ok) {
+      graphFn.errorNode = result.node;
+      say(result.error, true);
+      renderGraphFunction();
+      return;
+    }
+    graphFn.draft = result.draft;
+    graphFn.errorNode = null;
+    renderGraphFunction();
+    return;
+  }
   const hover = graphNodeAt(event.clientX, event.clientY);
   cancelGraphWire();
   if (!started) return;
@@ -2615,7 +2653,8 @@ async function unlinkParamEdge(edge) {
   refresh(call("set_params", { feature: edge.to, values }));
 }
 
-function graphEdgeEnds(a, b) {
+function graphEdgeEnds(a, b, edge) {
+  if (edge?.kind === "data") return functionEdgeEnds(a, b, edge.input);
   const goingRight = b.x >= a.x;
   return {
     x1: a.x + edgeAttachX(a.role, goingRight),
@@ -2625,9 +2664,32 @@ function graphEdgeEnds(a, b) {
   };
 }
 
+function formatLiteral(value) {
+  if (isPointValue(value)) {
+    return `${value.x}, ${value.y}, ${value.z}`;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string") return value;
+  return "";
+}
+
+function isPointValue(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value)
+    && value.x != null && value.y != null && value.z != null;
+}
+
 function appendGraphShape(group, node) {
   const role = node.role || "feature";
   group.classList.add(role);
+  if (role === "compute" || role === "shape") {
+    const w = node.width ?? 168;
+    const h = node.height ?? 56;
+    group.appendChild(svgEl("rect", {
+      class: "shape", x: -w / 2, y: -h / 2, width: w, height: h, rx: 8,
+    }));
+    group.appendChild(svgGraphIcon(graphIconFile(node), -w / 2 + 8, -h / 2 + 6));
+    return;
+  }
   if (role === "variable") {
     group.appendChild(svgEl("ellipse", {
       class: "shape", cx: 0, cy: 0, rx: 54, ry: 20,
@@ -2639,6 +2701,51 @@ function appendGraphShape(group, node) {
       rx: role === "body" ? 2 : 8,
     }));
     group.appendChild(svgGraphIcon(graphIconFile(node), -66, -8));
+  }
+}
+
+function appendFunctionPorts(group, node) {
+  for (const port of node.inputs ?? []) {
+    const circle = svgEl("circle", {
+      class: `graph-port in${port.wired ? " wired" : ""}`,
+      cx: port.x, cy: port.y, r: 5,
+      "data-side": "in",
+      "data-node": node.name,
+      "data-key": port.key,
+    });
+    circle.appendChild(svgEl("title")).textContent = port.label;
+    circle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (graphMoved) return;
+      if (port.wired) return;
+      openLiteralEditor(node.name, port.key, event.clientX, event.clientY);
+    });
+    group.appendChild(circle);
+    const caption = svgEl("text", {
+      class: "graph-port-label",
+      x: port.x + 10, y: port.y,
+      "text-anchor": "start", "dominant-baseline": "middle",
+    });
+    caption.textContent = port.wired
+      ? port.label
+      : `${port.label} ${formatLiteral(port.value)}`;
+    group.appendChild(caption);
+  }
+  const out = node.ports?.output;
+  if (out) {
+    const circle = svgEl("circle", {
+      class: "graph-port out",
+      cx: out.x, cy: out.y, r: 5,
+      "data-side": "out",
+      "data-node": node.name,
+    });
+    circle.appendChild(svgEl("title")).textContent = "Sortie";
+    circle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.stopPropagation();
+      startGraphWire(node, event, "port");
+    });
+    group.appendChild(circle);
   }
 }
 
@@ -2657,14 +2764,16 @@ function fitGraphView(data) {
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const node of data.nodes) {
-    minX = Math.min(minX, node.x - 80);
-    maxX = Math.max(maxX, node.x + 80);
-    minY = Math.min(minY, node.y - 28);
-    maxY = Math.max(maxY, node.y + 28);
+    const hw = (node.width ?? 160) / 2 + 12;
+    const hh = (node.height ?? 32) / 2 + 12;
+    minX = Math.min(minX, node.x - hw);
+    maxX = Math.max(maxX, node.x + hw);
+    minY = Math.min(minY, node.y - hh);
+    maxY = Math.max(maxY, node.y + hh);
   }
   const gw = Math.max(maxX - minX, 1);
   const gh = Math.max(maxY - minY, 1);
-  const pad = 56;
+  const pad = graphFn.active ? 88 : 56;
   graphZoom = Math.min((width - pad * 2) / gw, (height - pad * 2) / gh, 1.35);
   graphZoom = Math.max(graphZoom, 0.3);
   graphPanX = (width - gw * graphZoom) / 2 - minX * graphZoom;
@@ -2676,7 +2785,8 @@ function renderGraph(data) {
   graphWorld.replaceChildren();
   const empty = data.nodes.length === 0;
   graphEmpty.hidden = !empty;
-  if (data.nodes.length >= GRAPH_HINT_AT) {
+  const fn = graphFn.active;
+  if (!fn && data.nodes.length >= GRAPH_HINT_AT) {
     graphCap.hidden = false;
     graphCap.textContent =
       `Graphe : ${data.nodes.length} nœuds — zoomez et faites glisser.`;
@@ -2690,7 +2800,7 @@ function renderGraph(data) {
     const a = byName.get(edge.from);
     const b = byName.get(edge.to);
     if (!a || !b) continue;
-    const { x1, y1, x2, y2 } = graphEdgeEnds(a, b);
+    const { x1, y1, x2, y2 } = graphEdgeEnds(a, b, edge);
     const d = edgeCurvePath(x1, y1, x2, y2);
     const group = svgEl("g", {
       class: `graph-edge ${edge.kind}`,
@@ -2698,6 +2808,7 @@ function renderGraph(data) {
       "data-to": edge.to,
       "data-kind": edge.kind,
     });
+    if (edge.input) group.setAttribute("data-input", edge.input);
     group.appendChild(svgEl("path", {
       class: "graph-edge-hit", d,
     }));
@@ -2706,14 +2817,16 @@ function renderGraph(data) {
     }));
     const title = edge.kind === "param"
       ? "Liaison paramétrique"
-      : "Liaison géométrique — le profil se pose à la création, on ne recâble pas";
+      : edge.kind === "data"
+        ? `Fil → ${edge.input}`
+        : "Liaison géométrique — non modifiable pour l'instant";
     group.appendChild(svgEl("title")).textContent = title;
-    if (a.afterBar || b.afterBar) group.classList.add("rolled-back");
-    if (edge.kind === "param") {
+    if (edge.kind === "param" || edge.kind === "data") {
       group.addEventListener("click", (event) => {
         event.stopPropagation();
         if (graphMoved) return;
         selectGraphEdge(edge);
+        if (fn) graphFn.selected = null;
       });
       group.addEventListener("contextmenu", (event) => {
         event.preventDefault();
@@ -2733,23 +2846,53 @@ function renderGraph(data) {
       transform: `translate(${node.x} ${node.y})`,
       "data-name": node.name,
       "data-role": node.role || "feature",
+      "data-type": node.type || "",
     });
     if (isGraphNodeSelected(node)) group.classList.add("sel");
-    if (node.afterBar) group.classList.add("rolled-back");
+    if (!fn && node.afterBar) group.classList.add("rolled-back");
+    if (fn && node.output) group.classList.add("output");
+    if (fn && graphFn.errorNode === node.name) group.classList.add("error");
     appendGraphShape(group, node);
     const isVar = node.role === "variable";
+    const fnNode = node.role === "compute" || node.role === "shape";
     const label = svgEl("text", {
-      x: isVar ? -20 : -44, y: 0,
+      x: fnNode ? -(node.width ?? 168) / 2 + 28 : (isVar ? -20 : -44),
+      y: fnNode ? -(node.height ?? 56) / 2 + 16 : 0,
       "text-anchor": "start", "dominant-baseline": "middle",
     });
     label.textContent = graphLabelText(node.label);
     group.appendChild(label);
-    group.appendChild(svgEl("title")).textContent =
-      `${node.label} — ${node.kind}`;
+    if (fnNode) {
+      const fields = Object.entries(node.fields ?? {});
+      for (const [index, [key, value]] of fields.entries()) {
+        const field = svgEl("text", {
+          class: "graph-literal",
+          x: (node.width ?? 168) / 2 - 10,
+          y: -(node.height ?? 56) / 2 + 16 + index * 14,
+          "text-anchor": "end", "dominant-baseline": "middle",
+        });
+        field.textContent = formatLiteral(value);
+        field.addEventListener("click", (event) => {
+          event.stopPropagation();
+          openLiteralEditor(node.name, key, event.clientX, event.clientY);
+        });
+        group.appendChild(field);
+      }
+      appendFunctionPorts(group, node);
+    }
+    group.appendChild(svgEl("title")).textContent = fn && node.output
+      ? `${node.label} — sortie du graphe`
+      : `${node.label} — ${node.kind}`;
     group.addEventListener("pointerenter", () => setGraphHover(node.name));
     group.addEventListener("pointerleave", () => setGraphHover(null));
     group.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
+      if (event.target.closest(".graph-port")) return;
+      if (fn) {
+        event.stopPropagation();
+        startFunctionNodeDrag(node, event);
+        return;
+      }
       if (isParamWireSource(node.role)) {
         event.stopPropagation();
         startGraphWire(node, event, "param");
@@ -2764,9 +2907,9 @@ function renderGraph(data) {
       event.stopPropagation();
       if (graphMoved) return;
       selectGraphEdge(null);
-      graphSelectedName = node.name;
+      if (!fn) graphSelectedName = node.name;
       onGraphNodeClick(node.name);
-      applyGraphNodeSelection();
+      if (!fn) applyGraphNodeSelection();
     });
     group.addEventListener("dblclick", (event) => {
       event.stopPropagation();
@@ -2775,6 +2918,7 @@ function renderGraph(data) {
     group.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (fn) return;
       const feature = graphMenuTarget(node.name);
       if (!feature) return;
       closeParamPicker();
@@ -2787,14 +2931,21 @@ function renderGraph(data) {
   applyGraphEdgeSelection();
 }
 
+function renderGraphFunction() {
+  if (!graphFn.active || !graphFn.draft) return;
+  renderGraph(layoutFunctionGraph(graphFn.draft, graphFn.vocabulary));
+}
+
 function applyGraphNodeSelection() {
   for (const node of graphWorld.querySelectorAll(".graph-node")) {
-    node.classList.toggle("sel", isGraphNodeSelected({ name: node.dataset.name }));
+    node.classList.toggle("sel",
+      isGraphNodeSelected({ name: node.dataset.name }));
   }
 }
 
 function syncGraphFromTree() {
   if (!graphOpen) return;
+  if (graphFn.active) return;
   const data = buildGraph(lastTree);
   renderGraph(data);
   const names = data.nodes.map((node) => node.name).join("\0");
@@ -2804,18 +2955,398 @@ function syncGraphFromTree() {
   }
 }
 
+function startFunctionNodeDrag(node, event) {
+  graphFn.draggingNode = node.name;
+  graphMoved = false;
+  graphDragX = event.clientX;
+  graphDragY = event.clientY;
+  try {
+    graphView.setPointerCapture(event.pointerId);
+  } catch {
+    // Capture indisponible.
+  }
+}
+
+function moveFunctionNode(event) {
+  if (!graphFn.draggingNode || !graphFn.draft) return;
+  const dx = (event.clientX - graphDragX) / graphZoom;
+  const dy = (event.clientY - graphDragY) / graphZoom;
+  if (!graphMoved && Math.hypot(event.clientX - graphDragX,
+      event.clientY - graphDragY) < 4) return;
+  graphMoved = true;
+  graphDragX = event.clientX;
+  graphDragY = event.clientY;
+  const raw = graphFn.draft.nodes.find(
+    (item) => String(item.id) === graphFn.draggingNode);
+  if (!raw) return;
+  const pos = Array.isArray(raw.pos) ? raw.pos : [0, 0];
+  raw.pos = [pos[0] + dx, pos[1] + dy];
+  renderGraphFunction();
+}
+
+function deleteFeatureWithConfirm(feature) {
+  if (!feature) return;
+  if (confirm(`Supprimer « ${feature.label} » ?`)) {
+    refreshAny(call("delete_feature", { feature: feature.name }));
+  }
+}
+
+function deleteSelectedGraphNode() {
+  if (!graphSelectedName) return;
+  const feature = graphMenuTarget(graphSelectedName);
+  if (!feature) return;
+  deleteFeatureWithConfirm(feature);
+}
+
+function deleteGraphFnSelection() {
+  if (!graphFn.active) return;
+  if (graphSelectedEdge?.kind === "data") {
+    graphFn.draft = disconnectGraphEdge(
+      graphFn.draft, graphSelectedEdge.from, graphSelectedEdge.to,
+      graphSelectedEdge.input);
+    graphSelectedEdge = null;
+    renderGraphFunction();
+    return;
+  }
+  if (graphFn.selected) {
+    graphFn.draft = removeGraphNode(graphFn.draft, graphFn.selected);
+    graphFn.selected = null;
+    renderGraphFunction();
+  }
+}
+
+function closeGraphPalette() {
+  graphPalette.style.display = "none";
+  graphPalette.replaceChildren();
+  graphPaletteProfile = null;
+}
+
+function closeLiteralEditor() {
+  literalEditEl.style.display = "none";
+  literalEditEl.replaceChildren();
+}
+
+function openGraphPalette({ profileSketch = null, clientX, clientY } = {}) {
+  closeGraphPalette();
+  closeLiteralEditor();
+  closeParamPicker();
+  closeGraphEdgeMenu();
+  menuEl.style.display = "none";
+
+  if (graphFn.active) {
+    const heading = document.createElement("div");
+    heading.className = "menu-label";
+    heading.textContent = "Nœud à poser";
+    graphPalette.appendChild(heading);
+    for (const spec of graphFn.vocabulary) {
+      const item = document.createElement("div");
+      item.className = "menu-item";
+      item.dataset.type = spec.type;
+      item.textContent = spec.label;
+      item.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeGraphPalette();
+        const world = clientToGraphWorld(clientX, clientY);
+        const offset = (graphFn.draft.nodes.length) * 36;
+        world.x += offset;
+        world.y += offset;
+        const id = nextGraphNodeId(graphFn.draft.nodes);
+        graphFn.draft.nodes.push(newGraphNode(spec, id, world));
+        if (!graphFn.draft.output && spec.shape) graphFn.draft.output = id;
+        renderGraphFunction();
+      });
+      graphPalette.appendChild(item);
+    }
+    placeGraphMenu(graphPalette, clientX ?? 24, clientY ?? 56);
+    return;
+  }
+
+  graphPaletteProfile = profileSketch?.name
+    ? profileSketch
+    : (selectedSketch?.name
+      ? { name: selectedSketch.name, label: selectedSketch.label }
+      : null);
+  const ctx = graphPlacementCtx(graphPaletteProfile);
+  const items = graphPaletteItems(FEATURES, ctx);
+
+  const heading = document.createElement("div");
+  heading.className = "menu-label";
+  heading.textContent = "Ajouter une fonction";
+  graphPalette.appendChild(heading);
+  if (graphPaletteProfile?.name) {
+    const profile = document.createElement("div");
+    profile.className = "menu-label";
+    profile.textContent = `Profil : ${graphPaletteProfile.label
+      ?? graphPaletteProfile.name}`;
+    graphPalette.appendChild(profile);
+  }
+
+  for (const item of items) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "graph-palette-item" + (item.enabled ? "" : " disabled");
+    row.dataset.button = item.button;
+    if (!item.enabled) {
+      row.setAttribute("aria-disabled", "true");
+      row.title = item.reason;
+    }
+    const img = document.createElement("img");
+    img.src = "icons/" + item.icon;
+    img.alt = "";
+    row.appendChild(img);
+    const body = document.createElement("span");
+    body.className = "graph-palette-body";
+    const title = document.createElement("span");
+    title.className = "graph-palette-title";
+    title.textContent = item.title;
+    body.appendChild(title);
+    if (!item.enabled && item.reason) {
+      const why = document.createElement("span");
+      why.className = "graph-palette-reason";
+      why.textContent = item.reason;
+      body.appendChild(why);
+    }
+    row.appendChild(body);
+    row.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!item.enabled) {
+        say(item.reason, true);
+        return;
+      }
+      const profile = graphPaletteProfile;
+      const entry = FEATURES.find((feat) => feat.button === item.button);
+      closeGraphPalette();
+      if (!entry) return;
+      featureCommand(() => openFeaturePanel(entry, profile));
+    });
+    graphPalette.appendChild(row);
+  }
+
+  const wall = document.createElement("div");
+  wall.className = "menu-label graph-palette-wall";
+  wall.textContent = "L'historique est linéaire — la fonction se pose "
+    + "à la barre de reprise.";
+  graphPalette.appendChild(wall);
+
+  placeGraphMenu(graphPalette, clientX ?? 24, clientY ?? 56);
+}
+
+function openLiteralEditor(nodeId, key, clientX, clientY) {
+  closeLiteralEditor();
+  const raw = graphFn.draft.nodes.find((item) => String(item.id) === nodeId);
+  if (!raw) return;
+  const value = raw[key];
+  const applyValue = (next) => {
+    raw[key] = next;
+    closeLiteralEditor();
+    renderGraphFunction();
+  };
+  if (isPointValue(value)) {
+    for (const axis of ["x", "y", "z"]) {
+      const input = document.createElement("input");
+      input.type = "number";
+      input.step = "any";
+      input.value = value[axis];
+      input.dataset.axis = axis;
+      literalEditEl.appendChild(input);
+    }
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.textContent = "OK";
+    ok.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const axes = {};
+      for (const input of literalEditEl.querySelectorAll("input")) {
+        axes[input.dataset.axis] = Number(input.value);
+      }
+      applyValue(axes);
+    });
+    literalEditEl.appendChild(ok);
+  } else if (key === "op") {
+    const select = document.createElement("select");
+    for (const op of ["+", "-", "*", "/"]) {
+      const option = document.createElement("option");
+      option.value = op;
+      option.textContent = op;
+      select.append(option);
+    }
+    select.value = value ?? "+";
+    select.addEventListener("change", () => applyValue(select.value));
+    literalEditEl.appendChild(select);
+  } else if (key === "name" || typeof value === "string") {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = value ?? "";
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyValue(input.value);
+      }
+    });
+    literalEditEl.appendChild(input);
+    input.focus();
+  } else {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.step = "any";
+    input.value = value ?? 1;
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyValue(Number(input.value));
+      }
+    });
+    input.addEventListener("blur", () => {
+      if (literalEditEl.style.display === "none") return;
+      applyValue(Number(input.value));
+    });
+    literalEditEl.appendChild(input);
+    input.focus();
+    input.select();
+  }
+  literalEditEl.style.display = "block";
+  literalEditEl.style.left = Math.min(clientX, window.innerWidth - 200) + "px";
+  literalEditEl.style.top = Math.min(clientY, window.innerHeight - 80) + "px";
+}
+
+async function enterGraphFeature(feature) {
+  if (graphFn.active && graphFn.feature?.name === feature.name) return;
+  if (graphFn.active && !exitGraphFeature()) return;
+  let vocabulary;
+  try {
+    vocabulary = await call("graph_vocabulary");
+  } catch (error) {
+    say(error.message, true);
+    return;
+  }
+  if (!Array.isArray(vocabulary)) {
+    say("vocabulaire des nœuds illisible", true);
+    return;
+  }
+  let graph = feature.graph;
+  if (!graph || typeof graph !== "object") {
+    try {
+      const stored = await call("get_graph_feature", { feature: feature.name });
+      graph = stored.graph;
+    } catch (error) {
+      say(error.message, true);
+      return;
+    }
+  }
+  graphFn.active = true;
+  graphFn.feature = { name: feature.name, label: feature.label };
+  graphFn.vocabulary = vocabulary;
+  graphFn.draft = cloneGraphDraft(graph);
+  graphFn.saved = cloneGraphDraft(graph);
+  graphFn.errorNode = null;
+  graphFn.selected = null;
+  graphOpen = true;
+  graphView.classList.add("open", "fn");
+  graphBtn.classList.add("on");
+  graphFnBar.hidden = false;
+  const data = layoutFunctionGraph(graphFn.draft, graphFn.vocabulary);
+  renderGraph(data);
+  fitGraphView(data);
+  say(GRAPH_FN_HINT);
+}
+
+function exitGraphFeature({ force = false } = {}) {
+  if (!graphFn.active) return true;
+  if (!force && !graphDraftsEqual(graphFn.draft, graphFn.saved)) {
+    if (!confirm("Le graphe n'a pas été appliqué. Quitter sans appliquer ?")) {
+      return false;
+    }
+  }
+  graphFn.active = false;
+  graphFn.feature = null;
+  graphFn.draft = null;
+  graphFn.saved = null;
+  graphFn.errorNode = null;
+  graphFn.selected = null;
+  graphFn.draggingNode = null;
+  graphFnBar.hidden = true;
+  graphView.classList.remove("fn");
+  closeGraphPalette();
+  closeLiteralEditor();
+  cancelGraphWire();
+  if (graphOpen && lastTree) {
+    const data = buildGraph(lastTree);
+    renderGraph(data);
+    say("Vue en graphe — Échap pour fermer.");
+  }
+  return true;
+}
+
+async function applyGraphFeature() {
+  if (!graphFn.active || !graphFn.feature) return;
+  const composed = composeGraphPayload(graphFn.draft, graphFn.vocabulary);
+  if (!composed.ok) {
+    graphFn.errorNode = composed.node;
+    say(composed.error, true);
+    renderGraphFunction();
+    return;
+  }
+  try {
+    const tree = await call("edit_graph_feature", {
+      feature: graphFn.feature.name,
+      graph: composed.graph,
+    });
+    graphFn.errorNode = null;
+    graphFn.saved = cloneGraphDraft(graphFn.draft);
+    lastTree = tree;
+    renderTree(tree);
+    const gen = ++viewGen;
+    await updateViewport(gen);
+    renderGraphFunction();
+    say("Fonction graphe appliquée.");
+  } catch (error) {
+    graphFn.errorNode = nodeIdFromGraphError(error.message);
+    say(error.message, true);
+    renderGraphFunction();
+  }
+}
+
+window.__freesolidDebug.setGraphLiteral = (id, key, value) => {
+  if (!graphFn.draft) return false;
+  const node = graphFn.draft.nodes.find(
+    (item) => String(item.id) === String(id));
+  if (!node) return false;
+  node[key] = value;
+  renderGraphFunction();
+  return true;
+};
+window.__freesolidDebug.wireGraph = (from, to, input) => {
+  if (!graphFn.draft) return { ok: false, error: "pas de brouillon" };
+  const result = connectGraphEdge(
+    graphFn.draft, from, to, input, graphFn.vocabulary);
+  if (result.ok) {
+    graphFn.draft = result.draft;
+    graphFn.errorNode = null;
+    renderGraphFunction();
+  }
+  return result;
+};
+window.__freesolidDebug.graphFeatureEdges = () =>
+  (graphFn.draft?.edges ?? []).map((edge) => ({
+    from: edge.from, to: edge.to, input: edge.input,
+  }));
+window.__freesolidDebug.applyGraphFeature = () => applyGraphFeature();
+
 function closeGraph() {
+  if (graphFn.active && !exitGraphFeature()) return;
   if (!graphOpen) return;
   cancelGraphWire();
   closeParamPicker();
   closeGraphEdgeMenu();
   closeGraphPalette();
+  closeLiteralEditor();
   graphSelectedEdge = null;
   graphSelectedName = null;
   graphFitNames = "";
   graphOpen = false;
-  graphView.classList.remove("open", "dragging", "wiring");
+  graphView.classList.remove("open", "dragging", "wiring", "fn");
   graphBtn.classList.remove("on");
+  graphFnBar.hidden = true;
   graphWorld.replaceChildren();
   graphEmpty.hidden = true;
   graphCap.hidden = true;
@@ -2826,6 +3357,7 @@ function openGraph() {
     say("Vue en graphe : ouvrez d'abord une pièce", true);
     return;
   }
+  if (graphFn.active) return;
   graphOpen = true;
   graphView.classList.add("open");
   graphBtn.classList.add("on");
@@ -2844,16 +3376,42 @@ graphBtn.addEventListener("click", () => {
   else openGraph();
 });
 
+if (graphAddBtn) {
+  graphAddBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    openGraphPalette({ clientX: rect.left, clientY: rect.bottom + 4 });
+  });
+}
+
+document.getElementById("graph-fn-apply").addEventListener("click", (event) => {
+  event.stopPropagation();
+  applyGraphFeature();
+});
+document.getElementById("graph-fn-close").addEventListener("click", (event) => {
+  event.stopPropagation();
+  exitGraphFeature();
+});
+document.getElementById("graph-fn-palette").addEventListener("click", (event) => {
+  event.stopPropagation();
+  const rect = event.currentTarget.getBoundingClientRect();
+  openGraphPalette({ clientX: rect.left, clientY: rect.bottom + 4 });
+});
+
 graphView.addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
   graphMoved = false;
+  if (event.target.closest("#graph-fn-bar, #graph-bar, #graph-palette, #graph-literal-edit")) {
+    return;
+  }
   if (event.target.closest(".graph-node")) return;
-  if (event.target.closest(".graph-edge.param")) return;
-  if (event.target.closest("#graph-bar")) return;
-  if (event.target.closest("#graph-palette")) return;
+  if (event.target.closest(".graph-port")) return;
+  if (event.target.closest(".graph-edge.param")
+      || event.target.closest(".graph-edge.data")) return;
   closeParamPicker();
   closeGraphEdgeMenu();
   closeGraphPalette();
+  closeLiteralEditor();
   event.preventDefault();
   try {
     graphView.setPointerCapture(event.pointerId);
@@ -2871,6 +3429,10 @@ graphView.addEventListener("pointermove", (event) => {
     moveGraphWire(event);
     return;
   }
+  if (graphFn.draggingNode) {
+    moveFunctionNode(event);
+    return;
+  }
   if (!graphDragging) return;
   const dx = event.clientX - graphDragX;
   const dy = event.clientY - graphDragY;
@@ -2886,63 +3448,62 @@ graphView.addEventListener("pointermove", (event) => {
 const endGraphDrag = (event) => {
   graphDragging = false;
   graphView.classList.remove("dragging");
+  graphFn.draggingNode = null;
   if (graphWiring) finishGraphWire(event);
 };
 graphView.addEventListener("pointerup", endGraphDrag);
 graphView.addEventListener("pointercancel", (event) => {
   graphDragging = false;
+  graphFn.draggingNode = null;
   graphView.classList.remove("dragging");
   cancelGraphWire();
 });
 
-graphView.addEventListener("click", (event) => {
+graphView.addEventListener("click", () => {
   if (graphMoved) return;
-  if (event.target.closest(".graph-node")) return;
-  if (event.target.closest("#graph-palette")) return;
-  if (event.target.closest("#graph-bar")) return;
   selectGraphEdge(null);
-  graphSelectedName = null;
-  applyGraphNodeSelection();
+  if (graphFn.active) {
+    graphFn.selected = null;
+    renderGraphFunction();
+  }
 });
 
 graphView.addEventListener("dblclick", (event) => {
+  if (!graphFn.active) return;
   if (event.target.closest(".graph-node")) return;
-  if (event.target.closest("#graph-bar")) return;
-  if (event.target.closest("#graph-palette")) return;
-  if (event.target.closest(".graph-edge")) return;
-  openGraphPalette({ clientX: event.clientX, clientY: event.clientY });
+  event.stopPropagation();
+  openGraphPalette(event.clientX, event.clientY);
 });
 
 graphView.addEventListener("contextmenu", (event) => {
   if (event.target.closest(".graph-node")
-      || event.target.closest(".graph-edge.param")) return;
+      || event.target.closest(".graph-edge.param")
+      || event.target.closest(".graph-edge.data")) return;
   event.preventDefault();
 });
 
 document.getElementById("ctx-unlink").addEventListener("click", (event) => {
   event.stopPropagation();
+  if (graphSelectedEdge?.kind === "data") {
+    graphFn.draft = disconnectGraphEdge(
+      graphFn.draft, graphSelectedEdge.from, graphSelectedEdge.to,
+      graphSelectedEdge.input);
+    graphSelectedEdge = null;
+    closeGraphEdgeMenu();
+    renderGraphFunction();
+    return;
+  }
   unlinkParamEdge(graphSelectedEdge);
 });
 
 paramPickEl.addEventListener("click", (event) => event.stopPropagation());
 graphEdgeMenu.addEventListener("click", (event) => event.stopPropagation());
 graphPalette.addEventListener("click", (event) => event.stopPropagation());
-graphPalette.addEventListener("pointerdown", (event) => event.stopPropagation());
+literalEditEl.addEventListener("click", (event) => event.stopPropagation());
 document.addEventListener("click", () => {
   closeParamPicker();
   closeGraphEdgeMenu();
   closeGraphPalette();
-});
-
-graphAddBtn.addEventListener("pointerdown", (event) => event.stopPropagation());
-graphAddBtn.addEventListener("click", (event) => {
-  event.stopPropagation();
-  if (graphPalette.style.display === "block") {
-    closeGraphPalette();
-    return;
-  }
-  const rect = graphAddBtn.getBoundingClientRect();
-  openGraphPalette({ clientX: rect.left, clientY: rect.bottom + 4 });
 });
 
 graphView.addEventListener("wheel", (event) => {
@@ -3638,6 +4199,8 @@ function currentSelection(accepts) {
 // Registry : un bind unique pour tous les panneaux « ouvrir → éditer →
 // aperçu → OK ». Les panneaux bespoke (équations, assemblage, datum…)
 // restent plus bas.
+/** Panneau d'une fonction de `FEATURES` — ruban et palette du graphe.
+ *  `sketchOverride` : profil imposé par la palette, sinon la sélection. */
 function openFeaturePanel(entry, sketchOverride) {
   const ctx = {
     lastTree,
@@ -3661,7 +4224,19 @@ function openFeaturePanel(entry, sketchOverride) {
         return;
       }
       const run = entry.refresh === "any" ? refreshAny : refresh;
-      run(call(built.op, built.params));
+      const promise = call(built.op, built.params);
+      if (entry.openGraphEditor) {
+        run(promise.then((tree) => {
+          queueMicrotask(() => {
+            const created = [...(tree.features ?? [])].reverse()
+              .find((item) => isGraphFeature(item));
+            if (created) enterGraphFeature(created);
+          });
+          return tree;
+        }));
+      } else {
+        run(promise);
+      }
     },
   };
   if (entry.preview !== false) {

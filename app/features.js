@@ -5,6 +5,7 @@
 // build(v, ctx) rend { op, params } ou null (aperçu éteint, OK bloqué).
 
 import { num } from "./num.js";
+import { minimalGraphFeature } from "./graph.js";
 
 /** Message moteur quand aucune esquisse libre n'est disponible. */
 export const NO_SKETCH_AVAILABLE =
@@ -616,4 +617,27 @@ export const FEATURES = [
     },
     invalid: "Épaissir : une surface et une épaisseur non nulle",
   }),
+  {
+    button: "btn-graph-feature",
+    icon: "Geoassembly.svg",
+    title: "Fonction graphe",
+    preview: false,
+    groups: () => [{
+      label: "Opération",
+      rows: [
+        { type: "select", key: "mode", value: "fuse",
+          options: [["fuse", "Ajouter"], ["cut", "Soustraire"]] },
+      ],
+    }],
+    note: "La géométrie produite est figée : changer une variable globale "
+      + "ne recalcule pas la fonction — il faut la rouvrir et appliquer. "
+      + "Le résultat est une forme combinée par un booléen, pas une "
+      + "chaîne de fonctions.",
+    build: (v) => ({
+      op: "add_graph_feature",
+      params: { graph: minimalGraphFeature(), mode: v.mode },
+    }),
+    refresh: "part",
+    openGraphEditor: true,
+  },
 ];

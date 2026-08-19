@@ -142,7 +142,8 @@
   .graph-edge.param .graph-edge-hit { cursor: pointer; }
   .graph-edge.dim { opacity: 0.14; }
   .graph-edge.lit .graph-edge-line { stroke-width: 2.4; }
-  .graph-edge.param.sel .graph-edge-line {
+  .graph-edge.param.sel .graph-edge-line,
+  .graph-edge.data.sel .graph-edge-line {
     stroke: var(--accent); stroke-width: 2.6;
   }
   .graph-edge.preview .graph-edge-line {
@@ -170,6 +171,7 @@
     fill: var(--ink); font: 11px/1 system-ui, "Segoe UI", sans-serif;
     pointer-events: none;
   }
+  .graph-node text.graph-literal { pointer-events: auto; cursor: text; }
   .graph-node image { pointer-events: none; }
   #graph-view.wiring { cursor: crosshair; }
   #graph-bar {
@@ -209,6 +211,59 @@
   .graph-palette-item.disabled:hover { background: none; color: var(--ink-2); }
   .graph-palette-wall {
     white-space: normal; line-height: 1.35; padding-bottom: 8px;
+  }
+  #graph-view.fn { cursor: default; }
+  #graph-fn-bar {
+    position: absolute; left: 12px; right: 12px; top: 12px; z-index: 4;
+    display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px;
+    pointer-events: none;
+  }
+  #graph-fn-bar[hidden] { display: none; }
+  #graph-fn-bar button {
+    pointer-events: auto;
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 10px; cursor: pointer;
+  }
+  #graph-fn-bar button:hover { border-color: var(--accent); color: var(--accent); }
+  #graph-fn-apply { color: #6fbf8f; }
+  #graph-fn-hint {
+    flex: 1 1 280px; margin: 0;
+    font-size: 11px; line-height: 1.35; color: var(--ink-2);
+    pointer-events: none;
+  }
+  .graph-node.shape .shape { fill: #243040; }
+  .graph-node.compute .shape { fill: var(--panel-2); }
+  .graph-node.output .shape { stroke: #6fbf8f; stroke-width: 2.2; }
+  .graph-node.error .shape { stroke: var(--error); stroke-width: 2.4; }
+  .graph-port {
+    fill: var(--panel); stroke: var(--ink-2); stroke-width: 1.3;
+    cursor: crosshair;
+  }
+  .graph-port.out { fill: #4f8fdb; }
+  .graph-node.output .graph-port.out { fill: #6fbf8f; }
+  .graph-port.drop-ok { stroke: #6fbf8f; stroke-width: 2; }
+  .graph-port.drop-hover { fill: #8fd9a8; }
+  .graph-literal {
+    fill: var(--ink-2); font: 10px/1 system-ui, "Segoe UI", sans-serif;
+    pointer-events: none;
+  }
+  .graph-port-label {
+    fill: var(--ink-2); font: 10px/1 system-ui, "Segoe UI", sans-serif;
+    pointer-events: none;
+  }
+  .graph-edge.data .graph-edge-line { stroke: #6fbf8f; }
+  .graph-edge.data .graph-edge-hit { cursor: pointer; }
+  #graph-literal-edit {
+    position: fixed; z-index: 11; display: none;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.5);
+    padding: 8px; min-width: 160px;
+  }
+  #graph-literal-edit input, #graph-literal-edit select {
+    width: 100%; box-sizing: border-box; margin: 4px 0;
   }
 
   aside {
@@ -394,17 +449,18 @@
   }
   #param-pick { min-width: 240px; }
   #ctxmenu div, #settings-menu .menu-item, #graph-edge-menu div,
-  #param-pick .menu-item {
+  #param-pick .menu-item, #graph-palette .menu-item {
     padding: 6px 10px; border-radius: 4px; cursor: pointer;
   }
   #ctxmenu div:hover, #settings-menu .menu-item:hover,
-  #graph-edge-menu div:hover, #param-pick .menu-item:hover {
+  #graph-edge-menu div:hover, #param-pick .menu-item:hover,
+  #graph-palette .menu-item:hover {
     background: var(--panel); color: var(--accent);
   }
   #ctxmenu div.danger:hover, #graph-edge-menu div.danger:hover {
     color: var(--error);
   }
-  #param-pick .menu-label {
+  #param-pick .menu-label, #graph-palette .menu-label {
     padding: 6px 10px 2px;
     font-size: 11px; font-weight: 600; color: var(--ink-2);
     cursor: default; user-select: none;
@@ -467,6 +523,7 @@
           <button id="btn-sweep" title="Bossage/Base balayé — un profil suit une trajectoire"><img src="icons/PartDesign_AdditivePipe.svg" alt="">Balayage</button>
           <button id="btn-helix" title="Hélice — ressorts, filets réels"><img src="icons/PartDesign_AdditiveHelix.svg" alt="">Hélice</button>
           <button id="btn-text" title="Gravure / bossage de texte sur une face — marquage de pièces"><img src="icons/Draft_ShapeString.svg" alt="">Texte</button>
+          <button id="btn-graph-feature" title="Fonction graphe — flux de nœuds, boucles et listes, une forme en sortie"><img src="icons/Geoassembly.svg" alt="">Fonction graphe</button>
         </div>
         <div class="ribbon-group-label">Fonctions</div>
       </div>
@@ -610,6 +667,12 @@
       <div id="graph-bar">
         <button type="button" id="btn-graph-add" title="Ajouter une fonction">Fonction</button>
       </div>
+      <div id="graph-fn-bar" hidden>
+        <button type="button" id="graph-fn-apply" title="Évaluer le graphe et remplacer la forme">Appliquer</button>
+        <button type="button" id="graph-fn-close" title="Fermer l'éditeur">Fermer</button>
+        <button type="button" id="graph-fn-palette" title="Ajouter un nœud">Nœuds</button>
+        <p id="graph-fn-hint">La géométrie produite est figée. Changer une variable globale ne recalcule pas la fonction ; rouvrez-la et appliquez. Le résultat est une forme, combinée par un booléen — pas une chaîne de fonctions. Ce qui est calculé dedans n'apparaît pas dans l'arbre.</p>
+      </div>
       <svg id="graph-svg" xmlns="http://www.w3.org/2000/svg" aria-label="Vue en graphe">
         <g id="graph-world"></g>
       </svg>
@@ -630,6 +693,7 @@
     <div id="ctx-unlink" class="danger">Supprimer la liaison</div>
   </div>
   <div id="graph-palette"></div>
+  <div id="graph-literal-edit"></div>
   <div id="param-pick"></div>
   <div id="settings-menu">
     <div class="menu-label">Libellés du ruban</div>

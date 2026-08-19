@@ -112,6 +112,66 @@ def label_for_type(obj_type: str, lang: str = "fr") -> str:
     return obj_type.split("::")[-1]
 
 
+#: Libellés des nœuds de la fonction graphe (N004b). Les *ports* et les
+#: types vivent dans ``engine/nodegraph._NODE_INPUTS`` — ici seulement
+#: les mots que l'utilisateur lit. Ajouter un type sans entrée ici
+#: casse ``graph_vocabulary`` exprès.
+GRAPH_NODE_LABELS: dict[str, tuple[str, str]] = {
+    "nombre": ("Nombre", "Number"),
+    "variable": ("Variable", "Variable"),
+    "serie": ("Série", "Series"),
+    "calcul": ("Calcul", "Expression"),
+    "point": ("Point", "Point"),
+    "cylindre": ("Cylindre", "Cylinder"),
+    "boite": ("Boîte", "Box"),
+}
+
+GRAPH_INPUT_LABELS: dict[str, tuple[str, str]] = {
+    "depart": ("Départ", "Start"),
+    "pas": ("Pas", "Step"),
+    "nombre": ("Nombre", "Count"),
+    "a": ("A", "A"),
+    "b": ("B", "B"),
+    "x": ("X", "X"),
+    "y": ("Y", "Y"),
+    "z": ("Z", "Z"),
+    "rayon": ("Rayon", "Radius"),
+    "hauteur": ("Hauteur", "Height"),
+    "ancrage": ("Ancrage", "Anchor"),
+    "longueur": ("Longueur", "Length"),
+    "largeur": ("Largeur", "Width"),
+}
+
+GRAPH_FIELD_LABELS: dict[str, tuple[str, str]] = {
+    "value": ("Valeur", "Value"),
+    "name": ("Nom", "Name"),
+    "op": ("Opération", "Operation"),
+}
+
+
+def _graph_label(table: dict[str, tuple[str, str]], key: str,
+                 lang: str = "fr") -> str:
+    pair = table.get(key)
+    if pair is None:
+        return key
+    return pair[0] if lang == "fr" else pair[1]
+
+
+def graph_node_label(kind: str, lang: str = "fr") -> str:
+    """Libellé d'un type de nœud de fonction graphe."""
+    return _graph_label(GRAPH_NODE_LABELS, kind, lang)
+
+
+def graph_input_label(key: str, lang: str = "fr") -> str:
+    """Libellé d'un port d'entrée de fonction graphe."""
+    return _graph_label(GRAPH_INPUT_LABELS, key, lang)
+
+
+def graph_field_label(key: str, lang: str = "fr") -> str:
+    """Libellé d'un champ propre au nœud (valeur, nom, opération)."""
+    return _graph_label(GRAPH_FIELD_LABELS, key, lang)
+
+
 def label_for_origin(internal_name: str, lang: str = "fr") -> str:
     """Return the SolidWorks name of an Origin plane or axis.
 

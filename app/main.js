@@ -4199,51 +4199,55 @@ function currentSelection(accepts) {
 // Registry : un bind unique pour tous les panneaux « ouvrir → éditer →
 // aperçu → OK ». Les panneaux bespoke (équations, assemblage, datum…)
 // restent plus bas.
+/** Panneau d'une fonction de `FEATURES` — ruban et palette du graphe.
+ *  `sketchOverride` : profil imposé par la palette, sinon la sélection. */
+function openFeaturePanel(entry, sketchOverride) {
+  const ctx = {
+    lastTree,
+    selection: currentSelection,
+    selectedSketch: sketchOverride ?? selectedSketch,
+  };
+  const blocked = entry.guard?.(ctx);
+  if (blocked) { say(blocked, true); return; }
+  const spec = {
+    icon: entry.icon,
+    title: entry.title,
+    groups: entry.groups(ctx),
+    note: entry.note,
+    onApply: (v) => {
+      const built = entry.build(v, ctx);
+      if (!built) {
+        const msg = typeof entry.invalid === "function"
+          ? entry.invalid(v, ctx)
+          : (entry.invalid ?? "Valeurs invalides");
+        say(msg, true);
+        return;
+      }
+      const run = entry.refresh === "any" ? refreshAny : refresh;
+      const promise = call(built.op, built.params);
+      if (entry.openGraphEditor) {
+        run(promise.then((tree) => {
+          queueMicrotask(() => {
+            const created = [...(tree.features ?? [])].reverse()
+              .find((item) => isGraphFeature(item));
+            if (created) enterGraphFeature(created);
+          });
+          return tree;
+        }));
+      } else {
+        run(promise);
+      }
+    },
+  };
+  if (entry.preview !== false) {
+    spec.onChange = (v) => schedulePreview(entry.build(v, ctx));
+  }
+  panel.open(spec);
+}
+
 function bindFeature(entry) {
   document.getElementById(entry.button).addEventListener("click", () =>
-    featureCommand(() => {
-      const ctx = {
-        lastTree,
-        selection: currentSelection,
-        selectedSketch,
-      };
-      const blocked = entry.guard?.(ctx);
-      if (blocked) { say(blocked, true); return; }
-      const spec = {
-        icon: entry.icon,
-        title: entry.title,
-        groups: entry.groups(ctx),
-        note: entry.note,
-        onApply: (v) => {
-          const built = entry.build(v, ctx);
-          if (!built) {
-            const msg = typeof entry.invalid === "function"
-              ? entry.invalid(v, ctx)
-              : (entry.invalid ?? "Valeurs invalides");
-            say(msg, true);
-            return;
-          }
-          const run = entry.refresh === "any" ? refreshAny : refresh;
-          const promise = call(built.op, built.params);
-          if (entry.openGraphEditor) {
-            run(promise.then((tree) => {
-              queueMicrotask(() => {
-                const created = [...(tree.features ?? [])].reverse()
-                  .find((item) => isGraphFeature(item));
-                if (created) enterGraphFeature(created);
-              });
-              return tree;
-            }));
-          } else {
-            run(promise);
-          }
-        },
-      };
-      if (entry.preview !== false) {
-        spec.onChange = (v) => schedulePreview(entry.build(v, ctx));
-      }
-      panel.open(spec);
-    }));
+    featureCommand(() => openFeaturePanel(entry)));
 }
 
 for (const entry of FEATURES) bindFeature(entry);

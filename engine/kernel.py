@@ -2582,7 +2582,14 @@ class Kernel:
         self._close_current()
         doc = App.openDocument(path)
         self._setup_doc(doc)
-        bodies = [o for o in doc.Objects if o.TypeId == "PartDesign::Body"]
+        bodies = [
+            o for o in doc.Objects
+            if o.TypeId == "PartDesign::Body"
+            and not self._is_internal_tool(o)
+        ]
+        if not bodies:
+            bodies = [o for o in doc.Objects
+                      if o.TypeId == "PartDesign::Body"]
         if not bodies:
             links = [o for o in doc.Objects if o.TypeId == "App::Link"]
             if links:

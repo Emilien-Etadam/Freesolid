@@ -1257,12 +1257,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // N004b — éditeur de la fonction graphe : créer, poser, câbler, appliquer,
   // erreur d'appariement désignée, pièce intacte.
+  const isVolume = (v) => typeof v === "number" && Number.isFinite(v);
   const volumeOf = async () => page.evaluate(async () => {
     const r = await fetch("/api", { method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ op: "mass_properties", params: {} }) });
     const j = await r.json();
-    return j.ok ? j.result.volume_mm3 : null;
+    return j.ok ? j.result.volume_mm3 : ("REFUS: " + (j.error ?? "?"));
   });
   const volBeforeGraph = await volumeOf();
   await page.click('[data-tab="features"]');
@@ -1282,7 +1283,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { timeout: 15000 },
   );
   const volAfterCreate = await volumeOf();
-  if (!(volBeforeGraph > 0) || !(volAfterCreate > volBeforeGraph + 50)) {
+  if (!isVolume(volBeforeGraph) || !isVolume(volAfterCreate)
+      || volAfterCreate <= volBeforeGraph + 50) {
     errors.push("N004b : le bossage graphe devrait augmenter le volume ("
       + volBeforeGraph + " → " + volAfterCreate + ")");
   }
@@ -1381,7 +1383,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("N004b : identifiants série/cylindre manquants");
   }
   const volAfterApply = await volumeOf();
-  if (!(volAfterApply > 0) || Math.abs(volAfterApply - volAfterCreate) < 1) {
+  if (!isVolume(volAfterApply) || Math.abs(volAfterApply - volAfterCreate) < 1) {
     errors.push("N004b : appliquer le graphe devrait changer le volume ("
       + volAfterCreate + " → " + volAfterApply + ")");
   }
@@ -1472,7 +1474,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         + errState.errorNode);
     }
     const volAfterError = await volumeOf();
-    if (volAfterApply != null && volAfterError != null
+    if (isVolume(volAfterApply) && isVolume(volAfterError)
         && Math.abs(volAfterError - volAfterApply) > 1e-3) {
       errors.push("N004b : la pièce a changé malgré le refus ("
         + volAfterApply + " → " + volAfterError + ")");

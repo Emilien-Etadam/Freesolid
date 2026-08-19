@@ -14,6 +14,7 @@ import {
   functionEdgeEnds,
   graphCreateProfile,
   graphFeaturePlaceable,
+  graphNodePaletteGroups,
   graphPaletteItems,
   isConstructWireSource,
   isGraphFeature,
@@ -419,7 +420,7 @@ const VOCAB = [
     { key: "pas", label: "Pas" },
     { key: "nombre", label: "Nombre" },
   ], shape: false },
-  { type: "point", label: "Point", inputs: [
+  { type: "vecteur", label: "Vecteur", inputs: [
     { key: "x", label: "X" }, { key: "y", label: "Y" }, { key: "z", label: "Z" },
   ], shape: false },
   { type: "cylindre", label: "Cylindre", inputs: [
@@ -540,5 +541,48 @@ describe("composition du graphe interne", () => {
     const ends = functionEdgeEnds(byName.s, byName.c, "rayon");
     assert.equal(ends.x1, byName.s.x + byName.s.ports.output.x);
     assert.equal(ends.y2, byName.c.y + byName.c.inputs[0].y);
+  });
+
+  it("un nœud non implémenté est refusé à la composition", () => {
+    const vocab = [
+      ...VOCAB,
+      { type: "sphere", label: "Sphère", implemented: false,
+        reason: "appelle l'API Part — pas encore dans l'évaluateur pur",
+        inputs: [{ key: "rayon", label: "Rayon" }], shape: true },
+    ];
+    const draft = {
+      nodes: [{ id: "s", type: "sphere", rayon: 1 }],
+      edges: [],
+      output: "s",
+    };
+    const result = composeGraphPayload(draft, vocab);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /API Part/);
+  });
+});
+
+describe("palette du catalogue de nœuds", () => {
+  it("groupe par catégorie et grise ce qui manque, sans masquer", () => {
+    const vocab = [
+      { type: "nombre", label: "Nombre", category: "number",
+        category_label: "Nombre", icon: "nodes_number.svg",
+        implemented: true, inputs: [], shape: false },
+      { type: "serie", label: "Série", category: "list",
+        category_label: "Liste", icon: "nodes_number_range.svg",
+        implemented: true, inputs: [], shape: false },
+      { type: "sphere", label: "Sphère", category: "generators",
+        category_label: "Générateurs", icon: "nodes_sphere.svg",
+        implemented: false,
+        reason: "appelle l'API Part — pas encore dans l'évaluateur pur",
+        inputs: [], shape: true },
+    ];
+    const groups = graphNodePaletteGroups(vocab);
+    assert.deepEqual(groups.map((g) => g.label),
+      ["Nombre", "Liste", "Générateurs"]);
+    const sphere = groups[2].items[0];
+    assert.equal(sphere.enabled, false);
+    assert.match(sphere.reason, /API Part/);
+    assert.equal(groups[0].items[0].enabled, true);
+    assert.equal(graphNodePaletteGroups(null).length, 0);
   });
 });

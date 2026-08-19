@@ -66,3 +66,12 @@ def test_graph_node_labels_are_french():
     assert vocab.graph_input_label("ancrage") == "Ancrage"
     assert vocab.graph_field_label("value") == "Valeur"
     assert vocab.graph_node_label("cylindre", lang="en") == "Cylinder"
+    assert vocab.graph_node_label("vecteur") == "Vecteur"
+    assert vocab.graph_node_label("addition") == "Addition"
+    assert vocab.graph_category_label("list") == "Liste"
+    assert vocab.graph_category_label("generators") == "Générateurs"
+    assert vocab.GRAPH_NODE_BY_TYPE["serie"].category == "list"
+    assert vocab.GRAPH_NODE_BY_TYPE["nombre"].category == "number"
+    assert vocab.GRAPH_NODE_BY_TYPE["vecteur"].category == "vector"
+    assert "scene" not in {n.category for n in vocab.GRAPH_NODES}
+    assert "viz" not in {n.category for n in vocab.GRAPH_NODES}

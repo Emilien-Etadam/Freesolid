@@ -1296,14 +1296,37 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const paletteBtn = page.locator("#graph-fn-palette");
   await paletteBtn.click();
-  await page.waitForSelector("#graph-palette .menu-item[data-type='serie']",
+  await page.waitForSelector("#graph-palette [data-type='serie']",
     { timeout: 5000 });
-  await page.click("#graph-palette .menu-item[data-type='serie']");
+  const paletteState = await page.evaluate(() => {
+    const cats = [...document.querySelectorAll("#graph-palette [data-category]")]
+      .map((el) => el.getAttribute("data-category"));
+    const sphere = document.querySelector(
+      "#graph-palette [data-type='sphere']");
+    return {
+      cats,
+      sphereDisabled: sphere?.classList.contains("disabled") ?? false,
+      sphereReason: sphere?.querySelector(".graph-palette-reason")?.textContent
+        || sphere?.getAttribute("title") || "",
+    };
+  });
+  if (!paletteState.cats.includes("list")
+      || !paletteState.cats.includes("number")
+      || !paletteState.cats.includes("generators")) {
+    errors.push("N006 : catégories absentes de la palette ("
+      + JSON.stringify(paletteState.cats) + ")");
+  }
+  if (!paletteState.sphereDisabled
+      || !/Part|pas encore/i.test(paletteState.sphereReason)) {
+    errors.push("N006 : Sphère devrait être grisée avec sa raison ("
+      + JSON.stringify(paletteState) + ")");
+  }
+  await page.click("#graph-palette [data-type='serie']");
   await sleep(300);
   await paletteBtn.click();
-  await page.waitForSelector("#graph-palette .menu-item[data-type='cylindre']",
+  await page.waitForSelector("#graph-palette [data-type='cylindre']",
     { timeout: 5000 });
-  await page.click("#graph-palette .menu-item[data-type='cylindre']");
+  await page.click("#graph-palette [data-type='cylindre']");
   await sleep(400);
 
   const placed = await page.evaluate(() => {
@@ -1393,9 +1416,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     [...document.querySelectorAll("#graph-view .graph-node[data-type='serie']")]
       .map((n) => n.getAttribute("data-name")));
   await paletteBtn.click();
-  await page.waitForSelector("#graph-palette .menu-item[data-type='serie']",
+  await page.waitForSelector("#graph-palette [data-type='serie']",
     { timeout: 5000 });
-  await page.click("#graph-palette .menu-item[data-type='serie']");
+  await page.click("#graph-palette [data-type='serie']");
   await page.waitForFunction((before) => {
     const ids = [...document.querySelectorAll(
       "#graph-view .graph-node[data-type='serie']")]

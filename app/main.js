@@ -21,12 +21,14 @@ import {
   freezeDrivenValues,
   functionEdgeEnds,
   graphDraftsEqual,
+  graphNodePaletteGroups,
   graphPaletteItems,
   isConstructWireSource,
   isGraphFeature,
   isParamWireSource,
   isParamWireTarget,
   layoutFunctionGraph,
+  LIST_SOCKET_OPS,
   newGraphNode,
   nextGraphNodeId,
   nodeIdFromGraphError,
@@ -1101,13 +1103,15 @@ function treeIcon(file) {
 }
 
 function graphIconFile(node) {
+  if (node?.icon) return node.icon;
+  if (node?.spec?.icon) return node.spec.icon;
   if (node?.role === "compute" || node?.role === "shape") {
-    if (node.type === "cylindre") return "PartDesign_AdditiveHelix.svg";
-    if (node.type === "boite") return "Part_3D_object.svg";
-    if (node.type === "serie") return "PartDesign_LinearPattern.svg";
+    if (node.type === "cylindre") return "nodes_cylinder.svg";
+    if (node.type === "boite") return "nodes_box.svg";
+    if (node.type === "serie") return "nodes_number_range.svg";
     if (node.type === "variable") return "VarSet.svg";
-    if (node.type === "point") return "Constraint_PointOnMidPoint.svg";
-    return "Geoassembly.svg";
+    if (node.type === "vecteur" || node.type === "point") return "nodes_vect.svg";
+    return "nodes_wb_icon.svg";
   }
   if (node?.type && TREE_ICONS[node.type]) return TREE_ICONS[node.type];
   if (node?.role === "sketch") return TREE_ICONS["Sketcher::SketchObject"];
@@ -2669,7 +2673,10 @@ function formatLiteral(value) {
     return `${value.x}, ${value.y}, ${value.z}`;
   }
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (typeof value === "string") return value;
+  if (typeof value === "string") {
+    const op = LIST_SOCKET_OPS.find((item) => item.value === value);
+    return op ? op.label : value;
+  }
   return "";
 }
 
@@ -3038,24 +3045,61 @@ function openGraphPalette({ profileSketch = null, clientX, clientY } = {}) {
     heading.className = "menu-label";
     heading.textContent = "Nœud à poser";
     graphPalette.appendChild(heading);
-    for (const spec of graphFn.vocabulary) {
-      const item = document.createElement("div");
-      item.className = "menu-item";
-      item.dataset.type = spec.type;
-      item.textContent = spec.label;
-      item.addEventListener("click", (event) => {
-        event.stopPropagation();
-        closeGraphPalette();
-        const world = clientToGraphWorld(clientX, clientY);
-        const offset = (graphFn.draft.nodes.length) * 36;
-        world.x += offset;
-        world.y += offset;
-        const id = nextGraphNodeId(graphFn.draft.nodes);
-        graphFn.draft.nodes.push(newGraphNode(spec, id, world));
-        if (!graphFn.draft.output && spec.shape) graphFn.draft.output = id;
-        renderGraphFunction();
-      });
-      graphPalette.appendChild(item);
+    for (const group of graphNodePaletteGroups(graphFn.vocabulary)) {
+      const cat = document.createElement("div");
+      cat.className = "menu-label";
+      cat.dataset.category = group.category;
+      cat.textContent = group.label;
+      graphPalette.appendChild(cat);
+      for (const item of group.items) {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "graph-palette-item"
+          + (item.enabled ? "" : " disabled");
+        row.dataset.type = item.type;
+        if (!item.enabled) {
+          row.setAttribute("aria-disabled", "true");
+          row.title = item.reason;
+        }
+        if (item.icon) {
+          const img = document.createElement("img");
+          img.src = "icons/" + item.icon;
+          img.alt = "";
+          row.appendChild(img);
+        }
+        const body = document.createElement("span");
+        body.className = "graph-palette-body";
+        const title = document.createElement("span");
+        title.className = "graph-palette-title";
+        title.textContent = item.title;
+        body.appendChild(title);
+        if (!item.enabled && item.reason) {
+          const why = document.createElement("span");
+          why.className = "graph-palette-reason";
+          why.textContent = item.reason;
+          body.appendChild(why);
+        }
+        row.appendChild(body);
+        row.addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (!item.enabled) {
+            say(item.reason, true);
+            return;
+          }
+          closeGraphPalette();
+          const world = clientToGraphWorld(clientX, clientY);
+          const offset = (graphFn.draft.nodes.length) * 36;
+          world.x += offset;
+          world.y += offset;
+          const id = nextGraphNodeId(graphFn.draft.nodes);
+          graphFn.draft.nodes.push(newGraphNode(item.spec, id, world));
+          if (!graphFn.draft.output && item.spec.shape) {
+            graphFn.draft.output = id;
+          }
+          renderGraphFunction();
+        });
+        graphPalette.appendChild(row);
+      }
     }
     placeGraphMenu(graphPalette, clientX ?? 24, clientY ?? 56);
     return;
@@ -3163,14 +3207,19 @@ function openLiteralEditor(nodeId, key, clientX, clientY) {
     });
     literalEditEl.appendChild(ok);
   } else if (key === "op") {
+    const spec = graphFn.vocabulary.find((item) => item.type === raw.type);
+    const field = (spec?.fields || []).find((item) => item.key === "op");
+    const options = field?.kind === "list_op"
+      ? LIST_SOCKET_OPS
+      : ["+", "-", "*", "/"].map((op) => ({ value: op, label: op }));
     const select = document.createElement("select");
-    for (const op of ["+", "-", "*", "/"]) {
+    for (const op of options) {
       const option = document.createElement("option");
-      option.value = op;
-      option.textContent = op;
+      option.value = op.value;
+      option.textContent = op.label;
       select.append(option);
     }
-    select.value = value ?? "+";
+    select.value = value ?? options[0]?.value;
     select.addEventListener("change", () => applyValue(select.value));
     literalEditEl.appendChild(select);
   } else if (key === "name" || typeof value === "string") {

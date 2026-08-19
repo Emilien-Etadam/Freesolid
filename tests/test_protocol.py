@@ -619,6 +619,35 @@ def test_visible_deps_empty():
     assert protocol.visible_deps(["Pad"], []) == []
 
 
+def test_visible_dep_subs_keeps_known_targets():
+    assert protocol.visible_dep_subs(
+        {"Pad": ["Edge3", "Edge7"], "Sketch": ["Face1"]},
+        {"Pad", "Sketch", "Fillet"},
+    ) == {"Pad": ["Edge3", "Edge7"], "Sketch": ["Face1"]}
+
+
+def test_visible_dep_subs_drops_unknown_targets():
+    assert protocol.visible_dep_subs(
+        {"Pad": ["Edge3"], "Origin": ["Face1"], "Fantome": ["Edge9"]},
+        {"Pad", "Fillet"},
+    ) == {"Pad": ["Edge3"]}
+
+
+def test_visible_dep_subs_drops_empty_subs_and_dedupes():
+    assert protocol.visible_dep_subs(
+        {"Pad": ["", "Edge3", "Edge3", "Face1"], "Sketch": ["", None],
+         "Pocket": []},
+        {"Pad", "Sketch", "Pocket"},
+    ) == {"Pad": ["Edge3", "Face1"]}
+
+
+def test_visible_dep_subs_empty_or_malformed():
+    assert protocol.visible_dep_subs({}, {"Pad"}) == {}
+    assert protocol.visible_dep_subs(None, {"Pad"}) == {}
+    assert protocol.visible_dep_subs({"Pad": ["Face3"]}, []) == {}
+    assert protocol.visible_dep_subs({"Pad": ["Face3"]}, None) == {}
+
+
 def test_dangling_deps_coherent_tree_is_empty():
     tree = {
         "features": [{"name": "Pad", "deps": ["Sketch"],

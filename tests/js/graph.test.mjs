@@ -8,6 +8,8 @@ import {
   countEdgeCrossings,
   defaultPortLiteral,
   edgeCurvePath,
+  edgeMidpoint,
+  edgeSubCaption,
   expressionForVariable,
   freezeDrivenValues,
   GRAPH_DRESSUP_REASON,
@@ -16,6 +18,8 @@ import {
   graphFeaturePlaceable,
   graphNodePaletteGroups,
   graphPaletteItems,
+  graphParamLine,
+  graphVisibleParams,
   isConstructWireSource,
   isGraphFeature,
   isParamWireSource,
@@ -207,6 +211,31 @@ describe("buildGraph", () => {
     assert.equal(nodes.largeur.afterBar, false);
     assert.equal(nodes.XZ_Plane.afterBar, false);
   });
+
+  it("reporte dep_subs sur l'arête et params sur le nœud", () => {
+    const graph = buildGraph({
+      features: [
+        { name: "Sketch", label: "Esquisse1", kind: "Esquisse", order: 0,
+          deps: ["XY_Plane"] },
+        { name: "Pad", label: "Bossage1", kind: "Bossage/Base extrudé",
+          order: 1, deps: ["Sketch"],
+          params: [{ prop: "Length", value: 12 }] },
+        { name: "Fillet", label: "Congé1", kind: "Congé",
+          order: 2, deps: ["Pad"],
+          dep_subs: { Pad: ["Edge3", "Edge7"] } },
+      ],
+      planes: [{ id: "XY", name: "XY_Plane", label: "Plan de dessus" }],
+    });
+    const nodes = byName(graph);
+    assert.deepEqual(nodes.Pad.params, [{ prop: "Length", value: 12 }]);
+    assert.ok(nodes.Pad.height > 32);
+    const filletEdge = graph.edges.find(
+      (edge) => edge.kind === "geom" && edge.from === "Pad" && edge.to === "Fillet");
+    assert.deepEqual(filletEdge.subs, ["Edge3", "Edge7"]);
+    const padEdge = graph.edges.find(
+      (edge) => edge.kind === "geom" && edge.from === "Sketch" && edge.to === "Pad");
+    assert.equal("subs" in padEdge, false);
+  });
 });
 
 describe("fil paramétrique", () => {
@@ -279,6 +308,45 @@ describe("fil paramétrique", () => {
       "Nombre d'occurrences",
     );
     assert.equal(paramChoiceCaption(null, labels), "");
+  });
+});
+
+describe("nature des liens N007", () => {
+  const labels = { Length: ["Profondeur", "mm"], Radius: ["Rayon", "mm"] };
+
+  it("une arête nomme le sous-élément, +N s'il y en a plusieurs", () => {
+    assert.equal(edgeSubCaption(["Face3"]), "Face3");
+    assert.equal(edgeSubCaption(["Edge3", "Edge7"]), "Edge3 +1");
+    assert.equal(edgeSubCaption(["Edge3", "Edge7", "Edge8"]), "Edge3 +2");
+    assert.equal(edgeSubCaption([]), "");
+    assert.equal(edgeSubCaption(null), "");
+  });
+
+  it("le nœud reprend PROP_LABELS et préfixe Σ une cote pilotée", () => {
+    assert.equal(
+      graphParamLine({ prop: "Length", value: 12 }, labels),
+      "Profondeur 12",
+    );
+    assert.equal(
+      graphParamLine(
+        { prop: "Length", value: 25, expr: "2 * Variables.largeur" }, labels),
+      "Σ Profondeur 25",
+    );
+    assert.equal(graphParamLine(null, labels), "");
+  });
+
+  it("ne montre que les premières cotes dans le nœud", () => {
+    const params = [
+      { prop: "Length", value: 12 },
+      { prop: "Radius", value: 3 },
+      { prop: "Size", value: 1 },
+    ];
+    assert.equal(graphVisibleParams(params).length, 2);
+    assert.equal(graphVisibleParams(params)[0].prop, "Length");
+  });
+
+  it("le milieu de l'arête est le centre du segment", () => {
+    assert.deepEqual(edgeMidpoint(0, 10, 200, 50), { x: 100, y: 30 });
   });
 });
 

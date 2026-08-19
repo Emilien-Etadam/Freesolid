@@ -17,12 +17,16 @@ import {
   disconnectGraphEdge,
   edgeAttachX,
   edgeCurvePath,
+  edgeMidpoint,
+  edgeSubCaption,
   expressionForVariable,
   freezeDrivenValues,
   functionEdgeEnds,
   graphDraftsEqual,
   graphNodePaletteGroups,
   graphPaletteItems,
+  graphParamLine,
+  graphVisibleParams,
   isConstructWireSource,
   isGraphFeature,
   isParamWireSource,
@@ -2703,11 +2707,13 @@ function appendGraphShape(group, node) {
     }));
     group.appendChild(svgGraphIcon(graphIconFile(node), -42, -8));
   } else {
+    const w = 148;
+    const h = node.height ?? 32;
     group.appendChild(svgEl("rect", {
-      class: "shape", x: -74, y: -16, width: 148, height: 32,
+      class: "shape", x: -w / 2, y: -h / 2, width: w, height: h,
       rx: role === "body" ? 2 : 8,
     }));
-    group.appendChild(svgGraphIcon(graphIconFile(node), -66, -8));
+    group.appendChild(svgGraphIcon(graphIconFile(node), -66, -h / 2 + 8));
   }
 }
 
@@ -2816,17 +2822,32 @@ function renderGraph(data) {
       "data-kind": edge.kind,
     });
     if (edge.input) group.setAttribute("data-input", edge.input);
+    const subCaption = edge.kind === "geom" ? edgeSubCaption(edge.subs) : "";
+    if (subCaption) group.setAttribute("data-subs", (edge.subs ?? []).join(","));
     group.appendChild(svgEl("path", {
       class: "graph-edge-hit", d,
     }));
     group.appendChild(svgEl("path", {
       class: "graph-edge-line", d,
     }));
+    if (subCaption) {
+      const mid = edgeMidpoint(x1, y1, x2, y2);
+      const sub = svgEl("text", {
+        class: "graph-edge-sub",
+        x: mid.x, y: mid.y - 6,
+        "text-anchor": "middle", "dominant-baseline": "middle",
+      });
+      sub.textContent = subCaption;
+      group.appendChild(sub);
+    }
+    const geomTitle = subCaption
+      ? `Liaison géométrique — ${subCaption}`
+      : "Liaison géométrique — non modifiable pour l'instant";
     const title = edge.kind === "param"
       ? "Liaison paramétrique"
       : edge.kind === "data"
         ? `Fil → ${edge.input}`
-        : "Liaison géométrique — non modifiable pour l'instant";
+        : geomTitle;
     group.appendChild(svgEl("title")).textContent = title;
     if (edge.kind === "param" || edge.kind === "data") {
       group.addEventListener("click", (event) => {
@@ -2862,13 +2883,42 @@ function renderGraph(data) {
     appendGraphShape(group, node);
     const isVar = node.role === "variable";
     const fnNode = node.role === "compute" || node.role === "shape";
+    const shownParams = (!fn && !isVar)
+      ? graphVisibleParams(node.params)
+      : [];
+    const nodeH = node.height ?? 32;
     const label = svgEl("text", {
       x: fnNode ? -(node.width ?? 168) / 2 + 28 : (isVar ? -20 : -44),
-      y: fnNode ? -(node.height ?? 56) / 2 + 16 : 0,
+      y: fnNode
+        ? -(node.height ?? 56) / 2 + 16
+        : (shownParams.length ? -nodeH / 2 + 11 : 0),
       "text-anchor": "start", "dominant-baseline": "middle",
     });
     label.textContent = graphLabelText(node.label);
     group.appendChild(label);
+    const extraParams = (!fn && !isVar)
+      ? (node.params ?? []).map((param) => graphParamLine(param, PROP_LABELS))
+        .filter(Boolean)
+      : [];
+    for (const [index, param] of shownParams.entries()) {
+      const line = graphParamLine(param, PROP_LABELS);
+      if (!line) continue;
+      const text = svgEl("text", {
+        class: `graph-param${param.expr ? " driven" : ""}`,
+        x: -44,
+        y: -nodeH / 2 + 23 + index * 12,
+        "text-anchor": "start", "dominant-baseline": "middle",
+        "data-prop": param.prop,
+      });
+      text.textContent = line;
+      text.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (graphMoved) return;
+        const feature = graphMenuTarget(node.name);
+        if (feature) editFeature(feature);
+      });
+      group.appendChild(text);
+    }
     if (fnNode) {
       const fields = Object.entries(node.fields ?? {});
       for (const [index, [key, value]] of fields.entries()) {
@@ -2887,9 +2937,14 @@ function renderGraph(data) {
       }
       appendFunctionPorts(group, node);
     }
+    const paramHint = extraParams.length
+      ? extraParams.join(" · ")
+      : "";
     group.appendChild(svgEl("title")).textContent = fn && node.output
       ? `${node.label} — sortie du graphe`
-      : `${node.label} — ${node.kind}`;
+      : paramHint
+        ? `${node.label} — ${node.kind}\n${paramHint}`
+        : `${node.label} — ${node.kind}`;
     group.addEventListener("pointerenter", () => setGraphHover(node.name));
     group.addEventListener("pointerleave", () => setGraphHover(null));
     group.addEventListener("pointerdown", (event) => {

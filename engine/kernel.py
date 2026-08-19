@@ -23,7 +23,7 @@ from engine.guard import friendly_error          # noqa: E402
 from engine.nodegraph import (  # noqa: E402
     GraphError, evaluate as evaluate_graph, migrate_graph,
 )
-from engine.protocol import dangling_deps, visible_deps  # noqa: E402
+from engine.protocol import dangling_deps, visible_dep_subs, visible_deps  # noqa: E402
 from engine.vocab import label_for_type          # noqa: E402
 
 
@@ -855,16 +855,7 @@ class Kernel:
         known_names = known_names if known_names is not None else set()
 
         def wire(item, source):
-            deps = visible_deps(
-                [o.Name for o in (getattr(source, "OutList", None) or ())],
-                known_names,
-            )
-            if deps:
-                item["deps"] = deps
-            driven = self._expression_map(source)
-            if driven:
-                item["driven"] = driven
-            return item
+            return self._annotate_tree_links(item, source, known_names)
 
         entry = {
             "name": obj.Name,
@@ -1896,6 +1887,13 @@ class Kernel:
         sketch.Label = "Esquisse"
         if face is not None:
             self._attach_to_face(sketch, face)
+        else:
+            # Plan XY d'origine : la docstring le promettait déjà, mais
+            # sans AttachmentSupport l'esquisse n'avait pas d'arête dans
+            # le graphe. Même geste que ``sketch_start(plane="XY")``.
+            self._attach_to_support(
+                sketch, [(self._origin_feature(self._PLANE_ROLES["XY"]),
+                          ("",))])
 
         V = self._app().Vector
         x, y = w / 2.0, h / 2.0
@@ -2980,6 +2978,97 @@ class Kernel:
                     names.add(sketch.Name)
         return names
 
+    @staticmethod
+    def _is_sub_names(value):
+        """Vrai si ``value`` est un nom de sous-élément ou une liste de noms."""
+        if isinstance(value, str):
+            return True
+        if not isinstance(value, (list, tuple)):
+            return False
+        return all(isinstance(item, str) for item in value)
+
+    @staticmethod
+    def _iter_link_subs(value):
+        """Paires ``(objet, [sous-éléments])`` d'un Link, LinkSub ou LinkSubList.
+
+        ``Base`` (habillage, dépouille) a la forme ``(objet, [noms])`` ;
+        ``AttachmentSupport`` (esquisse sur face) est une liste de telles
+        paires. Un objet nu (``Profile`` d'un bossage) n'a pas de sous-élément.
+        """
+        if value is None:
+            return
+        if isinstance(value, (list, tuple)):
+            if (len(value) == 2
+                    and getattr(value[0], "Name", None)
+                    and Kernel._is_sub_names(value[1])):
+                subs = ([value[1]] if isinstance(value[1], str)
+                        else list(value[1]))
+                yield value[0], subs
+                return
+            for item in value:
+                for pair in Kernel._iter_link_subs(item):
+                    yield pair
+            return
+        if getattr(value, "Name", None):
+            yield value, []
+            return
+        try:
+            items = list(value)
+        except TypeError:
+            return
+        for item in items:
+            for pair in Kernel._iter_link_subs(item):
+                yield pair
+
+    def _object_dep_subs(self, obj):
+        """``{cible: [sous-éléments]}`` lus sur ``Base`` et l'appui d'esquisse.
+
+        Les sous-éléments vides (attache à l'objet entier) sont omis : ils
+        n'ajoutent rien à ``deps``. Le filtrage des cibles hors payload
+        est ``visible_dep_subs``.
+        """
+        raw = {}
+        for prop in ("Base", "AttachmentSupport", "Support"):
+            if not hasattr(obj, prop):
+                continue
+            try:
+                value = getattr(obj, prop)
+            except Exception:  # noqa: BLE001 — propriété FreeCAD parfois cassée
+                continue
+            for target, subs in self._iter_link_subs(value):
+                name = getattr(target, "Name", "") or ""
+                if not name:
+                    continue
+                existing = raw.setdefault(name, [])
+                for sub in subs:
+                    if not isinstance(sub, str) or not sub or sub in existing:
+                        continue
+                    existing.append(sub)
+        return raw
+
+    def _annotate_tree_links(self, item, obj, known_names):
+        """Pose ``deps``, ``dep_subs``, ``driven`` et ``params`` s'ils existent.
+
+        ``params`` réutilise ``get_params`` — pas de seconde boucle sur
+        ``_EDITABLE_PROPS``. Champs omis quand vides.
+        """
+        deps = visible_deps(
+            [o.Name for o in (getattr(obj, "OutList", None) or ())],
+            known_names,
+        )
+        if deps:
+            item["deps"] = deps
+        dep_subs = visible_dep_subs(self._object_dep_subs(obj), known_names)
+        if dep_subs:
+            item["dep_subs"] = dep_subs
+        driven = self._expression_map(obj)
+        if driven:
+            item["driven"] = driven
+        params = self.get_params(obj.Name).get("params") or []
+        if params:
+            item["params"] = params
+        return item
+
     def get_tree(self):
         """Arbre de fonctions, vocabulaire du concepteur.
 
@@ -2988,15 +3077,20 @@ class Kernel:
         ``children`` plutôt que de polluer le premier niveau.
 
         Chaque entrée — fonction du corps, esquisse imbriquée, surface et
-        esquisse de surface — peut porter deux champs, omis quand ils sont
-        vides :
+        esquisse de surface — peut porter quatre champs, omis quand ils
+        sont vides :
 
         - ``deps`` — noms internes des nœuds dont elle dépend
           (``OutList`` filtré). Une arête n'est émise que si sa cible
           est elle-même un nœud du même payload : fonction, esquisse,
           plan de référence, surface ou corps. Aucune arête pendante.
+        - ``dep_subs`` — ``{cible: [sous-éléments]}`` lus sur ``Base``
+          et ``AttachmentSupport``. Les noms de face ou d'arête que
+          ``OutList`` jette. Même filtre que ``deps`` : une cible hors
+          payload n'émet pas de sous-élément.
         - ``driven`` — ``{chemin de propriété: expression}``, les
           propriétés pilotées. Chaîne brute, sans parsing des variables.
+        - ``params`` — cotes éditables, même forme que ``get_params``.
 
         Les plans de référence sont adressables : chaque entrée de
         ``planes`` porte le ``name`` de l'objet, seule adresse par
@@ -3045,15 +3139,7 @@ class Kernel:
                     parsed = None
                 if isinstance(parsed, dict):
                     item["graph"] = parsed
-            deps = visible_deps(
-                [o.Name for o in (getattr(obj, "OutList", None) or ())],
-                known_names,
-            )
-            if deps:
-                item["deps"] = deps
-            driven = self._expression_map(obj)
-            if driven:
-                item["driven"] = driven
+            self._annotate_tree_links(item, obj, known_names)
             return item
 
         items = []
@@ -5755,6 +5841,41 @@ class Kernel:
                             for b in tree["bodies"])
                 and not dangling_deps(tree)
                 and any(f.get("graph") for f in tree["features"]))
+
+            mark("n7: sous-éléments et esquisse attachée")
+            self.new_part("Pièce nœuds N007")
+            tree = self.add_rect_sketch(80, 50)
+            xy_name = next(pl["name"] for pl in tree["planes"]
+                           if pl["id"] == "XY")
+            tree = self.add_pad(12)
+            sketch = next(
+                child for feat in tree["features"]
+                for child in feat.get("children", ())
+                if child["type"] == "Sketcher::SketchObject")
+            coherent = not dangling_deps(tree)
+            report["n7_esquisse_attachee"] = (
+                bool(xy_name) and xy_name in sketch.get("deps", [])
+                and coherent)
+            top_edges = [i for i, edge in
+                         enumerate(self._require_body().Shape.Edges)
+                         if abs(edge.CenterOfMass.z - 12) < 1e-6]
+            fillet_edges = top_edges[:2] if len(top_edges) >= 2 else top_edges
+            tree = self.add_fillet(radius=2, edges=fillet_edges)
+            fillet = next(f for f in tree["features"]
+                          if f["type"] == "PartDesign::Fillet")
+            fillet_subs = [
+                name for names in (fillet.get("dep_subs") or {}).values()
+                for name in names]
+            tree = self.add_draft(face=self._side_face_id(), angle=5)
+            draft = next(f for f in tree["features"]
+                         if f["type"] == "PartDesign::Draft")
+            draft_subs = [
+                name for names in (draft.get("dep_subs") or {}).values()
+                for name in names]
+            report["n7_sous_elements"] = (
+                any(str(name).startswith("Edge") for name in fillet_subs)
+                and any(str(name).startswith("Face") for name in draft_subs)
+                and not dangling_deps(tree))
 
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce

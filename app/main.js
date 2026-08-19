@@ -2886,12 +2886,11 @@ function renderGraph(data) {
     const shownParams = (!fn && !isVar)
       ? graphVisibleParams(node.params)
       : [];
-    const nodeH = node.height ?? 32;
     const label = svgEl("text", {
       x: fnNode ? -(node.width ?? 168) / 2 + 28 : (isVar ? -20 : -44),
       y: fnNode
         ? -(node.height ?? 56) / 2 + 16
-        : (shownParams.length ? -nodeH / 2 + 11 : 0),
+        : (shownParams.length ? -7 : 0),
       "text-anchor": "start", "dominant-baseline": "middle",
     });
     label.textContent = graphLabelText(node.label);
@@ -2906,7 +2905,7 @@ function renderGraph(data) {
       const text = svgEl("text", {
         class: `graph-param${param.expr ? " driven" : ""}`,
         x: -44,
-        y: -nodeH / 2 + 23 + index * 12,
+        y: 8,
         "text-anchor": "start", "dominant-baseline": "middle",
         "data-prop": param.prop,
       });

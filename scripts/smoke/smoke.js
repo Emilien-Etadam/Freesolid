@@ -1295,13 +1295,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       + n7info.filletLabel + " »)");
   }
   await page.screenshot({ path: path.join(SHOTS, "8b-graphe-liens.png") });
-  await page.keyboard.press("Escape");
-  await sleep(300);
+  const stillOpen = await page.evaluate(() =>
+    document.getElementById("graph-view")?.classList.contains("open") === true);
+  if (stillOpen) {
+    await page.click("#btn-graph");
+    await page.waitForFunction(
+      () => !document.getElementById("graph-view")?.classList.contains("open"),
+      null, { timeout: 5000 },
+    ).catch(() => {});
+  }
   const n7closed = await page.evaluate(() =>
     !document.getElementById("graph-view")?.classList.contains("open"));
   if (!n7closed) {
-    await page.click("#btn-graph");
-    await sleep(200);
+    errors.push("N007 : le graphe est resté ouvert après inspection");
   }
   await step("nature des liens");
 
@@ -1561,7 +1567,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("N004b : deuxième série absente pour l'appariement");
   }
   await page.screenshot({ path: path.join(SHOTS, "9b-fonction-graphe-erreur.png") });
-  page.once("dialog", (dialog) => dialog.accept());
+  page.once("dialog", (dialog) => { dialog.accept().catch(() => {}); });
   await page.click("#graph-fn-close");
   await page.waitForFunction(
     () => window.__freesolidDebug?.graphFeatureActive !== true,

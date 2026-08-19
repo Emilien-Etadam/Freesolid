@@ -228,7 +228,7 @@ describe("buildGraph", () => {
     });
     const nodes = byName(graph);
     assert.deepEqual(nodes.Pad.params, [{ prop: "Length", value: 12 }]);
-    assert.ok(nodes.Pad.height > 32);
+    assert.equal(nodes.Pad.height, 32);
     const filletEdge = graph.edges.find(
       (edge) => edge.kind === "geom" && edge.from === "Pad" && edge.to === "Fillet");
     assert.deepEqual(filletEdge.subs, ["Edge3", "Edge7"]);
@@ -341,7 +341,7 @@ describe("nature des liens N007", () => {
       { prop: "Radius", value: 3 },
       { prop: "Size", value: 1 },
     ];
-    assert.equal(graphVisibleParams(params).length, 2);
+    assert.equal(graphVisibleParams(params).length, 1);
     assert.equal(graphVisibleParams(params)[0].prop, "Length");
   });
 

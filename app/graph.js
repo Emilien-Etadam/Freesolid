@@ -20,8 +20,7 @@ const CROSSING_PASSES = 8;
 const NODE_HALF_W = 74;
 const VAR_HALF_W = 54;
 const NODE_BASE_H = 32;
-const NODE_PARAM_ROW = 12;
-const GRAPH_PARAM_MAX = 2;
+const GRAPH_PARAM_MAX = 1;
 
 const IDENTIFIER = /[A-Za-z_][A-Za-z0-9_]*/g;
 
@@ -90,7 +89,6 @@ function addNode(nodes, item, role, fallbackOrder) {
   if (!name || typeof name !== "string" || nodes.has(name)) return;
   const order = typeof item.order === "number" ? item.order : fallbackOrder;
   const params = featureParams(item);
-  const shown = Math.min(params.length, GRAPH_PARAM_MAX);
   nodes.set(name, {
     name,
     label: item.label || name,
@@ -103,7 +101,7 @@ function addNode(nodes, item, role, fallbackOrder) {
     x: 0,
     y: 0,
     params,
-    height: NODE_BASE_H + shown * NODE_PARAM_ROW,
+    height: NODE_BASE_H,
   });
 }
 

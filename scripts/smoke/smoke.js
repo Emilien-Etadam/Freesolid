@@ -1298,7 +1298,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await paletteBtn.click();
   await page.waitForSelector("#graph-palette [data-type='serie']",
     { timeout: 5000 });
-  const paletteState = await page.evaluate(() => {
+  const nodePaletteState = await page.evaluate(() => {
     const cats = [...document.querySelectorAll("#graph-palette [data-category]")]
       .map((el) => el.getAttribute("data-category"));
     const sphere = document.querySelector(
@@ -1310,16 +1310,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         || sphere?.getAttribute("title") || "",
     };
   });
-  if (!paletteState.cats.includes("list")
-      || !paletteState.cats.includes("number")
-      || !paletteState.cats.includes("generators")) {
+  if (!nodePaletteState.cats.includes("list")
+      || !nodePaletteState.cats.includes("number")
+      || !nodePaletteState.cats.includes("generators")) {
     errors.push("N006 : catégories absentes de la palette ("
-      + JSON.stringify(paletteState.cats) + ")");
+      + JSON.stringify(nodePaletteState.cats) + ")");
   }
-  if (!paletteState.sphereDisabled
-      || !/Part|pas encore/i.test(paletteState.sphereReason)) {
+  if (!nodePaletteState.sphereDisabled
+      || !/Part|pas encore/i.test(nodePaletteState.sphereReason)) {
     errors.push("N006 : Sphère devrait être grisée avec sa raison ("
-      + JSON.stringify(paletteState) + ")");
+      + JSON.stringify(nodePaletteState) + ")");
   }
   await page.click("#graph-palette [data-type='serie']");
   await sleep(300);

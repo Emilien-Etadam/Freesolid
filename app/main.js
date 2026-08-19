@@ -23,9 +23,11 @@ import {
   freezeDrivenValues,
   functionEdgeEnds,
   graphDraftsEqual,
+  graphHasScript,
   graphNodePaletteGroups,
   graphPaletteItems,
   graphParamLine,
+  graphScriptSources,
   graphVisibleParams,
   isConstructWireSource,
   isGraphFeature,
@@ -990,6 +992,10 @@ document.addEventListener("keydown", (event) => {
     measuring = false;
     measureFirst = null;
     say("Mesure annulée.");
+  } else if (event.key === "Escape"
+      && !document.getElementById("script-trust")?.hidden) {
+    event.preventDefault();
+    document.getElementById("script-trust-deny")?.click();
   } else if (event.key === "Escape" && graphFn.active) {
     event.preventDefault();
     if (literalEditEl.style.display === "block") closeLiteralEditor();
@@ -2679,7 +2685,10 @@ function formatLiteral(value) {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (typeof value === "string") {
     const op = LIST_SOCKET_OPS.find((item) => item.value === value);
-    return op ? op.label : value;
+    if (op) return op.label;
+    const compact = value.replace(/\s+/g, " ").trim();
+    if (!compact) return "…";
+    return compact.length > 22 ? `${compact.slice(0, 21)}…` : compact;
   }
   return "";
 }
@@ -3276,6 +3285,28 @@ function openLiteralEditor(nodeId, key, clientX, clientY) {
     select.value = value ?? options[0]?.value;
     select.addEventListener("change", () => applyValue(select.value));
     literalEditEl.appendChild(select);
+  } else if (key === "code") {
+    const area = document.createElement("textarea");
+    area.rows = 10;
+    area.cols = 48;
+    area.value = value ?? "";
+    area.spellcheck = false;
+    area.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeLiteralEditor();
+      }
+    });
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.textContent = "OK";
+    ok.addEventListener("click", (event) => {
+      event.stopPropagation();
+      applyValue(area.value);
+    });
+    literalEditEl.appendChild(area);
+    literalEditEl.appendChild(ok);
+    area.focus();
   } else if (key === "name" || typeof value === "string") {
     const input = document.createElement("input");
     input.type = "text";
@@ -3380,6 +3411,39 @@ function exitGraphFeature({ force = false } = {}) {
   return true;
 }
 
+function requestScriptTrust(graph) {
+  const dialog = document.getElementById("script-trust");
+  const codeEl = document.getElementById("script-trust-code");
+  const allowBtn = document.getElementById("script-trust-allow");
+  const denyBtn = document.getElementById("script-trust-deny");
+  const sources = graphScriptSources(graph);
+  const blocks = sources.map((item) => {
+    const body = item.code || "(vide)";
+    return `# nœud ${item.id}\n${body}`;
+  });
+  codeEl.textContent = blocks.join("\n\n") || "(aucun code)";
+  dialog.hidden = false;
+  denyBtn.focus();
+  return new Promise((resolve) => {
+    const finish = (allowed) => {
+      dialog.hidden = true;
+      allowBtn.removeEventListener("click", onAllow);
+      denyBtn.removeEventListener("click", onDeny);
+      resolve(allowed);
+    };
+    const onAllow = (event) => {
+      event.preventDefault();
+      finish(true);
+    };
+    const onDeny = (event) => {
+      event.preventDefault();
+      finish(false);
+    };
+    allowBtn.addEventListener("click", onAllow);
+    denyBtn.addEventListener("click", onDeny);
+  });
+}
+
 async function applyGraphFeature() {
   if (!graphFn.active || !graphFn.feature) return;
   const composed = composeGraphPayload(graphFn.draft, graphFn.vocabulary);
@@ -3390,6 +3454,22 @@ async function applyGraphFeature() {
     return;
   }
   try {
+    if (graphHasScript(composed.graph)) {
+      let status = { authorized: false };
+      try {
+        status = await call("script_trust_status");
+      } catch {
+        status = { authorized: false };
+      }
+      if (!status.authorized) {
+        const allowed = await requestScriptTrust(composed.graph);
+        if (!allowed) {
+          say("Python refusé — la pièce est intacte.");
+          return;
+        }
+        await call("authorize_scripts");
+      }
+    }
     const tree = await call("edit_graph_feature", {
       feature: graphFn.feature.name,
       graph: composed.graph,

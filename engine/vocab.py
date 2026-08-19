@@ -118,9 +118,10 @@ def label_for_type(obj_type: str, lang: str = "fr") -> str:
 #: le sert tel quel ; un type sans entrée ici casse la CI exprès.
 #:
 #: Écartés, et pourquoi : ``scene`` (objets du document FreeCAD), ``viz``
-#: (visionneuses Qt), ``script`` (Python arbitraire), ``group`` (bus
-#: send/receive de l'éditeur Qt), ``alpha`` (nœud de test). Ils n'ont pas
-#: de sens dans un évaluateur headless qui rend une forme.
+#: (visionneuses Qt), ``group`` (bus send/receive de l'éditeur Qt),
+#: ``alpha`` (nœud de test). ``script`` n'est plus écarté : c'est un nœud
+#: du graphe, exécuté par le kernel après consentement explicite, jamais
+#: par l'évaluateur pur (N008).
 
 _REASON_PART = "appelle l'API Part — pas encore dans l'évaluateur pur"
 _REASON_MESH = "maillage — pas encore dans l'évaluateur pur"
@@ -194,6 +195,7 @@ GRAPH_CATEGORY_LABELS: dict[str, tuple[str, str]] = {
     "analyzers": ("Analyseurs", "Analyzers"),
     "transforms": ("Transformations", "Transforms"),
     "text": ("Texte", "Text"),
+    "script": ("Python", "Python"),
 }
 
 _F_VALUE = (GraphField("value", "number"),)
@@ -409,6 +411,13 @@ GRAPH_NODES: tuple[GraphNode, ...] = (
     _gn("debug", "Impression de débogage", "Debug Print", "text",
         "nodes_wb_icon.svg", inputs=(GraphPort("donnees", "any"),),
         reason=_REASON_TEXT),
+    # --- Python : l'évaluateur émet une instruction inerte ; le kernel
+    #     exécute, et seulement si le document est autorisé (session). ---
+    _gn("script", "Python", "Python", "script", "nodes_python.svg",
+        inputs=(GraphPort("a", "any"), GraphPort("b", "any"),
+                GraphPort("c", "any")),
+        fields=(GraphField("code", "code"),),
+        implemented=True),
 )
 
 GRAPH_NODE_BY_TYPE: dict[str, GraphNode] = {n.type: n for n in GRAPH_NODES}
@@ -423,6 +432,7 @@ GRAPH_INPUT_LABELS: dict[str, tuple[str, str]] = {
     "nombre": ("Nombre", "Count"),
     "a": ("A", "A"),
     "b": ("B", "B"),
+    "c": ("C", "C"),
     "x": ("X", "X"),
     "y": ("Y", "Y"),
     "z": ("Z", "Z"),
@@ -485,6 +495,7 @@ GRAPH_FIELD_LABELS: dict[str, tuple[str, str]] = {
     "value": ("Valeur", "Value"),
     "name": ("Nom", "Name"),
     "op": ("Opération", "Operation"),
+    "code": ("Code", "Code"),
 }
 
 

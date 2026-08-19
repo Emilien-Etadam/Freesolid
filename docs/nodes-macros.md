@@ -171,18 +171,33 @@ macros ». **C'est faux dès lors que le graphe est le document** : un graphe
 montre l'état d'une pièce, une macro rejoue une suite de gestes. Deux sujets
 distincts, qui ne se commandent plus l'un l'autre.
 
-Les macros gardent leur intérêt propre et leur analyse (`landscape.md` §2) :
-les 88 opérations de `engine/protocol.py` sont déjà le langage,
-l'enregistrement se réduit à journaliser les requêtes reçues par
-`server.py`, la relecture à les re-poster. Le morceau dur reste la
-**résolution de références** — les ops désignent les fonctions par nom
-(`Bossage1`), donc rejouer sur un autre document ne marche pas tout seul.
+Le chantier « macros » — enregistreur d'opérations du protocole, relecture
+par re-post — **est abandonné**. Il gardait son analyse (`landscape.md` §2) :
+les opérations de `engine/protocol.py` sont déjà le langage, l'enregistrement
+se réduisait à journaliser les requêtes. Ce n'est plus ce qu'on construit.
 
-Et la contrainte de format tient toujours, indépendamment du graphe : une
-macro est une **liste d'opérations validées, jamais du Python exécuté**.
-L'allowlist d'`Origin` de `server.py` laisse passer les requêtes sans en-tête
-`Origin` (curl, scripts locaux) ; tant que le contenu est de la donnée
-revalidée par `protocol.py`, la surface d'attaque est celle d'aujourd'hui.
+À la place : un **nœud Python** dans la fonction graphe (N008). On y écrit
+du code, il reçoit ses entrées sous les noms de ses ports, il rend une
+valeur (nombre, liste, vecteur) ou une instruction de forme. L'évaluateur
+(`engine/nodegraph.py`) n'exécute rien : il émet une instruction inerte,
+comme pour un cylindre. C'est le kernel qui exécute, et tout le code
+dangereux tient dans `engine/scriptnode.py`.
+
+La contrainte « une macro est une liste d'opérations validées, jamais du
+Python exécuté » est **levée pour ce nœud**, remplacée par : **jamais sans
+consentement explicite, jamais persisté.** Pourquoi le raisonnement a
+changé : l'utilisateur qui lance FreeSolid a déjà un shell ; le nœud ne
+lui donne rien de neuf. Le risque, lui, est le `.FCStd` : le graphe y est
+persisté, une pièce reçue d'un tiers deviendrait un fichier exécutable.
+L'autorisation vaut pour ce document et cette session. Elle n'est jamais
+écrite dans le fichier — un attaquant y inscrirait « de confiance ». Sans
+autorisation : message en français, nœud désigné, pièce intacte. Pas de
+bac à sable : le dire, plutôt que le prétendre.
+
+L'allowlist d'`Origin` de `server.py` laisse toujours passer les requêtes
+sans en-tête `Origin` (curl, scripts locaux). Un nœud Python exécutable
+*sans* consentement serait donc atteignable par tout processus local —
+c'est précisément ce que le refus sans autorisation ferme.
 
 ## 5. Le travail réel
 
@@ -234,7 +249,9 @@ signalée par un simple préfixe Σ, montre enfin **d'où** elle est pilotée.
    FreeCAD avec `awkward` et Qt, quand notre évaluateur est stdlib pure et
    headless. Ce qu'on économise est le travail de conception — quels nœuds
    existent, comment ils se groupent — affiné sur 674 commits.
-7. **Macros** — sujet indépendant, à mener quand il aura sa propre valeur.
+7. **Nœud Python** — à la place des macros. Type `script`, exécuté par le
+   kernel après consentement par document et par session, jamais persisté.
+   L'étape « macros » (enregistreur d'opérations) est **abandonnée**.
 
 Les étapes 1 à 3 n'ajoutent rien dans le `.FCStd` et n'écrivent pas de
 géométrie. L'étape 4 est le vrai investissement, et elle est volontairement

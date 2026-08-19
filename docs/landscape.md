@@ -124,14 +124,27 @@ moitié :
 | **Paramétrage** | 🟢 faible | remplacer les littéraux par des expressions — le moteur d'expressions et les variables globales existent depuis la phase A |
 | **Rejouabilité sur un autre document** | 🟧 le vrai travail | les ops désignent les fonctions par nom (`Bossage1`, `Esquisse2`) ; rejouer ailleurs suppose une résolution de références, pas un simple replay |
 
-Une contrainte à ne pas perdre de vue : le format de macro doit rester
-**une liste d'opérations du protocole, pas du Python arbitraire**. Le moteur
-écoute sur `127.0.0.1:8787` avec une allowlist d'`Origin`, mais celle-ci
-laisse passer les requêtes sans en-tête `Origin` (curl, scripts locaux).
-Une macro = données validées : la surface d'attaque reste celle
-d'aujourd'hui. Une macro = code Python exécuté : on ouvre une exécution de
-code arbitraire à tout processus local. Le choix se fait maintenant, pas
-après.
+Une contrainte à ne pas perdre de vue — et qui a changé de cible.
+Le moteur écoute sur `127.0.0.1:8787` avec une allowlist d'`Origin`,
+mais celle-ci laisse passer les requêtes sans en-tête `Origin` (curl,
+scripts locaux). L'utilisateur qui lance FreeSolid a déjà un shell :
+un nœud Python dans le graphe ne lui donne rien de neuf. **Le vrai
+risque est le fichier.** Le graphe est persisté dans le `.FCStd`
+(N004) ; une pièce reçue d'un tiers deviendrait un fichier exécutable
+si le code tournait tout seul.
+
+C'est pourquoi le nœud Python (N008) est autorisé, et pourquoi la
+contrainte « données, jamais du code » est **levée pour ce nœud**,
+remplacée par : **jamais sans consentement explicite, jamais persisté.**
+À la première exécution d'un script du document, le code est montré ;
+l'autorisation vaut pour ce document et cette session ; elle n'est
+jamais écrite dans le `.FCStd` — un attaquant y inscrirait « ce
+document est de confiance ». Sans autorisation : refus en français,
+nœud désigné, pièce intacte. Pas de bac à sable : le script tourne
+dans le processus du kernel, et l'interface le dit.
+
+L'enregistreur de macros (liste d'opérations du protocole) n'est plus
+l'étage visé — voir [`nodes-macros.md`](nodes-macros.md) §4.
 
 ## 3. Nœuds façon Grasshopper — un deuxième plan de travail, pas un deuxième moteur
 
@@ -195,24 +208,17 @@ transposé d'un cran plus haut : 🔴 refusé sous cette forme.
    sur des données existantes**, zéro géométrie à écrire. C'est aussi la
    meilleure réponse à « d'où vient cette face », que l'arbre plat cache.
 
-2. **🟧 Le graphe de macros — la vraie piste.** Un éditeur de nœuds dont
-   **chaque nœud est une opération du protocole** et dont l'évaluation
-   produit une liste ordonnée d'opérations envoyée au moteur. Les fils
-   portent des paramètres et des références de fonctions, pas de la
-   géométrie. On y gagne le générateur paramétrique (visserie, gabarits,
-   familles de pièces, répétitions pilotées) *sans* second moteur : le
-   résultat est un `.FCStd` normal, avec un vrai historique, ouvrable dans
-   FreeCAD. C'est le point 2 de la section macros, avec des fils au lieu
-   d'une liste — et ça n'a de sens qu'**après** les macros, dont il est
-   l'interface graphique.
+2. **🟧 Le graphe de macros — piste abandonnée (N008).** Un éditeur de nœuds dont
+   **chaque nœud est une opération du protocole** était la piste du 2026-08-15,
+   après un enregistreur de macros. **Ce n'est plus ce qu'on construit.** Le
+   nœud Python dans la fonction graphe a pris cette place : voir §2 ci-dessus
+   et [`nodes-macros.md`](nodes-macros.md) §4.
 
-Reste ce qu'un tel graphe ne donne pas d'emblée : les *data trees*, donc la
-génération de nuages de géométrie (semer 500 perçages sur une surface
-gauche). Ce n'est plus un mur depuis qu'on sait qu'`awkward` est la réponse
-de `j8sr0230/Nodes` au même problème, sous notre licence — mais c'est un
-étage au-dessus, à ouvrir seulement si le besoin se manifeste, et à assumer
-explicitement d'ici là comme les esquisses 3D et les configurations le sont
-déjà dans [`grandes-lignes.md`](grandes-lignes.md).
+Les *data trees* (semer 500 perçages sur une surface gauche) ne sont plus
+un mur : la fonction graphe les porte déjà, et `awkward` reste l'optimisation
+de `j8sr0230/Nodes` sous notre licence — à ouvrir seulement si le volume le
+justifie, comme les esquisses 3D et les configurations dans
+[`grandes-lignes.md`](grandes-lignes.md).
 
 ## Conclusion du complément
 
@@ -225,12 +231,14 @@ géométrie**, ce qui est le bon signe.
 - **`j8sr0230/Nodes`** est l'inverse exact : LGPL-2.1 comme nous, donc son
   **code** est empruntable — et c'est justement sa moitié invisible
   (le modèle de données `awkward`) qui vaut le détour, pas son éditeur Qt.
-- **Les macros** sont déjà à moitié construites par les 88 opérations du
-  protocole. Elles se font sans nouveau moteur, à une condition non
-  négociable : rester des **données validées**, jamais du Python exécuté.
-- **Les nœuds** ne valent que branchés sur ce même protocole. Ordre :
-  la vue graphe de l'arbre (gratuite), puis les macros, puis l'éditeur à
-  fils qui n'est que leur interface graphique.
+- **Le nœud Python** (N008) remplace le chantier macros. Ce n'est pas un
+  enregistreur d'opérations : c'est du code dans le graphe, exécuté par
+  le kernel après consentement explicite, jamais persisté comme « de
+  confiance » dans le `.FCStd`. La contrainte « données, jamais du
+  code » est levée pour ce nœud, et pour lui seul.
+- **Les nœuds** restent branchés sur le document. Ordre : la vue graphe
+  de l'arbre, la fonction graphe, le catalogue, le nœud Python. L'étape
+  « macros » de la feuille de route est abandonnée.
 
 Suite donnée le jour même dans [`nodes-macros.md`](nodes-macros.md), et elle
 resserre encore la doctrine : **le graphe n'est pas un objet, c'est une

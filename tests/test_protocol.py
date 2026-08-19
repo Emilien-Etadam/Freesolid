@@ -356,6 +356,10 @@ def test_graph_feature_ops_declared():
                     "graph": {"nodes": [], "edges": [], "output": "c"}}})
     protocol.validate_request({"op": "graph_vocabulary", "params": {}})
     protocol.validate_request({"op": "graph_vocabulary"})
+    assert protocol.OPS["authorize_scripts"] == ()
+    assert protocol.OPS["script_trust_status"] == ()
+    protocol.validate_request({"op": "authorize_scripts"})
+    protocol.validate_request({"op": "script_trust_status"})
     with pytest.raises(protocol.ProtocolError):
         protocol.validate_request(
             {"op": "add_graph_feature",
@@ -429,6 +433,7 @@ def test_ops_snapshot_keys():
         "add_thickness",
         "array_component",
         "assembly_tree",
+        "authorize_scripts",
         "check_interference",
         "delete_feature",
         "delete_variable",
@@ -453,6 +458,7 @@ def test_ops_snapshot_keys():
         "redo",
         "rename",
         "save_part",
+        "script_trust_status",
         "selftest",
         "set_active_body",
         "set_body_color",

@@ -1580,6 +1580,122 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ).catch(() => {});
   await step("fonction graphe");
 
+  // N008 — nœud Python : la demande d'autorisation apparaît ;
+  // refuser laisse la pièce intacte.
+  await page.click('[data-tab="features"]');
+  await sleep(200);
+  await page.click("#btn-graph-feature");
+  await page.waitForFunction(
+    () => document.querySelector("#panel .ptitle")?.textContent
+      === "Fonction graphe",
+    null,
+    { timeout: 8000 },
+  );
+  await page.click('#panel [title^="OK"]');
+  await page.waitForFunction(
+    () => window.__freesolidDebug?.graphFeatureActive === true,
+    null,
+    { timeout: 15000 },
+  );
+  const volAfterCreateScript = await volumeOf();
+  const n8palette = page.locator("#graph-fn-palette");
+  await n8palette.click();
+  await page.waitForSelector("#graph-palette [data-type='script']",
+    { timeout: 5000 });
+  const scriptPalette = await page.evaluate(() => {
+    const item = document.querySelector("#graph-palette [data-type='script']");
+    let cat = "";
+    for (let el = item; el; el = el.previousElementSibling) {
+      if (el.dataset && el.dataset.category) {
+        cat = el.dataset.category;
+        break;
+      }
+    }
+    return {
+      disabled: item?.classList.contains("disabled") ?? true,
+      title: item?.querySelector(".graph-palette-title")?.textContent || "",
+      cat,
+    };
+  });
+  if (scriptPalette.disabled || scriptPalette.cat !== "script") {
+    errors.push("N008 : le nœud Python devrait être posable ("
+      + JSON.stringify(scriptPalette) + ")");
+  }
+  await page.click("#graph-palette [data-type='script']");
+  await page.waitForFunction(
+    () => [...document.querySelectorAll(
+      "#graph-view .graph-node[data-type='script']")].length > 0,
+    null,
+    { timeout: 5000 },
+  ).catch(() => {});
+  const scriptId = await page.evaluate(() => {
+    const node = [...document.querySelectorAll(
+      "#graph-view .graph-node[data-type='script']")].pop();
+    return node?.getAttribute("data-name") || "";
+  });
+  if (scriptId) {
+    await page.evaluate((id) => {
+      window.__freesolidDebug.setGraphLiteral(
+        id, "code", "return [0, 20, 40]");
+    }, scriptId);
+  } else {
+    errors.push("N008 : nœud script absent après pose");
+  }
+  await page.click("#graph-fn-apply");
+  await page.waitForFunction(
+    () => document.getElementById("script-trust")?.hidden === false,
+    null,
+    { timeout: 8000 },
+  ).catch(() => {});
+  const trustUi = await page.evaluate(() => {
+    const box = document.getElementById("script-trust");
+    return {
+      visible: box?.hidden === false,
+      text: box?.innerText || "",
+    };
+  });
+  if (!trustUi.visible) {
+    errors.push("N008 : la demande d'autorisation n'est pas apparue");
+  } else if (!/bac à sable/i.test(trustUi.text)
+      || !/boucle infinie/i.test(trustUi.text)
+      || !/jamais enregistrée/i.test(trustUi.text)
+      || !/return \[0, 20, 40\]/.test(trustUi.text)) {
+    errors.push("N008 : le dialogue doit montrer le code et dire "
+      + "qu'il n'y a pas de bac à sable (" + trustUi.text.slice(0, 280) + ")");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "10-python-autorisation.png") });
+  await page.click("#script-trust-deny");
+  await page.waitForFunction(
+    () => document.getElementById("script-trust")?.hidden === true,
+    null,
+    { timeout: 5000 },
+  ).catch(() => {});
+  const volAfterDeny = await volumeOf();
+  const deniedStatus = await status();
+  if (isVolume(volAfterCreateScript) && isVolume(volAfterDeny)
+      && Math.abs(volAfterDeny - volAfterCreateScript) > 1e-3) {
+    errors.push("N008 : refuser le Python a modifié la pièce ("
+      + volAfterCreateScript + " → " + volAfterDeny + ")");
+  }
+  if (!/intacte|refusé/i.test(deniedStatus)) {
+    errors.push("N008 : le refus doit le dire clairement (« "
+      + deniedStatus + " »)");
+  }
+  const stillEditing = await page.evaluate(
+    () => window.__freesolidDebug?.graphFeatureActive === true);
+  if (!stillEditing) {
+    errors.push("N008 : le mode s'est fermé sur le refus");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "10b-python-refuse.png") });
+  page.once("dialog", (dialog) => { dialog.accept().catch(() => {}); });
+  await page.click("#graph-fn-close");
+  await page.waitForFunction(
+    () => window.__freesolidDebug?.graphFeatureActive !== true,
+    null,
+    { timeout: 8000 },
+  ).catch(() => {});
+  await step("nœud Python");
+
   console.log(errors.length
     ? "ERREURS:\n" + errors.join("\n")
     : "AUCUNE ERREUR console/page");

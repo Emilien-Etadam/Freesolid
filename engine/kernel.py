@@ -20,10 +20,9 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from engine.guard import friendly_error          # noqa: E402
-from engine.nodegraph import (  # noqa: E402
-    GraphError, evaluate as evaluate_graph, migrate_graph,
-)
+from engine.nodegraph import GraphError, migrate_graph  # noqa: E402
 from engine.protocol import dangling_deps, visible_dep_subs, visible_deps  # noqa: E402
+from engine.scriptnode import evaluate as evaluate_graph  # noqa: E402
 from engine.vocab import label_for_type          # noqa: E402
 
 
@@ -191,6 +190,8 @@ class Kernel:
         self._doc = None
         self._body = None
         self._assembly = False  # le document courant est un assemblage
+        # Consentement Python : ce document, cette session. Jamais le .FCStd.
+        self._scripts_authorized = False
 
     # -- helpers ---------------------------------------------------------
 
@@ -263,6 +264,7 @@ class Kernel:
                 pass
         self._doc = self._body = None
         self._assembly = False
+        self._scripts_authorized = False
 
     def _setup_doc(self, doc):
         """Active l'undo et borne la pile (mémoire en longue session).
@@ -1475,9 +1477,28 @@ class Kernel:
 
     def _evaluate_graph(self, graph):
         try:
-            return evaluate_graph(graph, self._current_variables())
+            return evaluate_graph(
+                graph, self._current_variables(),
+                trusted=self._scripts_authorized)
         except GraphError as exc:
             raise KernelError(str(exc)) from exc
+
+    def script_trust_status(self):
+        """L'autorisation Python de cette session, pour ce document.
+
+        Lecture seule. ``False`` après new_part / open_part — jamais lue
+        dans le ``.FCStd``.
+        """
+        self._require_doc()
+        return {"authorized": bool(self._scripts_authorized)}
+
+    def authorize_scripts(self):
+        """Consentement explicite : Python autorisé pour ce document,
+        jusqu'à la fermeture. N'écrit rien dans le fichier.
+        """
+        self._require_doc()
+        self._scripts_authorized = True
+        return {"authorized": True}
 
     def _build_graph_solid(self, instructions):
         import Part
@@ -5841,6 +5862,64 @@ class Kernel:
                             for b in tree["bodies"])
                 and not dangling_deps(tree)
                 and any(f.get("graph") for f in tree["features"]))
+
+            mark("n8: nœud Python — refus sans confiance, valeur une fois autorisé")
+            self.new_part("Pièce graphe N008")
+            self.add_rect_sketch(80, 50)
+            self.add_pad(8)
+            vol_n8 = _volume()
+
+            def _n8_script_graph():
+                return {
+                    "nodes": [
+                        _n4_node("py", "script",
+                                 code="return [0.0, 20.0, 40.0]"),
+                        _n4_node("y", "nombre", value=0),
+                        _n4_node("z", "nombre", value=-6),
+                        _n4_node("pts", "vecteur"),
+                        _n4_node("cyl", "cylindre", rayon=3, hauteur=20),
+                    ],
+                    "edges": [
+                        {"from": "py", "to": "pts", "input": "x"},
+                        {"from": "y", "to": "pts", "input": "y"},
+                        {"from": "z", "to": "pts", "input": "z"},
+                        {"from": "pts", "to": "cyl", "input": "ancrage"},
+                    ],
+                    "output": "cyl",
+                }
+
+            try:
+                self.add_graph_feature(_n8_script_graph(), mode="cut")
+                report["n8_script_refuse_sans_confiance"] = False
+            except KernelError as exc:
+                message = str(exc)
+                report["n8_script_refuse_sans_confiance"] = (
+                    "py" in message
+                    and ("autoris" in message or "Python" in message))
+            report["n8_script_piece_intacte"] = (
+                abs(_volume() - vol_n8) < 1e-3)
+            stored_before = [
+                f.get("graph") for f in self.get_tree()["features"]
+                if f.get("graph")]
+            report["n8_script_pas_dans_fcstd"] = not stored_before
+            self.authorize_scripts()
+            tree = self.add_graph_feature(_n8_script_graph(), mode="cut")
+            vol_n8_cut = _volume()
+            graphe_n8 = next(
+                (f for f in tree["features"] if f.get("graph")), None)
+            persisted = (graphe_n8 or {}).get("graph") or {}
+            persisted_text = json.dumps(persisted)
+            report["n8_script_valeur"] = (
+                vol_n8_cut < vol_n8 - 1
+                and not any(f["error"] for f in tree["features"])
+                and "authorized" not in persisted_text
+                and "trusted" not in persisted_text)
+            self.new_part("Pièce graphe N008 reset")
+            try:
+                self.add_graph_feature(_n8_script_graph(), mode="cut")
+                report["n8_script_reset_document"] = False
+            except KernelError:
+                report["n8_script_reset_document"] = True
 
             mark("n7: sous-éléments et esquisse attachée")
             self.new_part("Pièce nœuds N007")

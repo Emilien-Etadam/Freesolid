@@ -684,7 +684,7 @@ export const LIST_SOCKET_OPS = [
 /** Valeur initiale d'un champ propre au nœud (valeur, nom, opération). */
 export function defaultFieldValue(field) {
   const kind = field && field.kind;
-  if (kind === "text") return "";
+  if (kind === "text" || kind === "code") return "";
   if (kind === "op") return "+";
   if (kind === "list_op") return "flatten";
   return 1;
@@ -730,6 +730,7 @@ export function newGraphNode(spec, id, pos) {
     node[field.key] = defaultFieldValue(field);
   }
   for (const input of listOfSpec(spec.inputs)) {
+    if (input.kind === "any") continue;
     node[input.key] = defaultPortLiteral(input);
   }
   return node;
@@ -883,7 +884,8 @@ export function composeGraphPayload(draft, vocabulary) {
       if (taken.has(input.key)) continue;
       if (!(input.key in raw)) continue;
       const value = raw[input.key];
-      if (input.kind === "point" || input.kind === "vector") {
+      if (input.kind === "point" || input.kind === "vector"
+          || (input.kind === "any" && isPointLiteral(value))) {
         if (!isPointLiteral(value)) {
           return {
             ok: false,
@@ -896,7 +898,7 @@ export function composeGraphPayload(draft, vocabulary) {
         };
         continue;
       }
-      if (input.kind === "list") {
+      if (input.kind === "list" || input.kind === "any") {
         if (Array.isArray(value)) {
           node[input.key] = value;
           continue;
@@ -997,6 +999,24 @@ export function nodeIdFromGraphError(message) {
 export function isGraphFeature(item) {
   return !!(item && typeof item === "object" && item.graph
     && typeof item.graph === "object");
+}
+
+/** Le brouillon porte-t-il au moins un nœud Python ? */
+export function graphHasScript(draft) {
+  return listOfSpec(draft?.nodes).some((node) => node && node.type === "script");
+}
+
+/** Sources Python à montrer au consentement, dans l'ordre du graphe. */
+export function graphScriptSources(draft) {
+  const sources = [];
+  for (const node of listOfSpec(draft?.nodes)) {
+    if (!node || node.type !== "script") continue;
+    sources.push({
+      id: String(node.id),
+      code: typeof node.code === "string" ? node.code : "",
+    });
+  }
+  return sources;
 }
 
 /**

@@ -112,6 +112,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "edit_graph_feature": _Req(("feature", str), ("graph", dict)),
     "get_graph_feature": _Req(("feature", str)),
     "graph_vocabulary": (),             # lecture : types, libellés, ports
+    "script_trust_status": (),          # lecture : Python autorisé ce document / session
+    "authorize_scripts": (),            # consentement : jamais persisté dans le .FCStd
     "check_interference": (),          # assemblage : volumes communs par paires
     "undo": (),                        # une transaction = un Ctrl+Z
     "redo": (),

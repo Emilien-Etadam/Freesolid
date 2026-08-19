@@ -19,6 +19,8 @@ const ORIGIN_Y = 48;
 const CROSSING_PASSES = 8;
 const NODE_HALF_W = 74;
 const VAR_HALF_W = 54;
+const NODE_BASE_H = 32;
+const GRAPH_PARAM_MAX = 1;
 
 const IDENTIFIER = /[A-Za-z_][A-Za-z0-9_]*/g;
 
@@ -77,10 +79,16 @@ function kindOf(item, role) {
   return item.label || item.name || "";
 }
 
+function featureParams(item) {
+  return listOf(item.params).filter(
+    (param) => param && typeof param === "object" && typeof param.prop === "string");
+}
+
 function addNode(nodes, item, role, fallbackOrder) {
   const name = item.name;
   if (!name || typeof name !== "string" || nodes.has(name)) return;
   const order = typeof item.order === "number" ? item.order : fallbackOrder;
+  const params = featureParams(item);
   nodes.set(name, {
     name,
     label: item.label || name,
@@ -92,6 +100,8 @@ function addNode(nodes, item, role, fallbackOrder) {
     layer: 0,
     x: 0,
     y: 0,
+    params,
+    height: NODE_BASE_H,
   });
 }
 
@@ -117,19 +127,26 @@ function edgeKey(from, to, kind) {
 function collectEdges(tree, variableNames) {
   const edges = [];
   const seen = new Set();
-  const push = (from, to, kind) => {
+  const push = (from, to, kind, subs) => {
     if (!from || !to || from === to) return;
     const key = edgeKey(from, to, kind);
     if (seen.has(key)) return;
     seen.add(key);
-    edges.push({ from, to, kind });
+    const edge = { from, to, kind };
+    if (kind === "geom" && subs && subs.length) edge.subs = subs;
+    edges.push(edge);
   };
 
   walkEntries(tree, (item) => {
     const source = item.name;
     if (!source) return;
+    const depSubs = item.dep_subs && typeof item.dep_subs === "object"
+      && !Array.isArray(item.dep_subs) ? item.dep_subs : {};
     for (const dep of listOf(item.deps)) {
-      if (typeof dep === "string") push(dep, source, "geom");
+      if (typeof dep !== "string") continue;
+      const subs = listOf(depSubs[dep]).filter(
+        (name) => typeof name === "string" && name);
+      push(dep, source, "geom", subs);
     }
     const driven = item.driven;
     if (!driven || typeof driven !== "object" || Array.isArray(driven)) return;
@@ -575,6 +592,45 @@ export function paramChoiceCaption(param, labels) {
     return `${withUnit} — déjà « ${param.expr} »`;
   }
   return withUnit;
+}
+
+/**
+ * Libellé compact d'une cote dans le nœud du graphe.
+ * `labels` est `PROP_LABELS` — pas de seconde table. Σ comme dans l'arbre.
+ */
+export function graphParamLine(param, labels) {
+  if (!param || typeof param !== "object" || typeof param.prop !== "string") {
+    return "";
+  }
+  const pair = labels && typeof labels === "object" ? labels[param.prop] : null;
+  const label = Array.isArray(pair) && pair[0] ? pair[0] : param.prop;
+  const driven = typeof param.expr === "string" && param.expr;
+  const prefix = driven ? "Σ " : "";
+  const value = typeof param.value === "number" && Number.isFinite(param.value)
+    ? String(param.value)
+    : "";
+  return `${prefix}${label} ${value}`.trim();
+}
+
+/** Premières cotes visibles dans le nœud ; le reste va en infobulle. */
+export function graphVisibleParams(params) {
+  return listOf(params).slice(0, GRAPH_PARAM_MAX);
+}
+
+/**
+ * Sous-élément affiché sur une arête : « Face3 », ou « Edge3 +1 »
+ * quand il y en a plusieurs.
+ */
+export function edgeSubCaption(subs) {
+  const names = listOf(subs).filter((name) => typeof name === "string" && name);
+  if (!names.length) return "";
+  if (names.length === 1) return names[0];
+  return `${names[0]} +${names.length - 1}`;
+}
+
+/** Milieu de la Bézier à poignées horizontales (t = 0,5). */
+export function edgeMidpoint(x1, y1, x2, y2) {
+  return { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
 }
 
 const FN_COL_GAP = 220;

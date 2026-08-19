@@ -466,6 +466,35 @@ def visible_deps(dep_names, known_names):
     return names
 
 
+def visible_dep_subs(dep_subs, known_names):
+    """Sous-éléments dont la cible est un nœud de ``known_names``.
+
+    ``dep_subs`` : ``{nom de cible: [sous-éléments]}``. Une cible hors
+    payload n'émet rien — même règle que ``visible_deps``. Les listes
+    vides et les sous-éléments vides (attache à l'objet entier) sont
+    écartés. L'ordre des cibles et des noms est conservé.
+
+    Fonction pure — pas d'import FreeCAD.
+    """
+    if not isinstance(dep_subs, dict):
+        return {}
+    known = set(known_names or ())
+    result = {}
+    for name, subs in dep_subs.items():
+        if name not in known:
+            continue
+        seen = set()
+        cleaned = []
+        for sub in subs or ():
+            if not isinstance(sub, str) or not sub or sub in seen:
+                continue
+            seen.add(sub)
+            cleaned.append(sub)
+        if cleaned:
+            result[name] = cleaned
+    return result
+
+
 def dangling_deps(tree):
     """Arêtes de ``tree`` dont la cible n'est aucun nœud du payload.
 

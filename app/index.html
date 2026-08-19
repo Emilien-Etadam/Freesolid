@@ -172,6 +172,15 @@
     pointer-events: none;
   }
   .graph-node text.graph-literal { pointer-events: auto; cursor: text; }
+  .graph-node text.graph-param {
+    fill: var(--ink-2); font: 10px/1 system-ui, "Segoe UI", sans-serif;
+    pointer-events: auto; cursor: pointer;
+  }
+  .graph-node text.graph-param.driven { fill: #6fbf8f; }
+  .graph-edge-sub {
+    fill: var(--ink-2); font: 10px/1 system-ui, "Segoe UI", sans-serif;
+    pointer-events: none;
+  }
   .graph-node image { pointer-events: none; }
   #graph-view.wiring { cursor: crosshair; }
   #graph-bar {

@@ -490,6 +490,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("N002 : pas d'arête esquisse–bossage ("
       + JSON.stringify(graphInfo.edges) + ")");
   }
+  const padShowsDepth = graphInfo.labels.some((t) =>
+    /Bossage/i.test(t) && /Profondeur/.test(t));
+  if (!padShowsDepth) {
+    errors.push("N007 : le nœud de bossage devrait montrer sa profondeur ("
+      + graphInfo.labels.join(" | ") + ")");
+  }
   await page.screenshot({ path: path.join(SHOTS, "4a-graphe.png") });
 
   // N003 — tirer un fil variable → bossage, choisir la profondeur, couper.
@@ -962,8 +968,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.screenshot({ path: path.join(SHOTS, "4g-graphe-bossage.png") });
   if (n005AfterAdd.newName) {
     await page.locator(
-      "#graph-view .graph-node[data-name='" + n005AfterAdd.newName + "']",
-    ).click({ force: true });
+      "#graph-view .graph-node[data-name='" + n005AfterAdd.newName + "'] .shape",
+    ).click({ force: true, position: { x: 40, y: 8 } });
+    await page.waitForSelector(
+      "#graph-view .graph-node[data-name='" + n005AfterAdd.newName + "'].sel",
+      { timeout: 3000 },
+    ).catch(() => {});
     await sleep(200);
     page.once("dialog", (dialog) => dialog.accept());
     await page.keyboard.press("Delete");
@@ -1255,6 +1265,56 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("gravure rééditée");
   await page.screenshot({ path: path.join(SHOTS, "8-gravure-editee.png") });
 
+  // N007 — sur la vitrine : sous-élément du congé, profondeur du bossage.
+  const graphWasOpen = await page.evaluate(() =>
+    document.getElementById("graph-view")?.classList.contains("open") === true);
+  if (!graphWasOpen) await page.click("#btn-graph");
+  await page.waitForSelector("#graph-view.open .graph-node", { timeout: 8000 });
+  const n7info = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
+    const edges = [...document.querySelectorAll("#graph-view .graph-edge")];
+    const pad = nodes.find((n) => /Bossage/i.test(n.textContent || ""));
+    const fillet = nodes.find((n) =>
+      (n.getAttribute("data-type") || "").includes("Fillet")
+      || /Congé/i.test(n.textContent || ""));
+    const filletName = fillet?.getAttribute("data-name") || "";
+    const filletEdge = edges.find((e) =>
+      e.getAttribute("data-to") === filletName
+      || e.getAttribute("data-from") === filletName);
+    return {
+      padText: pad?.textContent || "",
+      filletSubs: filletEdge?.getAttribute("data-subs") || "",
+      filletLabel: filletEdge?.querySelector(".graph-edge-sub")?.textContent || "",
+    };
+  });
+  if (!/Profondeur/.test(n7info.padText)) {
+    errors.push("N007 : nœud de bossage vitrine sans profondeur (« "
+      + n7info.padText + " »)");
+  }
+  if (!n7info.filletSubs && !n7info.filletLabel) {
+    errors.push("N007 : arête du congé sans sous-élément ("
+      + JSON.stringify(n7info) + ")");
+  } else if (n7info.filletLabel && !/^(Face|Edge)\d/.test(n7info.filletLabel)) {
+    errors.push("N007 : sous-élément du congé inattendu (« "
+      + n7info.filletLabel + " »)");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "8b-graphe-liens.png") });
+  const stillOpen = await page.evaluate(() =>
+    document.getElementById("graph-view")?.classList.contains("open") === true);
+  if (stillOpen) {
+    await page.click("#btn-graph");
+    await page.waitForFunction(
+      () => !document.getElementById("graph-view")?.classList.contains("open"),
+      null, { timeout: 5000 },
+    ).catch(() => {});
+  }
+  const n7closed = await page.evaluate(() =>
+    !document.getElementById("graph-view")?.classList.contains("open"));
+  if (!n7closed) {
+    errors.push("N007 : le graphe est resté ouvert après inspection");
+  }
+  await step("nature des liens");
+
   // N004b — éditeur de la fonction graphe : créer, poser, câbler, appliquer,
   // erreur d'appariement désignée, pièce intacte.
   const isVolume = (v) => typeof v === "number" && Number.isFinite(v);
@@ -1511,7 +1571,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("N004b : deuxième série absente pour l'appariement");
   }
   await page.screenshot({ path: path.join(SHOTS, "9b-fonction-graphe-erreur.png") });
-  page.once("dialog", (dialog) => dialog.accept());
+  page.once("dialog", (dialog) => { dialog.accept().catch(() => {}); });
   await page.click("#graph-fn-close");
   await page.waitForFunction(
     () => window.__freesolidDebug?.graphFeatureActive !== true,

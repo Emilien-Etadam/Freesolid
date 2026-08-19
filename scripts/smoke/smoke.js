@@ -968,8 +968,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.screenshot({ path: path.join(SHOTS, "4g-graphe-bossage.png") });
   if (n005AfterAdd.newName) {
     await page.locator(
-      "#graph-view .graph-node[data-name='" + n005AfterAdd.newName + "']",
-    ).click({ force: true });
+      "#graph-view .graph-node[data-name='" + n005AfterAdd.newName + "'] .shape",
+    ).click({ force: true, position: { x: 40, y: 8 } });
+    await page.waitForSelector(
+      "#graph-view .graph-node[data-name='" + n005AfterAdd.newName + "'].sel",
+      { timeout: 3000 },
+    ).catch(() => {});
     await sleep(200);
     page.once("dialog", (dialog) => dialog.accept());
     await page.keyboard.press("Delete");

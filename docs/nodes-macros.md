@@ -228,7 +228,13 @@ signalée par un simple préfixe Σ, montre enfin **d'où** elle est pilotée.
    fonctions d'habillage réclament une face prise dans le viewport, une
    fonction existante ne se recâble pas, et l'historique reste linéaire —
    le graphe est un historique dessiné en graphe, pas une toile libre.
-6. **Macros** — sujet indépendant, à mener quand il aura sa propre valeur.
+6. **Catalogue de nœuds** — la taxonomie et les icônes de
+   `j8sr0230/Nodes` (LGPL-2.1, notre licence) reprises comme **conception et
+   ressources**, pas comme code : leur framework tourne dans le Python GUI de
+   FreeCAD avec `awkward` et Qt, quand notre évaluateur est stdlib pure et
+   headless. Ce qu'on économise est le travail de conception — quels nœuds
+   existent, comment ils se groupent — affiné sur 674 commits.
+7. **Macros** — sujet indépendant, à mener quand il aura sa propre valeur.
 
 Les étapes 1 à 3 n'ajoutent rien dans le `.FCStd` et n'écrivent pas de
 géométrie. L'étape 4 est le vrai investissement, et elle est volontairement

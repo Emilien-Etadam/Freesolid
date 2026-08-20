@@ -21,6 +21,9 @@ if _REPO_ROOT not in sys.path:
 
 from engine.guard import friendly_error          # noqa: E402
 from engine.nodegraph import GraphError, migrate_graph  # noqa: E402
+from engine.platform import (                    # noqa: E402
+    allow_from_environ, version_status,
+)
 from engine.protocol import dangling_deps, visible_dep_subs, visible_deps  # noqa: E402
 from engine.scriptnode import evaluate as evaluate_graph  # noqa: E402
 from engine.vocab import label_for_type          # noqa: E402
@@ -4533,6 +4536,25 @@ class Kernel:
         try:
             mark("ping")
             report["ping"] = self.ping()
+            platform = version_status(
+                report["ping"]["freecad"],
+                allow=allow_from_environ())
+            report["freecad"] = platform["running"]
+            report["freecad_reference"] = platform["reference"]
+            banner = (
+                "selftest> FreeCAD {} (référence {})".format(
+                    platform["running"], platform["reference"]))
+            if platform["override"]:
+                report["freecad_override"] = True
+                banner += " — REPLI EXPLICITE, mesures non comparables"
+            print(banner, flush=True)
+            if not platform["match"] and not platform["override"]:
+                print("=" * 72, flush=True)
+                print(platform["message"], flush=True)
+                print("=" * 72, flush=True)
+                report["freecad_plateforme"] = False
+                raise KernelError(platform["message"])
+            report["freecad_plateforme"] = True
 
             mark("m0: pièce + esquisse contrainte + bossage")
             tree = self.new_part("Pièce de test")

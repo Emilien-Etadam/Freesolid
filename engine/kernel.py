@@ -57,6 +57,45 @@ def parse_neutral_plane(neutral="XY"):
     return key
 
 
+def resolve_pattern_originals(names, catalog):
+    """Valide la liste ``features`` d'une répétition / symétrie.
+
+    *names* : noms demandés, dans l'ordre. *catalog* : ``{nom: {in_body,
+    is_addsub, label}}``. Retour : noms uniques, ordre conservé.
+
+    Fonction pure — le catalogue est fourni par l'appelant (le kernel
+    le construit depuis le corps actif ; les tests unitaires le fabriquent).
+    """
+    if not isinstance(names, (list, tuple)):
+        raise KernelError("features doit être une liste de noms")
+    if len(names) == 0:
+        raise KernelError("aucune fonction à répéter — la liste features "
+                          "est vide")
+    ordered = []
+    seen = set()
+    for raw in names:
+        if not isinstance(raw, str) or not raw.strip():
+            raise KernelError("fonction inconnue : {}".format(raw))
+        name = raw.strip()
+        entry = catalog.get(name)
+        if entry is None:
+            raise KernelError("fonction inconnue : {}".format(name))
+        label = entry.get("label") or name
+        if not entry.get("in_body"):
+            raise KernelError(
+                "{} n'appartient pas au corps actif".format(label))
+        if not entry.get("is_addsub"):
+            raise KernelError(
+                "{} n'est pas une fonction additive ou soustractive — "
+                "une répétition porte sur un bossage ou un enlèvement "
+                "de matière".format(label))
+        if name in seen:
+            continue
+        seen.add(name)
+        ordered.append(name)
+    return ordered
+
+
 #: Lignes hors chaîne PartDesign — flag ``FreeSolidRolledBack``.
 _ROLLBACK_KINDS = frozenset({"sketch", "surface"})
 
@@ -2333,12 +2372,40 @@ class Kernel:
                               "un bossage ou un enlèvement de matière")
         return features[-1]
 
-    def _transform(self, type_id, configure):
+    def _pattern_catalog(self):
+        """Catalogue {nom: {in_body, is_addsub, label}} du document."""
         body = self._require_body()
         doc = self._require_doc()
-        original = self._last_solid_feature()
+        in_body = {o.Name for o in body.Group}
+        catalog = {}
+        for obj in doc.Objects:
+            is_addsub = False
+            try:
+                is_addsub = bool(
+                    obj.isDerivedFrom("PartDesign::FeatureAddSub"))
+            except Exception:
+                is_addsub = False
+            catalog[obj.Name] = {
+                "in_body": obj.Name in in_body,
+                "is_addsub": is_addsub,
+                "label": obj.Label,
+            }
+        return catalog
+
+    def _pattern_originals(self, features):
+        """Fonctions à répéter : ``features`` ou la dernière additive."""
+        if features is None:
+            return [self._last_solid_feature()]
+        names = resolve_pattern_originals(features, self._pattern_catalog())
+        doc = self._require_doc()
+        return [doc.getObject(name) for name in names]
+
+    def _transform(self, type_id, configure, features=None):
+        body = self._require_body()
+        doc = self._require_doc()
+        originals = self._pattern_originals(features)
         feature = body.newObject(type_id, type_id.split("::")[-1])
-        feature.Originals = [original]
+        feature.Originals = originals
         configure(feature)
         feature.Label = label_for_type(type_id)
         # FreeCAD 1.0 laisse le Tip sur l'original après newObject d'un
@@ -2353,9 +2420,13 @@ class Kernel:
             raise
         return self.get_tree()
 
-    def add_mirror(self, plane="YZ"):
-        """Symétrie de la dernière fonction par rapport à un plan
-        d'origine (XY/XZ/YZ = Dessus/Face/Droite)."""
+    def add_mirror(self, plane="YZ", features=None):
+        """Symétrie d'une ou plusieurs fonctions par rapport à un plan
+        d'origine (XY/XZ/YZ = Dessus/Face/Droite).
+
+        ``features`` : noms des fonctions à symétriser. Absent : la
+        dernière fonction additive ou soustractive du corps actif.
+        """
         role = self._PLANE_ROLES.get(str(plane).upper())
         if role is None:
             raise KernelError(
@@ -2364,7 +2435,8 @@ class Kernel:
 
         def configure(feature):
             feature.MirrorPlane = (plane_obj, [""])
-        return self._transform("PartDesign::Mirrored", configure)
+        return self._transform("PartDesign::Mirrored", configure,
+                               features=features)
 
     def _origin_axis(self, axis):
         role = self._AXIS_ROLES.get(str(axis).upper())
@@ -2373,11 +2445,13 @@ class Kernel:
                 "axe inconnu « {} » — attendu X, Y ou Z".format(axis))
         return self._origin_feature(role)
 
-    def add_linear_pattern(self, length, count, axis="X"):
-        """Répétition linéaire de la dernière fonction le long d'un axe.
+    def add_linear_pattern(self, length, count, axis="X", features=None):
+        """Répétition linéaire d'une ou plusieurs fonctions le long d'un axe.
 
         ``length`` is the total span, occurrences included — FreeCAD's
         convention, same as SolidWorks' « jusqu'à » spacing mode.
+        ``features`` : noms des fonctions à répéter. Absent : la dernière
+        fonction additive ou soustractive du corps actif.
         """
         axis_obj = self._origin_axis(axis)
         occurrences = int(count)
@@ -2388,10 +2462,15 @@ class Kernel:
             feature.Direction = (axis_obj, [""])
             feature.Length = float(length)
             feature.Occurrences = occurrences
-        return self._transform("PartDesign::LinearPattern", configure)
+        return self._transform("PartDesign::LinearPattern", configure,
+                               features=features)
 
-    def add_polar_pattern(self, count, angle=360.0, axis="Z"):
-        """Répétition circulaire de la dernière fonction autour d'un axe."""
+    def add_polar_pattern(self, count, angle=360.0, axis="Z", features=None):
+        """Répétition circulaire d'une ou plusieurs fonctions autour d'un axe.
+
+        ``features`` : noms des fonctions à répéter. Absent : la dernière
+        fonction additive ou soustractive du corps actif.
+        """
         axis_obj = self._origin_axis(axis)
         occurrences = int(count)
         if occurrences < 2:
@@ -2401,7 +2480,8 @@ class Kernel:
             feature.Axis = (axis_obj, [""])
             feature.Angle = float(angle)
             feature.Occurrences = occurrences
-        return self._transform("PartDesign::PolarPattern", configure)
+        return self._transform("PartDesign::PolarPattern", configure,
+                               features=features)
 
     def add_thickness(self, face, thickness):
         """Coque : évide la pièce, la face cliquée devient l'ouverture."""
@@ -5960,6 +6040,24 @@ class Kernel:
                 any(str(name).startswith("Edge") for name in fillet_subs)
                 and any(str(name).startswith("Face") for name in draft_subs)
                 and not dangling_deps(tree))
+
+            mark("n9: répétition d'un groupe de fonctions")
+            self.new_part("Pièce répétition groupe N009")
+            self.add_rect_sketch(40, 40)
+            tree = self.add_pad(10)
+            pad_name = next(f["name"] for f in tree["features"]
+                            if f["type"] == "PartDesign::Pad")
+            self.add_rect_sketch(10, 10, face=self._top_face_id())
+            tree = self.add_pocket(through=True)
+            pocket_name = next(f["name"] for f in tree["features"]
+                               if f["type"] == "PartDesign::Pocket")
+            tree = self.add_linear_pattern(
+                length=30, count=2, axis="X",
+                features=[pad_name, pocket_name])
+            # 40×40×10 × 2, recouvrement 10 mm, deux perçages 10×10.
+            report["n9_repetition_groupe"] = (
+                not any(f["error"] for f in tree["features"])
+                and _close(_volume(), 26000.0, tol=1e-4))
 
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce

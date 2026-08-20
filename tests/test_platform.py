@@ -73,3 +73,9 @@ def test_ci_reads_platform_module():
     assert "from engine.platform import FREECAD" in workflow
     assert "freecad=${{ steps.platform.outputs.freecad }}" in workflow
     assert workflow.count("freecad=${{ steps.platform.outputs.freecad }}") == 2
+
+
+def test_ci_prints_failure_file_on_selftest_error():
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "selftest-echecs.txt" in workflow
+    assert "if: failure()" in workflow

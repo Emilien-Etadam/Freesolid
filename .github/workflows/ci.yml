@@ -45,6 +45,15 @@ jobs:
       - name: Selftest
         shell: bash -el {0}
         run: PYTHONIOENCODING=utf-8 freecadcmd scripts/run-selftest.py
+      - name: Diagnostic d'échec
+        if: failure()
+        run: |
+          echo "===== selftest-echecs.txt ====="
+          if [ -f selftest-echecs.txt ]; then
+            cat selftest-echecs.txt
+          else
+            echo "(fichier absent — l'échec n'a pas été enregistré)"
+          fi
 
   js-tests:
     name: Tests JS (Node)

@@ -91,7 +91,7 @@ def format_selftest_failure(version=None, failed=None, error=None) -> str:
             version.get("reference", "?")))
         if version.get("override"):
             lines.append("repli explicite : les mesures ne sont pas comparables")
-        if version.get("message"):
+        if version.get("message") and not error:
             lines.append(version["message"])
     if error:
         lines.append("erreur : {}".format(error))

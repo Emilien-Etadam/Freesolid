@@ -382,6 +382,35 @@ def _temp_bodies_left(kernel):
     ]
 
 
+def _owner_name(obj):
+    """Nom du groupe / booléen / corps qui détient *obj*, ou None."""
+    parent = obj.getParentGeoFeatureGroup()
+    if parent is not None:
+        return parent.Name
+    doc = obj.Document
+    for other in doc.Objects:
+        group = list(getattr(other, "Group", None) or [])
+        if obj in group:
+            return other.Name
+    inlist = list(getattr(obj, "InList", None) or [])
+    if inlist:
+        return inlist[0].Name
+    return None
+
+
+def _tools_absorbed(kernel, leftover, template_name):
+    """Vrai si chaque artefact N009Replay est absorbé (pas un fuyard)."""
+    doc = kernel._require_doc()
+    for name in leftover:
+        obj = doc.getObject(name)
+        if obj is None:
+            continue
+        owner = _owner_name(obj)
+        if owner is None or owner == template_name:
+            return False
+    return True
+
+
 def probe_dressup_breakage(kernel):
     """Congé sur Edge3 d'un bossage, hauteur substituée.
 
@@ -501,16 +530,7 @@ def run_minimal_spike(kernel):
     expected_cut = host_volume - expected_fused
 
     leftover = _temp_bodies_left(kernel)
-    # Le corps outil absorbé par le booléen peut rester dans Group.
-    absorbed = True
-    for name in leftover:
-        obj = kernel._require_doc().getObject(name)
-        if obj is None:
-            continue
-        parent = obj.getParentGeoFeatureGroup()
-        if parent is None or parent.Name == template:
-            absorbed = False
-            break
+    absorbed = _tools_absorbed(kernel, leftover, template)
 
     def _close(actual, expected, tol=1e-3):
         scale = abs(float(expected)) or 1.0
@@ -529,7 +549,69 @@ def run_minimal_spike(kernel):
         "expected_cut": expected_cut,
         "failed_instance_cleaned": failed_clean,
         "tool_absorbed": absorbed,
+        "leftover": leftover,
         "captured_types": [feat["type_id"] for feat in captured["features"]],
+    }
+
+
+def _edge_sig(edge):
+    center = edge.CenterOfMass
+    return (
+        round(float(center.x), 4),
+        round(float(center.y), 4),
+        round(float(center.z), 4),
+        round(float(edge.Length), 4),
+    )
+
+
+def probe_stale_index(kernel):
+    """Congé sur un indice qui ne désigne plus la même arête.
+
+    Un enlèvement centré 8×8 laisse Edge3 intacte mais **renumérote**
+    d'autres arêtes. On prend le premier indice dont la géométrie a
+    changé, et on lui applique le congé : erreur, ou silence ?
+    """
+    kernel.new_part("N009 indice périmé")
+    kernel.add_rect_sketch(20, 20)
+    kernel.add_pad(20)
+    box_edges = kernel._require_body().Shape.Edges
+    before = [_edge_sig(edge) for edge in box_edges]
+    kernel.add_rect_sketch(8, 8, face=kernel._top_face_id())
+    kernel.add_pocket(through=True)
+    after_edges = kernel._require_body().Shape.Edges
+    after = [_edge_sig(edge) for edge in after_edges]
+    changed = [
+        index for index, sig in enumerate(before)
+        if index >= len(after) or after[index] != sig
+    ]
+    stale = changed[0] if changed else None
+    volume_before = float(kernel._require_body().Shape.Volume)
+    error = None
+    mode = "aucun_changement"
+    volume_after = volume_before
+    if stale is not None:
+        try:
+            kernel.add_fillet(radius=2, edges=[stale])
+        except KernelError as exc:
+            error = str(exc)
+            mode = "erreur"
+        else:
+            volume_after = float(kernel._require_body().Shape.Volume)
+            if abs(volume_after - volume_before) < 1e-6:
+                mode = "noop"
+            else:
+                mode = "silencieux"
+    return {
+        "edges_on_pad": len(before),
+        "edges_after_pocket": len(after),
+        "changed_indices": changed,
+        "stale_index": stale,
+        "sig_before": None if stale is None else before[stale],
+        "sig_after": None if stale is None or stale >= len(after) else after[stale],
+        "mode": mode,
+        "error": error,
+        "volume_before_fillet": volume_before,
+        "volume_after_fillet": volume_after,
     }
 
 
@@ -537,6 +619,7 @@ def run_spike_report(kernel):
     """Selftest : cas minimal + habillage + coût 10/50/200."""
     minimal = run_minimal_spike(kernel)
     dressup = probe_dressup_breakage(kernel)
+    stale = probe_stale_index(kernel)
 
     kernel.new_part("N009 coût")
     kernel.add_rect_sketch(20, 20)
@@ -557,6 +640,7 @@ def run_spike_report(kernel):
     return {
         "minimal": minimal,
         "dressup": dressup,
+        "stale_index": stale,
         "cost": cost,
         "reconstitution": reconstitution_table(),
     }

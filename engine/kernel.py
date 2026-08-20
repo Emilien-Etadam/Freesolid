@@ -6092,7 +6092,9 @@ class Kernel:
                 "expected_cut": spike["minimal"]["expected_cut"],
                 "failed_instance_cleaned": spike["minimal"][
                     "failed_instance_cleaned"],
+                "tool_absorbed": spike["minimal"].get("tool_absorbed"),
                 "habillage": spike["dressup"],
+                "indice_perime": spike["stale_index"],
                 "cout_s": {k: v for k, v in spike["cost"].items()
                            if k != "cleanup_ok"},
                 "cout_proprete": spike["cost"].get("cleanup_ok"),

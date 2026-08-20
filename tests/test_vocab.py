@@ -75,3 +75,8 @@ def test_graph_node_labels_are_french():
     assert vocab.GRAPH_NODE_BY_TYPE["vecteur"].category == "vector"
     assert "scene" not in {n.category for n in vocab.GRAPH_NODES}
     assert "viz" not in {n.category for n in vocab.GRAPH_NODES}
+    assert vocab.GRAPH_NODE_BY_TYPE["script"].category == "script"
+    assert vocab.GRAPH_NODE_BY_TYPE["script"].implemented is True
+    assert vocab.GRAPH_NODE_BY_TYPE["script"].icon == "nodes_python.svg"
+    assert vocab.graph_category_label("script") == "Python"
+    assert vocab.graph_field_label("code") == "Code"

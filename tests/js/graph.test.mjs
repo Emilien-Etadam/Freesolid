@@ -6,6 +6,7 @@ import {
   composeGraphPayload,
   connectGraphEdge,
   countEdgeCrossings,
+  defaultFieldValue,
   defaultPortLiteral,
   edgeCurvePath,
   edgeMidpoint,
@@ -16,9 +17,11 @@ import {
   functionEdgeEnds,
   graphCreateProfile,
   graphFeaturePlaceable,
+  graphHasScript,
   graphNodePaletteGroups,
   graphPaletteItems,
   graphParamLine,
+  graphScriptSources,
   graphVisibleParams,
   isConstructWireSource,
   isGraphFeature,
@@ -652,5 +655,56 @@ describe("palette du catalogue de nœuds", () => {
     assert.match(sphere.reason, /API Part/);
     assert.equal(groups[0].items[0].enabled, true);
     assert.equal(graphNodePaletteGroups(null).length, 0);
+  });
+});
+
+describe("nœud Python", () => {
+  const scriptSpec = {
+    type: "script", label: "Python", category: "script",
+    category_label: "Python", icon: "nodes_python.svg",
+    implemented: true, shape: false,
+    inputs: [
+      { key: "a", label: "A", kind: "any" },
+      { key: "b", label: "B", kind: "any" },
+      { key: "c", label: "C", kind: "any" },
+    ],
+    fields: [{ key: "code", label: "Code", kind: "code" }],
+  };
+
+  it("newGraphNode pose le code vide, sans littéraux a/b/c", () => {
+    const node = newGraphNode(scriptSpec, "py", { x: 8, y: 9 });
+    assert.equal(node.type, "script");
+    assert.equal(node.code, "");
+    assert.equal("a" in node, false);
+    assert.equal("b" in node, false);
+    assert.equal("c" in node, false);
+    assert.equal(defaultFieldValue({ kind: "code" }), "");
+  });
+
+  it("composeGraphPayload conserve le code et les ports optionnels", () => {
+    const vocab = [
+      ...VOCAB,
+      scriptSpec,
+    ];
+    const draft = {
+      nodes: [
+        { id: "py", type: "script", code: "return a + 1", a: 4 },
+        { id: "c", type: "cylindre", rayon: 3, hauteur: 8,
+          ancrage: { x: 0, y: 0, z: 0 } },
+      ],
+      edges: [{ from: "py", to: "c", input: "rayon" }],
+      output: "c",
+    };
+    const result = composeGraphPayload(draft, vocab);
+    assert.equal(result.ok, true);
+    const script = result.graph.nodes.find((node) => node.id === "py");
+    assert.equal(script.code, "return a + 1");
+    assert.equal(script.a, 4);
+    assert.equal("b" in script, false);
+    assert.equal(graphHasScript(draft), true);
+    assert.deepEqual(graphScriptSources(draft), [
+      { id: "py", code: "return a + 1" },
+    ]);
+    assert.equal(graphHasScript(minimalGraphFeature()), false);
   });
 });

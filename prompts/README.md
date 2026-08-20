@@ -29,4 +29,4 @@ repart de 1 pour chaque série.
 | Série | Chantier | Référence |
 |---|---|---|
 | `P` | l'app — fonctions de CAO, UI, moteur | — |
-| `N` | nœuds — arêtes de dépendance, vue graphe, fonction graphe, macros | [`docs/nodes-macros.md`](../docs/nodes-macros.md) |
+| `N` | nœuds — arêtes de dépendance, vue graphe, fonction graphe, nœud Python | [`docs/nodes-macros.md`](../docs/nodes-macros.md) |

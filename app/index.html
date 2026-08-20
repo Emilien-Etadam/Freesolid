@@ -271,9 +271,47 @@
     box-shadow: 0 10px 28px rgba(0,0,0,0.5);
     padding: 8px; min-width: 160px;
   }
-  #graph-literal-edit input, #graph-literal-edit select {
+  #graph-literal-edit input, #graph-literal-edit select, #graph-literal-edit textarea {
     width: 100%; box-sizing: border-box; margin: 4px 0;
+    font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
+  #graph-literal-edit textarea { min-height: 160px; resize: vertical; }
+  #script-trust {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    padding: 24px;
+  }
+  #script-trust[hidden] { display: none; }
+  .script-trust-card {
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    max-width: 640px; width: min(640px, 100%);
+    padding: 18px 18px 14px;
+  }
+  .script-trust-card h2 {
+    margin: 0 0 10px; font-size: 16px; font-weight: 650;
+  }
+  .script-trust-card p {
+    margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: var(--ink-2);
+  }
+  #script-trust-code {
+    margin: 0 0 14px; max-height: 240px; overflow: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .script-trust-actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+  }
+  .script-trust-actions button {
+    background: var(--panel); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 12px; cursor: pointer; font: inherit;
+  }
+  .script-trust-actions button:hover { border-color: var(--accent); color: var(--accent); }
+  #script-trust-allow { color: #c9a227; }
 
   aside {
     grid-area: tree;
@@ -703,6 +741,22 @@
   </div>
   <div id="graph-palette"></div>
   <div id="graph-literal-edit"></div>
+  <div id="script-trust" hidden>
+    <div class="script-trust-card" role="dialog" aria-modal="true"
+         aria-labelledby="script-trust-title">
+      <h2 id="script-trust-title">Autoriser le Python de ce document ?</h2>
+      <p>Ce nœud exécute du code Python dans le moteur — pas une formule.
+        Il n'y a pas de bac à sable : le code a les mêmes droits que
+        FreeSolid. Une boucle infinie bloquera le moteur.</p>
+      <p>L'autorisation vaut pour ce document et cette session. Elle n'est
+        jamais enregistrée dans le fichier.</p>
+      <pre id="script-trust-code"></pre>
+      <div class="script-trust-actions">
+        <button type="button" id="script-trust-deny">Refuser</button>
+        <button type="button" id="script-trust-allow">Autoriser</button>
+      </div>
+    </div>
+  </div>
   <div id="param-pick"></div>
   <div id="settings-menu">
     <div class="menu-label">Libellés du ruban</div>

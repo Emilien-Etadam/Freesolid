@@ -3,8 +3,11 @@
 Une fonction graphe est une ligne de l'arbre : un flux de nœuds à
 l'intérieur, boucles et listes comprises, et **une forme en sortie**.
 Ce module ne fabrique aucune géométrie. Il rend une liste plate
-d'instructions ``{"shape": "box"|"cylinder", ...}`` ; c'est le kernel
-qui les traduit en ``Part``.
+d'instructions ``{"shape": "box"|"cylinder"|"script", ...}`` ; c'est le
+kernel qui les traduit en ``Part``, et qui exécute les ``script``.
+Un nœud Python n'est **jamais** évalué ici : l'instruction émise est
+inerte. Un callback ``run_script`` (fourni par le kernel) peut la
+résoudre ; sans lui, elle circule telle quelle.
 
 Un graphe est un dict ``{"nodes": [...], "edges": [...], "output": <id>}``.
 
@@ -12,8 +15,9 @@ Chaque nœud : ``{"id": <str|int>, "type": <str>, ...}``.
 
 Le catalogue complet — types, ports, catégories, icônes, état
 implémenté — vit dans ``engine.vocab.GRAPH_NODES``. Ici, seulement
-l'évaluation des catégories pures (nombre, vecteur, liste) et des deux
-générateurs déjà là (cylindre, boîte).
+l'évaluation des catégories pures (nombre, vecteur, liste), des deux
+générateurs déjà là (cylindre, boîte), et l'émission inerte du nœud
+``script``.
 
 Alias N004, migrés à l'évaluation : ``calcul`` + ``op`` → addition /
 soustraction / multiplication / division ; ``point`` (composition) →
@@ -50,6 +54,8 @@ from engine.vocab import GRAPH_NODE_BY_TYPE, GRAPH_NODES
 
 COUNT_MAX = _COUNT_MAX
 _MAX_DEPTH = 32
+_SHAPE_KINDS = frozenset({"box", "cylinder"})
+_SCRIPT_KIND = "script"
 
 _NODE_INPUTS = {
     spec.type: tuple(port.key for port in spec.inputs)
@@ -177,16 +183,20 @@ class GraphError(Exception):
     """Graphe invalide ; le message nomme le nœud fautif, en français."""
 
 
-def evaluate(graph, variables):
+def evaluate(graph, variables, run_script=None):
     """Instructions géométriques d'un graphe, ou lève GraphError.
 
-    ``graph``     : ``{"nodes": [...], "edges": [...], "output": <id>}``
-    ``variables`` : ``{nom: valeur}`` — les variables globales, valeurs
-                    courantes.
-    Retour        : ``[{"shape": "box"|"cylinder", ...}]`` — des
-                    instructions, pas des formes.
+    ``graph``      : ``{"nodes": [...], "edges": [...], "output": <id>}``
+    ``variables``  : ``{nom: valeur}`` — les variables globales, valeurs
+                     courantes.
+    ``run_script`` : callable ``(instruction, node) -> valeur``, ou
+                     ``None``. **Ce module n'exécute jamais le Python** :
+                     sans callback, un nœud ``script`` rend une
+                     instruction inerte ``{"shape": "script", ...}``.
+    Retour         : ``[{"shape": "box"|"cylinder"|"script", ...}]`` —
+                     des instructions, pas des formes.
     """
-    return _Evaluator(migrate_graph(graph), variables).run()
+    return _Evaluator(migrate_graph(graph), variables, run_script).run()
 
 
 def _label(node):
@@ -208,7 +218,12 @@ def _is_point(value):
 
 
 def _is_instruction(value):
-    return isinstance(value, dict) and value.get("shape") in ("box", "cylinder")
+    return isinstance(value, dict) and value.get("shape") in (
+        "box", "cylinder", _SCRIPT_KIND)
+
+
+def _is_shape_instruction(value):
+    return isinstance(value, dict) and value.get("shape") in _SHAPE_KINDS
 
 
 def _as_number(value, node):
@@ -264,7 +279,10 @@ def _preview(value):
     if isinstance(value, list):
         return "liste[{}]".format(len(value))
     if _is_instruction(value):
-        return "forme {}".format(value.get("shape"))
+        kind = value.get("shape")
+        if kind == _SCRIPT_KIND:
+            return "script"
+        return "forme {}".format(kind)
     if _is_point(value):
         return "point"
     return repr(value)
@@ -340,6 +358,26 @@ def _apply(fn, args, node, depth):
     return result
 
 
+def accept_value(value, node):
+    """Valeur qu'un script a le droit de rendre — types de l'évaluateur.
+
+    Nombre, liste, vecteur, ou instruction de forme (boîte / cylindre).
+    Tout le reste est refusé, en français, en nommant le nœud.
+    """
+    if _is_number(value):
+        return _as_number(value, node)
+    if _is_point(value):
+        return _as_point(value, node)
+    if _is_shape_instruction(value):
+        return value
+    if isinstance(value, list):
+        _check_ceiling(value, node)
+        return [accept_value(item, node) for item in value]
+    raise GraphError(
+        "nœud « {} » : type de retour inconnu ({})".format(
+            _label(node), _preview(value)))
+
+
 def _flatten_instructions(value, node):
     if _is_instruction(value):
         return [value]
@@ -358,7 +396,7 @@ def _flatten_instructions(value, node):
 
 
 class _Evaluator:
-    def __init__(self, graph, variables):
+    def __init__(self, graph, variables, run_script=None):
         if not isinstance(graph, dict):
             raise GraphError("le graphe doit être un objet")
         nodes = graph.get("nodes")
@@ -382,6 +420,7 @@ class _Evaluator:
         if not isinstance(variables, dict):
             raise GraphError("variables : objet {nom: valeur} attendu")
         self.variables = variables
+        self.run_script = run_script
         self.nodes = {}
         for raw in nodes:
             if not isinstance(raw, dict):
@@ -510,6 +549,8 @@ class _Evaluator:
             return _apply(self._cylinder_fn(node), self._inputs(node), node, 0)
         if kind == "boite":
             return _apply(self._box_fn(node), self._inputs(node), node, 0)
+        if kind == _SCRIPT_KIND:
+            return self._script(node)
         spec = GRAPH_NODE_BY_TYPE.get(kind)
         if spec is not None and not spec.implemented:
             raise GraphError(
@@ -718,3 +759,27 @@ class _Evaluator:
             return {"shape": "box", "length": dx, "width": dy, "height": dz,
                     "x": x, "y": y, "z": z}
         return _run
+
+    def _script(self, node):
+        """Émet l'instruction inerte — n'exécute jamais le code."""
+        code = node.get("code", "")
+        if not isinstance(code, str):
+            raise GraphError(
+                "nœud « {} » : code Python manquant".format(_label(node)))
+        ident = str(node["id"])
+        inputs = {}
+        declared = _NODE_INPUTS[node["type"]]
+        for port in declared:
+            if port in self.incoming[ident]:
+                inputs[port] = self._eval(self.incoming[ident][port])
+            elif port in node:
+                inputs[port] = self._literal(node[port], node, port)
+        instruction = {
+            "shape": _SCRIPT_KIND,
+            "code": code,
+            "inputs": inputs,
+            "id": ident,
+        }
+        if self.run_script is None:
+            return instruction
+        return self.run_script(instruction, node)

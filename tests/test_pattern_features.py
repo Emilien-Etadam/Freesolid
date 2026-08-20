@@ -76,3 +76,11 @@ def test_duplicates_dropped_order_kept():
     assert resolve_pattern_originals(
         ["Pocket", "Pad", "Pocket", "Pad001", "Pad"], _CATALOG
     ) == ["Pocket", "Pad", "Pad001"]
+
+
+def test_reconstitution_table_is_pure():
+    from engine.replay import reconstitution_table
+    table = reconstitution_table()
+    assert "PartDesign::Pad" in table["replayable"]
+    assert "add_loft" in table["unreplayable"]
+    assert "add_text" in table["unreplayable"]

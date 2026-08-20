@@ -6059,6 +6059,29 @@ class Kernel:
                 not any(f["error"] for f in tree["features"])
                 and _close(_volume(), 26000.0, tol=1e-4))
 
+            mark("n9: spike rejeu variable")
+            from engine.replay import run_spike_report
+            spike = run_spike_report(self)
+            report["n9_spike_variable"] = bool(spike["minimal"]["ok"])
+            report["n9_spike_rapport"] = {
+                "fused_volume": spike["minimal"]["fused_volume"],
+                "expected_fused": spike["minimal"]["expected_fused"],
+                "cut_volume": spike["minimal"]["cut_volume"],
+                "expected_cut": spike["minimal"]["expected_cut"],
+                "failed_instance_cleaned": spike["minimal"][
+                    "failed_instance_cleaned"],
+                "habillage": spike["dressup"],
+                "cout_s": {k: v for k, v in spike["cost"].items()
+                           if k != "cleanup_ok"},
+                "cout_proprete": spike["cost"].get("cleanup_ok"),
+                "reconstitution": {
+                    "replayable": sorted(spike["reconstitution"][
+                        "replayable"]),
+                    "unreplayable": sorted(spike["reconstitution"][
+                        "unreplayable"]),
+                },
+            }
+
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce
             # qui montre ce que l'Autotest a testé, pas sur la plaque m1.5.

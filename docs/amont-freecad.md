@@ -132,8 +132,8 @@ non-régression).
 | **A1** | `freecadcmd script.py` **importe le fichier comme module** au lieu de l'exécuter comme script — d'où `__name__` = le nom du fichier, jamais `"__main__"` | absence volontaire de garde dans `engine/server.py` ; expliqué (imprécisément) dans `AGENTS.md` | doc | ✅ **mécanisme établi** : `src/App/Application.cpp:3108-3117` appelle `addPythonPath(dirname)` puis `loadModule(stem)`, et ne retombe sur `runFile(path, local=true)` — qui exécute dans une **copie** du dict de `__main__` — que si l'import lève | à formuler ; **corriger d'abord notre propre `AGENTS.md`** |
 | **A2** | Aucun moyen de borner la pile d'undo depuis Python | `engine/kernel.py:311-322` (double `hasattr`), audit **2.4** | API | ✅ **confirmé et élargi** : `src/App/Document.pyi` n'expose ni `UndoLimit` ni `setMaxUndoStackSize` / `getMaxUndoStackSize`, **ni en 1.1.3 ni sur `main` au 2026-08-21** — seulement `UndoRedoMemSize` en lecture seule. Le C++ a bien `setMaxUndoStackSize()`, il n'est pas exporté. Et le manque **ne figure pas** au [catalogue public des défauts de l'API Python](https://gist.github.com/galou/1fea17fbcf8cd25cf613b142cd9012ce) tenu par galou : notre entrée est inédite, et ce catalogue est l'endroit où la rattacher | **demande amont nette et minuscule** ; nos deux branches `hasattr` sont du code mort à annoter |
 | **A3** | Joints d'assemblage headless : API non documentée, forme d'argument piégeuse | `engine/kernel.py:518-560` | doc | ✅ **requalifié** : `setJointConnectors` n'est pas absent, il est **exercé par la suite de tests amont** — `src/Mod/Assembly/AssemblyTests/TestCore.py:251` — et n'est qu'une façade posant `Reference1`/`Reference2`. Il manque donc la **documentation**, pas l'API | demande amont réduite à la doc ; voir §4bis pour ce que le test amont nous apprend sur **notre** code |
-| **A4** | TechDraw headless : SIGSEGV sur `getSectionCS` (direction parallèle) et sur `CutSurfaceDisplay=Hide` | `engine/kernel.py:1126-1136` (contournements en place) | bug | ⚠️ **prémisse probablement périmée** : en 1.1.3 `DrawViewSection::getSectionCS()` enveloppe déjà la construction du repère dans un `try/catch` et journalise « failed to create section CS » au lieu de planter. Et la famille « TechDraw SIGSEGV depuis la CLI » a son issue amont, [#20024](https://github.com/FreeCAD/FreeCAD/issues/20024), **fermée par la PR #20110** | 🔴 **ne rien remonter avant d'avoir re-testé sur 1.1.3.** Nos contournements datent de 1.0.0 et pourraient être devenus inutiles |
-| **A5** | TechDraw headless : géométrie 2D de coupe souvent vide (HLR même thread) ; DXF seul export fiable | `engine/kernel.py:1166-1172` | doc | ⚠️ même réserve que A4 — la partie « cut async » de notre commentaire n'est pas couverte par le `try/catch`, elle reste plausible | à re-tester avec A4 |
+| **A4** | TechDraw headless : SIGSEGV sur `getSectionCS` (direction parallèle) et sur `CutSurfaceDisplay=Hide` | `engine/kernel.py:1126-1136` (contournements en place) | bug | ⚠️ **prémisse probablement périmée** : en 1.1.3 `DrawViewSection::getSectionCS()` enveloppe déjà la construction du repère dans un `try/catch` et journalise « failed to create section CS » au lieu de planter. Et la famille « TechDraw SIGSEGV depuis la CLI » a son issue amont, [#20024](https://github.com/FreeCAD/FreeCAD/issues/20024), **fermée par la PR #20110** | 🔴 **ne rien remonter avant d'avoir re-testé sur 1.1.3.** Nos contournements datent de 1.0.0 et pourraient être devenus inutiles. Le re-test est écrit : [`scripts/spike-techdraw-coupe.py`](../scripts/spike-techdraw-coupe.py) — **hors CI par construction**, puisqu'il peut faire un SIGSEGV et tuerait le job |
+| **A5** | TechDraw headless : géométrie 2D de coupe souvent vide (HLR même thread) ; DXF seul export fiable | `engine/kernel.py:1166-1172` | doc | ⚠️ même réserve que A4 — la partie « cut async » de notre commentaire n'est pas couverte par le `try/catch`, elle reste plausible | à re-tester avec A4, même spike |
 | **A6** | Les échecs PartDesign les plus déroutants sont **corrects mais inexpliqués** — « multiple solids », « out of the allowed scope », « wire is not closed » | `engine/guard.py` — trois traductions écrites, testées unitairement | produit | ✅ **une issue ouverte attend exactement ça** : [#19255](https://github.com/FreeCAD/FreeCAD/issues/19255) — *« "BRep_API: command not done" is not a clear or actionable error message »*, **ouverte**, étiquetée **Help wanted**, projet « OCCT Liaison » | **le candidat le plus mûr du registre** : notre code est déjà écrit, testé, sous la bonne licence, et il y a une porte ouverte où frapper |
 | **A7** | ~~Suivre une référence de sous-élément à travers un recompute avec un verdict explicite~~ | ~~`engine/replay.py`~~ | — | ❌ **entrée close — FreeCAD l'expose déjà.** Voir §4ter | **retirée du registre** ; devient une tâche FreeSolid |
 | **A8** | Segfaults OCCT hors TechDraw | audit **2.12** | bug | — non instruit | seulement si un cas devient reproductible |
@@ -214,7 +214,7 @@ Conséquences, dans l'ordre :
    garde », c'est **stocker le bon identifiant**. La forme exacte de cet
    identifiant a été tranchée par le spike — voir §4quater.
 3. ~~Un spike reste nécessaire~~ — **il a tourné le 2026-08-21**
-   (`scripts/spike-element-map.py`, arrivé par la PR #63),
+   ([`scripts/spike-element-map.py`](../scripts/spike-element-map.py), arrivé par la PR #63),
    et son résultat corrige le point 2. §4quater.
 
 Ce renversement est la meilleure justification du §1 qu'on pouvait
@@ -223,7 +223,7 @@ elle évite d'écrire.
 
 ### 4quater — A7 mesuré : la carte se traverse **à l'envers**, pas de face
 
-*Résultat du 2026-08-21, `scripts/spike-element-map.py` (PR #63) sur FreeCAD 1.1.3
+*Résultat du 2026-08-21, [`scripts/spike-element-map.py`](../scripts/spike-element-map.py) (PR #63) sur FreeCAD 1.1.3
 réel (CI). Il corrige §4ter, qui reposait sur une lecture de source non
 vérifiée à l'exécution.*
 
@@ -373,5 +373,10 @@ tiennent en quelques lignes chacun :
   `getElementMappedName` → `getElementIndexedName` stable à travers un
   changement de cote.
 - **A4/A5** : rejouer la vue en coupe de `make_drawing` sur 1.1.3 **sans**
-  nos deux contournements, et voir ce qui tombe.
+  nos deux contournements, et voir ce qui tombe. Écrit depuis :
+  [`scripts/spike-techdraw-coupe.py`](../scripts/spike-techdraw-coupe.py),
+  à lancer à la main — `freecadcmd scripts/spike-techdraw-coupe.py`, ou une
+  sonde à la fois via `FREESOLID_SPIKE_PROBE=base-parallele|cut-surface-hide`.
+  Après un crash, la dernière ligne de `spike-techdraw-coupe.txt` nomme la
+  sonde qui a tué le processus.
 

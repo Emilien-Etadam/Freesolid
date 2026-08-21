@@ -367,10 +367,13 @@ def test_graph_feature_ops_declared():
 
 
 def test_repeat_feature_ops_declared():
-    assert protocol.OPS["add_repeat_feature"] == (
-        "features", "instances", "mode")
-    assert protocol.OPS["edit_repeat_feature"] == ("feature", "instances")
+    assert protocol.OPS["add_repeat_feature"] == ("features", "mode")
+    assert protocol.OPS["edit_repeat_feature"] == ("feature",)
     assert protocol.OPS["get_repeat_feature"] == ("feature",)
+    assert protocol.OPS["add_repeat_feature"].optional == {
+        "instances": list, "graph": dict}
+    assert protocol.OPS["edit_repeat_feature"].optional == {
+        "instances": list, "graph": dict}
     protocol.validate_request(
         {"op": "add_repeat_feature",
          "params": {"features": ["Pad", "Pocket"],
@@ -378,9 +381,18 @@ def test_repeat_feature_ops_declared():
                                    "params": {"Pad": {"Length": 10}}}],
                     "mode": "fuse"}})
     protocol.validate_request(
+        {"op": "add_repeat_feature",
+         "params": {"features": ["Pad"],
+                    "graph": {"nodes": [], "edges": [], "output": "i"},
+                    "mode": "fuse"}})
+    protocol.validate_request(
         {"op": "edit_repeat_feature",
          "params": {"feature": "Boolean",
                     "instances": [{"offset": [40, 0, 0], "params": {}}]}})
+    protocol.validate_request(
+        {"op": "edit_repeat_feature",
+         "params": {"feature": "Boolean",
+                    "graph": {"nodes": [], "edges": [], "output": "i"}}})
     protocol.validate_request(
         {"op": "get_repeat_feature", "params": {"feature": "Boolean"}})
     with pytest.raises(protocol.ProtocolError):

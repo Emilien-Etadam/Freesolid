@@ -911,8 +911,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         || "",
     };
   });
-  if (paletteState.count !== 23) {
-    errors.push("N005 : palette " + paletteState.count + " items (attendu 23)");
+  if (paletteState.count !== 24) {
+    errors.push("N005 : palette " + paletteState.count + " items (attendu 24)");
   }
   if (!paletteState.filletDisabled) {
     errors.push("N005 : Congé devrait être grisé sans face sélectionnée");
@@ -1695,6 +1695,87 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { timeout: 8000 },
   ).catch(() => {});
   await step("nœud Python");
+
+  // N010b — répétition variable : poser un nœud instance et appliquer.
+  await page.click('[data-tab="features"]');
+  await sleep(200);
+  const padRow = page.locator("#tree li.feat").filter({ hasText: /Bossage/ }).first();
+  await page.click("#btn-repeat-variable");
+  await page.waitForFunction(
+    () => document.querySelector("#panel .ptitle")?.textContent
+      === "Répétition variable",
+    null,
+    { timeout: 8000 },
+  );
+  const repeatNote = await page.evaluate(() =>
+    document.querySelector("#panel .pnote")?.textContent ?? "");
+  if (!/topologie/i.test(repeatNote) || !/arr[eê]te/i.test(repeatNote)) {
+    errors.push("N010b : le panneau doit dire que la répétition s'arrête "
+      + "si la topologie change (" + repeatNote.slice(0, 180) + ")");
+  }
+  if (await padRow.count()) {
+    await padRow.click();
+    await sleep(400);
+  } else {
+    errors.push("N010b : aucune fonction Bossage dans l'arbre");
+  }
+  await page.click('#panel [title^="OK"]');
+  await page.waitForFunction(
+    () => window.__freesolidDebug?.graphFeatureActive === true
+      && window.__freesolidDebug?.graphFeatureKind === "repetition",
+    null,
+    { timeout: 15000 },
+  ).catch(() => {});
+  const repeatEditor = await page.evaluate(() => ({
+    active: window.__freesolidDebug?.graphFeatureActive === true,
+    kind: window.__freesolidDebug?.graphFeatureKind || "",
+  }));
+  if (!repeatEditor.active || repeatEditor.kind !== "repetition") {
+    errors.push("N010b : l'éditeur de répétition ne s'est pas ouvert ("
+      + JSON.stringify(repeatEditor) + ")");
+  } else {
+    const paletteBtnRepeat = page.locator("#graph-fn-palette");
+    await paletteBtnRepeat.click();
+    await page.waitForSelector("#graph-palette [data-type='instance']",
+      { timeout: 5000 });
+    const repeatPalette = await page.evaluate(() => {
+      const cats = [...document.querySelectorAll("#graph-palette [data-category]")]
+        .map((el) => el.getAttribute("data-category"));
+      return {
+        cats,
+        hasInstance: !!document.querySelector("#graph-palette [data-type='instance']"),
+        hasCote: !!document.querySelector("#graph-palette [data-type='cote']"),
+      };
+    });
+    if (!repeatPalette.cats.includes("repeat")
+        || !repeatPalette.hasInstance || !repeatPalette.hasCote) {
+      errors.push("N010b : nœuds cote/instance absents de la palette ("
+        + JSON.stringify(repeatPalette) + ")");
+    }
+    await page.click("#graph-palette [data-type='instance']");
+    await sleep(400);
+    await page.click("#graph-fn-apply");
+    await sleep(2500);
+    const afterApply = await page.evaluate(() => ({
+      active: window.__freesolidDebug?.graphFeatureActive === true,
+      ids: window.__freesolidDebug?.graphFeatureNodeIds ?? [],
+    }));
+    if (!afterApply.active) {
+      errors.push("N010b : l'éditeur s'est fermé après Appliquer");
+    }
+    if (!afterApply.ids.some((id) => id)) {
+      errors.push("N010b : aucun nœud après pose d'instance");
+    }
+  }
+  await page.screenshot({ path: path.join(SHOTS, "11-repetition-variable.png") });
+  page.once("dialog", (dialog) => { dialog.accept().catch(() => {}); });
+  await page.click("#graph-fn-close");
+  await page.waitForFunction(
+    () => window.__freesolidDebug?.graphFeatureActive !== true,
+    null,
+    { timeout: 8000 },
+  ).catch(() => {});
+  await step("répétition variable");
 
   console.log(errors.length
     ? "ERREURS:\n" + errors.join("\n")

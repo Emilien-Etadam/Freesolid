@@ -31,6 +31,7 @@ import {
   graphVisibleParams,
   isConstructWireSource,
   isGraphFeature,
+  isRepeatFeature,
   isParamWireSource,
   isParamWireTarget,
   layoutFunctionGraph,
@@ -177,6 +178,7 @@ window.__freesolidDebug = {
   get surfaceMeshCount() { return surfaceMeshes.length; },
   get surfaceScreenPoint() { return surfaceScreenPoint(); },
   get graphFeatureActive() { return graphFn.active; },
+  get graphFeatureKind() { return graphFn.kind; },
   get graphFeatureErrorNode() { return graphFn.errorNode; },
   get graphFeatureOutput() { return graphFn.draft?.output ?? null; },
   get graphFeatureNodeIds() {
@@ -1789,7 +1791,9 @@ function appendFeatureHistoryRow(feature, rolledBack) {
   row.appendChild(arrow);
   const icon = isGraphFeature(feature)
     ? "Geoassembly.svg"
-    : TREE_ICONS[feature.type];
+    : isRepeatFeature(feature)
+      ? "PartDesign_LinearPattern.svg"
+      : TREE_ICONS[feature.type];
   if (icon) row.appendChild(treeIcon(icon));
   row.appendChild(document.createTextNode(feature.label));
   row.title = `${feature.kind} — double-clic : modifier · ` +
@@ -1815,6 +1819,12 @@ function appendFeatureHistoryRow(feature, rolledBack) {
   if (feature.type === "Sketcher::SketchObject") {
     if (selectedSketch?.name === feature.name) row.classList.add("sel");
     row.addEventListener("click", () => onSketchRowClick(feature));
+  } else if (feature.type !== "PartDesign::Plane") {
+    row.addEventListener("click", () => {
+      panel.notifyPick("feature", {
+        kind: "feature", name: feature.name, label: feature.label,
+      });
+    });
   }
   treeEl.appendChild(row);
 
@@ -1867,7 +1877,7 @@ async function editSurface(surface) {
 }
 
 async function editFeature(feature) {
-  if (isGraphFeature(feature)) {
+  if (isGraphFeature(feature) || isRepeatFeature(feature)) {
     enterGraphFeature(feature);
     return;
   }
@@ -2209,6 +2219,10 @@ const graphFnBar = document.getElementById("graph-fn-bar");
 const GRAPH_HINT_AT = 60;
 const GRAPH_FN_HINT =
   "Fonction graphe — la géométrie produite est figée. Échap pour fermer.";
+const REPEAT_FN_HINT =
+  "Répétition variable — le graphe produit les instances. "
+  + "Si la topologie d'une instance ne correspond plus, la répétition "
+  + "s'arrête plutôt que de produire. Échap pour fermer.";
 
 let graphOpen = false;
 let graphPanX = 0;
@@ -2225,6 +2239,7 @@ let graphPaletteProfile = null;
 let graphFitNames = "";
 let graphFn = {
   active: false,
+  kind: "graphe",
   feature: null,
   draft: null,
   saved: null,
@@ -3156,7 +3171,8 @@ function openGraphPalette({ profileSketch = null, clientX, clientY } = {}) {
           world.y += offset;
           const id = nextGraphNodeId(graphFn.draft.nodes);
           graphFn.draft.nodes.push(newGraphNode(item.spec, id, world));
-          if (!graphFn.draft.output && item.spec.shape) {
+          if (!graphFn.draft.output
+              && (item.spec.shape || item.spec.type === "instance")) {
             graphFn.draft.output = id;
           }
           renderGraphFunction();
@@ -3344,6 +3360,7 @@ function openLiteralEditor(nodeId, key, clientX, clientY) {
 }
 
 async function enterGraphFeature(feature) {
+  const kind = isRepeatFeature(feature) ? "repetition" : "graphe";
   if (graphFn.active && graphFn.feature?.name === feature.name) return;
   if (graphFn.active && !exitGraphFeature()) return;
   let vocabulary;
@@ -3357,17 +3374,23 @@ async function enterGraphFeature(feature) {
     say("vocabulaire des nœuds illisible", true);
     return;
   }
-  let graph = feature.graph;
+  let graph = kind === "repetition" ? feature.repeat?.graph : feature.graph;
   if (!graph || typeof graph !== "object") {
     try {
-      const stored = await call("get_graph_feature", { feature: feature.name });
+      const op = kind === "repetition"
+        ? "get_repeat_feature" : "get_graph_feature";
+      const stored = await call(op, { feature: feature.name });
       graph = stored.graph;
     } catch (error) {
       say(error.message, true);
       return;
     }
   }
+  if (!graph || typeof graph !== "object") {
+    graph = { nodes: [], edges: [], output: "" };
+  }
   graphFn.active = true;
+  graphFn.kind = kind;
   graphFn.feature = { name: feature.name, label: feature.label };
   graphFn.vocabulary = vocabulary;
   graphFn.draft = cloneGraphDraft(graph);
@@ -3378,10 +3401,21 @@ async function enterGraphFeature(feature) {
   graphView.classList.add("open", "fn");
   graphBtn.classList.add("on");
   graphFnBar.hidden = false;
+  const hintEl = document.getElementById("graph-fn-hint");
+  if (hintEl) {
+    hintEl.textContent = kind === "repetition"
+      ? "Le graphe produit les instances. Si la topologie d'une instance "
+        + "ne correspond plus, la répétition s'arrête plutôt que de "
+        + "produire."
+      : "La géométrie produite est figée. Changer une variable globale ne "
+        + "recalcule pas la fonction ; rouvrez-la et appliquez. Le résultat "
+        + "est une forme, combinée par un booléen — pas une chaîne de "
+        + "fonctions. Ce qui est calculé dedans n'apparaît pas dans l'arbre.";
+  }
   const data = layoutFunctionGraph(graphFn.draft, graphFn.vocabulary);
   renderGraph(data);
   fitGraphView(data);
-  say(GRAPH_FN_HINT);
+  say(kind === "repetition" ? REPEAT_FN_HINT : GRAPH_FN_HINT);
 }
 
 function exitGraphFeature({ force = false } = {}) {
@@ -3392,6 +3426,7 @@ function exitGraphFeature({ force = false } = {}) {
     }
   }
   graphFn.active = false;
+  graphFn.kind = "graphe";
   graphFn.feature = null;
   graphFn.draft = null;
   graphFn.saved = null;
@@ -3470,7 +3505,9 @@ async function applyGraphFeature() {
         await call("authorize_scripts");
       }
     }
-    const tree = await call("edit_graph_feature", {
+    const op = graphFn.kind === "repetition"
+      ? "edit_repeat_feature" : "edit_graph_feature";
+    const tree = await call(op, {
       feature: graphFn.feature.name,
       graph: composed.graph,
     });
@@ -3481,7 +3518,9 @@ async function applyGraphFeature() {
     const gen = ++viewGen;
     await updateViewport(gen);
     renderGraphFunction();
-    say("Fonction graphe appliquée.");
+    say(graphFn.kind === "repetition"
+      ? "Répétition variable appliquée."
+      : "Fonction graphe appliquée.");
   } catch (error) {
     graphFn.errorNode = nodeIdFromGraphError(error.message);
     say(error.message, true);
@@ -4412,7 +4451,7 @@ function openFeaturePanel(entry, sketchOverride) {
         run(promise.then((tree) => {
           queueMicrotask(() => {
             const created = [...(tree.features ?? [])].reverse()
-              .find((item) => isGraphFeature(item));
+              .find((item) => isGraphFeature(item) || isRepeatFeature(item));
             if (created) enterGraphFeature(created);
           });
           return tree;

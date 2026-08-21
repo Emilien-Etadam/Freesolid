@@ -9,6 +9,10 @@ Un nœud Python n'est **jamais** évalué ici : l'instruction émise est
 inerte. Un callback ``run_script`` (fourni par le kernel) peut la
 résoudre ; sans lui, elle circule telle quelle.
 
+Une répétition variable n'est pas une forme : ``evaluate_instances``
+rend la liste d'instances que ``parse_repeat_instances`` accepte déjà.
+``evaluate`` ne change pas.
+
 Un graphe est un dict ``{"nodes": [...], "edges": [...], "output": <id>}``.
 
 Chaque nœud : ``{"id": <str|int>, "type": <str>, ...}``.
@@ -59,6 +63,10 @@ _SCRIPT_KIND = "script"
 
 _NODE_INPUTS = {
     spec.type: tuple(port.key for port in spec.inputs)
+    for spec in GRAPH_NODES
+}
+_NODE_OPTIONAL = {
+    spec.type: frozenset(port.key for port in spec.inputs if port.optional)
     for spec in GRAPH_NODES
 }
 _NODE_FIELDS = {
@@ -199,6 +207,17 @@ def evaluate(graph, variables, run_script=None):
     return _Evaluator(migrate_graph(graph), variables, run_script).run()
 
 
+def evaluate_instances(graph, variables):
+    """Instances d'une répétition variable — pas des formes.
+
+    Rend exactement ce que ``parse_repeat_instances`` accepte :
+    ``[{"offset": [x, y, z], "params": {"Pad": {"Length": 10}}}, …]``.
+    Les contrôles de N010 (nombres, plafond, noms de fonction, garde)
+    traversent ; ils ne sont pas réécrits ici.
+    """
+    return _Evaluator(migrate_graph(graph), variables).run_instances()
+
+
 def _label(node):
     ident = node.get("id", "?")
     kind = node.get("type", "?")
@@ -220,6 +239,29 @@ def _is_point(value):
 def _is_instruction(value):
     return isinstance(value, dict) and value.get("shape") in (
         "box", "cylinder", _SCRIPT_KIND)
+
+
+def _is_instance(value):
+    if not isinstance(value, dict) or _is_instruction(value):
+        return False
+    offset = value.get("offset")
+    params = value.get("params")
+    if not isinstance(params, dict):
+        return False
+    return isinstance(offset, (list, tuple)) and len(offset) == 3
+
+
+def _is_cote_params(value):
+    if not isinstance(value, dict):
+        return False
+    if _is_instruction(value) or _is_instance(value) or _is_point(value):
+        return False
+    if not value:
+        return True
+    return all(
+        isinstance(name, str) and isinstance(props, dict)
+        for name, props in value.items()
+    )
 
 
 def _is_shape_instruction(value):
@@ -283,6 +325,10 @@ def _preview(value):
         if kind == _SCRIPT_KIND:
             return "script"
         return "forme {}".format(kind)
+    if _is_instance(value):
+        return "instance"
+    if _is_cote_params(value):
+        return "cotes"
     if _is_point(value):
         return "point"
     return repr(value)
@@ -395,6 +441,56 @@ def _flatten_instructions(value, node):
             _label(node)))
 
 
+def _as_cote_params(value, node):
+    if not _is_cote_params(value):
+        raise GraphError(
+            "nœud « {} » : cotes attendues, reçu {}".format(
+                _label(node), _preview(value)))
+    out = {}
+    for feat, props in value.items():
+        if not isinstance(feat, str) or not feat:
+            raise GraphError(
+                "nœud « {} » : nom de fonction invalide".format(_label(node)))
+        cleaned = {}
+        for prop, number in props.items():
+            if not isinstance(prop, str) or not prop:
+                raise GraphError(
+                    "nœud « {} » : nom de cote invalide".format(_label(node)))
+            cleaned[prop] = _as_number(number, node)
+        out[feat] = cleaned
+    return out
+
+
+def _as_instance(value, node):
+    if not _is_instance(value):
+        raise GraphError(
+            "nœud « {} » : instance attendue, reçu {}".format(
+                _label(node), _preview(value)))
+    offset = _as_point(tuple(value["offset"]), node)
+    params = _as_cote_params(value.get("params") or {}, node)
+    return {
+        "offset": [offset[0], offset[1], offset[2]],
+        "params": params,
+    }
+
+
+def _flatten_instances(value, node):
+    if _is_instance(value):
+        return [_as_instance(value, node)]
+    if isinstance(value, list):
+        out = []
+        for item in value:
+            out.extend(_flatten_instances(item, node))
+        if len(out) > COUNT_MAX:
+            raise GraphError(
+                "nœud « {} » : plafond de {} éléments dépassé ({}) — "
+                "aucune troncature".format(_label(node), COUNT_MAX, len(out)))
+        return out
+    raise GraphError(
+        "nœud « {} » : la sortie du graphe n'est pas une instance".format(
+            _label(node)))
+
+
 class _Evaluator:
     def __init__(self, graph, variables, run_script=None):
         if not isinstance(graph, dict):
@@ -474,6 +570,16 @@ class _Evaluator:
                     _label(node)))
         return instructions
 
+    def run_instances(self):
+        result = self._eval(self.output_id)
+        node = self.nodes[self.output_id]
+        instances = _flatten_instances(result, node)
+        if not instances:
+            raise GraphError(
+                "nœud « {} » : le graphe ne produit aucune instance".format(
+                    _label(node)))
+        return instances
+
     def _eval(self, ident):
         if ident in self.cache:
             return self.cache[ident]
@@ -551,6 +657,10 @@ class _Evaluator:
             return _apply(self._box_fn(node), self._inputs(node), node, 0)
         if kind == _SCRIPT_KIND:
             return self._script(node)
+        if kind == "cote":
+            return _apply(self._cote_fn(node), self._inputs(node), node, 0)
+        if kind == "instance":
+            return _apply(self._instance_fn(node), self._inputs(node), node, 0)
         spec = GRAPH_NODE_BY_TYPE.get(kind)
         if spec is not None and not spec.implemented:
             raise GraphError(
@@ -561,12 +671,16 @@ class _Evaluator:
     def _inputs(self, node):
         ident = str(node["id"])
         values = []
+        optional = _NODE_OPTIONAL.get(node["type"], frozenset())
         for port in _NODE_INPUTS[node["type"]]:
             if port in self.incoming[ident]:
                 values.append(self._eval(self.incoming[ident][port]))
                 continue
             if port in node:
                 values.append(self._literal(node[port], node, port))
+                continue
+            if port in optional:
+                values.append(None)
                 continue
             raise GraphError(
                 "nœud « {} » : entrée manquante « {} »".format(
@@ -783,3 +897,43 @@ class _Evaluator:
         if self.run_script is None:
             return instruction
         return self.run_script(instruction, node)
+
+    def _cote_field(self, node, key, missing):
+        value = node.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise GraphError(
+                "nœud « {} » : {}".format(_label(node), missing))
+        return value.strip()
+
+    def _cote_fn(self, node):
+        feature = self._cote_field(
+            node, "feature", "nom de fonction manquant")
+        prop = self._cote_field(node, "prop", "nom de cote manquant")
+
+        def _run(valeur, suite=None):
+            number = _as_number(valeur, node)
+            if suite is None:
+                return {feature: {prop: number}}
+            merged = {
+                name: dict(props)
+                for name, props in _as_cote_params(suite, node).items()
+            }
+            if feature in merged and prop in merged[feature]:
+                raise GraphError(
+                    "nœud « {} » : {}.{} définie deux fois".format(
+                        _label(node), feature, prop))
+            merged.setdefault(feature, {})[prop] = number
+            return merged
+
+        return _run
+
+    def _instance_fn(self, node):
+        def _run(decalage, cotes=None):
+            offset = _as_point(decalage, node)
+            params = {} if cotes is None else _as_cote_params(cotes, node)
+            return {
+                "offset": [offset[0], offset[1], offset[2]],
+                "params": params,
+            }
+
+        return _run

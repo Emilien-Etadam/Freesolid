@@ -256,3 +256,36 @@ signalée par un simple préfixe Σ, montre enfin **d'où** elle est pilotée.
 Les étapes 1 à 3 n'ajoutent rien dans le `.FCStd` et n'écrivent pas de
 géométrie. L'étape 4 est le vrai investissement, et elle est volontairement
 placée après pour arriver avec l'éditeur déjà construit.
+
+## La cible, reformulée (2026-08-19)
+
+Après usage, le projet vise un hybride plus précis que « des nœuds dans une
+CAO » : **chaque paradigme couvre la faiblesse de l'autre.**
+
+| | Ce qui est pénible | Où on le fait |
+|---|---|---|
+| **Grasshopper** | dessiner une esquisse, désigner une face, une arête | côté CAO classique — viewport, sketcher, clic |
+| **SolidWorks** | répéter un groupe de fonctions sur des éléments un peu différents | côté nœuds |
+
+L'unité qui compte n'est donc **pas le nœud** mais **le groupe de fonctions
+rejoué avec variation** — et il tient en **une seule ligne de l'arbre** :
+c'est un algorithme, il est toujours le même, personne n'édite la copie
+n° 147.
+
+Ce que ça déplace :
+
+- **Répéter un groupe à l'identique** est déjà natif — `Originals` est une
+  liste (`kernel.py:2341`), FreeSolid n'en passe qu'un élément. À exposer.
+- **Répéter avec variation** n'existe ni dans FreeCAD ni dans SolidWorks.
+  C'est le seul vrai manque, et la seule place que les nœuds gagnent
+  vraiment : le graphe produit la liste des variations, le moteur rejoue le
+  groupe une fois par élément.
+- La limite se mesure, elle ne se devine pas : les habillages référencent des
+  sous-éléments (`Edge3`, `Face1`) qui ne survivent pas forcément à une
+  géométrie modifiée. C'est encore le nommage topologique.
+
+Et une correction à la §3 : la ligne n'est pas entre « calcul » et
+« fonction », elle est entre **ce que FreeCAD sait exprimer** et **ce qu'il
+faut évaluer soi-même**. Une chaîne de calcul qui produit un nombre se
+compile en expression FreeCAD, donc elle vit dans le graphe du document, avec
+les fonctions — pas dans une boîte à part.

@@ -3,7 +3,8 @@
 import pytest
 
 from engine.nodegraph import (
-    COUNT_MAX, GraphError, _NODE_INPUTS, evaluate, migrate_graph, vocabulary,
+    COUNT_MAX, GraphError, _NODE_INPUTS, evaluate, evaluate_instances,
+    migrate_graph, vocabulary,
 )
 from engine import vocab
 
@@ -503,3 +504,93 @@ def test_alias_calcul_s_evalue_encore():
     )
     out = evaluate(graph, {})
     assert out[0]["radius"] == 4.0
+
+
+def test_evaluate_instances_serie_cote_instance():
+    graph = _g(
+        [
+            _n("sx", "serie", depart=0, pas=40, nombre=5),
+            _n("vx", "vecteur", y=0, z=0),
+            _n("sl", "serie", depart=10, pas=5, nombre=5),
+            _n("c", "cote", feature="Pad", prop="Length"),
+            _n("i", "instance"),
+        ],
+        [
+            _e("sx", "vx", "x"),
+            _e("vx", "i", "decalage"),
+            _e("sl", "c", "valeur"),
+            _e("c", "i", "cotes"),
+        ],
+        "i",
+    )
+    out = evaluate_instances(graph, {})
+    assert len(out) == 5
+    assert [item["offset"][0] for item in out] == [0, 40, 80, 120, 160]
+    assert [item["params"]["Pad"]["Length"] for item in out] == [
+        10, 15, 20, 25, 30]
+    with pytest.raises(GraphError, match=r"n'est pas une forme"):
+        evaluate(graph, {})
+
+
+def test_evaluate_instances_chaine_et_doublon():
+    chain = _g(
+        [
+            _n("v", "serie", depart=10, pas=5, nombre=2),
+            _n("d", "vecteur", x=0, y=0, z=0),
+            _n("c1", "cote", feature="Pad", prop="Length"),
+            _n("c2", "cote", feature="Pocket", prop="Diameter"),
+            _n("i", "instance"),
+        ],
+        [
+            _e("v", "c1", "valeur"),
+            _e("c1", "c2", "suite"),
+            _e("v", "c2", "valeur"),
+            _e("d", "i", "decalage"),
+            _e("c2", "i", "cotes"),
+        ],
+        "i",
+    )
+    out = evaluate_instances(chain, {})
+    assert len(out) == 2
+    assert out[0]["params"] == {
+        "Pad": {"Length": 10.0}, "Pocket": {"Diameter": 10.0}}
+    assert out[1]["params"] == {
+        "Pad": {"Length": 15.0}, "Pocket": {"Diameter": 15.0}}
+    dup = _g(
+        [
+            _n("v", "nombre", value=10),
+            _n("c1", "cote", feature="Pad", prop="Length"),
+            _n("c2", "cote", feature="Pad", prop="Length"),
+            _n("i", "instance", decalage={"x": 0, "y": 0, "z": 0}),
+        ],
+        [
+            _e("v", "c1", "valeur"),
+            _e("v", "c2", "valeur"),
+            _e("c1", "c2", "suite"),
+            _e("c2", "i", "cotes"),
+        ],
+        "i",
+    )
+    with pytest.raises(GraphError, match=r"Pad\.Length définie deux fois"):
+        evaluate_instances(dup, {})
+
+
+def test_evaluate_instances_longueurs_suite_differentes():
+    graph = _g(
+        [
+            _n("a", "serie", depart=1, pas=1, nombre=2),
+            _n("b", "serie", depart=1, pas=1, nombre=3),
+            _n("c1", "cote", feature="Pad", prop="Length"),
+            _n("c2", "cote", feature="Pocket", prop="Diameter"),
+            _n("i", "instance", decalage={"x": 0, "y": 0, "z": 0}),
+        ],
+        [
+            _e("a", "c1", "valeur"),
+            _e("b", "c2", "valeur"),
+            _e("c1", "c2", "suite"),
+            _e("c2", "i", "cotes"),
+        ],
+        "i",
+    )
+    with pytest.raises(GraphError, match=r"listes de longueurs 3 et 2"):
+        evaluate_instances(graph, {})

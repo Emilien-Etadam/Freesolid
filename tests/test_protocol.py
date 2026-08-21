@@ -148,7 +148,7 @@ def test_sketch_start_accepts_named_plane():
 def test_p2_ops_declare_their_required_params():
     assert protocol.OPS["add_revolution"] == ()      # angle, sketch en option
     assert protocol.OPS["add_groove"] == ()
-    assert protocol.OPS["add_mirror"] == ()          # plane en option
+    assert protocol.OPS["add_mirror"] == ()          # plane, features en option
     assert protocol.OPS["add_linear_pattern"] == ("length", "count")
     assert protocol.OPS["add_polar_pattern"] == ("count",)
     assert protocol.OPS["add_thickness"] == ("face", "thickness")
@@ -366,6 +366,45 @@ def test_graph_feature_ops_declared():
              "params": {"graph": [], "mode": "cut"}})
 
 
+def test_repeat_feature_ops_declared():
+    assert protocol.OPS["add_repeat_feature"] == ("features", "mode")
+    assert protocol.OPS["edit_repeat_feature"] == ("feature",)
+    assert protocol.OPS["get_repeat_feature"] == ("feature",)
+    assert protocol.OPS["add_repeat_feature"].optional == {
+        "instances": list, "graph": dict}
+    assert protocol.OPS["edit_repeat_feature"].optional == {
+        "instances": list, "graph": dict}
+    protocol.validate_request(
+        {"op": "add_repeat_feature",
+         "params": {"features": ["Pad", "Pocket"],
+                    "instances": [{"offset": [0, 0, 0],
+                                   "params": {"Pad": {"Length": 10}}}],
+                    "mode": "fuse"}})
+    protocol.validate_request(
+        {"op": "add_repeat_feature",
+         "params": {"features": ["Pad"],
+                    "graph": {"nodes": [], "edges": [], "output": "i"},
+                    "mode": "fuse"}})
+    protocol.validate_request(
+        {"op": "edit_repeat_feature",
+         "params": {"feature": "Boolean",
+                    "instances": [{"offset": [40, 0, 0], "params": {}}]}})
+    protocol.validate_request(
+        {"op": "edit_repeat_feature",
+         "params": {"feature": "Boolean",
+                    "graph": {"nodes": [], "edges": [], "output": "i"}}})
+    protocol.validate_request(
+        {"op": "get_repeat_feature", "params": {"feature": "Boolean"}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "add_repeat_feature",
+             "params": {"features": "Pad", "instances": [], "mode": "fuse"}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "edit_repeat_feature",
+             "params": {"feature": "", "instances": []}})
+
+
 def test_comfort_ops_declared():
     assert protocol.OPS["sketch_add_spline"] == ("sketch", "points")
     assert protocol.OPS["sketch_add_ellipse"] == (
@@ -427,6 +466,7 @@ def test_ops_snapshot_keys():
         "add_pocket",
         "add_polar_pattern",
         "add_rect_sketch",
+        "add_repeat_feature",
         "add_revolution",
         "add_sweep",
         "add_text",
@@ -438,10 +478,12 @@ def test_ops_snapshot_keys():
         "delete_feature",
         "delete_variable",
         "edit_graph_feature",
+        "edit_repeat_feature",
         "edit_text",
         "export_part",
         "get_graph_feature",
         "get_params",
+        "get_repeat_feature",
         "get_tree",
         "graph_vocabulary",
         "insert_component",
@@ -700,3 +742,35 @@ def test_dangling_deps_tolerates_missing_sections():
     assert protocol.dangling_deps({"features": None}) == []
     assert protocol.dangling_deps(None) == []
     assert protocol.dangling_deps({"features": [{"name": "Pad"}]}) == []
+
+
+def test_pattern_features_optional_list():
+    protocol.validate_request(
+        {"op": "add_linear_pattern",
+         "params": {"length": 10, "count": 2}})
+    protocol.validate_request(
+        {"op": "add_linear_pattern",
+         "params": {"length": 10, "count": 2,
+                    "features": ["Pad", "Pocket"]}})
+    protocol.validate_request(
+        {"op": "add_polar_pattern",
+         "params": {"count": 4, "features": ["Pocket"]}})
+    protocol.validate_request(
+        {"op": "add_mirror",
+         "params": {"plane": "YZ", "features": ["Pad"]}})
+    protocol.validate_request(
+        {"op": "add_linear_pattern",
+         "params": {"length": 10, "count": 2, "features": []}})
+
+
+def test_pattern_features_must_be_a_list():
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_request(
+            {"op": "add_linear_pattern",
+             "params": {"length": 10, "count": 2, "features": "Pad"}})
+    assert str(excinfo.value) == (
+        'paramètre features : liste attendu, reçu "Pad"')
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "add_mirror",
+             "params": {"features": {"Pad": True}}})

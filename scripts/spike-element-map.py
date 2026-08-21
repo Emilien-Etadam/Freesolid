@@ -141,7 +141,41 @@ def main():
     if isinstance(resolu, (tuple, list)):
         resolu = resolu[0] if resolu else None
     probe("survie_reparam", VERIFIE if resolu else ECHOUE,
-          "après 10 -> 25 mm, {!r} -> {!r}".format(mappe, resolu))
+          "après 10 -> 25 mm, {!r} -> {!r} (indices inchangés : sonde faible, "
+          "voir survie_topologie)".format(mappe, resolu))
+
+    # --- 4bis. et à un changement de TOPOLOGIE ? ------------------------
+    #     C'est le seul cas qui compte vraiment. Un reparamétrage ne
+    #     déplace aucun indice — « Face1 » reste « Face1 » quoi qu'il
+    #     arrive, donc la sonde ci-dessus ne prouve presque rien. Un
+    #     enlèvement, lui, renumérote : c'est exactement la situation où
+    #     la garde de replay.py refuse aujourd'hui.
+    #
+    #     La référence est capturée sur le Pad ; on la résout ensuite sur
+    #     la forme de la NOUVELLE pointe (l'enlèvement). Si la carte se
+    #     propage en aval — la promesse du toponaming — elle doit rendre
+    #     un indice, éventuellement différent de « Face1 ».
+    try:
+        faces_avant = len(apres.Faces)
+        haut = kernel._top_face_id()
+        kernel.add_rect_sketch(40, 20, face=haut)
+        arbre2 = kernel.add_pocket(through=True)
+        pocket_nom = next(
+            f["name"] for f in arbre2["features"]
+            if f["type"] == "PartDesign::Pocket")
+        pointe = kernel._doc.getObject(pocket_nom).Shape
+    except Exception as exc:  # noqa: BLE001 - la sonde rapporte, ne lève pas
+        probe("survie_topologie", INVERIFIABLE,
+              "enlèvement impossible — {}: {}".format(type(exc).__name__, exc))
+    else:
+        faces_apres = len(pointe.Faces)
+        resolu2 = attr(pointe, "getElementIndexedName")
+        resolu2 = resolu2(mappe) if callable(resolu2) else None
+        if isinstance(resolu2, (tuple, list)):
+            resolu2 = resolu2[0] if resolu2 else None
+        probe("survie_topologie", VERIFIE if resolu2 else ECHOUE,
+              "{} -> {} faces après enlèvement traversant ; {!r} -> {!r}".format(
+                  faces_avant, faces_apres, mappe, resolu2))
 
     # --- 5. l'historique d'élément remonte-t-il ? -----------------------
     histoire = attr(pad, "getElementHistory")

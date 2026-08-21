@@ -283,9 +283,12 @@ class Kernel:
         doc.recompute()
         if not self._assembly:
             self._refresh_gem_placements()
+            doc.recompute()
         broken = [o for o in doc.Objects
                   if "Invalid" in (o.State or ())
-                  and not self._is_gem_link(o)]
+                  and not self._is_internal_tool(o)
+                  and not self._is_gem_link(o)
+                  and not self._is_gem_array_child(o)]
         if broken:
             messages = []
             for obj in broken:
@@ -1439,6 +1442,17 @@ class Kernel:
                 and obj.TypeId == "App::Link"
                 and "FreeSolidGemFace" in obj.PropertiesList)
 
+    def _is_gem_array_child(self, obj):
+        """Élément ``Semis_i0`` d'un App::Link tableau — pas un semis."""
+        if obj is None or getattr(obj, "TypeId", "") != "App::Link":
+            return False
+        if self._is_gem_link(obj):
+            return False
+        for parent in getattr(obj, "InList", ()) or ():
+            if self._is_gem_link(parent):
+                return True
+        return False
+
     def _gem_links(self):
         doc = self._require_doc()
         return [obj for obj in doc.Objects if self._is_gem_link(obj)]
@@ -1653,6 +1667,10 @@ class Kernel:
         doc = self._require_doc()
         link = doc.addObject("App::Link", "Semis")
         link.LinkedObject = body
+        # Sans ça, ElementCount crée Semis_i0… dans l'arbre, souvent
+        # « Link broken » tant que PlacementList n'est pas recomputé.
+        if hasattr(link, "ShowElement"):
+            link.ShowElement = False
         self._ensure_gem_anchor_props(link)
         link.FreeSolidGemFace = face_name
         link.FreeSolidGemU = []
@@ -1795,6 +1813,8 @@ class Kernel:
             if not hasattr(link, "ElementCount") or not hasattr(
                     link, "PlacementList"):
                 continue
+            if hasattr(link, "ShowElement"):
+                link.ShowElement = False
             link.ElementCount = count
             if count:
                 link.PlacementList = placements
@@ -7165,7 +7185,8 @@ class Kernel:
             report["p034_mesh"] = (
                 bool(mesh.get("normals"))
                 and len(mesh.get("gems") or []) == 1
-                and (mesh["gems"][0].get("instances") or [{}])[0].get("matrix"))
+                and bool((mesh["gems"][0].get("instances") or [{}])[0]
+                         .get("matrix")))
             tree = self.get_tree()
             report["p034_arbre"] = (
                 len(tree.get("gems") or []) == 1

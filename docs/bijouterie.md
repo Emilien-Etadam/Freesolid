@@ -394,8 +394,8 @@ dépend pas de la réponse ci-dessus.
 bijouterie**. Il réutilise le picking par face (fait), la tessellation
 groupée (faite), `normalAt` (fait), et le partage client/serveur de
 l'esquisse (fait). Ce qui manque tient en une projection inverse et cinq
-ops : voir
-[`prompts/P034-pierres-sur-surface.md`](../prompts/P034-pierres-sur-surface.md).
+ops : c'est l'objet de **P034**, exécutée et retirée du dossier
+(`git log -- prompts/P034-pierres-sur-surface.md`).
 
 ## 5.7 P034 livré — relu le 2026-08-21
 
@@ -424,12 +424,11 @@ erreur. À noter que le selftest a repris le **témoin négatif** de la sonde
 (`p034_temoin_fige`) : il ne vérifie pas seulement que la pierre suit, mais
 qu'un placement figé, lui, aurait décroché.
 
-**Une réserve de traçabilité, pas de code.** `docs/bijouterie.md`, les trois
-sondes et `prompts/P034` vivent sur `claude/freesolid-tools-1em7o1` et ne
-sont **pas encore sur `main`**. La mise en œuvre y arrivera par sa propre
-branche, mais son raisonnement — pourquoi coté et non mis à l'échelle, les
-chiffres qui l'ont tranché — resterait orphelin, et la section « validation »
-de P034 renverrait à des sondes absentes. À fusionner avec.
+**Réserve de traçabilité — levée.** Ce relevé et les trois sondes vivaient
+sur une branche pendant que la mise en œuvre arrivait par une autre : le
+raisonnement — pourquoi coté et non mis à l'échelle, les chiffres qui l'ont
+tranché — risquait de rester orphelin. Les deux sont sur `main` depuis, et
+les sondes s'y rejouent.
 
 
 ## 5.8 P036 livré — relu le 2026-08-21
@@ -581,7 +580,7 @@ sur de la vraie géométrie de pierre et pas sur un cône.
 
 ## 6.6 Ce que ça ne change pas
 
-Le mécanisme de placement ([`P034`](../prompts/P034-pierres-sur-surface.md))
+Le mécanisme de placement (**P034**)
 est **indifférent** à ce que la pierre contient. Il pose un `Part::Feature`
 via un `App::Link` et le déplace par `(u, v)` ; que la forme dedans vienne
 d'un cône témoin ou d'un `.brep` de brillant ne modifie aucune de ses
@@ -793,7 +792,7 @@ on serti. Et cela rend le budget des sièges **secondaire** : il se paie une
 fois, sur commande, comme une reconstruction — pas dans la boucle
 d'interaction.
 
-Conséquence pour [`P034`](../prompts/P034-pierres-sur-surface.md) : son
+Conséquence pour **P034** : son
 périmètre était déjà le bon — placer, déplacer, tourner, retirer, lister —
 et il le reste.
 
@@ -806,7 +805,7 @@ qui existe déjà. Prompt retiré.
 Reste un vrai manque, et un seul : `add_boolean` (`engine/kernel.py:2912`)
 exige un `PartDesign::Body` et **rejette** un semis, qui est un `App::Link`.
 Le geste annoncé n'est donc pas réalisable aujourd'hui. C'est l'objet de
-[`P035`](../prompts/P035-booleen-semis.md), beaucoup plus court : faire
+**P035**, beaucoup plus court : faire
 accepter un semis comme corps outil, et rien d'autre.
 
 ## 7.5 Ce que ça change au reste du relevé
@@ -820,7 +819,7 @@ accepter un semis comme corps outil, et rien d'autre.
 - **§6.7, le format** : la conclusion `.FCStd` **tient**, et pour une raison
   de plus — il faut bien un document pour porter une esquisse et une
   variable.
-- **[`P034`](../prompts/P034-pierres-sur-surface.md)** : toujours pas touché.
+- ****P034**** : toujours pas touché.
   Le mécanisme de placement ne sait pas ce qu'il y a dans la pierre, et n'a
   pas à le savoir.
 

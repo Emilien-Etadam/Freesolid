@@ -792,7 +792,19 @@ d'interaction.
 
 Conséquence pour [`P034`](../prompts/P034-pierres-sur-surface.md) : son
 périmètre était déjà le bon — placer, déplacer, tourner, retirer, lister —
-et il le reste. Le sertissage sera un prompt à part, qui lira `list_gems`.
+et il le reste.
+
+**Correction du 2026-08-21.** J'avais traduit « on combine » par « sertir »,
+et écrit un prompt entier là-dessus : gabarits de sièges, jeu de desserrage,
+ouverture pour la lumière, garde sur le jonc scindé. C'était une inférence,
+pas une consigne — l'auteur combine lui-même, avec la fonction booléenne
+qui existe déjà. Prompt retiré.
+
+Reste un vrai manque, et un seul : `add_boolean` (`engine/kernel.py:2912`)
+exige un `PartDesign::Body` et **rejette** un semis, qui est un `App::Link`.
+Le geste annoncé n'est donc pas réalisable aujourd'hui. C'est l'objet de
+[`P035`](../prompts/P035-booleen-semis.md), beaucoup plus court : faire
+accepter un semis comme corps outil, et rien d'autre.
 
 ## 7.5 Ce que ça change au reste du relevé
 

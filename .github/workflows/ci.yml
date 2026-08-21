@@ -45,6 +45,20 @@ jobs:
       - name: Selftest
         shell: bash -el {0}
         run: PYTHONIOENCODING=utf-8 freecadcmd scripts/run-selftest.py
+      # Sonde A7 (docs/amont-freecad.md §4ter) : la carte d'éléments de
+      # FreeCAD est-elle peuplée pour nos objets ? Informatif — un verdict
+      # négatif est un résultat, pas un échec, donc jamais bloquant.
+      - name: Spike carte d'éléments (informatif)
+        if: always()
+        continue-on-error: true
+        shell: bash -el {0}
+        run: PYTHONIOENCODING=utf-8 freecadcmd scripts/spike-element-map.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spike-element-map
+          path: spike-element-map.json
+          if-no-files-found: ignore
       - name: Diagnostic d'échec
         if: failure()
         run: |

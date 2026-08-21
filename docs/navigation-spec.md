@@ -16,6 +16,15 @@ quelle dans la discussion, et l'implémentation est quelques centaines de
 lignes de C++ sur le modèle des styles existants (`BlenderNavigationStyle`,
 `RevitNavigationStyle`…).
 
+> **État amont revérifié le 2026-08-21 :** la discussion #18635 a bien été
+> fermée le 2024-12-23 par luzpaz sur « *If you make progress feel free to
+> re-open discussion* », après qu'il a pointé `src/Gui/NavigationStyle.cpp`
+> et les styles existants comme modèles. **Personne n'a fourni la
+> spécification demandée depuis.** La porte est donc toujours ouverte, et
+> ce document est entré au registre amont sous l'entrée **A10** —
+> [`amont-freecad.md`](amont-freecad.md) §4, où il est aujourd'hui le
+> candidat le plus mûr. Il ne lui manque que l'étape 1 ci-dessous.
+
 ## Table de correspondance proposée
 
 Chaque ligne est à confirmer ou corriger — les cases ☐ sont là pour ça.
@@ -33,7 +42,7 @@ Référence : SolidWorks, réglages souris par défaut.
 | Zoom fenêtre | (SW : Maj+Z / commande dédiée) | À trancher : geste ou raccourci | ☐ |
 | Zoom ajusté | F | | ☐ |
 | Menu contextuel | Clic droit (relâché sans glisser) | | ☐ |
-| Gestes souris | **Glisser clic droit** : rosace de gestes | Hors périmètre navigation stricte — à mentionner comme non-objectif dans la PR | ☐ |
+| Gestes souris | **Glisser clic droit** : rosace de gestes | Hors périmètre navigation stricte — à mentionner comme non-objectif dans la PR. **Implémentation de référence lisible** : [PartMode](https://github.com/BOMWiki/partmode) le fait en ~20 lignes (`studio-input-customization.js`) — quatre directions par comparaison de `|dx|` et `|dy|`, zone morte de 28 px, table figée nord/est/sud/ouest → isoler/éditer/supprimer/masquer. AGPL : l'idée, jamais le fichier | ☐ |
 | Rotation par flèches | Flèches = orbite, Maj+flèches = 90°, Alt+flèches = roll | | ☐ |
 | Sélection rectangulaire | Glisser gauche : gauche→droite = contenu, droite→gauche = traversant | Concerne la sélection, pas la caméra — probablement hors périmètre `NavigationStyle` | ☐ |
 

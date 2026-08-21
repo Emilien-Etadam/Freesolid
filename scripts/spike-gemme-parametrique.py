@@ -189,20 +189,25 @@ def build_library(path=None, facettes=0, diametre=1.0):
                                  "Variables.diametre * {}".format(ratio))
             doc.recompute()
 
-            pocket = doc.addObject("PartDesign::Pocket", "Facette1")
-            body.addObject(pocket)
+            # Premier passage : « 'PartDesign.Feature' object has no
+            # attribute 'Transformed' ». Sur 1.1.3 une répétition se crée
+            # par body.newObject et porte ses sources dans `Originals` —
+            # c'est l'incantation déjà éprouvée par Kernel._transform
+            # (engine/kernel.py:2336). Et il FAUT poser le Tip : sinon la
+            # répétition existe sans devenir le solide du corps.
+            pocket = body.newObject("PartDesign::Pocket", "Facette1")
             pocket.Profile = fs
             pocket.Type = "ThroughAll"
             pocket.Reversed = True   # vers le haut : la matière est au-dessus
             doc.recompute()
 
-            pat = doc.addObject("PartDesign::PolarPattern", "Facettes")
-            body.addObject(pat)
-            pat.Transformed = [pocket]
+            pat = body.newObject("PartDesign::PolarPattern", "Facettes")
+            pat.Originals = [pocket]
             pat.Axis = (next(f for f in body.Origin.OriginFeatures
                              if getattr(f, "Role", "") == "Z_Axis"), [""])
             pat.Angle = 360.0
             pat.Occurrences = int(facettes)
+            body.Tip = pat
             doc.recompute()
 
         doc.saveAs(path)

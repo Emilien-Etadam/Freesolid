@@ -746,6 +746,65 @@ reste qu'à juger le coût du recalcul mesuré en H1. H6 tranche le point
 d'architecture du §7.4 ; H7 compare le siège aux 73 ms (BREP facetté) et
 36 ms (BREP analytique) déjà mesurés.
 
+## 7.7 bis — Les trois décisions, vérifiées
+
+*Second passage, 2026-08-21. H9 tranche l'architecture ; H7 corrigé donne
+enfin un vrai chiffre de siège ; H8 casse sur une API et reste ouvert.*
+
+### H9 — la copie paramétrique tient les deux promesses
+
+| Ce qu'il fallait prouver | Mesuré |
+|---|---|
+| La copie reste **paramétrable** | `toujours_parametrable: true` — rediamétrée après copie, la pierre recalcule |
+| Les gemmes **ne se marchent pas dessus** | `varsets: ["Variables", "Variables001"]`, `diametres_independants: true` — FreeCAD renomme, et chaque pierre garde la sienne |
+| Les volumes restent **exacts** | 0,730692 et 13,856079 mm³ — soit `0,216501 · d³` à ø 1,5 et ø 4, au millionième |
+| La pièce est **autonome** | `autonome_sans_bibliotheque: true` — la sonde **renomme la bibliothèque sur le disque** avant de rouvrir : les solides sont là, valides, et `documents_ouverts: 1` |
+
+**Les trois décisions tiennent ensemble.** La bibliothèque est un jeu de
+gabarits : le modèle voyage dans la pièce, son résultat n'est jamais figé, et
+plus rien n'est à retrouver sur le disque à l'ouverture.
+
+Prix de l'autonomie, mesuré : **~7,7 ko par taille distincte** (17 280 octets
+pour deux gemmes). À comparer aux 1 900 octets d'une pièce liée — qui, elle,
+**tire la bibliothèque à chaque ouverture** (`biblio_tiree_automatiquement:
+true`, H6). Le lien externe *fonctionne* donc ; il est écarté sur ses mérites,
+pas faute de mieux.
+
+### H7 — le siège, enfin mesuré sur un vrai siège
+
+Placement corrigé : **59,5 % de la pierre** est entrée dans la matière (au
+lieu de 2,9 % au premier passage), soit toute la culasse. C'est un vrai
+sertissage.
+
+**19,43 ms** — contre **35,65 ms** pour la *même forme* convertie en
+B-splines par la voie BREP. **Ne pas convertir est 45 % plus rapide**, en
+plus d'être exact. Les deux qualités vont dans le même sens, ce qui est rare
+assez pour être noté.
+
+Ordre de grandeur pour 200 sièges, coupés un à un : ~4 s. Avec le compound
+d'une seule coupe (Q6), moins. Et puisqu'on **pose d'abord et combine
+ensuite** (§7.4 bis), ce coût se paie une fois, sur commande — jamais dans la
+boucle d'interaction.
+
+### H8 — cassé sur une API, et la réponse était dans le dépôt
+
+`AttributeError: 'PartDesign.Feature' object has no attribute 'Transformed'`.
+
+Sur FreeCAD 1.1.3, une répétition ne se crée pas par `doc.addObject` puis
+`body.addObject`, et ne porte pas ses sources dans `Transformed` : elle se
+crée par **`body.newObject`** et les porte dans **`Originals`** — avec un
+`body.Tip` à poser, sans quoi la répétition existe sans devenir le solide du
+corps. C'est exactement ce que fait `Kernel._transform`
+(`engine/kernel.py:2336`), éprouvé depuis des mois. J'avais écrit la sonde
+sans consulter le code qui savait déjà.
+
+Corrigé. **Le coût d'un recalcul à charge réelle reste donc à mesurer** — les
+6,1 ms de H1 restent un plancher, celui d'une révolution à 4 faces.
+
+Cela dit, la conclusion ne dépend pas du chiffre : même à vingt fois le
+plancher, on serait à 120 ms pour une taille, et une pièce en compte une
+poignée. C'est la marge qui est en jeu, pas la décision.
+
 ## 7.7 Verdict de la sonde gemme cotée — exécutée le 2026-08-21
 
 `scripts/spike-gemme-parametrique.py` sur **FreeCAD 1.1.3**. **Verte**, et

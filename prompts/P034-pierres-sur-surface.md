@@ -77,14 +77,20 @@ dans la pièce ; la bibliothèque est un jeu de **gabarits**, pas une
 dépendance d'exécution. Un `.FCStd` de FreeSolid ne doit avoir besoin
 d'aucun fichier externe pour s'ouvrir.
 
+Vérifié par la sonde H9 : après copie, la pierre se rediamètre et recalcule ;
+et une pièce rouverte **avec la bibliothèque renommée sur le disque** garde
+ses solides valides, sans tirer aucun autre document. Coût de l'autonomie :
+~7,7 ko par taille distincte.
+
 Un corps copié **par taille distincte**, pas par pierre : deux cents pierres
 de 1,5 mm, c'est un corps et deux cents placements. Le moteur tient donc un
 cache clé `(gemme, cotes)`.
 
-Piège à traiter, pas à découvrir : deux gemmes copiées dans le même document
-portent le même nom de variable à l'origine, et **FreeCAD renomme en
-silence**. Retrouver **la** variable de **chaque** pierre, jamais la première
-trouvée.
+Piège confirmé par la sonde, à traiter et non à découvrir : deux gemmes
+copiées dans le même document donnent `Variables` et `Variables001` —
+**FreeCAD renomme en silence**. Retrouver **la** variable de **chaque**
+pierre, jamais la première trouvée. H9 montre que les diamètres restent
+indépendants une fois cette résolution faite correctement.
 
 L'ancrage se range en **propriétés FreeCAD natives**, groupe `FreeSolid` —
 exactement le motif déjà en place pour `FreeSolidColor`
@@ -142,6 +148,17 @@ optionnel, donc pas de rupture de contrat.
 Bénéfice collatéral assumé : **tout l'ombrage de l'app y gagne**, pas
 seulement les pierres. Si ce point déstabilise le smoke, le sortir dans un
 prompt séparé plutôt que de le bâcler.
+
+### 5 bis. L'incantation PartDesign de 1.1.3, déjà dans le dépôt
+
+Si le cylindre plat de la bibliothèque gagne un jour des fonctions répétées
+(les facettes du brillant qui lui succédera), **ne pas réinventer l'appel** :
+sur 1.1.3, une répétition se crée par **`body.newObject`**, porte ses sources
+dans **`Originals`** — pas `Transformed` — et exige un **`body.Tip`**, sans
+quoi elle existe sans devenir le solide du corps.
+
+`Kernel._transform` (`engine/kernel.py:2336`) le fait déjà correctement. La
+sonde, elle, s'est cassée dessus pour avoir été écrite sans le consulter.
 
 ### 6. Les deux règles que la sonde impose
 

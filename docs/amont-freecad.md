@@ -82,7 +82,17 @@ dérive.
 | **LGPL-2.1(-or-later)** | oui, sans effet de bord | **oui** | [`j8sr0230/Nodes`](https://github.com/j8sr0230/Nodes) et son modèle `awkward` |
 | **MIT / BSD** | oui, avec attribution | **oui** (relicenciable en LGPL) | — |
 | **Apache-2.0** | possible, mais fait passer l'ensemble distribué en LGPL-3.0 | **non** | [`vcad`](https://github.com/ecto/vcad) |
-| **AGPL-3.0** | non — contaminerait FreeSolid entier | **non** | [Chili3D](https://github.com/xiangechen/chili3d) |
+| **GPL-3.0** | non — contaminerait FreeSolid entier | **non** — un GPL-3 ne fusionne pas dans une bibliothèque LGPL-2.1 | [FreeCAD-Ribbon](https://github.com/APEbbers/FreeCAD-Ribbon), [Dune3D](https://github.com/dune3d/dune3d) |
+| **AGPL-3.0** | non — contaminerait FreeSolid entier | **non** | [Chili3D](https://github.com/xiangechen/chili3d), [PartMode](https://github.com/BOMWiki/partmode) |
+| **« Permissive » sur parole** | ⚠️ **à vérifier fichier en main** | ⚠️ | [jsketcher](https://github.com/xibyte/jsketcher) : un « MIT » modifié imposant la cession de copyright |
+
+**Une règle de vérification, apprise le 2026-08-21 :** le nom d'une licence
+dans un README, une liste curatée ou l'encart latéral de GitHub **n'est pas
+une licence**. On ouvre le fichier `LICENSE` avant de classer un dépôt comme
+empruntable. `jsketcher` est annoncé « MIT » un peu partout et porte en
+réalité un MIT modifié par Autodrop3d LLC qui impose la soumission de toute
+modification **avec cession de copyright**, sauf licence commerciale — ni
+empruntable, ni forkable en pratique.
 
 D'où la règle de lecture, qui vaut pour tout dépôt permissif :
 

@@ -8,15 +8,19 @@ headless ». Conclusion en bas.*
 | Projet | Ce que c'est | Verdict pour nous |
 |---|---|---|
 | [magik6k/freecad-web](https://github.com/magik6k/freecad-web) | Port WebAssembly de **tout** FreeCAD, **interface Qt comprise**, via Qt-for-WASM + JSPI (Chromium 137+ seulement) | Pas un concurrent : c'est l'interface actuelle dans un onglet. Mais une **preuve majeure** que le moteur tournera un jour côté client |
+| [APEbbers/FreeCAD-Ribbon](https://github.com/APEbbers/FreeCAD-Ribbon) ‡ | **Ruban pour FreeCAD lui-même** : remplace les barres d'outils par un ruban configurable en JSON, dialogue de personnalisation, réversible. GPL-3.0, ~130 ★, 3 303 commits, **dans l'Addon Manager officiel**. Descend de `geolta/FreeCAD-Ribbon` et `HakanSeven12/Modern-UI` | **La réponse concurrente à notre prémisse**, et elle nous bat sur le ruban seul : couverture fonctionnelle totale et immédiate. Sa dette est le couplage aux internes Qt ; la nôtre est de tout ré-exposer. Détail au relevé du 2026-08-21 (suite) |
 | [Salusoft89/planegcs](https://github.com/Salusoft89/planegcs) | Le **solveur d'esquisse de FreeCAD compilé en WASM**, utilisable en JS | Pas un concurrent : un **atout**. Le solveur peut tourner dans le navigateur pour le drag à 60 fps, le serveur restant la vérité |
 | [Ondsel-Server / Lens](https://github.com/FreeCAD/Ondsel-Server) ‡ | Plateforme web de partage/visualisation de FCStd. **La société a fermé le 2024-10-30** ; Lens éteint le 2024-11-22 | Visionneuse, pas un éditeur — et désormais un **point de vigilance** : l'atelier Assembly et son solveur 3D, dont dépend notre phase C, ont été légués à la communauté (~150 PR mergées, don de 40 k€ à la FPA). Détail au relevé du 2026-08-21 |
 | [SindriCAD](https://github.com/MakerViking/sindricad) | CAO paramétrique web (Tauri + Three.js) sur **build123d**, pas FreeCAD | Valide la stack UI ; moteur documentaire réinventé, reconstruction totale à chaque édition |
+| [dune3d/dune3d](https://github.com/dune3d/dune3d) ‡ | CAO paramétrique bureau : **solveur SolveSpace + noyau OCCT + coquille GTK4 neuve**, par l'auteur de Horizon EDA. GPL-3.0, ~2,1 k ★, v1.4 « Einstein » (janvier 2026), FOSDEM 2026 | **Notre doctrine sur un autre couple de donneurs** — ne réécrire ni solveur ni noyau. Il réécrit quand même le modèle documentaire, et reste sur le bureau. La preuve de faisabilité du milieu : 2 ans et demi, une personne |
 | [Chili3D](https://github.com/xiangechen/chili3d) † | CAO 3D 100 % navigateur, TypeScript + OCCT 8.0 en WASM + Three.js, AGPL-3.0 | Le plus proche de nous, et toujours à côté : modelage **direct**, pas d'historique paramétrique. Détail au relevé du 2026-08-15 |
+| [xibyte/jsketcher](https://github.com/xibyte/jsketcher) ‡ | CAO paramétrique 2D/3D **100 % navigateur**, ~1,7 k ★ : OCCT en WASM, **solveur de contraintes 2D écrit maison en JS/TS**, historique de fonctions rééditable avec propagation d'ID d'arêtes/faces. Bêta | Le prédécesseur qu'on avait manqué — presque toute notre thèse, sans FreeCAD. ⚠️ **Licence piégeuse** : « MIT » modifié par Autodrop3d LLC avec cession de copyright obligatoire. Ni empruntable ni forkable |
 | [BOMWiki/partmode](https://github.com/BOMWiki/partmode) ‡ | CAO paramétrique **local-first** dans le navigateur : OCCT-wasm via `replicad` + three.js, modèle documentaire maison, **historique de fonctions rééditable**, esquisses contraintes, expressions, multicorps, configurations, motifs ; agents MCP éditant *le même* document que l'humain. AGPL-3.0, ~635 ★ | **Le plus proche de nous à ce jour** — il ferme le trou qu'on reprochait à Chili3D (l'historique paramétrique), et son interface est un vrai ruban de 89 kloc malgré son slogan « CLI-native ». Reste le modèle documentaire réinventé, et l'AGPL. Détail au relevé du 2026-08-21 |
 | freecad-mcp (plusieurs), freecad-ai ‡ | Pilotage de FreeCAD par API/LLM | De la tuyauterie voisine, pas une UI interactive — mais [`sandraschi/freecad-mcp`](https://github.com/sandraschi/freecad-mcp) est **architecturalement notre jumeau** (FreeCAD headless derrière une API REST qui sert aussi un tableau de bord web) et il est **MIT**. Relevé du 2026-08-21 |
 | render-fcstd, freecad-web-visualization | Visionneuses Three.js de fichiers exportés | Affichage seul |
 | Fil devtalk [« FreeCAD web frontend »](https://devtalk.freecad.org/t/freecad-web-frontend/55903) (2021) | Discussion récurrente depuis 2017 | Aucun projet n'en est sorti |
 | [waffle-iron](https://github.com/sequoia-hope/waffle-iron) (SequoiaHope) | **Noyau** CAD from scratch, Rust/WASM, MIT, ~6 mois de travail assisté par IA, par un expert Onshape/SolidWorks | Le pari inverse du nôtre : noyau réécrit, UI « needs a lot of work ». Complémentaire, pas concurrent |
+| [Fornjot](https://github.com/hannobraun/fornjot) ‡ | Noyau B-rep en Rust, ~20 000 commits, plusieurs années, un auteur à plein temps | **Archivé le 2026-06-19** : « *This project has been shut down. Its goals were never reached.* » Le point de donnée qui remplace l'intuition « pas vibe-codable » par une preuve |
 | [ecto/vcad](https://github.com/ecto/vcad) ‡ | CAO paramétrique complète — **noyau BRep Rust réécrit** (~445 kloc, 92 crates), app React/Three.js, Tauri, CLI, serveur MCP, banc d'essai IA. Apache-2.0, actif | Le même pari inverse que waffle-iron, **soixante-dix fois plus grand** et fini. Rien à prendre au noyau ; quatre idées à prendre au-dessus. Relevé complet : [`vcad.md`](vcad.md) |
 | [Onshape](https://www.onshape.com) | La CAO navigateur des fondateurs de SolidWorks, noyau Parasolid, gratuite en non-commercial | Le seul vrai « SW moderne dans un navigateur » existant. Cloud obligatoire, documents publics en gratuit, fermé — c'est exactement l'espace que « local + open source » laisse ouvert |
 
@@ -52,7 +56,7 @@ refait que ce qui se voit.
 
 # Relevé complémentaire du 2026-08-15 — Chili3D, macros, nœuds
 
-*† La ligne Chili3D du tableau ci-dessus a été ajoutée à cette date. Les lignes marquées ‡ — vcad, PartMode — ont été ajoutées au relevé du 2026-08-21, en bas de page, qui a aussi mis à jour les lignes Ondsel et freecad-mcp devenues inexactes.*
+*† La ligne Chili3D du tableau ci-dessus a été ajoutée à cette date. Les lignes marquées ‡ — vcad, PartMode, FreeCAD-Ribbon, Dune3D, jsketcher, Fornjot — ont été ajoutées aux deux relevés du 2026-08-21, en bas de page, qui ont aussi mis à jour les lignes Ondsel et freecad-mcp devenues inexactes.*
 
 ## 1. Chili3D — le miroir inversé
 
@@ -493,3 +497,181 @@ Ce qui n'est pas une raison de courir après le volume. C'en est une de
 prendre chez eux la seule chose qui se prend sans écrire de fonction : le
 contrat. Nos opérations sont déjà déclarées dans `engine/protocol.py` ;
 nos gestes d'interface ne le sont nulle part.
+
+---
+
+# Relevé du 2026-08-21 (suite) — quatre angles morts du tableau
+
+*Le tableau du 2026-08-02 a été bâti sur une question : « qui construit une
+UI moderne **pour FreeCAD** ? » Il a donc bien vu les projets qui se posaient
+la même question, et manqué ceux qui en posaient une autre. Quatre angles
+morts, du plus gênant au plus rassurant.*
+
+## 1. L'angle mort gênant — moderniser l'UI de FreeCAD **sans** la remplacer
+
+C'est la réponse concurrente à notre prémisse, elle existe, elle est
+distribuée officiellement, et le tableau ne la mentionnait pas.
+
+[**APEbbers/FreeCAD-Ribbon**](https://github.com/APEbbers/FreeCAD-Ribbon)
+remplace les barres d'outils de FreeCAD par un **ruban** bâti sur les
+barres existantes : conception stockée en JSON, dialogue de personnalisation
+(tailles de boutons, fusion de panneaux, réordonnancement, panneaux
+transverses, feuilles de style), désinstallation réversible. **GPL-3.0,
+~130 ★, 3 303 commits, présent dans l'Addon Manager officiel.** Il descend
+de [`geolta/FreeCAD-Ribbon`](https://github.com/geolta/FreeCAD-Ribbon) et
+de [`HakanSeven12/Modern-UI`](https://github.com/HakanSeven12/Modern-UI),
+via la bibliothèque PyQtRibbon.
+
+**Il faut le dire honnêtement : sur le ruban seul, il nous bat.** Il hérite
+gratuitement de *toutes* les fonctions de FreeCAD, y compris celles que nous
+n'avons pas et n'aurons pas avant longtemps ; nous, nous devons ré-exposer
+chaque fonction une par une. Sa dette est ailleurs :
+
+| | FreeCAD-Ribbon | FreeSolid |
+|---|---|---|
+| Ce qui est modernisé | la **disposition** des commandes existantes | la disposition **et** l'interaction, le viewport, la sélection |
+| Ce qui reste | Qt, les dialogues, les modales, la navigation de FreeCAD | rien de Qt |
+| Surface de couplage | les **internes Qt** de FreeCAD | un protocole JSON de 98 opérations |
+| Couverture fonctionnelle | **totale, immédiate** | ce que nous avons ré-exposé |
+| Installation | un addon | FreeCAD ≥ 1.0 + notre serveur |
+
+Le couplage n'est pas théorique : l'issue amont
+[#30248](https://github.com/FreeCAD/FreeCAD/issues/30248) — *RibbonUI ne se
+charge plus suite au commit `0d58641`* — a été confirmée et classée
+**régression**. Mais il faut être juste : **l'amont l'a traitée comme une
+régression et l'a corrigée** (PR #30261). L'écosystème absorbe la casse ;
+ce n'est pas de la négligence. La différence avec nous n'est pas la qualité
+du soin, c'est la **taille de la surface** : un protocole JSON par-dessus
+une frontière de processus se casse moins souvent que les internes d'un
+toolkit graphique, et quand il se casse, le selftest le dit.
+
+**Ce qu'on en fait.** Rien à prendre — GPL-3.0, donc ni empruntable chez
+nous (LGPL-2.1-or-later) ni remontable dans FreeCAD (LGPL-2.1-or-later
+aussi) : un addon sous GPL-3 ne peut pas fusionner dans le cœur. Mais c'est
+la **référence d'organisation du ruban la plus pertinente qui existe**,
+puisqu'elle range les vraies commandes de FreeCAD. À regarder quand on
+arbitrera nos propres panneaux. Et à citer : quand on nous demandera
+« pourquoi ne pas juste améliorer l'UI de FreeCAD ? », la réponse est
+« quelqu'un le fait déjà, très bien, et voici pourquoi nous coupons
+ailleurs ».
+
+## 2. L'angle mort flatteur — Dune3D fait notre pari, sur un autre couple
+
+[**dune3d/dune3d**](https://github.com/dune3d/dune3d), par Lukas K. (auteur
+de Horizon EDA) : **le solveur de SolveSpace + le noyau OCCT + une coquille
+neuve en GTK4**. GPL-3.0, ~2,1 k ★, v1.4.0 « Einstein » en janvier 2026,
+présenté au FOSDEM 2026 après deux ans et demi de travail.
+
+C'est **notre doctrine, appliquée à un autre couple de donneurs** : ne
+réécrire ni le solveur ni le noyau, ne refaire que ce qui se voit. Sa
+motivation d'origine, dite dans son README, est d'ailleurs une critique de
+FreeCAD que nous partageons à moitié — l'esquisseur modal et purement 2D —
+doublée d'une critique de SolveSpace (pas de STEP, pas de vrais congés).
+
+| | Dune3D | FreeSolid |
+|---|---|---|
+| Noyau | OCCT direct | OCCT **via FreeCAD** |
+| Solveur | SolveSpace | planegcs (celui de FreeCAD) |
+| Modèle documentaire | **réécrit** | celui de FreeCAD, intact |
+| Coquille | GTK4, bureau | web |
+| Fichiers | format propre + STEP | `.FCStd` réouvrable dans FreeCAD |
+
+La ligne de partage est exactement la même qu'avec Chili3D, SindriCAD et
+PartMode : **tout le monde réécrit le modèle documentaire, personne ne le
+garde.** C'est, à ce jour, notre seul différenciateur réellement unique —
+et le relevé de ce jour l'a maintenant vérifié sur cinq projets
+indépendants.
+
+Ce que Dune3D apporte de neuf au dossier, c'est une **preuve de
+faisabilité du milieu** : on peut faire une CAO paramétrique moderne et
+utilisable en réutilisant les morceaux durs, sans être ni FreeCAD ni un
+noyau réécrit. Deux ans et demi, une personne. C'est l'ordre de grandeur
+auquel se comparer — pas les 445 kloc de vcad.
+
+## 3. L'angle mort ancien — jsketcher, le prédécesseur navigateur
+
+[**xibyte/jsketcher**](https://github.com/xibyte/jsketcher), ~1,7 k ★,
+1 784 commits : « *parametric 2D and 3D CAD modeler written in pure
+javascript* ». OCCT compilé en WASM pour le solide, **solveur de
+contraintes 2D écrit maison en JS/TS**, métaphore fonction/historique avec
+navigation dans l'historique et réédition des paramètres — et, détail qui
+compte pour nous, **propagation d'identifiants d'arêtes et de faces**,
+c'est-à-dire une attaque du toponaming. Statut : bêta.
+
+Il aurait dû être au tableau du 2026-08-02 : c'est le plus ancien
+« FreeSolid sans FreeCAD » et il coche presque toutes les cases de la thèse.
+
+**Et il porte le piège de licence le plus vicieux de toute la veille.** Son
+`LICENSE` ressemble à du MIT et n'en est pas : c'est un MIT **modifié par
+Autodrop3d LLC**, qui impose que toute modification soit soumise en *pull
+request* avec **cession de copyright**, sauf à acheter une licence
+commerciale. Autrement dit : ni empruntable, ni forkable en pratique — et
+les listes qui le rangent sous « MIT » se trompent.
+
+**Leçon pour la grille de licences** de [`amont-freecad.md`](amont-freecad.md)
+§3 : le nom d'une licence dans un README, une liste curatée ou une page
+GitHub **n'est pas une licence**. On lit le fichier `LICENSE` avant de
+classer un dépôt comme empruntable. Ça vient de nous coûter cinq minutes ;
+ça aurait pu coûter un contentieux.
+
+## 4. L'angle mort rassurant — le verdict 2026 sur les noyaux réécrits
+
+Le tableau du 2026-08-02 concluait sur un avertissement d'expert : les
+noyaux géométriques ne sont « pas vibe-codables ». Ce n'était qu'une
+citation de forum. **Elle a maintenant des données.**
+
+| Projet | État au 2026-08-21 |
+|---|---|
+| [**Fornjot**](https://github.com/hannobraun/fornjot) — noyau B-rep en Rust, Hanno Braun | **Archivé le 2026-06-19.** Le README dit : « *This project has been shut down. Its goals were never reached.* » Près de **20 000 commits**, plusieurs années, un auteur dédié à plein temps, ~48 versions. La ligne principale n'avait plus avancé depuis plus d'un an |
+| [**Truck**](https://github.com/ricosjp/truck) — noyau CAD en Rust, Ricos | Actif — mais la feuille de route annonce toujours « *re-implement the B-rep with NURBS* ». Après des années, le B-rep NURBS est encore **devant** eux |
+| [**vcad**](vcad.md) | 445 kloc, 92 crates, actif — et un booléen de 26 kloc pour un noyau qui ne compile pas sans deux dépôts frères |
+| **waffle-iron** | ~6 mois de travail assisté par IA, UI « needs a lot of work » |
+
+Fornjot est le point de donnée le plus net qu'on pouvait espérer : ce
+n'est pas un projet abandonné faute d'intérêt, c'est un projet **soigné,
+financé par son auteur, documenté publiquement pendant des années**, qui
+s'arrête en écrivant que ses objectifs n'ont jamais été atteints. Aucun
+des quatre n'a produit un noyau qu'on voudrait mettre sous une pièce de
+production.
+
+**Doctrine confirmée, et cette fois avec des preuves plutôt qu'une
+intuition.** Le noyau n'est pas le morceau qu'on réécrit — c'est le morceau
+qu'on hérite.
+
+## 5. Et le joueur commercial — Zoo (KittyCAD)
+
+[**KittyCAD/modeling-app**](https://github.com/KittyCAD/modeling-app) — Zoo
+Design Studio. CAO « AI-native » articulée autour de **KCL**, leur langage
+de CAO paramétrique, qui est la source de vérité du modèle. L'application
+est open source ; **le moteur géométrique ne l'est pas**.
+
+Statut pour nous : hors périmètre — c'est un produit financé, fermé là où
+ça compte, et sur le créneau du *code-CAD* plus que de l'esquisse à la
+souris. Mais c'est le seul acteur de cette veille avec des moyens
+industriels, et son pari (le langage comme source de vérité) est le
+troisième modèle documentaire possible, à côté de l'historique linéaire et
+du graphe. À surveiller sans plus.
+
+## Ce que cette suite change
+
+Rien à la doctrine — et c'est la troisième fois de la journée que ce relevé
+l'écrit, ce qui commence à être un résultat en soi. Mais trois choses
+changent dans notre façon de la défendre :
+
+1. **On ne peut plus dire « personne n'a fait ça ».** Il faut dire ce qui
+   est vrai et vérifié sur cinq projets indépendants — Chili3D, SindriCAD,
+   PartMode, Dune3D, jsketcher réécrivent tous le modèle documentaire.
+   **Personne ne garde celui de FreeCAD.** C'est plus étroit qu'avant, et
+   c'est solide.
+2. **On a une réponse à « pourquoi ne pas juste améliorer FreeCAD ? »**,
+   et elle ne consiste pas à dénigrer FreeCAD-Ribbon, qui fait très bien
+   ce qu'il fait. Elle consiste à montrer les deux surfaces de couplage.
+3. **On a des preuves à la place d'une intuition** sur le noyau. Fornjot
+   archivé vaut mieux que n'importe quelle citation de forum.
+
+Une correction de méthode, enfin. Ces quatre angles morts existaient parce
+que le tableau interrogeait « une UI moderne **pour FreeCAD** ». La veille
+doit poser au moins trois questions, pas une : *qui refait l'UI de FreeCAD*,
+*qui refait une CAO paramétrique sans FreeCAD*, et *qui a essayé d'écrire
+un noyau et où il en est*. La troisième est celle qui protège la doctrine ;
+c'est celle qu'on avait le moins instruite.

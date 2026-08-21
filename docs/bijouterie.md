@@ -702,3 +702,84 @@ et les cotes justes, les deux pièges de la voie BREP s'évanouissent et il ne
 reste qu'à juger le coût du recalcul mesuré en H1. H6 tranche le point
 d'architecture du §7.4 ; H7 compare le siège aux 73 ms (BREP facetté) et
 36 ms (BREP analytique) déjà mesurés.
+
+## 7.7 Verdict de la sonde gemme cotée — exécutée le 2026-08-21
+
+`scripts/spike-gemme-parametrique.py` sur **FreeCAD 1.1.3**. **Verte**, et
+sur les points qui décidaient.
+
+### Les deux pièges de la voie BREP ont disparu
+
+| | Voie BREP mise à l'échelle (§6.7) | **Gemme cotée** |
+|---|---|---|
+| Surfaces après dimensionnement | tout converti en B-splines | `{Plane 1, Cone 2, Cylinder 1}` — **analytiques, et identiques aux trois diamètres testés** |
+| Volume | **−1,18 %** avant même l'échelle | exact |
+| `BoundBox` à ø 3 mm | 70 % trop grand | **[3,0 · 3,0 · 1,866]** — le diamètre demandé, au millionième |
+
+`aucune_bspline: true`, `types_stables: true`, `diametre_retrouve: true` aux
+trois tailles. **Les deux problèmes que la sonde précédente avait trouvés ne
+se posent plus.** Ils n'ont pas été contournés : ils n'existent pas dans
+cette conception.
+
+### Le carat, sans aucune table
+
+`volume_en_d3: true` — le volume suit exactement `d³`, avec un facteur
+constant de **0,216501** aux trois diamètres. L'esquisse tient donc ses
+proportions, et :
+
+> `V(d) = 0,216501 · d³`, exact, lu sur la géométrie.
+
+Le §6.3 proposait de **dériver** le facteur de correction de JewelCraft.
+C'est encore trop compliqué : ici on ne dérive rien, on **lit
+`shape.Volume`** à la taille demandée. Rapporté à la boîte englobante, le
+facteur vaut 0,348 — mais on n'en a même plus besoin.
+
+### Le reste
+
+| | |
+|---|---|
+| L'esquisse | **entièrement contrainte**, solveur à 0, 14 contraintes — le décompte de degrés de liberté tombe juste |
+| Le fichier de bibliothèque | **9,5 ko**. Dix-sept familles ≈ 160 ko |
+| 200 pierres d'une taille | **0,001 s**, et **82 octets par pierre** dans le document — plus léger encore que la voie BREP (113) |
+| Le siège | **valide**, un seul solide (voir la réserve ci-dessous) |
+
+### Trois mesures qui ne valaient pas ce qu'elles prétendaient
+
+**H1 — 5,5 ms par taille est un plancher, pas la réponse.** La gemme d'essai
+est une simple révolution : **4 faces**. Un brillant en a 57. Le chiffre
+mesure le coût d'un cône et on le citerait pour celui d'une pierre. La sonde
+a donc désormais un **H8** qui remesure avec une répétition polaire de seize
+coupes par-dessus — pas les vraies facettes, mais la même charge de calcul —
+et rapporte le multiple du plancher.
+
+Cela dit, même à vingt fois le plancher on serait à 110 ms par taille, pour
+une poignée de tailles distinctes par pièce. **La conclusion tient quel que
+soit le chiffre ; seule sa marge est en jeu.**
+
+**H7 — le siège n'effleurait la pierre que de 2,9 %.** Posée à 9,5 mm, la
+gemme ne croisait le jonc que par la pointe du culet : le chronomètre
+mesurait un frôlement. Le vrai geste met le **rondiste au ras de la surface**
+et enfonce toute la culasse. Placement corrigé, et la sonde rapporte
+maintenant quelle part de la pierre le siège a réellement prise.
+
+Les 23 ms mesurés restent instructifs par comparaison avec la voie BREP sur
+une forme équivalente — 36 ms pour la version analytique **convertie**. Ne
+pas convertir n'est donc pas seulement plus exact : c'est **un tiers plus
+rapide**. Mais le budget d'un vrai siège reste à établir.
+
+**H6 — mon test était faux.** `RuntimeError: Owner document not saved` :
+FreeCAD refuse un lien inter-documents depuis un document **jamais écrit** —
+il lui faut un chemin pour poser la référence. Rien à voir avec la
+conception. Le test enregistre désormais avant de lier, et le point
+d'architecture du §7.4 reste **ouvert** jusqu'au prochain passage.
+
+### Verdict
+
+**La gemme cotée est la conception retenue.** Elle est plus exacte que le
+BREP mis à l'échelle, plus rapide en booléen, plus légère en document, et
+elle seule permet de modeler un ovale **pour ce qu'il est** plutôt que comme
+un rond étiré. Le seul coût — un recalcul par taille distincte — se mesure en
+millisecondes.
+
+Reste à trancher, au prochain passage : **lien externe ou forme importée**
+(§7.4), et le **budget d'un vrai siège** sur une pierre facettée.

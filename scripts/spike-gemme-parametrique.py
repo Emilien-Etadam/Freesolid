@@ -82,9 +82,17 @@ RATIOS = {
 }
 
 
-def build_library(diametre=1.0):
+def build_library(path=None, facettes=0, diametre=1.0):
     """Écrit la gemme paramétrique sur disque, comme le ferait un modeleur
-    une fois pour toutes. Retourne un rapport sur sa santé."""
+    une fois pour toutes. Retourne un rapport sur sa santé.
+
+    ``facettes`` > 0 ajoute une répétition polaire de poches par-dessus la
+    révolution. Ce ne sont pas les vraies facettes d'un brillant — mais
+    c'est la même CHARGE DE CALCUL : révolution plus N coupes répétées.
+    Sans ça, H1 mesurerait le coût d'un cône et on le citerait pour celui
+    d'une pierre.
+    """
+    path = path or BIBLIO
     doc = App.newDocument("Brillant")
     try:
         varset = doc.addObject("App::VarSet", "Variables")
@@ -153,10 +161,55 @@ def build_library(diametre=1.0):
         rev.Angle = 360.0
         doc.recompute()
 
-        doc.saveAs(BIBLIO)
+        if facettes:
+            fs = doc.addObject("Sketcher::SketchObject", "Facette")
+            body.addObject(fs)
+            xy = next(f for f in body.Origin.OriginFeatures
+                      if getattr(f, "Role", "") == "XY_Plane")
+            try:
+                fs.AttachmentSupport = [(xy, ("",))]
+            except AttributeError:
+                fs.Support = [(xy, ("",))]
+            fs.MapMode = "FlatFace"
+            doc.recompute()
+            circ = fs.addGeometry(Part.Circle(
+                App.Vector(0.46 * d, 0, 0), App.Vector(0, 0, 1), 0.11 * d),
+                False)
+            # Facette pilotée elle aussi : sans expression, elle garderait
+            # sa taille pendant que la pierre grandit, et H8 mesurerait un
+            # cas de figure qui n'existe pas.
+            fs.addConstraint(Sketcher.Constraint("PointOnObject", circ, 3, -1))
+            for kind, args, ratio, nom in (
+                    ("DistanceX", (circ, 3), 0.46, "position_facette"),
+                    ("Radius", (circ,), 0.11, "rayon_facette")):
+                idx = fs.addConstraint(Sketcher.Constraint(
+                    kind, *(args + (ratio * d,))))
+                fs.renameConstraint(idx, nom)
+                fs.setExpression("Constraints[{}]".format(idx),
+                                 "Variables.diametre * {}".format(ratio))
+            doc.recompute()
+
+            pocket = doc.addObject("PartDesign::Pocket", "Facette1")
+            body.addObject(pocket)
+            pocket.Profile = fs
+            pocket.Type = "ThroughAll"
+            pocket.Reversed = True   # vers le haut : la matière est au-dessus
+            doc.recompute()
+
+            pat = doc.addObject("PartDesign::PolarPattern", "Facettes")
+            body.addObject(pat)
+            pat.Transformed = [pocket]
+            pat.Axis = (next(f for f in body.Origin.OriginFeatures
+                             if getattr(f, "Role", "") == "Z_Axis"), [""])
+            pat.Angle = 360.0
+            pat.Occurrences = int(facettes)
+            doc.recompute()
+
+        doc.saveAs(path)
         shape = body.Shape
         return {
-            "fichier_octets": os.path.getsize(BIBLIO),
+            "fichier_octets": os.path.getsize(path),
+            "facettes": int(facettes),
             "solveur": sk.solve() if hasattr(sk, "solve") else None,
             "entierement_contrainte": getattr(sk, "FullyConstrained", None),
             "contraintes": len(sk.Constraints),
@@ -299,15 +352,20 @@ def probe_external_link():
     piece = App.newDocument("SpikePiece")
     out = {}
     try:
+        # Premier passage : « RuntimeError: Owner document not saved ».
+        # FreeCAD refuse un lien INTER-DOCUMENTS depuis un document jamais
+        # écrit — il lui faut un chemin pour poser la référence. C'était
+        # mon test qui était faux, pas la conception. On enregistre donc
+        # avant de lier.
+        piece.saveAs(os.path.join(TMP, "piece-liee.FCStd"))
         link = piece.addObject("App::Link", "PierreLiee")
         link.LinkedObject = biblio.getObject("Corps")
         piece.recompute()
         out["lien_cree"] = True
         out["forme_visible"] = bool(getattr(link, "Shape", None)
                                     and link.Shape.Faces)
-        path = os.path.join(TMP, "piece-liee.FCStd")
-        piece.saveAs(path)
-        out["octets"] = os.path.getsize(path)
+        piece.save()
+        out["octets"] = os.path.getsize(piece.FileName)
     except Exception as exc:  # noqa: BLE001
         out["lien_cree"] = False
         out["erreur"] = "{}: {}".format(type(exc).__name__, str(exc)[:120])
@@ -346,10 +404,16 @@ note("h6_lien_externe", probe_external_link)
 
 def probe_seat():
     band = Part.makeCylinder(10.0, 6.0).cut(Part.makeCylinder(8.5, 6.0))
-    gem, _ = gemme_a(3.0)
+    d = 3.0
+    gem, _ = gemme_a(d)
     seat = gem.copy()
-    seat.Placement = App.Placement(App.Vector(9.5, 0, 3.0),
-                                   App.Rotation(App.Vector(0, 1, 0), 90))
+    # Premier passage : posée à 9,5 mm, la pierre n'entamait que 2,9 % de
+    # son volume — le chrono mesurait un frôlement, pas un siège. Le vrai
+    # geste met le RONDISTE au ras de la surface (rayon 10) et enfonce
+    # toute la culasse dans la matière : culet à 10 − 0,46 d.
+    seat.Placement = App.Placement(
+        App.Vector(10.0 - RATIOS["haut_rondiste"] * d, 0, 3.0),
+        App.Rotation(App.Vector(0, 1, 0), 90))
     t0 = time.time()
     cut = band.cut(seat)
     dt = time.time() - t0
@@ -359,12 +423,55 @@ def probe_seat():
         "solides": len(cut.Solids),
         "a_enleve_de_la_matiere": cut.Volume < band.Volume - 1e-9,
         "volume_enleve_mm3": round(band.Volume - cut.Volume, 6),
+        # Un vrai siège prend une bonne part de la culasse : si ce
+        # rapport reste sous 20 %, la pierre frôle encore.
+        "part_de_la_pierre_pct": round(
+            (band.Volume - cut.Volume) / gem.Volume * 100, 1),
         "reference_brep_facette_ms": 72.65,
         "reference_brep_analytique_ms": 35.65,
     }
 
 
 note("h7_siege", probe_seat)
+
+
+# --------------------------------------------------------------------------
+# H8 — H1 mesure une simple révolution : 4 faces. Un brillant en a 57.
+#      5,5 ms est donc un PLANCHER, pas la réponse. On remesure avec une
+#      répétition polaire de coupes par-dessus — même charge de calcul
+#      qu'une vraie taille facettée.
+# --------------------------------------------------------------------------
+
+FACETTES = os.path.join(TMP, "brillant-facette.FCStd")
+
+
+def probe_faceted_cost():
+    infos = build_library(path=FACETTES, facettes=16)
+    durees = []
+    for diam in (1.0, 1.5, 2.0, 3.0, 4.0, 6.0):
+        t0 = time.time()
+        doc = App.openDocument(FACETTES)
+        try:
+            doc.getObject("Variables").diametre = float(diam)
+            doc.recompute()
+            shape = doc.getObject("Corps").Shape.copy()
+        finally:
+            App.closeDocument(doc.Name)
+        durees.append((time.time() - t0) * 1000.0)
+        infos["d_{}".format(diam)] = {
+            "faces": len(shape.Faces), "valide": shape.isValid(),
+            "solide": len(shape.Solids) == 1,
+            "surfaces": surface_types(shape)}
+    infos["ms_par_taille"] = round(sum(durees) / len(durees), 1)
+    infos["ms_mediane"] = round(sorted(durees)[len(durees) // 2], 1)
+    # Le rapport qui compte : de combien la charge réelle dépasse le plancher.
+    plancher = (R.get("h1_cout") or {}).get("ms_par_taille") or 0
+    infos["fois_le_plancher"] = (
+        round(infos["ms_par_taille"] / plancher, 1) if plancher else None)
+    return infos
+
+
+note("h8_cout_facette", probe_faceted_cost)
 
 shutil.rmtree(TMP, ignore_errors=True)
 
@@ -383,6 +490,8 @@ verdict = {
     "H5 200 instances": bool((R.get("h5_instances") or {}).get("pierres")),
     "H7 siège creusé": bool((R.get("h7_siege") or {}).get(
         "a_enleve_de_la_matiere")),
+    "H8 coût à charge réelle": bool(
+        (R.get("h8_cout_facette") or {}).get("ms_par_taille")),
 }
 print("\n".join("{}  {}".format("OK  " if v else "NON ", k)
                 for k, v in verdict.items()), flush=True)

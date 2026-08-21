@@ -837,3 +837,74 @@ de cette journée de veille qui soit directement branchable, sous une licence
 qui n'interdit rien, et qui répond à un manque déjà inscrit à la feuille de
 route. Tout le reste de la journée aura servi à *ne pas* écrire du code ;
 celui-ci sert à en écrire moins.
+
+## Résidu de veille — ce qui avait été vu sans être instruit
+
+*Audit du 2026-08-21, en fin de journée : douze noms sont passés dans les
+recherches de la journée sans jamais atteindre ces pages. Les voici, avec
+leur verdict — court, parce que la plupart le méritent.*
+
+| Dépôt / source | Ce que c'est | Verdict |
+|---|---|---|
+| [**donalffons/opencascade.js**](https://github.com/donalffons/opencascade.js) | Portage d'OCCT en JS/WebAssembly par Emscripten. ~72 % des classes d'OCCT couvertes, vitesse quasi native, multi-thread. Actif (activité en mai 2026). **LGPL-2.1** | 🟢 **voir ci-dessous** — c'est le substrat de toute la CAO navigateur du tableau, et il est sous notre licence |
+| [CadQuery](https://github.com/CadQuery/cadquery) · [build123d](https://github.com/gumyr/build123d) | *code-CAD* Python sur OCCT | Déjà présents indirectement : SindriCAD est bâti sur build123d. Voisins conceptuels du nœud Python (N008) ; rien à en tirer tant que le graphe reste une vue |
+| [libfive](https://github.com/libfive/libfive) | Noyau **implicite** (fonctions de distance signée), pas B-rep | Autre paradigme géométrique — pas de topologie exacte, donc hors de notre modèle documentaire. **Licence non vérifiée** au fichier, donc **non classé** : c'est la règle du §3 de [`amont-freecad.md`](amont-freecad.md) appliquée à nous-mêmes |
+| [CADAM (Adam-CAD)](https://github.com/Adam-CAD/CADAM) | Application web **texte → CAO paramétrique** | GPL-3.0. L'angle IA pris par le produit plutôt que par le protocole. À regarder si la question « décrire une pièce en français » revient |
+| [Frontier](https://github.com/Geoplexity/Frontier) · [pygeosolve](https://github.com/SeanDS/pygeosolve) | Solveurs de contraintes géométriques de recherche | Curiosités académiques. planegcs les surclasse et il est déjà chez nous |
+| [FC-Docker](https://github.com/mmiscool/FC-Docker) | FreeCAD dans un conteneur, accessible par le navigateur | Même case que `render-fcstd` : de l'accès distant, pas une interface |
+
+### opencascade.js mérite mieux qu'une ligne
+
+C'est sur lui que reposent **Chili3D, PartMode, jsketcher et `replicad`** —
+tout le bas du tableau, en réalité. Et le point qui n'avait pas été relevé :
+il est en **LGPL-2.1**, c'est-à-dire la licence de FreeCAD et la nôtre.
+
+Ça n'a aucune conséquence aujourd'hui — nous n'avons pas besoin d'OCCT dans
+l'onglet, nous avons FreeCAD dans un processus. Mais ça en a une le jour où
+la seule faiblesse réelle relevée au 2026-08-15 revient sur la table : le
+**zéro-install**, que Chili3D a et que nous n'avons pas. Les deux pistes
+notées alors — le portage WASM de `magik6k` et « le jour venu, le même
+moteur tournera dans l'onglet » — ont maintenant un troisième terme :
+*OCCT seul, en WASM, sous notre licence*. Ce serait un autre projet que
+FreeSolid, et il faudrait rouvrir la question du modèle documentaire. Mais
+l'obstacle n'est pas juridique, et c'est bon à savoir.
+
+### Les sources de veille, à noter pour la prochaine fois
+
+Les angles morts de la journée venaient d'une méthode, pas d'un manque de
+zèle. Deux listes curatées auraient couvert une bonne partie du terrain
+d'un coup, et méritent d'être le point de départ du prochain relevé :
+
+- [**mlightcad/awesome-cad**](https://github.com/mlightcad/awesome-cad) —
+  classée par catégorie : applications paramétriques, CAO navigateur,
+  noyaux B-rep, solveurs de contraintes. C'est elle qui a fait remonter
+  `jsketcher`, `libfive`, `Frontier` et `pygeosolve`.
+- [**Irev-Dev/curated-code-cad**](https://github.com/Irev-Dev/curated-code-cad) —
+  le versant *code-CAD*.
+
+⚠️ **Et à lire avec la règle du §3 :** `awesome-cad` range `jsketcher` sous
+une licence permissive alors que son fichier `LICENSE` impose une cession de
+copyright. **Une liste curatée oriente la recherche ; elle ne classe pas une
+licence.**
+
+Un troisième filon, pour le registre amont plutôt que pour la veille : il
+existe un [**catalogue public des défauts de l'API Python de
+FreeCAD**](https://gist.github.com/galou/1fea17fbcf8cd25cf613b142cd9012ce)
+tenu par galou (dernière activité mai 2024) — nommage incohérent, degrés
+contre radians, implémentations manquantes, problèmes de proxys —, doublé
+d'un ticket GSoC [« *Improve the FreeCAD API documentation* »](https://github.com/opencax/GSoC/issues/36).
+Vérifié : **le manque d'undo (A2) n'y figure pas.** Notre entrée est donc
+bien inédite, et ces deux pages sont l'endroit où la rattacher.
+
+### Ce que l'audit lui-même apprend
+
+Cette section existe parce que la question « tout est documenté ? » a été
+posée et **vérifiée** plutôt que supposée : un `grep` de chaque nom croisé
+dans la journée contre `docs/`, `README.md` et `AGENTS.md`. Douze absents
+sur une quarantaine de noms.
+
+C'est le pendant du cinquième geste du §8 de
+[`amont-freecad.md`](amont-freecad.md) : relire ses propres documents avec
+la question en tête. **Documenter à fond, ce n'est pas écrire beaucoup —
+c'est vérifier ce qui n'a pas été écrit.** Le geste tient en une commande
+et devrait clore chaque relevé.

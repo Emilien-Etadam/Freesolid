@@ -1581,6 +1581,75 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ).catch(() => {});
   await step("fonction graphe");
 
+  // N011 — poser un nœud cercle dans une fonction graphe et appliquer.
+  await page.click('[data-tab="features"]');
+  await sleep(200);
+  await page.click("#btn-graph-feature");
+  await page.waitForFunction(
+    () => document.querySelector("#panel .ptitle")?.textContent
+      === "Fonction graphe",
+    null,
+    { timeout: 8000 },
+  );
+  await page.click('#panel [title^="OK"]');
+  await page.waitForFunction(
+    () => window.__freesolidDebug?.graphFeatureActive === true,
+    null,
+    { timeout: 15000 },
+  );
+  const n11palette = page.locator("#graph-fn-palette");
+  await n11palette.click();
+  await page.waitForSelector("#graph-palette [data-type='cercle']",
+    { timeout: 5000 });
+  const n11paletteInfo = await page.evaluate(() => {
+    const cercle = document.querySelector("#graph-palette [data-type='cercle']");
+    const discret = document.querySelector(
+      "#graph-palette [data-type='discretiser']");
+    return {
+      cercleDisabled: cercle?.classList.contains("disabled") ?? true,
+      discretDisabled: discret?.classList.contains("disabled") ?? false,
+      discretReason: discret?.querySelector(".graph-palette-reason")
+        ?.textContent || "",
+    };
+  });
+  if (n11paletteInfo.cercleDisabled) {
+    errors.push("N011 : le nœud cercle devrait être posable");
+  }
+  if (!n11paletteInfo.discretDisabled
+      || !/consomme une forme/.test(n11paletteInfo.discretReason)) {
+    errors.push("N011 : discrétiser devrait rester grisé pour la vraie "
+      + "raison (" + n11paletteInfo.discretReason + ")");
+  }
+  await page.click("#graph-palette [data-type='cercle']");
+  await page.waitForFunction(
+    () => [...document.querySelectorAll(
+      "#graph-view .graph-node[data-type='cercle']")].length > 0,
+    null,
+    { timeout: 5000 },
+  ).catch(() => {});
+  const n11before = await volumeOf();
+  await page.click("#graph-fn-apply");
+  await sleep(800);
+  const n11after = await volumeOf();
+  const n11error = await page.evaluate(() =>
+    !!document.querySelector("#graph-view .graph-node.error"));
+  if (n11error) {
+    errors.push("N011 : appliquer après un nœud cercle a marqué une erreur");
+  }
+  if (Math.abs(n11after - n11before) > 1e-6) {
+    errors.push("N011 : poser un cercle hors sortie ne doit pas changer "
+      + "le volume (" + n11before + " → " + n11after + ")");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "9c-graphe-cercle.png") });
+  page.once("dialog", (dialog) => { dialog.accept().catch(() => {}); });
+  await page.click("#graph-fn-close");
+  await page.waitForFunction(
+    () => window.__freesolidDebug?.graphFeatureActive !== true,
+    null,
+    { timeout: 8000 },
+  ).catch(() => {});
+  await step("courbes graphe");
+
   // N008 — nœud Python : la demande d'autorisation apparaît ;
   // refuser laisse la pièce intacte.
   await page.click('[data-tab="features"]');

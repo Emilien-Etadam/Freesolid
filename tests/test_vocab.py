@@ -91,3 +91,11 @@ def test_graph_node_labels_are_french():
     assert vocab.GRAPH_NODE_BY_TYPE["cote"].category == "repeat"
     assert vocab.GRAPH_NODE_BY_TYPE["instance"].implemented is True
     assert vocab.GRAPH_NODE_BY_TYPE["cote"].inputs[1].optional is True
+    assert vocab.GRAPH_NODE_BY_TYPE["cercle"].implemented is True
+    assert vocab.GRAPH_NODE_BY_TYPE["ligne"].implemented is True
+    assert vocab.GRAPH_NODE_BY_TYPE["helice"].implemented is True
+    assert vocab.GRAPH_NODE_BY_TYPE["plan"].implemented is True
+    assert vocab.GRAPH_NODE_BY_TYPE["bspline"].implemented is True
+    assert vocab.GRAPH_NODE_BY_TYPE["discretiser"].implemented is False
+    assert "consomme une forme" in vocab.GRAPH_NODE_BY_TYPE["discretiser"].reason
+    assert vocab.graph_input_label("centres") == "Points de passage"

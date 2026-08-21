@@ -3,8 +3,10 @@
 Une fonction graphe est une ligne de l'arbre : un flux de nœuds à
 l'intérieur, boucles et listes comprises, et **une forme en sortie**.
 Ce module ne fabrique aucune géométrie. Il rend une liste plate
-d'instructions ``{"shape": "box"|"cylinder"|"script", ...}`` ; c'est le
+d'instructions ``{"shape": <type du nœud>|"script", ...}`` ; c'est le
 kernel qui les traduit en ``Part``, et qui exécute les ``script``.
+Les types d'instruction se dérivent de ``GRAPH_NODES`` — une seule
+source, pas trois listes parallèles.
 Un nœud Python n'est **jamais** évalué ici : l'instruction émise est
 inerte. Un callback ``run_script`` (fourni par le kernel) peut la
 résoudre ; sans lui, elle circule telle quelle.
@@ -19,9 +21,8 @@ Chaque nœud : ``{"id": <str|int>, "type": <str>, ...}``.
 
 Le catalogue complet — types, ports, catégories, icônes, état
 implémenté — vit dans ``engine.vocab.GRAPH_NODES``. Ici, seulement
-l'évaluation des catégories pures (nombre, vecteur, liste), des deux
-générateurs déjà là (cylindre, boîte), et l'émission inerte du nœud
-``script``.
+l'évaluation : catégories pures, générateurs, courbes et surfaces qui
+ne consomment pas de forme, et l'émission inerte du nœud ``script``.
 
 Alias N004, migrés à l'évaluation : ``calcul`` + ``op`` → addition /
 soustraction / multiplication / division ; ``point`` (composition) →
@@ -53,12 +54,13 @@ from __future__ import annotations
 import math
 
 from engine.protocol import _COUNT_MAX
-from engine.vocab import GRAPH_NODE_BY_TYPE, GRAPH_NODES
+from engine.vocab import (
+    GRAPH_NODE_BY_TYPE, GRAPH_NODES, graph_node_label,
+)
 
 
 COUNT_MAX = _COUNT_MAX
 _MAX_DEPTH = 32
-_SHAPE_KINDS = frozenset({"box", "cylinder"})
 _SCRIPT_KIND = "script"
 
 _NODE_INPUTS = {
@@ -82,6 +84,24 @@ _POINT_INPUTS = frozenset(
 )
 _NODE_SHAPES = frozenset(spec.type for spec in GRAPH_NODES if spec.shape)
 _IMPLEMENTED = frozenset(spec.type for spec in GRAPH_NODES if spec.implemented)
+#: Types d'instruction géométrique = nœuds ``shape`` du catalogue.
+#: Plus ``script``, qui n'est pas une forme mais circule comme instruction.
+_INSTRUCTION_KINDS = _NODE_SHAPES | {_SCRIPT_KIND}
+#: Solides (générateurs) vs courbes / surfaces — une ligne d'arbre
+#: a une seule nature. Dérivé du catalogue, pas recopié à la main.
+_SOLID_SHAPES = frozenset(
+    spec.type for spec in GRAPH_NODES
+    if spec.shape and spec.category == "generators"
+)
+_WIRE_SHAPES = frozenset(
+    spec.type for spec in GRAPH_NODES
+    if spec.shape and spec.category == "curves"
+)
+_FACE_SHAPES = frozenset(
+    spec.type for spec in GRAPH_NODES
+    if spec.shape and spec.category == "surfaces"
+)
+_SURFACE_SHAPES = _WIRE_SHAPES | _FACE_SHAPES
 
 _LEGACY_CALC = {
     "+": "addition",
@@ -201,7 +221,7 @@ def evaluate(graph, variables, run_script=None):
                      ``None``. **Ce module n'exécute jamais le Python** :
                      sans callback, un nœud ``script`` rend une
                      instruction inerte ``{"shape": "script", ...}``.
-    Retour         : ``[{"shape": "box"|"cylinder"|"script", ...}]`` —
+    Retour         : ``[{"shape": <type du nœud>|"script", ...}]`` —
                      des instructions, pas des formes.
     """
     return _Evaluator(migrate_graph(graph), variables, run_script).run()
@@ -237,8 +257,7 @@ def _is_point(value):
 
 
 def _is_instruction(value):
-    return isinstance(value, dict) and value.get("shape") in (
-        "box", "cylinder", _SCRIPT_KIND)
+    return isinstance(value, dict) and value.get("shape") in _INSTRUCTION_KINDS
 
 
 def _is_instance(value):
@@ -265,7 +284,79 @@ def _is_cote_params(value):
 
 
 def _is_shape_instruction(value):
-    return isinstance(value, dict) and value.get("shape") in _SHAPE_KINDS
+    return isinstance(value, dict) and value.get("shape") in _NODE_SHAPES
+
+
+def _is_point_list(value):
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(_is_point(item) for item in value)
+    )
+
+
+def _is_point_grid(value):
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(_is_point_list(item) for item in value)
+    )
+
+
+def classify_shape_instructions(instructions):
+    """Répartit les instructions en solides et courbes/surfaces.
+
+    ``script`` n'apparaît pas ici : le kernel l'a déjà résolu. Un type
+    inconnu est ignoré — c'est ``_shape_from_instruction`` qui refuse.
+    """
+    solids = []
+    surfaces = []
+    for inst in instructions:
+        if not isinstance(inst, dict):
+            continue
+        kind = inst.get("shape")
+        if kind in _SOLID_SHAPES:
+            solids.append(kind)
+        elif kind in _SURFACE_SHAPES:
+            surfaces.append(kind)
+    return solids, surfaces
+
+
+def mixed_output_message(solids, surfaces):
+    """Refus d'une sortie mixte — nomme les natures, en français."""
+    def _names(kinds):
+        seen = []
+        for kind in kinds:
+            label = graph_node_label(kind)
+            if label not in seen:
+                seen.append(label)
+        return ", ".join(seen)
+
+    solid_txt = _names(solids)
+    other_txt = _names(surfaces)
+    other_role = "courbe"
+    if surfaces and all(kind in _FACE_SHAPES for kind in surfaces):
+        other_role = "surface"
+    elif surfaces and any(kind in _FACE_SHAPES for kind in surfaces):
+        other_role = "courbe ou surface"
+    solid_role = "solide"
+    return (
+        "le graphe mélange un {} ({}) et une {} ({}) — "
+        "une ligne d'arbre a une seule nature".format(
+            solid_role, solid_txt, other_role, other_txt)
+    )
+
+
+def output_nature(instructions):
+    """``solid`` ou ``surface``, ou ``None`` si mixte / sans forme."""
+    solids, surfaces = classify_shape_instructions(instructions)
+    if solids and surfaces:
+        return None
+    if solids:
+        return "solid"
+    if surfaces:
+        return "surface"
+    return None
 
 
 def _as_number(value, node):
@@ -404,11 +495,50 @@ def _apply(fn, args, node, depth):
     return result
 
 
+def _apply_with_leaves(fn, args, node, depth, is_leaf):
+    """Comme ``_apply``, mais ``is_leaf`` empêche d'éclater une liste.
+
+    Une polyligne (liste de points) ou une grille B-spline (liste de
+    rangées) est une feuille : l'appariement s'applique autour, pas
+    dedans.
+    """
+    if depth > _MAX_DEPTH:
+        raise GraphError(
+            "nœud « {} » : imbrication trop profonde".format(_label(node)))
+    lists = [
+        arg for arg in args
+        if isinstance(arg, list) and not is_leaf(arg)
+    ]
+    if not lists:
+        return fn(*args)
+    length = len(lists[0])
+    for other in lists[1:]:
+        if len(other) != length:
+            raise GraphError(
+                "nœud « {} » : listes de longueurs {} et {}".format(
+                    _label(node), length, len(other)))
+    if length > COUNT_MAX:
+        raise GraphError(
+            "nœud « {} » : plafond de {} éléments dépassé ({}) — "
+            "aucune troncature".format(_label(node), COUNT_MAX, length))
+    result = []
+    for index in range(length):
+        item_args = [
+            arg[index] if (isinstance(arg, list) and not is_leaf(arg)) else arg
+            for arg in args
+        ]
+        result.append(_apply_with_leaves(
+            fn, item_args, node, depth + 1, is_leaf))
+    _check_ceiling(result, node)
+    return result
+
+
 def accept_value(value, node):
     """Valeur qu'un script a le droit de rendre — types de l'évaluateur.
 
-    Nombre, liste, vecteur, ou instruction de forme (boîte / cylindre).
-    Tout le reste est refusé, en français, en nommant le nœud.
+    Nombre, liste, vecteur, ou instruction de forme (un type ``shape``
+    du catalogue). Tout le reste est refusé, en français, en nommant
+    le nœud.
     """
     if _is_number(value):
         return _as_number(value, node)
@@ -655,6 +785,30 @@ class _Evaluator:
             return _apply(self._cylinder_fn(node), self._inputs(node), node, 0)
         if kind == "boite":
             return _apply(self._box_fn(node), self._inputs(node), node, 0)
+        if kind == "ligne":
+            return _apply(self._line_fn(node), self._inputs(node), node, 0)
+        if kind == "arc":
+            return _apply(self._arc_fn(node), self._inputs(node), node, 0)
+        if kind == "arc_3pts":
+            return _apply(self._arc3_fn(node), self._inputs(node), node, 0)
+        if kind == "cercle":
+            return _apply(self._circle_fn(node), self._inputs(node), node, 0)
+        if kind == "helice":
+            return _apply(self._helix_fn(node), self._inputs(node), node, 0)
+        if kind == "plan":
+            return _apply(self._plane_fn(node), self._inputs(node), node, 0)
+        if kind == "polyligne":
+            return _apply_with_leaves(
+                self._polyline_fn(node), self._inputs(node), node, 0,
+                _is_point_list)
+        if kind == "bspline":
+            return _apply_with_leaves(
+                self._bspline_fn(node), self._inputs(node), node, 0,
+                _is_point_list)
+        if kind == "bspline_surface":
+            return _apply_with_leaves(
+                self._bspline_surface_fn(node), self._inputs(node), node, 0,
+                _is_point_grid)
         if kind == _SCRIPT_KIND:
             return self._script(node)
         if kind == "cote":
@@ -856,7 +1010,7 @@ class _Evaluator:
                     "nœud « {} » : rayon et hauteur doivent être positifs"
                     .format(_label(node)))
             x, y, z = _as_point(anchor, node)
-            return {"shape": "cylinder", "radius": r, "height": h,
+            return {"shape": "cylindre", "radius": r, "height": h,
                     "x": x, "y": y, "z": z}
         return _run
 
@@ -870,8 +1024,164 @@ class _Evaluator:
                     "nœud « {} » : dimensions de la boîte doivent être "
                     "positives".format(_label(node)))
             x, y, z = _as_point(anchor, node)
-            return {"shape": "box", "length": dx, "width": dy, "height": dz,
+            return {"shape": "boite", "length": dx, "width": dy, "height": dz,
                     "x": x, "y": y, "z": z}
+        return _run
+
+    def _xyz(self, value, node):
+        point = _as_point(value, node)
+        return [point[0], point[1], point[2]]
+
+    def _as_flag(self, value, node):
+        return 1.0 if _as_number(value, node) != 0 else 0.0
+
+    def _as_direction(self, value, node):
+        vec = self._xyz(value, node)
+        if vec[0] == 0 and vec[1] == 0 and vec[2] == 0:
+            raise GraphError(
+                "nœud « {} » : direction nulle".format(_label(node)))
+        return vec
+
+    def _as_point_list(self, value, node, minimum=2):
+        items = value if isinstance(value, list) else [value]
+        points = [self._xyz(item, node) for item in items]
+        if len(points) < minimum:
+            raise GraphError(
+                "nœud « {} » : au moins {} points, reçu {}".format(
+                    _label(node), minimum, len(points)))
+        return points
+
+    def _as_point_grid(self, value, node):
+        if _is_point_list(value) or not isinstance(value, list) or not value:
+            raise GraphError(
+                "nœud « {} » : grille de points attendue "
+                "(liste de rangées)".format(_label(node)))
+        rows = []
+        width = None
+        for row in value:
+            points = self._as_point_list(row, node, minimum=2)
+            if width is None:
+                width = len(points)
+            elif len(points) != width:
+                raise GraphError(
+                    "nœud « {} » : rangées de longueurs {} et {}".format(
+                        _label(node), width, len(points)))
+            rows.append(points)
+        if len(rows) < 2:
+            raise GraphError(
+                "nœud « {} » : une surface B-spline demande au moins "
+                "deux rangées".format(_label(node)))
+        return rows
+
+    def _positive(self, value, node, label):
+        number = _as_number(value, node)
+        if number <= 0:
+            raise GraphError(
+                "nœud « {} » : {} doit être positif".format(
+                    _label(node), label))
+        return number
+
+    def _line_fn(self, node):
+        def _run(point1, point2):
+            a = self._xyz(point1, node)
+            b = self._xyz(point2, node)
+            if a == b:
+                raise GraphError(
+                    "nœud « {} » : les deux points sont confondus".format(
+                        _label(node)))
+            return {"shape": "ligne", "point1": a, "point2": b}
+        return _run
+
+    def _arc_fn(self, node):
+        def _run(radius, point, direction, angle1, angle2):
+            r = self._positive(radius, node, "le rayon")
+            a1 = _as_number(angle1, node)
+            a2 = _as_number(angle2, node)
+            if a1 == a2:
+                raise GraphError(
+                    "nœud « {} » : l'arc a une ouverture nulle".format(
+                        _label(node)))
+            return {
+                "shape": "arc",
+                "rayon": r,
+                "point": self._xyz(point, node),
+                "direction": self._as_direction(direction, node),
+                "angle1": a1,
+                "angle2": a2,
+            }
+        return _run
+
+    def _arc3_fn(self, node):
+        def _run(point1, point2, point3):
+            a = self._xyz(point1, node)
+            b = self._xyz(point2, node)
+            c = self._xyz(point3, node)
+            if a == b or b == c or a == c:
+                raise GraphError(
+                    "nœud « {} » : les trois points ne sont pas distincts"
+                    .format(_label(node)))
+            return {"shape": "arc_3pts", "point1": a, "point2": b, "point3": c}
+        return _run
+
+    def _circle_fn(self, node):
+        def _run(radius, point, direction):
+            return {
+                "shape": "cercle",
+                "rayon": self._positive(radius, node, "le rayon"),
+                "point": self._xyz(point, node),
+                "direction": self._as_direction(direction, node),
+            }
+        return _run
+
+    def _helix_fn(self, node):
+        def _run(pas_helice, hauteur, rayon, angle, gauche):
+            return {
+                "shape": "helice",
+                "pas_helice": self._positive(pas_helice, node, "le pas"),
+                "hauteur": self._positive(hauteur, node, "la hauteur"),
+                "rayon": self._positive(rayon, node, "le rayon"),
+                "angle": _as_number(angle, node),
+                "gauche": self._as_flag(gauche, node),
+            }
+        return _run
+
+    def _plane_fn(self, node):
+        def _run(longueur, largeur, point, direction):
+            return {
+                "shape": "plan",
+                "longueur": self._positive(longueur, node, "la longueur"),
+                "largeur": self._positive(largeur, node, "la largeur"),
+                "point": self._xyz(point, node),
+                "direction": self._as_direction(direction, node),
+            }
+        return _run
+
+    def _polyline_fn(self, node):
+        def _run(point, ferme):
+            return {
+                "shape": "polyligne",
+                "points": self._as_point_list(point, node, minimum=2),
+                "ferme": self._as_flag(ferme, node),
+            }
+        return _run
+
+    def _bspline_fn(self, node):
+        def _run(centres, ferme):
+            closed = self._as_flag(ferme, node)
+            minimum = 3 if closed else 2
+            return {
+                "shape": "bspline",
+                "points": self._as_point_list(centres, node, minimum=minimum),
+                "ferme": closed,
+            }
+        return _run
+
+    def _bspline_surface_fn(self, node):
+        def _run(centres):
+            return {
+                "shape": "bspline_surface",
+                "centres": self._as_point_grid(centres, node),
+            }
         return _run
 
     def _script(self, node):

@@ -110,8 +110,9 @@ OPS: dict[str, tuple[str, ...]] = {
     "edit_text": _Req(("feature", str)),
                                        # optional: text, size, depth, x, y
                                        # — absents = inchangés
-    "add_graph_feature": _Req(("graph", dict), ("mode", str)),
-                                       # mode : fuse | cut
+    "add_graph_feature": _Req(("graph", dict), optional={"mode": str}),
+                                       # mode : fuse | cut pour un solide ;
+                                       # absent pour une courbe / surface
     "edit_graph_feature": _Req(("feature", str), ("graph", dict)),
     "get_graph_feature": _Req(("feature", str)),
     "add_repeat_feature": _Req(("features", list), ("mode", str),

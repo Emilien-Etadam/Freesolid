@@ -1523,7 +1523,8 @@ function appendSurfaceRow(surface, { inFolder = true, rolledBack = false } = {})
     });
   }
   item.appendChild(arrow);
-  item.appendChild(treeIcon("Part_3D_object.svg"));
+  item.appendChild(treeIcon(
+    isGraphFeature(surface) ? "Geoassembly.svg" : "Part_3D_object.svg"));
   item.appendChild(document.createTextNode(surface.label));
   item.title = "Surface / courbe — clic : sélectionner pour une " +
     "commande · double-clic : modifier · clic droit : modifier, " +
@@ -1865,6 +1866,10 @@ const PROP_LABELS = {
 };
 
 async function editSurface(surface) {
+  if (isGraphFeature(surface) || isRepeatFeature(surface)) {
+    enterGraphFeature(surface);
+    return;
+  }
   if (surface.static || surface.type === "Part::Feature") {
     say("Surface figée — non éditable");
     return;
@@ -1976,6 +1981,7 @@ function isBodyMenuTarget(feature) {
 }
 
 function isFrozenSurface(feature) {
+  if (isGraphFeature(feature) || isRepeatFeature(feature)) return false;
   return !!(feature?.static || feature?.type === "Part::Feature");
 }
 
@@ -4450,7 +4456,10 @@ function openFeaturePanel(entry, sketchOverride) {
       if (entry.openGraphEditor) {
         run(promise.then((tree) => {
           queueMicrotask(() => {
-            const created = [...(tree.features ?? [])].reverse()
+            const created = [
+              ...(tree.features ?? []),
+              ...(tree.surfaces ?? []),
+            ].reverse()
               .find((item) => isGraphFeature(item) || isRepeatFeature(item));
             if (created) enterGraphFeature(created);
           });

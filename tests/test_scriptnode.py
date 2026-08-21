@@ -106,7 +106,7 @@ def test_script_autorise_rend_une_liste():
     graph = _script_cylinder("return [0, 10, 20]")
     out = evaluate_trusted(graph, {}, trusted=True)
     assert [round(item["x"]) for item in out] == [0, 10, 20]
-    assert all(item["shape"] == "cylinder" for item in out)
+    assert all(item["shape"] == "cylindre" for item in out)
 
 
 def test_script_recoit_ses_ports():

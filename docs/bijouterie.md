@@ -300,7 +300,7 @@ bornée.**
 | **Q2** **l'ancrage tient** | jonc de rayon 10 → 12 : la pierre reste **collée**, à la **même hauteur**, au **même angle**, normale toujours radiale. Témoin négatif : un placement figé aurait décollé de **2,0 mm** |
 | **Q3** le domaine trimmé | `isPartOfDomain` accepte le plein, **refuse le trou**. Un dépôt hors matière se refuse avant d'exister |
 | **Q4** la couture | pas de repli : `u` revient à 6,282 et non à 0. Le drag cartésien traverse la couture sans téléporter |
-| **Q6** 200 sièges | **3,4 s** par compound, et le coût par pierre est **plat** (≈ 17 ms). Le semis passe d'un bloc |
+| **Q6** 200 sièges | **3,4 s** par compound, coût par pierre plat (≈ 17 ms). ⚠️ **Chiffre trompeur** — c'est un `Part.cut` de cônes, pas la vraie chaîne PartDesign. Voir §7.8 |
 | **Q7** 200 pierres | `App::Link` + `PlacementList` : **0,002 s**. L'affichage n'est pas un sujet |
 
 **Q2 était le verdict, et il est vert.** L'ancrage `(u, v)` survit au
@@ -320,10 +320,10 @@ Chiffré au second passage, et proprement.
 Deux lectures, et la seconde est la bonne nouvelle :
 
 - **Le compound est linéaire** — 15,6 → 16,7 → 16,8 ms par pierre, plat.
-  200 sièges coûtent **3,4 s**, et 400 en coûteraient 6,7. Pas
-  interactif, mais c'est une reconstruction, pas un drag : parfaitement
-  tenable. **Le semis passe d'un bloc, pas besoin de le découper en
-  paquets.**
+  200 sièges coûtent **3,4 s**, et 400 en coûteraient 6,7.
+  ⚠️ **Mais ce chiffre ne vaut que pour ce que la sonde a mesuré** : un
+  `Part.cut` de cônes sur des formes nues. La vraie chaîne PartDesign en
+  coûte **43 s** (§7.8). La linéarité tient, l'ordonnée à l'origine non.
 - **La coupe une par une est superlinéaire** — 5× plus de pierres coûtent
   11,4× plus de temps. D'où un gain qui *grandit* avec le semis : 1,5× à
   40, 3,3× à 200, et l'écart continue de se creuser. À 200 pierres le
@@ -679,8 +679,11 @@ le BREP voyage dans un `.FCStd`, pas dans un `.brep` nu.
 Le budget des sièges du §5.6 — **3,4 s pour 200** — a été mesuré avec des
 **cônes simples**. G4 montre qu'une vraie gemme facettée coûte **73 ms** par
 booléen contre 36 pour une forme analytique : deux fois plus. Ce budget est
-donc à **re-mesurer avec une vraie gemme** avant d'être cité. Il ne remet pas
-en cause la linéarité établie en Q6, mais son ordonnée à l'origine, oui.
+donc à **re-mesurer avec une vraie gemme** avant d'être cité.
+
+**Réserve levée au §7.8, et par le pire côté : 43 s.** L'écart ne venait pas
+d'abord de la gemme, mais de la chaîne — un `Part.cut` de formes nues n'est
+pas un `PartDesign::Boolean` recomputé.
 
 ---
 
@@ -775,7 +778,7 @@ La raison est dans les chiffres déjà mesurés :
 | | Coût |
 |---|---|
 | Poser ou déplacer 200 pierres | **0,001 s** (H5) |
-| Creuser 200 sièges | **3,4 s** au mieux, et davantage sur une pierre facettée (Q6, G4) |
+| Creuser 200 sièges | **43 s** par la chaîne PartDesign (mesuré à la livraison de P035 ; la sonde Q6 annonçait 3,4 s, mais elle mesurait un `Part.cut` de cônes) |
 
 Si le siège se creusait au moment du placement, **chaque déplacement de
 pierre relancerait le booléen** — et le geste « déplaçable à la volée », qui
@@ -976,3 +979,67 @@ millisecondes.
 
 Reste à trancher, au prochain passage : **lien externe ou forme importée**
 (§7.4), et le **budget d'un vrai siège** sur une pierre facettée.
+
+---
+
+# 7.8 P035 livré — et ma mesure était fausse d'un facteur 12
+
+*Relu le 2026-08-21, sur `cursor/p035-booleen-semis-fff1`.*
+
+## Ce qui est livré
+
+**Vérifié ici** — `pytest` 245/16, tests JS 125, lecture du code :
+
+| | |
+|---|---|
+| Le booléen accepte un semis | `add_boolean` (`kernel.py:3050`) branche `_is_gem_link` avant le test de type |
+| Le semis n'est pas absorbé | corps outil **dérivé** par `_derive_gem_boolean_body` (`kernel.py:2247`), chemin de la gravure : `Part::Feature` + `BaseFeature` |
+| Le compound se relit | et **au-delà du demandé** : `FreeSolidGemBooleanFingerprint` (`kernel.py:2237`) — une empreinte des placements, qui évite de refaire le booléen quand rien n'a bougé |
+
+Cette empreinte n'était pas dans le prompt. C'est pourtant la bonne réponse
+au chiffre ci-dessous : à 43 secondes l'opération, ne pas la rejouer pour
+rien n'est plus une optimisation, c'est une nécessité.
+
+## Le chiffre qui corrige le mien
+
+> **Booléen d'un compound de 200 pierres : 43 s.**
+> Ma sonde Q6 annonçait **3,4 s**.
+
+Un facteur **12,6**. L'erreur est la mienne, et c'est la même classe que Q5 :
+**j'ai mesuré un substitut et je l'ai cité comme la chose.**
+
+Q6 chronométrait `Part.cut(jonc, compound_de_cônes)` — une opération OCCT nue
+sur des formes nues. Le geste réel enchaîne autre chose : construire un
+`Part::Feature`, l'envelopper dans un corps par `BaseFeature`, poser un
+`PartDesign::Boolean`, et **recomputer tout l'arbre du document**. Ce n'est
+pas le même travail, et je n'avais pas mesuré celui-là.
+
+À ma décharge, une seule chose : j'avais écrit au §6.7 que ce budget était
+« à re-mesurer avant d'être cité ». Je l'ai quand même cité, quatre fois, y
+compris dans deux prompts. La réserve ne sert à rien si on ne s'y tient pas.
+
+## Ce que 43 s changent — et ce qu'ils ne changent pas
+
+**La décision d'architecture en sort renforcée, pas affaiblie.** « On pose,
+puis on combine » se justifiait par un écart de 0,001 s contre 3,4. L'écart
+réel est de 0,001 s contre **43**. Si le booléen se déclenchait à la pose,
+chaque déplacement de pierre coûterait trois quarts de minute : la
+fonctionnalité serait morte-née.
+
+Ce qui change, en revanche :
+
+- **La barre de reprise devient indispensable**, plus une commodité. Reculer
+  avant le booléen n'est plus « pratique », c'est le seul moyen de travailler.
+- **L'empreinte de placements devient structurelle** — livrée, heureusement.
+- **Il faut le dire à l'écran.** Une opération de 43 secondes sans retour
+  visuel sera prise pour un plantage, et l'utilisateur tuera l'onglet.
+
+## Ce qui reste à mesurer, sans le citer d'ici là
+
+43 s vaut pour **une taille** de semis, sur **une** machine, avec le cylindre
+plat. Ce qui manque encore : la courbe (200 est-il linéaire, ou l'ordonnée
+explose-t-elle ?), et le coût sur un vrai brillant facetté, dont G4 a montré
+qu'il double le booléen face à une forme analytique.
+
+Tant que ces deux-là ne sont pas mesurés, **43 s est un point, pas un
+budget.** Écrit ici pour que la réserve soit tenue cette fois-ci.

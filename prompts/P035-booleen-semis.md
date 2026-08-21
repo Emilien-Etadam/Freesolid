@@ -31,7 +31,9 @@ tire la forme : le solide de la gemme liée, copié à **chaque** placement de
 `PlacementList`, réunis en un `Part.makeCompound`.
 
 Un compound et **une seule** opération — jamais N soustractions. Mesuré :
-3,4 s contre 11,1 s à 200 pierres, avec un écart qui grandit
+3,4 s contre 11,1 s à 200 pierres en `Part.cut` nu, avec un écart qui
+grandit — la chaîne PartDesign, elle, coûte 43 s (§7.8), ce qui rend le
+compound d'autant plus obligatoire
 ([`docs/bijouterie.md`](../docs/bijouterie.md) §5.6, sonde Q6).
 
 Le chemin d'une forme calculée vers la chaîne PartDesign est **déjà écrit**

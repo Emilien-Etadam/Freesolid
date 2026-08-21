@@ -31,7 +31,9 @@ fondent ce prompt :
   décision d'architecture : **poser une pierre n'enlève pas de matière.**
   On pose, puis on **combine**, en une opération séparée et explicite
   ([`docs/bijouterie.md`](../docs/bijouterie.md) §7.4 bis). Poser coûte
-  0,001 s pour 200 pierres ; creuser en coûte 3,4. Si le siège se creusait
+  0,001 s pour 200 pierres ; combiner en coûte **43** (mesuré à la
+  livraison de P035 ; ma sonde annonçait 3,4 s, elle mesurait un
+  `Part.cut` de cônes et non la chaîne PartDesign). Si le siège se creusait
   au placement, chaque déplacement relancerait le booléen et le geste
   « déplaçable à la volée » — l'objet même de ce prompt — deviendrait
   impraticable ;

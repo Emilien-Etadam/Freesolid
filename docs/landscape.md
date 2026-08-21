@@ -10,6 +10,7 @@ headless ». Conclusion en bas.*
 | [magik6k/freecad-web](https://github.com/magik6k/freecad-web) | Port WebAssembly de **tout** FreeCAD, **interface Qt comprise**, via Qt-for-WASM + JSPI (Chromium 137+ seulement) | Pas un concurrent : c'est l'interface actuelle dans un onglet. Mais une **preuve majeure** que le moteur tournera un jour côté client |
 | [APEbbers/FreeCAD-Ribbon](https://github.com/APEbbers/FreeCAD-Ribbon) ‡ | **Ruban pour FreeCAD lui-même** : remplace les barres d'outils par un ruban configurable en JSON, dialogue de personnalisation, réversible. GPL-3.0, ~130 ★, 3 303 commits, **dans l'Addon Manager officiel**. Descend de `geolta/FreeCAD-Ribbon` et `HakanSeven12/Modern-UI` | **La réponse concurrente à notre prémisse**, et elle nous bat sur le ruban seul : couverture fonctionnelle totale et immédiate. Sa dette est le couplage aux internes Qt ; la nôtre est de tout ré-exposer. Détail au relevé du 2026-08-21 (suite) |
 | [Salusoft89/planegcs](https://github.com/Salusoft89/planegcs) | Le **solveur d'esquisse de FreeCAD compilé en WASM**, utilisable en JS | Pas un concurrent : un **atout**. Le solveur peut tourner dans le navigateur pour le drag à 60 fps, le serveur restant la vérité |
+| [solvespace/solvespace](https://github.com/solvespace/solvespace) ‡ | CAO paramétrique 2D **et 3D** avec son propre solveur, disponible en bibliothèque (`libslvs`, bindings Python). GPL-3.0-or-later, ~4,1 k ★, actif — c'est le solveur que réutilise Dune3D | La brique qui manque pour de vraies **esquisses 3D contraintes** (🔴 dans `grandes-lignes.md`)… et qu'on ne peut pas prendre : GPL-3 bloque l'emprunt comme la remontée. Référence conceptuelle, et réponse à « pourquoi pas SolveSpace ? » : la licence, pas la qualité |
 | [Ondsel-Server / Lens](https://github.com/FreeCAD/Ondsel-Server) ‡ | Plateforme web de partage/visualisation de FCStd. **La société a fermé le 2024-10-30** ; Lens éteint le 2024-11-22 | Visionneuse, pas un éditeur — et désormais un **point de vigilance** : l'atelier Assembly et son solveur 3D, dont dépend notre phase C, ont été légués à la communauté (~150 PR mergées, don de 40 k€ à la FPA). Détail au relevé du 2026-08-21 |
 | [SindriCAD](https://github.com/MakerViking/sindricad) | CAO paramétrique web (Tauri + Three.js) sur **build123d**, pas FreeCAD | Valide la stack UI ; moteur documentaire réinventé, reconstruction totale à chaque édition |
 | [dune3d/dune3d](https://github.com/dune3d/dune3d) ‡ | CAO paramétrique bureau : **solveur SolveSpace + noyau OCCT + coquille GTK4 neuve**, par l'auteur de Horizon EDA. GPL-3.0, ~2,1 k ★, v1.4 « Einstein » (janvier 2026), FOSDEM 2026 | **Notre doctrine sur un autre couple de donneurs** — ne réécrire ni solveur ni noyau. Il réécrit quand même le modèle documentaire, et reste sur le bureau. La preuve de faisabilité du milieu : 2 ans et demi, une personne |
@@ -21,6 +22,7 @@ headless ». Conclusion en bas.*
 | Fil devtalk [« FreeCAD web frontend »](https://devtalk.freecad.org/t/freecad-web-frontend/55903) (2021) | Discussion récurrente depuis 2017 | Aucun projet n'en est sorti |
 | [waffle-iron](https://github.com/sequoia-hope/waffle-iron) (SequoiaHope) | **Noyau** CAD from scratch, Rust/WASM, MIT, ~6 mois de travail assisté par IA, par un expert Onshape/SolidWorks | Le pari inverse du nôtre : noyau réécrit, UI « needs a lot of work ». Complémentaire, pas concurrent |
 | [Fornjot](https://github.com/hannobraun/fornjot) ‡ | Noyau B-rep en Rust, ~20 000 commits, plusieurs années, un auteur à plein temps | **Archivé le 2026-06-19** : « *This project has been shut down. Its goals were never reached.* » Le point de donnée qui remplace l'intuition « pas vibe-codable » par une preuve |
+| [Oblikovati](https://github.com/Oblikovati/Oblikovati) ‡ | CAO paramétrique « classe Inventor » **réécrite de zéro en Go** : noyau B-rep maison, nommage topologique persistant, rendu Vulkan 1.3, GUI + CLI headless. **644 kloc**, 4 800 fichiers, 2 418 fichiers de test, actif. GPL-2.0 (app) / Apache-2.0 (contrat d'API) | Le cinquième noyau réécrit, et le plus gros. Ratio parlant : 121 kloc d'opérations, mais **1 625 lignes de congés** — « early/foundational » assumé. Rien à prendre (GPL-2), mais deux idées : valider son noyau contre OCCT, et séparer la licence du **contrat** de celle de l'implémentation |
 | [ecto/vcad](https://github.com/ecto/vcad) ‡ | CAO paramétrique complète — **noyau BRep Rust réécrit** (~445 kloc, 92 crates), app React/Three.js, Tauri, CLI, serveur MCP, banc d'essai IA. Apache-2.0, actif | Le même pari inverse que waffle-iron, **soixante-dix fois plus grand** et fini. Rien à prendre au noyau ; quatre idées à prendre au-dessus. Relevé complet : [`vcad.md`](vcad.md) |
 | [Onshape](https://www.onshape.com) | La CAO navigateur des fondateurs de SolidWorks, noyau Parasolid, gratuite en non-commercial | Le seul vrai « SW moderne dans un navigateur » existant. Cloud obligatoire, documents publics en gratuit, fermé — c'est exactement l'espace que « local + open source » laisse ouvert |
 
@@ -56,7 +58,7 @@ refait que ce qui se voit.
 
 # Relevé complémentaire du 2026-08-15 — Chili3D, macros, nœuds
 
-*† La ligne Chili3D du tableau ci-dessus a été ajoutée à cette date. Les lignes marquées ‡ — vcad, PartMode, FreeCAD-Ribbon, Dune3D, jsketcher, Fornjot — ont été ajoutées aux deux relevés du 2026-08-21, en bas de page, qui ont aussi mis à jour les lignes Ondsel et freecad-mcp devenues inexactes.*
+*† La ligne Chili3D du tableau ci-dessus a été ajoutée à cette date. Les lignes marquées ‡ — vcad, PartMode, FreeCAD-Ribbon, Dune3D, jsketcher, Fornjot, Oblikovati, SolveSpace, verb — ont été ajoutées aux trois relevés du 2026-08-21, en bas de page, qui ont aussi mis à jour les lignes Ondsel, freecad-mcp et Nodi3D devenues inexactes.*
 
 ## 1. Chili3D — le miroir inversé
 
@@ -159,7 +161,9 @@ l'étage visé — voir [`nodes-macros.md`](nodes-macros.md) §4.
 | Projet | Ce que c'est | Ce qu'on en retient |
 |---|---|---|
 | **[j8sr0230/Nodes](https://github.com/j8sr0230/Nodes)** | L'atelier **Nodes** de FreeCAD (ex-`FreeCAD-nodes`) : éditeur d'algorithme graphique, ~674 commits, actif, dans l'Addon Manager depuis FreeCAD 0.21, [doc](https://freecad-nodes.readthedocs.io/). Dépend de `pyqt-node-editor` (l'éditeur), `qtpy` et **`awkward`** (les données). **LGPL-2.1** | **La référence à étudier** — voir ci-dessous. Même licence que nous : le code est *empruntable*, pas seulement regardable |
-| [Nodi3D](https://github.com/Nodi3d/nodi) | Grasshopper dans le navigateur, Apache-2.0, partage de graphes par lien, export OBJ/STL/DXF | La preuve qu'un éditeur de nœuds tient dans un onglet ; mais géométrie maillée, pas de B-Rep exact |
+| [Nodi3D](https://github.com/Nodi3d/nodi) | Grasshopper dans le navigateur, Apache-2.0, partage de graphes par lien, export OBJ/STL/DXF. **Dernier commit le 2024-11-08** (relevé du 2026-08-21) | La preuve qu'un éditeur de nœuds tient dans un onglet ; mais géométrie maillée, pas de B-Rep exact — et le projet est à l'arrêt |
+| [kovacsv/VisualScriptCAD](https://github.com/kovacsv/VisualScriptCAD) | Modeleur 3D par script visuel sur `VisualScriptEngine`, C++, GPL-3.0, ~131 ★. **« No Maintenance » depuis 2019** | Troisième preuve de faisabilité d'un éditeur de nœuds — mais géométrie maillée, projet arrêté, licence bloquante. Sans objet depuis que le graphe est une *vue* (`nodes-macros.md`) |
+| [pboyer/verb](https://github.com/pboyer/verb) ‡ | Bibliothèque **NURBS** en **MIT** : évaluation de courbes et surfaces, dérivées, tessellation adaptative, intersections. Livrée déjà construite en JS (`verb.es.js`). Pas de solides, pas de booléens. ~811 ★, dernier commit 2025-04 | **Le seul apport directement branchable de la veille.** Le pendant de planegcs pour les courbes : B-splines calculées **côté client**, sans aller-retour serveur — pour les courbes 3D par points (phase D) et les aperçus de glisser. MIT : empruntable **et** remontable |
 | Grasshopper (Rhino), Dynamo (Revit) | Les références du genre | Le modèle mental que les utilisateurs auront en tête |
 
 ### `j8sr0230/Nodes` en détail — ce qui se prend, ce qui se jette
@@ -675,3 +679,161 @@ doit poser au moins trois questions, pas une : *qui refait l'UI de FreeCAD*,
 *qui refait une CAO paramétrique sans FreeCAD*, et *qui a essayé d'écrire
 un noyau et où il en est*. La troisième est celle qui protège la doctrine ;
 c'est celle qu'on avait le moins instruite.
+
+---
+
+# Relevé du 2026-08-21 (fin) — cinq dépôts signalés
+
+*Cinq liens transmis. Un était déjà au tableau, un est une vraie trouvaille,
+un est directement utilisable, deux ne servent qu'à documenter. Verdict pour
+chacun.*
+
+## 1. Oblikovati — la trouvaille, et le cinquième noyau réécrit
+
+[**Oblikovati/Oblikovati**](https://github.com/Oblikovati/Oblikovati) :
+« *a parametric, feature-based, history-driven mechanical-CAD (MCAD)
+application — an Inventor-class 3D solid modeler — rebuilt from the ground
+up in **Go** with a **Vulkan 1.3** renderer* ». Noyau B-rep maison,
+**nommage topologique persistant**, Dear ImGui, deux binaires livrés :
+`oblikovati-head` (GUI) et `oblikovati-cli` (**headless**).
+
+Mesuré à la source le 2026-08-21 :
+
+| | |
+|---|---|
+| Volume | **644 257 lignes de Go**, 4 800 fichiers — plus gros que vcad |
+| Tests | **2 418 fichiers `_test.go`** — la moitié des fichiers du dépôt |
+| Noyau | `kernel/ops` 121 714 l. · `kernel/geom` 28 312 l. · `kernel/brep` 27 039 l. · `kernel/topo` 4 274 l. · **`kernel/blend` (congés) 1 625 l.** |
+| Activité | dernier commit **le jour même du relevé** ; ~106 ★, 3 833 commits |
+| Licence | **GPL-2.0** pour l'application · **Apache-2.0** pour le contrat `Oblikovati.API`, séparé exprès pour autoriser des extensions fermées |
+| Statut assumé | « early/foundational » : le modelage de pièce marche, assemblages, mises en plan et tôlerie sont à la feuille de route |
+
+**Lecture honnête du ratio.** 121 kloc d'opérations et 27 kloc de B-rep,
+mais **1 625 lignes de congés**. Les congés sont, après les booléens, le
+morceau le plus dur d'un noyau — c'est là qu'on mesure la maturité, pas au
+total. Le projet le dit lui-même (« early/foundational ») ; c'est la
+prétention affichée (« Inventor-class ») qui va plus vite que le code. Le
+dépôt porte un `CLAUDE.md` : développement assisté par IA, comme
+`waffle-iron`.
+
+**Deux choses valent quand même le détour, et aucune n'est du code.**
+
+1. **Sa priorité d'ingénierie est notre entrée A9.** Son `CLAUDE.md` place
+   « *tessellation correctness* » **au-dessus de toute fonctionnalité », et
+   la contrôle par des tests de non-régression comparant volume et aire à
+   un **noyau externe (`gmsh` / OpenCASCADE `getMass`)**. C'est la
+   troisième occurrence indépendante de l'idée de banc d'essai noyau, après
+   `mecheval` de vcad et notre selftest — et la plus concrète : *valider
+   son propre noyau contre OCCT*. Nous, nous avons OCCT comme noyau ; nous
+   pouvons faire l'inverse, et valider **FreeCAD contre lui-même** d'une
+   version à l'autre. Voir [`amont-freecad.md`](amont-freecad.md) A9.
+2. **Son montage de licences est une idée d'architecture.** Application en
+   GPL-2, **contrat d'API en Apache-2.0** : le protocole est libre de
+   contrainte pour que n'importe qui écrive un client, l'implémentation
+   reste protégée. Nous avons exactement cette dualité sans l'avoir
+   nommée — `engine/protocol.py` est un contrat, le reste est une
+   implémentation. La question mérite d'être posée un jour : notre
+   protocole gagnerait-il à être documenté comme un contrat séparé ?
+
+**À prendre : rien.** GPL-2.0 sur l'application, donc ni empruntable chez
+nous ni remontable à FreeCAD.
+
+## 2. SolveSpace — il aurait dû être au tableau depuis le début
+
+[**solvespace/solvespace**](https://github.com/solvespace/solvespace) :
+« *a parametric 2d/3d CAD tool* », **GPL-3.0-or-later**, ~4,1 k ★,
+activement maintenu. C'est le solveur que [Dune3D](https://github.com/dune3d/dune3d) réutilise, et il est
+disponible en bibliothèque (`libslvs`, bindings Python).
+
+Ce qui le rend intéressant pour nous tient en un mot : **3D**. Son solveur
+gère des contraintes **dans l'espace**, pas seulement dans un plan. Or
+[`grandes-lignes.md`](grandes-lignes.md) classe les esquisses 3D en 🔴 —
+« FreeCAD ne les a pas », et notre repli est des courbes 3D par points sans
+contraintes. SolveSpace montre que la brique existe.
+
+**Et pourtant, rien à en tirer directement :** GPL-3.0-or-later couvre tout
+le projet, `libslvs` compris. Ni empruntable dans FreeSolid
+(LGPL-2.1-or-later), ni remontable dans FreeCAD. Notre solveur reste
+planegcs, qui est celui de FreeCAD, en LGPL et déjà vendoré.
+
+Statut : **référence conceptuelle** pour le jour où la question des
+contraintes 3D reviendra — et argument à connaître, puisque c'est la
+réponse qu'on nous opposera (« pourquoi pas SolveSpace ? »). La réponse est
+la licence, pas la qualité.
+
+## 3. verb — le seul des cinq qu'on peut vraiment utiliser
+
+[**pboyer/verb**](https://github.com/pboyer/verb) : bibliothèque NURBS
+**MIT**, ~811 ★, écrite en Haxe et compilée vers JS, C#, C++, Python, PHP.
+Le dépôt livre `verb.js`, `verb.min.js` et `verb.es.js` **déjà construits** —
+un `import` suffit. Modules : `Eval`, `Divide`, `Modify`, `Make`,
+`Intersect`, `Tess`, `Analyze`, `Check`.
+
+Ce qu'elle fait : évaluation de courbes et surfaces NURBS, dérivées,
+**tessellation adaptative**, **intersections**. Ce qu'elle ne fait pas :
+pas de solides B-rep, pas de booléens. C'est de la géométrie, pas un noyau —
+et c'est précisément pour ça qu'elle est utilisable.
+
+**Pourquoi elle compte pour FreeSolid.** C'est le pendant de planegcs, pour
+les courbes : de quoi calculer et afficher une B-spline **côté client**,
+sans aller-retour serveur. Deux usages immédiats :
+
+- les **courbes 3D par points** de la phase D (le repli esquisse 3D) —
+  aujourd'hui chaque édition passe par le moteur ;
+- tout aperçu de courbe pendant un glisser, sur le modèle de ce que M3 a
+  fait pour l'esquisse 2D.
+
+**Et sa licence est la bonne** : MIT, donc **à la fois empruntable dans
+FreeSolid et remontable à FreeCAD** — le troisième dépôt de toute cette
+veille dans ce cas, après `sandraschi/freecad-mcp`. À noter au passage :
+`app/vendor/` a déjà sa discipline pour ce genre d'apport.
+
+Activité faible (dernier commit **2025-04-02**), ce qui est normal pour une
+bibliothèque de mathématiques stabilisée — à distinguer d'un projet mort.
+
+## 4. VisualScriptCAD — un point d'histoire, rien de plus
+
+[**kovacsv/VisualScriptCAD**](https://github.com/kovacsv/VisualScriptCAD) :
+modeleur 3D par script visuel bâti sur `VisualScriptEngine`, du même auteur
+que l'excellent `Online3DViewer`. C++, GPL-3.0, ~131 ★, 323 commits —
+et **marqué « No Maintenance » depuis 2019**. L'auteur lui-même le présente
+comme « *a simple experimental 3D modeling application* ».
+
+Il complète la ligne « nœuds » du relevé du 2026-08-15 : c'est une
+troisième preuve qu'un éditeur de nœuds sur de la géométrie est faisable —
+après Nodi3D et `j8sr0230/Nodes`. Mais géométrie maillée, projet arrêté,
+licence bloquante. **Rien à prendre**, et la décision de
+[`nodes-macros.md`](nodes-macros.md) — le graphe est une *vue*, pas un
+second moteur — le rend de toute façon sans objet.
+
+## 5. Nodi3D — déjà au tableau, et il faut le dater
+
+[**Nodi3d/nodi**](https://github.com/Nodi3d/nodi) figure au tableau depuis
+le relevé du 2026-08-15 (« Grasshopper dans le navigateur, Apache-2.0 »).
+Rien à changer au verdict — géométrie maillée, pas de B-Rep exact — mais
+une précision à ajouter : **dernier commit le 2024-11-08**, soit près de
+deux ans d'arrêt. Sa ligne du tableau est mise à jour en conséquence.
+
+## Ce que ce lot change
+
+**Sur les noyaux réécrits, le tableau est maintenant complet — et il
+raconte une histoire cohérente.** Cinq tentatives sérieuses, aucune
+utilisable en production :
+
+| Projet | Langage | État au 2026-08-21 |
+|---|---|---|
+| **Fornjot** | Rust | **archivé** le 2026-06-19 — « *goals were never reached* », ~20 000 commits |
+| **Truck** | Rust | actif — B-rep NURBS toujours **devant** eux |
+| **waffle-iron** | Rust | ~6 mois assistés par IA, UI « needs a lot of work » |
+| **vcad** | Rust | 445 kloc, 92 crates, actif — booléen de 26 kloc, ne compile pas seul |
+| **Oblikovati** | **Go** | 644 kloc, actif — **1 625 lignes de congés**, « early/foundational » assumé |
+
+Deux langages, cinq équipes, des centaines de milliers de lignes, et pas un
+noyau qu'on mettrait sous une pièce de production. **La doctrine ne se
+discute plus : on hérite le noyau, on ne l'écrit pas.**
+
+**Et un gain concret, un seul, mais net : `verb`.** C'est le premier apport
+de cette journée de veille qui soit directement branchable, sous une licence
+qui n'interdit rien, et qui répond à un manque déjà inscrit à la feuille de
+route. Tout le reste de la journée aura servi à *ne pas* écrire du code ;
+celui-ci sert à en écrire moins.

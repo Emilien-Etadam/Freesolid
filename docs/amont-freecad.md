@@ -80,8 +80,9 @@ dérive.
 |---|---|---|---|
 | **Nos propres lignes** | oui | **oui** | `engine/guard.py`, `engine/replay.py` |
 | **LGPL-2.1(-or-later)** | oui, sans effet de bord | **oui** | [`j8sr0230/Nodes`](https://github.com/j8sr0230/Nodes) et son modèle `awkward` |
-| **MIT / BSD** | oui, avec attribution | **oui** (relicenciable en LGPL) | — |
+| **MIT / BSD** | oui, avec attribution | **oui** (relicenciable en LGPL) | [`pboyer/verb`](https://github.com/pboyer/verb) (NURBS), [`sandraschi/freecad-mcp`](https://github.com/sandraschi/freecad-mcp) |
 | **Apache-2.0** | possible, mais fait passer l'ensemble distribué en LGPL-3.0 | **non** | [`vcad`](https://github.com/ecto/vcad) |
+| **GPL-2.0** | non — contaminerait FreeSolid entier | **non** | [Oblikovati](https://github.com/Oblikovati/Oblikovati) (l'application ; son contrat d'API, lui, est en Apache-2.0) |
 | **GPL-3.0** | non — contaminerait FreeSolid entier | **non** — un GPL-3 ne fusionne pas dans une bibliothèque LGPL-2.1 | [FreeCAD-Ribbon](https://github.com/APEbbers/FreeCAD-Ribbon), [Dune3D](https://github.com/dune3d/dune3d) |
 | **AGPL-3.0** | non — contaminerait FreeSolid entier | **non** | [Chili3D](https://github.com/xiangechen/chili3d), [PartMode](https://github.com/BOMWiki/partmode) |
 | **« Permissive » sur parole** | ⚠️ **à vérifier fichier en main** | ⚠️ | [jsketcher](https://github.com/xibyte/jsketcher) : un « MIT » modifié imposant la cession de copyright |
@@ -136,7 +137,7 @@ non-régression).
 | **A6** | Les échecs PartDesign les plus déroutants sont **corrects mais inexpliqués** — « multiple solids », « out of the allowed scope », « wire is not closed » | `engine/guard.py` — trois traductions écrites, testées unitairement | produit | ✅ **une issue ouverte attend exactement ça** : [#19255](https://github.com/FreeCAD/FreeCAD/issues/19255) — *« "BRep_API: command not done" is not a clear or actionable error message »*, **ouverte**, étiquetée **Help wanted**, projet « OCCT Liaison » | **le candidat le plus mûr du registre** : notre code est déjà écrit, testé, sous la bonne licence, et il y a une porte ouverte où frapper |
 | **A7** | ~~Suivre une référence de sous-élément à travers un recompute avec un verdict explicite~~ | ~~`engine/replay.py`~~ | — | ❌ **entrée close — FreeCAD l'expose déjà.** Voir §4ter | **retirée du registre** ; devient une tâche FreeSolid |
 | **A8** | Segfaults OCCT hors TechDraw | audit **2.12** | bug | — non instruit | seulement si un cas devient reproductible |
-| **A9** | Grille de non-régression du noyau — stress booléen, aller-retour STEP, taux de succès des congés, convergence du solveur, qualité de tessellation | `scripts/run-selftest.py`, direction posée dans [`vcad.md`](vcad.md) §5.5 | banc | — direction, pas constat | **chaque échec du banc est un rapport amont avec reproducteur** |
+| **A9** | Grille de non-régression du noyau — stress booléen, aller-retour STEP, taux de succès des congés, convergence du solveur, qualité de tessellation | `scripts/run-selftest.py`, direction posée dans [`vcad.md`](vcad.md) §5.5 | banc | — direction, pas constat | **chaque échec du banc est un rapport amont avec reproducteur**. Méthode confirmée par une troisième source indépendante : [Oblikovati](https://github.com/Oblikovati/Oblikovati) place la justesse de tessellation **au-dessus de toute fonctionnalité** et la contrôle en comparant volume et aire à un noyau externe (`gmsh` / OCCT `getMass`). Nous pouvons faire l'inverse : comparer FreeCAD **à lui-même** d'une version de référence à la suivante |
 
 Ce que le tableau dit, maintenant qu'il est vérifié : **le registre a
 rétréci par le bas et grandi par le haut.** Sur six constats instruits, un

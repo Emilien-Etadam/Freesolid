@@ -164,3 +164,139 @@ une **CAO mécanique** face à SolidWorks. La bijouterie est un métier voisin
 mais distinct — c'est un **atelier** au sens FreeCAD, pas une extension du
 ruban existant. Rien ici ne contredit l'architecture ; la question est celle
 du cap, pas de la faisabilité.
+
+---
+
+# 5. Le geste qui compte — poser une pierre, la déplacer
+
+*Ajouté le 2026-08-21. C'est la fonction retenue comme prioritaire : des
+pierres **aimantées sur la surface** et **déplaçables à la volée**.*
+
+## 5.1 Les deux tiers sont déjà écrits
+
+| Le maillon | État |
+|---|---|
+| Savoir **quelle face** est sous le curseur | **fait, par construction.** `pack_mesh` groupe la tessellation par face OCCT ; un raycast Three.js retombe sur exactement un groupe, donc un `faceId` (`engine/protocol.py:546`, `app/main.js:656`) |
+| Savoir **où** sur cette face | **fait.** `hit.point` du raycast (`app/main.js:689`) |
+| La **normale exacte** en un point | **fait, headless.** `face.normalAt(u, v)` tourne déjà dans ce dépôt (`engine/kernel.py:4419`) |
+| L'**inverse** : point du monde → (u, v) | **manque.** `face.Surface.parameter(point)` — une ligne, mais jamais exercée ici |
+| Le **placement** de la pierre | manque : rotation qui amène +Z sur la normale, puis translation |
+
+Autrement dit, le clic *sait déjà* ce qu'il faut ; il ne sait pas encore le
+dire au moteur.
+
+## 5.2 Ce qu'on stocke — et c'est tout le sujet
+
+Un placement figé (une matrice 4 × 4) suffit à *poser* la pierre. Il ne
+suffit pas à l'y **garder** : à la première cote qui change, elle décolle.
+C'est le comportement Blender, et il est normal là-bas — un maillage n'a
+rien à quoi se raccrocher.
+
+En BRep, la surface **existe encore** après la reconstruction. On peut donc
+stocker non pas la position, mais **de quoi la recalculer** :
+`(face, u, v, spin, lift)`.
+
+| | Placement figé | Ancrage (u, v) |
+|---|---|---|
+| Poser la pierre | identique | identique |
+| Passer d'une taille 52 à 54 | elle décolle de ~0,32 mm | elle suit le jonc |
+| Épaissir le jonc | elle s'enfonce | elle suit |
+| Rééditer une fonction en amont | tout à repositionner | rien à faire |
+| Fichier `.FCStd` relu dans FreeCAD | des solides posés là | des solides posés là |
+
+**C'est la seule différence, et c'est toute la justification du projet sur
+ce point.** Si on stocke une matrice, autant rester sous Blender ; c'est
+`(u, v)` qui rend la chose supérieure, pas le format de fichier.
+
+## 5.3 Le drag à 60 fps — le motif planegcs, resservi tel quel
+
+Le dépôt a déjà tranché ce problème une fois, pour l'esquisse : **le client
+va vite et approximativement, le serveur dit la vérité au relâchement.** Le
+même partage s'applique mot pour mot :
+
+- **`pointermove`** → raycast sur la tessellation déjà en mémoire, la pierre
+  suit immédiatement. Aucun aller-retour, donc aucun plafond de fréquence.
+- **`pointerup`** → une seule op `move_gem` → projection exacte sur le BRep
+  → `(u, v)` exacts → recompute → la pierre se recale sur la surface vraie.
+
+Deux manques côté client, tous deux courts :
+
+1. **Les normales sont approximées.** `geometry.computeVertexNormals()`
+   (`app/main.js:323`) moyenne les normales de triangles : la pierre
+   facetterait visiblement en glissant sur un jonc. Le correctif est
+   d'accepter un tableau `normals` optionnel dans `pack_mesh`, rempli par
+   `face.normalAt(u, v)` à chaque sommet de la tessellation. **Bénéfice
+   collatéral : tout l'ombrage de l'app y gagne**, pas seulement les pierres.
+2. **Pas d'instanciation.** Aucun `InstancedMesh` dans `main.js` : 200
+   pierres feraient 200 objets Three.js. Une géométrie, N matrices — c'est
+   la forme naturelle, et elle épouse le `PlacementList` d'un `App::Link`
+   côté moteur (Q7 de la sonde).
+
+## 5.4 Les trois risques, dont un sérieux
+
+### Le toponaming — celui qui peut coûter cher
+
+`faceId` est un **index entier**. Toute édition en amont renumérote les
+faces d'OCCT. C'est déjà le cas pour `add_fillet`, `add_text`, `add_draft` —
+tolérable pour trois congés, **intenable pour deux cents pierres** : une
+retouche du jonc et le semis entier se disperse.
+
+Trois parades, de la plus sûre à la plus fragile :
+
+| Ancrage | Toponaming | Le geste demandé |
+|---|---|---|
+| **Sur une courbe** — abscisse le long de la courbe de taille | immunisé : une courbe est un objet de premier rang, pas un index | glisser **le long** du jonc. C'est le `Distribute on curve` de JewelCraft |
+| **Sur une esquisse de points** — points projetés sur la surface selon la normale | immunisé : l'esquisse est un objet nommé | glisser les points **dans l'esquisse** — et ce drag-là est **déjà écrit**, c'est planegcs à 60 fps. Déjà relevé 🟧 (« répétition pilotée par esquisse ») dans [`fonctions-manquantes.md`](fonctions-manquantes.md) |
+| **Sur la face, en (u, v)** | exposé — à câbler sur l'element map de FreeCAD 1.0, que le dépôt n'utilise nulle part aujourd'hui | glisser **librement sur la surface**. C'est exactement le geste demandé |
+
+Le geste voulu pointe vers la troisième ligne, qui est la moins solide. La
+deuxième donne **le même résultat visuel** avec un modèle sûr et un drag
+déjà codé, au prix d'un intermédiaire (une esquisse porteuse). Arbitrage à
+faire les yeux ouverts, pas à découvrir à la deux-centième pierre.
+
+### La couture
+
+Sur un jonc cylindrique, `u` boucle à 2π. Un drag qui franchit la couture
+téléporte la pierre à l'autre bout si `(u, v)` n'est pas normalisé. Sans
+gravité — mais à traiter, sinon c'est le bug que l'utilisateur rencontre
+dans les dix premières secondes. Q4 de la sonde le mesure.
+
+### Le coût des sièges
+
+N pierres = N booléens, et OCCT s'écroule bien avant 200. La parade
+standard : **un compound des N outils, une seule coupe**. Q6 chiffre le gain
+réel sur la machine cible.
+
+## 5.5 La surface d'op minimale
+
+Cinq ops, dans le style de `engine/protocol.py` :
+
+| Op | Params | Rend |
+|---|---|---|
+| `place_gem` | `face`, `x`, `y`, `z`, `gem`, `size` | projette, stocke `(u, v)`, rend le placement |
+| `move_gem` | `gem`, `face`, `x`, `y`, `z` | reprojette, met à jour `(u, v)` |
+| `spin_gem` | `gem`, `angle` ou `lift` | rotation autour de la normale, enfoncement |
+| `remove_gem` | `gem` | — |
+| `list_gems` | — | pour le rapport, l'overlay d'écarts et les sièges |
+
+Tout le reste du sertissage est **déjà couvert** : `add_boolean` pour les
+sièges, `add_revolution` + `add_polar_pattern` pour les griffes.
+
+## 5.6 Verdict
+
+🟧 — **codable, et c'est le bon premier chantier de la piste bijouterie** :
+il réutilise le picking par face (fait), la tessellation groupée (faite),
+`normalAt` (fait), et le partage client/serveur de l'esquisse (fait). Ce qui
+manque tient en une projection inverse et cinq ops.
+
+Mais la sonde d'abord — convention du dépôt, et ici elle a de quoi mordre :
+la stabilité de `(u, v)` sur surface libre (Q2b) et le coût des booléens
+(Q6) peuvent changer la conception, pas seulement la retarder.
+
+```bash
+freecadcmd scripts/spike-pierres.py
+```
+
+Sept questions, un rapport JSON, aucune UI engagée. **Q2 est le verdict** :
+si l'ancrage `(u, v)` ne survit pas au changement de cote, il ne reste
+qu'un placement figé — et alors autant le faire sous Blender.

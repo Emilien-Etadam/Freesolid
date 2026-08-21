@@ -33,7 +33,7 @@ export function sketchDimAnchor(dim, entities) {
  * `onApply(values, { shown, isSketchAngle })` envoie sketch_set_dim
  * ou set_params selon l'appelant.
  */
-export function openDimEditor({ panel, dim, onApply }) {
+export function openDimEditor({ panel, dim, onApply, onCancel }) {
   const isSketchAngle = dim.kind === "sketch" && dim.type === "Angle";
   const shown = dim.expr
     || (isSketchAngle
@@ -57,6 +57,7 @@ export function openDimEditor({ panel, dim, onApply }) {
           "« .Constraints.largeur * 2 » (les noms de cotes de cette " +
           "esquisse s'utilisent avec .Constraints.nom)",
     onApply: (values) => onApply(values, { shown, isSketchAngle }),
+    onCancel,
   });
 }
 

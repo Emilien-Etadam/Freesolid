@@ -9,6 +9,7 @@ import { createLocalSolver } from "./solver.js";
 import {
   arcAngles, chainClickAction, distanceToEntity,
   entityKindTitle, entityPropertyLines,
+  isDrivingConstraint, sketchPreviewPoints,
 } from "./geom2d.js";
 import { num } from "./num.js";
 import {
@@ -981,6 +982,24 @@ export function createSketchMode(deps) {
         ...mode.pendingSpline.map((p) => new THREE.Vector3(p.x, p.y, 0)),
         new THREE.Vector3(snapped.x, snapped.y, 0)]);
       previewLine.visible = true;
+    } else if (previewLine) {
+      const pending = mode.tool === "circle" ? mode.pendingCircle
+        : mode.tool === "ellipse" ? mode.pendingEllipse
+        : mode.tool === "slot" ? mode.pendingSlot
+        : mode.tool === "arc" ? mode.pendingArc
+        : mode.tool === "polygon" ? mode.pendingPoly
+        : null;
+      if (!pending) return;
+      const local = toLocal(event);
+      if (!local) return;
+      const pts = sketchPreviewPoints(mode.tool, pending, snap(local, event));
+      if (pts.length < 2) {
+        previewLine.visible = false;
+        return;
+      }
+      previewLine.geometry.setFromPoints(
+        pts.map((p) => new THREE.Vector3(p.x, p.y, 0)));
+      previewLine.visible = true;
     }
   }
 
@@ -1023,6 +1042,40 @@ export function createSketchMode(deps) {
           await refresh(call("get_tree"));
           return state;
         })());
+      },
+    });
+  }
+
+  function editListedDim(constraint, geo) {
+    if (!mode.state) return;
+    const dim = {
+      kind: "sketch",
+      id: constraint.id,
+      type: constraint.type,
+      value: constraint.value,
+      name: constraint.name || "",
+      expr: constraint.expr || "",
+    };
+    openDimEditor({
+      panel,
+      dim,
+      onApply: (values, meta) => {
+        const extra = dimEditPayload(values, dim, meta);
+        if (extra.name === undefined && extra.value === undefined
+            && extra.expr === undefined) {
+          openEntityPanel(geo);
+          return;
+        }
+        safe((async () => {
+          const state = await call("sketch_set_dim", {
+            sketch: mode.state.sketch, dim: constraint.id, ...extra,
+          });
+          await refresh(call("get_tree"));
+          return state;
+        })(), { keepSelection: true });
+      },
+      onCancel: () => {
+        if (mode.active) openEntityPanel(geo);
       },
     });
   }
@@ -1201,13 +1254,20 @@ export function createSketchMode(deps) {
     if (uniqueSelectionGeos()[0] !== geo) return;
 
     const title = entityKindTitle(entity);
-    const propRows = entityPropertyLines(entity).map((text) => (
-      { type: "note", text }));
+    const propRows = entityPropertyLines(entity).map((text) => ({
+      type: "note",
+      text,
+      readonly: true,
+      onClick: () => say(
+        "Cette valeur est informative — coter l'entité (D) pour la piloter."),
+    }));
     propRows.push({
       type: "note",
       text: `Construction : ${entity.construction ? "oui" : "non"}`,
+      readonly: true,
     });
     const constraints = listed.constraints ?? [];
+    const hasDriving = constraints.some(isDrivingConstraint);
     entityPanelOpen = true;
     entityPanelGeo = geo;
     panel.open({
@@ -1222,22 +1282,29 @@ export function createSketchMode(deps) {
           rows: [{
             type: "list",
             empty: "— aucune relation sur cette entité —",
-            items: constraints.map((c) => ({
-              label: constraintItemLabel(c),
-              onDelete: async () => {
-                try {
-                  applyState(await call("sketch_delete_constraint", {
-                    sketch: mode.state.sketch, constraint: c.id,
-                  }), { keepSelection: true });
-                } catch (error) {
-                  say(error.message, true);
-                }
-              },
-            })),
+            items: constraints.map((c) => {
+              const driving = isDrivingConstraint(c);
+              return {
+                label: constraintItemLabel(c),
+                editable: driving,
+                onEdit: driving ? () => editListedDim(c, geo) : undefined,
+                onDelete: async () => {
+                  try {
+                    applyState(await call("sketch_delete_constraint", {
+                      sketch: mode.state.sketch, constraint: c.id,
+                    }), { keepSelection: true });
+                  } catch (error) {
+                    say(error.message, true);
+                  }
+                },
+              };
+            }),
           }],
         },
       ],
-      note: "Pour piloter une valeur : Cotation intelligente (D).",
+      note: hasDriving
+        ? "Cliquez une cote dans Relations pour la modifier."
+        : "Pour piloter une valeur : Cotation intelligente (D).",
       actions: [
         {
           label: "Construction",

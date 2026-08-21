@@ -69,8 +69,162 @@ export function chainClickAction(prev, next, snapPx) {
     : "add";
 }
 
+/** Cote pilotante (valeur éditable), par opposition à une relation sèche. */
+const DRIVING_CONSTRAINTS = new Set([
+  "Distance", "DistanceX", "DistanceY", "Radius", "Diameter", "Angle",
+]);
+
+export function isDrivingConstraint(constraint) {
+  return Boolean(constraint)
+    && DRIVING_CONSTRAINTS.has(constraint.type)
+    && Number.isFinite(constraint.value);
+}
+
 function fmtMm(value) {
   return Number(value).toFixed(2);
+}
+
+export function circlePoints(cx, cy, r, segments = 48) {
+  if (!(r > 0)) return [];
+  const pts = [];
+  for (let i = 0; i <= segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+  }
+  return pts;
+}
+
+export function arcPoints(cx, cy, r, a1, a2, segments = 32) {
+  if (!(r > 0)) return [];
+  let sweep = a2 - a1;
+  if (sweep <= 0) sweep += Math.PI * 2;
+  const pts = [];
+  for (let i = 0; i <= segments; i++) {
+    const a = a1 + (i / segments) * sweep;
+    pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+  }
+  return pts;
+}
+
+export function ellipsePoints(cx, cy, rx, ry, angle, segments = 48) {
+  if (!(rx > 0) || !(ry > 0)) return [];
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const pts = [];
+  for (let i = 0; i <= segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    const lx = rx * Math.cos(a), ly = ry * Math.sin(a);
+    pts.push({
+      x: cx + lx * cos - ly * sin,
+      y: cy + lx * sin + ly * cos,
+    });
+  }
+  return pts;
+}
+
+function normalizeAngle(angle, origin) {
+  let a = angle;
+  while (a < origin) a += Math.PI * 2;
+  while (a >= origin + Math.PI * 2) a -= Math.PI * 2;
+  return a;
+}
+
+function semicircleThrough(cx, cy, r, from, through, segments) {
+  const mid = normalizeAngle(through, from);
+  if (mid > 0 && mid < Math.PI) {
+    return arcPoints(cx, cy, r, from, from + Math.PI, segments);
+  }
+  return arcPoints(cx, cy, r, from + Math.PI, from + Math.PI * 2, segments);
+}
+
+/** Oblong : deux demi-cercles et deux segments, centres `a`/`b`, largeur. */
+export function slotPoints(a, b, width, segments = 16) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len <= 0 || !(width > 0)) return [];
+  const ux = dx / len, uy = dy / len;
+  const px = -uy, py = ux;
+  const r = width / 2;
+  const aL = { x: a.x + px * r, y: a.y + py * r };
+  const bL = { x: b.x + px * r, y: b.y + py * r };
+  const aR = { x: a.x - px * r, y: a.y - py * r };
+  const angP = Math.atan2(py, px);
+  const angM = Math.atan2(-py, -px);
+  const angU = Math.atan2(uy, ux);
+  const angMU = Math.atan2(-uy, -ux);
+  const capB = semicircleThrough(b.x, b.y, r, angP, angU, segments);
+  const capA = semicircleThrough(a.x, a.y, r, angM, angMU, segments);
+  return [aL, bL, ...capB.slice(1), aR, ...capA.slice(1)];
+}
+
+export function polygonPoints(cx, cy, vx, vy, sides) {
+  if (!(sides >= 3)) return [];
+  const radius = Math.hypot(vx - cx, vy - cy);
+  if (!(radius > 0)) return [];
+  const a0 = Math.atan2(vy - cy, vx - cx);
+  const pts = [];
+  for (let i = 0; i <= sides; i++) {
+    const a = a0 + (i / sides) * Math.PI * 2;
+    pts.push({ x: cx + radius * Math.cos(a), y: cy + radius * Math.sin(a) });
+  }
+  return pts;
+}
+
+/**
+ * Polyligne d'aperçu d'outil d'esquisse, en coordonnées locales.
+ * `pending` est le point d'ancrage déjà posé (`pendingCircle`, etc.).
+ */
+export function sketchPreviewPoints(tool, pending, cursor) {
+  if (!pending || !cursor) return [];
+  if (tool === "circle") {
+    return circlePoints(pending.x, pending.y,
+      Math.hypot(cursor.x - pending.x, cursor.y - pending.y));
+  }
+  if (tool === "ellipse") {
+    if (!pending.c) return [];
+    if (!pending.major) {
+      return circlePoints(pending.c.x, pending.c.y,
+        Math.hypot(cursor.x - pending.c.x, cursor.y - pending.c.y));
+    }
+    const { c, major } = pending;
+    const rx = Math.hypot(major.x - c.x, major.y - c.y);
+    if (!(rx > 0)) return [];
+    const angle = Math.atan2(major.y - c.y, major.x - c.x);
+    const ux = (major.x - c.x) / rx, uy = (major.y - c.y) / rx;
+    const ry = Math.abs(
+      ux * (cursor.y - c.y) - uy * (cursor.x - c.x));
+    return ellipsePoints(c.x, c.y, rx, ry, angle);
+  }
+  if (tool === "slot") {
+    if (!pending.a) return [];
+    if (!pending.b) return [pending.a, cursor];
+    const { a, b } = pending;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len <= 0) return [];
+    const width = 2 * Math.abs(
+      ((b.x - a.x) * (a.y - cursor.y)
+        - (b.y - a.y) * (a.x - cursor.x)) / len);
+    return slotPoints(a, b, width);
+  }
+  if (tool === "arc") {
+    if (!pending.c) return [];
+    if (!pending.start) {
+      return circlePoints(pending.c.x, pending.c.y,
+        Math.hypot(cursor.x - pending.c.x, cursor.y - pending.c.y));
+    }
+    const { c, start } = pending;
+    const r = Math.hypot(start.x - c.x, start.y - c.y);
+    if (!(r > 0)) return [];
+    const a1 = Math.atan2(start.y - c.y, start.x - c.x);
+    let a2 = Math.atan2(cursor.y - c.y, cursor.x - c.x);
+    if (a2 <= a1) a2 += Math.PI * 2;
+    return arcPoints(c.x, c.y, r, a1, a2);
+  }
+  if (tool === "polygon") {
+    if (!pending.c || pending.sides == null) return [];
+    return polygonPoints(
+      pending.c.x, pending.c.y, cursor.x, cursor.y, pending.sides);
+  }
+  return [];
 }
 
 function fmtXy(point) {

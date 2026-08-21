@@ -22,8 +22,8 @@
 //       { type: "check",  key, label, value }
 //       { type: "selection", key, label?, hint?, value?, accepts?, multiple? }
 //       { type: "text", key, label, value?, placeholder?, unit? }
-//       { type: "list", items: [{ label, onDelete? }], empty? }
-//       { type: "note", text }
+//       { type: "list", items: [{ label, onDelete?, onEdit?, editable? }], empty? }
+//       { type: "note", text, readonly?, onClick? }
 //
 // invalidateSelections() : vide les rows `selection` (ids périmés au rebuild).
 
@@ -216,7 +216,13 @@ export function createPropertyPanel({ say, onClose }) {
   function renderRow(row) {
     const { values } = active;
     if (row.showIf && !row.showIf(values)) return null;
-    if (row.type === "note") return el("div", "pnote", row.text);
+    if (row.type === "note") {
+      const note = el("div", row.readonly ? "pnote readonly" : "pnote", row.text);
+      if (row.onClick) {
+        note.addEventListener("click", row.onClick);
+      }
+      return note;
+    }
 
     if (row.type === "list") {
       const wrap = el("div", "plist");
@@ -224,12 +230,25 @@ export function createPropertyPanel({ say, onClose }) {
         wrap.append(el("div", "pnote", row.empty ?? "— aucune —"));
       }
       for (const item of row.items) {
-        const line = el("div", "plist-item");
-        line.append(el("span", "", item.label));
+        const line = el("div",
+          item.editable ? "plist-item editable"
+            : item.onEdit ? "plist-item"
+              : "plist-item readonly");
+        const label = el("span", "", item.label);
+        line.append(label);
+        if (item.onEdit) {
+          line.addEventListener("click", (event) => {
+            if (event.target.closest(".pdel")) return;
+            item.onEdit();
+          });
+        }
         if (item.onDelete) {
           const remove = el("button", "pdel", "✕");
           remove.title = "Supprimer";
-          remove.addEventListener("click", item.onDelete);
+          remove.addEventListener("click", (event) => {
+            event.stopPropagation();
+            item.onDelete();
+          });
           line.append(remove);
         }
         wrap.append(line);

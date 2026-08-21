@@ -20,7 +20,10 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from engine.guard import friendly_error          # noqa: E402
-from engine.nodegraph import GraphError, evaluate_instances, migrate_graph  # noqa: E402
+from engine.nodegraph import (  # noqa: E402
+    GraphError, classify_shape_instructions, evaluate_instances,
+    mixed_output_message, migrate_graph, output_nature,
+)
 from engine.platform import (                    # noqa: E402
     allow_from_environ, version_status,
 )
@@ -919,6 +922,9 @@ class Kernel:
         # Couture / courbe / fichiers legacy : pas d'objet paramétrique.
         if obj.TypeId == "Part::Feature":
             entry["static"] = True
+        graph = self._tree_graph_payload(obj)
+        if graph is not None:
+            entry["graph"] = graph
         if sketches:
             entry["children"] = [wire({
                 "name": sk.Name,
@@ -1028,10 +1034,10 @@ class Kernel:
 
         return self._add_part_surface(
             "Part::Offset", "Épaississement", configure)
+
     def add_curve3d(self, points, spline=True):
         """Courbe 3D par points — le repli esquisse 3D : une trajectoire
         pour le balayage (B-spline interpolée, ou polyligne)."""
-        import Part
         App = self._app()
         if not isinstance(points, (list, tuple)) or len(points) < 2:
             raise KernelError("une courbe demande au moins deux points")
@@ -1043,17 +1049,41 @@ class Kernel:
                 raise KernelError("point invalide : {}".format(p))
             vectors.append(App.Vector(x, y, z))
         try:
-            if spline and len(vectors) >= 3:
-                curve = Part.BSplineCurve()
-                curve.interpolate(vectors)
-                # Un FIL, pas une arête nue : le balayage exige un
-                # TopoDS_Wire (vu sur 1.1.3).
-                shape = Part.Wire([curve.toShape()])
-            else:
-                shape = Part.makePolygon(vectors)
+            shape = self._wire_through_points(
+                vectors, spline=bool(spline), closed=False)
+        except KernelError:
+            raise
         except Exception as exc:  # noqa: BLE001
             raise KernelError(_explain(exc))
         return self._add_surface(shape, "Courbe 3D")
+
+    def _wire_through_points(self, vectors, *, spline=True, closed=False):
+        """Fil 3D par des points — interpolation B-spline, ou polyligne.
+
+        Un FIL, pas une arête nue : le balayage exige un TopoDS_Wire
+        (vu sur 1.1.3). La courbe **passe par** les points.
+        """
+        import Part
+        if closed:
+            if spline and len(vectors) >= 3:
+                curve = Part.BSplineCurve()
+                curve.interpolate(vectors, PeriodicFlag=True)
+                return Part.Wire([curve.toShape()])
+            return Part.makePolygon(vectors, True)
+        if spline and len(vectors) >= 3:
+            curve = Part.BSplineCurve()
+            curve.interpolate(vectors)
+            return Part.Wire([curve.toShape()])
+        return Part.makePolygon(vectors)
+
+    def _ensure_wire(self, shape):
+        import Part
+        if getattr(shape, "ShapeType", None) == "Wire":
+            return shape
+        edges = list(getattr(shape, "Edges", ()) or [])
+        if not edges:
+            raise KernelError("la courbe n'a pas d'arête")
+        return Part.Wire(edges)
 
     # -- phase E : mise en plan -------------------------------------------
 
@@ -1565,23 +1595,9 @@ class Kernel:
         return {"authorized": True}
 
     def _build_graph_solid(self, instructions):
-        import Part
-        App = self._app()
         solids = []
         for inst in instructions:
-            point = App.Vector(float(inst["x"]), float(inst["y"]),
-                               float(inst["z"]))
-            kind = inst.get("shape")
-            if kind == "cylinder":
-                solid = Part.makeCylinder(
-                    float(inst["radius"]), float(inst["height"]), point)
-            elif kind == "box":
-                solid = Part.makeBox(
-                    float(inst["length"]), float(inst["width"]),
-                    float(inst["height"]), point)
-            else:
-                raise KernelError(
-                    "instruction de forme inconnue : {}".format(kind))
+            solid = self._shape_from_instruction(inst)
             solids.append(solid)
         if not solids:
             raise KernelError("le graphe ne produit aucune forme")
@@ -1589,6 +1605,121 @@ class Kernel:
         for extra in solids[1:]:
             result = result.fuse(extra)
         return result
+
+    def _build_graph_surface(self, instructions):
+        import Part
+        shapes = [self._shape_from_instruction(inst) for inst in instructions]
+        if not shapes:
+            raise KernelError("le graphe ne produit aucune forme")
+        if len(shapes) == 1:
+            return shapes[0]
+        return Part.makeCompound(shapes)
+
+    def _vec(self, coords):
+        App = self._app()
+        return App.Vector(float(coords[0]), float(coords[1]), float(coords[2]))
+
+    def _shape_from_instruction(self, inst):
+        """Une instruction → une forme Part. Boîte et cylindre inchangés."""
+        import Part
+        App = self._app()
+        kind = inst.get("shape")
+        try:
+            if kind == "cylindre":
+                point = App.Vector(float(inst["x"]), float(inst["y"]),
+                                   float(inst["z"]))
+                return Part.makeCylinder(
+                    float(inst["radius"]), float(inst["height"]), point)
+            if kind == "boite":
+                point = App.Vector(float(inst["x"]), float(inst["y"]),
+                                   float(inst["z"]))
+                return Part.makeBox(
+                    float(inst["length"]), float(inst["width"]),
+                    float(inst["height"]), point)
+            if kind == "ligne":
+                edge = Part.makeLine(
+                    self._vec(inst["point1"]), self._vec(inst["point2"]))
+                return self._ensure_wire(edge)
+            if kind == "arc":
+                edge = Part.makeCircle(
+                    float(inst["rayon"]),
+                    self._vec(inst["point"]),
+                    self._vec(inst["direction"]),
+                    float(inst["angle1"]),
+                    float(inst["angle2"]))
+                return self._ensure_wire(edge)
+            if kind == "arc_3pts":
+                arc = Part.Arc(
+                    self._vec(inst["point1"]),
+                    self._vec(inst["point2"]),
+                    self._vec(inst["point3"]))
+                return self._ensure_wire(arc.toShape())
+            if kind == "cercle":
+                edge = Part.makeCircle(
+                    float(inst["rayon"]),
+                    self._vec(inst["point"]),
+                    self._vec(inst["direction"]))
+                return self._ensure_wire(edge)
+            if kind == "helice":
+                edge = Part.makeHelix(
+                    float(inst["pas_helice"]),
+                    float(inst["hauteur"]),
+                    float(inst["rayon"]),
+                    float(inst["angle"]),
+                    bool(inst.get("gauche")))
+                return self._ensure_wire(edge)
+            if kind == "polyligne":
+                vectors = [self._vec(p) for p in inst["points"]]
+                return self._wire_through_points(
+                    vectors, spline=False, closed=bool(inst.get("ferme")))
+            if kind == "bspline":
+                vectors = [self._vec(p) for p in inst["points"]]
+                return self._wire_through_points(
+                    vectors, spline=True, closed=bool(inst.get("ferme")))
+            if kind == "plan":
+                return Part.makePlane(
+                    float(inst["longueur"]),
+                    float(inst["largeur"]),
+                    self._vec(inst["point"]),
+                    self._vec(inst["direction"]))
+            if kind == "bspline_surface":
+                grid = [
+                    [self._vec(point) for point in row]
+                    for row in inst["centres"]
+                ]
+                surf = Part.BSplineSurface()
+                surf.interpolate(grid)
+                return surf.toShape()
+        except KernelError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        raise KernelError(
+            "instruction de forme inconnue : {}".format(kind))
+
+    def _graph_output_nature(self, instructions):
+        solids, surfaces = classify_shape_instructions(instructions)
+        if solids and surfaces:
+            raise KernelError(mixed_output_message(solids, surfaces))
+        nature = output_nature(instructions)
+        if nature is None:
+            raise KernelError("le graphe ne produit aucune forme")
+        return nature
+
+    def _is_graph_surface(self, obj):
+        return (
+            obj.TypeId == "Part::Feature"
+            and "FreeSolidGraphJson" in obj.PropertiesList
+        )
+
+    def _tree_graph_payload(self, obj):
+        if "FreeSolidGraphJson" not in obj.PropertiesList:
+            return None
+        try:
+            parsed = json.loads(obj.FreeSolidGraphJson or "")
+        except (TypeError, ValueError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
 
     def _graph_tool_parts(self, obj):
         tool_body = next(
@@ -1610,18 +1741,35 @@ class Kernel:
         obj.FreeSolidGraphMode = mode
         obj.Label = label
 
-    def add_graph_feature(self, graph, mode="cut"):
-        """Insère la forme d'un graphe dans l'historique, par la route
-        du corps outil (même patron que la gravure).
+    def add_graph_feature(self, graph, mode=None):
+        """Insère la forme d'un graphe dans l'arbre.
 
-        ``mode`` : ``fuse`` (bossage) ou ``cut`` (enlèvement). Le graphe
-        est évalué **avant** toute modification du document.
+        Solide : route du corps outil (``mode`` fuse ou cut), comme la
+        gravure. Courbe / surface : un seul ``Part::Feature``, comme une
+        courbe 3D. Le graphe est évalué **avant** toute modification.
         """
-        mode = str(mode)
-        if mode not in ("fuse", "cut"):
-            raise KernelError(
-                "mode inconnu « {} » — attendu fuse ou cut".format(mode))
         instructions = self._evaluate_graph(graph)
+        nature = self._graph_output_nature(instructions)
+        mode_text = "" if mode is None else str(mode)
+        if nature == "solid":
+            if mode_text not in ("fuse", "cut"):
+                if mode_text:
+                    raise KernelError(
+                        "mode inconnu « {} » — attendu fuse ou cut".format(
+                            mode_text))
+                raise KernelError("un solide demande le mode fuse ou cut")
+            return self._add_graph_solid(graph, instructions, mode_text)
+        if mode_text in ("fuse", "cut"):
+            raise KernelError(
+                "fuse et cut ne s'appliquent pas à une courbe ou une "
+                "surface — la ligne d'arbre n'est pas un enlèvement")
+        if mode_text:
+            raise KernelError(
+                "mode inconnu « {} » — une courbe ou une surface n'a "
+                "pas de mode fuse ou cut".format(mode_text))
+        return self._add_graph_surface(graph, instructions)
+
+    def _add_graph_solid(self, graph, instructions, mode):
         solid = self._build_graph_solid(instructions)
         body = self._require_body()
         doc = self._require_doc()
@@ -1652,12 +1800,28 @@ class Kernel:
                 else "Fonction graphe — Enlèvement")
         return self.get_tree()
 
+    def _add_graph_surface(self, graph, instructions):
+        shape = self._build_graph_surface(instructions)
+        doc = self._require_doc()
+        feature = doc.addObject("Part::Feature", "Surface")
+        feature.Shape = shape
+        try:
+            self._persist_graph(feature, graph, "", "Fonction graphe")
+            doc.recompute()
+        except Exception:
+            try:
+                doc.removeObject(feature.Name)
+            except Exception:
+                pass
+            raise
+        return self.get_tree()
+
     def edit_graph_feature(self, feature, graph):
         """Réévalue une fonction graphe et remplace sa forme.
 
         Atomique : le graphe est évalué et la géométrie reconstruite
         **d'abord** ; si l'un ou l'autre échoue, la pièce n'est pas
-        modifiée.
+        modifiée. Une ligne ne change pas de nature en silence.
         """
         doc = self._require_doc()
         obj = doc.getObject(str(feature))
@@ -1666,6 +1830,34 @@ class Kernel:
         if "FreeSolidGraphJson" not in obj.PropertiesList:
             raise KernelError("cette fonction n'est pas une fonction graphe")
         instructions = self._evaluate_graph(graph)
+        nature = self._graph_output_nature(instructions)
+        if self._is_graph_surface(obj):
+            if nature != "surface":
+                raise KernelError(
+                    "cette fonction graphe est une courbe ou une surface ; "
+                    "le graphe produit un solide — la pièce n'a pas été "
+                    "modifiée")
+            shape = self._build_graph_surface(instructions)
+            old_shape = obj.Shape
+            obj.Shape = shape
+            try:
+                self._recompute()
+            except KernelError as exc:
+                obj.Shape = old_shape
+                try:
+                    self._recompute()
+                except KernelError:
+                    pass
+                raise KernelError(
+                    "{} — la fonction graphe n'a pas été modifiée".format(
+                        exc))
+            self._persist_graph(obj, graph, "", obj.Label)
+            return self.get_tree()
+        if nature != "solid":
+            raise KernelError(
+                "cette fonction graphe est un enlèvement ou un bossage ; "
+                "le graphe ne produit plus de solide — la pièce n'a pas "
+                "été modifiée")
         solid = self._build_graph_solid(instructions)
         _, shape_feature = self._graph_tool_parts(obj)
         old_shape = shape_feature.Shape
@@ -1694,13 +1886,14 @@ class Kernel:
             raise KernelError("fonction inconnue : {}".format(feature))
         if "FreeSolidGraphJson" not in obj.PropertiesList:
             raise KernelError("cette fonction n'est pas une fonction graphe")
-        try:
-            parsed = json.loads(obj.FreeSolidGraphJson or "")
-        except (TypeError, ValueError):
+        parsed = self._tree_graph_payload(obj)
+        if parsed is None:
             raise KernelError("graphe persisté illisible")
-        if not isinstance(parsed, dict):
-            raise KernelError("graphe persisté illisible")
-        mode = getattr(obj, "FreeSolidGraphMode", "") or "cut"
+        stored = getattr(obj, "FreeSolidGraphMode", "") or ""
+        if self._is_graph_surface(obj):
+            mode = stored
+        else:
+            mode = stored or "cut"
         return {"graph": migrate_graph(parsed), "mode": mode}
 
     def _repeat_label(self, mode):
@@ -3445,12 +3638,9 @@ class Kernel:
                     "y": float(obj.FreeSolidTextY),
                 }
             if "FreeSolidGraphJson" in obj.PropertiesList:
-                try:
-                    parsed = json.loads(obj.FreeSolidGraphJson or "")
-                except (TypeError, ValueError):
-                    parsed = None
-                if isinstance(parsed, dict):
-                    item["graph"] = parsed
+                graph = self._tree_graph_payload(obj)
+                if graph is not None:
+                    item["graph"] = graph
             if "FreeSolidRepeatJson" in obj.PropertiesList:
                 try:
                     parsed = json.loads(obj.FreeSolidRepeatJson or "")
@@ -6574,6 +6764,240 @@ class Kernel:
                     and _close(_volume(), vol_attache)
                     and len(self.get_tree()["features"]) == n_attache
                     and _temp_bodies_left(self) == [])
+
+            mark("n11: hélice graphe + balayage — le chemin complet")
+            # Hélice cylindrique : pas=10, hauteur=20, rayon=10 → 2 tours.
+            # Longueur = 2 * sqrt((2π·10)² + 10²) = 2√(400π²+100) ≈ 127.245.
+            # Profil Ø4 → aire π·2² ; volume ≈ 4π × 127.245 ≈ 1599.15.
+            self.new_part("Pièce graphe N011")
+            helix_graph = {
+                "nodes": [
+                    _n4_node("h", "helice", pas_helice=10, hauteur=20,
+                             rayon=10, angle=0, gauche=0),
+                ],
+                "edges": [],
+                "output": "h",
+            }
+            tree = self.add_graph_feature(helix_graph)
+            helix_surf = next(
+                (s for s in tree["surfaces"] if s.get("graph")), None)
+            helix_ok = (
+                helix_surf is not None
+                and sum(1 for s in tree["surfaces"] if s.get("graph")) == 1)
+            # Profil dans le plan XZ, centré au départ de l'hélice (10, 0, 0) :
+            # la tangente initiale est ≈ +Y, normale du plan XZ.
+            state = self.sketch_start(plane="XZ")
+            pipe_sk = state["sketch"]
+            self.sketch_add_circle(pipe_sk, 10, 0, 2)
+            self.sketch_finish(pipe_sk)
+            try:
+                tree = self.add_sweep(
+                    profile=pipe_sk, spine=helix_surf["name"])
+                helix_len = 2.0 * math.sqrt((2.0 * math.pi * 10.0) ** 2 + 10.0 ** 2)
+                expected_vol = (math.pi * 2.0 * 2.0) * helix_len
+                vol = _volume()
+                report["n11_helice_balayage"] = (
+                    helix_ok
+                    and not any(f["error"] for f in tree["features"])
+                    and vol > 0
+                    and self._require_body().Shape.isValid()
+                    and _close(vol, expected_vol, tol=0.05))
+            except KernelError:
+                report["n11_helice_balayage"] = False
+
+            mark("n11: neuf nœuds — chacun sa forme")
+            origin = {"x": 0, "y": 0, "z": 0}
+            zdir = {"x": 0, "y": 0, "z": 1}
+
+            def _n11_last_shape():
+                surf = self.get_tree()["surfaces"][-1]
+                return self._require_doc().getObject(surf["name"]).Shape
+
+            def _n11_add(graph):
+                n_before = len(self.get_tree()["surfaces"])
+                tree = self.add_graph_feature(graph)
+                return (
+                    len(tree["surfaces"]) == n_before + 1
+                    and bool(tree["surfaces"][-1].get("graph")))
+
+            n11_nodes = {}
+            n11_nodes["ligne"] = (
+                _n11_add({
+                    "nodes": [_n4_node(
+                        "n", "ligne",
+                        point1=origin, point2={"x": 10, "y": 0, "z": 0})],
+                    "edges": [], "output": "n",
+                }) and _close(_n11_last_shape().Length, 10.0, tol=1e-6))
+            n11_nodes["cercle"] = (
+                _n11_add({
+                    "nodes": [_n4_node(
+                        "n", "cercle", rayon=10, point=origin,
+                        direction=zdir)],
+                    "edges": [], "output": "n",
+                }) and _close(_n11_last_shape().Length, 2 * math.pi * 10,
+                              tol=1e-4))
+            # Arc 90° rayon 10 : longueur = 10·π/2.
+            n11_nodes["arc"] = (
+                _n11_add({
+                    "nodes": [_n4_node(
+                        "n", "arc", rayon=10, point=origin, direction=zdir,
+                        angle1=0, angle2=90)],
+                    "edges": [], "output": "n",
+                }) and _close(_n11_last_shape().Length, 10 * math.pi / 2,
+                              tol=1e-4))
+            # Arc 3 pts : (10,0,0), (0,10,0), (-10,0,0) → demi-cercle r=10.
+            n11_nodes["arc_3pts"] = (
+                _n11_add({
+                    "nodes": [_n4_node(
+                        "n", "arc_3pts",
+                        point1={"x": 10, "y": 0, "z": 0},
+                        point2={"x": 0, "y": 10, "z": 0},
+                        point3={"x": -10, "y": 0, "z": 0})],
+                    "edges": [], "output": "n",
+                }) and _close(_n11_last_shape().Length, math.pi * 10,
+                              tol=1e-4))
+            n11_nodes["polyligne"] = (
+                _n11_add({
+                    "nodes": [_n4_node(
+                        "n", "polyligne", ferme=0,
+                        point=[origin, {"x": 10, "y": 0, "z": 0},
+                               {"x": 10, "y": 10, "z": 0}])],
+                    "edges": [], "output": "n",
+                }) and _close(_n11_last_shape().Length, 20.0, tol=1e-6))
+            spline_shape_ok = False
+            if _n11_add({
+                "nodes": [_n4_node(
+                    "n", "bspline", ferme=0,
+                    centres=[origin, {"x": 10, "y": 0, "z": 0},
+                             {"x": 10, "y": 10, "z": 0}])],
+                "edges": [], "output": "n",
+            }):
+                shp = _n11_last_shape()
+                verts = list(shp.Vertexes)
+                spline_shape_ok = (
+                    len(verts) >= 2
+                    and _close(verts[0].Point.distanceToPoint(
+                        self._app().Vector(0, 0, 0)), 0.0, tol=1e-4)
+                    and _close(verts[-1].Point.distanceToPoint(
+                        self._app().Vector(10, 10, 0)), 0.0, tol=1e-4))
+            n11_nodes["bspline"] = spline_shape_ok
+            n11_nodes["helice"] = (
+                _n11_add({
+                    "nodes": [_n4_node(
+                        "n", "helice", pas_helice=10, hauteur=20,
+                        rayon=10, angle=0, gauche=0)],
+                    "edges": [], "output": "n",
+                }) and _close(_n11_last_shape().BoundBox.ZLength, 20.0,
+                              tol=1e-3))
+            n11_nodes["plan"] = (
+                _n11_add({
+                    "nodes": [_n4_node(
+                        "n", "plan", longueur=20, largeur=10,
+                        point=origin, direction=zdir)],
+                    "edges": [], "output": "n",
+                }) and _close(_n11_last_shape().Area, 200.0, tol=1e-4))
+            grid = [
+                [origin, {"x": 10, "y": 0, "z": 0}],
+                [{"x": 0, "y": 10, "z": 0}, {"x": 10, "y": 10, "z": 0}],
+            ]
+            n11_nodes["bspline_surface"] = (
+                _n11_add({
+                    "nodes": [_n4_node("n", "bspline_surface", centres=grid)],
+                    "edges": [], "output": "n",
+                }) and bool(_n11_last_shape().Faces)
+                and _close(_n11_last_shape().Area, 100.0, tol=0.05))
+            report["n11_neuf_noeuds"] = all(n11_nodes.values())
+            report["n11_neuf_detail"] = n11_nodes
+
+            mark("n11: une ligne, appariement, trois refus")
+            self.new_part("Pièce graphe N011 ligne")
+            five = {
+                "nodes": [
+                    _n4_node("s", "serie", depart=5, pas=5, nombre=5),
+                    _n4_node("c", "cercle", point=origin, direction=zdir),
+                ],
+                "edges": [{"from": "s", "to": "c", "input": "rayon"}],
+                "output": "c",
+            }
+            tree = self.add_graph_feature(five)
+            graphs = [s for s in tree["surfaces"] if s.get("graph")]
+            five_obj = (self._require_doc().getObject(graphs[-1]["name"])
+                        if graphs else None)
+            stored = (self.get_graph_feature(graphs[-1]["name"])
+                      if graphs else {})
+            report["n11_une_ligne"] = (
+                len(graphs) == 1
+                and stored.get("graph", {}).get("output") == "c"
+                and stored.get("graph", {}).get("nodes") == five["nodes"])
+            report["n11_appariement"] = (
+                five_obj is not None
+                and len(five_obj.Shape.Edges) == 5)
+
+            mixed = {
+                "nodes": [
+                    _n4_node("mix", "option_liste", op="flatten", liste=[
+                        {"shape": "boite", "length": 10, "width": 10,
+                         "height": 10, "x": 0, "y": 0, "z": 0},
+                        {"shape": "ligne",
+                         "point1": [0, 0, 0], "point2": [10, 0, 0]},
+                    ]),
+                ],
+                "edges": [],
+                "output": "mix",
+            }
+            n_surf = len(self.get_tree()["surfaces"])
+            n_feat = len(self.get_tree()["features"])
+            try:
+                self.add_graph_feature(mixed)
+                report["n11_refus_mixte"] = False
+            except KernelError as exc:
+                msg = str(exc)
+                report["n11_refus_mixte"] = (
+                    "Boîte" in msg and "Ligne" in msg
+                    and len(self.get_tree()["surfaces"]) == n_surf
+                    and len(self.get_tree()["features"]) == n_feat)
+
+            circle = {
+                "nodes": [_n4_node(
+                    "c", "cercle", rayon=5, point=origin, direction=zdir)],
+                "edges": [], "output": "c",
+            }
+            n_surf = len(self.get_tree()["surfaces"])
+            try:
+                self.add_graph_feature(circle, mode="cut")
+                report["n11_refus_mode"] = False
+            except KernelError as exc:
+                report["n11_refus_mode"] = (
+                    "fuse" in str(exc) and "cut" in str(exc)
+                    and len(self.get_tree()["surfaces"]) == n_surf)
+
+            self.new_part("Pièce graphe N011 nature")
+            self.add_rect_sketch(40, 40)
+            self.add_pad(10)
+            vol_nature = _volume()
+            box_graph = {
+                "nodes": [_n4_node(
+                    "b", "boite", longueur=8, largeur=8, hauteur=8,
+                    ancrage={"x": -4, "y": -4, "z": -1})],
+                "edges": [], "output": "b",
+            }
+            tree = self.add_graph_feature(box_graph, mode="cut")
+            graphe_bool = next(f for f in tree["features"] if f.get("graph"))
+            vol_cut = _volume()
+            line_graph = {
+                "nodes": [_n4_node(
+                    "l", "ligne", point1=origin,
+                    point2={"x": 10, "y": 0, "z": 0})],
+                "edges": [], "output": "l",
+            }
+            try:
+                self.edit_graph_feature(graphe_bool["name"], line_graph)
+                report["n11_refus_nature"] = False
+            except KernelError as exc:
+                report["n11_refus_nature"] = (
+                    "solide" in str(exc)
+                    and _close(_volume(), vol_cut)
+                    and abs(_volume() - vol_nature) > 1.0)
 
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce

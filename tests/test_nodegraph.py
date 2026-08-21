@@ -3,8 +3,9 @@
 import pytest
 
 from engine.nodegraph import (
-    COUNT_MAX, GraphError, _NODE_INPUTS, evaluate, evaluate_instances,
-    migrate_graph, vocabulary,
+    COUNT_MAX, GraphError, _NODE_INPUTS, classify_shape_instructions,
+    evaluate, evaluate_instances, mixed_output_message, migrate_graph,
+    output_nature, vocabulary,
 )
 from engine import vocab
 
@@ -58,7 +59,7 @@ def test_broadcast_scalaire_sur_liste():
     out = evaluate(graph, {})
     assert len(out) == 5
     assert [round(item["x"]) for item in out] == [0, 20, 40, 60, 80]
-    assert all(item["shape"] == "cylinder" for item in out)
+    assert all(item["shape"] == "cylindre" for item in out)
     assert all(item["y"] == 0 and item["z"] == 0 for item in out)
 
 
@@ -283,7 +284,7 @@ def test_sortie_non_forme_refusee():
 def test_boite_une_instruction():
     out = evaluate(_box_at(4, 5, 6, length=10, width=8, height=2), {})
     assert out == [{
-        "shape": "box", "length": 10.0, "width": 8.0, "height": 2.0,
+        "shape": "boite", "length": 10.0, "width": 8.0, "height": 2.0,
         "x": 4.0, "y": 5.0, "z": 6.0,
     }]
 
@@ -340,7 +341,7 @@ def test_grille_de_cylindres():
         (-20.0, -10.0, -6.0), (0.0, -10.0, -6.0), (20.0, -10.0, -6.0),
         (-20.0, 10.0, -6.0), (0.0, 10.0, -6.0), (20.0, 10.0, -6.0),
     ]
-    assert all(item["shape"] == "cylinder" for item in out)
+    assert all(item["shape"] == "cylindre" for item in out)
     assert all(item["radius"] == 3 and item["height"] == 20 for item in out)
 
 
@@ -594,3 +595,118 @@ def test_evaluate_instances_longueurs_suite_differentes():
     )
     with pytest.raises(GraphError, match=r"listes de longueurs 3 et 2"):
         evaluate_instances(graph, {})
+
+
+def test_instruction_kinds_derived_from_catalogue():
+    from engine.nodegraph import _INSTRUCTION_KINDS, _NODE_SHAPES, _SCRIPT_KIND
+    assert _NODE_SHAPES == frozenset(
+        spec.type for spec in vocab.GRAPH_NODES if spec.shape)
+    assert _SCRIPT_KIND in _INSTRUCTION_KINDS
+    assert "boite" in _INSTRUCTION_KINDS
+    assert "cylindre" in _INSTRUCTION_KINDS
+    assert "ligne" in _INSTRUCTION_KINDS
+    assert "box" not in _INSTRUCTION_KINDS
+    assert "cylinder" not in _INSTRUCTION_KINDS
+
+
+def test_ligne_et_cercle_emettent_une_instruction():
+    line = evaluate(_g(
+        [_n("l", "ligne",
+            point1={"x": 0, "y": 0, "z": 0},
+            point2={"x": 10, "y": 0, "z": 0})],
+        [], "l",
+    ), {})
+    assert line == [{
+        "shape": "ligne",
+        "point1": [0.0, 0.0, 0.0],
+        "point2": [10.0, 0.0, 0.0],
+    }]
+    circle = evaluate(_g(
+        [_n("c", "cercle", rayon=5,
+            point={"x": 0, "y": 0, "z": 0},
+            direction={"x": 0, "y": 0, "z": 1})],
+        [], "c",
+    ), {})
+    assert circle[0]["shape"] == "cercle"
+    assert circle[0]["rayon"] == 5.0
+
+
+def test_serie_dans_le_rayon_donne_n_cercles():
+    graph = _g(
+        [
+            _n("s", "serie", depart=1, pas=1, nombre=3),
+            _n("c", "cercle",
+               point={"x": 0, "y": 0, "z": 0},
+               direction={"x": 0, "y": 0, "z": 1}),
+        ],
+        [_e("s", "c", "rayon")],
+        "c",
+    )
+    out = evaluate(graph, {})
+    assert [item["rayon"] for item in out] == [1.0, 2.0, 3.0]
+    assert all(item["shape"] == "cercle" for item in out)
+
+
+def test_polyligne_consomme_la_liste_de_points():
+    graph = _g(
+        [_n("p", "polyligne", ferme=0, point=[
+            {"x": 0, "y": 0, "z": 0},
+            {"x": 10, "y": 0, "z": 0},
+            {"x": 10, "y": 10, "z": 0},
+        ])],
+        [], "p",
+    )
+    out = evaluate(graph, {})
+    assert len(out) == 1
+    assert out[0]["shape"] == "polyligne"
+    assert out[0]["points"] == [
+        [0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0],
+    ]
+
+
+def test_bspline_interpole_les_points_de_passage():
+    graph = _g(
+        [_n("b", "bspline", ferme=0, centres=[
+            {"x": 0, "y": 0, "z": 0},
+            {"x": 5, "y": 1, "z": 0},
+            {"x": 10, "y": 0, "z": 0},
+        ])],
+        [], "b",
+    )
+    out = evaluate(graph, {})
+    assert out[0]["shape"] == "bspline"
+    assert out[0]["points"][0] == [0.0, 0.0, 0.0]
+    assert out[0]["points"][-1] == [10.0, 0.0, 0.0]
+
+
+def test_discretiser_cite_la_vraie_raison():
+    graph = _g(
+        [
+            _n("l", "ligne",
+               point1={"x": 0, "y": 0, "z": 0},
+               point2={"x": 1, "y": 0, "z": 0}),
+            _n("d", "discretiser", distance=1),
+        ],
+        [_e("l", "d", "courbe")],
+        "d",
+    )
+    with pytest.raises(GraphError, match=r"consomme une forme") as excinfo:
+        evaluate(graph, {})
+    assert "d" in str(excinfo.value)
+    assert "API Part" not in str(excinfo.value)
+
+
+def test_sortie_mixte_nomme_les_natures():
+    instructions = [
+        {"shape": "boite", "length": 1, "width": 1, "height": 1,
+         "x": 0, "y": 0, "z": 0},
+        {"shape": "ligne", "point1": [0, 0, 0], "point2": [1, 0, 0]},
+    ]
+    solids, surfaces = classify_shape_instructions(instructions)
+    assert solids == ["boite"]
+    assert surfaces == ["ligne"]
+    assert output_nature(instructions) is None
+    message = mixed_output_message(solids, surfaces)
+    assert "Boîte" in message
+    assert "Ligne" in message
+    assert "une seule nature" in message

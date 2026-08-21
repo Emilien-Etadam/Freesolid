@@ -342,7 +342,8 @@ def test_convert_text_interference_ops_declared():
 
 
 def test_graph_feature_ops_declared():
-    assert protocol.OPS["add_graph_feature"] == ("graph", "mode")
+    assert protocol.OPS["add_graph_feature"] == ("graph",)
+    assert protocol.OPS["add_graph_feature"].optional == {"mode": str}
     assert protocol.OPS["edit_graph_feature"] == ("feature", "graph")
     assert protocol.OPS["get_graph_feature"] == ("feature",)
     assert protocol.OPS["graph_vocabulary"] == ()
@@ -350,6 +351,9 @@ def test_graph_feature_ops_declared():
         {"op": "add_graph_feature",
          "params": {"graph": {"nodes": [], "edges": [], "output": "c"},
                     "mode": "cut"}})
+    protocol.validate_request(
+        {"op": "add_graph_feature",
+         "params": {"graph": {"nodes": [], "edges": [], "output": "c"}}})
     protocol.validate_request(
         {"op": "edit_graph_feature",
          "params": {"feature": "Boolean",

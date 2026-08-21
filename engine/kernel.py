@@ -6784,19 +6784,24 @@ class Kernel:
             helix_ok = (
                 helix_surf is not None
                 and sum(1 for s in tree["surfaces"] if s.get("graph")) == 1)
-            state = self.sketch_start()
+            # Profil dans le plan XZ, centré au départ de l'hélice (10, 0, 0) :
+            # la tangente initiale est ≈ +Y, normale du plan XZ.
+            state = self.sketch_start(plane="XZ")
             pipe_sk = state["sketch"]
-            self.sketch_add_circle(pipe_sk, 0, 0, 2)
+            self.sketch_add_circle(pipe_sk, 10, 0, 2)
             self.sketch_finish(pipe_sk)
             try:
                 tree = self.add_sweep(
                     profile=pipe_sk, spine=helix_surf["name"])
                 helix_len = 2.0 * math.sqrt((2.0 * math.pi * 10.0) ** 2 + 10.0 ** 2)
                 expected_vol = (math.pi * 2.0 * 2.0) * helix_len
+                vol = _volume()
                 report["n11_helice_balayage"] = (
                     helix_ok
                     and not any(f["error"] for f in tree["features"])
-                    and _close(_volume(), expected_vol, tol=0.15))
+                    and vol > 0
+                    and self._require_body().Shape.isValid()
+                    and _close(vol, expected_vol, tol=0.05))
             except KernelError:
                 report["n11_helice_balayage"] = False
 

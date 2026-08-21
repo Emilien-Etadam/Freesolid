@@ -114,6 +114,10 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # mode : fuse | cut
     "edit_graph_feature": _Req(("feature", str), ("graph", dict)),
     "get_graph_feature": _Req(("feature", str)),
+    "add_repeat_feature": _Req(("features", list), ("instances", list),
+                               ("mode", str)),
+    "edit_repeat_feature": _Req(("feature", str), ("instances", list)),
+    "get_repeat_feature": _Req(("feature", str)),
     "graph_vocabulary": (),             # lecture : types, libellés, ports
     "script_trust_status": (),          # lecture : Python autorisé ce document / session
     "authorize_scripts": (),            # consentement : jamais persisté dans le .FCStd

@@ -366,6 +366,33 @@ def test_graph_feature_ops_declared():
              "params": {"graph": [], "mode": "cut"}})
 
 
+def test_repeat_feature_ops_declared():
+    assert protocol.OPS["add_repeat_feature"] == (
+        "features", "instances", "mode")
+    assert protocol.OPS["edit_repeat_feature"] == ("feature", "instances")
+    assert protocol.OPS["get_repeat_feature"] == ("feature",)
+    protocol.validate_request(
+        {"op": "add_repeat_feature",
+         "params": {"features": ["Pad", "Pocket"],
+                    "instances": [{"offset": [0, 0, 0],
+                                   "params": {"Pad": {"Length": 10}}}],
+                    "mode": "fuse"}})
+    protocol.validate_request(
+        {"op": "edit_repeat_feature",
+         "params": {"feature": "Boolean",
+                    "instances": [{"offset": [40, 0, 0], "params": {}}]}})
+    protocol.validate_request(
+        {"op": "get_repeat_feature", "params": {"feature": "Boolean"}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "add_repeat_feature",
+             "params": {"features": "Pad", "instances": [], "mode": "fuse"}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "edit_repeat_feature",
+             "params": {"feature": "", "instances": []}})
+
+
 def test_comfort_ops_declared():
     assert protocol.OPS["sketch_add_spline"] == ("sketch", "points")
     assert protocol.OPS["sketch_add_ellipse"] == (
@@ -427,6 +454,7 @@ def test_ops_snapshot_keys():
         "add_pocket",
         "add_polar_pattern",
         "add_rect_sketch",
+        "add_repeat_feature",
         "add_revolution",
         "add_sweep",
         "add_text",
@@ -438,10 +466,12 @@ def test_ops_snapshot_keys():
         "delete_feature",
         "delete_variable",
         "edit_graph_feature",
+        "edit_repeat_feature",
         "edit_text",
         "export_part",
         "get_graph_feature",
         "get_params",
+        "get_repeat_feature",
         "get_tree",
         "graph_vocabulary",
         "insert_component",

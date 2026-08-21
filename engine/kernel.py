@@ -1355,6 +1355,10 @@ class Kernel:
         ("FreeSolidGraphJson", "App::PropertyString"),
         ("FreeSolidGraphMode", "App::PropertyString"),
     )
+    _REPEAT_PROPS = (
+        ("FreeSolidRepeatJson", "App::PropertyString"),
+        ("FreeSolidRepeatMode", "App::PropertyString"),
+    )
     _GRAPH_JSON_MAX = 1_000_000
 
     def _mark_text_tool(self, obj):
@@ -1372,14 +1376,23 @@ class Kernel:
                             "Outil interne d'une fonction graphe")
         obj.FreeSolidGraphTool = True
 
-    def _is_internal_tool(self, obj):
-        """Artefact interne (gravure ou fonction graphe) : hors de l'arbre.
+    def _mark_repeat_tool(self, obj):
+        """Artefact interne d'une répétition variable : caché de l'arbre."""
+        if "FreeSolidRepeatTool" not in obj.PropertiesList:
+            obj.addProperty("App::PropertyBool", "FreeSolidRepeatTool",
+                            "FreeSolid",
+                            "Outil interne d'une répétition variable")
+        obj.FreeSolidRepeatTool = True
 
-        Un seul test, deux propriétés. Deux prédicats parallèles
+    def _is_internal_tool(self, obj):
+        """Artefact interne (gravure, graphe ou répétition) : hors de l'arbre.
+
+        Un seul test, trois propriétés. Deux prédicats parallèles
         divergeraient — c'est le défaut que N001b a dû corriger.
         """
         return bool(getattr(obj, "FreeSolidTextTool", False)
-                    or getattr(obj, "FreeSolidGraphTool", False))
+                    or getattr(obj, "FreeSolidGraphTool", False)
+                    or getattr(obj, "FreeSolidRepeatTool", False))
 
     def add_text(self, text, face, size=8.0, depth=1.0, x=0.0, y=0.0,
                  emboss=False, font=None):
@@ -1504,18 +1517,20 @@ class Kernel:
         return {item["name"]: item["value"]
                 for item in self.list_variables()["variables"]}
 
-    def _dump_graph_json(self, graph):
-        graph = migrate_graph(graph)
+    def _dump_json_payload(self, data, what):
         try:
-            payload = json.dumps(graph, ensure_ascii=False)
+            payload = json.dumps(data, ensure_ascii=False)
         except (TypeError, ValueError) as exc:
             raise KernelError(
-                "graphe non sérialisable : {}".format(exc))
+                "{} non sérialisable : {}".format(what, exc))
         if len(payload) > self._GRAPH_JSON_MAX:
             raise KernelError(
-                "graphe trop volumineux ({} caractères, max. {})".format(
-                    len(payload), self._GRAPH_JSON_MAX))
+                "{} trop volumineux ({} caractères, max. {})".format(
+                    what, len(payload), self._GRAPH_JSON_MAX))
         return payload
+
+    def _dump_graph_json(self, graph):
+        return self._dump_json_payload(migrate_graph(graph), "graphe")
 
     def _evaluate_graph(self, graph):
         try:
@@ -1680,6 +1695,152 @@ class Kernel:
             raise KernelError("graphe persisté illisible")
         mode = getattr(obj, "FreeSolidGraphMode", "") or "cut"
         return {"graph": migrate_graph(parsed), "mode": mode}
+
+    def _repeat_label(self, mode):
+        return ("Répétition variable — Bossage" if mode == "fuse"
+                else "Répétition variable — Enlèvement")
+
+    def _repeat_tool_parts(self, obj):
+        tool_body = next(
+            (item for item in (getattr(obj, "Group", None) or [])
+             if item.TypeId == "PartDesign::Body"), None)
+        shape_feature = getattr(tool_body, "BaseFeature", None)
+        if tool_body is None or shape_feature is None:
+            raise KernelError(
+                "répétition incomplète — le corps outil est absent")
+        return tool_body, shape_feature
+
+    def _load_repeat_json(self, obj):
+        if "FreeSolidRepeatJson" not in obj.PropertiesList:
+            raise KernelError(
+                "cette fonction n'est pas une répétition variable")
+        try:
+            parsed = json.loads(obj.FreeSolidRepeatJson or "")
+        except (TypeError, ValueError):
+            raise KernelError("répétition persistée illisible")
+        if not isinstance(parsed, dict):
+            raise KernelError("répétition persistée illisible")
+        mode = getattr(obj, "FreeSolidRepeatMode", "") or parsed.get("mode") or "fuse"
+        features = parsed.get("features")
+        instances = parsed.get("instances")
+        if not isinstance(features, list) or not isinstance(instances, list):
+            raise KernelError("répétition persistée illisible")
+        return {
+            "features": features,
+            "instances": instances,
+            "mode": mode,
+        }
+
+    def _persist_repeat(self, obj, payload, mode, label):
+        dumped = self._dump_json_payload(payload, "répétition")
+        for prop, prop_type in self._REPEAT_PROPS:
+            if prop not in obj.PropertiesList:
+                obj.addProperty(prop_type, prop, "FreeSolid",
+                                "Paramètre de la répétition variable")
+        obj.FreeSolidRepeatJson = dumped
+        obj.FreeSolidRepeatMode = mode
+        obj.Label = label
+
+    def _repeat_solid(self, features, instances):
+        """Rejoue le groupe, tout ou rien. Rend (solide, noms source)."""
+        from engine.replay import capture_group, replay_instances
+        captured = capture_group(self, features)
+        solid = replay_instances(self, captured, instances)
+        names = [feat["name"] for feat in captured["features"]]
+        return solid, names
+
+    def add_repeat_feature(self, features, instances, mode="fuse"):
+        """Insère une répétition variable : une ligne, un booléen.
+
+        Le groupe est rejoué pour chaque instance **avant** toute
+        modification de la pièce. Une instance refusée par la garde
+        annule la répétition entière.
+        """
+        mode = str(mode)
+        if mode not in ("fuse", "cut"):
+            raise KernelError(
+                "mode inconnu « {} » — attendu fuse ou cut".format(mode))
+        if not isinstance(features, (list, tuple)):
+            raise KernelError("features doit être une liste de noms")
+        names = [str(name) for name in features]
+        solid, names = self._repeat_solid(names, instances)
+        payload = {
+            "features": names,
+            "instances": instances,
+            "mode": mode,
+        }
+        self._dump_json_payload(payload, "répétition")
+        body = self._require_body()
+        doc = self._require_doc()
+        shape_feature = doc.addObject("Part::Feature", "RepeatShape")
+        shape_feature.Shape = solid
+        shape_feature.Label = "Forme de la répétition"
+        self._mark_repeat_tool(shape_feature)
+        tool_body = doc.addObject("PartDesign::Body", "RepeatBody")
+        tool_body.Label = "Corps répétition"
+        tool_body.BaseFeature = shape_feature
+        self._mark_repeat_tool(tool_body)
+        doc.recompute()
+        try:
+            self.add_boolean(tool=tool_body.Name, type=mode)
+        except KernelError:
+            for name in (tool_body.Name, shape_feature.Name):
+                try:
+                    doc.removeObject(name)
+                except Exception:
+                    pass
+            doc.recompute()
+            raise
+        tip = getattr(body, "Tip", None)
+        if tip is not None:
+            self._persist_repeat(
+                tip, payload, mode, self._repeat_label(mode))
+        return self.get_tree()
+
+    def edit_repeat_feature(self, feature, instances):
+        """Réédite les instances d'une répétition variable.
+
+        Atomique : le groupe est rejoué et la géométrie reconstruite
+        **d'abord** ; si l'un ou l'autre échoue, la pièce n'est pas
+        modifiée. Les empreintes se recalculent depuis les fonctions
+        source, elles ne sont pas lues dans le JSON persisté.
+        """
+        doc = self._require_doc()
+        obj = doc.getObject(str(feature))
+        if obj is None:
+            raise KernelError("fonction inconnue : {}".format(feature))
+        stored = self._load_repeat_json(obj)
+        mode = stored["mode"]
+        solid, names = self._repeat_solid(stored["features"], instances)
+        payload = {
+            "features": names,
+            "instances": instances,
+            "mode": mode,
+        }
+        self._dump_json_payload(payload, "répétition")
+        _, shape_feature = self._repeat_tool_parts(obj)
+        old_shape = shape_feature.Shape
+        shape_feature.Shape = solid
+        try:
+            self._recompute()
+        except KernelError as exc:
+            shape_feature.Shape = old_shape
+            try:
+                self._recompute()
+            except KernelError:
+                pass
+            raise KernelError(
+                "{} — la répétition n'a pas été modifiée".format(exc))
+        self._persist_repeat(
+            obj, payload, mode, self._repeat_label(mode))
+        return self.get_tree()
+
+    def get_repeat_feature(self, feature):
+        """Rend le JSON persisté sur la ligne de répétition."""
+        obj = self._require_doc().getObject(str(feature))
+        if obj is None:
+            raise KernelError("fonction inconnue : {}".format(feature))
+        return self._load_repeat_json(obj)
 
     def graph_vocabulary(self):
         """Types de nœuds de la fonction graphe, libellés et ports.
@@ -3057,7 +3218,7 @@ class Kernel:
 
         Fonction, esquisse, plan de référence, surface ou corps déjà
         présents dans la réponse — pas l'Origin, le VarSet, ni les
-        artefacts internes (gravure, fonction graphe).
+        artefacts internes (gravure, fonction graphe, répétition).
         """
         names = set()
         origin = getattr(body, "Origin", None)
@@ -3150,6 +3311,26 @@ class Kernel:
                     existing.append(sub)
         return raw
 
+    def _repeat_source_names(self, obj):
+        """Noms des fonctions source d'une répétition variable, ou [].
+
+        Les copies rejouées n'existent plus dans l'OutList : le lien
+        se lit dans le JSON persisté.
+        """
+        if "FreeSolidRepeatJson" not in getattr(obj, "PropertiesList", ()):
+            return []
+        try:
+            parsed = json.loads(obj.FreeSolidRepeatJson or "")
+        except (TypeError, ValueError):
+            return []
+        if not isinstance(parsed, dict):
+            return []
+        names = []
+        for name in parsed.get("features") or ():
+            if isinstance(name, str) and name:
+                names.append(name)
+        return names
+
     def _annotate_tree_links(self, item, obj, known_names):
         """Pose ``deps``, ``dep_subs``, ``driven`` et ``params`` s'ils existent.
 
@@ -3157,7 +3338,8 @@ class Kernel:
         ``_EDITABLE_PROPS``. Champs omis quand vides.
         """
         deps = visible_deps(
-            [o.Name for o in (getattr(obj, "OutList", None) or ())],
+            [o.Name for o in (getattr(obj, "OutList", None) or ())]
+            + self._repeat_source_names(obj),
             known_names,
         )
         if deps:
@@ -3243,6 +3425,13 @@ class Kernel:
                     parsed = None
                 if isinstance(parsed, dict):
                     item["graph"] = parsed
+            if "FreeSolidRepeatJson" in obj.PropertiesList:
+                try:
+                    parsed = json.loads(obj.FreeSolidRepeatJson or "")
+                except (TypeError, ValueError):
+                    parsed = None
+                if isinstance(parsed, dict):
+                    item["repeat"] = parsed
             self._annotate_tree_links(item, obj, known_names)
             return item
 
@@ -6106,6 +6295,112 @@ class Kernel:
                 },
             }
 
+            mark("n10: répétition variable")
+            from engine.replay import _temp_bodies_left
+            self.new_part("Pièce répétition variable N010")
+            self.add_rect_sketch(20, 20)
+            tree = self.add_pad(10)
+            pad_name = next(f["name"] for f in tree["features"]
+                            if f["type"] == "PartDesign::Pad")
+            self.add_rect_sketch(8, 8, face=self._top_face_id())
+            tree = self.add_pocket(through=True)
+            pocket_name = next(f["name"] for f in tree["features"]
+                               if f["type"] == "PartDesign::Pocket")
+            n_before = len(tree["features"])
+            # Source : 20×20×10 − 8×8×10 = 3360.
+            # Trois instances décalées de 40 mm, L = 10, 20, 30 :
+            # 336 × (10+20+30) = 20160. Total fuse = 23760.
+            tree = self.add_repeat_feature(
+                [pad_name, pocket_name],
+                [
+                    {"offset": [40, 0, 0],
+                     "params": {pad_name: {"Length": 10}}},
+                    {"offset": [80, 0, 0],
+                     "params": {pad_name: {"Length": 20}}},
+                    {"offset": [120, 0, 0],
+                     "params": {pad_name: {"Length": 30}}},
+                ],
+                mode="fuse",
+            )
+            repeat_line = next(f for f in tree["features"] if f.get("repeat"))
+            report["n10_repetition_variable"] = (
+                not any(f["error"] for f in tree["features"])
+                and len(tree["features"]) == n_before + 1
+                and _close(_volume(), 23760.0, tol=1e-4)
+                and pad_name in (repeat_line.get("deps") or [])
+                and pocket_name in (repeat_line.get("deps") or [])
+                and not dangling_deps(tree))
+
+            mark("n10: réédition")
+            # 3360 (source) + 336 × (15+25+35) = 3360 + 25200 = 28560.
+            tree = self.edit_repeat_feature(
+                repeat_line["name"],
+                [
+                    {"offset": [40, 0, 0],
+                     "params": {pad_name: {"Length": 15}}},
+                    {"offset": [80, 0, 0],
+                     "params": {pad_name: {"Length": 25}}},
+                    {"offset": [120, 0, 0],
+                     "params": {pad_name: {"Length": 35}}},
+                ],
+            )
+            stored = self.get_repeat_feature(repeat_line["name"])
+            n_repeat = sum(1 for f in tree["features"] if f.get("repeat"))
+            report["n10_reedition"] = (
+                not any(f["error"] for f in tree["features"])
+                and n_repeat == 1
+                and _close(_volume(), 28560.0, tol=1e-4)
+                and stored.get("mode") == "fuse"
+                and stored.get("features") == [pad_name, pocket_name]
+                and len(stored.get("instances") or []) == 3)
+
+            mark("n10: propreté")
+            leftover = _temp_bodies_left(self)
+            tree = self.get_tree()
+            report["n10_proprete"] = (
+                leftover == []
+                and not any(s["label"] == "Forme de la répétition"
+                            for s in tree["surfaces"])
+                and not any(b["label"] == "Corps répétition"
+                            for b in tree["bodies"])
+                and not dangling_deps(tree))
+
+            mark("n10: garde topologique — tout ou rien")
+            self.new_part("Pièce garde N010")
+            self.add_rect_sketch(20, 20)
+            tree = self.add_pad(20)
+            pad_g = next(f["name"] for f in tree["features"]
+                         if f["type"] == "PartDesign::Pad")
+            self.add_rect_sketch(8, 8, face=self._top_face_id())
+            tree = self.add_pocket(length=5)
+            pocket_g = next(f["name"] for f in tree["features"]
+                            if f["type"] == "PartDesign::Pocket")
+            tree = self.add_fillet(radius=1, edges=[2])
+            fillet_g = next(f for f in tree["features"]
+                            if f["type"] == "PartDesign::Fillet")
+            vol_garde = _volume()
+            n_garde = len(self.get_tree()["features"])
+            try:
+                self.add_repeat_feature(
+                    [pad_g, pocket_g, fillet_g["name"]],
+                    [
+                        {"offset": [40, 0, 0],
+                         "params": {pocket_g: {"Length": 5}}},
+                        {"offset": [80, 0, 0],
+                         "params": {pocket_g: {"Length": 25}}},
+                    ],
+                    mode="fuse",
+                )
+                report["n10_garde_refuse"] = False
+            except KernelError as exc:
+                garde_msg = str(exc)
+                report["n10_garde_refuse"] = (
+                    "n° 2 sur 2" in garde_msg
+                    and fillet_g["label"] in garde_msg
+                    and _close(_volume(), vol_garde)
+                    and len(self.get_tree()["features"]) == n_garde
+                    and _temp_bodies_left(self) == [])
+
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce
             # qui montre ce que l'Autotest a testé, pas sur la plaque m1.5.
@@ -6144,7 +6439,8 @@ _TRANSACTIONAL = frozenset({
     "insert_component", "move_component", "add_joint", "solve_assembly",
     "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
     "surface_thicken", "add_curve3d", "sketch_convert", "add_text",
-    "edit_text", "add_graph_feature", "edit_graph_feature", "make_drawing",
+    "edit_text", "add_graph_feature", "edit_graph_feature",
+    "add_repeat_feature", "edit_repeat_feature", "make_drawing",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",

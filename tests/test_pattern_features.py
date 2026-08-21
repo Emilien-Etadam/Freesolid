@@ -84,3 +84,92 @@ def test_reconstitution_table_is_pure():
     assert "PartDesign::Pad" in table["replayable"]
     assert "add_loft" in table["unreplayable"]
     assert "add_text" in table["unreplayable"]
+    assert "add_repeat_feature" in table["unreplayable"]
+
+
+def test_topology_verdict_ok_when_counts_and_kinds_match():
+    from engine.replay import topology_verdict
+    expected = {"edges": 12, "faces": 6,
+                "kinds": {"Edge3": "Line", "Face1": "Plane"}}
+    assert topology_verdict(expected, dict(expected)) is None
+
+
+def test_topology_verdict_refuses_count_change():
+    from engine.replay import topology_verdict
+    expected = {"edges": 12, "faces": 6, "kinds": {"Edge3": "Line"}}
+    actual = {"edges": 24, "faces": 10, "kinds": {"Edge3": "Line"}}
+    reason = topology_verdict(expected, actual)
+    assert reason is not None
+    assert "12" in reason and "24" in reason
+    assert "6" in reason and "10" in reason
+
+
+def test_topology_verdict_refuses_kind_change():
+    from engine.replay import topology_verdict
+    expected = {"edges": 12, "faces": 6,
+                "kinds": {"Edge3": "Line"}}
+    actual = {"edges": 12, "faces": 6,
+              "kinds": {"Edge3": "Circle"}}
+    reason = topology_verdict(expected, actual)
+    assert reason == "Edge3 était Line, elle est Circle"
+
+
+def test_topology_verdict_refuses_out_of_bounds():
+    from engine.replay import topology_verdict
+    expected = {"edges": 8, "faces": 6, "kinds": {"Edge9": "Line"}}
+    actual = {"edges": 8, "faces": 6, "kinds": {}}
+    reason = topology_verdict(expected, actual)
+    assert reason is not None
+    assert "Edge9" in reason
+    assert "8" in reason
+
+
+def test_topology_verdict_swapped_same_kind_passes():
+    """Deux arêtes Line qui échangent leur indice : la garde ne voit rien."""
+    from engine.replay import topology_verdict
+    expected = {"edges": 12, "faces": 6,
+                "kinds": {"Edge3": "Line", "Edge7": "Line"}}
+    actual = {"edges": 12, "faces": 6,
+              "kinds": {"Edge3": "Line", "Edge7": "Line"}}
+    assert topology_verdict(expected, actual) is None
+
+
+def test_parse_repeat_instances_accepts_numbers():
+    from engine.replay import parse_repeat_instances
+    parsed = parse_repeat_instances(
+        [{"offset": [40, 0, 0], "params": {"Pad": {"Length": 10}}}],
+        ["Pad", "Pocket"],
+    )
+    assert parsed[0]["offset"] == (40.0, 0.0, 0.0)
+    assert parsed[0]["params"]["Pad"]["Length"] == 10.0
+
+
+def test_parse_repeat_instances_refuses_expression():
+    from engine.kernel import KernelError
+    from engine.replay import parse_repeat_instances
+    with pytest.raises(KernelError) as excinfo:
+        parse_repeat_instances(
+            [{"params": {"Pad": {"Length": "Variables.x"}}}],
+            ["Pad"],
+        )
+    assert "nombres" in str(excinfo.value)
+
+
+def test_parse_repeat_instances_ceiling_names_500():
+    from engine.kernel import KernelError
+    from engine.replay import REPEAT_INSTANCE_MAX, parse_repeat_instances
+    assert REPEAT_INSTANCE_MAX == 500
+    with pytest.raises(KernelError) as excinfo:
+        parse_repeat_instances(
+            [{"offset": [0, 0, 0], "params": {}}] * 501,
+            ["Pad"],
+        )
+    assert "500" in str(excinfo.value)
+
+
+def test_parse_repeat_instances_empty_refused():
+    from engine.kernel import KernelError
+    from engine.replay import parse_repeat_instances
+    with pytest.raises(KernelError) as excinfo:
+        parse_repeat_instances([], ["Pad"])
+    assert "vide" in str(excinfo.value)

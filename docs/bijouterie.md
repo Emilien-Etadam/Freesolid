@@ -397,6 +397,41 @@ l'esquisse (fait). Ce qui manque tient en une projection inverse et cinq
 ops : voir
 [`prompts/P034-pierres-sur-surface.md`](../prompts/P034-pierres-sur-surface.md).
 
+## 5.7 P034 livré — relu le 2026-08-21
+
+Livré sur `cursor/p034-pierres-sur-surface-3d1a`. Relecture faite ; ce que
+j'ai pu vérifier ici l'est, le reste est relayé.
+
+**Vérifié dans cette session** — `pytest` 226 passed / 16 skipped, tests JS
+114 passed, `node --check` sur les deux fichiers touchés, et la relecture du
+code contre chaque exigence du prompt :
+
+| Exigence | Livré |
+|---|---|
+| Cinq ops, pas une de plus | `place_gem`, `move_gem`, `spin_gem`, `remove_gem`, `list_gems` — exactement |
+| Aucun booléen | aucun `cut`/`fuse` dans le chemin de pose |
+| Corps paramétrique copié, jamais figé | `doc.copyObject(src, True)` (`kernel.py:1545`) |
+| Recalcul depuis `(u, v)` | `_refresh_gem_placements` branché **dans `_recompute`** (`kernel.py:285`) — le point de passage unique de toutes les ops, pas un appel dispersé |
+| Le piège du renommage de VarSet | `_gem_varset` (`kernel.py:1465`) — et **mieux que demandé** : préfère la VarSet qui porte `diametre`, ce qui la distingue aussi de l'Équations de la pièce, subtilité que le prompt n'avait pas vue |
+| Toponaming signalé, pas subi | `FreeSolidGemError` ; le semis **garde sa dernière pose** au lieu de se disperser |
+| Avertir sur surface libre | le libellé de l'arbre porte « (surface libre) » quand la face d'ancrage est une B-spline |
+| `normals` optionnel dans `pack_mesh` | présent **ssi** au moins une face en fournit — contrat préservé |
+| `InstancedMesh` | un par semis |
+
+**Relayé, non vérifiable ici** (ni FreeCAD ni navigateur dans cette session) :
+selftest 68 étapes / 179 verts dont `p034_ancrage`, et smoke Playwright sans
+erreur. À noter que le selftest a repris le **témoin négatif** de la sonde
+(`p034_temoin_fige`) : il ne vérifie pas seulement que la pierre suit, mais
+qu'un placement figé, lui, aurait décroché.
+
+**Une réserve de traçabilité, pas de code.** `docs/bijouterie.md`, les trois
+sondes et `prompts/P034` vivent sur `claude/freesolid-tools-1em7o1` et ne
+sont **pas encore sur `main`**. La mise en œuvre y arrivera par sa propre
+branche, mais son raisonnement — pourquoi coté et non mis à l'échelle, les
+chiffres qui l'ont tranché — resterait orphelin, et la section « validation »
+de P034 renverrait à des sondes absentes. À fusionner avec.
+
+
 ---
 
 # 6. Une gemme est un solide figé, pas une fonction

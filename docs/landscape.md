@@ -9,10 +9,11 @@ headless ». Conclusion en bas.*
 |---|---|---|
 | [magik6k/freecad-web](https://github.com/magik6k/freecad-web) | Port WebAssembly de **tout** FreeCAD, **interface Qt comprise**, via Qt-for-WASM + JSPI (Chromium 137+ seulement) | Pas un concurrent : c'est l'interface actuelle dans un onglet. Mais une **preuve majeure** que le moteur tournera un jour côté client |
 | [Salusoft89/planegcs](https://github.com/Salusoft89/planegcs) | Le **solveur d'esquisse de FreeCAD compilé en WASM**, utilisable en JS | Pas un concurrent : un **atout**. Le solveur peut tourner dans le navigateur pour le drag à 60 fps, le serveur restant la vérité |
-| [Ondsel-Server / Lens](https://github.com/FreeCAD/Ondsel-Server) | Plateforme web de partage/visualisation de FCStd | Visionneuse, pas un éditeur |
+| [Ondsel-Server / Lens](https://github.com/FreeCAD/Ondsel-Server) ‡ | Plateforme web de partage/visualisation de FCStd. **La société a fermé le 2024-10-30** ; Lens éteint le 2024-11-22 | Visionneuse, pas un éditeur — et désormais un **point de vigilance** : l'atelier Assembly et son solveur 3D, dont dépend notre phase C, ont été légués à la communauté (~150 PR mergées, don de 40 k€ à la FPA). Détail au relevé du 2026-08-21 |
 | [SindriCAD](https://github.com/MakerViking/sindricad) | CAO paramétrique web (Tauri + Three.js) sur **build123d**, pas FreeCAD | Valide la stack UI ; moteur documentaire réinventé, reconstruction totale à chaque édition |
 | [Chili3D](https://github.com/xiangechen/chili3d) † | CAO 3D 100 % navigateur, TypeScript + OCCT 8.0 en WASM + Three.js, AGPL-3.0 | Le plus proche de nous, et toujours à côté : modelage **direct**, pas d'historique paramétrique. Détail au relevé du 2026-08-15 |
-| freecad-mcp (plusieurs), freecad-ai | Pilotage de FreeCAD par API/LLM | De la tuyauterie voisine, pas une UI interactive |
+| [BOMWiki/partmode](https://github.com/BOMWiki/partmode) ‡ | CAO paramétrique **local-first** dans le navigateur : OCCT-wasm via `replicad` + three.js, modèle documentaire maison, **historique de fonctions rééditable**, esquisses contraintes, expressions, multicorps, configurations, motifs ; agents MCP éditant *le même* document que l'humain. AGPL-3.0, ~635 ★ | **Le plus proche de nous à ce jour** — il ferme le trou qu'on reprochait à Chili3D (l'historique paramétrique). Reste le modèle documentaire réinventé, et l'AGPL. Détail au relevé du 2026-08-21 |
+| freecad-mcp (plusieurs), freecad-ai ‡ | Pilotage de FreeCAD par API/LLM | De la tuyauterie voisine, pas une UI interactive — mais [`sandraschi/freecad-mcp`](https://github.com/sandraschi/freecad-mcp) est **architecturalement notre jumeau** (FreeCAD headless derrière une API REST qui sert aussi un tableau de bord web) et il est **MIT**. Relevé du 2026-08-21 |
 | render-fcstd, freecad-web-visualization | Visionneuses Three.js de fichiers exportés | Affichage seul |
 | Fil devtalk [« FreeCAD web frontend »](https://devtalk.freecad.org/t/freecad-web-frontend/55903) (2021) | Discussion récurrente depuis 2017 | Aucun projet n'en est sorti |
 | [waffle-iron](https://github.com/sequoia-hope/waffle-iron) (SequoiaHope) | **Noyau** CAD from scratch, Rust/WASM, MIT, ~6 mois de travail assisté par IA, par un expert Onshape/SolidWorks | Le pari inverse du nôtre : noyau réécrit, UI « needs a lot of work ». Complémentaire, pas concurrent |
@@ -51,7 +52,7 @@ refait que ce qui se voit.
 
 # Relevé complémentaire du 2026-08-15 — Chili3D, macros, nœuds
 
-*† La ligne Chili3D du tableau ci-dessus a été ajoutée à cette date ; la ligne vcad (‡) l'a été au relevé du 2026-08-21, en bas de page.*
+*† La ligne Chili3D du tableau ci-dessus a été ajoutée à cette date. Les lignes marquées ‡ — vcad, PartMode — ont été ajoutées au relevé du 2026-08-21, en bas de page, qui a aussi mis à jour les lignes Ondsel et freecad-mcp devenues inexactes.*
 
 ## 1. Chili3D — le miroir inversé
 
@@ -250,7 +251,7 @@ jeter.
 
 ---
 
-# Relevé du 2026-08-21 — vcad, et la frontière
+# Relevé du 2026-08-21 — vcad, la frontière, la reconnaissance amont
 
 *‡ La ligne vcad du tableau du 2026-08-02 a été ajoutée à cette date.*
 
@@ -282,7 +283,7 @@ son interface Qt, que nous avons jetée :
 
 | Idée | Où ça atterrit chez nous |
 |---|---|
-| Signature géométrique d'une référence (`EdgeHint` : milieu, direction, longueur) pour **retrouver** un sous-élément après reconstruction, avec un verdict à trois états | `engine/replay.py` — après le spike A7 du registre amont |
+| Discipline de verdict sur une référence — résolu / ambigu / perdu, **jamais de re-liaison silencieuse** ~~+ signature géométrique (`EdgeHint`)~~ | `engine/replay.py` — **par-dessus la carte d'éléments de FreeCAD.** Le mécanisme géométrique de vcad est abandonné : la reconnaissance amont du même jour a montré que le moteur expose déjà la provenance (voir plus bas) |
 | Reçu de vérification : chaque mesure porte son oracle, sa version, ses unités, et « n'a pas pu tourner » ≠ « passé » | `scripts/run-selftest.py` |
 | Garde de confiance pure et synchrone **avant** le dispatch, qui refuse sans jamais réécrire un argument | `engine/protocol.py` — remède commun aux constats 3.1–3.6 de l'audit |
 | Schéma d'outils **dérivé** du vocabulaire au lieu d'être écrit à côté | `engine/vocab.py` |
@@ -325,8 +326,105 @@ et utile bien au-delà d'eux.
 La règle, la procédure de tri et le registre des neuf constats sont dans
 [`amont-freecad.md`](amont-freecad.md).
 
+## Complément du même jour — la reconnaissance amont
+
+Le registre de [`amont-freecad.md`](amont-freecad.md) contenait neuf
+constats prêts à partir vers FreeCAD. Avant d'en formuler un seul, ils ont
+été confrontés à la source : dépôt `FreeCAD/FreeCAD` lu au tag **1.1.3**
+(notre référence) *et* sur `main`, plus la recherche d'issues existantes.
+**Six constats sur neuf ont changé d'état.** Le détail est dans
+[`amont-freecad.md`](amont-freecad.md) §4 et §8 ; ce qu'il faut retenir
+pour la veille :
+
+- **Le plus gros : FreeCAD expose déjà la carte d'éléments en Python.**
+  `getElementMappedName`, `getElementIndexedName`, `getElementName`, les
+  attributs `ElementMap` / `ElementReverseMap` / `ElementMapSize` /
+  `ElementMapVersion` / `Tag`, et `getElementHistory(name, recursive=…)`
+  — présents dans les bindings de **1.1.3**. Le « fix toponaming » que
+  [`architecture-app.md`](architecture-app.md) cite comme raison de garder
+  ce moteur est **adressable depuis notre code**, et nous ne nous en
+  servions pas. L'emprunt à vcad se réduit d'autant : on garde la
+  discipline de verdict, on jette le mécanisme.
+- **Un candidat a trouvé sa porte.** L'issue
+  [#19255](https://github.com/FreeCAD/FreeCAD/issues/19255) — *« "BRep_API:
+  command not done" is not a clear or actionable error message »* — est
+  **ouverte** et étiquetée **Help wanted**. C'est exactement ce que fait
+  `engine/guard.py`.
+- **Deux crashs qu'on s'apprêtait à signaler sont probablement déjà
+  corrigés.** En 1.1.3, `DrawViewSection::getSectionCS()` enveloppe déjà
+  la construction du repère dans un `try/catch` ; et la famille « TechDraw
+  SIGSEGV depuis la CLI » a son issue amont
+  ([#20024](https://github.com/FreeCAD/FreeCAD/issues/20024)), fermée.
+
+La leçon de veille, au-delà des constats : **le dépôt amont est une source
+consultable en quelques minutes** — un clone partiel de 26 Mo suffit à lire
+les `.pyi`, qui sont la seule description honnête de la surface Python. Il
+faut s'en méfier des forums et du wiki, qui décrivent souvent le fork
+*LinkStage3* de realthunder plutôt que l'amont.
+
+## Complément du même jour — trois lignes du tableau corrigées
+
+- **Ondsel est mort, et ça nous concerne.** La société a fermé le
+  **2024-10-30**, Lens s'est éteint le **2024-11-22**. Elle a légué son
+  travail : ~150 PR mergées en amont, un don de 40 k€ à la FreeCAD Project
+  Association pour rendre le code exploitable par la communauté. **L'atelier
+  Assembly et le solveur 3D dont dépend notre phase C n'ont donc plus leurs
+  auteurs d'origine** — ils sont maintenus par la communauté. Ce n'est pas
+  une raison de changer de plan, c'en est une de documenter l'API des
+  joints headless pendant que le sujet est encore frais (entrée **A3** du
+  registre).
+- **[`BOMWiki/partmode`](https://github.com/BOMWiki/partmode) — le plus
+  proche de nous à ce jour, et il faut le dire.** CAO paramétrique
+  local-first dans le navigateur : OCCT-wasm via `replicad`, three.js,
+  modèle documentaire maison en « schema-5 », **historique de fonctions
+  rééditable**, esquisses contraintes, expressions, multicorps,
+  configurations, motifs — plus des agents MCP qui éditent *le même*
+  document que l'humain, à travers la même frontière noyau/UI. ~635 ★,
+  AGPL-3.0.
+
+  Il ferme précisément le trou qu'on reprochait à Chili3D au relevé du
+  2026-08-15 (« modelage direct, pas d'historique paramétrique »). La
+  conclusion « la voie est libre » du 2026-08-02 doit donc être **nuancée,
+  pas annulée** : ce qui reste à nous seuls, c'est le couple *modèle
+  documentaire de FreeCAD conservé* + *`.FCStd` réouvrable dans FreeCAD*.
+  PartMode réinvente le document, comme SindriCAD et Chili3D avant lui —
+  c'est la ligne de partage, et elle n'a pas bougé. Posture identique à
+  Chili3D pour le reste : **AGPL, donc regarder, jamais copier**, et rien
+  qui puisse partir en amont.
+
+- **[`sandraschi/freecad-mcp`](https://github.com/sandraschi/freecad-mcp) —
+  notre jumeau architectural, sous MIT.** FreeCAD 1.1.1+ headless derrière
+  une API REST (`:10944`) qui sert *aussi* un tableau de bord React
+  (`:10945`) depuis le même processus — c'est-à-dire exactement la coupe de
+  [`architecture-app.md`](architecture-app.md). 46 outils schématisés pour
+  agents via FastMCP. Petit projet (~20 ★), et de périmètre inverse du
+  nôtre : automatisation large (CFD, FEM, BIM, découpe) plutôt qu'éditeur
+  interactif.
+
+  Son intérêt est ailleurs, et il est nouveau : **c'est le premier dépôt de
+  cette veille qui soit à la fois empruntable et remontable.** MIT est
+  compatible LGPL-2.1 dans les deux sens (cf.
+  [`amont-freecad.md`](amont-freecad.md) §3). Si la piste « schéma d'outils
+  dérivé du vocabulaire » ([`vcad.md`](vcad.md) §5.4) se concrétise, c'est
+  là qu'il faut regarder d'abord — et c'est le seul endroit où on aura le
+  droit de copier.
+
 ## Conclusion
 
 Rien à changer à la doctrine du 2026-08-02, une fois de plus — mais cette
-fois elle gagne un versant. On ne réécrit pas le noyau *et* on ne garde
-pas pour soi ce que le noyau nous montre.
+fois elle gagne un versant, et une preuve.
+
+Le versant : on ne réécrit pas le noyau *et* on ne garde pas pour soi ce
+que le noyau nous montre.
+
+La preuve : la première application sérieuse de ce second versant a
+supprimé du travail au lieu d'en créer. Six constats instruits, un module
+`EdgeHint` annulé, deux rapports de bug évités, une issue ouverte trouvée.
+**Regarder en amont avant d'écrire est moins cher qu'écrire.** C'est la
+règle mise en tête du §5 de [`amont-freecad.md`](amont-freecad.md).
+
+Et une nuance à porter au crédit de la veille elle-même : avec PartMode,
+« la voie est libre » devient « la voie est étroite ». Ce qui reste à nous
+seuls tient en une phrase — le modèle documentaire de FreeCAD conservé, et
+le `.FCStd` qui se rouvre dans FreeCAD. Tout le reste a maintenant des
+concurrents sérieux.

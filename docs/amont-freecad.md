@@ -63,8 +63,8 @@ Trois questions, dans cet ordre. La première qui répond « oui » tranche.
 | Rapport de selftest | FreeSolid | question 2 |
 | Traduction des erreurs PartDesign en termes de concepteur (`engine/guard.py`) | **les deux** | question 3 — écrit chez nous par nécessité, utile chez eux (entrée **A6**) |
 | Undo borné en session longue | **les deux** | question 3 — le besoin est le nôtre, l'API Python manquante est la leur (entrée **A2**) |
-| Mise en plan TechDraw headless | **les deux** | question 3 — nos vues, leurs crashs (entrées **A4**, **A5**) |
-| Suivi d'une référence de sous-élément à travers un recompute | **à trancher** | question 3 *si et seulement si* le spike montre que FreeCAD ne l'expose pas (entrée **A7**) |
+| Mise en plan TechDraw headless | **les deux, sous réserve** | question 3 — nos vues, leurs crashs… si ces crashs existent encore en 1.1.3 (entrées **A4**, **A5**, suspendues à un re-test) |
+| Suivi d'une référence de sous-élément à travers un recompute | **FreeCAD** — tranché le 2026-08-21 | question 1 : la carte d'éléments est à eux, **et ils l'exposent en Python** ; à nous de nous en servir, pas de la refaire (§4ter) |
 | Esquisses 3D, configurations | ni l'un ni l'autre | écarts assumés de [`grandes-lignes.md`](grandes-lignes.md) — un choix de périmètre n'est pas un bug à remonter |
 
 ## 3. La grille des licences — ce qui peut partir en amont
@@ -101,38 +101,114 @@ Constats nés du développement de FreeSolid qui appartiennent au côté
 FreeCAD. Aucun n'est encore parti : ce registre est l'état des lieux, pas
 un journal d'envois.
 
+**Chaque entrée a été confrontée à la source amont le 2026-08-21** — dépôt
+`FreeCAD/FreeCAD` lu au tag **1.1.3** (notre référence) *et* sur `main`,
+plus la recherche d'issues existantes. Le résultat est une colonne
+« vérifié » qui vaut plus que le constat lui-même : **deux entrées sont
+tombées, deux ont changé de nature, une a trouvé une issue ouverte qui
+l'attendait.** La méthode et ce qu'elle a coûté sont en §8.
+
 Nature : **bug** (comportement faux ou crash) · **API** (capacité absente
 côté Python) · **doc** (comportement correct mais nulle part écrit) ·
 **produit** (amélioration d'ergonomie ou de message) · **banc** (matière de
 non-régression).
 
-| # | Constat | Où c'est visible chez nous | Nature | État |
-|---|---|---|---|---|
-| **A1** | `freecadcmd` n'exécute pas un script avec `__name__ == "__main__"` — piège silencieux, non documenté | absence volontaire de garde dans `engine/server.py` ; expliqué dans `AGENTS.md` | doc | à formuler |
-| **A2** | `UndoLimit` / `setMaxUndoStackSize` absents de l'API Python en 1.0.x — la pile C++ est bornée par défaut (20) sans moyen de la régler | `engine/kernel.py:311-322` (double `hasattr`), audit **2.4** | API | à revérifier sur 1.1.3 avant de formuler |
-| **A3** | Joints d'assemblage headless : API instable entre 1.0.2 et 1.1.3 (`Proxy.setJointConnectors` absent en 1.0.2 → repli `Reference1`/`Reference2`), et forme d'argument piégeuse (« Expect input sequence of size 2 » selon l'emballage) | `engine/kernel.py:518-560` | doc + API | matière prête — spike de phase C déjà fait |
-| **A4** | **TechDraw headless — deux crashs reproductibles.** ① `getSectionCS` : SIGSEGV quand la Direction de la vue de base est parallèle à la normale de coupe. ② `CutSurfaceDisplay=Hide` : SIGSEGV en 1.0.0 headless | `engine/kernel.py:1126-1136` (contournements en place) | **bug** | **le plus mûr du registre** — reproducteur à extraire |
-| **A5** | TechDraw headless : la géométrie 2D d'une vue en coupe reste souvent vide (HLR sur le même thread) ; DXF est le seul export fiable | `engine/kernel.py:1166-1172` | doc | à formuler avec A4 |
-| **A6** | Les échecs PartDesign les plus déroutants sont **corrects mais inexpliqués** — « multiple solids », « out of the allowed scope », « wire is not closed » : l'utilisateur apprend qu'il a échoué, pas pourquoi ni quoi faire | `engine/guard.py` — trois traductions écrites, testées unitairement | **produit** | **le plus abouti** : c'est notre code, LGPL-2.1-or-later, remontable tel quel — reste à en produire une version anglaise et à la proposer là où les messages sont émis |
-| **A7** | Suivre une référence de sous-élément à travers un recompute avec un **verdict explicite** (résolu / ambigu / perdu) plutôt qu'une re-liaison silencieuse | `engine/replay.py`, analysé dans [`vcad.md`](vcad.md) §5.1 | API | 🟠 **spike d'abord** — la question amont n'existe que si FreeCAD 1.1 ne l'expose pas déjà |
-| **A8** | Segfaults OCCT hors TechDraw | audit **2.12** | bug | seulement si un cas devient reproductible |
-| **A9** | Grille de non-régression du noyau — stress booléen, aller-retour STEP, taux de succès des congés, convergence du solveur, qualité de tessellation | `scripts/run-selftest.py`, direction posée dans [`vcad.md`](vcad.md) §5.5 | banc | direction de fond : **chaque échec du banc est un rapport amont avec reproducteur** |
+| # | Constat | Où c'est visible chez nous | Nature | Vérifié en amont le 2026-08-21 | État |
+|---|---|---|---|---|---|
+| **A1** | `freecadcmd script.py` **importe le fichier comme module** au lieu de l'exécuter comme script — d'où `__name__` = le nom du fichier, jamais `"__main__"` | absence volontaire de garde dans `engine/server.py` ; expliqué (imprécisément) dans `AGENTS.md` | doc | ✅ **mécanisme établi** : `src/App/Application.cpp:3108-3117` appelle `addPythonPath(dirname)` puis `loadModule(stem)`, et ne retombe sur `runFile(path, local=true)` — qui exécute dans une **copie** du dict de `__main__` — que si l'import lève | à formuler ; **corriger d'abord notre propre `AGENTS.md`** |
+| **A2** | Aucun moyen de borner la pile d'undo depuis Python | `engine/kernel.py:311-322` (double `hasattr`), audit **2.4** | API | ✅ **confirmé et élargi** : `src/App/Document.pyi` n'expose ni `UndoLimit` ni `setMaxUndoStackSize` / `getMaxUndoStackSize`, **ni en 1.1.3 ni sur `main` au 2026-08-21** — seulement `UndoRedoMemSize` en lecture seule. Le C++ a bien `setMaxUndoStackSize()`, il n'est pas exporté | **demande amont nette et minuscule** ; nos deux branches `hasattr` sont du code mort à annoter |
+| **A3** | Joints d'assemblage headless : API non documentée, forme d'argument piégeuse | `engine/kernel.py:518-560` | doc | ✅ **requalifié** : `setJointConnectors` n'est pas absent, il est **exercé par la suite de tests amont** — `src/Mod/Assembly/AssemblyTests/TestCore.py:251` — et n'est qu'une façade posant `Reference1`/`Reference2`. Il manque donc la **documentation**, pas l'API | demande amont réduite à la doc ; voir §4bis pour ce que le test amont nous apprend sur **notre** code |
+| **A4** | TechDraw headless : SIGSEGV sur `getSectionCS` (direction parallèle) et sur `CutSurfaceDisplay=Hide` | `engine/kernel.py:1126-1136` (contournements en place) | bug | ⚠️ **prémisse probablement périmée** : en 1.1.3 `DrawViewSection::getSectionCS()` enveloppe déjà la construction du repère dans un `try/catch` et journalise « failed to create section CS » au lieu de planter. Et la famille « TechDraw SIGSEGV depuis la CLI » a son issue amont, [#20024](https://github.com/FreeCAD/FreeCAD/issues/20024), **fermée par la PR #20110** | 🔴 **ne rien remonter avant d'avoir re-testé sur 1.1.3.** Nos contournements datent de 1.0.0 et pourraient être devenus inutiles |
+| **A5** | TechDraw headless : géométrie 2D de coupe souvent vide (HLR même thread) ; DXF seul export fiable | `engine/kernel.py:1166-1172` | doc | ⚠️ même réserve que A4 — la partie « cut async » de notre commentaire n'est pas couverte par le `try/catch`, elle reste plausible | à re-tester avec A4 |
+| **A6** | Les échecs PartDesign les plus déroutants sont **corrects mais inexpliqués** — « multiple solids », « out of the allowed scope », « wire is not closed » | `engine/guard.py` — trois traductions écrites, testées unitairement | produit | ✅ **une issue ouverte attend exactement ça** : [#19255](https://github.com/FreeCAD/FreeCAD/issues/19255) — *« "BRep_API: command not done" is not a clear or actionable error message »*, **ouverte**, étiquetée **Help wanted**, projet « OCCT Liaison » | **le candidat le plus mûr du registre** : notre code est déjà écrit, testé, sous la bonne licence, et il y a une porte ouverte où frapper |
+| **A7** | ~~Suivre une référence de sous-élément à travers un recompute avec un verdict explicite~~ | ~~`engine/replay.py`~~ | — | ❌ **entrée close — FreeCAD l'expose déjà.** Voir §4ter | **retirée du registre** ; devient une tâche FreeSolid |
+| **A8** | Segfaults OCCT hors TechDraw | audit **2.12** | bug | — non instruit | seulement si un cas devient reproductible |
+| **A9** | Grille de non-régression du noyau — stress booléen, aller-retour STEP, taux de succès des congés, convergence du solveur, qualité de tessellation | `scripts/run-selftest.py`, direction posée dans [`vcad.md`](vcad.md) §5.5 | banc | — direction, pas constat | **chaque échec du banc est un rapport amont avec reproducteur** |
 
-Deux lectures de ce tableau valent d'être notées :
+Ce que le tableau dit, maintenant qu'il est vérifié : **le registre a
+rétréci, et c'est le résultat utile.** Sur six constats instruits, un est
+mort (A7), deux sont suspendus à un re-test (A4, A5), un a changé de nature
+(A3), un s'est renforcé (A2) et un a trouvé sa porte (A6). Aucune de ces
+six conclusions n'était devinable depuis notre code seul — chacune a demandé
+d'aller lire l'amont. C'est la démonstration que la doctrine du §1 ne coûte
+pas seulement du travail : elle en économise.
 
-- **Six entrées sur neuf existent déjà sous forme de contournement dans le
-  code.** Elles n'ont rien coûté à découvrir — elles ont coûté à
-  contourner, et ce coût est déjà payé. Les formuler en amont ne demande
-  que d'extraire le reproducteur.
-- **A6 est le cas d'école de la doctrine.** Personne n'a décidé
-  d'améliorer FreeCAD : on a écrit `engine/guard.py` parce qu'un
-  utilisateur de FreeSolid ne pouvait pas comprendre « multiple solids ».
-  Le résultat est utile bien au-delà de nous, il est sous la bonne licence,
-  et il est déjà testé. C'est exactement ce que la règle du §1 cherche à ne
-  pas laisser perdre.
+### 4bis — Ce que la reconnaissance a trouvé de notre côté
+
+Deux constats sont retombés sur **notre** code, ce qui était l'effet
+recherché : lire l'amont, c'est aussi se relire.
+
+- **Nos joints passent probablement la mauvaise paire.** Le test amont
+  `AssemblyTests/TestCore.py:251` appelle `setJointConnectors` avec
+  `refs = [[obj, ["Face6", "Vertex7"]], …]` — une paire **(face, sommet)**
+  par référence : la face donne le plan, le sommet donne la position.
+  `engine/kernel.py:525-531` double le même nom (`[sub_name, sub_name]`),
+  forme trouvée par tâtonnement et documentée comme telle dans le
+  commentaire (« Face2+Face2 → centre »). À confronter au banc : ce n'est
+  pas un bug amont, c'est une convention amont qu'on ignorait.
+- **Notre `AGENTS.md` décrit A1 de travers.** Il dit que `freecadcmd`
+  « n'exécute pas les scripts avec `__name__ == "__main__"` ». Le mécanisme
+  réel est plus surprenant et a d'autres effets : le fichier est **importé
+  comme module**, donc son dossier entre dans `sys.path` et son nom de
+  module est le radical du fichier. À corriger chez nous avant de proposer
+  quoi que ce soit en amont.
+
+### 4ter — A7 : l'entrée close, et pourquoi elle valait le détour
+
+`engine/replay.py` garde des références de sous-éléments sous la forme
+`Edge3` / `Face2` — des **noms indexés**, c'est-à-dire précisément
+l'identifiant fragile. Toute la garde `shape_fingerprint` /
+`topology_verdict` existe pour compenser cette fragilité, et
+[`vcad.md`](vcad.md) §5.1 proposait de la renforcer par une signature
+géométrique empruntée à vcad.
+
+**C'était réinventer ce que le moteur offre déjà.** Vérifié dans les
+bindings Python de FreeCAD **1.1.3** (`src/App/ComplexGeoData.pyi`,
+`src/Mod/Part/App/PartFeature.pyi`, `src/Mod/Part/App/TopoShape.pyi`) :
+
+| Ce que FreeCAD 1.1.3 expose en Python | Ce que ça donne |
+|---|---|
+| `ComplexGeoData.getElementMappedName(name)` | le nom **mappé** (stable) d'un élément indexé |
+| `ComplexGeoData.getElementIndexedName(name)` | l'inverse : du nom stable vers `Edge3` |
+| `ComplexGeoData.getElementName(name, direction=0)` | la conversion dans les deux sens |
+| `ComplexGeoData.ElementMap` / `ElementReverseMap` / `ElementMapSize` / `ElementMapVersion` | la carte elle-même, lisible **et** écrivable, et sa version |
+| `Part::Feature.getElementHistory(name, recursive=True, sameType=False, showName=False)` | la **remontée complète** jusqu'à l'objet d'origine |
+| `TopoShape.getElementHistory(name)` | `(tag source, nom source, [intermédiaires])`, ou `None` |
+| `ComplexGeoData.Tag`, `Hasher` | ce qui active et alimente le mappage |
+
+Autrement dit : le « toponaming fix » que
+[`architecture-app.md`](architecture-app.md) cite comme raison de garder ce
+moteur **est adressable depuis notre code**, et nous ne nous en servons pas.
+
+Conséquences, dans l'ordre :
+
+1. **On n'écrit pas d'`EdgeHint`.** L'emprunt à vcad se réduit à la
+   *discipline de verdict* (résolu / ambigu / perdu, jamais de re-liaison
+   silencieuse) — une idée d'API, pas un mécanisme.
+2. **La tâche FreeSolid change de nature** : ce n'est plus « durcir la
+   garde », c'est « **stocker le bon identifiant** ». Enregistrer le nom
+   mappé à côté du nom indexé, et résoudre par `getElementIndexedName` au
+   rejeu. La garde `shape_fingerprint` reste, en filet, pour les cas où le
+   mappage est absent.
+3. **Un spike reste nécessaire, mais il a changé de question.** Plus
+   « FreeCAD expose-t-il ? » (oui) mais « **la carte est-elle peuplée pour
+   nos objets ?** » — `ElementMapSize` non nul sur nos `PartDesign::*`
+   après recompute, et `Tag` non nul. C'est un test de dix lignes dans le
+   selftest, et il tranche tout le reste.
+
+Ce renversement est la meilleure justification du §1 qu'on pouvait
+espérer : la frontière ne sert pas seulement à décider **qui écrit quoi**,
+elle évite d'écrire.
 
 ## 5. Comment on remonte
 
+- **D'abord vérifier l'amont, ensuite seulement écrire.** Règle mise en
+  tête parce que c'est celle que la reconnaissance du 2026-08-21 a
+  démontrée le plus durement : sur six constats instruits, un était déjà
+  résolu dans l'API (A7), deux visaient un crash déjà corrigé (A4, A5) et
+  un décrivait comme absente une API simplement non documentée (A3).
+  Lire les bindings de la version de référence et chercher l'issue
+  existante coûte une heure ; l'oublier coûte un module inutile.
 - **Un reproducteur minimal en `freecadcmd`, sans FreeSolid dans la
   boucle.** Un mainteneur ne doit pas avoir à installer notre projet pour
   reproduire notre constat. Si le cas ne se réduit pas à un script FreeCAD
@@ -144,8 +220,8 @@ Deux lectures de ce tableau valent d'être notées :
 - **En anglais.** FreeCAD journalise ses erreurs sans traduction et
   discute en anglais ; nos docs restent en français, nos rapports non.
 - **Un constat = un rapport.** Le registre agrège pour nous, pas pour eux.
-  Seule exception : A4 et A5 partent ensemble, même sous-système et même
-  session de reproduction.
+  Seule exception : A4 et A5 partiront ensemble s'ils survivent au re-test
+  — même sous-système, même session de reproduction.
 - **Le contournement reste chez nous**, avec un commentaire nommant
   l'entrée du registre. On ne maintient pas de fork de FreeCAD : le jour où
   l'amont corrige, le commentaire dit quoi retirer et à partir de quelle
@@ -174,3 +250,52 @@ contournement est écrit pour compenser un manque du moteur, il gagne une
 entrée **au moment où on l'écrit** — c'est le seul instant où le contexte
 est encore frais et le reproducteur encore sous la main. Une entrée fermée
 garde sa ligne, avec la version qui l'a corrigée.
+
+## 8. La reconnaissance amont — méthode et coût
+
+Le registre du §4 a été confronté à la source le **2026-08-21**. La méthode
+tient en quatre gestes, tous reproductibles, et vaut d'être notée parce
+qu'elle est bon marché :
+
+1. **Cloner FreeCAD en lecture partielle.** `git clone --depth 1
+   --filter=blob:none --sparse`, puis `sparse-checkout` sur `src/App`,
+   `src/Base`, `src/Mod/Part/App`, `src/Mod/TechDraw/App`,
+   `src/Mod/Assembly`, `src/Main`. **26 Mo** sur disque au lieu du dépôt
+   entier, en moins d'une minute.
+2. **Lire les bindings, pas la documentation.** Depuis la refonte du
+   générateur de liaisons, la surface Python de FreeCAD est déclarée dans
+   des fichiers `.pyi` (`src/App/Document.pyi`,
+   `src/App/ComplexGeoData.pyi`, `src/Mod/Part/App/PartFeature.pyi`…).
+   C'est la seule source qui ne ment pas sur ce qui est exposé — la doc
+   wiki et les forums, eux, décrivent souvent le fork *LinkStage3* de
+   realthunder plutôt que l'amont.
+3. **Comparer la version de référence et `main`.** `git fetch --depth 1
+   origin tag 1.1.3` puis `git show 1.1.3:<fichier>` répond à « est-ce dans
+   *notre* version ? », et le même grep sur `main` répond à « est-ce en
+   train d'arriver ? ». C'est ce couple qui a établi A2 : absent des deux.
+4. **Chercher l'issue avant de l'ouvrir.** A6 avait déjà sa porte
+   ([#19255](https://github.com/FreeCAD/FreeCAD/issues/19255), *Help
+   wanted*) ; A4 avait déjà sa correction ([#20024](https://github.com/FreeCAD/FreeCAD/issues/20024),
+   fermée par #20110).
+
+Ce qu'il faut en retenir pour la suite : **le dépôt amont est une source
+de vérité consultable en quelques minutes**, et nous ne l'avions jamais
+consulté. Les six constats du registre vivaient dans nos commentaires de
+code depuis des mois. Refaire ce geste avant chaque montée de version de
+référence — c'est le bon moment, puisque c'est là que les `.pyi` changent.
+
+### Limite assumée de cette passe
+
+Rien n'a été **exécuté** : ce conteneur n'a pas FreeCAD. Tout ce qui est
+marqué ✅ ci-dessus est vérifié *sur la source*, ce qui suffit pour
+« l'API existe / n'existe pas », et tout ce qui est marqué ⚠️ attend un
+selftest sur la machine de développement. Les deux tests qui manquent
+tiennent en quelques lignes chacun :
+
+- **A7** : `ElementMapSize` et `Tag` non nuls sur un `PartDesign::Pad`
+  après recompute, et aller-retour
+  `getElementMappedName` → `getElementIndexedName` stable à travers un
+  changement de cote.
+- **A4/A5** : rejouer la vue en coupe de `make_drawing` sur 1.1.3 **sans**
+  nos deux contournements, et voir ce qui tombe.
+

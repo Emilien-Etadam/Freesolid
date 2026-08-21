@@ -89,7 +89,7 @@ Rappel de la grille complète des licences croisées : [`amont-freecad.md`](amon
 | Noyau BRep, booléens, congés, coques, balayages, STEP | **FreeCAD** | 🔴 rien à prendre — hérité, et mieux vieilli |
 | Solveur de contraintes 2D (Levenberg-Marquardt sur résidus, `vcad-kernel-constraints`) | **FreeCAD** — planegcs, déjà vendoré dans `app/vendor/` | 🔴 on a déjà mieux |
 | Tessellation, normales à angle vif, cuisson de rendu | **FreeCAD** (`Shape.tessellate`) | 🔴 rien à prendre |
-| **Nommage topologique persistant** (`vcad-kernel-naming`) | **partagé** : la carte d'éléments est à FreeCAD ; la **garde de rejeu** est à nous (`engine/replay.py`) | 🟢 idée à prendre + 🟠 une question amont à instruire |
+| **Nommage topologique persistant** (`vcad-kernel-naming`) | **FreeCAD** — la carte d'éléments est à eux, **et exposée en Python** (tranché le 2026-08-21) | 🟢 **réduit** : le mécanisme tombe (le moteur a mieux), seule la *discipline de verdict* est prise — §5.1 |
 | **Reçu de vérification** (`vcad-receipt`) | **FreeSolid** — rapport de selftest | 🟢 à prendre |
 | **Garde de confiance pré-dispatch** (`packages/mcp/src/trust-boundary.ts`) | **FreeSolid** — `engine/server.py`, `engine/protocol.py` | 🟢 à prendre |
 | **Schéma d'outils dérivé de l'IR** (`vcad_tool_derive::ToolSchema`) | **FreeSolid** — `engine/vocab.py` | 🟢 à prendre |
@@ -108,6 +108,14 @@ la géométrie. C'est le même bon signe que la conclusion du relevé du
 ## 5. Les emprunts, en détail
 
 ### 5.1 — Le nommage topologique, ou plutôt : la garde de rejeu
+
+> **Corrigé le 2026-08-21.** Cette section proposait d'emprunter à vcad
+> son repli géométrique (`EdgeHint`). La reconnaissance amont du même jour
+> a montré que **FreeCAD 1.1.3 expose déjà la carte d'éléments en Python** :
+> le mécanisme tombe, seule la discipline de verdict est retenue. Le
+> raisonnement d'origine est conservé ci-dessous parce qu'il reste la
+> meilleure description du problème — mais **la conclusion est en fin de
+> section**, pas au fil du texte.
 
 **Le meilleur morceau du dépôt.** `crates/vcad-kernel-naming` : 776 lignes,
 un seul fichier, 7 tests, lisible d'une traite.
@@ -161,19 +169,41 @@ remède de vider la sélection à chaque rebuild. Avec une signature
 géométrique, le panneau peut faire mieux que l'oublier : la **ré-ancrer**,
 ou dire honnêtement qu'elle est perdue.
 
-**Côté FreeSolid, à écrire :** l'enrichissement de `shape_fingerprint` et le
-passage de `topology_verdict` d'un verdict à un résolveur. Fonctions pures,
-testables sans FreeCAD, comme le reste du module.
+**Côté FreeCAD, à instruire d'abord : la question a été tranchée le
+2026-08-21, et elle annule l'essentiel de ce qui précède.**
 
-**Côté FreeCAD, à instruire d'abord (🟠 spike, entrée A5 du registre amont) :**
-avant d'écrire quoi que ce soit, une question à trancher par selftest —
-FreeCAD 1.1 expose-t-il en Python de quoi suivre un sous-élément à travers
-un recompute (carte d'éléments, historique d'élément) ? Si **oui**, on
-n'écrit rien : on l'utilise, et l'`EdgeHint` reste une idée non retenue.
-Si **non**, notre repli reste côté FreeSolid, et la question devient une
-demande amont formulable — *résoudre une référence de sous-élément avec un
-verdict explicite plutôt qu'une re-liaison silencieuse*.
-C'est l'ordre correct : on ne réimplémente pas avant d'avoir vérifié.
+La question posée était : FreeCAD expose-t-il en Python de quoi suivre un
+sous-élément à travers un recompute ? **Réponse : oui**, et depuis notre
+version de référence. Vérifié dans les bindings du tag **1.1.3** —
+`ComplexGeoData.getElementMappedName` / `getElementIndexedName` /
+`getElementName`, les attributs `ElementMap`, `ElementReverseMap`,
+`ElementMapSize`, `ElementMapVersion`, `Tag`, et
+`Part::Feature.getElementHistory(name, recursive=…)`. Le détail est en
+[`amont-freecad.md`](amont-freecad.md) §4ter.
+
+**Ce qui survit de cet emprunt, et ce qui tombe :**
+
+| | Verdict |
+|---|---|
+| L'`EdgeHint` (milieu / direction / longueur) comme mécanisme de repli | 🔴 **abandonné** — le moteur a mieux, et de la vraie provenance plutôt qu'une ressemblance géométrique |
+| Nommer une arête par ses deux faces adjacentes | 🔴 abandonné — même raison |
+| **La discipline de verdict** : résolu (par nom · par géométrie) / ambigu / perdu, et **jamais de re-liaison silencieuse** | 🟢 **retenu** — c'est une idée d'API, pas un mécanisme, et FreeCAD ne l'impose pas : `getElementIndexedName` rend un nom, pas un verdict |
+
+**Côté FreeSolid, à écrire — et la tâche a changé de nature.** Ce n'est
+plus « durcir la garde », c'est **stocker le bon identifiant** : nos
+enregistrements de fonction gardent `Edge3` / `Face2`, c'est-à-dire le nom
+*indexé*, le fragile. Enregistrer à côté le nom **mappé**, et le résoudre
+au rejeu, fait disparaître la cause au lieu de compenser l'effet. La garde
+`shape_fingerprint` reste, en filet, pour les cas sans mappage — et
+`topology_verdict` gagne le verdict à trois états ci-dessus.
+
+Un spike reste nécessaire, mais lui aussi a changé de question : plus
+« est-ce exposé ? » (oui) mais « **la carte est-elle peuplée pour nos
+objets ?** » — `ElementMapSize` et `Tag` non nuls sur un `PartDesign::Pad`
+après recompute. Dix lignes dans le selftest.
+
+C'était l'ordre correct : on ne réimplémente pas avant d'avoir vérifié. La
+vérification a coûté une heure et a supprimé un module.
 
 ### 5.2 — Le reçu de vérification : le verdict à trois états
 
@@ -337,7 +367,7 @@ chacune transposable en quelques dizaines de lignes de Python ou de JS :
 
 | Emprunt | Où ça atterrit | Ce que ça vaut |
 |---|---|---|
-| Signature géométrique des références (`EdgeHint`) | `engine/replay.py`, après le spike A5 | la garde passe de « réduire le risque » à « retrouver la référence » ; ferme aussi le constat 1.5 de l'audit |
+| Discipline de verdict sur les références (résolu / ambigu / perdu) | `engine/replay.py` — **par-dessus la carte d'éléments de FreeCAD**, pas à la place | la garde passe de « réduire le risque » à « retrouver la référence » ; ferme aussi le constat 1.5 de l'audit. Le mécanisme géométrique de vcad, lui, est abandonné : le moteur a mieux (§5.1) |
 | Reçu à trois états | `scripts/run-selftest.py` | un rapport comparable d'un run à l'autre ; « n'a pas pu tourner » ≠ « passé » |
 | Garde pré-dispatch pure | `engine/protocol.py` | un remède commun aux six constats de sécurité 3.1–3.6 |
 | Schéma d'outils dérivé | `engine/vocab.py` | supprime une classe de dérive avant qu'elle existe |

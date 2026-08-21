@@ -22,18 +22,30 @@ vert. Les chiffres qui fondent ce prompt :
 - la bibliothèque des 17 tailles de pierre — chantier à part, et **du
   modelage, pas du code** : une gemme est un `.brep`, pas une fonction
   paramétrique ([`docs/bijouterie.md`](../docs/bijouterie.md) §6) ;
-- les sièges et les griffes — `add_boolean`, `add_revolution` et
-  `add_polar_pattern` les couvrent déjà, ce sera un prompt suivant ;
+- **les sièges** — et ce n'est pas un report de commodité, c'est une
+  décision d'architecture : **poser une pierre n'enlève pas de matière.**
+  On pose, puis on **combine**, en une opération séparée et explicite
+  ([`docs/bijouterie.md`](../docs/bijouterie.md) §7.4 bis). Poser coûte
+  0,001 s pour 200 pierres ; creuser en coûte 3,4. Si le siège se creusait
+  au placement, chaque déplacement relancerait le booléen et le geste
+  « déplaçable à la volée » — l'objet même de ce prompt — deviendrait
+  impraticable ;
+- les griffes — `add_revolution` et `add_polar_pattern` les couvrent déjà,
+  ce sera un prompt suivant ;
 - le rapport, la carte des pierres, le contrôle d'écarts.
 
-**Une pierre est ici un cône simple**, posé comme témoin. On construit le
-*mécanisme* ; il doit être juste avant qu'on y accroche de la géométrie.
+**La pierre est ici un cylindre plat** — le **premier fichier de la
+bibliothèque**, pas un bouchon codé en dur. Un `.FCStd` paramétrable à deux
+cotes (diamètre, épaisseur), rangé dans `assets/gemmes/`, posé dans la pièce
+par le même chemin que le brillant qui lui succédera.
 
-Le témoin est volontairement trivial, et il le restera : le mécanisme est
-**indifférent** à ce que la pierre contient. Il pose un `Part::Feature` dans
-un `App::Link` et le déplace par `(u, v)` — que la forme dedans soit un cône
-ou un brillant relu d'un `.brep` ne change aucune décision de ce prompt. **Ne
-pas anticiper la gemme réelle** : la substitution se fera sans retouche.
+Le mécanisme est **indifférent** à ce que la pierre contient : il copie un
+corps paramétrique, l'instancie et le déplace par `(u, v)`. Que le corps soit
+un cylindre plat ou un brillant à 57 facettes ne change aucune décision de ce
+prompt. **Ne pas anticiper la gemme réelle** — mais **ne pas non plus coder
+la pierre en dur** : le cylindre plat passe par la bibliothèque, sinon le
+chemin d'accès n'est jamais exercé et la substitution découvrira ses bugs
+trop tard.
 
 ## Le livrable
 
@@ -53,10 +65,26 @@ Dans `engine/protocol.py` (`OPS`) puis `engine/kernel.py` :
 Le moteur le projette (`Surface.parameter`), en tire les `(u, v)` exacts, et
 c'est **eux** qu'il retient — jamais le point reçu.
 
-### 2. Où vivent les pierres — aucune annexe
+### 2. Où vivent les pierres — aucune annexe, aucune forme figée
 
 **Un `App::Link`** par semis, `ElementCount` + `PlacementList` (0,002 s pour
-200, sonde Q7). Sa cible : un `Part::Feature` portant le cône témoin.
+200, sonde Q7). Sa cible : le **corps paramétrique de la gemme, copié dans le
+document** — `Document.copyObject(corps, True)`, qui amène la variable et
+l'esquisse avec lui (sonde H9).
+
+**Jamais une forme importée et figée.** La pierre garde ses cotes d'esquisse
+dans la pièce ; la bibliothèque est un jeu de **gabarits**, pas une
+dépendance d'exécution. Un `.FCStd` de FreeSolid ne doit avoir besoin
+d'aucun fichier externe pour s'ouvrir.
+
+Un corps copié **par taille distincte**, pas par pierre : deux cents pierres
+de 1,5 mm, c'est un corps et deux cents placements. Le moteur tient donc un
+cache clé `(gemme, cotes)`.
+
+Piège à traiter, pas à découvrir : deux gemmes copiées dans le même document
+portent le même nom de variable à l'origine, et **FreeCAD renomme en
+silence**. Retrouver **la** variable de **chaque** pierre, jamais la première
+trouvée.
 
 L'ancrage se range en **propriétés FreeCAD natives**, groupe `FreeSolid` —
 exactement le motif déjà en place pour `FreeSolidColor`
@@ -139,8 +167,10 @@ blocage.
 
 ## Ce qu'il ne faut pas faire
 
-- Ne pas modeler les tailles de pierre — le cône témoin suffit ici.
-- Ne pas creuser les sièges ni poser de griffes.
+- Ne pas modeler les tailles de pierre — le cylindre plat suffit ici.
+- **Ne rien creuser.** Aucun booléen dans ce prompt : on pose des solides.
+- Ne pas figer une forme dans la pièce : on copie un corps paramétrique.
+- Ne pas poser de griffes.
 - Ne pas stocker de placement figé (cf. règle 2).
 - Ne pas ajouter de dépendance : le moteur reste en stdlib pure hors FreeCAD.
 - Ne pas toucher `app/vendor/`.

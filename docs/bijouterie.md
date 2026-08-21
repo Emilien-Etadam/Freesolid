@@ -655,22 +655,65 @@ Le moteur a donc besoin d'un **cache de formes**, clé `(taille, cotes)` :
 recalculer une fois, instancier N fois. C'est une ligne de conception, pas
 une difficulté.
 
-## 7.4 Le point d'architecture à trancher : où vit le fichier
+## 7.4 Où vit le fichier — tranché, et par une troisième voie
 
-Une gemme cotée est un `.FCStd` **de bibliothèque**. Deux façons de s'en
-servir dans une pièce, et elles n'engagent pas la même chose :
+*Décision du 2026-08-21 : « on ne laisse pas utiliser de formes importées,
+on va créer une bibliothèque de fichiers FreeCAD paramétrables. »*
 
-| | Lien externe (`App::Link` vers l'autre document) | Forme importée (recalculée puis figée dans la pièce) |
+Ce document n'opposait que deux options, et **aucune n'était bonne** :
+
+| | Lien externe | Forme importée |
 |---|---|---|
-| La pièce reste rééditable en taille | oui, sans rouvrir la bibliothèque | non — il faut repasser par la bibliothèque |
-| Le `.FCStd` est autonome | **non** : il dépend d'un fichier externe | oui |
-| Déplacer la bibliothèque | casse la pièce | sans effet |
+| La pièce reste rééditable en taille | oui | **non — la pierre est figée** |
+| Le `.FCStd` est autonome | **non — dépend d'un fichier** | oui |
 
-Le second respecte mieux la promesse du projet — un `.FCStd` qui s'ouvre dans
-FreeCAD nu, sans dépendance. Mais il fige la taille dans la pièce, ce qui est
-acceptable : **changer le diamètre d'une pierre déjà sertie n'est pas une
-retouche de cote, c'est un autre bijou.** H6 mesure ce que FreeCAD fait
-réellement du lien externe avant qu'on tranche.
+Il en existe une troisième, et elle a les deux qualités : **copier l'objet
+paramétrique lui-même** dans la pièce. `Document.copyObject(corps, True)`
+amène la variable, l'esquisse et la révolution avec elle. Alors :
+
+- la pièce est **autonome** — aucun fichier externe à retrouver ;
+- la pierre reste **entièrement paramétrable** — son diamètre est toujours
+  une cote d'esquisse, éditable sur place, dans la pièce ;
+- la bibliothèque devient ce qu'elle aurait toujours dû être : un jeu de
+  **gabarits qu'on instancie**, pas une dépendance d'exécution.
+
+Rien n'est « importé » au sens d'une forme morte : c'est le **modèle** qui
+voyage, pas son résultat. H9 le vérifie, et vérifie surtout le piège
+pratique : deux gemmes copiées dans une même pièce portent le même nom de
+variable à l'origine, et FreeCAD renomme en silence. Le moteur doit retrouver
+**la** variable de **chaque** pierre, pas la première venue.
+
+## 7.4 bis — On pose, puis on combine. On ne pose pas des trous
+
+*Même décision, et c'est la plus structurante des trois.*
+
+Poser une pierre **n'enlève pas de matière**. La pierre est un solide posé
+sur la surface ; le **siège se creuse plus tard**, en une opération séparée
+et explicite.
+
+La raison est dans les chiffres déjà mesurés :
+
+| | Coût |
+|---|---|
+| Poser ou déplacer 200 pierres | **0,001 s** (H5) |
+| Creuser 200 sièges | **3,4 s** au mieux, et davantage sur une pierre facettée (Q6, G4) |
+
+Si le siège se creusait au moment du placement, **chaque déplacement de
+pierre relancerait le booléen** — et le geste « déplaçable à la volée », qui
+est tout l'objet de la demande, deviendrait impraticable. En séparant :
+
+1. **on pose** — instantané, réversible, on déplace tant qu'on veut ;
+2. **on combine** — une fois, quand le semis est arrêté, par un compound des
+   N outils et **une seule** coupe (Q6 : linéaire, ≈ 17 ms par pierre).
+
+C'est aussi la façon dont un joaillier travaille : on place les pierres, puis
+on serti. Et cela rend le budget des sièges **secondaire** : il se paie une
+fois, sur commande, comme une reconstruction — pas dans la boucle
+d'interaction.
+
+Conséquence pour [`P034`](../prompts/P034-pierres-sur-surface.md) : son
+périmètre était déjà le bon — placer, déplacer, tourner, retirer, lister —
+et il le reste. Le sertissage sera un prompt à part, qui lira `list_gems`.
 
 ## 7.5 Ce que ça change au reste du relevé
 

@@ -473,6 +473,96 @@ def probe_faceted_cost():
 
 note("h8_cout_facette", probe_faceted_cost)
 
+
+# --------------------------------------------------------------------------
+# H9 — LA VOIE RETENUE : copier l'OBJET PARAMÉTRIQUE dans la pièce.
+#
+# Le §7.4 n'opposait que deux options, et aucune n'était bonne :
+#   - lien externe    → la pièce dépend d'un fichier de bibliothèque ;
+#   - forme importée  → la pièce est autonome mais la pierre est FIGÉE.
+#
+# Il en existe une troisième, et elle a les deux qualités : `copyObject`
+# avec ses dépendances amène la VarSet, l'esquisse et la révolution DANS
+# la pièce. Le document est autonome — aucun fichier externe — et la
+# pierre reste entièrement paramétrable : son diamètre est toujours une
+# cote d'esquisse, éditable sur place.
+#
+# La bibliothèque devient ce qu'elle aurait toujours dû être : un jeu de
+# GABARITS qu'on instancie, pas une dépendance d'exécution.
+#
+# Deux choses à prouver : que la copie recalcule, et que DEUX gemmes
+# copiées dans la même pièce ne se marchent pas dessus — leurs VarSet
+# portent le même nom d'origine, et FreeCAD renomme en silence.
+# --------------------------------------------------------------------------
+
+def probe_copy():
+    biblio = App.openDocument(BIBLIO)
+    piece = App.newDocument("SpikePiece2")
+    out = {}
+    try:
+        copies = []
+        for i, diam in enumerate((1.5, 4.0)):
+            copie = piece.copyObject(biblio.getObject("Corps"), True)
+            copies.append(copie)
+            piece.recompute()
+            out["copie_{}".format(i)] = {
+                "nom": copie.Name,
+                "forme_valide": copie.Shape.isValid(),
+                "faces": len(copie.Shape.Faces),
+            }
+
+        # Chaque copie a-t-elle SA variable, ou partagent-elles la même ?
+        varsets = [o for o in piece.Objects if o.TypeId == "App::VarSet"]
+        out["varsets"] = [v.Name for v in varsets]
+        out["une_varset_par_gemme"] = len(varsets) == len(copies)
+
+        # Le test qui compte : rediamétrer une copie SANS toucher l'autre.
+        avant = [c.Shape.Volume for c in copies]
+        for varset, diam in zip(varsets, (1.5, 4.0)):
+            varset.diametre = float(diam)
+        piece.recompute()
+        apres = [c.Shape.Volume for c in copies]
+
+        out["toujours_parametrable"] = all(
+            abs(a - b) > 1e-9 for a, b in zip(avant, apres))
+        out["diametres_independants"] = (
+            len(set(round(v, 9) for v in apres)) == len(copies))
+        out["volumes"] = [round(v, 6) for v in apres]
+
+        path = os.path.join(TMP, "piece-copiee.FCStd")
+        piece.saveAs(path)
+        out["octets"] = os.path.getsize(path)
+    finally:
+        for name in list(App.listDocuments()):
+            try:
+                App.closeDocument(name)
+            except Exception:  # noqa: BLE001
+                pass
+
+    # Autonomie : rouvrir la pièce SEULE, bibliothèque absente du disque.
+    garde = os.path.join(TMP, "brillant-rond.FCStd.range")
+    os.rename(BIBLIO, garde)
+    try:
+        reopened = App.openDocument(os.path.join(TMP, "piece-copiee.FCStd"))
+        try:
+            corps = [o for o in reopened.Objects
+                     if o.TypeId == "PartDesign::Body"]
+            out["autonome_sans_bibliotheque"] = all(
+                c.Shape.isValid() and c.Shape.Solids for c in corps)
+            out["documents_ouverts"] = len(App.listDocuments())
+        finally:
+            for name in list(App.listDocuments()):
+                try:
+                    App.closeDocument(name)
+                except Exception:  # noqa: BLE001
+                    pass
+    finally:
+        os.rename(garde, BIBLIO)
+    return out
+
+
+note("h9_copie_parametrique", probe_copy)
+
 shutil.rmtree(TMP, ignore_errors=True)
 
 # --------------------------------------------------------------------------
@@ -492,11 +582,20 @@ verdict = {
         "a_enleve_de_la_matiere")),
     "H8 coût à charge réelle": bool(
         (R.get("h8_cout_facette") or {}).get("ms_par_taille")),
+    "H9 copie encore paramétrable": bool(
+        (R.get("h9_copie_parametrique") or {}).get("toujours_parametrable")),
+    "H9 pièce autonome": bool(
+        (R.get("h9_copie_parametrique") or {}).get(
+            "autonome_sans_bibliotheque")),
 }
 print("\n".join("{}  {}".format("OK  " if v else "NON ", k)
                 for k, v in verdict.items()), flush=True)
-print("\nSONDE {} — H2 et H3 sont le verdict : si la forme reste analytique\n"
-      "et les cotes justes, les deux pièges de la voie BREP mise à l'échelle\n"
-      "(1,18 %% de volume, BoundBox 70 %% trop grand) disparaissent, et il ne\n"
-      "reste qu'à juger le coût du recalcul mesuré en H1."
+print("\nSONDE {} — H9 est désormais le verdict d'architecture : une gemme\n"
+      "COPIÉE dans la pièce reste paramétrable ET n'exige plus la\n"
+      "bibliothèque. Si les deux tiennent, la bibliothèque est un jeu de\n"
+      "gabarits, pas une dépendance."
       .format("VERTE" if all(verdict.values()) else "ROUGE"), flush=True)
+print("\n   — H2 et H3 restent acquis : forme analytique et cotes justes,\n"
+      "     donc les deux pièges de la voie BREP mise à l'échelle (1,18 %\n"
+      "     de volume, BoundBox 70 % trop grand) ne se posent plus.",
+      flush=True)

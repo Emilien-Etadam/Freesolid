@@ -6309,7 +6309,7 @@ class Kernel:
             n_before = len(tree["features"])
             # Source : 20×20×10 − 8×8×10 = 3360.
             # Trois instances qui se touchent (pas de 20 mm = largeur),
-            # L = 10, 20, 30 : 336 × 60 = 20160. Total fuse = 23760.
+            # L = 10, 20, 30 : 336 × 60 = 20160. Total fuse = 23520.
             # Un Body n'accepte qu'un solide : des copies disjointes
             # (pas de 40 mm) feraient échouer le booléen.
             tree = self.add_repeat_feature(
@@ -6328,7 +6328,7 @@ class Kernel:
             report["n10_repetition_variable"] = (
                 not any(f["error"] for f in tree["features"])
                 and len(tree["features"]) == n_before + 1
-                and _close(_volume(), 23760.0, tol=1e-4)
+                and _close(_volume(), 23520.0, tol=1e-4)
                 and pad_name in (repeat_line.get("deps") or [])
                 and pocket_name in (repeat_line.get("deps") or [])
                 and not dangling_deps(tree))

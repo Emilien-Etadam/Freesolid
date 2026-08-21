@@ -177,6 +177,40 @@ def main():
               "{} -> {} faces après enlèvement traversant ; {!r} -> {!r}".format(
                   faces_avant, faces_apres, mappe, resolu2))
 
+        # --- 4ter. si ça échoue, POURQUOI ? ----------------------------
+        #     Trois explications possibles, et elles ne mènent pas au même
+        #     plan : (a) chaque fonction a sa propre carte, donc un nom
+        #     est valable pour UNE forme ; (b) il fallait interroger le
+        #     corps plutôt que la fonction ; (c) la chaîne se traverse,
+        #     mais par l'historique et non par une résolution directe.
+        #     (c) est la seule qui sauve le plan « stocker le nom mappé ».
+        corps = attr(kernel._require_body(), "Shape")
+        resolu3 = attr(corps, "getElementIndexedName") if corps else None
+        resolu3 = resolu3(mappe) if callable(resolu3) else None
+        if isinstance(resolu3, (tuple, list)):
+            resolu3 = resolu3[0] if resolu3 else None
+        probe("resolution_corps", VERIFIE if resolu3 else ECHOUE,
+              "sur la forme du Body, {!r} -> {!r}".format(mappe, resolu3))
+
+        # Le pont : une face de la NOUVELLE pointe, son nom mappé à elle,
+        # et son historique. Si la trace nomme le Pad, la chaîne se
+        # traverse — replay.py peut alors relier les deux bouts.
+        frais = attr(pointe, "getElementMappedName")
+        frais = frais("Face1") if callable(frais) else None
+        if isinstance(frais, (tuple, list)):
+            frais = frais[0] if frais else None
+        histoire_pointe = attr(
+            kernel._doc.getObject(pocket_nom), "getElementHistory")
+        try:
+            trace2 = histoire_pointe(frais) if (
+                callable(histoire_pointe) and frais) else None
+        except Exception as exc:  # noqa: BLE001 - une sonde rapporte
+            trace2 = "{}: {}".format(type(exc).__name__, exc)
+        atteint_pad = bool(trace2) and pad_nom in repr(trace2)
+        probe("pont_historique", VERIFIE if atteint_pad else ECHOUE,
+              "Face1 de la pointe -> {!r} ; historique {!r} ; "
+              "remonte jusqu'au Pad : {}".format(frais, trace2, atteint_pad))
+
     # --- 5. l'historique d'élément remonte-t-il ? -----------------------
     histoire = attr(pad, "getElementHistory")
     if not callable(histoire):

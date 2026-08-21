@@ -1036,6 +1036,27 @@ export function isRepeatFeature(item) {
     && typeof item.repeat === "object");
 }
 
+/** La ligne graphe / répétition la plus récente — `order` du document,
+ *  pas la concaténation surfaces-puis-fonctions. Une courbe dans
+ *  `surfaces` ne doit pas masquer un bossage ou une répétition
+ *  venant d'être créés. */
+export function latestGraphOrRepeat(tree) {
+  const items = [
+    ...(Array.isArray(tree?.features) ? tree.features : []),
+    ...(Array.isArray(tree?.surfaces) ? tree.surfaces : []),
+  ].filter((item) => isGraphFeature(item) || isRepeatFeature(item));
+  let best = null;
+  let bestOrder = -Infinity;
+  for (const item of items) {
+    const order = typeof item.order === "number" ? item.order : -1;
+    if (!best || order >= bestOrder) {
+      best = item;
+      bestOrder = order;
+    }
+  }
+  return best;
+}
+
 /** Le brouillon porte-t-il au moins un nœud Python ? */
 export function graphHasScript(draft) {
   return listOfSpec(draft?.nodes).some((node) => node && node.type === "script");

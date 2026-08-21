@@ -26,6 +26,7 @@ import {
   isConstructWireSource,
   isGraphFeature,
   isRepeatFeature,
+  latestGraphOrRepeat,
   isParamWireSource,
   isParamWireTarget,
   layoutFunctionGraph,
@@ -643,6 +644,24 @@ describe("composition du graphe interne", () => {
     const repeat = FEATURES.find((entry) => entry.button === "btn-repeat-variable");
     assert.equal(repeat?.title, "Répétition variable");
     assert.equal(repeat?.openGraphEditor, true);
+  });
+
+  it("latestGraphOrRepeat prend l'order du document, pas la section surfaces", () => {
+    const tree = {
+      features: [
+        { name: "G1", order: 2, graph: { nodes: [] } },
+        { name: "R1", order: 8, repeat: { features: [] } },
+      ],
+      surfaces: [
+        { name: "C1", order: 5, graph: { nodes: [] } },
+      ],
+    };
+    assert.equal(latestGraphOrRepeat(tree)?.name, "R1");
+    assert.equal(latestGraphOrRepeat({
+      features: [{ name: "G1", order: 2, graph: { nodes: [] } }],
+      surfaces: [{ name: "C1", order: 5, graph: { nodes: [] } }],
+    })?.name, "C1");
+    assert.equal(latestGraphOrRepeat({ features: [], surfaces: [] }), null);
   });
 
   it("layoutFunctionGraph attache les fils aux ports nommés", () => {

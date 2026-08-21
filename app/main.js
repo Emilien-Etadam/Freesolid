@@ -32,6 +32,7 @@ import {
   isConstructWireSource,
   isGraphFeature,
   isRepeatFeature,
+  latestGraphOrRepeat,
   isParamWireSource,
   isParamWireTarget,
   layoutFunctionGraph,
@@ -4456,11 +4457,7 @@ function openFeaturePanel(entry, sketchOverride) {
       if (entry.openGraphEditor) {
         run(promise.then((tree) => {
           queueMicrotask(() => {
-            const created = [
-              ...(tree.features ?? []),
-              ...(tree.surfaces ?? []),
-            ].reverse()
-              .find((item) => isGraphFeature(item) || isRepeatFeature(item));
+            const created = latestGraphOrRepeat(tree);
             if (created) enterGraphFeature(created);
           });
           return tree;

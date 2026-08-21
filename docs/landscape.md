@@ -16,6 +16,7 @@ headless ». Conclusion en bas.*
 | render-fcstd, freecad-web-visualization | Visionneuses Three.js de fichiers exportés | Affichage seul |
 | Fil devtalk [« FreeCAD web frontend »](https://devtalk.freecad.org/t/freecad-web-frontend/55903) (2021) | Discussion récurrente depuis 2017 | Aucun projet n'en est sorti |
 | [waffle-iron](https://github.com/sequoia-hope/waffle-iron) (SequoiaHope) | **Noyau** CAD from scratch, Rust/WASM, MIT, ~6 mois de travail assisté par IA, par un expert Onshape/SolidWorks | Le pari inverse du nôtre : noyau réécrit, UI « needs a lot of work ». Complémentaire, pas concurrent |
+| [ecto/vcad](https://github.com/ecto/vcad) ‡ | CAO paramétrique complète — **noyau BRep Rust réécrit** (~445 kloc, 92 crates), app React/Three.js, Tauri, CLI, serveur MCP, banc d'essai IA. Apache-2.0, actif | Le même pari inverse que waffle-iron, **soixante-dix fois plus grand** et fini. Rien à prendre au noyau ; quatre idées à prendre au-dessus. Relevé complet : [`vcad.md`](vcad.md) |
 | [Onshape](https://www.onshape.com) | La CAO navigateur des fondateurs de SolidWorks, noyau Parasolid, gratuite en non-commercial | Le seul vrai « SW moderne dans un navigateur » existant. Cloud obligatoire, documents publics en gratuit, fermé — c'est exactement l'espace que « local + open source » laisse ouvert |
 
 ## Conclusion
@@ -50,7 +51,7 @@ refait que ce qui se voit.
 
 # Relevé complémentaire du 2026-08-15 — Chili3D, macros, nœuds
 
-*† La ligne Chili3D du tableau ci-dessus a été ajoutée à cette date.*
+*† La ligne Chili3D du tableau ci-dessus a été ajoutée à cette date ; la ligne vcad (‡) l'a été au relevé du 2026-08-21, en bas de page.*
 
 ## 1. Chili3D — le miroir inversé
 
@@ -246,3 +247,86 @@ vue**. Rien à séparer du document, donc pas de format de graphe, pas
 d'évaluateur, pas de synchronisation — les arêtes existent déjà dans
 `OutList` et dans les expressions, il suffit que `get_tree` cesse de les
 jeter.
+
+---
+
+# Relevé du 2026-08-21 — vcad, et la frontière
+
+*‡ La ligne vcad du tableau du 2026-08-02 a été ajoutée à cette date.*
+
+[ecto/vcad](https://github.com/ecto/vcad) est trop gros pour une ligne de
+tableau : le relevé complet est dans [`vcad.md`](vcad.md). Ce qu'il faut
+en retenir ici, et ce qu'il a produit d'inattendu.
+
+## Ce que c'est
+
+Le pari inverse du nôtre, mené jusqu'au bout et à une échelle qu'on n'avait
+pas encore vue : ~445 000 lignes de Rust en 92 crates (noyau BRep complet,
+booléens, congés, tessellation, STEP, nommage topologique), 80 000 lignes de
+TypeScript pour l'app React/Three.js, une app Tauri, un CLI, un serveur MCP,
+un banc d'essai IA de 242 Mo. Apache-2.0, actif, avec une société derrière.
+
+C'est la case `waffle-iron` du tableau du 2026-08-02 — « noyau réécrit,
+UI à faire » — mais soixante-dix fois plus grande, et avec l'UI finie.
+**La doctrine n'en sort pas ébranlée : elle en sort documentée.** Le coût
+du pari est là, lisible dans l'arborescence — 26 000 lignes rien que pour
+les booléens, exactement le poste que FreeSolid hérite déjà éprouvé.
+
+## Ce qu'on lui prend — quatre idées, et pas une ligne
+
+Le tri s'est fait par une seule question : *de quel côté de la frontière
+tombe la chose ?* La quasi-totalité des 445 kloc tombe côté FreeCAD, donc
+hors sujet. Ce qui reste tombe **entièrement de notre côté**, là où nous
+n'avons pas de grand frère parce que FreeCAD résout ces problèmes-là dans
+son interface Qt, que nous avons jetée :
+
+| Idée | Où ça atterrit chez nous |
+|---|---|
+| Signature géométrique d'une référence (`EdgeHint` : milieu, direction, longueur) pour **retrouver** un sous-élément après reconstruction, avec un verdict à trois états | `engine/replay.py` — après le spike A7 du registre amont |
+| Reçu de vérification : chaque mesure porte son oracle, sa version, ses unités, et « n'a pas pu tourner » ≠ « passé » | `scripts/run-selftest.py` |
+| Garde de confiance pure et synchrone **avant** le dispatch, qui refuse sans jamais réécrire un argument | `engine/protocol.py` — remède commun aux constats 3.1–3.6 de l'audit |
+| Schéma d'outils **dérivé** du vocabulaire au lieu d'être écrit à côté | `engine/vocab.py` |
+
+Aucune ne demande d'écrire de la géométrie — le même bon signe qu'au
+2026-08-15.
+
+## Ce qu'on ne lui prend pas — le code, et pour une raison neuve
+
+Le raisonnement ne se termine pas comme celui de Chili3D. L'AGPL de Chili3D
+**interdit** l'emprunt : reprendre un fichier ferait basculer FreeSolid
+entier. L'Apache-2.0 de vcad, elle, *passerait* — notre « or-later » permet
+de distribuer l'ensemble en LGPL-3.0.
+
+Ce qui tranche est ailleurs, et c'est le vrai apport de ce relevé : une
+contribution à FreeCAD doit être remontable en **LGPL-2.1-or-later**. Le
+jour où une ligne de FreeSolid descend d'Apache-2.0, cette ligne et toute sa
+descendance **ne peuvent plus jamais partir en amont**. Le prix d'un
+copier-coller n'est pas juridique, il est stratégique : c'est la porte
+amont qu'il ferme.
+
+D'où la règle, qui vaut au-delà de vcad : **des dépôts sous licence non
+remontable, on prend des idées et jamais des lignes.**
+
+## Ce que le relevé a produit d'inattendu — une doctrine
+
+Trier les emprunts a obligé à écrire la frontière noir sur blanc, et à
+constater qu'elle a un second sens, jamais formulé jusqu'ici : quand le
+travail sur FreeSolid fait apparaître un manque **côté FreeCAD**, le
+contournement reste chez nous mais le constat, lui, doit partir en amont.
+
+Ce n'est pas une intention généreuse, c'est une position : FreeSolid est un
+client headless instrumenté, versionné sur une version de référence unique,
+avec un selftest. C'est un point de vue sur FreeCAD que FreeCAD n'a pas sur
+lui-même. Six contournements déjà présents dans `engine/` en sont la preuve
+— deux SIGSEGV TechDraw reproductibles, une API undo absente, une API de
+joints instable, et surtout `engine/guard.py`, écrit pour nos utilisateurs
+et utile bien au-delà d'eux.
+
+La règle, la procédure de tri et le registre des neuf constats sont dans
+[`amont-freecad.md`](amont-freecad.md).
+
+## Conclusion
+
+Rien à changer à la doctrine du 2026-08-02, une fois de plus — mais cette
+fois elle gagne un versant. On ne réécrit pas le noyau *et* on ne garde
+pas pour soi ce que le noyau nous montre.

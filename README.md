@@ -94,6 +94,9 @@ Trois couches :
 3. FreeCAD headless (`freecadcmd`) — géométrie, historique, STEP
 
 Détail : [`docs/architecture-app.md`](docs/architecture-app.md).
+La frontière entre la couche 2 et la couche 3, et ce qu'on remonte à
+FreeCAD quand le développement y révèle un manque :
+[`docs/amont-freecad.md`](docs/amont-freecad.md).
 
 ## Développement
 

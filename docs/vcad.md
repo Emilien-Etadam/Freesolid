@@ -192,15 +192,24 @@ version de référence. Vérifié dans les bindings du tag **1.1.3** —
 **Côté FreeSolid, à écrire — et la tâche a changé de nature.** Ce n'est
 plus « durcir la garde », c'est **stocker le bon identifiant** : nos
 enregistrements de fonction gardent `Edge3` / `Face2`, c'est-à-dire le nom
-*indexé*, le fragile. Enregistrer à côté le nom **mappé**, et le résoudre
-au rejeu, fait disparaître la cause au lieu de compenser l'effet. La garde
-`shape_fingerprint` reste, en filet, pour les cas sans mappage — et
-`topology_verdict` gagne le verdict à trois états ci-dessus.
+*indexé*, le fragile.
 
-Un spike reste nécessaire, mais lui aussi a changé de question : plus
-« est-ce exposé ? » (oui) mais « **la carte est-elle peuplée pour nos
-objets ?** » — `ElementMapSize` et `Tag` non nuls sur un `PartDesign::Pad`
-après recompute. Dix lignes dans le selftest.
+Le spike a tourné le 2026-08-21 sur un FreeCAD 1.1.3 réel
+(`scripts/spike-element-map.py`, PR #63), et il
+a corrigé la forme de cet identifiant : **un nom mappé est porté par la
+forme d'une fonction, pas par le document.** Le nom d'une face du `Pad` ne
+résout ni sur la forme du `Pocket` ni sur celle du `Body`. Ce qu'on stocke
+est donc le **couple `(fonction, nom mappé)`**, et on le retrouve en
+énumérant les éléments de la pointe et en remontant leur
+`getElementHistory` jusqu'au couple cherché.
+
+La garde `shape_fingerprint` reste, en filet, pour les cas sans mappage —
+et `topology_verdict` gagne le verdict à trois états ci-dessus, qui se
+pose exactement sur le résultat de cette remontée : un élément → résolu,
+plusieurs → ambigu, aucun → perdu.
+
+Le détail mesuré, sonde par sonde, est dans
+[`amont-freecad.md`](amont-freecad.md) §4quater.
 
 C'était l'ordre correct : on ne réimplémente pas avant d'avoir vérifié. La
 vérification a coûté une heure et a supprimé un module.

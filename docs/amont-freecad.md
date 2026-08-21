@@ -211,19 +211,63 @@ Conséquences, dans l'ordre :
    *discipline de verdict* (résolu / ambigu / perdu, jamais de re-liaison
    silencieuse) — une idée d'API, pas un mécanisme.
 2. **La tâche FreeSolid change de nature** : ce n'est plus « durcir la
-   garde », c'est « **stocker le bon identifiant** ». Enregistrer le nom
-   mappé à côté du nom indexé, et résoudre par `getElementIndexedName` au
-   rejeu. La garde `shape_fingerprint` reste, en filet, pour les cas où le
-   mappage est absent.
-3. **Un spike reste nécessaire, mais il a changé de question.** Plus
-   « FreeCAD expose-t-il ? » (oui) mais « **la carte est-elle peuplée pour
-   nos objets ?** » — `ElementMapSize` non nul sur nos `PartDesign::*`
-   après recompute, et `Tag` non nul. C'est un test de dix lignes dans le
-   selftest, et il tranche tout le reste.
+   garde », c'est **stocker le bon identifiant**. La forme exacte de cet
+   identifiant a été tranchée par le spike — voir §4quater.
+3. ~~Un spike reste nécessaire~~ — **il a tourné le 2026-08-21**
+   (`scripts/spike-element-map.py`, arrivé par la PR #63),
+   et son résultat corrige le point 2. §4quater.
 
 Ce renversement est la meilleure justification du §1 qu'on pouvait
 espérer : la frontière ne sert pas seulement à décider **qui écrit quoi**,
 elle évite d'écrire.
+
+### 4quater — A7 mesuré : la carte se traverse **à l'envers**, pas de face
+
+*Résultat du 2026-08-21, `scripts/spike-element-map.py` (PR #63) sur FreeCAD 1.1.3
+réel (CI). Il corrige §4ter, qui reposait sur une lecture de source non
+vérifiée à l'exécution.*
+
+| Sonde | Verdict | Mesure |
+|---|---|---|
+| `api_exposée` | 🟢 | les sept noms répondent |
+| `carte_peuplée` | 🟢 | `ElementMapSize=30`, `Tag≠0`, `ElementMapVersion='15.70200.5'` |
+| `aller_retour` | 🟢 | `Face1` → `'#d:1;:G;XTR;:H4ec:7,F'` → `Face1` |
+| `survie_reparam` | 🟢 | tient à 10 → 25 mm — **mais aucun indice ne bouge : sonde faible** |
+| **`survie_topologie`** | 🔴 | 6 → 10 faces après un enlèvement traversant ; le nom capturé sur le `Pad` rend **`''`** sur la forme de l'enlèvement |
+| **`resolution_corps`** | 🔴 | même nom, sur la forme du `Body` : **`''`** |
+| **`pont_historique`** | 🟢 | une face de la **nouvelle pointe** → son nom à elle → `getElementHistory` rend `[(Pocket, …), (Pad, '#d:1;…,F'), (Sketcher, 'g1;SKT')]` — **la trace remonte jusqu'au Pad** |
+
+**Ce que ça veut dire, et ce n'est pas ce que §4ter annonçait.** Un nom
+mappé n'est pas un identifiant global : **il est porté par la forme d'une
+fonction**. Le nom d'une face du `Pad` n'est pas une clé de la carte du
+`Pocket`, ni de celle du `Body`. Stocker « le nom mappé » et le résoudre
+plus tard **ne marche pas**.
+
+Mais la chaîne est navigable — **dans l'autre sens**. Depuis un nom porté
+par la pointe courante, `getElementHistory` remonte jusqu'à la fonction
+d'origine et au nom qu'elle portait.
+
+**D'où la forme réelle de la tâche :**
+
+1. Enregistrer non pas un nom, mais le **couple `(fonction propriétaire,
+   nom mappé sur cette fonction)`**.
+2. Au rejeu, **énumérer les éléments de la pointe**, prendre le nom mappé
+   de chacun, appeler `getElementHistory`, et chercher le couple stocké
+   dans la trace.
+3. Le verdict à trois états emprunté à vcad se pose là : **un** élément
+   dont la trace contient le couple → *résolu* ; plusieurs → *ambigu* ;
+   aucun → *perdu*. Jamais de re-liaison silencieuse.
+
+C'est une recherche à l'envers, en O(éléments de la pointe) par référence.
+Plus coûteux qu'un accès direct, mais c'est de la **provenance**, pas de
+la ressemblance géométrique — donc strictement mieux que l'`EdgeHint` de
+vcad, qui reste abandonné.
+
+**La leçon de méthode, elle, est la vraie prise du jour.** §4ter avait été
+écrit sur la seule lecture des bindings, et il concluait juste sur
+« l'API existe » et faux sur « il suffit de stocker le nom ». Lire la
+source dit ce qui est **exposé** ; seule l'exécution dit ce qui **marche**.
+Les deux gestes sont nécessaires, et le second n'est pas optionnel.
 
 ## 5. Comment on remonte
 

@@ -22,7 +22,7 @@ if _REPO_ROOT not in sys.path:
 from engine.guard import friendly_error          # noqa: E402
 from engine.nodegraph import (  # noqa: E402
     GraphError, classify_shape_instructions, evaluate_instances,
-    mixed_output_message, migrate_graph, output_nature,
+    graph_surface_kind, mixed_output_message, migrate_graph, output_nature,
 )
 from engine.platform import (                    # noqa: E402
     allow_from_environ, version_status,
@@ -1741,6 +1741,10 @@ class Kernel:
         obj.FreeSolidGraphMode = mode
         obj.Label = label
 
+    def _graph_surface_label(self, instructions):
+        return "Fonction graphe — {}".format(
+            graph_surface_kind(instructions))
+
     def add_graph_feature(self, graph, mode=None):
         """Insère la forme d'un graphe dans l'arbre.
 
@@ -1806,7 +1810,9 @@ class Kernel:
         feature = doc.addObject("Part::Feature", "Surface")
         feature.Shape = shape
         try:
-            self._persist_graph(feature, graph, "", "Fonction graphe")
+            self._persist_graph(
+                feature, graph, "",
+                self._graph_surface_label(instructions))
             doc.recompute()
         except Exception:
             try:
@@ -1851,7 +1857,8 @@ class Kernel:
                 raise KernelError(
                     "{} — la fonction graphe n'a pas été modifiée".format(
                         exc))
-            self._persist_graph(obj, graph, "", obj.Label)
+            self._persist_graph(
+                obj, graph, "", self._graph_surface_label(instructions))
             return self.get_tree()
         if nature != "solid":
             raise KernelError(
@@ -6998,6 +7005,33 @@ class Kernel:
                     "solide" in str(exc)
                     and _close(_volume(), vol_cut)
                     and abs(_volume() - vol_nature) > 1.0)
+
+            mark("n11b: libellé Courbe / Surface, et la réédition le met à jour")
+            self.new_part("Pièce graphe N011b")
+            circle_graph = {
+                "nodes": [_n4_node(
+                    "c", "cercle", rayon=10, point=origin, direction=zdir)],
+                "edges": [], "output": "c",
+            }
+            plane_graph = {
+                "nodes": [_n4_node(
+                    "p", "plan", longueur=20, largeur=10,
+                    point=origin, direction=zdir)],
+                "edges": [], "output": "p",
+            }
+            tree = self.add_graph_feature(circle_graph)
+            curve_line = next(s for s in tree["surfaces"] if s.get("graph"))
+            tree = self.edit_graph_feature(curve_line["name"], plane_graph)
+            edited = next(
+                s for s in tree["surfaces"] if s["name"] == curve_line["name"])
+            self.new_part("Pièce graphe N011b surface")
+            tree = self.add_graph_feature(plane_graph)
+            surf_line = next(s for s in tree["surfaces"] if s.get("graph"))
+            report["n11b_libelle"] = (
+                curve_line["label"] == "Fonction graphe — Courbe"
+                and edited["label"] == "Fonction graphe — Surface"
+                and edited["label"] != curve_line["label"]
+                and surf_line["label"] == "Fonction graphe — Surface")
 
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce

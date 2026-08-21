@@ -4,8 +4,8 @@ import pytest
 
 from engine.nodegraph import (
     COUNT_MAX, GraphError, _NODE_INPUTS, classify_shape_instructions,
-    evaluate, evaluate_instances, mixed_output_message, migrate_graph,
-    output_nature, vocabulary,
+    evaluate, evaluate_instances, graph_surface_kind, mixed_output_message,
+    migrate_graph, output_nature, vocabulary,
 )
 from engine import vocab
 
@@ -710,3 +710,24 @@ def test_sortie_mixte_nomme_les_natures():
     assert "Boîte" in message
     assert "Ligne" in message
     assert "une seule nature" in message
+
+
+def test_libelle_courbe_ou_surface_selon_les_instructions():
+    assert graph_surface_kind([
+        {"shape": "cercle", "rayon": 10},
+    ]) == "Courbe"
+    assert graph_surface_kind([
+        {"shape": "helice", "pas_helice": 10},
+    ]) == "Courbe"
+    assert graph_surface_kind([
+        {"shape": "plan", "longueur": 20, "largeur": 10},
+    ]) == "Surface"
+    assert graph_surface_kind([
+        {"shape": "bspline_surface", "centres": []},
+    ]) == "Surface"
+    # Mixte courbe + surface : toujours de nature « surface » pour la
+    # garde ; le libellé dit Courbe dès qu'il y a un fil.
+    assert graph_surface_kind([
+        {"shape": "ligne", "point1": [0, 0, 0], "point2": [1, 0, 0]},
+        {"shape": "plan", "longueur": 1, "largeur": 1},
+    ]) == "Courbe"

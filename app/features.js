@@ -5,7 +5,7 @@
 // build(v, ctx) rend { op, params } ou null (aperçu éteint, OK bloqué).
 
 import { num } from "./num.js";
-import { minimalGraphFeature, minimalRepeatGraph } from "./graph.js";
+import { minimalGraphCurve, minimalGraphFeature, minimalRepeatGraph } from "./graph.js";
 
 /** Message moteur quand aucune esquisse libre n'est disponible. */
 export const NO_SKETCH_AVAILABLE =
@@ -626,17 +626,29 @@ export const FEATURES = [
       label: "Opération",
       rows: [
         { type: "select", key: "mode", value: "fuse",
-          options: [["fuse", "Ajouter"], ["cut", "Soustraire"]] },
+          options: [
+            ["fuse", "Solide — Ajouter"],
+            ["cut", "Solide — Soustraire"],
+            ["curve", "Courbe ou surface"],
+          ] },
       ],
     }],
     note: "La géométrie produite est figée : changer une variable globale "
       + "ne recalcule pas la fonction — il faut la rouvrir et appliquer. "
       + "Le résultat est une forme combinée par un booléen, pas une "
       + "chaîne de fonctions.",
-    build: (v) => ({
-      op: "add_graph_feature",
-      params: { graph: minimalGraphFeature(), mode: v.mode },
-    }),
+    build: (v) => {
+      if (v.mode === "curve") {
+        return {
+          op: "add_graph_feature",
+          params: { graph: minimalGraphCurve() },
+        };
+      }
+      return {
+        op: "add_graph_feature",
+        params: { graph: minimalGraphFeature(), mode: v.mode },
+      };
+    },
     refresh: "part",
     openGraphEditor: true,
   },

@@ -359,6 +359,18 @@ def output_nature(instructions):
     return None
 
 
+def graph_surface_kind(instructions):
+    """« Courbe » ou « Surface » — lecture des instructions, pas un calcul.
+
+    Les deux sont de nature ``surface`` pour la garde. Le libellé d'arbre
+    dit laquelle. Toutes faces → Surface ; sinon Courbe.
+    """
+    _, kinds = classify_shape_instructions(instructions)
+    if kinds and all(kind in _FACE_SHAPES for kind in kinds):
+        return "Surface"
+    return "Courbe"
+
+
 def _as_number(value, node):
     if not _is_number(value):
         raise GraphError(

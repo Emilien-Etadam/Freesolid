@@ -11,6 +11,7 @@
 //       CHROMIUM_PATH (défaut : résolution playwright).
 const fs = require("fs");
 const path = require("path");
+const { pathToFileURL } = require("url");
 
 let chromium;
 try {
@@ -91,7 +92,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       + " (attendu " + expectedGroups.join(", ") + ")");
   }
 
-  // 0. Ids des 24 panneaux (registry FEATURES) + bascule libellés du ruban.
+  // 0. Panneaux du ruban : couverture de FEATURES, pas un compteur.
+  const { FEATURES } = await import(
+    pathToFileURL(path.join(__dirname, "../../app/features.js")).href
+  );
   const FEATURE_PANELS = [
     { id: "btn-pad", tab: "features" },
     { id: "btn-pocket", tab: "features" },
@@ -118,9 +122,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-surf-sew", tab: "surfaces" },
     { id: "btn-surf-thicken", tab: "surfaces" },
   ];
-  if (FEATURE_PANELS.length !== 24) {
-    errors.push("harnais : 24 panneaux attendus, "
-      + FEATURE_PANELS.length + " déclarés");
+  const panelIds = new Set(FEATURE_PANELS.map((item) => item.id));
+  for (const entry of FEATURES) {
+    if (!entry.button) continue;
+    if (!panelIds.has(entry.button)) {
+      errors.push("harnais : bouton manquant dans FEATURE_PANELS : #"
+        + entry.button);
+    }
   }
   let opened = 0;
   for (const { id, tab } of FEATURE_PANELS) {
@@ -145,8 +153,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   console.log("[panneaux] " + opened + "/" + FEATURE_PANELS.length
     + " ouverts (les gardes sans esquisse / sans 2e corps n'ouvrent pas)");
-  if (opened < 15) {
-    errors.push("trop peu de panneaux ouverts : " + opened + "/24");
+  const panelFloor = FEATURE_PANELS.length - 9;
+  if (opened < panelFloor) {
+    errors.push("trop peu de panneaux ouverts : " + opened + "/"
+      + FEATURE_PANELS.length);
   }
   await page.click('[data-tab="features"]');
   await sleep(200);
@@ -1649,6 +1659,69 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { timeout: 8000 },
   ).catch(() => {});
   await step("courbes graphe");
+
+  // N011b — créer une courbe depuis le ruban : une ligne, double-clic.
+  await page.click('[data-tab="features"]');
+  await sleep(200);
+  await page.click("#btn-graph-feature");
+  await page.waitForFunction(
+    () => document.querySelector("#panel .ptitle")?.textContent
+      === "Fonction graphe",
+    null,
+    { timeout: 8000 },
+  );
+  await page.locator("#panel select").first().selectOption("curve");
+  await page.click('#panel [title^="OK"]');
+  await page.waitForFunction(
+    () => window.__freesolidDebug?.graphFeatureActive === true,
+    null,
+    { timeout: 15000 },
+  );
+  page.once("dialog", (dialog) => { dialog.accept().catch(() => {}); });
+  await page.click("#graph-fn-close");
+  await page.waitForFunction(
+    () => window.__freesolidDebug?.graphFeatureActive !== true,
+    null,
+    { timeout: 8000 },
+  ).catch(() => {});
+  const n11bRows = await page.$$eval(
+    "#tree li.surface:not(.in-folder)",
+    (els) => els.map((el) => (el.textContent || "").trim()),
+  );
+  const n11bCurves = n11bRows.filter((text) =>
+    text.includes("Fonction graphe — Courbe"));
+  if (n11bCurves.length !== 1) {
+    errors.push("N011b : une ligne Courbe attendue dans les surfaces ("
+      + JSON.stringify(n11bRows) + ")");
+  } else {
+    await page.locator("#tree li.surface:not(.in-folder)")
+      .filter({ hasText: "Fonction graphe — Courbe" })
+      .first()
+      .dblclick();
+    const n11bReopened = await page.waitForFunction(
+      () => window.__freesolidDebug?.graphFeatureActive === true,
+      null,
+      { timeout: 8000 },
+    ).then(() => true).catch(() => false);
+    if (!n11bReopened) {
+      errors.push("N011b : le double-clic n'a pas rouvert l'éditeur");
+    } else {
+      const n11bCircle = await page.evaluate(() =>
+        [...document.querySelectorAll(
+          "#graph-view .graph-node[data-type='cercle']")].length > 0);
+      if (!n11bCircle) {
+        errors.push("N011b : l'éditeur rouvert devrait montrer le cercle");
+      }
+    }
+    page.once("dialog", (dialog) => { dialog.accept().catch(() => {}); });
+    await page.click("#graph-fn-close");
+    await page.waitForFunction(
+      () => window.__freesolidDebug?.graphFeatureActive !== true,
+      null,
+      { timeout: 8000 },
+    ).catch(() => {});
+  }
+  await step("courbe depuis le ruban");
 
   // N008 — nœud Python : la demande d'autorisation apparaît ;
   // refuser laisse la pièce intacte.

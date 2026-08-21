@@ -1043,3 +1043,74 @@ qu'il double le booléen face à une forme analytique.
 
 Tant que ces deux-là ne sont pas mesurés, **43 s est un point, pas un
 budget.** Écrit ici pour que la réserve soit tenue cette fois-ci.
+
+---
+
+# 7.9 P038 et P037 relus — une hypothèse fausse, et une promesse à retirer
+
+## P038 — ma piste était fausse, et le vrai défaut était pire
+
+J'avais désigné `face.hashCode()` comme coupable, en invoquant le retrait de
+`TShape::HashCode` par OCCT 7.8. **La sonde 2a a dit non** : `hashCode()`
+rend des entiers et ne lève pas.
+
+Ce qu'elle a trouvé est plus retors. **0 face sur 6** du Tip recouvre celles
+du Pad — et `isSame()` dit 0/6 aussi : ce sont des **copies OCCT distinctes**.
+PartDesign reconstruit les formes, donc toute comparaison d'*identité* échoue
+par construction, quelle que soit l'API.
+
+Et le vrai défaut n'était pas l'`except` que j'accusais : c'était le **repli
+sur le Tip**. Il affichait fièrement **6/6** alors que l'appariement échouait
+à 100 %. Un échec total déguisé en succès total — après un enlèvement, les
+dix faces étaient attribuées au Pocket, jamais au Pad.
+
+La leçon dépasse ce bug : **un repli silencieux est pire qu'une exception
+avalée.** L'exception laisse une trace ; le repli fabrique une réponse
+plausible et fausse, que rien ne vient contredire.
+
+Le correctif retenu — empreinte **aire + centre de masse**, après hash puis
+`isSame` — apparie 6/6 en ~1 ms, et `_face_match` **compte** désormais au lieu
+d'avaler. Une limite à connaître, puisqu'il s'agit d'une heuristique et non
+d'une identité : deux faces de même aire et même centre se confondraient. Le
+compteur la rendrait visible, ce qui est déjà mieux que l'ancien silence.
+
+## P037 — l'annonce est une extrapolation linéaire que les mesures démentent
+
+Le mécanisme est juste : `progress` répond hors verrou (avec le test qui le
+prouve), le noyau pousse par callback sans connaître le transport, aucun
+pourcentage inventé. Tout cela tient.
+
+**C'est l'annonce qui ne va pas.** `app/progress.js:8` :
+
+```js
+export const COMBINE_SECONDS_PER_STONE = 43 / 200;
+```
+
+Une constante linéaire, tirée d'**une** mesure sur **une** machine. Or les
+chiffres du même rapport la démentent déjà :
+
+| | Annoncé | Mesuré |
+|---|---|---|
+| 10 pierres, sur la VM | 2 s | **7,6 s** — 3,8 fois plus |
+| 200 pierres, sur la VM | 43 s | **~13 Go de RSS, plus de 18 minutes, sans finir** |
+
+Le second cas n'est pas une lenteur, c'est un **mode de défaillance** : à
+13 Go, le système peut tuer FreeCAD, et l'utilisateur perd son document —
+après avoir accepté une boîte de dialogue qui lui promettait 43 secondes.
+
+C'est exactement la faute que j'ai commise avec les 3,4 s : **une mesure
+unique généralisée en promesse.** Elle a juste été empaquetée dans le code
+cette fois.
+
+### Ce qui la corrigerait, et ne coûte presque rien
+
+La phase de compound est **comptable, rapide, et arrive en premier**. Elle
+donne donc un débit mesuré **sur cette machine, pour cette gemme, à cet
+instant** — de quoi calibrer l'estimation au lieu de la constanter.
+
+À défaut, retirer le point : *« plusieurs dizaines de secondes, davantage sur
+une machine chargée »* ne ment pas, là où « environ 43 secondes » ment déjà
+d'un facteur 4 au premier essai réel.
+
+Et le cas mémoire mérite son traitement propre : au-delà d'un certain nombre
+de pierres, ce n'est plus une attente, c'est un risque de perdre le document.

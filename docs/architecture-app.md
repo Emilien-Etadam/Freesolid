@@ -26,6 +26,10 @@ solveur et l'historique restent ceux de FreeCAD, exécuté **sans interface**.
   `.FCStd` ouvrables dans FreeCAD standard — la porte de sortie de
   l'utilisateur reste toujours ouverte.
 
+La coupe se lit dans les deux sens. Comment trancher un cas mixte — le
+besoin est à nous, la capacité manquante est à FreeCAD — et ce qu'on fait
+des manques ainsi découverts : [`amont-freecad.md`](amont-freecad.md).
+
 ## Le protocole (M0)
 
 Transport : HTTP JSON en localhost, zéro dépendance des deux côtés

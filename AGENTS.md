@@ -43,8 +43,15 @@ corps de fonctions / méthodes.
 ### Gotcha à connaître
 
 - `engine/server.py` n'a **pas** de garde `if __name__ == "__main__"`
-  (volontaire : `freecadcmd` n'exécute pas les scripts avec
-  `__name__ == "__main__"`). L'échappatoire est la variable
+  (volontaire). Le mécanisme exact, vérifié dans la source amont le
+  2026-08-21 (`src/App/Application.cpp:3108-3117`) : `freecadcmd fichier.py`
+  ne *lance* pas le script, il l'**importe comme module** — `addPythonPath`
+  sur le dossier, puis `loadModule` sur le radical du nom. D'où trois
+  conséquences : `__name__` vaut `"server"` et jamais `"__main__"`, le
+  dossier du script entre dans `sys.path`, et le nom de module est le
+  radical du fichier. FreeCAD ne retombe sur une vraie exécution — dans une
+  **copie** du dict de `__main__` — que si l'import lève.
+  L'échappatoire est la variable
   `FREESOLID_NO_SERVE` : si elle vaut `1` dans l'environnement, `server.py`
   se termine sans ouvrir le port. Les scripts de selftest la posent — donc
   **ne pas laisser `FREESOLID_NO_SERVE=1` exporté** dans le shell avant de

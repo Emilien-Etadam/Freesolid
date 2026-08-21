@@ -253,6 +253,19 @@ class Kernel:
         # Corps de gabarit déjà copiés : (gemme, diamètre) → nom d'objet.
         self._gem_bodies = {}
         self._reset_face_match()
+        # Callback d'avancement (phase, fait, total) — posé par le
+        # transport, jamais importé d'ici. Absent = no-op.
+        self._progress = None
+
+    def _report_progress(self, phase, fait=0, total=0):
+        """Nourrit l'état d'avancement. Aucun appel FreeCAD."""
+        callback = self._progress
+        if not callable(callback):
+            return
+        try:
+            callback(phase, fait, total)
+        except Exception:
+            pass
 
     # -- helpers ---------------------------------------------------------
 
@@ -293,6 +306,7 @@ class Kernel:
         doc = self._require_doc()
         doc.recompute()
         if not self._assembly:
+            self._report_progress("Reconstruction de l'arbre")
             self._refresh_gem_placements()
             self._refresh_gem_boolean_tools()
             doc.recompute()
@@ -2304,7 +2318,11 @@ class Kernel:
         placements = list(getattr(link, "PlacementList", None) or [])
         if not placements:
             return None
-        copies = [self._placed_gem_copy(base, place) for place in placements]
+        total = len(placements)
+        copies = []
+        for index, place in enumerate(placements, start=1):
+            self._report_progress("Construction du compound", index, total)
+            copies.append(self._placed_gem_copy(base, place))
         return Part.makeCompound(copies)
 
     def _gem_placement_fingerprint(self, link):
@@ -3183,6 +3201,12 @@ class Kernel:
             except AttributeError:
                 feature.Group = [tool_obj]
         feature.Label = labels[str(type)]
+        boolean_phases = {
+            "cut": "Soustraire",
+            "fuse": "Ajouter",
+            "common": "Intersection",
+        }
+        self._report_progress(boolean_phases[str(type)])
         try:
             self._recompute()
         except KernelError:
@@ -4742,6 +4766,7 @@ class Kernel:
         """
         from . import protocol
         body = self._require_body()
+        self._report_progress("Maillage")
         self._refresh_gem_placements()
         shape = getattr(body, "Shape", None)
         faces = []

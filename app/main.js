@@ -10,6 +10,7 @@ import {
 import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
 import { FEATURES } from "./features.js";
+import { formatProgressStatus } from "./progress.js";
 import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
 import {
@@ -78,10 +79,67 @@ async function call(op, params = {}) {
   return payload.result;
 }
 
+const PROGRESS_MS = 300;
+let progressTimer = null;
+let progressWatchers = 0;
+let progressGen = 0;
+let statusSticky = false;
+
+async function pollProgressOnce(gen) {
+  if (gen !== progressGen || statusSticky) return;
+  try {
+    const progress = await call("progress");
+    if (gen !== progressGen || statusSticky) return;
+    const text = formatProgressStatus(progress, Date.now() / 1000);
+    if (text) say(text);
+  } catch {
+    // Le sondage ne doit jamais masquer l'op en cours ni son erreur.
+  }
+}
+
+function startProgressWatch() {
+  progressWatchers += 1;
+  if (progressWatchers > 1) return;
+  const gen = ++progressGen;
+  document.body.classList.add("op-en-cours");
+  document.body.setAttribute("aria-busy", "true");
+  pollProgressOnce(gen);
+  progressTimer = setInterval(() => pollProgressOnce(gen), PROGRESS_MS);
+}
+
+function stopProgressWatch() {
+  progressWatchers = Math.max(0, progressWatchers - 1);
+  if (progressWatchers > 0) return;
+  progressGen += 1;
+  if (progressTimer != null) {
+    clearInterval(progressTimer);
+    progressTimer = null;
+  }
+  document.body.classList.remove("op-en-cours");
+  document.body.removeAttribute("aria-busy");
+}
+
 function say(text, isError = false) {
+  if (statusSticky && !isError) return;
+  if (!isError) statusSticky = false;
   statusEl.textContent = text;
   statusEl.className = isError ? "err" : "";
+  if (statusSticky) statusEl.classList.add("sticky");
+  statusEl.title = statusSticky ? "Cliquer pour fermer" : "";
 }
+
+/** Erreur qui reste jusqu'à ce que l'utilisateur clique la barre d'état. */
+function sayUntilAck(text) {
+  statusSticky = true;
+  say(text, true);
+}
+
+statusEl.addEventListener("click", () => {
+  if (!statusSticky) return;
+  statusSticky = false;
+  statusEl.classList.remove("sticky");
+  statusEl.title = "";
+});
 
 // PropertyManager-style side panel — feature options live there, not in
 // prompt() dialogs. See panel.js for the SolidWorks anatomy. Closing the
@@ -4295,6 +4353,8 @@ function selectComponent(name) {
 async function refreshAssembly(treePromise) {
   const gen = ++viewGen;
   lastClearedSelections = false;
+  startProgressWatch();
+  let ok = false;
   try {
     assemblyState = await treePromise;
     if (gen !== viewGen) return;
@@ -4302,11 +4362,14 @@ async function refreshAssembly(treePromise) {
     const meshes = await call("tessellate_assembly");
     if (gen !== viewGen) return;
     showAssemblyMeshes(meshes);
-    if (!lastClearedSelections) say("Assemblage à jour.");
+    ok = !lastClearedSelections;
   } catch (error) {
     if (gen !== viewGen) return;
-    say(error.message, true);
+    sayUntilAck(error.message);
+  } finally {
+    stopProgressWatch();
   }
+  if (ok) say("Assemblage à jour.");
 }
 
 // Rafraîchit dans le bon mode — les ops transverses (renommer,
@@ -4314,6 +4377,8 @@ async function refreshAssembly(treePromise) {
 async function refreshAny(treePromise) {
   const gen = ++viewGen;
   lastClearedSelections = false;
+  startProgressWatch();
+  let ok = false;
   try {
     const tree = await treePromise;
     if (gen !== viewGen) return;
@@ -4328,11 +4393,14 @@ async function refreshAny(treePromise) {
       await updateViewport(gen);
       if (gen !== viewGen) return;
     }
-    if (!lastClearedSelections) say("À jour.");
+    ok = !lastClearedSelections;
   } catch (error) {
     if (gen !== viewGen) return;
-    say(error.message, true);
+    sayUntilAck(error.message);
+  } finally {
+    stopProgressWatch();
   }
+  if (ok) say("À jour.");
 }
 
 function renderAssemblyTree(tree) {
@@ -4650,17 +4718,22 @@ document.getElementById("btn-explode").addEventListener("click", () => {
 async function refresh(treePromise) {
   const gen = ++viewGen;
   lastClearedSelections = false;
+  startProgressWatch();
+  let ok = false;
   try {
     const tree = await treePromise;
     if (gen !== viewGen) return;
     renderTree(tree);
     await updateViewport(gen);
     if (gen !== viewGen) return;
-    if (!lastClearedSelections) say("À jour.");
+    ok = !lastClearedSelections;
   } catch (error) {
     if (gen !== viewGen) return;
-    say(error.message, true);
+    sayUntilAck(error.message);
+  } finally {
+    stopProgressWatch();
   }
+  if (ok) say("À jour.");
 }
 
 document.getElementById("btn-new").addEventListener("click", () => {
@@ -4876,6 +4949,10 @@ function openFeaturePanel(entry, sketchOverride) {
           : (entry.invalid ?? "Valeurs invalides");
         say(msg, true);
         return;
+      }
+      if (typeof entry.confirm === "function") {
+        const question = entry.confirm(v, ctx);
+        if (question && !confirm(question)) return;
       }
       const run = entry.refresh === "any" ? refreshAny : refresh;
       const promise = call(built.op, built.params);

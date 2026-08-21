@@ -6,6 +6,7 @@
 
 import { num } from "./num.js";
 import { minimalGraphCurve, minimalGraphFeature, minimalRepeatGraph } from "./graph.js";
+import { combineConfirmMessage } from "./progress.js";
 
 /** Message moteur quand aucune esquisse libre n'est disponible. */
 export const NO_SKETCH_AVAILABLE =
@@ -550,6 +551,10 @@ export const FEATURES = [
     note: "S'applique au corps actif. Un second corps est absorbé ; "
           + "un semis de pierres reste dans l'arbre, et l'empreinte "
           + "se recalcule à chaque reconstruction.",
+    // Un booléen de semis peut durer des dizaines de secondes : l'aperçu
+    // jaune le lancerait à l'ouverture du panneau, avant la confirmation.
+    preview: false,
+    confirm: (v, ctx) => combineConfirmMessage(ctx.lastTree, v.tool),
     build: (v) => ({ op: "add_boolean",
       params: { tool: v.tool, type: v.type } }),
     refresh: "part",

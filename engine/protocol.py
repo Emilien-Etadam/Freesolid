@@ -132,6 +132,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "export_part": _Req(("path", str)),  # .stl ou .step selon l'extension
     "preview": _Req(("op", str), ("params", dict)),
                                        # aperçu jaune : op exécutée puis annulée
+    "progress": (),                    # avancement hors noyau — jamais de verrou
     "add_rect_sketch": _Req(("width", float), ("height", float)),
                                        # optional: face (id) to attach
     "add_pad": _Req(("length", float)),  # optional: sketch, reversed, midplane

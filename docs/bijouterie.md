@@ -284,8 +284,9 @@ sièges, `add_revolution` + `add_polar_pattern` pour les griffes.
 
 ## 5.6 Verdict de la sonde — exécutée le 2026-08-21
 
-`scripts/spike-pierres.py` sur **FreeCAD 1.1.3**. Verdict : **vert sur la
-chaîne, deux réserves chiffrées.**
+`scripts/spike-pierres.py` sur **FreeCAD 1.1.3**, deux passages. Verdict :
+**vert sur toute la chaîne — une seule réserve subsiste, et elle est
+bornée.**
 
 ### Ce qui est acquis
 
@@ -297,13 +298,41 @@ chaîne, deux réserves chiffrées.**
 | **Q2** **l'ancrage tient** | jonc de rayon 10 → 12 : la pierre reste **collée**, à la **même hauteur**, au **même angle**, normale toujours radiale. Témoin négatif : un placement figé aurait décollé de **2,0 mm** |
 | **Q3** le domaine trimmé | `isPartOfDomain` accepte le plein, **refuse le trou**. Un dépôt hors matière se refuse avant d'exister |
 | **Q4** la couture | pas de repli : `u` revient à 6,282 et non à 0. Le drag cartésien traverse la couture sans téléporter |
+| **Q6** 200 sièges | **3,4 s** par compound, et le coût par pierre est **plat** (≈ 17 ms). Le semis passe d'un bloc |
 | **Q7** 200 pierres | `App::Link` + `PlacementList` : **0,002 s**. L'affichage n'est pas un sujet |
 
 **Q2 était le verdict, et il est vert.** L'ancrage `(u, v)` survit au
 changement de cote : c'est exactement ce qu'un placement figé ne sait pas
 faire, et c'est toute la raison de mener ça en BRep plutôt qu'en maillage.
 
-### Les deux réserves
+### Le coût des sièges — réserve levée
+
+Chiffré au second passage, et proprement.
+
+| Sièges | Une coupe par pierre | Compound, une seule coupe | Gain | Par pierre |
+|---|---|---|---|---|
+| 40 | 0,97 s | **0,63 s** | 1,5× | 15,6 ms |
+| 100 | 3,59 s | **1,67 s** | 2,2× | 16,7 ms |
+| 200 | 11,06 s | **3,36 s** | 3,3× | 16,8 ms |
+
+Deux lectures, et la seconde est la bonne nouvelle :
+
+- **Le compound est linéaire** — 15,6 → 16,7 → 16,8 ms par pierre, plat.
+  200 sièges coûtent **3,4 s**, et 400 en coûteraient 6,7. Pas
+  interactif, mais c'est une reconstruction, pas un drag : parfaitement
+  tenable. **Le semis passe d'un bloc, pas besoin de le découper en
+  paquets.**
+- **La coupe une par une est superlinéaire** — 5× plus de pierres coûtent
+  11,4× plus de temps. D'où un gain qui *grandit* avec le semis : 1,5× à
+  40, 3,3× à 200, et l'écart continue de se creuser. À 200 pierres le
+  compound économise près de huit secondes.
+
+Les deux voies rendent le **même volume** et un **solide valide** : le
+raccourci ne coûte aucune exactitude.
+
+### La réserve qui reste
+
+Une seule, et elle ne concerne pas le jonc.
 
 **Sur surface libre, l'ancrage glisse de 0,13 mm** (Q2b). En bombant un
 chaton B-spline de 2,0 à 3,5, la pierre reste *sur* la surface et se
@@ -318,30 +347,34 @@ paramétrisation est une formule et ne dérive pas (Q2 le montre à zéro). La
 dérive ne concerne que les surfaces libres, et croît avec l'ampleur de la
 retouche. À dire à l'utilisateur, pas à masquer.
 
-**Le coût des sièges reste à chiffrer.** À 40 sièges, le compound ne gagne
-que **1,6×** sur la coupe une par une (0,98 s → 0,62 s) — utile, pas
-décisif. 0,62 s pour 40 pierres ne dit rien de 200 : c'est la **courbe** qui
-manque, pas le point.
+### Une sonde qui ne mesure toujours rien — et une hypothèse fausse
 
-### Une sonde qui ne mesurait rien
+**Q5 est cassée aux deux passages.** `Part.Face.tessellate()` a rendu le
+même maillage — 31 752 triangles, 0,0039 mm — pour les trois déviations
+demandées (0,5 · 0,1 · 0,02).
 
-**Q5 était invalide au premier passage.** `Part.Face.tessellate()` met sa
-triangulation **en cache sur la forme** : les trois déviations demandées
-(0,5 · 0,1 · 0,02) ont rendu trois fois le même maillage — 31 752 triangles,
-même écart de 0,0039 mm. La sonde mesurait une seule déviation en croyant en
-mesurer trois.
+J'ai supposé un **cache de triangulation sur la forme** et corrigé en
+construisant une face neuve à chaque tour. **L'hypothèse était fausse** :
+au second passage, face neuve, les chiffres n'ont pas bougé d'un iota.
 
-Corrigé (face neuve à chaque tour), en même temps que Q6 qui ne testait
-qu'une seule taille. **À relancer** :
+Hypothèse restante, à départager au prochain passage : sur une face
+**analytique** (un tore), le mailleur OCCT subdivise par l'**angle** et la
+flèche linéaire ne mord pas. La sonde compare désormais tore et B-spline sur
+une plage large (5,0 → 0,01) et rend un drapeau `deviation_agit` : si la
+surface libre répond et l'analytique non, la question est close.
 
-```bash
-~/squashfs-root/usr/bin/freecadcmd scripts/spike-pierres.py
-```
+**Mais Q5 n'est plus sur le chemin critique**, et c'est ce qui compte. La
+question de conception qu'elle portait — *le drag client-side sur la
+tessellation est-il assez fidèle ?* — **est déjà tranchée par Q1**, mesurée
+sur de vraies tessellations : **0,0025 mm** sur le tore, **0,0028** sur le
+cylindre, **0,0076** sur la sphère. Un ordre de grandeur sous le centième de
+millimètre. Et rien ne pousse à dégrossir le maillage, puisque Q7 pose 200
+pierres en 0,002 s.
 
-Ce que le second passage doit dire : l'enfoncement réel à la déviation que
-l'app utilise (0,1), et si `ms_par_pierre` reste plat entre 40, 100 et 200
-sièges — plat, le semis passe d'un bloc ; croissant, il faudra le découper
-en paquets.
+La sonde mesure maintenant en plus, directement, l'enfoncement **du maillage
+que l'app produit réellement** (déviation 0,1, défaut de
+`Kernel.tessellate`) — le seul chiffre dont la conception dépende, et il ne
+dépend pas de la réponse ci-dessus.
 
 ### Les deux règles que la sonde impose au code
 

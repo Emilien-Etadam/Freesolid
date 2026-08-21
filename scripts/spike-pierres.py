@@ -20,8 +20,10 @@ Les sept questions, dans l'ordre où elles peuvent tuer l'approche :
   Q4  couture       une pierre près de la couture d'une surface
                     périodique saute-t-elle ?
   Q5  tessellation  écart entre ce que le client voit pendant le drag et
-                    ce que le moteur pose au relâchement
+                    ce que le moteur pose au relâchement — et, accessoire,
+                    pourquoi la déviation demandée semble sans effet
   Q6  booléen       N sièges : N coupes, ou un compound et une seule ?
+                    La COURBE (40/100/200), pas un point
   Q7  instances     App::Link à N placements — ou N objets ?
 """
 
@@ -353,26 +355,57 @@ note("q4_couture", probe_seam)
 #      De combien la pierre s'enfonce-t-elle avant le recalage exact ?
 # --------------------------------------------------------------------------
 
+def sink_of(face, deviation):
+    """(nb de triangles, enfoncement max) — l'écart entre ce que le client
+    voit pendant le drag et la surface exacte visée au relâchement."""
+    vertices, triangles = face.tessellate(deviation)
+    worst = 0.0
+    for a, b, c in triangles[::max(1, len(triangles) // 200)]:
+        centre = (vertices[a] + vertices[b] + vertices[c]) * (1.0 / 3.0)
+        u, v = face.Surface.parameter(centre)
+        worst = max(worst, centre.distanceToPoint(face.valueAt(u, v)))
+    return len(triangles), worst
+
+
 def probe_tessellation():
+    """Deux questions distinctes, dont une seule est critique.
+
+    (a) La déviation demandée change-t-elle quelque chose ? Le premier
+        passage a rendu trois fois le même maillage. J'ai supposé un cache
+        de triangulation sur la forme : **hypothèse fausse** — avec une
+        face neuve à chaque tour, les chiffres n'ont pas bougé d'un iota.
+        Hypothèse restante : sur une face **analytique** (tore), le
+        mailleur OCCT subdivise par l'angle et la flèche linéaire ne mord
+        pas. On la départage en comparant tore et B-spline sur une plage
+        large — si la libre répond et l'analytique non, c'est réglé.
+
+    (b) Pour le maillage que l'app produit RÉELLEMENT — déviation 0,1,
+        défaut de ``Kernel.tessellate`` — de combien la pierre
+        s'enfonce-t-elle pendant le drag ? **Le seul chiffre dont la
+        conception dépende**, et il ne dépend pas de la réponse à (a).
+    """
     out = {}
-    for deviation in (0.5, 0.1, 0.02):
-        # PIÈGE, vu au premier passage : tessellate() met sa triangulation
-        # en cache SUR la forme. Réutiliser SURFACES["tore"] rendait trois
-        # fois le MÊME maillage (31 752 triangles, même écart) — la sonde
-        # mesurait une seule déviation en croyant en mesurer trois.
-        # D'où une face neuve à chaque tour.
-        face = curved_face(Part.makeTorus(10.0, 2.0))
-        vertices, triangles = face.tessellate(deviation)
-        worst = 0.0
-        for tri in triangles[::max(1, len(triangles) // 200)]:
-            a, b, c = tri
-            centre = (vertices[a] + vertices[b] + vertices[c]) * (1.0 / 3.0)
-            u, v = face.Surface.parameter(centre)
-            worst = max(worst, centre.distanceToPoint(face.valueAt(u, v)))
-        out["deviation_{}".format(deviation)] = {
-            "triangles": len(triangles),
-            "enfoncement_max_mm": round(worst, 6),
-        }
+    for name, make in (
+            ("tore_analytique", lambda: curved_face(Part.makeTorus(10.0, 2.0))),
+            ("bspline_libre", lambda: bumped_bspline(2.0))):
+        rows = {}
+        for deviation in (5.0, 1.0, 0.1, 0.01):
+            n, worst = sink_of(make(), deviation)  # face neuve : pas de cache
+            rows["dev_{}".format(deviation)] = {
+                "triangles": n, "enfoncement_max_mm": round(worst, 6)}
+        rows["deviation_agit"] = len(
+            {r["triangles"] for r in rows.values()
+             if isinstance(r, dict)}) > 1
+        out[name] = rows
+
+    n, worst = sink_of(curved_face(Part.makeTorus(10.0, 2.0)), 0.1)
+    out["ce_que_lapp_produit"] = {
+        "deviation": 0.1,
+        "triangles": n,
+        "enfoncement_max_mm": round(worst, 6),
+        # Sous le centième de millimètre, le drag client-side est acquis.
+        "invisible": worst < 0.01,
+    }
     return out
 
 

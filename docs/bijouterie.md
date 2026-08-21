@@ -282,21 +282,82 @@ Cinq ops, dans le style de `engine/protocol.py` :
 Tout le reste du sertissage est **déjà couvert** : `add_boolean` pour les
 sièges, `add_revolution` + `add_polar_pattern` pour les griffes.
 
-## 5.6 Verdict
+## 5.6 Verdict de la sonde — exécutée le 2026-08-21
 
-🟧 — **codable, et c'est le bon premier chantier de la piste bijouterie** :
-il réutilise le picking par face (fait), la tessellation groupée (faite),
-`normalAt` (fait), et le partage client/serveur de l'esquisse (fait). Ce qui
-manque tient en une projection inverse et cinq ops.
+`scripts/spike-pierres.py` sur **FreeCAD 1.1.3**. Verdict : **vert sur la
+chaîne, deux réserves chiffrées.**
 
-Mais la sonde d'abord — convention du dépôt, et ici elle a de quoi mordre :
-la stabilité de `(u, v)` sur surface libre (Q2b) et le coût des booléens
-(Q6) peuvent changer la conception, pas seulement la retarder.
+### Ce qui est acquis
+
+| | Résultat |
+|---|---|
+| **Q0** les méthodes existent | 7 sur 7 : `valueAt`, `normalAt`, `tangentAt`, `isPartOfDomain`, `curvatureAt`, `Surface.value`, `Surface.parameter` |
+| **Q1** l'inverse point → (u, v) | marche sur les quatre surfaces (plan, cylindre, tore, B-spline). **Les trois voies rendent des (u, v) identiques au millionième** — `Surface.parameter` suffit, les replis sont inutiles |
+| **Q1** l'aimantation | **0,00007 à 0,008 mm** entre le point cliqué et le point exact reprojeté. Invisible |
+| **Q2** **l'ancrage tient** | jonc de rayon 10 → 12 : la pierre reste **collée**, à la **même hauteur**, au **même angle**, normale toujours radiale. Témoin négatif : un placement figé aurait décollé de **2,0 mm** |
+| **Q3** le domaine trimmé | `isPartOfDomain` accepte le plein, **refuse le trou**. Un dépôt hors matière se refuse avant d'exister |
+| **Q4** la couture | pas de repli : `u` revient à 6,282 et non à 0. Le drag cartésien traverse la couture sans téléporter |
+| **Q7** 200 pierres | `App::Link` + `PlacementList` : **0,002 s**. L'affichage n'est pas un sujet |
+
+**Q2 était le verdict, et il est vert.** L'ancrage `(u, v)` survit au
+changement de cote : c'est exactement ce qu'un placement figé ne sait pas
+faire, et c'est toute la raison de mener ça en BRep plutôt qu'en maillage.
+
+### Les deux réserves
+
+**Sur surface libre, l'ancrage glisse de 0,13 mm** (Q2b). En bombant un
+chaton B-spline de 2,0 à 3,5, la pierre reste *sur* la surface et se
+réoriente correctement (10,5° de bascule), mais elle **dérive de 0,13 mm en
+plan**. Ce n'est pas un défaut d'implémentation : une B-spline interpolée se
+**re-paramétrise** quand ses pôles bougent, donc `(u, v)` ne désigne plus
+tout à fait le même endroit.
+
+Portée réelle : nulle sur les surfaces **analytiques** — révolution,
+balayage, cylindre, tore, c'est-à-dire **le cas du jonc**, où la
+paramétrisation est une formule et ne dérive pas (Q2 le montre à zéro). La
+dérive ne concerne que les surfaces libres, et croît avec l'ampleur de la
+retouche. À dire à l'utilisateur, pas à masquer.
+
+**Le coût des sièges reste à chiffrer.** À 40 sièges, le compound ne gagne
+que **1,6×** sur la coupe une par une (0,98 s → 0,62 s) — utile, pas
+décisif. 0,62 s pour 40 pierres ne dit rien de 200 : c'est la **courbe** qui
+manque, pas le point.
+
+### Une sonde qui ne mesurait rien
+
+**Q5 était invalide au premier passage.** `Part.Face.tessellate()` met sa
+triangulation **en cache sur la forme** : les trois déviations demandées
+(0,5 · 0,1 · 0,02) ont rendu trois fois le même maillage — 31 752 triangles,
+même écart de 0,0039 mm. La sonde mesurait une seule déviation en croyant en
+mesurer trois.
+
+Corrigé (face neuve à chaque tour), en même temps que Q6 qui ne testait
+qu'une seule taille. **À relancer** :
 
 ```bash
-freecadcmd scripts/spike-pierres.py
+~/squashfs-root/usr/bin/freecadcmd scripts/spike-pierres.py
 ```
 
-Sept questions, un rapport JSON, aucune UI engagée. **Q2 est le verdict** :
-si l'ancrage `(u, v)` ne survit pas au changement de cote, il ne reste
-qu'un placement figé — et alors autant le faire sous Blender.
+Ce que le second passage doit dire : l'enfoncement réel à la déviation que
+l'app utilise (0,1), et si `ms_par_pierre` reste plat entre 40, 100 et 200
+sièges — plat, le semis passe d'un bloc ; croissant, il faudra le découper
+en paquets.
+
+### Les deux règles que la sonde impose au code
+
+1. **Ne jamais interpoler `u`, ni comparer des écarts de `u`** pour juger
+   qu'une pierre en touche une autre. Sur une surface périodique `u` boucle
+   à 2π : deux pierres voisines peuvent être à 2π l'une de l'autre en
+   paramètre. Les écarts se mesurent **en 3D**, toujours.
+2. **Ne jamais stocker une matrice.** Ni comme cache, ni « en attendant ».
+   Dès qu'une matrice figée existe quelque part, elle finit par faire
+   autorité un jour de reconstruction, et le bénéfice entier disparaît.
+
+### Verdict
+
+🟢 sur le mécanisme — **c'est le bon premier chantier de la piste
+bijouterie**. Il réutilise le picking par face (fait), la tessellation
+groupée (faite), `normalAt` (fait), et le partage client/serveur de
+l'esquisse (fait). Ce qui manque tient en une projection inverse et cinq
+ops : voir
+[`prompts/P034-pierres-sur-surface.md`](../prompts/P034-pierres-sur-surface.md).

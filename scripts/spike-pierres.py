@@ -66,6 +66,22 @@ def curved_face(shape):
     return shape.Faces[0]
 
 
+def outer_cylinder_face(shape):
+    """La face cylindrique de plus GRAND rayon — le dessus du jonc.
+
+    Sur un tube, ``curved_face`` rendrait la première face non plane, qui
+    peut être l'alésage : normale rentrante, sièges creusés du mauvais
+    côté, chronomètre qui mesure autre chose. Ici le choix est explicite.
+    """
+    best = None
+    for face in shape.Faces:
+        if face.Surface.TypeId != "Part::GeomCylinder":
+            continue
+        if best is None or face.Surface.Radius > best.Surface.Radius:
+            best = face
+    return best if best is not None else curved_face(shape)
+
+
 SURFACES = {}
 
 
@@ -340,7 +356,12 @@ note("q4_couture", probe_seam)
 def probe_tessellation():
     out = {}
     for deviation in (0.5, 0.1, 0.02):
-        face = SURFACES["tore"]
+        # PIÈGE, vu au premier passage : tessellate() met sa triangulation
+        # en cache SUR la forme. Réutiliser SURFACES["tore"] rendait trois
+        # fois le MÊME maillage (31 752 triangles, même écart) — la sonde
+        # mesurait une seule déviation en croyant en mesurer trois.
+        # D'où une face neuve à chaque tour.
+        face = curved_face(Part.makeTorus(10.0, 2.0))
         vertices, triangles = face.tessellate(deviation)
         worst = 0.0
         for tri in triangles[::max(1, len(triangles) // 200)]:
@@ -363,17 +384,27 @@ note("q5_tessellation", probe_tessellation)
 #      seule coupe ? La réponse décide si 200 pierres sont tenables.
 # --------------------------------------------------------------------------
 
-def probe_boolean(count=40):
-    band = Part.makeCylinder(10.0, 6.0).cut(Part.makeCylinder(8.5, 6.0))
-    face = curved_face(band)
+PAS_MM = 1.5  # entraxe réaliste entre deux pierres d'un rang
+
+
+def boolean_round(count):
+    """N sièges creusés dans un jonc, à entraxe constant.
+
+    Le rayon du jonc suit le nombre de pierres : à rayon figé, 200 sièges
+    se recouperaient et trancheraient le jonc — on mesurerait la faillite
+    du jeu d'essai, pas le coût du booléen. À entraxe constant, chaque
+    coupe garde la même difficulté locale et seul le NOMBRE varie : c'est
+    la question posée.
+    """
+    r_out = max(10.0, count * PAS_MM / (2.0 * math.pi))
+    band = (Part.makeCylinder(r_out, 6.0)
+            .cut(Part.makeCylinder(r_out - 1.5, 6.0)))
+    face = outer_cylinder_face(band)
     u0, u1, v0, v1 = face.ParameterRange
     seats = []
     for i in range(count):
         u = u0 + (u1 - u0) * (i + 0.5) / count
-        # Rayon tenu sous le demi-pas (62,8 mm de circonférence / 40),
-        # sinon les sièges se recoupent et tranchent le jonc en deux —
-        # l'échec serait celui du jeu d'essai, pas du booléen.
-        cone = Part.makeCone(0.5, 0.1, 2.0)
+        cone = Part.makeCone(PAS_MM * 0.35, 0.1, 2.0)
         cone.Placement = placement_at(face, u, (v0 + v1) / 2.0, lift=-1.0)
         seats.append(cone)
 
@@ -392,9 +423,18 @@ def probe_boolean(count=40):
         "coupe_par_pierre_s": round(t_seq, 3),
         "compound_une_coupe_s": round(t_bulk, 3),
         "gain": round(t_seq / t_bulk, 1) if t_bulk > 1e-6 else None,
+        # Le chiffre qui se projette : coût marginal d'une pierre.
+        "ms_par_pierre": round(t_bulk * 1000.0 / count, 2),
         "meme_volume": abs(one_by_one.Volume - at_once.Volume) < 1e-6,
         "solide_valide": at_once.isValid() and len(at_once.Solids) == 1,
     }
+
+
+def probe_boolean():
+    """La courbe, pas un point : 40 sièges tenables ne disent rien de 200.
+    Si ms_par_pierre reste plat, le coût est linéaire et 200 pierres
+    passent ; s'il grimpe, il faudra découper le semis en paquets."""
+    return {"n{}".format(n): boolean_round(n) for n in (40, 100, 200)}
 
 
 note("q6_booleen", probe_boolean)
@@ -444,7 +484,9 @@ verdict = {
     "Q2b surface libre": bool(
         (R.get("q2b_ancrage_libre") or {}).get("sur_la_surface")),
     "Q3 domaine": bool((R.get("q3_domaine") or {}).get("verdict")),
-    "Q6 booléen": bool((R.get("q6_booleen") or {}).get("solide_valide")),
+    "Q6 booléen": all(
+        isinstance(v, dict) and v.get("solide_valide")
+        for v in (R.get("q6_booleen") or {"_": None}).values()),
     "Q7 instances": bool((R.get("q7_instances") or {}).get("element_count")),
 }
 print("\n".join("{}  {}".format("OK  " if v else "NON ", k)

@@ -195,7 +195,7 @@ enregistrements de fonction gardent `Edge3` / `Face2`, c'est-à-dire le nom
 *indexé*, le fragile.
 
 Le spike a tourné le 2026-08-21 sur un FreeCAD 1.1.3 réel
-(`scripts/spike-element-map.py`, PR #63), et il
+([`scripts/spike-element-map.py`](../scripts/spike-element-map.py), PR #63), et il
 a corrigé la forme de cet identifiant : **un nom mappé est porté par la
 forme d'une fonction, pas par le document.** Le nom d'une face du `Pad` ne
 résout ni sur la forme du `Pocket` ni sur celle du `Body`. Ce qu'on stocke

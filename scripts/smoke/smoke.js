@@ -91,7 +91,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       + " (attendu " + expectedGroups.join(", ") + ")");
   }
 
-  // 0. Ids des 23 panneaux (registry FEATURES) + bascule libellés du ruban.
+  // 0. Ids des 24 panneaux (registry FEATURES) + bascule libellés du ruban.
   const FEATURE_PANELS = [
     { id: "btn-pad", tab: "features" },
     { id: "btn-pocket", tab: "features" },
@@ -103,6 +103,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-helix", tab: "features" },
     { id: "btn-text", tab: "features" },
     { id: "btn-graph-feature", tab: "features" },
+    { id: "btn-repeat-variable", tab: "features" },
     { id: "btn-fillet", tab: "features" },
     { id: "btn-chamfer", tab: "features" },
     { id: "btn-shell", tab: "features" },
@@ -117,8 +118,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-surf-sew", tab: "surfaces" },
     { id: "btn-surf-thicken", tab: "surfaces" },
   ];
-  if (FEATURE_PANELS.length !== 23) {
-    errors.push("harnais : 23 panneaux attendus, "
+  if (FEATURE_PANELS.length !== 24) {
+    errors.push("harnais : 24 panneaux attendus, "
       + FEATURE_PANELS.length + " déclarés");
   }
   let opened = 0;
@@ -145,7 +146,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   console.log("[panneaux] " + opened + "/" + FEATURE_PANELS.length
     + " ouverts (les gardes sans esquisse / sans 2e corps n'ouvrent pas)");
   if (opened < 15) {
-    errors.push("trop peu de panneaux ouverts : " + opened + "/23");
+    errors.push("trop peu de panneaux ouverts : " + opened + "/24");
   }
   await page.click('[data-tab="features"]');
   await sleep(200);
@@ -1699,7 +1700,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // N010b — répétition variable : poser un nœud instance et appliquer.
   await page.click('[data-tab="features"]');
   await sleep(200);
-  const padRow = page.locator("#tree li.feat").filter({ hasText: /Bossage/ }).first();
+  const repeatPadRow = page.locator("#tree li.feat").filter({ hasText: /Bossage/ }).first();
   await page.click("#btn-repeat-variable");
   await page.waitForFunction(
     () => document.querySelector("#panel .ptitle")?.textContent
@@ -1713,8 +1714,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("N010b : le panneau doit dire que la répétition s'arrête "
       + "si la topologie change (" + repeatNote.slice(0, 180) + ")");
   }
-  if (await padRow.count()) {
-    await padRow.click();
+  if (await repeatPadRow.count()) {
+    await repeatPadRow.click();
     await sleep(400);
   } else {
     errors.push("N010b : aucune fonction Bossage dans l'arbre");

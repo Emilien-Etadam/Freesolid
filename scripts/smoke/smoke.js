@@ -913,8 +913,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         || "",
     };
   });
-  if (paletteState.count !== 23) {
-    errors.push("N005 : palette " + paletteState.count + " items (attendu 23)");
+  if (paletteState.count !== 24) {
+    errors.push("N005 : palette " + paletteState.count + " items (attendu 24)");
   }
   if (!paletteState.filletDisabled) {
     errors.push("N005 : Congé devrait être grisé sans face sélectionnée");
@@ -1699,6 +1699,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("nœud Python");
 
   // P034 — pierre aimantée sur un cylindre : pose, drag local, recalage.
+  // La vue graphe recouvre le canvas : Échap d'abord, sinon le drag
+  // clique un nœud au lieu de la pierre.
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(
+    () => !document.getElementById("graph-view")?.classList.contains("open"),
+    null,
+    { timeout: 5000 },
+  ).catch(async () => {
+    await page.keyboard.press("Escape");
+  });
+  await sleep(300);
   const p034 = await page.evaluate(async () => {
     const api = async (op, params = {}) => {
       const r = await fetch("/api", {
@@ -1769,7 +1780,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }
     await sleep(1500);
     await page.evaluate(() => window.__freesolidDebug?.refresh?.());
-    await sleep(1500);
+    await sleep(800);
+    // Recadrer : le new_part API ne touche pas la caméra, et un jonc
+    // de 20 mm est minuscule dans le cadre laissé par la pièce vitrine.
+    await page.click("#view-fit");
+    await sleep(400);
     const gemUi = await page.evaluate(() => ({
       meshes: window.__freesolidDebug?.gemMeshCount ?? 0,
       instances: window.__freesolidDebug?.gemInstanceCount ?? 0,

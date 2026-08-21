@@ -3,7 +3,10 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createSketchMode } from "./sketch.js";
+import { createSketchMode, createDimSprite } from "./sketch.js";
+import {
+  dimEditPayload, dimLabel, openDimEditor, sketchDimAnchor,
+} from "./dims.js";
 import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
 import { FEATURES } from "./features.js";
@@ -123,6 +126,7 @@ let sketchHidesVolumes = false;
 
 function applyVolumeVisibility() {
   volumesGroup.visible = !sketchHidesVolumes;
+  featureDimsGroup.visible = !sketchHidesVolumes;
 }
 
 function volumeVisibleCount() {
@@ -178,6 +182,16 @@ window.__freesolidDebug = {
   get sketchScreenPoint() { return sketchScreenPoint(); },
   get surfaceMeshCount() { return surfaceMeshes.length; },
   get surfaceScreenPoint() { return surfaceScreenPoint(); },
+  get gemMeshCount() { return gemMeshes.length; },
+  get gemInstanceCount() {
+    return gemMeshes.reduce((n, mesh) => n + mesh.count, 0);
+  },
+  get gemScreenPoint() { return gemScreenPoint(); },
+  get gemWorldPositions() { return gemWorldPositions(); },
+  get gemDragging() { return gemDrag != null; },
+  get featureDimCount() { return featureDimSprites.length; },
+  get selectedFeatureName() { return selectedFeatureName; },
+  refresh: () => refresh(call("get_tree")),
   get graphFeatureActive() { return graphFn.active; },
   get graphFeatureKind() { return graphFn.kind; },
   get graphFeatureErrorNode() { return graphFn.errorNode; },
@@ -240,6 +254,19 @@ let sketchLineMeshes = []; // esquisses libres, un LineSegments chacune
 let hoveredSketch = null;  // { name, label } | null
 let hoveredSurface = null; // { name, label } | null
 let selectedSurface = null; // { name, label } | null
+let gemMeshes = []; // InstancedMesh, un par semis
+let lastFaceHit = null; // { face, x, y, z } du dernier clic face
+let gemDrag = null; // drag local, zéro réseau jusqu'au pointerup
+let selectedFeatureName = null;
+const featureDimsGroup = new THREE.Group();
+featureDimsGroup.renderOrder = 24;
+scene.add(featureDimsGroup);
+let featureDimSprites = [];
+let featureDimContext = null; // { feature, hit }
+const warnedSplineFaces = new Set();
+const gemMaterial = new THREE.MeshStandardMaterial({
+  color: 0xd4e4f2, metalness: 0.35, roughness: 0.22,
+});
 
 // Qui alloue dispose. Les matériaux partagés (constantes de module) ne
 // portent pas le flag et ne sont jamais disposés ; tout matériau créé
@@ -252,6 +279,108 @@ function disposeSubtree(root) {
       if (m && m.userData?.own) { m.map?.dispose(); m.dispose(); }
     }
   });
+}
+
+function applyPackedGeometry(geometry, packed) {
+  geometry.setAttribute("position",
+    new THREE.Float32BufferAttribute(packed.positions, 3));
+  if (packed.indices) geometry.setIndex(packed.indices);
+  if (packed.normals && packed.normals.length === packed.positions.length) {
+    geometry.setAttribute("normal",
+      new THREE.Float32BufferAttribute(packed.normals, 3));
+  } else {
+    geometry.computeVertexNormals();
+  }
+}
+
+function detachGemMeshes() {
+  for (const mesh of gemMeshes) detachMesh(mesh);
+  gemMeshes = [];
+}
+
+function gemMatrixFromHit(point, normal, spinDeg, lift) {
+  const origin = point.clone().add(
+    normal.clone().normalize().multiplyScalar(lift || 0));
+  const quat = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0, 0, 1), normal.clone().normalize());
+  if (spinDeg) {
+    quat.multiply(new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 0, 1), spinDeg * Math.PI / 180));
+  }
+  return new THREE.Matrix4().compose(
+    origin, quat, new THREE.Vector3(1, 1, 1));
+}
+
+function showGems(mesh) {
+  detachGemMeshes();
+  for (const gem of Array.isArray(mesh.gems) ? mesh.gems : []) {
+    if (!gem.indices?.length || !gem.instances?.length) continue;
+    const geometry = new THREE.BufferGeometry();
+    applyPackedGeometry(geometry, gem);
+    const count = gem.instances.length;
+    const material = ownedMaterial(gemMaterial);
+    const inst = new THREE.InstancedMesh(geometry, material, count);
+    inst.userData.gem = {
+      name: gem.name,
+      label: gem.label,
+      faceId: gem.face_id,
+      spline: !!gem.spline,
+      spins: gem.instances.map((item) => item.spin ?? 0),
+      lifts: gem.instances.map((item) => item.lift ?? 0),
+    };
+    const dummy = new THREE.Matrix4();
+    gem.instances.forEach((item, i) => {
+      if (item.matrix?.length === 16) dummy.set(...item.matrix);
+      else dummy.identity();
+      inst.setMatrixAt(i, dummy);
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    // La géométrie locale reste à l'origine : le frustum de la sphère
+    // de base cacherait toutes les instances dès que l'origine sort
+    // du cadre.
+    inst.frustumCulled = false;
+    volumesGroup.add(inst);
+    gemMeshes.push(inst);
+    if (gem.spline && gem.face_id != null
+        && !warnedSplineFaces.has(gem.face_id)) {
+      warnedSplineFaces.add(gem.face_id);
+      say("Surface libre : l'ancrage peut glisser si la surface se déforme.");
+    }
+  }
+}
+
+function gemScreenPoint() {
+  const mesh = gemMeshes[0];
+  if (!mesh || mesh.count < 1) return null;
+  const matrix = new THREE.Matrix4();
+  mesh.getMatrixAt(0, matrix);
+  const point = new THREE.Vector3().setFromMatrixPosition(matrix);
+  point.project(camera);
+  const rect = renderer.domElement.getBoundingClientRect();
+  return {
+    name: mesh.userData.gem?.name ?? null,
+    x: (point.x * 0.5 + 0.5) * rect.width + rect.left,
+    y: (-point.y * 0.5 + 0.5) * rect.height + rect.top,
+    count: gemMeshes.reduce((n, item) => n + item.count, 0),
+  };
+}
+
+function gemWorldPositions() {
+  const out = [];
+  const matrix = new THREE.Matrix4();
+  const point = new THREE.Vector3();
+  for (const mesh of gemMeshes) {
+    for (let i = 0; i < mesh.count; i += 1) {
+      mesh.getMatrixAt(i, matrix);
+      point.setFromMatrixPosition(matrix);
+      out.push({
+        name: mesh.userData.gem?.name ?? "",
+        index: i,
+        x: point.x, y: point.y, z: point.z,
+      });
+    }
+  }
+  return out;
 }
 
 function hexColor(value) {
@@ -320,10 +449,7 @@ function showMesh(mesh) {
   for (const extra of othersList) {
     if (!extra.indices.length) continue;
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position",
-      new THREE.Float32BufferAttribute(extra.positions, 3));
-    geometry.setIndex(extra.indices);
-    geometry.computeVertexNormals();
+    applyPackedGeometry(geometry, extra);
     const otherMesh = new THREE.Mesh(
       geometry, ownedMaterial(othersMaterial, hexColor(extra.color)));
     otherMesh.raycast = () => {};
@@ -333,10 +459,7 @@ function showMesh(mesh) {
   for (const surface of Array.isArray(mesh.surfaces) ? mesh.surfaces : []) {
     if (!surface.indices?.length) continue;
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position",
-      new THREE.Float32BufferAttribute(surface.positions, 3));
-    geometry.setIndex(surface.indices);
-    geometry.computeVertexNormals();
+    applyPackedGeometry(geometry, surface);
     const material = ownedMaterial(baseMaterial);
     material.side = THREE.DoubleSide;
     material.transparent = false;
@@ -366,6 +489,7 @@ function showMesh(mesh) {
     volumesGroup.add(lines);
     sketchLineMeshes.push(lines);
   }
+  showGems(mesh);
   if (!mesh.indices.length) {
     applyVolumeVisibility();
     rebuildPlanes();
@@ -374,11 +498,8 @@ function showMesh(mesh) {
   }
 
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position",
-    new THREE.Float32BufferAttribute(mesh.positions, 3));
-  geometry.setIndex(mesh.indices);
+  applyPackedGeometry(geometry, mesh);
   for (const g of mesh.groups) geometry.addGroup(g.start, g.count, 0);
-  geometry.computeVertexNormals();
 
   geometry.computeBoundingSphere(); // les vues standard cadrent dessus
 
@@ -592,10 +713,7 @@ function showGhost(mesh) {
   }
   if (!mesh.indices.length) return;
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position",
-    new THREE.Float32BufferAttribute(mesh.positions, 3));
-  geometry.setIndex(mesh.indices);
-  geometry.computeVertexNormals();
+  applyPackedGeometry(geometry, mesh);
   ghostMesh = new THREE.Mesh(geometry, ghostMaterial);
   volumesGroup.add(ghostMesh);
   applyVolumeVisibility();
@@ -666,6 +784,27 @@ renderer.domElement.addEventListener("pointermove", (event) => {
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  if (gemDrag) {
+    raycaster.setFromCamera(pointer, camera);
+    const faceHit = partMesh
+      ? raycaster.intersectObject(partMesh)[0] : undefined;
+    if (!faceHit) return;
+    const indexPosition = faceHit.faceIndex * 3;
+    const group = meshGroups.find(
+      (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
+    if (!group) return;
+    const normal = (faceHit.normal?.clone()
+      ?? new THREE.Vector3(0, 0, 1)).normalize();
+    const matrix = gemMatrixFromHit(
+      faceHit.point, normal, gemDrag.spin, gemDrag.lift);
+    gemDrag.mesh.setMatrixAt(gemDrag.index, matrix);
+    gemDrag.mesh.instanceMatrix.needsUpdate = true;
+    gemDrag.lastPoint = faceHit.point.clone();
+    gemDrag.lastNormal = normal;
+    gemDrag.lastFaceId = group.faceId;
+    gemDrag.moved = true;
+    return;
+  }
   if (planePicking) {
     raycaster.setFromCamera(pointer, camera);
     const hit = raycaster.intersectObjects(Object.values(planeMeshes))[0];
@@ -767,9 +906,56 @@ let pressPosition = null;
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (sketchMode.active) return;
   pressPosition = { x: event.clientX, y: event.clientY };
+  if (assemblyState || planePicking || measuring) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hit = gemMeshes.length
+    ? raycaster.intersectObjects(gemMeshes, false)[0] : null;
+  if (!hit || hit.instanceId == null) return;
+  const mesh = hit.object;
+  const start = new THREE.Matrix4();
+  mesh.getMatrixAt(hit.instanceId, start);
+  gemDrag = {
+    mesh,
+    index: hit.instanceId,
+    name: mesh.userData.gem.name,
+    faceId: mesh.userData.gem.faceId,
+    start: start.clone(),
+    spin: mesh.userData.gem.spins?.[hit.instanceId] ?? 0,
+    lift: mesh.userData.gem.lifts?.[hit.instanceId] ?? 0,
+    lastPoint: hit.point.clone(),
+    lastNormal: (hit.normal?.clone() ?? new THREE.Vector3(0, 0, 1)).normalize(),
+    lastFaceId: mesh.userData.gem.faceId,
+    moved: false,
+  };
+  controls.enabled = false;
 });
 renderer.domElement.addEventListener("pointerup", (event) => {
-  if (sketchMode.active || !pressPosition) return;
+  if (sketchMode.active) return;
+  if (gemDrag) {
+    const drag = gemDrag;
+    gemDrag = null;
+    controls.enabled = true;
+    pressPosition = null;
+    if (!drag.moved) return;
+    const point = drag.lastPoint;
+    const params = {
+      gem: drag.name,
+      index: drag.index,
+      x: point.x, y: point.y, z: point.z,
+    };
+    if (drag.lastFaceId != null) params.face = drag.lastFaceId;
+    refresh(call("move_gem", params).catch((error) => {
+      drag.mesh.setMatrixAt(drag.index, drag.start);
+      drag.mesh.instanceMatrix.needsUpdate = true;
+      say(error.message, true);
+      throw error;
+    }));
+    return;
+  }
+  if (!pressPosition) return;
   const travel = Math.hypot(event.clientX - pressPosition.x,
                             event.clientY - pressPosition.y);
   pressPosition = null;
@@ -887,17 +1073,214 @@ renderer.domElement.addEventListener("pointerup", (event) => {
   repaintGroups();
   if (selectedFaceId !== null) {
     clearPlaneChoice();
+    raycaster.setFromCamera(pointer, camera);
+    const faceHit = partMesh
+      ? raycaster.intersectObject(partMesh)[0] : null;
+    if (faceHit) {
+      lastFaceHit = {
+        face: selectedFaceId,
+        x: faceHit.point.x, y: faceHit.point.y, z: faceHit.point.z,
+      };
+    }
     // A command panel with a selection box absorbs the pick.
     panel.notifyPick("face", { kind: "face", face: selectedFaceId });
   } else {
+    lastFaceHit = null;
     clearPlaneChoice();
+    clearFeatureDims();
   }
   if (lastTree) renderTree(lastTree);
 });
 
-renderer.domElement.addEventListener("dblclick", () => {
+function findFeatureInTree(tree, name) {
+  if (!name || !tree) return null;
+  for (const feature of tree.features ?? []) {
+    if (feature.name === name) return feature;
+    for (const child of feature.children ?? []) {
+      if (child.name === name) return child;
+    }
+  }
+  for (const surface of tree.surfaces ?? []) {
+    if (surface.name === name) return surface;
+  }
+  return null;
+}
+
+function disposeFeatureDimSprites() {
+  for (const sprite of featureDimSprites) {
+    sprite.material?.map?.dispose();
+    sprite.material?.dispose();
+  }
+  featureDimsGroup.clear();
+  featureDimSprites = [];
+}
+
+function clearFeatureDims() {
+  disposeFeatureDimSprites();
+  featureDimContext = null;
+  if (selectedFeatureName) {
+    selectedFeatureName = null;
+    if (lastTree) renderTree(lastTree);
+  }
+}
+
+function sketchWorldPoint(placement, x, y) {
+  const matrix = new THREE.Matrix4().set(...placement);
+  return new THREE.Vector3(x, y, 0).applyMatrix4(matrix);
+}
+
+function featureParamWorldPos(param, feature, hit, sketchState) {
+  if (sketchState?.placement
+      && (param.prop === "Length" || param.prop === "LengthFwd")) {
+    const matrix = new THREE.Matrix4().set(...sketchState.placement);
+    const origin = new THREE.Vector3().setFromMatrixPosition(matrix);
+    const normal = new THREE.Vector3(0, 0, 1).transformDirection(matrix);
+    return origin.add(normal.normalize().multiplyScalar(param.value / 2));
+  }
+  if (hit) return hit.clone().add(new THREE.Vector3(0, 0, 3));
+  return new THREE.Vector3(0, 0, 8);
+}
+
+async function showFeatureDims(featureName, hit) {
+  if (!featureName) {
+    clearFeatureDims();
+    return;
+  }
+  const feature = findFeatureInTree(lastTree, featureName);
+  if (!feature) {
+    say("cette face n'appartient à aucune fonction éditable");
+    clearFeatureDims();
+    return;
+  }
+  selectedFeatureName = feature.name;
+  featureDimContext = {
+    feature: feature.name,
+    hit: hit ? hit.clone() : null,
+  };
+  disposeFeatureDimSprites();
+  const sketches = (feature.children ?? []).filter(
+    (child) => child.type === "Sketcher::SketchObject");
+  if (feature.type === "Sketcher::SketchObject") sketches.push(feature);
+  const params = feature.params?.length
+    ? feature.params
+    : ((await call("get_params", { feature: feature.name })).params ?? []);
+  let firstSketchState = null;
+  for (const sketch of sketches) {
+    let state;
+    try {
+      state = await call("sketch_state", { sketch: sketch.name });
+    } catch (error) {
+      say(error.message, true);
+      continue;
+    }
+    if (!firstSketchState) firstSketchState = state;
+    for (const dim of state.dims ?? []) {
+      const anchor = sketchDimAnchor(dim, state.entities);
+      if (!anchor) continue;
+      const world = sketchWorldPoint(state.placement, anchor.x, anchor.y);
+      const sprite = createDimSprite(dimLabel(dim), world.x, world.y, world.z);
+      sprite.userData.dim = { ...dim, kind: "sketch", sketch: sketch.name };
+      sprite.renderOrder = 24;
+      featureDimsGroup.add(sprite);
+      featureDimSprites.push(sprite);
+    }
+  }
+  for (const param of params) {
+    const [label, unit] = PROP_LABELS[param.prop] ?? [param.prop, "mm"];
+    const dim = {
+      kind: "param",
+      name: label,
+      value: param.value,
+      expr: param.expr || "",
+      unit,
+      feature: feature.name,
+      prop: param.prop,
+      type: param.prop === "Angle" ? "Angle" : "Distance",
+    };
+    const world = featureParamWorldPos(
+      param, feature, hit, firstSketchState);
+    const sprite = createDimSprite(dimLabel({
+      ...dim,
+      type: dim.unit === "°" ? "Angle" : dim.type,
+      value: dim.unit === "°" ? dim.value * Math.PI / 180 : dim.value,
+    }), world.x, world.y, world.z);
+    sprite.userData.dim = dim;
+    sprite.renderOrder = 24;
+    featureDimsGroup.add(sprite);
+    featureDimSprites.push(sprite);
+  }
+  if (!featureDimSprites.length) {
+    say(`${feature.label} : aucune cote à afficher`);
+    return;
+  }
+  if (lastTree) renderTree(lastTree);
+  say(`${feature.label} : ${featureDimSprites.length} cote(s) — `
+    + "double-clic une cote pour la changer");
+}
+
+function pickFeatureDim(event) {
+  if (!featureDimSprites.length) return false;
+  const rect = renderer.domElement.getBoundingClientRect();
+  for (const sprite of featureDimSprites) {
+    const projected = sprite.position.clone().project(camera);
+    const sx = (projected.x * 0.5 + 0.5) * rect.width + rect.left;
+    const sy = (-projected.y * 0.5 + 0.5) * rect.height + rect.top;
+    if (Math.hypot(sx - event.clientX, sy - event.clientY) < 22) {
+      editFeatureDim(sprite.userData.dim);
+      return true;
+    }
+  }
+  return false;
+}
+
+function editFeatureDim(dim) {
+  if (!dim) return;
+  openDimEditor({
+    panel,
+    dim,
+    onApply: (values, meta) => {
+      const extra = dimEditPayload(values, dim, meta);
+      if (dim.kind === "sketch") {
+        if (extra.name === undefined && extra.value === undefined
+            && extra.expr === undefined) return;
+        refreshFeatureDimEdit(call("sketch_set_dim", {
+          sketch: dim.sketch, dim: dim.id, ...extra,
+        }).then(() => call("get_tree")));
+        return;
+      }
+      if (extra.value === undefined && extra.expr === undefined) return;
+      const raw = extra.expr ?? extra.value;
+      refreshFeatureDimEdit(call("set_params", {
+        feature: dim.feature,
+        values: { [dim.prop]: raw },
+      }));
+    },
+  });
+}
+
+function refreshFeatureDimEdit(treePromise) {
+  const ctx = featureDimContext;
+  refresh(treePromise).then(() => {
+    if (ctx) return showFeatureDims(ctx.feature, ctx.hit);
+  });
+}
+
+renderer.domElement.addEventListener("dblclick", (event) => {
   if (sketchMode.active || assemblyState || planePicking || measuring) return;
-  if (hoveredSurface) onSurfaceDblClick(hoveredSurface);
+  if (hoveredSurface) {
+    onSurfaceDblClick(hoveredSurface);
+    return;
+  }
+  if (pickFeatureDim(event)) return;
+  if (hoveredGroup < 0) {
+    clearFeatureDims();
+    return;
+  }
+  const group = meshGroups[hoveredGroup];
+  const hit = lastFaceHit && lastFaceHit.face === group.faceId
+    ? new THREE.Vector3(lastFaceHit.x, lastFaceHit.y, lastFaceHit.z)
+    : null;
+  showFeatureDims(group.feature, hit);
 });
 
 function resize() {
@@ -1051,6 +1434,7 @@ const TREE_ICONS = {
   "Part::Loft": "Part_3D_object.svg",
   "Part::Feature": "Part_3D_object.svg",
   "Part::Offset": "Part_3D_object.svg",
+  "App::Link": "LinkArray.svg",
 };
 
 // ---------- plans de référence (fantôme + sélection d'esquisse) ----------
@@ -1721,6 +2105,7 @@ function renderTree(tree) {
   }
 
   renderActiveBodyContents(tree);
+  for (const gem of tree.gems ?? []) appendGemRow(gem);
   syncGraphFromTree();
 }
 
@@ -1769,6 +2154,25 @@ function renderActiveBodyContents(tree) {
   }
 }
 
+function appendGemRow(gem) {
+  const row = document.createElement("li");
+  row.classList.add("feat");
+  row.dataset.feat = gem.name;
+  if (gem.error) row.classList.add("error");
+  row.appendChild(treeIcon("LinkArray.svg"));
+  row.appendChild(document.createTextNode(gem.label));
+  const detail = gem.error_message
+    ? gem.error_message
+    : (gem.spline
+      ? "Semis de pierres — surface libre : l'ancrage peut glisser"
+      : "Semis de pierres — clic droit : supprimer");
+  row.title = detail;
+  row.addEventListener("contextmenu", (event) => openMenu(event, {
+    name: gem.name, label: gem.label, type: "App::Link", kind: gem.kind,
+  }));
+  treeEl.appendChild(row);
+}
+
 function appendFeatureHistoryRow(feature, rolledBack) {
   const row = document.createElement("li");
   row.classList.add("feat");
@@ -1776,6 +2180,7 @@ function appendFeatureHistoryRow(feature, rolledBack) {
   row.dataset.hist = feature.name;
   if (feature.error) row.classList.add("error");
   if (rolledBack) row.classList.add("rolled-back");
+  if (selectedFeatureName === feature.name) row.classList.add("sel");
   const hasChildren = !!feature.children?.length;
   const arrow = document.createElement("span");
   arrow.className = "arrow";
@@ -4251,13 +4656,19 @@ async function refresh(treePromise) {
   }
 }
 
-document.getElementById("btn-new").addEventListener("click", () =>
-  refresh(call("new_part")));
+document.getElementById("btn-new").addEventListener("click", () => {
+  clearFeatureDims();
+  refresh(call("new_part"));
+});
 
 document.getElementById("btn-undo").addEventListener("click", () =>
   refreshAny(call("undo")));
 document.getElementById("btn-redo").addEventListener("click", () =>
   refreshAny(call("redo")));
+document.getElementById("btn-rebuild").addEventListener("click", () => {
+  clearFeatureDims();
+  refresh(call("rebuild"));
+});
 
 // ---------- équations (variables globales) ----------
 
@@ -4436,13 +4847,20 @@ function openFeaturePanel(entry, sketchOverride) {
     selection: currentSelection,
     selectedSketch: sketchOverride ?? selectedSketch,
   };
+  Object.defineProperty(ctx, "lastFaceHit", {
+    get: () => lastFaceHit,
+  });
   const blocked = entry.guard?.(ctx);
   if (blocked) { say(blocked, true); return; }
+  const spline = selectedFaceId != null && meshGroups.some(
+    (g) => g.faceId === selectedFaceId && g.spline);
   const spec = {
     icon: entry.icon,
     title: entry.title,
     groups: entry.groups(ctx),
-    note: entry.note,
+    note: typeof entry.noteFn === "function"
+      ? entry.noteFn(ctx, { spline })
+      : entry.note,
     onApply: (v) => {
       const built = entry.build(v, ctx);
       if (!built) {

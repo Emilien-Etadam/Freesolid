@@ -25,6 +25,16 @@ export function latestAvailableSketch(tree) {
   return sketches.length ? sketches[sketches.length - 1] : null;
 }
 
+/** Corps inactifs + semis non vides : les outils que Combiner accepte. */
+export function booleanToolOptions(ctx) {
+  const others = (ctx.lastTree?.bodies ?? []).filter((b) => !b.active);
+  const gems = (ctx.lastTree?.gems ?? []).filter((g) => (g.count || 0) > 0);
+  return [
+    ...others.map((b) => [b.name, b.label]),
+    ...gems.map((g) => [g.name, g.label]),
+  ];
+}
+
 /** Profil affiché / utilisé : sélection d'arbre sinon dernière libre. */
 export function resolveProfileSketch(ctx) {
   if (ctx.selectedSketch?.name) return ctx.selectedSketch;
@@ -42,20 +52,25 @@ export function dressupParams(sel) {
 }
 
 function dressup({ button, icon, title, selectionLabel, group, rows, build,
-                   accepts = ["face"], hint }) {
+                   accepts = ["face"], hint, note, noteFn, invalid }) {
   return {
     button, icon, title,
     dressup: true,
+    note,
+    noteFn,
     groups: (ctx) => [
       { label: selectionLabel,
         rows: [{ type: "selection", key: "sel", accepts, hint,
                  value: ctx.selection(accepts) }] },
       { label: group, rows },
     ],
-    build: (v) => hasSelection(v.sel) ? build(v) : null,
-    invalid: (v) => hasSelection(v.sel)
-      ? "Valeur invalide"
-      : `${title} : cliquez d'abord dans la zone graphique`,
+    build: (v, ctx) => hasSelection(v.sel) ? build(v, ctx) : null,
+    invalid: (v, ctx) => {
+      if (typeof invalid === "function") return invalid(v, ctx);
+      return hasSelection(v.sel)
+        ? (invalid ?? "Valeur invalide")
+        : `${title} : cliquez d'abord dans la zone graphique`;
+    },
     refresh: "part",
   };
 }
@@ -514,26 +529,27 @@ export const FEATURES = [
     icon: "PartDesign_Boolean.svg",
     title: "Combiner",
     guard: (ctx) => {
-      const others = (ctx.lastTree?.bodies ?? []).filter((b) => !b.active);
-      return others.length ? null
-        : "Combiner : créez d'abord un second corps";
+      const options = booleanToolOptions(ctx);
+      return options.length ? null
+        : "Combiner : créez d'abord un second corps, ou posez un semis de pierres";
     },
     groups: (ctx) => {
-      const others = (ctx.lastTree?.bodies ?? []).filter((b) => !b.active);
+      const options = booleanToolOptions(ctx);
       return [{
         label: "Opération",
         rows: [
           { type: "select", key: "type", value: "cut",
             options: [["cut", "Soustraire"], ["fuse", "Ajouter"],
                       ["common", "Intersection"]] },
-          { type: "select", key: "tool", value: others[0].name,
+          { type: "select", key: "tool", value: options[0]?.[0] ?? "",
             label: "Corps outil",
-            options: others.map((b) => [b.name, b.label]) },
+            options },
         ],
       }];
     },
-    note: "S'applique au corps actif ; le corps outil est absorbé " +
-          "par l'opération.",
+    note: "S'applique au corps actif. Un second corps est absorbé ; "
+          + "un semis de pierres reste dans l'arbre, et l'empreinte "
+          + "se recalcule à chaque reconstruction.",
     build: (v) => ({ op: "add_boolean",
       params: { tool: v.tool, type: v.type } }),
     refresh: "part",
@@ -688,4 +704,52 @@ export const FEATURES = [
     refresh: "part",
     openGraphEditor: true,
   },
+  dressup({
+    button: "btn-gem",
+    icon: "nodes_cylinder.svg",
+    title: "Pierre",
+    selectionLabel: "Face d'appui",
+    hint: "Cliquez une face dans la zone graphique — la pierre s'y aimante",
+    group: "Pierre",
+    rows: [
+      { type: "number", key: "diametre", label: "Diamètre", value: 1.5,
+        unit: "mm", min: 0.01 },
+      { type: "number", key: "spin", label: "Rotation", value: 0,
+        unit: "°" },
+      { type: "number", key: "lift", label: "Enfoncement", value: 0,
+        unit: "mm" },
+    ],
+    noteFn: (ctx, extras) => extras?.spline
+      ? "Sur une surface libre, l'ancrage peut glisser de quelques "
+        + "dixièmes de millimètre si la surface se déforme — la pierre "
+        + "reste collée, mais pas au même endroit."
+      : "La pierre reste collée à la face : changer une cote de la pièce "
+        + "la recale. Poser n'enlève pas de matière.",
+    build: (v, ctx) => {
+      const diametre = num(v.diametre);
+      const hit = ctx.lastFaceHit;
+      if (!hasSelection(v.sel) || !(diametre > 0) || !hit
+          || hit.face !== v.sel.face) {
+        return null;
+      }
+      const params = {
+        face: v.sel.face, x: hit.x, y: hit.y, z: hit.z, diametre,
+      };
+      const spin = num(v.spin);
+      const lift = num(v.lift);
+      if (spin != null) params.spin = spin;
+      if (lift != null) params.lift = lift;
+      return { op: "place_gem", params };
+    },
+    invalid: (v, ctx) => {
+      if (!hasSelection(v.sel)) {
+        return "Pierre : cliquez d'abord une face dans la zone graphique";
+      }
+      if (!(num(v.diametre) > 0)) return "Diamètre invalide";
+      if (!ctx.lastFaceHit || ctx.lastFaceHit.face !== v.sel.face) {
+        return "Pierre : recliquez la face pour viser le point de pose";
+      }
+      return "Valeurs invalides";
+    },
+  }),
 ];

@@ -11,6 +11,29 @@ import {
   entityKindTitle, entityPropertyLines,
 } from "./geom2d.js";
 import { num } from "./num.js";
+import {
+  dimEditPayload, dimLabel, openDimEditor, sketchDimAnchor,
+} from "./dims.js";
+
+export function createDimSprite(text, x, y, z = 0.01) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256; canvas.height = 40;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgba(23,25,28,0.85)";
+  ctx.fillRect(0, 0, 256, 40);
+  ctx.font = "22px system-ui";
+  ctx.fillStyle = "#7fc4ff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 128, 21);
+  const material = new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(canvas), depthTest: false });
+  material.userData.own = true;
+  const sprite = new THREE.Sprite(material);
+  sprite.position.set(x, y, z);
+  sprite.scale.set(26, 4.1, 1);
+  return sprite;
+}
 
 export function createSketchMode(deps) {
   const { scene, camera, renderer, controls, call, say, refresh, panel } =
@@ -158,35 +181,6 @@ export function createSketchMode(deps) {
   }
 
   // ---------- drawing ----------
-
-  function makeDimSprite(text, x, y) {
-    const canvas = document.createElement("canvas");
-    canvas.width = 256; canvas.height = 40;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "rgba(23,25,28,0.85)";
-    ctx.fillRect(0, 0, 256, 40);
-    ctx.font = "22px system-ui";
-    ctx.fillStyle = "#7fc4ff";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(text, 128, 21);
-    const material = new THREE.SpriteMaterial({
-      map: new THREE.CanvasTexture(canvas), depthTest: false });
-    material.userData.own = true;
-    const sprite = new THREE.Sprite(material);
-    sprite.position.set(x, y, 0.01);
-    sprite.scale.set(26, 4.1, 1);
-    return sprite;
-  }
-
-  // « largeur = 60.00 », préfixe Σ quand une équation pilote la cote.
-  function dimText(dim) {
-    const number = dim.type === "Angle"
-      ? (dim.value * 180 / Math.PI).toFixed(1) + "°"
-      : dim.value.toFixed(2);
-    return (dim.expr ? "Σ " : "")
-      + (dim.name ? dim.name + " = " : "") + number;
-  }
 
   let previewLine = null;
 
@@ -440,17 +434,9 @@ export function createSketchMode(deps) {
     }
 
     for (const dim of mode.state.dims) {
-      const entity = mode.state.entities.find((e) => e.id === dim.geo);
-      if (!entity) continue;
-      let x, y;
-      if (entity.type === "line") {
-        x = (entity.p1[0] + entity.p2[0]) / 2;
-        y = (entity.p1[1] + entity.p2[1]) / 2 + 4;
-      } else {
-        x = entity.c[0] + (entity.r ?? 0) * 0.7;
-        y = entity.c[1] + (entity.r ?? 0) * 0.7;
-      }
-      const sprite = makeDimSprite(dimText(dim), x, y);
+      const anchor = sketchDimAnchor(dim, mode.state.entities);
+      if (!anchor) continue;
+      const sprite = createDimSprite(dimLabel(dim), anchor.x, anchor.y);
       sprite.userData.dim = dim;
       sprite.renderOrder = 22;
       group.add(sprite);
@@ -1020,42 +1006,23 @@ export function createSketchMode(deps) {
   // Double-clic sur une cote : nom, valeur ou expression — le panneau
   // remplace le prompt, c'est la porte d'entrée du paramétrique.
   function editDim(dim) {
-    const isAngle = dim.type === "Angle";
-    const shown = dim.expr
-      || (isAngle ? (dim.value * 180 / Math.PI).toFixed(2)
-                  : String(+dim.value.toFixed(4)));
+    if (!mode.state) return;
     abandonEntityPanel();
-    panel.open({
-      icon: "Constraint_Dimension.svg",
-      title: "Cote" + (dim.name ? ` — ${dim.name}` : ""),
-      groups: [{
-        label: "Cote",
-        rows: [
-          { type: "text", key: "name", label: "Nom", value: dim.name,
-            placeholder: "largeur" },
-          { type: "text", key: "value", label: "Valeur ou expression",
-            value: shown, unit: isAngle ? "°" : "mm" },
-        ],
-      }],
-      note: "Expression : « Variables.Largeur / 2 » ou " +
-            "« .Constraints.largeur * 2 » (les noms de cotes de cette " +
-            "esquisse s'utilisent avec .Constraints.nom)",
-      onApply: (v) => {
-        const params = { sketch: mode.state.sketch, dim: dim.id };
-        const name = (v.name ?? "").trim();
-        if (name !== (dim.name ?? "")) params.name = name;
-        const raw = String(v.value ?? "").trim();
-        if (raw && raw !== shown) {
-          if (/^-?\d+([.,]\d+)?$/.test(raw)) {
-            const parsed = num(raw);
-            params.value = isAngle ? parsed * Math.PI / 180 : parsed;
-          } else {
-            params.expr = raw;
-          }
-        }
-        if (params.name === undefined && params.value === undefined
-            && params.expr === undefined) return;
-        safe(call("sketch_set_dim", params));
+    openDimEditor({
+      panel,
+      dim: { ...dim, kind: "sketch" },
+      onApply: (values, meta) => {
+        const extra = dimEditPayload(values, { ...dim, kind: "sketch" }, meta);
+        if (extra.name === undefined && extra.value === undefined
+            && extra.expr === undefined) return;
+        const params = { sketch: mode.state.sketch, dim: dim.id, ...extra };
+        safe((async () => {
+          const state = await call("sketch_set_dim", params);
+          // La pièce sous l'esquisse doit suivre : sans ça, la cote
+          // change et l'écran ne bouge pas.
+          await refresh(call("get_tree"));
+          return state;
+        })());
       },
     });
   }

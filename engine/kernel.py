@@ -235,6 +235,12 @@ def parse_user_number(text):
         return None
 
 
+def _format_mm(value):
+    """Cote affichée : virgule française, zéros inutiles retirés."""
+    text = "{:.6f}".format(float(value)).rstrip("0").rstrip(".")
+    return text.replace(".", ",") or "0"
+
+
 class Kernel:
     """Owns one FreeCAD document and executes protocol operations."""
 
@@ -244,6 +250,8 @@ class Kernel:
         self._assembly = False  # le document courant est un assemblage
         # Consentement Python : ce document, cette session. Jamais le .FCStd.
         self._scripts_authorized = False
+        # Corps de gabarit déjà copiés : (gemme, diamètre) → nom d'objet.
+        self._gem_bodies = {}
 
     # -- helpers ---------------------------------------------------------
 
@@ -283,7 +291,15 @@ class Kernel:
     def _recompute(self):
         doc = self._require_doc()
         doc.recompute()
-        broken = [o for o in doc.Objects if "Invalid" in (o.State or ())]
+        if not self._assembly:
+            self._refresh_gem_placements()
+            self._refresh_gem_boolean_tools()
+            doc.recompute()
+        broken = [o for o in doc.Objects
+                  if "Invalid" in (o.State or ())
+                  and not self._is_internal_tool(o)
+                  and not self._is_gem_link(o)
+                  and not self._is_gem_array_child(o)]
         if broken:
             messages = []
             for obj in broken:
@@ -295,6 +311,107 @@ class Kernel:
                 messages.append("{} : {}".format(
                     obj.Label, friendly_error(text) or text or "en erreur"))
             raise KernelError(" ; ".join(messages))
+
+    def _force_recompute(self):
+        """Recalcul complet, drapeaux « à jour » ignorés."""
+        doc = self._require_doc()
+        try:
+            doc.recompute(None, True, True)
+        except TypeError:
+            try:
+                doc.recompute([], True)
+            except TypeError:
+                doc.recompute()
+
+    def rebuild(self):
+        """Forcer le recalcul de tout l'arbre — dernier recours.
+
+        Tout ce qui est cassé remonte : une fonction qui refuse de se
+        reconstruire affiche son message, c'est précisément ce qu'on
+        cherche en appuyant sur Reconstruire.
+        """
+        self._require_doc()
+        try:
+            self._force_recompute()
+            if not self._assembly:
+                self._refresh_gem_placements()
+                self._refresh_gem_boolean_tools()
+                self._force_recompute()
+        except KernelError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc)) from exc
+        if self._assembly:
+            return self.assembly_tree()
+        broken = [o for o in self._doc.Objects
+                  if "Invalid" in (o.State or ())
+                  and not self._is_internal_tool(o)
+                  and not self._is_gem_link(o)
+                  and not self._is_gem_array_child(o)]
+        messages = []
+        for obj in broken:
+            text = ""
+            try:
+                text = obj.getStatusString() or ""
+            except Exception:
+                pass
+            messages.append("{} : {}".format(
+                obj.Label, friendly_error(text) or text or "en erreur"))
+        if messages:
+            raise KernelError(" ; ".join(messages))
+        return self.get_tree()
+
+    def _face_producers(self):
+        """Index de face du Tip → nom de la fonction qui l'a introduite.
+
+        Le hash OCCT d'une face inchangée survit aux fonctions suivantes :
+        la première fonction de l'historique qui porte ce hash est celle
+        qui l'a produite. Une face nouvelle (congé, dépouille) est
+        attribuée à la fonction qui l'introduit. Repli : le Tip.
+        """
+        body = self._require_body()
+        shape = getattr(body, "Shape", None)
+        faces = list(getattr(shape, "Faces", None) or ())
+        if not faces:
+            return {}
+        current = {}
+        for index, face in enumerate(faces):
+            try:
+                current[face.hashCode()] = index
+            except Exception:
+                continue
+        producer = {}
+        seen = set()
+        skip = {
+            "Sketcher::SketchObject",
+            "PartDesign::Plane",
+            "PartDesign::CoordinateSystem",
+            "PartDesign::Body",
+        }
+        for obj in body.Group:
+            if obj.TypeId in skip:
+                continue
+            feat_shape = getattr(obj, "Shape", None)
+            if feat_shape is None:
+                continue
+            try:
+                if feat_shape.isNull():
+                    continue
+            except Exception:
+                continue
+            for face in list(getattr(feat_shape, "Faces", None) or ()):
+                try:
+                    digest = face.hashCode()
+                except Exception:
+                    continue
+                if digest in current and digest not in seen:
+                    producer[current[digest]] = obj.Name
+                    seen.add(digest)
+        tip = getattr(body, "Tip", None)
+        if tip is not None:
+            for index in range(len(faces)):
+                producer.setdefault(index, tip.Name)
+        return producer
 
     # -- operations ------------------------------------------------------
 
@@ -317,6 +434,7 @@ class Kernel:
         self._doc = self._body = None
         self._assembly = False
         self._scripts_authorized = False
+        self._gem_bodies = {}
 
     def _setup_doc(self, doc):
         """Active l'undo et borne la pile (mémoire en longue session).
@@ -1422,14 +1540,765 @@ class Kernel:
         obj.FreeSolidRepeatTool = True
 
     def _is_internal_tool(self, obj):
-        """Artefact interne (gravure, graphe ou répétition) : hors de l'arbre.
+        """Artefact interne (gravure, graphe, répétition, gabarit de
+        pierre ou corps outil dérivé d'un semis) : hors de l'arbre.
 
-        Un seul test, trois propriétés. Deux prédicats parallèles
+        Un seul test, plusieurs propriétés. Deux prédicats parallèles
         divergeraient — c'est le défaut que N001b a dû corriger.
         """
         return bool(getattr(obj, "FreeSolidTextTool", False)
                     or getattr(obj, "FreeSolidGraphTool", False)
-                    or getattr(obj, "FreeSolidRepeatTool", False))
+                    or getattr(obj, "FreeSolidRepeatTool", False)
+                    or getattr(obj, "FreeSolidGemTool", False)
+                    or getattr(obj, "FreeSolidGemBooleanTool", False))
+
+    _GEM_ANCHOR_PROPS = (
+        ("FreeSolidGemFace", "App::PropertyString",
+         "Face d'ancrage du semis (nom OCCT, ex. Face3)"),
+        ("FreeSolidGemU", "App::PropertyFloatList",
+         "Paramètres u, un par pierre"),
+        ("FreeSolidGemV", "App::PropertyFloatList",
+         "Paramètres v, un par pierre"),
+        ("FreeSolidGemSpin", "App::PropertyFloatList",
+         "Rotation autour de la normale, degrés"),
+        ("FreeSolidGemLift", "App::PropertyFloatList",
+         "Enfoncement le long de la normale, mm"),
+        ("FreeSolidGemTemplate", "App::PropertyString",
+         "Nom du gabarit de bibliothèque"),
+        ("FreeSolidGemError", "App::PropertyString",
+         "Erreur d'ancrage (toponaming) — vide si le semis tient"),
+    )
+
+    def _mark_gem_tool(self, obj):
+        if "FreeSolidGemTool" not in obj.PropertiesList:
+            obj.addProperty("App::PropertyBool", "FreeSolidGemTool",
+                            "FreeSolid", "Gabarit de pierre copié, hors arbre")
+        obj.FreeSolidGemTool = True
+        if hasattr(obj, "Visibility"):
+            obj.Visibility = False
+
+    def _mark_gem_boolean_tool(self, obj):
+        """Corps / forme dérivés d'un semis pour Combiner : hors arbre."""
+        if "FreeSolidGemBooleanTool" not in obj.PropertiesList:
+            obj.addProperty("App::PropertyBool", "FreeSolidGemBooleanTool",
+                            "FreeSolid",
+                            "Outil interne d'un booléen sur un semis")
+        obj.FreeSolidGemBooleanTool = True
+        if hasattr(obj, "Visibility"):
+            obj.Visibility = False
+
+    def _is_gem_link(self, obj):
+        return (obj is not None
+                and obj.TypeId == "App::Link"
+                and "FreeSolidGemFace" in obj.PropertiesList)
+
+    def _is_gem_array_child(self, obj):
+        """Élément ``Semis_i0`` d'un App::Link tableau — pas un semis."""
+        if obj is None or getattr(obj, "TypeId", "") != "App::Link":
+            return False
+        if self._is_gem_link(obj):
+            return False
+        for parent in getattr(obj, "InList", ()) or ():
+            if self._is_gem_link(parent):
+                return True
+        return False
+
+    def _gem_links(self):
+        doc = self._require_doc()
+        return [obj for obj in doc.Objects if self._is_gem_link(obj)]
+
+    def _ensure_gem_anchor_props(self, link):
+        for name, type_id, doc in self._GEM_ANCHOR_PROPS:
+            if name not in link.PropertiesList:
+                link.addProperty(type_id, name, "FreeSolid", doc)
+
+    def _gem_varset(self, body):
+        """La VarSet de CETTE copie, jamais la première du document.
+
+        FreeCAD renomme ``Variables`` → ``Variables001`` à la deuxième
+        copie. On parcourt le graphe du corps, et on préfère celle qui
+        porte ``diametre`` — l'Équations de la pièce n'en a pas.
+        """
+        seen = []
+        for bag in (getattr(body, "OutListRecursive", None),
+                    getattr(body, "InListRecursive", None)):
+            for obj in bag or ():
+                if getattr(obj, "TypeId", "") != "App::VarSet":
+                    continue
+                if obj in seen:
+                    continue
+                seen.append(obj)
+        for obj in seen:
+            if hasattr(obj, "diametre"):
+                return obj
+        return seen[0] if seen else None
+
+    def _library_body(self, gemme):
+        """Ouvre le gabarit (le construit s'il manque) et rend son corps."""
+        from engine.gems import (
+            DEFAULT_GEMME, GemError, ensure_flat_cylinder, library_path,
+            sanitize_gemme,
+        )
+        try:
+            gemme = sanitize_gemme(gemme)
+        except GemError as exc:
+            raise KernelError(str(exc)) from exc
+        path = library_path(gemme)
+        if not os.path.isfile(path):
+            if gemme != DEFAULT_GEMME:
+                raise KernelError(
+                    "gabarit de pierre inconnu « {} »".format(gemme))
+            try:
+                path = ensure_flat_cylinder(path)
+            except Exception as exc:  # noqa: BLE001
+                raise KernelError(
+                    "impossible de construire le gabarit cylindre-plat : "
+                    "{}".format(_explain(exc))) from exc
+        real_path = os.path.realpath(path)
+        App = self._app()
+        opened_here = False
+        lib = None
+        for open_doc in App.listDocuments().values():
+            existing = os.path.realpath(getattr(open_doc, "FileName", "") or "")
+            if existing == real_path:
+                lib = open_doc
+                break
+        if lib is None:
+            try:
+                lib = App.openDocument(path, True)
+            except TypeError:
+                lib = App.openDocument(path)
+            opened_here = True
+        body = next((obj for obj in lib.Objects
+                     if obj.TypeId == "PartDesign::Body"), None)
+        if body is None:
+            if opened_here:
+                try:
+                    App.closeDocument(lib.Name)
+                except Exception:
+                    pass
+            raise KernelError(
+                "gabarit « {} » sans corps PartDesign".format(gemme))
+        return lib, body, opened_here
+
+    def _copy_gem_body(self, gemme, diametre):
+        """Copie le corps paramétrique dans la pièce (sonde H9)."""
+        from engine.gems import cache_key
+        doc = self._require_doc()
+        App = self._app()
+        # Ne pas créer l'Équations avant la copie : le gabarit s'appelle
+        # ``Variables``. Le réserver ferait renommer la copie, et les
+        # expressions ``Variables.diametre`` viseraient le mauvais objet.
+        lib, src, opened_here = self._library_body(gemme)
+        before = {obj.Name for obj in doc.Objects}
+        try:
+            copie = doc.copyObject(src, True)
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(
+                "copie du gabarit impossible : {}".format(_explain(exc)))
+        finally:
+            if opened_here:
+                try:
+                    App.closeDocument(lib.Name)
+                except Exception:
+                    pass
+            if doc.Name in App.listDocuments():
+                App.setActiveDocument(doc.Name)
+        added = [obj for obj in doc.Objects if obj.Name not in before]
+        for obj in added:
+            self._mark_gem_tool(obj)
+        if "FreeSolidGemTemplate" not in copie.PropertiesList:
+            copie.addProperty("App::PropertyString", "FreeSolidGemTemplate",
+                              "FreeSolid", "Nom du gabarit de bibliothèque")
+        copie.FreeSolidGemTemplate = gemme
+        varset = next((obj for obj in added if obj.TypeId == "App::VarSet"),
+                      self._gem_varset(copie))
+        if varset is None:
+            raise KernelError(
+                "le gabarit copié n'a pas sa variable — le diamètre "
+                "ne pourrait plus être piloté")
+        self._bind_gem_expressions(added, varset)
+        if abs(float(varset.diametre) - float(diametre)) > 1e-9:
+            varset.diametre = float(diametre)
+            doc.recompute()
+        copie.Label = "Gabarit {} Ø{} mm".format(
+            gemme, _format_mm(diametre))
+        self._gem_bodies[cache_key(gemme, diametre)] = copie.Name
+        return copie
+
+    @staticmethod
+    def _bind_gem_expressions(objects, varset):
+        """Réécrit ``Variables.x`` vers le nom réel de la VarSet copiée."""
+        name = getattr(varset, "Name", "") or ""
+        if not name:
+            return
+        pattern = re.compile(
+            r"(?<![A-Za-z0-9_])Variables(?![A-Za-z0-9_])\.")
+        replacement = name + "."
+        for obj in objects:
+            engine = getattr(obj, "ExpressionEngine", None) or ()
+            for path, expr in list(engine):
+                text = str(expr)
+                rewritten = pattern.sub(replacement, text)
+                if rewritten == text:
+                    continue
+                try:
+                    obj.setExpression(path, rewritten)
+                except Exception:
+                    pass
+
+    def _ensure_gem_body(self, gemme, diametre):
+        from engine.gems import cache_key
+        doc = self._require_doc()
+        key = cache_key(gemme, diametre)
+        name = self._gem_bodies.get(key)
+        if name:
+            obj = doc.getObject(name)
+            if obj is not None:
+                return obj
+        for obj in doc.Objects:
+            if obj.TypeId != "PartDesign::Body":
+                continue
+            if not getattr(obj, "FreeSolidGemTool", False):
+                continue
+            if getattr(obj, "FreeSolidGemTemplate", "") != gemme:
+                continue
+            varset = self._gem_varset(obj)
+            if varset is None or not hasattr(varset, "diametre"):
+                continue
+            if abs(float(varset.diametre) - float(diametre)) < 1e-9:
+                self._gem_bodies[key] = obj.Name
+                return obj
+        return self._copy_gem_body(gemme, diametre)
+
+    def _anchor_face(self, face_id):
+        body = self._require_body()
+        shape = getattr(body, "Shape", None)
+        faces = getattr(shape, "Faces", None) or ()
+        index = int(face_id)
+        if index < 0 or index >= len(faces):
+            raise KernelError("face inconnue : {}".format(face_id))
+        return faces[index], index
+
+    def _gem_uv(self, face, x, y, z):
+        from engine.gems import GemError, project_uv
+        try:
+            u, v, on_domain = project_uv(face, x, y, z)
+        except GemError as exc:
+            raise KernelError(str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(
+                "ce point ne se projette pas sur la face : {}".format(
+                    _explain(exc))) from exc
+        if not on_domain:
+            raise KernelError(
+                "ce point tombe hors du contour de la face "
+                "(trou ou hors surface) — la pierre n'est pas posée")
+        return u, v
+
+    def _find_semis(self, body, face_name, gemme, diametre):
+        for link in self._gem_links():
+            linked = getattr(link, "LinkedObject", None)
+            if linked is not body:
+                continue
+            if str(getattr(link, "FreeSolidGemFace", "")) != face_name:
+                continue
+            if getattr(link, "FreeSolidGemTemplate", "") != gemme:
+                continue
+            varset = self._gem_varset(linked)
+            if varset is None:
+                continue
+            if abs(float(getattr(varset, "diametre", 0)) - float(diametre)) < 1e-9:
+                return link
+        return None
+
+    def _new_semis(self, body, face_name, gemme, diametre):
+        from engine.gems import is_bspline_surface
+        doc = self._require_doc()
+        link = doc.addObject("App::Link", "Semis")
+        link.LinkedObject = body
+        # Sans ça, ElementCount crée Semis_i0… dans l'arbre, souvent
+        # « Link broken » tant que PlacementList n'est pas recomputé.
+        if hasattr(link, "ShowElement"):
+            link.ShowElement = False
+        self._ensure_gem_anchor_props(link)
+        link.FreeSolidGemFace = face_name
+        link.FreeSolidGemU = []
+        link.FreeSolidGemV = []
+        link.FreeSolidGemSpin = []
+        link.FreeSolidGemLift = []
+        link.FreeSolidGemTemplate = gemme
+        link.FreeSolidGemError = ""
+        link.Label = "Semis de pierres — {} Ø{} mm".format(
+            gemme, _format_mm(diametre))
+        try:
+            index = self._face_index_or_none(face_name)
+            if index is not None:
+                face, _ = self._anchor_face(index)
+                if is_bspline_surface(face):
+                    link.Label = link.Label + " (surface libre)"
+        except KernelError:
+            pass
+        return link
+
+    def _face_index_or_none(self, name):
+        from engine.gems import GemError, face_index
+        try:
+            return face_index(name)
+        except GemError:
+            return None
+
+    def _append_stone(self, link, u, v, spin, lift):
+        us = list(link.FreeSolidGemU or [])
+        vs = list(link.FreeSolidGemV or [])
+        spins = list(link.FreeSolidGemSpin or [])
+        lifts = list(link.FreeSolidGemLift or [])
+        us.append(float(u))
+        vs.append(float(v))
+        spins.append(float(spin))
+        lifts.append(float(lift))
+        link.FreeSolidGemU = us
+        link.FreeSolidGemV = vs
+        link.FreeSolidGemSpin = spins
+        link.FreeSolidGemLift = lifts
+        return len(us) - 1
+
+    def _write_stone_lists(self, link, us, vs, spins, lifts):
+        link.FreeSolidGemU = [float(v) for v in us]
+        link.FreeSolidGemV = [float(v) for v in vs]
+        link.FreeSolidGemSpin = [float(v) for v in spins]
+        link.FreeSolidGemLift = [float(v) for v in lifts]
+
+    def _require_gem_link(self, name):
+        doc = self._require_doc()
+        obj = doc.getObject(str(name))
+        if obj is None or not self._is_gem_link(obj):
+            raise KernelError("semis inconnu : {}".format(name))
+        return obj
+
+    def _require_stone_index(self, link, index):
+        count = len(list(link.FreeSolidGemU or []))
+        number = int(index)
+        if number < 0 or number >= count:
+            raise KernelError(
+                "pierre n° {} absente de « {} » ({} pierre(s))".format(
+                    index, link.Label, count))
+        return number, count
+
+    def _drop_empty_semis(self, link):
+        if len(list(link.FreeSolidGemU or [])) > 0:
+            return
+        doc = self._require_doc()
+        body = getattr(link, "LinkedObject", None)
+        doc.removeObject(link.Name)
+        if body is not None and not any(
+                getattr(other, "LinkedObject", None) is body
+                for other in self._gem_links()):
+            self._remove_gem_body(body)
+
+    def _remove_gem_body(self, body):
+        from engine.gems import cache_key
+        doc = self._require_doc()
+        varset = self._gem_varset(body)
+        gemme = getattr(body, "FreeSolidGemTemplate", "") or ""
+        diametre = float(getattr(varset, "diametre", 0)) if varset else 0.0
+        self._gem_bodies.pop(cache_key(gemme, diametre), None)
+        to_remove = []
+        if varset is not None:
+            to_remove.append(varset)
+        for obj in list(getattr(body, "Group", ()) or ()):
+            to_remove.append(obj)
+        to_remove.append(body)
+        for obj in to_remove:
+            try:
+                doc.removeObject(obj.Name)
+            except Exception:
+                pass
+
+    def _refresh_gem_placements(self):
+        """Recalcule PlacementList depuis (u, v) et la face courante.
+
+        Jamais de matrice figée : si la face a disparu (toponaming), le
+        semis se signale en erreur et garde sa dernière pose — il ne se
+        disperse pas.
+        """
+        from engine.gems import is_bspline_surface, placement_at
+        if self._doc is None or self._body is None:
+            return
+        shape = getattr(self._body, "Shape", None)
+        faces = list(getattr(shape, "Faces", None) or ())
+        for link in self._gem_links():
+            us = list(link.FreeSolidGemU or [])
+            vs = list(link.FreeSolidGemV or [])
+            spins = list(link.FreeSolidGemSpin or [])
+            lifts = list(link.FreeSolidGemLift or [])
+            count = min(len(us), len(vs))
+            while len(spins) < count:
+                spins.append(0.0)
+            while len(lifts) < count:
+                lifts.append(0.0)
+            face_id = self._face_index_or_none(link.FreeSolidGemFace)
+            error = ""
+            face = None
+            if face_id is None or face_id < 0 or face_id >= len(faces):
+                error = ("la face d'ancrage « {} » a disparu — "
+                         "le semis n'a pas été déplacé".format(
+                             link.FreeSolidGemFace or "?"))
+            else:
+                face = faces[face_id]
+            placements = []
+            if face is not None and count:
+                try:
+                    for i in range(count):
+                        placements.append(placement_at(
+                            face, us[i], vs[i], spins[i], lifts[i]))
+                except Exception as exc:  # noqa: BLE001
+                    error = ("la face d'ancrage a changé de nature : {}"
+                             .format(_explain(exc)))
+                    placements = []
+            if error:
+                link.FreeSolidGemError = error
+                continue
+            link.FreeSolidGemError = ""
+            if not hasattr(link, "ElementCount") or not hasattr(
+                    link, "PlacementList"):
+                continue
+            if hasattr(link, "ShowElement"):
+                link.ShowElement = False
+            link.ElementCount = count
+            if count:
+                link.PlacementList = placements
+            spline = is_bspline_surface(face) if face is not None else False
+            label = "Semis de pierres — {} Ø{} mm".format(
+                link.FreeSolidGemTemplate or "pierre",
+                _format_mm(self._gem_diametre(link)))
+            if spline:
+                label += " (surface libre)"
+            if count > 1:
+                label = "{} × {}".format(count, label)
+            link.Label = label
+
+    def _gem_diametre(self, link):
+        body = getattr(link, "LinkedObject", None)
+        varset = self._gem_varset(body) if body is not None else None
+        if varset is None or not hasattr(varset, "diametre"):
+            return 0.0
+        return float(varset.diametre)
+
+    def _gem_entry(self, link):
+        from engine.gems import is_bspline_surface, placement_at
+        us = list(link.FreeSolidGemU or [])
+        vs = list(link.FreeSolidGemV or [])
+        spins = list(link.FreeSolidGemSpin or [])
+        lifts = list(link.FreeSolidGemLift or [])
+        count = min(len(us), len(vs))
+        error = str(getattr(link, "FreeSolidGemError", "") or "")
+        face = None
+        spline = False
+        face_id = self._face_index_or_none(getattr(link, "FreeSolidGemFace", ""))
+        try:
+            if face_id is not None:
+                face, face_id = self._anchor_face(face_id)
+                spline = is_bspline_surface(face)
+        except KernelError:
+            face = None
+            if not error:
+                error = "la face d'ancrage « {} » a disparu".format(
+                    link.FreeSolidGemFace)
+        stones = []
+        for i in range(count):
+            spin = spins[i] if i < len(spins) else 0.0
+            lift = lifts[i] if i < len(lifts) else 0.0
+            stone = {
+                "index": i,
+                "u": float(us[i]),
+                "v": float(vs[i]),
+                "spin": float(spin),
+                "lift": float(lift),
+            }
+            if face is not None:
+                try:
+                    place = placement_at(face, us[i], vs[i], spin, lift)
+                    stone["x"] = float(place.Base.x)
+                    stone["y"] = float(place.Base.y)
+                    stone["z"] = float(place.Base.z)
+                except Exception:
+                    pass
+            stones.append(stone)
+        return {
+            "name": link.Name,
+            "label": link.Label,
+            "kind": "Semis de pierres",
+            "type": link.TypeId,
+            "gemme": getattr(link, "FreeSolidGemTemplate", "") or "",
+            "diametre": self._gem_diametre(link),
+            "face": getattr(link, "FreeSolidGemFace", "") or "",
+            "face_id": face_id,
+            "count": count,
+            "error": bool(error) or "Invalid" in (link.State or ()),
+            "error_message": error,
+            "spline": spline,
+            "stones": stones,
+        }
+
+    def list_gems(self):
+        """Liste des semis — pour l'UI et le selftest."""
+        self._require_body()
+        self._refresh_gem_placements()
+        return {"gems": [self._gem_entry(link) for link in self._gem_links()]}
+
+    def place_gem(self, face, x, y, z, gemme=None, diametre=None,
+                  spin=None, lift=None):
+        """Pose une pierre sur une face. Le point reçu est projeté.
+
+        L'autorité est ``(u, v)``, jamais le point du raycast ni une
+        matrice de placement. Poser n'enlève pas de matière.
+        """
+        from engine.gems import (
+            DEFAULT_GEMME, GemError, face_name, parse_diametre,
+            parse_spin_lift, sanitize_gemme,
+        )
+        self._require_body()
+        try:
+            gemme = sanitize_gemme(gemme or DEFAULT_GEMME)
+            diametre = parse_diametre(diametre)
+            spin = parse_spin_lift(spin)
+            lift = parse_spin_lift(lift)
+            name = face_name(face)
+        except GemError as exc:
+            raise KernelError(str(exc)) from exc
+        target, _index = self._anchor_face(face)
+        u, v = self._gem_uv(target, x, y, z)
+        body = self._ensure_gem_body(gemme, diametre)
+        link = self._find_semis(body, name, gemme, diametre)
+        if link is None:
+            link = self._new_semis(body, name, gemme, diametre)
+        self._append_stone(link, u, v, spin, lift)
+        try:
+            self._recompute()
+        except KernelError:
+            us = list(link.FreeSolidGemU or [])
+            if us:
+                self._write_stone_lists(
+                    link, us[:-1],
+                    list(link.FreeSolidGemV or [])[:-1],
+                    list(link.FreeSolidGemSpin or [])[:-1],
+                    list(link.FreeSolidGemLift or [])[:-1])
+            self._drop_empty_semis(link)
+            raise
+        return self.get_tree()
+
+    def move_gem(self, gem, index, x, y, z, face=None):
+        """Déplace une pierre. ``face`` absent = la même face."""
+        from engine.gems import GemError, face_name
+        link = self._require_gem_link(gem)
+        number, _count = self._require_stone_index(link, index)
+        if face is None:
+            target_name = str(link.FreeSolidGemFace)
+            face_id = self._face_index_or_none(target_name)
+            if face_id is None:
+                raise KernelError(
+                    "la face d'ancrage « {} » a disparu — "
+                    "la pierre n'a pas été déplacée".format(target_name))
+            target, _ = self._anchor_face(face_id)
+        else:
+            try:
+                target_name = face_name(face)
+            except GemError as exc:
+                raise KernelError(str(exc)) from exc
+            target, _ = self._anchor_face(face)
+        u, v = self._gem_uv(target, x, y, z)
+        us = list(link.FreeSolidGemU or [])
+        vs = list(link.FreeSolidGemV or [])
+        spins = list(link.FreeSolidGemSpin or [])
+        lifts = list(link.FreeSolidGemLift or [])
+        same_face = target_name == str(link.FreeSolidGemFace)
+        if same_face:
+            us[number] = u
+            vs[number] = v
+            self._write_stone_lists(link, us, vs, spins, lifts)
+        else:
+            spin = spins[number] if number < len(spins) else 0.0
+            lift = lifts[number] if number < len(lifts) else 0.0
+            del us[number], vs[number]
+            if number < len(spins):
+                del spins[number]
+            if number < len(lifts):
+                del lifts[number]
+            self._write_stone_lists(link, us, vs, spins, lifts)
+            body = getattr(link, "LinkedObject", None)
+            gemme = getattr(link, "FreeSolidGemTemplate", "") or ""
+            diametre = self._gem_diametre(link)
+            dest = self._find_semis(body, target_name, gemme, diametre)
+            if dest is None:
+                dest = self._new_semis(body, target_name, gemme, diametre)
+            self._append_stone(dest, u, v, spin, lift)
+            self._drop_empty_semis(link)
+        try:
+            self._recompute()
+        except KernelError as exc:
+            raise KernelError(
+                "{} — la pierre n'a pas été déplacée".format(exc)) from exc
+        return self.get_tree()
+
+    def spin_gem(self, gem, index, spin=None, lift=None):
+        """Rotation autour de la normale et enfoncement. Absents = inchangés."""
+        from engine.gems import GemError, parse_spin_lift
+        link = self._require_gem_link(gem)
+        number, _count = self._require_stone_index(link, index)
+        spins = list(link.FreeSolidGemSpin or [])
+        lifts = list(link.FreeSolidGemLift or [])
+        while len(spins) <= number:
+            spins.append(0.0)
+        while len(lifts) <= number:
+            lifts.append(0.0)
+        try:
+            if spin is not None:
+                spins[number] = parse_spin_lift(spin)
+            if lift is not None:
+                lifts[number] = parse_spin_lift(lift)
+        except GemError as exc:
+            raise KernelError(str(exc)) from exc
+        link.FreeSolidGemSpin = spins
+        link.FreeSolidGemLift = lifts
+        self._recompute()
+        return self.get_tree()
+
+    def remove_gem(self, gem, index):
+        """Retire une pierre du semis. Le dernier enlève le semis."""
+        link = self._require_gem_link(gem)
+        number, _count = self._require_stone_index(link, index)
+        us = list(link.FreeSolidGemU or [])
+        vs = list(link.FreeSolidGemV or [])
+        spins = list(link.FreeSolidGemSpin or [])
+        lifts = list(link.FreeSolidGemLift or [])
+        del us[number], vs[number]
+        if number < len(spins):
+            del spins[number]
+        if number < len(lifts):
+            del lifts[number]
+        self._write_stone_lists(link, us, vs, spins, lifts)
+        self._drop_empty_semis(link)
+        self._recompute()
+        return self.get_tree()
+
+    def _placed_gem_copy(self, shape, placement):
+        """Copie du gabarit, géométrie déjà au placement d'instance."""
+        copy = shape.copy()
+        combined = placement
+        existing = getattr(copy, "Placement", None)
+        if existing is not None:
+            combined = placement.multiply(existing)
+        try:
+            baked = copy.transformGeometry(combined.toMatrix())
+            return baked
+        except Exception:
+            copy.Placement = combined
+            return copy
+
+    def _gem_compound_shape(self, link):
+        """Compound des N copies : une forme, une opération booléenne.
+
+        Relit ``PlacementList`` (jamais une copie figée). ``None`` si le
+        semis n'a pas encore de placement — l'appelant distingue le
+        vide initial d'un gabarit sans solide.
+        """
+        import Part
+        linked = getattr(link, "LinkedObject", None)
+        base = getattr(linked, "Shape", None) if linked is not None else None
+        if base is None or not getattr(base, "Solids", None):
+            raise KernelError(
+                "le gabarit du semis n'a pas de solide — rien à combiner")
+        placements = list(getattr(link, "PlacementList", None) or [])
+        if not placements:
+            return None
+        copies = [self._placed_gem_copy(base, place) for place in placements]
+        return Part.makeCompound(copies)
+
+    def _gem_placement_fingerprint(self, link):
+        """Signature des placements — pour ne pas recuire un compound identique."""
+        placements = list(getattr(link, "PlacementList", None) or [])
+        chunks = []
+        for place in placements:
+            base = getattr(place, "Base", None)
+            rot = getattr(place, "Rotation", None)
+            quat = getattr(rot, "Q", None) if rot is not None else None
+            if base is None:
+                chunks.append("?")
+                continue
+            qx, qy, qz, qw = (quat if quat is not None else (0, 0, 0, 1))[:4]
+            chunks.append("{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f}".format(
+                float(base.x), float(base.y), float(base.z),
+                float(qx), float(qy), float(qz), float(qw)))
+        return "{}#{}".format(link.Name, "|".join(chunks))
+
+    def _set_gem_boolean_shape(self, obj, compound, fingerprint):
+        """Pose la forme si les placements ont changé. Retourne True si écrit."""
+        if "FreeSolidGemBooleanFingerprint" not in obj.PropertiesList:
+            obj.addProperty(
+                "App::PropertyString", "FreeSolidGemBooleanFingerprint",
+                "FreeSolid", "Empreinte des placements du semis")
+        if str(getattr(obj, "FreeSolidGemBooleanFingerprint", "") or "") == fingerprint:
+            return False
+        obj.Shape = compound
+        obj.FreeSolidGemBooleanFingerprint = fingerprint
+        return True
+
+    def _derive_gem_boolean_body(self, link):
+        """Corps outil dérivé du semis — le semis lui-même n'est pas absorbé.
+
+        Même route que la gravure : ``Part::Feature`` porteur de la
+        forme, enveloppé dans un corps par ``BaseFeature``.
+        """
+        doc = self._require_doc()
+        self._refresh_gem_placements()
+        compound = self._gem_compound_shape(link)
+        if compound is None:
+            raise KernelError("semis vide — rien à combiner")
+        shape_feature = doc.addObject("Part::Feature", "GemBooleanShape")
+        shape_feature.Label = "Forme du semis"
+        if "FreeSolidGemBooleanSource" not in shape_feature.PropertiesList:
+            shape_feature.addProperty(
+                "App::PropertyString", "FreeSolidGemBooleanSource",
+                "FreeSolid", "Semis dont le compound est dérivé")
+        shape_feature.FreeSolidGemBooleanSource = link.Name
+        self._set_gem_boolean_shape(
+            shape_feature, compound, self._gem_placement_fingerprint(link))
+        self._mark_gem_boolean_tool(shape_feature)
+        tool_body = doc.addObject("PartDesign::Body", "GemBooleanBody")
+        tool_body.Label = "Corps outil du semis"
+        tool_body.BaseFeature = shape_feature
+        self._mark_gem_boolean_tool(tool_body)
+        doc.recompute()
+        return tool_body
+
+    def _refresh_gem_boolean_tools(self):
+        """Rebâtit le compound de chaque booléen dérivé d'un semis.
+
+        C'est ce qui distingue un booléen vivant d'une cuisson : bouger
+        une pierre puis reconstruire déplace son empreinte.
+        """
+        doc = self._doc
+        if doc is None:
+            return
+        for obj in list(doc.Objects):
+            if "FreeSolidGemBooleanSource" not in getattr(
+                    obj, "PropertiesList", ()):
+                continue
+            source = str(getattr(obj, "FreeSolidGemBooleanSource", "") or "")
+            if not source:
+                continue
+            link = doc.getObject(source)
+            if link is None or not self._is_gem_link(link):
+                continue
+            try:
+                compound = self._gem_compound_shape(link)
+            except KernelError:
+                continue
+            if compound is None:
+                continue
+            self._set_gem_boolean_shape(
+                obj, compound, self._gem_placement_fingerprint(link))
 
     def add_text(self, text, face, size=8.0, depth=1.0, x=0.0, y=0.0,
                  emboss=False, font=None):
@@ -2181,13 +3050,22 @@ class Kernel:
     def add_boolean(self, tool, type="cut"):
         """Combiner deux corps — Soustraire / Ajouter / Intersection.
 
-        S'applique au corps actif; le corps outil est absorbé par
-        l'opération (comportement PartDesign).
+        S'applique au corps actif. Un ``PartDesign::Body`` outil est
+        absorbé (comportement PartDesign). Un semis de pierres n'est
+        pas absorbé : le corps outil est dérivé, le compound se relit
+        depuis ``PlacementList`` à chaque recompute.
         """
         body = self._require_body()
         doc = self._require_doc()
         tool_obj = doc.getObject(str(tool))
-        if tool_obj is None or tool_obj.TypeId != "PartDesign::Body":
+        derived_names = []
+        if self._is_gem_link(tool_obj):
+            tool_obj = self._derive_gem_boolean_body(tool_obj)
+            derived_names.append(tool_obj.Name)
+            base = getattr(tool_obj, "BaseFeature", None)
+            if base is not None:
+                derived_names.append(base.Name)
+        elif tool_obj is None or tool_obj.TypeId != "PartDesign::Body":
             raise KernelError("corps outil inconnu : {}".format(tool))
         if tool_obj is body:
             raise KernelError(
@@ -2216,7 +3094,15 @@ class Kernel:
         try:
             self._recompute()
         except KernelError:
-            doc.removeObject(feature.Name)
+            try:
+                doc.removeObject(feature.Name)
+            except Exception:
+                pass
+            for name in derived_names:
+                try:
+                    doc.removeObject(name)
+                except Exception:
+                    pass
             raise
         return self.get_tree()
 
@@ -3077,6 +3963,15 @@ class Kernel:
         obj = doc.getObject(feature)
         if obj is None:
             raise KernelError("fonction inconnue : {}".format(feature))
+        if self._is_gem_link(obj):
+            body = getattr(obj, "LinkedObject", None)
+            doc.removeObject(obj.Name)
+            if body is not None and not any(
+                    getattr(other, "LinkedObject", None) is body
+                    for other in self._gem_links()):
+                self._remove_gem_body(body)
+            self._recompute()
+            return self._current_tree()
         label = obj.Label
         if obj.TypeId == "PartDesign::Body":
             bodies = [o for o in doc.Objects
@@ -3309,6 +4204,15 @@ class Kernel:
     def _varset(self, create=False):
         doc = self._require_doc()
         obj = doc.getObject(self._VARSET_NAME)
+        if obj is not None and self._is_internal_tool(obj):
+            obj = next((item for item in doc.Objects
+                        if item.TypeId == "App::VarSet"
+                        and not self._is_internal_tool(item)
+                        and item.Label == "Équations"), None)
+            if obj is None:
+                obj = next((item for item in doc.Objects
+                            if item.TypeId == "App::VarSet"
+                            and not self._is_internal_tool(item)), None)
         if obj is None and create:
             obj = doc.addObject("App::VarSet", self._VARSET_NAME)
             obj.Label = "Équations"
@@ -3462,11 +4366,13 @@ class Kernel:
         for obj in self._doc.Objects:
             if obj.TypeId == "PartDesign::Body" and not self._is_internal_tool(obj):
                 names.add(obj.Name)
-            elif (obj.TypeId in self._SURFACE_TYPE_IDS
+            if (obj.TypeId in self._SURFACE_TYPE_IDS
                     and not self._is_internal_tool(obj)):
                 names.add(obj.Name)
                 for sketch in self._surface_sketch_objects(obj):
                     names.add(sketch.Name)
+        for link in self._gem_links():
+            names.add(link.Name)
         return names
 
     @staticmethod
@@ -3711,7 +4617,30 @@ class Kernel:
         return {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,
                 "surfaces": surfaces,
+                "gems": [self._gem_entry(link) for link in self._gem_links()],
                 "variables": self.list_variables()["variables"]}
+
+    def _face_mesh(self, face, face_id, deviation):
+        """Tessellation d'une face + normales exactes ``normalAt(u, v)``."""
+        from engine.gems import is_bspline_surface, project_uv
+        vertices, triangles = face.tessellate(float(deviation))
+        points = [(v.x, v.y, v.z) for v in vertices]
+        normals = []
+        for vertex in vertices:
+            try:
+                u, v, _on = project_uv(face, vertex.x, vertex.y, vertex.z)
+                normal = face.normalAt(u, v)
+                if hasattr(normal, "normalize"):
+                    normal = normal.normalize()
+                length = float(getattr(normal, "Length", 0) or 0)
+                if length < 1e-12:
+                    normals.append((0.0, 0.0, 1.0))
+                else:
+                    normals.append((float(normal.x), float(normal.y),
+                                    float(normal.z)))
+            except Exception:
+                normals.append((0.0, 0.0, 1.0))
+        return (face_id, points, triangles, normals), is_bspline_surface(face)
 
     def tessellate(self, deviation=0.1):
         """Per-face tessellation of the body's current shape.
@@ -3721,14 +4650,23 @@ class Kernel:
         """
         from . import protocol
         body = self._require_body()
+        self._refresh_gem_placements()
         shape = getattr(body, "Shape", None)
         faces = []
+        splines = []
         if shape is not None and shape.Faces:
             for i, face in enumerate(shape.Faces):
-                vertices, triangles = face.tessellate(float(deviation))
-                faces.append(
-                    (i, [(v.x, v.y, v.z) for v in vertices], triangles))
+                packed, spline = self._face_mesh(face, i, deviation)
+                faces.append(packed)
+                splines.append(spline)
         mesh = protocol.pack_mesh(faces)
+        producers = self._face_producers()
+        for group, spline in zip(mesh.get("groups") or [], splines):
+            if spline:
+                group["spline"] = True
+            feature = producers.get(group.get("faceId"))
+            if feature:
+                group["feature"] = feature
         mesh["color"] = getattr(body, "FreeSolidColor", "") or None
         # Les autres corps s'affichent estompés, non sélectionnables :
         # on travaille sur le corps actif, on voit la pièce entière.
@@ -3836,7 +4774,70 @@ class Kernel:
             })
         if sketches_out:
             mesh["sketches"] = sketches_out
+        mesh["gems"] = self._tessellate_gems(deviation)
         return mesh
+
+    def _tessellate_gems(self, deviation):
+        """Une géométrie par semis, N matrices d'instance — pas N objets."""
+        from engine.gems import matrix_list, placement_at
+        from . import protocol
+        out = []
+        for link in self._gem_links():
+            entry = self._gem_entry(link)
+            linked = getattr(link, "LinkedObject", None)
+            shape = getattr(linked, "Shape", None)
+            geometry = {"positions": [], "indices": []}
+            if shape is not None and shape.Faces:
+                faces = []
+                for i, face in enumerate(shape.Faces):
+                    packed, _spline = self._face_mesh(face, i, deviation)
+                    faces.append(packed)
+                packed = protocol.pack_mesh(faces)
+                geometry = {
+                    "positions": packed["positions"],
+                    "indices": packed["indices"],
+                }
+                if packed.get("normals"):
+                    geometry["normals"] = packed["normals"]
+            instances = []
+            face = None
+            face_id = entry.get("face_id")
+            try:
+                if face_id is not None:
+                    face, _ = self._anchor_face(face_id)
+            except KernelError:
+                face = None
+            for stone in entry["stones"]:
+                matrix = None
+                if face is not None:
+                    try:
+                        place = placement_at(
+                            face, stone["u"], stone["v"],
+                            stone["spin"], stone["lift"])
+                        matrix = matrix_list(place)
+                    except Exception:
+                        matrix = None
+                instances.append({
+                    "index": stone["index"],
+                    "matrix": matrix or [],
+                    "x": stone.get("x"),
+                    "y": stone.get("y"),
+                    "z": stone.get("z"),
+                    "spin": stone["spin"],
+                    "lift": stone["lift"],
+                })
+            out.append({
+                "name": entry["name"],
+                "label": entry["label"],
+                "error": entry["error"],
+                "spline": entry["spline"],
+                "face_id": entry.get("face_id"),
+                "positions": geometry["positions"],
+                "indices": geometry["indices"],
+                "normals": geometry.get("normals"),
+                "instances": instances,
+            })
+        return out
 
     def tessellate_edges(self, deviation=0.05):
         """Per-edge polylines of the body's current shape.
@@ -4673,7 +5674,12 @@ class Kernel:
             raise
         except Exception as exc:  # noqa: BLE001
             raise KernelError(_explain(exc))
-        self._require_doc().recompute()  # les expressions s'évaluent ici
+        if self._assembly:
+            self._require_doc().recompute()
+        else:
+            # _recompute applique aussi PlacementList des semis : sans le
+            # second passage, la cote change et l'écran ne suit pas.
+            self._recompute()
         return self.sketch_state(sketch)
 
     #: Libellé français des types de contraintes, pour le panneau Relations.
@@ -7033,6 +8039,190 @@ class Kernel:
                 and edited["label"] != curve_line["label"]
                 and surf_line["label"] == "Fonction graphe — Surface")
 
+            mark("p034: pierre aimantée sur un cylindre")
+            import math as _math
+            self.new_part("Jonc P034")
+            state = self.sketch_start()
+            sk_gem = state["sketch"]
+            self.sketch_add_circle(sk_gem, 0, 0, 10)
+            self.sketch_constrain(
+                sk_gem, "coincident", 0, point1=3, geo2=-1, point2=1)
+            dim_state = self.sketch_dim(sk_gem, 0)
+            radius_dim = max(d["id"] for d in dim_state["dims"])
+            self.sketch_finish(sk_gem)
+            self.add_pad(6, sketch=sk_gem)
+            side = self._side_face_id()
+            face = self._require_body().Shape.Faces[side]
+            u0, u1, v0, v1 = face.ParameterRange
+            seed = face.valueAt((u0 + u1) / 2.0, (v0 + v1) / 2.0)
+            placed = self.place_gem(
+                face=side, x=seed.x, y=seed.y, z=seed.z, diametre=1.5)
+            gems = placed.get("gems") or []
+            report["p034_pose"] = (
+                len(gems) == 1
+                and gems[0]["count"] == 1
+                and not gems[0]["error"])
+            stone = gems[0]["stones"][0]
+            r_before = _math.hypot(stone["x"], stone["y"])
+            z_before = stone["z"]
+            angle_before = _math.atan2(stone["y"], stone["x"])
+            mesh = self.tessellate()
+            report["p034_mesh"] = (
+                bool(mesh.get("normals"))
+                and len(mesh.get("gems") or []) == 1
+                and bool((mesh["gems"][0].get("instances") or [{}])[0]
+                         .get("matrix")))
+            tree = self.get_tree()
+            report["p034_arbre"] = (
+                len(tree.get("gems") or []) == 1
+                and not any(b.get("label", "").startswith("Gabarit")
+                            for b in tree["bodies"])
+                and not dangling_deps(tree))
+            self.sketch_set_dim(sk_gem, radius_dim, 12)
+            after = (self.list_gems().get("gems") or [{}])[0]
+            stone2 = (after.get("stones") or [{}])[0]
+            r_after = _math.hypot(stone2.get("x", 0), stone2.get("y", 0))
+            z_after = stone2.get("z", 0)
+            angle_after = _math.atan2(stone2.get("y", 0), stone2.get("x", 0))
+            import Part as _Part
+            face_after = self._require_body().Shape.Faces[self._side_face_id()]
+            origin = _Part.Vertex(self._app().Vector(
+                stone2.get("x", 0), stone2.get("y", 0), stone2.get("z", 0)))
+            dist = face_after.distToShape(origin)[0]
+            report["p034_ancrage"] = (
+                not after.get("error")
+                and dist < 1e-6
+                and abs(r_after - 12.0) < 1e-4
+                and abs(z_after - z_before) < 1e-4
+                and abs((angle_after - angle_before + _math.pi) % (2 * _math.pi)
+                        - _math.pi) < 1e-4
+                and abs(r_before - 10.0) < 1e-3)
+            # Témoin négatif : un placement figé aurait décollé de ~2 mm.
+            report["p034_temoin_fige"] = abs(r_before - 12.0) > 1.0
+            moved = self.move_gem(
+                gems[0]["name"], 0, seed.x, seed.y, seed.z + 1.0)
+            report["p034_deplace"] = (
+                (moved.get("gems") or [{}])[0].get("count") == 1)
+            removed = self.remove_gem(gems[0]["name"], 0)
+            report["p034_retire"] = (removed.get("gems") or []) == []
+            # Hors domaine : un point loin de la face est refusé.
+            self.place_gem(face=side, x=seed.x, y=seed.y, z=seed.z)
+            try:
+                self.place_gem(face=side, x=1000.0, y=1000.0, z=1000.0)
+                report["p034_hors_domaine"] = False
+            except KernelError as exc:
+                report["p034_hors_domaine"] = "hors" in str(exc).lower() or (
+                    "contour" in str(exc).lower())
+
+            mark("p036: glisser d'une face à l'autre")
+            current = (self.list_gems().get("gems") or [{}])[0]
+            src_name = current.get("name")
+            src_face = current.get("face")
+            top = self._top_face_id()
+            top_face, _ = self._anchor_face(top)
+            tu0, tu1, tv0, tv1 = top_face.ParameterRange
+            top_pt = top_face.valueAt((tu0 + tu1) / 2.0, (tv0 + tv1) / 2.0)
+            migrated = self.move_gem(
+                src_name, 0, top_pt.x, top_pt.y, top_pt.z, face=top)
+            after_mig = migrated.get("gems") or []
+            report["p036_migration"] = (
+                len(after_mig) == 1
+                and after_mig[0].get("count") == 1
+                and after_mig[0].get("name") != src_name
+                and after_mig[0].get("face") != src_face
+                and not after_mig[0].get("error"))
+
+            mark("p036: cote hors esquisse")
+            vol_before_dim = _volume()
+            self.sketch_set_dim(sk_gem, radius_dim, 11)
+            report["p036_cote_hors_esquisse"] = (
+                abs(_volume() - vol_before_dim) > 1.0
+                and abs(_volume() - (_math.pi * 11.0 * 11.0 * 6.0)) < 2.0)
+
+            mark("p036: reconstruire")
+            mesh_a = self.tessellate()
+            vol_a = _volume()
+            gems_a = self.list_gems().get("gems") or []
+            self.rebuild()
+            mesh_b = self.tessellate()
+            gems_b = self.list_gems().get("gems") or []
+            report["p036_rebuild"] = (
+                _close(_volume(), vol_a)
+                and len(mesh_a.get("indices") or [])
+                == len(mesh_b.get("indices") or [])
+                and len(mesh_a.get("groups") or [])
+                == len(mesh_b.get("groups") or [])
+                and len(gems_a) == len(gems_b) == 1
+                and gems_a[0].get("count") == gems_b[0].get("count") == 1)
+
+            mark("p035: booléen sur un semis")
+
+            def _jonc_trois_pierres(name):
+                self.new_part(name)
+                state = self.sketch_start()
+                sk = state["sketch"]
+                self.sketch_add_circle(sk, 0, 0, 10)
+                self.sketch_constrain(
+                    sk, "coincident", 0, point1=3, geo2=-1, point2=1)
+                self.sketch_finish(sk)
+                tree = self.add_pad(6, sketch=sk)
+                pad_name = next(
+                    f["name"] for f in tree["features"]
+                    if f["type"] == "PartDesign::Pad")
+                side = self._side_face_id()
+                face = self._require_body().Shape.Faces[side]
+                u0, u1, v0, v1 = face.ParameterRange
+                v_mid = (v0 + v1) / 2.0
+                for i in range(3):
+                    u = u0 + (u1 - u0) * (i + 0.5) / 3.0
+                    pt = face.valueAt(u, v_mid)
+                    self.place_gem(
+                        face=side, x=pt.x, y=pt.y, z=pt.z,
+                        diametre=1.5, lift=-0.25)
+                gems = self.list_gems().get("gems") or []
+                return pad_name, side, gems, _volume()
+
+            pad_name, side, gems, vol_nu = _jonc_trois_pierres("Jonc P035")
+            semis = (gems or [{}])[0].get("name")
+            tree = self.add_boolean(tool=semis, type="cut")
+            shape_cut = self._require_body().Shape
+            vol_cut = _volume()
+            after_cut = self.list_gems().get("gems") or []
+            report["p035_cut"] = (
+                len(getattr(shape_cut, "Solids", ()) or ()) == 1
+                and vol_cut < vol_nu - 0.05
+                and len(after_cut) == 1
+                and after_cut[0].get("count") == 3
+                and not any(b.get("label", "").startswith("Corps outil du semis")
+                            for b in tree["bodies"]))
+            stone_before = (after_cut[0].get("stones") or [{}])[0]
+            mesh_before = self.tessellate()
+            self.set_tip(pad_name)
+            face = self._require_body().Shape.Faces[side]
+            u0, u1, v0, v1 = face.ParameterRange
+            moved_pt = face.valueAt(
+                u0 + (u1 - u0) * 0.05, (v0 + v1) / 2.0)
+            self.move_gem(semis, 0, moved_pt.x, moved_pt.y, moved_pt.z)
+            self.tip_to_end()
+            stone_after = ((self.list_gems().get("gems") or [{}])[0]
+                           .get("stones") or [{}])[0]
+            dx = float(stone_after.get("x", 0)) - float(stone_before.get("x", 0))
+            dy = float(stone_after.get("y", 0)) - float(stone_before.get("y", 0))
+            mesh_after = self.tessellate()
+            report["p035_deplace"] = (
+                (dx * dx + dy * dy) ** 0.5 > 1.0
+                and mesh_before.get("positions") != mesh_after.get("positions")
+                and len(self._require_body().Shape.Solids) == 1
+                and abs(_volume() - vol_cut) < 0.5)
+
+            _pad, _side, gems_fuse, vol_nu_fuse = _jonc_trois_pierres(
+                "Jonc P035 fuse")
+            semis_fuse = (gems_fuse or [{}])[0].get("name")
+            self.add_boolean(tool=semis_fuse, type="fuse")
+            report["p035_fuse"] = (
+                len(self._require_body().Shape.Solids) == 1
+                and _volume() > vol_nu_fuse + 0.05)
+
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce
             # qui montre ce que l'Autotest a testé, pas sur la plaque m1.5.
@@ -7083,6 +8273,7 @@ _TRANSACTIONAL = frozenset({
     "sketch_fillet", "sketch_trim", "sketch_constrain",
     "sketch_add_spline", "sketch_add_ellipse", "sketch_mirror",
     "sketch_array", "sketch_offset", "array_component",
+    "place_gem", "move_gem", "spin_gem", "remove_gem",
 })
 
 

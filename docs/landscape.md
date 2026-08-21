@@ -12,7 +12,7 @@ headless ». Conclusion en bas.*
 | [Ondsel-Server / Lens](https://github.com/FreeCAD/Ondsel-Server) ‡ | Plateforme web de partage/visualisation de FCStd. **La société a fermé le 2024-10-30** ; Lens éteint le 2024-11-22 | Visionneuse, pas un éditeur — et désormais un **point de vigilance** : l'atelier Assembly et son solveur 3D, dont dépend notre phase C, ont été légués à la communauté (~150 PR mergées, don de 40 k€ à la FPA). Détail au relevé du 2026-08-21 |
 | [SindriCAD](https://github.com/MakerViking/sindricad) | CAO paramétrique web (Tauri + Three.js) sur **build123d**, pas FreeCAD | Valide la stack UI ; moteur documentaire réinventé, reconstruction totale à chaque édition |
 | [Chili3D](https://github.com/xiangechen/chili3d) † | CAO 3D 100 % navigateur, TypeScript + OCCT 8.0 en WASM + Three.js, AGPL-3.0 | Le plus proche de nous, et toujours à côté : modelage **direct**, pas d'historique paramétrique. Détail au relevé du 2026-08-15 |
-| [BOMWiki/partmode](https://github.com/BOMWiki/partmode) ‡ | CAO paramétrique **local-first** dans le navigateur : OCCT-wasm via `replicad` + three.js, modèle documentaire maison, **historique de fonctions rééditable**, esquisses contraintes, expressions, multicorps, configurations, motifs ; agents MCP éditant *le même* document que l'humain. AGPL-3.0, ~635 ★ | **Le plus proche de nous à ce jour** — il ferme le trou qu'on reprochait à Chili3D (l'historique paramétrique). Reste le modèle documentaire réinventé, et l'AGPL. Détail au relevé du 2026-08-21 |
+| [BOMWiki/partmode](https://github.com/BOMWiki/partmode) ‡ | CAO paramétrique **local-first** dans le navigateur : OCCT-wasm via `replicad` + three.js, modèle documentaire maison, **historique de fonctions rééditable**, esquisses contraintes, expressions, multicorps, configurations, motifs ; agents MCP éditant *le même* document que l'humain. AGPL-3.0, ~635 ★ | **Le plus proche de nous à ce jour** — il ferme le trou qu'on reprochait à Chili3D (l'historique paramétrique), et son interface est un vrai ruban de 89 kloc malgré son slogan « CLI-native ». Reste le modèle documentaire réinventé, et l'AGPL. Détail au relevé du 2026-08-21 |
 | freecad-mcp (plusieurs), freecad-ai ‡ | Pilotage de FreeCAD par API/LLM | De la tuyauterie voisine, pas une UI interactive — mais [`sandraschi/freecad-mcp`](https://github.com/sandraschi/freecad-mcp) est **architecturalement notre jumeau** (FreeCAD headless derrière une API REST qui sert aussi un tableau de bord web) et il est **MIT**. Relevé du 2026-08-21 |
 | render-fcstd, freecad-web-visualization | Visionneuses Three.js de fichiers exportés | Affichage seul |
 | Fil devtalk [« FreeCAD web frontend »](https://devtalk.freecad.org/t/freecad-web-frontend/55903) (2021) | Discussion récurrente depuis 2017 | Aucun projet n'en est sorti |
@@ -392,6 +392,54 @@ faut s'en méfier des forums et du wiki, qui décrivent souvent le fork
   Chili3D pour le reste : **AGPL, donc regarder, jamais copier**, et rien
   qui puisse partir en amont.
 
+### PartMode — l'interface, contre l'impression que donne son slogan
+
+Le site s'annonce « **CLI-native agentic browser CAD** », ce qui laisse
+attendre un outil pour agents avec une interface en second. **La source dit
+l'inverse**, et il vaut mieux le savoir avant de se rassurer :
+
+| | PartMode | FreeSolid |
+|---|---|---|
+| Chrome | **ruban** (`<section class="ws-ribbon">`), 7 espaces : `home`, `sketch`, `solid`, `assembly`, `view`, `output`, `manage` — idiome Fusion 360 | ruban à 4 onglets : esquisse, fonctions, assemblage, surfaces — idiome SolidWorks |
+| Barre d'application | annuler/rétablir, modèles, configurations, ouvrir/enregistrer, exports STEP/STL/AMF/3MF/DXF/PDF/mise en plan, aide, plein écran | — |
+| Modules d'interface | assistant de perçage, édition directe, `TransformControls`, `OrbitControls`, drag d'assemblage, annotations et normes de mise en plan, diagnostics de fonction | viewport Three.js, arbre SW, panneaux |
+| JS d'interface | **~89 000 lignes** (`studio*.js`) | **~8 900 lignes** (`app/*.js`) |
+
+**Ce qu'ils ont et que nous n'avons pas : un contrat de navigation.**
+`src/ux-navigation-contract.ts` déclare huit parcours figés, chacun avec un
+contexte (`first-visit` ou `existing-editor`), un objectif en clair et la
+suite exacte de clics **avec les sélecteurs** — « Start a blank sketch » →
+clic sur `#bw-welcome-start`. C'est de la découvrabilité **testable** au
+lieu d'affirmée. Portée honnête : les huit parcours couvrent l'*accès*
+(ouvrir un modèle, la bibliothèque, une configuration, exporter une mise en
+plan), aucun ne décrit le geste de modélisation lui-même.
+
+**Une lecture à corriger, la nôtre.** On peut être tenté de compter le
+`right-drag` en rosace à quatre directions (isoler / éditer / supprimer /
+masquer, zone morte de 28 px) comme un geste d'expert peu découvrable.
+C'est l'inverse pour notre public : **c'est une convention SolidWorks**,
+et [`navigation-spec.md`](navigation-spec.md) la liste noir sur blanc
+(« Glisser clic droit : rosace de gestes »). Pour un utilisateur SW, ce
+geste rend PartMode *plus* familier, pas moins — et leur implémentation
+sert désormais de référence lisible dans notre propre spécification.
+
+**Ce qu'on en conclut pour FreeSolid.** Ne pas se battre sur la surface
+d'interface : à dix contre un, c'est perdu d'avance et ce n'est pas notre
+thèse — nos différenciateurs sont le document FreeCAD conservé, le `.FCStd`
+réouvrable, PartDesign et planegcs. En revanche, **le contrat de navigation
+est la bonne chose à leur prendre**, et ce n'est pas un widget : écrire les
+parcours d'un débutant comme des données testées coûte presque rien, rend
+la découvrabilité mesurable, et complète exactement ce que fait déjà
+`engine/protocol.py` pour les opérations — les gestes d'interface, eux, ne
+sont déclarés nulle part chez nous. AGPL : l'idée, jamais le fichier.
+
+**Limite assumée de ce constat.** Tout ceci est lu *dans la source*, pas
+vu à l'écran : `partmode.com` est bloqué depuis notre environnement
+d'analyse. Présence de code n'est pas qualité d'usage, et 89 000 lignes
+d'interface, c'est aussi plus de surface où se perdre. L'intuitivité se
+tranche en l'utilisant — et le test qui vaut est le nôtre : esquisse
+rectangle cotée → bossage extrudé, sans lire l'aide.
+
 - **[`sandraschi/freecad-mcp`](https://github.com/sandraschi/freecad-mcp) —
   notre jumeau architectural, sous MIT.** FreeCAD 1.1.1+ headless derrière
   une API REST (`:10944`) qui sert *aussi* un tableau de bord React
@@ -423,8 +471,25 @@ supprimé du travail au lieu d'en créer. Six constats instruits, un module
 **Regarder en amont avant d'écrire est moins cher qu'écrire.** C'est la
 règle mise en tête du §5 de [`amont-freecad.md`](amont-freecad.md).
 
+Et une surprise, qui ne venait pas de dehors : le candidat amont le plus
+mûr du projet **était déjà écrit chez nous**.
+[`navigation-spec.md`](navigation-spec.md) répond mot pour mot à ce qu'un
+mainteneur FreeCAD a demandé publiquement en décembre 2024 — et personne
+n'y a répondu depuis. Il est entré au registre sous l'entrée **A10**. Le
+premier tour l'avait manqué parce qu'il cherchait des contournements dans
+`engine/` ; celui-là ne contourne rien, c'est un document. La leçon vaut
+d'être retenue : **un constat amont ne prend pas toujours la forme d'une
+rustine.**
+
 Et une nuance à porter au crédit de la veille elle-même : avec PartMode,
 « la voie est libre » devient « la voie est étroite ». Ce qui reste à nous
 seuls tient en une phrase — le modèle documentaire de FreeCAD conservé, et
 le `.FCStd` qui se rouvre dans FreeCAD. Tout le reste a maintenant des
-concurrents sérieux.
+concurrents sérieux, **y compris sur l'interface**, qui était censée être
+notre terrain : PartMode y met dix fois notre volume de code, et un
+contrat de navigation testable que nous n'avons pas.
+
+Ce qui n'est pas une raison de courir après le volume. C'en est une de
+prendre chez eux la seule chose qui se prend sans écrire de fonction : le
+contrat. Nos opérations sont déjà déclarées dans `engine/protocol.py` ;
+nos gestes d'interface ne le sont nulle part.

@@ -65,6 +65,7 @@ Trois questions, dans cet ordre. La première qui répond « oui » tranche.
 | Undo borné en session longue | **les deux** | question 3 — le besoin est le nôtre, l'API Python manquante est la leur (entrée **A2**) |
 | Mise en plan TechDraw headless | **les deux, sous réserve** | question 3 — nos vues, leurs crashs… si ces crashs existent encore en 1.1.3 (entrées **A4**, **A5**, suspendues à un re-test) |
 | Suivi d'une référence de sous-élément à travers un recompute | **FreeCAD** — tranché le 2026-08-21 | question 1 : la carte d'éléments est à eux, **et ils l'exposent en Python** ; à nous de nous en servir, pas de la refaire (§4ter) |
+| Style de navigation SolidWorks (rotation au bouton du milieu, ancrage du centre d'orbite…) | **FreeCAD** | question 1 — ça vit dans `src/Gui/NavigationStyle.cpp`, pas chez nous. En attendant, FreeSolid se règle sur le style Blender, le plus proche existant (entrée **A10**) |
 | Esquisses 3D, configurations | ni l'un ni l'autre | écarts assumés de [`grandes-lignes.md`](grandes-lignes.md) — un choix de périmètre n'est pas un bug à remonter |
 
 ## 3. La grille des licences — ce qui peut partir en amont
@@ -110,11 +111,13 @@ l'attendait.** La méthode et ce qu'elle a coûté sont en §8.
 
 Nature : **bug** (comportement faux ou crash) · **API** (capacité absente
 côté Python) · **doc** (comportement correct mais nulle part écrit) ·
-**produit** (amélioration d'ergonomie ou de message) · **banc** (matière de
+**produit** (amélioration d'ergonomie ou de message) · **feat** (fonction
+manquante qu'on est en mesure d'apporter) · **banc** (matière de
 non-régression).
 
 | # | Constat | Où c'est visible chez nous | Nature | Vérifié en amont le 2026-08-21 | État |
 |---|---|---|---|---|---|
+| **A10** | **FreeCAD n'a pas de style de navigation SolidWorks**, et un mainteneur a dit précisément ce qu'il faudrait pour en ajouter un | [`navigation-spec.md`](navigation-spec.md) — la spécification demandée, déjà rédigée en brouillon | feat | ✅ **la porte est ouverte et personne n'y est entré** : la [discussion #18635](https://github.com/FreeCAD/FreeCAD/discussions/18635) a été fermée le 2024-12-23 par luzpaz sur « *If you make progress feel free to re-open discussion* », après avoir pointé `src/Gui/NavigationStyle.cpp` et les styles existants comme modèles. **Aucune proposition détaillée n'a été fournie depuis** (vérifié le 2026-08-21) | 🥇 **l'entrée la plus mûre du registre** — il ne manque qu'une validation ligne à ligne par un utilisateur SolidWorks quotidien |
 | **A1** | `freecadcmd script.py` **importe le fichier comme module** au lieu de l'exécuter comme script — d'où `__name__` = le nom du fichier, jamais `"__main__"` | absence volontaire de garde dans `engine/server.py` ; expliqué (imprécisément) dans `AGENTS.md` | doc | ✅ **mécanisme établi** : `src/App/Application.cpp:3108-3117` appelle `addPythonPath(dirname)` puis `loadModule(stem)`, et ne retombe sur `runFile(path, local=true)` — qui exécute dans une **copie** du dict de `__main__` — que si l'import lève | à formuler ; **corriger d'abord notre propre `AGENTS.md`** |
 | **A2** | Aucun moyen de borner la pile d'undo depuis Python | `engine/kernel.py:311-322` (double `hasattr`), audit **2.4** | API | ✅ **confirmé et élargi** : `src/App/Document.pyi` n'expose ni `UndoLimit` ni `setMaxUndoStackSize` / `getMaxUndoStackSize`, **ni en 1.1.3 ni sur `main` au 2026-08-21** — seulement `UndoRedoMemSize` en lecture seule. Le C++ a bien `setMaxUndoStackSize()`, il n'est pas exporté | **demande amont nette et minuscule** ; nos deux branches `hasattr` sont du code mort à annoter |
 | **A3** | Joints d'assemblage headless : API non documentée, forme d'argument piégeuse | `engine/kernel.py:518-560` | doc | ✅ **requalifié** : `setJointConnectors` n'est pas absent, il est **exercé par la suite de tests amont** — `src/Mod/Assembly/AssemblyTests/TestCore.py:251` — et n'est qu'une façade posant `Reference1`/`Reference2`. Il manque donc la **documentation**, pas l'API | demande amont réduite à la doc ; voir §4bis pour ce que le test amont nous apprend sur **notre** code |
@@ -126,12 +129,23 @@ non-régression).
 | **A9** | Grille de non-régression du noyau — stress booléen, aller-retour STEP, taux de succès des congés, convergence du solveur, qualité de tessellation | `scripts/run-selftest.py`, direction posée dans [`vcad.md`](vcad.md) §5.5 | banc | — direction, pas constat | **chaque échec du banc est un rapport amont avec reproducteur** |
 
 Ce que le tableau dit, maintenant qu'il est vérifié : **le registre a
-rétréci, et c'est le résultat utile.** Sur six constats instruits, un est
-mort (A7), deux sont suspendus à un re-test (A4, A5), un a changé de nature
-(A3), un s'est renforcé (A2) et un a trouvé sa porte (A6). Aucune de ces
-six conclusions n'était devinable depuis notre code seul — chacune a demandé
-d'aller lire l'amont. C'est la démonstration que la doctrine du §1 ne coûte
-pas seulement du travail : elle en économise.
+rétréci par le bas et grandi par le haut.** Sur six constats instruits, un
+est mort (A7), deux sont suspendus à un re-test (A4, A5), un a changé de
+nature (A3), un s'est renforcé (A2) et un a trouvé sa porte (A6) — aucune
+de ces six conclusions n'était devinable depuis notre code seul.
+
+Et l'entrée qui les dépasse toutes, **A10**, n'a pas été découverte
+dehors : elle dormait dans nos propres `docs/` depuis des mois.
+[`navigation-spec.md`](navigation-spec.md) répond mot pour mot à ce qu'un
+mainteneur a demandé publiquement, et personne n'y a répondu depuis
+décembre 2024. Le premier tour du registre l'a manquée parce qu'il a été
+**semé depuis les contournements de `engine/`** — or celle-ci ne contourne
+rien : elle vit dans `docs/`, et c'est un document, pas une rustine.
+Leçon de méthode reportée en §8.
+
+C'est la démonstration que la doctrine du §1 ne coûte pas seulement du
+travail : elle en économise, et elle révèle du travail déjà fait qu'on
+avait oublié d'appeler par son nom.
 
 ### 4bis — Ce que la reconnaissance a trouvé de notre côté
 
@@ -277,6 +291,13 @@ qu'elle est bon marché :
    ([#19255](https://github.com/FreeCAD/FreeCAD/issues/19255), *Help
    wanted*) ; A4 avait déjà sa correction ([#20024](https://github.com/FreeCAD/FreeCAD/issues/20024),
    fermée par #20110).
+
+**Un cinquième geste, ajouté après coup :** relire **nos propres `docs/`**
+avec la question amont en tête. Les quatre gestes ci-dessus regardent
+dehors ; celui-là regarde dedans, et c'est lui qui a fait apparaître A10.
+Un constat amont ne prend pas toujours la forme d'un contournement dans le
+code : il peut prendre celle d'un document écrit pour soi, sans voir qu'il
+répondait à une question posée dehors.
 
 Ce qu'il faut en retenir pour la suite : **le dépôt amont est une source
 de vérité consultable en quelques minutes**, et nous ne l'avions jamais

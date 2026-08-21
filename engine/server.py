@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -34,6 +35,70 @@ _KERNEL = kernel_mod.Kernel()
 #: 20 Hz plus un aperçu débouncé pouvaient entrer en collision dans le
 #: même document. Une op à la fois, par construction.
 _KERNEL_LOCK = threading.Lock()
+
+#: Avancement hors noyau. Le fil qui travaille écrit, ``progress`` lit —
+#: jamais sous ``_KERNEL_LOCK``, sinon l'op d'avancement attendrait la
+#: fin du booléen et ne répondrait jamais.
+_PROGRESS_LOCK = threading.Lock()
+_PROGRESS = {
+    "op": None,
+    "phase": "",
+    "fait": 0,
+    "total": 0,
+    "depuis": 0.0,
+}
+
+
+def _idle_progress():
+    return {
+        "op": None,
+        "phase": "",
+        "fait": 0,
+        "total": 0,
+        "depuis": 0.0,
+    }
+
+
+def _progress_snapshot():
+    """Copie l'état d'avancement. Aucun appel FreeCAD, aucun verrou noyau."""
+    with _PROGRESS_LOCK:
+        return dict(_PROGRESS)
+
+
+def _set_progress(**fields):
+    with _PROGRESS_LOCK:
+        _PROGRESS.update(fields)
+
+
+def _feed_progress(phase, fait=0, total=0):
+    """Callback passé au noyau — le noyau ne connaît pas ce module."""
+    _set_progress(
+        phase="" if phase is None else str(phase),
+        fait=int(fait or 0),
+        total=int(total or 0),
+    )
+
+
+def run_op(op, params):
+    """Exécute une op validée.
+
+    ``progress`` lit l'état de module et rend la main immédiatement.
+    Toute autre op prend ``_KERNEL_LOCK`` et nourrit l'avancement via
+    un callback, pas un import.
+    """
+    if op == "progress":
+        return protocol.ok(_progress_snapshot())
+    with _KERNEL_LOCK:
+        _set_progress(
+            op=op, phase="", fait=0, total=0, depuis=time.time())
+        previous = _KERNEL._progress
+        _KERNEL._progress = _feed_progress
+        try:
+            return kernel_mod.dispatch(_KERNEL, op, params)
+        finally:
+            _KERNEL._progress = previous
+            _set_progress(**_idle_progress())
+
 
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -120,9 +185,7 @@ class Handler(BaseHTTPRequestHandler):
         except (protocol.ProtocolError, ValueError) as exc:
             self._send(400, protocol.err(str(exc)))
             return
-        with _KERNEL_LOCK:
-            response = kernel_mod.dispatch(_KERNEL, op, params)
-        self._send(200, response)
+        self._send(200, run_op(op, params))
 
     # -- static UI -------------------------------------------------------
 

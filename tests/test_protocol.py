@@ -32,7 +32,8 @@ def test_malformed_requests_raise(payload):
 
 
 def test_paramless_ops_accept_absent_params():
-    for op in ("ping", "selftest", "new_part", "get_tree", "tessellate"):
+    for op in ("ping", "selftest", "new_part", "get_tree", "tessellate",
+               "progress"):
         assert protocol.validate_request({"op": op})[0] == op
 
 
@@ -504,6 +505,7 @@ def test_ops_snapshot_keys():
         "ping",
         "place_gem",
         "preview",
+        "progress",
         "rebuild",
         "redo",
         "remove_gem",

@@ -432,6 +432,50 @@ chiffres qui l'ont tranché — resterait orphelin, et la section « validation 
 de P034 renverrait à des sondes absentes. À fusionner avec.
 
 
+## 5.8 P036 livré — relu le 2026-08-21
+
+Livré sur `cursor/p036-glisser-coter-reconstruire-b595`, **empilé sur P034**
+(qui n'était pas fusionné). CI verte sur `d9e31da`, 6 checks sur 6.
+
+**Vérifié ici** — `pytest` 244/16 (contre 226 après P034), tests JS 121
+(contre 114), `node --check` sur les quatre fichiers touchés, et lecture du
+code contre chaque point du prompt.
+
+| Point du prompt | Livré |
+|---|---|
+| Migration d'une face à l'autre | `move_gem` (`kernel.py:2078`) : entrée retirée du semis de départ, semis d'arrivée trouvé ou **créé**, puis `_drop_empty_semis` |
+| Pas de semis fantôme | `_drop_empty_semis` (`kernel.py:1875`) — et **au-delà du demandé** : il retire aussi le corps de gemme quand plus aucun lien ne le référence |
+| Cote hors esquisse | `app/dims.js`, module neuf **partagé** entre le mode esquisse et le viewport — extrait plutôt que dupliqué, avec ses propres tests |
+| Bouton Reconstruire | op `rebuild` (`kernel.py:325`) : recalcul forcé, replacement des semis, **erreurs remontées** et non avalées |
+
+### Le point 0 a répondu, et c'était la mauvaise nouvelle
+
+Des trois issues que le prompt listait, c'est **la deuxième** qui s'est
+présentée : *la cote change, rien ne bouge à l'écran*. Un vrai défaut de
+rafraîchissement, pas de l'ergonomie.
+
+Le commentaire du correctif le nomme sans détour (`kernel.py:5525`) :
+
+> `_recompute` applique aussi `PlacementList` des semis : sans le second
+> passage, la cote change et l'écran ne suit pas.
+
+`sketch_set_dim` appelait `doc.recompute()` seul au lieu du `_recompute()`
+du noyau — donc sans la passe qui recale les semis. La consigne tenait :
+**le bouton Reconstruire n'a pas servi de cache-misère**, la cause a été
+corrigée d'abord.
+
+C'est aussi la confirmation du diagnostic posé dans le prompt : le selftest
+prouvait l'ancrage côté moteur, donc le défaut était **entre le moteur et le
+client**. Il l'était.
+
+### Où en sont les branches
+
+`main` porte le relevé, les sondes et les prompts, mais **ni P034 ni P036** —
+les deux vivent empilés sur la même branche Cursor, PR en brouillon. `main` a
+avancé de son côté (N011, N011b). La fusion apportera donc les deux d'un
+coup, et devra se rapprocher de `main` d'abord.
+
+
 ---
 
 # 6. Une gemme est un solide figé, pas une fonction

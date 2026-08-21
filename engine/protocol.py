@@ -20,10 +20,12 @@ class _Req(tuple):
     ``_Req(("length", float), "value")`` equals ``("length", "value")`` so
     existing ``OPS[op] == (...)`` assertions keep working. ``.kinds`` maps
     typed names to ``float``, ``int``, ``str``, ``list``, ``dict`` or
-    ``bool``. Bare names are presence-only (no type check, no coercion).
+    ``bool``. ``.optional`` maps optional names to the same kinds — present
+    params are type-checked, absent ones are not required. Bare names are
+    presence-only (no type check, no coercion).
     """
 
-    def __new__(cls, *items):
+    def __new__(cls, *items, optional=None):
         names = []
         kinds = {}
         for item in items:
@@ -35,6 +37,7 @@ class _Req(tuple):
                 kinds[name] = kind
         obj = super().__new__(cls, names)
         obj.kinds = kinds
+        obj.optional = dict(optional or {})
         return obj
 
 
@@ -129,10 +132,14 @@ OPS: dict[str, tuple[str, ...]] = {
     # Palier 2 — fonctions volumiques, aucune interaction nouvelle.
     "add_revolution": (),              # optional: angle (°), sketch
     "add_groove": (),                  # optional: angle (°), sketch
-    "add_mirror": (),                  # optional: plane (XY|XZ|YZ)
-    "add_linear_pattern": _Req(("length", float), ("count", int)),
-                                       # optional: axis (X|Y|Z)
-    "add_polar_pattern": _Req(("count", int)),  # optional: angle (°), axis
+    "add_mirror": _Req(optional={"features": list}),
+                                       # optional: plane (XY|XZ|YZ), features
+    "add_linear_pattern": _Req(("length", float), ("count", int),
+                               optional={"features": list}),
+                                       # optional: axis (X|Y|Z), features
+    "add_polar_pattern": _Req(("count", int),
+                              optional={"features": list}),
+                                       # optional: angle (°), axis, features
     "add_thickness": _Req(("face", int), ("thickness", float)),
     "add_draft": _Req(("face", int), ("angle", float)),
                                        # optional: neutral (XY|XZ|YZ)
@@ -308,6 +315,10 @@ def _check_params(op: str, params: dict) -> None:
     kinds = getattr(spec, "kinds", {})
     for name, kind in kinds.items():
         _check_param(name, kind, params[name])
+    optional = getattr(spec, "optional", {})
+    for name, kind in optional.items():
+        if name in params:
+            _check_param(name, kind, params[name])
 
 
 def validate_request(payload) -> tuple[str, dict]:

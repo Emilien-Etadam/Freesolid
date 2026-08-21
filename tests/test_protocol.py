@@ -148,7 +148,7 @@ def test_sketch_start_accepts_named_plane():
 def test_p2_ops_declare_their_required_params():
     assert protocol.OPS["add_revolution"] == ()      # angle, sketch en option
     assert protocol.OPS["add_groove"] == ()
-    assert protocol.OPS["add_mirror"] == ()          # plane en option
+    assert protocol.OPS["add_mirror"] == ()          # plane, features en option
     assert protocol.OPS["add_linear_pattern"] == ("length", "count")
     assert protocol.OPS["add_polar_pattern"] == ("count",)
     assert protocol.OPS["add_thickness"] == ("face", "thickness")
@@ -700,3 +700,35 @@ def test_dangling_deps_tolerates_missing_sections():
     assert protocol.dangling_deps({"features": None}) == []
     assert protocol.dangling_deps(None) == []
     assert protocol.dangling_deps({"features": [{"name": "Pad"}]}) == []
+
+
+def test_pattern_features_optional_list():
+    protocol.validate_request(
+        {"op": "add_linear_pattern",
+         "params": {"length": 10, "count": 2}})
+    protocol.validate_request(
+        {"op": "add_linear_pattern",
+         "params": {"length": 10, "count": 2,
+                    "features": ["Pad", "Pocket"]}})
+    protocol.validate_request(
+        {"op": "add_polar_pattern",
+         "params": {"count": 4, "features": ["Pocket"]}})
+    protocol.validate_request(
+        {"op": "add_mirror",
+         "params": {"plane": "YZ", "features": ["Pad"]}})
+    protocol.validate_request(
+        {"op": "add_linear_pattern",
+         "params": {"length": 10, "count": 2, "features": []}})
+
+
+def test_pattern_features_must_be_a_list():
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        protocol.validate_request(
+            {"op": "add_linear_pattern",
+             "params": {"length": 10, "count": 2, "features": "Pad"}})
+    assert str(excinfo.value) == (
+        'paramètre features : liste attendu, reçu "Pad"')
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "add_mirror",
+             "params": {"features": {"Pad": True}}})

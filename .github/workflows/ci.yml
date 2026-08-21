@@ -31,18 +31,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Version de référence
+        id: platform
+        run: echo "freecad=$(python3 -c 'from engine.platform import FREECAD; print(FREECAD)')" >> "$GITHUB_OUTPUT"
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: freecad
-          # Plateforme de référence 1.1.3 (conda-forge + AppImage).
-          # Le kernel pose les joints via setJointConnectors (repli 1.0.x).
+          # Une seule source : engine/platform.py (FREECAD).
           create-args: >-
             python=3.11
-            freecad=1.1.3
+            freecad=${{ steps.platform.outputs.freecad }}
           cache-environment: true
       - name: Selftest
         shell: bash -el {0}
         run: PYTHONIOENCODING=utf-8 freecadcmd scripts/run-selftest.py
+      - name: Diagnostic d'échec
+        if: failure()
+        run: |
+          echo "===== selftest-echecs.txt ====="
+          if [ -f selftest-echecs.txt ]; then
+            cat selftest-echecs.txt
+          else
+            echo "(fichier absent — l'échec n'a pas été enregistré)"
+          fi
 
   js-tests:
     name: Tests JS (Node)
@@ -77,12 +88,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Version de référence
+        id: platform
+        run: echo "freecad=$(python3 -c 'from engine.platform import FREECAD; print(FREECAD)')" >> "$GITHUB_OUTPUT"
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: freecad
           create-args: >-
             python=3.11
-            freecad=1.1.3
+            freecad=${{ steps.platform.outputs.freecad }}
           cache-environment: true
       - name: Installer les deps smoke + Chromium
         working-directory: scripts/smoke

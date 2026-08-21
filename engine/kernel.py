@@ -49,6 +49,13 @@ def parse_body_color(color):
     return color
 
 
+#: Seuil « face orientée vers le haut » : ``normal.z`` au-delà duquel
+#: une face est candidate au sommet. Lu par ``Kernel._top_face_id`` et
+#: par la garde d'attache de ``engine.replay`` — une seule valeur, sinon
+#: la garde cesse de décrire le choix qu'elle est censée vérifier.
+UPWARD_Z = 0.5
+
+
 _NEUTRAL_PLANES = frozenset({"XY", "XZ", "YZ"})
 
 
@@ -4708,7 +4715,7 @@ class Kernel:
         for i, face in enumerate(body.Shape.Faces):
             u0, u1, v0, v1 = face.ParameterRange
             normal = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
-            if normal.z <= 0.5:
+            if normal.z <= UPWARD_Z:
                 continue
             z = face.CenterOfMass.z
             if best_z is None or z > best_z:

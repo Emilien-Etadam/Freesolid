@@ -6,7 +6,7 @@ rejeu tout-ou-rien. FreeCAD n'est importé que dans les corps de
 fonctions.
 """
 
-from engine.kernel import Kernel, KernelError
+from engine.kernel import Kernel, KernelError, UPWARD_Z
 
 
 #: Ce que ``get_params`` + le profil suffisent à reconstituer.
@@ -172,10 +172,6 @@ def attachment_verdict(expected, actual):
     return None
 
 
-#: Seuil partagé avec ``Kernel._top_face_id`` — une face « vers le haut ».
-_UPWARD_Z = 0.5
-
-
 def _geom_kind(geom):
     type_id = getattr(geom, "TypeId", None)
     if isinstance(type_id, str) and type_id:
@@ -229,7 +225,7 @@ def attachment_fingerprint(shape):
             normal = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
         except Exception:
             continue
-        if getattr(normal, "z", 0) <= _UPWARD_Z:
+        if getattr(normal, "z", 0) <= UPWARD_Z:
             continue
         candidates += 1
         try:

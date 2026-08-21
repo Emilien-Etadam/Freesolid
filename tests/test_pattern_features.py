@@ -227,3 +227,15 @@ def test_split_repeat_source_exclusive():
         split_repeat_source([{}], {"nodes": []})
     with pytest.raises(KernelError, match="graphe ou une liste"):
         split_repeat_source(None, None)
+
+
+def test_upward_threshold_has_one_source():
+    """La garde d'attache et ``_top_face_id`` lisent la même valeur.
+
+    Deux seuils parallèles divergeraient, et la garde cesserait de
+    décrire le choix qu'elle est censée vérifier — c'est le défaut que
+    N001b a dû corriger ailleurs.
+    """
+    from engine import kernel, replay
+    assert replay.UPWARD_Z is kernel.UPWARD_Z
+    assert not hasattr(replay, "_UPWARD_Z")

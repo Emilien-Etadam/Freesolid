@@ -252,6 +252,7 @@ class Kernel:
         self._scripts_authorized = False
         # Corps de gabarit déjà copiés : (gemme, diamètre) → nom d'objet.
         self._gem_bodies = {}
+        self._reset_face_match()
 
     # -- helpers ---------------------------------------------------------
 
@@ -361,27 +362,87 @@ class Kernel:
             raise KernelError(" ; ".join(messages))
         return self.get_tree()
 
+    def _reset_face_match(self, faces=0):
+        self._face_match = {
+            "faces": faces,
+            "matched": 0,
+            "assigned": 0,
+            "hash": 0,
+            "same": 0,
+            "geo": 0,
+            "tip": 0,
+            "hash_errors": [],
+        }
+
+    def _face_hash(self, face):
+        """hashCode OCCT, ou (None, cause) si l'API ne rend rien d'utilisable."""
+        hasher = getattr(face, "hashCode", None)
+        if not callable(hasher):
+            return None, "hashCode absent"
+        try:
+            return hasher(), None
+        except Exception as exc:  # noqa: BLE001 — on compte, on n'avale pas
+            return None, type(exc).__name__
+
+    def _face_geo_key(self, face):
+        """Empreinte (aire, centre) — distincte pour les faces d'un pavé.
+
+        hashCode et isSame comparent l'identité OCCT. Sur FreeCAD 1.0/1.1
+        le Shape du Tip et celui de la fonction sont des copies : les
+        hashes ne se recouvrent pas, isSame est faux. L'aire et le centre
+        de masse, eux, coïncident (mesuré 6/6 en ~1 ms sur un bossage).
+        """
+        try:
+            com = face.CenterOfMass
+            return (round(float(face.Area), 6),
+                    round(float(com.x), 4),
+                    round(float(com.y), 4),
+                    round(float(com.z), 4))
+        except Exception:  # noqa: BLE001 — face dégénérée
+            return None
+
+    def _face_same(self, left, right):
+        try:
+            return bool(left.isSame(right))
+        except Exception:  # noqa: BLE001 — on tente le repli géométrique
+            return False
+
+    def _claim_face(self, unmatched, producer, how, index, name, via):
+        if index not in unmatched:
+            return False
+        producer[index] = name
+        how[index] = via
+        unmatched.remove(index)
+        return True
+
     def _face_producers(self):
         """Index de face du Tip → nom de la fonction qui l'a introduite.
 
-        Le hash OCCT d'une face inchangée survit aux fonctions suivantes :
-        la première fonction de l'historique qui porte ce hash est celle
-        qui l'a produite. Une face nouvelle (congé, dépouille) est
-        attribuée à la fonction qui l'introduit. Repli : le Tip.
+        Appariement, dans l'ordre : hash OCCT, ``isSame``, empreinte
+        (aire + centre). La première fonction de l'historique qui
+        porte la face est celle qui l'a produite. Faces restantes :
+        le Tip — et le compte ``_face_match`` le dit.
         """
         body = self._require_body()
         shape = getattr(body, "Shape", None)
         faces = list(getattr(shape, "Faces", None) or ())
+        self._reset_face_match(len(faces))
         if not faces:
             return {}
-        current = {}
+        hash_errors = []
+        tip_geo = []
+        hash_index = {}
         for index, face in enumerate(faces):
-            try:
-                current[face.hashCode()] = index
-            except Exception:
-                continue
+            digest, err = self._face_hash(face)
+            if err:
+                hash_errors.append(err)
+            if digest is not None:
+                hash_index[digest] = index
+            tip_geo.append(self._face_geo_key(face))
+
+        unmatched = set(range(len(faces)))
         producer = {}
-        seen = set()
+        how = {}
         skip = {
             "Sketcher::SketchObject",
             "PartDesign::Plane",
@@ -399,18 +460,49 @@ class Kernel:
                     continue
             except Exception:
                 continue
-            for face in list(getattr(feat_shape, "Faces", None) or ()):
-                try:
-                    digest = face.hashCode()
-                except Exception:
+            for feat_face in list(getattr(feat_shape, "Faces", None) or ()):
+                digest, err = self._face_hash(feat_face)
+                if err:
+                    hash_errors.append(err)
+                claimed = False
+                if digest is not None and digest in hash_index:
+                    claimed = self._claim_face(
+                        unmatched, producer, how,
+                        hash_index[digest], obj.Name, "hash")
+                if claimed:
                     continue
-                if digest in current and digest not in seen:
-                    producer[current[digest]] = obj.Name
-                    seen.add(digest)
+                for index in tuple(unmatched):
+                    if self._face_same(faces[index], feat_face):
+                        self._claim_face(
+                            unmatched, producer, how, index, obj.Name, "same")
+                        claimed = True
+                        break
+                if claimed:
+                    continue
+                key = self._face_geo_key(feat_face)
+                if key is None:
+                    continue
+                for index in tuple(unmatched):
+                    if tip_geo[index] == key:
+                        self._claim_face(
+                            unmatched, producer, how, index, obj.Name, "geo")
+                        break
         tip = getattr(body, "Tip", None)
         if tip is not None:
-            for index in range(len(faces)):
-                producer.setdefault(index, tip.Name)
+            for index in tuple(unmatched):
+                self._claim_face(
+                    unmatched, producer, how, index, tip.Name, "tip")
+        matched = sum(1 for via in how.values() if via != "tip")
+        self._face_match = {
+            "faces": len(faces),
+            "matched": matched,
+            "assigned": len(producer),
+            "hash": sum(1 for via in how.values() if via == "hash"),
+            "same": sum(1 for via in how.values() if via == "same"),
+            "geo": sum(1 for via in how.values() if via == "geo"),
+            "tip": sum(1 for via in how.values() if via == "tip"),
+            "hash_errors": list(dict.fromkeys(hash_errors))[:5],
+        }
         return producer
 
     # -- operations ------------------------------------------------------
@@ -4667,6 +4759,11 @@ class Kernel:
             feature = producers.get(group.get("faceId"))
             if feature:
                 group["feature"] = feature
+        match = getattr(self, "_face_match", None) or {}
+        mesh["face_match"] = {
+            "matched": int(match.get("matched") or 0),
+            "faces": int(match.get("faces") or 0),
+        }
         mesh["color"] = getattr(body, "FreeSolidColor", "") or None
         # Les autres corps s'affichent estompés, non sélectionnables :
         # on travaille sur le corps actif, on voit la pièce entière.
@@ -5995,6 +6092,13 @@ class Kernel:
                 and not any(s["name"] == sk_free
                             for s in mesh.get("sketches") or []))
             report["m0_faces"] = len(mesh["groups"])
+            match = getattr(self, "_face_match", None) or {}
+            report["p038_face_producers"] = (
+                report["m0_faces"] == 6
+                and all(g.get("feature") for g in mesh["groups"])
+                and match.get("matched") == 6
+                and match.get("tip", 1) == 0
+            )
 
             mark("m0: reparamétrage 10 → 25")
             pad = next(f["name"] for f in tree["features"]
@@ -7052,6 +7156,10 @@ class Kernel:
             self.add_rect_sketch(10, 10, face=self._top_face_id())
             self.add_pocket(through=True)
             report["p31_volume_pocket"] = _close(_volume(), 11000.0)
+            producers = self._face_producers()
+            report["p038_face_producers_historique"] = (
+                "Pad" in producers.values() and "Pocket" in producers.values()
+            )
 
             self.new_part("Pièce miroir P031")
             state = self.sketch_start()

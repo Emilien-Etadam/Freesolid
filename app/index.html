@@ -420,6 +420,9 @@
     display: flex; justify-content: space-between; align-items: center;
     gap: 6px; padding: 3px 9px; font-size: 12px;
   }
+  .plist-item.editable { cursor: pointer; }
+  .plist-item.editable:hover { background: var(--panel-2); }
+  .plist-item.readonly { color: var(--ink-2); cursor: default; }
   .plist-item .pdel {
     padding: 1px 7px; font-size: 11px; color: var(--error); flex: none;
   }
@@ -435,6 +438,7 @@
     border: 1px solid var(--accent); color: var(--accent);
   }
   .pnote { padding: 5px 12px 7px; font-size: 11px; color: var(--ink-2); }
+  .pnote.readonly { opacity: 0.8; cursor: default; }
   #tree li .arrow {
     display: inline-block; width: 13px;
     margin-left: -13px;

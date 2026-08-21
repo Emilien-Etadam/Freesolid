@@ -263,6 +263,7 @@ featureDimsGroup.renderOrder = 24;
 scene.add(featureDimsGroup);
 let featureDimSprites = [];
 let featureDimContext = null; // { feature, hit }
+let lastFaceMatch = null; // { matched, faces } du dernier tessellate
 const warnedSplineFaces = new Set();
 const gemMaterial = new THREE.MeshStandardMaterial({
   color: 0xd4e4f2, metalness: 0.35, roughness: 0.22,
@@ -419,6 +420,7 @@ function showMesh(mesh) {
   othersMeshes = [];
   partMesh = partBaseMaterial = null;
   meshGroups = mesh.groups;
+  lastFaceMatch = mesh.face_match ?? null;
   hoveredGroup = -1;
   selectedFaceId = null; // ids shift after every feature: stale picks lie
   const cleared = panel.invalidateSelections();
@@ -1143,6 +1145,11 @@ function featureParamWorldPos(param, feature, hit, sketchState) {
 
 async function showFeatureDims(featureName, hit) {
   if (!featureName) {
+    const match = lastFaceMatch;
+    const detail = match && match.faces
+      ? ` (${match.matched}/${match.faces} face(s) appariée(s) à une fonction)`
+      : "";
+    say("cette face n'a pas de fonction associée" + detail, true);
     clearFeatureDims();
     return;
   }

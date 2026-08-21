@@ -1,8 +1,9 @@
-"""Spike N009 — rejeu d'un groupe de fonctions avec paramètres substitués.
+"""Rejeu d'un groupe de fonctions, avec garde de topologie (N010).
 
-Pas d'opération exposée, pas de fonction d'arbre, pas d'UI. Le selftest
-appelle ``run_minimal_spike``. FreeCAD n'est importé que dans les corps
-de fonctions.
+Le moteur de rejeu (N009) n'est pas réécrit : capture, rejeu, fusion,
+insertion. N010 y ajoute la garde, le plafond d'instances, et le
+rejeu tout-ou-rien. FreeCAD n'est importé que dans les corps de
+fonctions.
 """
 
 from engine.kernel import Kernel, KernelError
@@ -39,10 +40,23 @@ UNREPLAYABLE_OPS = {
     "add_boolean": "corps outil, pas un profil",
     "add_text": "propriétés FreeSolid* hors get_params",
     "add_graph_feature": "JSON du graphe, pas un profil",
+    "add_repeat_feature": "JSON de répétition, pas un profil",
     "add_curve3d": "liste de points",
     "add_body": "pas une fonction du groupe",
     "add_joint": "assemblage",
 }
+
+#: Fonctions qui portent un indice d'arête ou de face — la garde s'applique.
+INDEXED_TYPES = frozenset({
+    "PartDesign::Fillet",
+    "PartDesign::Chamfer",
+    "PartDesign::Draft",
+    "PartDesign::Thickness",
+})
+
+#: Plafond d'instances d'une répétition variable — mesuré jusqu'à 200
+#: par le spike ; 500 laisse de la marge sans attente illimitée.
+REPEAT_INSTANCE_MAX = 500
 
 _TEMP_PREFIX = "N009Replay"
 
@@ -54,6 +68,169 @@ def reconstitution_table():
         "replayable_with_extra": dict(REPLAYABLE_WITH_EXTRA),
         "unreplayable": dict(UNREPLAYABLE_OPS),
     }
+
+
+def _is_finite_number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return value == value and abs(value) != float("inf")
+
+
+def _sub_kind_index(name):
+    """« Edge3 » → (« Edge », 3) ; nom illisible → (None, None)."""
+    if not isinstance(name, str):
+        return None, None
+    if name.startswith("Edge"):
+        rest = name[4:]
+        family = "Edge"
+    elif name.startswith("Face"):
+        rest = name[4:]
+        family = "Face"
+    else:
+        return None, None
+    if not rest.isdigit():
+        return None, None
+    return family, int(rest)
+
+
+def topology_verdict(expected, actual):
+    """Rend None si le rejeu est sûr, sinon la raison, en français.
+
+    Compare le compte d'arêtes et de faces, puis le type des
+    sous-éléments réellement référencés. Deux arêtes de même type qui
+    échangent leur indice passent la garde : elle réduit le risque,
+    elle ne l'annule pas.
+    """
+    if not isinstance(expected, dict) or not isinstance(actual, dict):
+        return "empreinte topologique illisible"
+    exp_edges = expected.get("edges")
+    exp_faces = expected.get("faces")
+    act_edges = actual.get("edges")
+    act_faces = actual.get("faces")
+    if exp_edges != act_edges or exp_faces != act_faces:
+        return (
+            "la topologie a changé : {} arêtes et {} faces attendues, "
+            "{} arêtes et {} faces obtenues".format(
+                exp_edges, exp_faces, act_edges, act_faces)
+        )
+    kinds_expected = expected.get("kinds") or {}
+    kinds_actual = actual.get("kinds") or {}
+    if not isinstance(kinds_expected, dict):
+        kinds_expected = {}
+    if not isinstance(kinds_actual, dict):
+        kinds_actual = {}
+    for key, wanted in kinds_expected.items():
+        family, index = _sub_kind_index(key)
+        if family is None:
+            continue
+        count = act_edges if family == "Edge" else act_faces
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            count = 0
+        noun = "arêtes" if family == "Edge" else "faces"
+        if index < 1 or index > count:
+            return (
+                "{} est hors bornes : la forme n'a que {} {}".format(
+                    key, count, noun)
+            )
+        got = kinds_actual.get(key)
+        if got is not None and got != wanted:
+            return "{} était {}, elle est {}".format(key, wanted, got)
+    return None
+
+
+def _geom_kind(geom):
+    type_id = getattr(geom, "TypeId", None)
+    if isinstance(type_id, str) and type_id:
+        name = type_id.rsplit(":", 1)[-1]
+        if name.startswith("Geom"):
+            name = name[4:]
+        return name
+    name = type(geom).__name__
+    if name.startswith("Geom"):
+        name = name[4:]
+    return name
+
+
+def shape_fingerprint(shape, edges, faces):
+    """Empreinte d'une forme aux indices déjà lus par ``_base_indices``.
+
+    ``kinds`` ne porte que les sous-éléments réellement référencés.
+    """
+    n_edges = len(getattr(shape, "Edges", None) or ())
+    n_faces = len(getattr(shape, "Faces", None) or ())
+    kinds = {}
+    for index in edges or ():
+        key = "Edge{}".format(int(index) + 1)
+        if 0 <= int(index) < n_edges:
+            kinds[key] = _geom_kind(shape.Edges[int(index)].Curve)
+    for index in faces or ():
+        key = "Face{}".format(int(index) + 1)
+        if 0 <= int(index) < n_faces:
+            kinds[key] = _geom_kind(shape.Faces[int(index)].Surface)
+    return {"edges": n_edges, "faces": n_faces, "kinds": kinds}
+
+
+def parse_repeat_instances(instances, feature_names):
+    """Valide la liste ``instances`` d'une répétition variable.
+
+    ``params`` : des nombres, indexés par nom de fonction source.
+    Fonction pure — pas d'import FreeCAD.
+    """
+    known = set(feature_names)
+    if not isinstance(instances, (list, tuple)):
+        raise KernelError("instances doit être une liste")
+    if not instances:
+        raise KernelError(
+            "aucune instance à répéter — la liste instances est vide")
+    if len(instances) > REPEAT_INSTANCE_MAX:
+        raise KernelError(
+            "trop d'instances ({} ; max. {})".format(
+                len(instances), REPEAT_INSTANCE_MAX))
+    parsed = []
+    for position, raw in enumerate(instances):
+        number = position + 1
+        if not isinstance(raw, dict):
+            raise KernelError(
+                "instance n° {} : objet attendu".format(number))
+        offset = raw.get("offset", [0.0, 0.0, 0.0])
+        if not isinstance(offset, (list, tuple)) or len(offset) != 3:
+            raise KernelError(
+                "instance n° {} : offset invalide".format(number))
+        if not all(_is_finite_number(value) for value in offset):
+            raise KernelError(
+                "instance n° {} : offset invalide".format(number))
+        params = raw.get("params") or {}
+        if not isinstance(params, dict):
+            raise KernelError(
+                "instance n° {} : params doit être un objet".format(number))
+        cleaned = {}
+        for feat_name, props in params.items():
+            if feat_name not in known:
+                raise KernelError(
+                    "instance n° {} : fonction inconnue « {} »".format(
+                        number, feat_name))
+            if not isinstance(props, dict):
+                raise KernelError(
+                    "instance n° {} : params de {} doit être un objet"
+                    .format(number, feat_name))
+            cleaned_props = {}
+            for prop, value in props.items():
+                if not isinstance(prop, str) or not prop:
+                    raise KernelError(
+                        "instance n° {} : nom de cote invalide".format(number))
+                if not _is_finite_number(value):
+                    raise KernelError(
+                        "instance n° {} : les params sont des nombres, "
+                        "pas une expression".format(number))
+                cleaned_props[prop] = float(value)
+            cleaned[feat_name] = cleaned_props
+        parsed.append({
+            "offset": (float(offset[0]), float(offset[1]), float(offset[2])),
+            "params": cleaned,
+        })
+    return parsed
 
 
 def _linked_name(value):
@@ -112,8 +289,9 @@ def _capture_feature(kernel, obj):
     elif obj.TypeId == "PartDesign::Hole":
         through = str(getattr(obj, "DepthType", "")) == "ThroughAll"
     edges, faces = _base_indices(obj)
-    return {
+    feat = {
         "name": obj.Name,
+        "label": obj.Label,
         "type_id": obj.TypeId,
         "params": params,
         "profile": _linked_name(getattr(obj, "Profile", None)),
@@ -123,6 +301,15 @@ def _capture_feature(kernel, obj):
         "edges": edges,
         "faces": faces,
     }
+    if obj.TypeId in INDEXED_TYPES:
+        base = getattr(obj, "BaseFeature", None)
+        shape = getattr(base, "Shape", None) if base is not None else None
+        if shape is None or (hasattr(shape, "isNull") and shape.isNull()):
+            raise KernelError(
+                "capture refusée : {} n'a pas de BaseFeature "
+                "(fonction à indices en tête de corps)".format(obj.Label))
+        feat["topology"] = shape_fingerprint(shape, edges, faces)
+    return feat
 
 
 def capture_group(kernel, names):
@@ -303,11 +490,25 @@ def _object_names(kernel):
     return {obj.Name for obj in kernel._require_doc().Objects}
 
 
-def replay_group(kernel, captured, substitutions=None, offset=(0.0, 0.0, 0.0)):
+def _topology_refusal(feat, reason, instance=None, instance_count=None):
+    label = feat.get("label") or feat.get("name") or "?"
+    if instance is not None and instance_count is not None:
+        return KernelError(
+            "répétition refusée : instance n° {} sur {}, "
+            "fonction « {} », {}".format(
+                instance, instance_count, label, reason))
+    return KernelError(
+        "rejeu refusé : fonction « {} », {}".format(label, reason))
+
+
+def replay_group(kernel, captured, substitutions=None, offset=(0.0, 0.0, 0.0),
+                 instance=None, instance_count=None):
     """Rejoue le groupe dans un corps temporaire et rend sa forme.
 
     Le corps temporaire (et tout ce qu'il a créé) est toujours détruit,
-    y compris si une instance échoue.
+    y compris si une instance échoue. Une fonction à indices dont
+    l'empreinte a bougé lève plutôt que de produire une géométrie
+    subtilement fausse.
     """
     substitutions = substitutions or {}
     App = kernel._app()
@@ -326,6 +527,14 @@ def replay_group(kernel, captured, substitutions=None, offset=(0.0, 0.0, 0.0)):
                     attach_face = kernel._top_face_id()
                 clone = _rebuild_sketch(kernel, dump, attach_face)
                 sketch_map[profile] = clone.Name
+            expected = feat.get("topology")
+            if expected is not None:
+                actual = shape_fingerprint(
+                    temp.Shape, feat["edges"], feat["faces"])
+                reason = topology_verdict(expected, actual)
+                if reason:
+                    raise _topology_refusal(
+                        feat, reason, instance, instance_count)
             _replay_feature(kernel, feat, sketch_map, substitutions)
         shape = temp.Shape.copy()
         dx, dy, dz = offset
@@ -336,6 +545,27 @@ def replay_group(kernel, captured, substitutions=None, offset=(0.0, 0.0, 0.0)):
         kernel._body = host
         created = [name for name in _object_names(kernel) - before]
         _purge_named(kernel, created)
+
+
+def replay_instances(kernel, captured, instances):
+    """Rejoue toutes les instances, tout ou rien, et rend la forme fusionnée.
+
+    Une instance qui échoue à la garde annule la répétition entière :
+    pas d'instance sautée, pas de géométrie partielle.
+    """
+    names = [feat["name"] for feat in captured["features"]]
+    parsed = parse_repeat_instances(instances, names)
+    total = len(parsed)
+    shapes = []
+    for index, inst in enumerate(parsed):
+        shapes.append(replay_group(
+            kernel, captured,
+            substitutions=inst["params"],
+            offset=inst["offset"],
+            instance=index + 1,
+            instance_count=total,
+        ))
+    return fuse_shapes(shapes)
 
 
 def fuse_shapes(shapes):

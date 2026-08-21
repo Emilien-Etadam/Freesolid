@@ -68,7 +68,7 @@ Verdicts, même légende que
 | Prongs (griffes) | ✅ | esquisse + `add_revolution` + `add_polar_pattern` (`kernel.py:2393`) — trois fonctions déjà là |
 | Auto Prongs (nombre et position calculés) | ✅ | dérivé de la table des tailles ; c'est de la donnée, pas de la géométrie |
 | Microprong Cutter (canal entre deux pierres) | 🟧 | `add_curve3d` (`kernel.py:982`) + `add_sweep` (`kernel.py:2211`) ; les positions se dérivent des placements de pierres |
-| Gem Add / Edit | ✅ | **révisé le 2026-08-21 : une gemme est un BREP, pas une fonction paramétrique.** Une taille est une géométrie normalisée et figée — personne ne réédite l'angle de couronne d'un diamant. Un `.brep` par taille, mis à l'échelle en x, y, z. Voir §6 |
+| Gem Add / Edit | ✅ | **révisé deux fois le 2026-08-21 — voir §7.** Un `.FCStd` par famille de taille, **coté par une esquisse** : le diamètre est une cote, les proportions des expressions. Aucune mise à l'échelle, donc aucune conversion de surface ni cote faussée |
 | Gem Recover | ✅ | retrouver l'identité d'une pierre = relire ses métadonnées ; un `App::VarSet` par pierre suffit |
 | Asset manager (bibliothèque de composants) | ✅ | `insert_component` (`kernel.py:351`) pose déjà un `.FCStd` en `App::Link`. Manquent l'arborescence de dossiers et les aperçus côté client |
 
@@ -132,11 +132,11 @@ existent.
 
 Trois choses seulement coûtent vraiment :
 
-1. **La bibliothèque de pierres** — 17 tailles, mais **en `.brep`, pas en
-   paramétrique** (révision du 2026-08-21, §6). Modelées une fois,
-   exportées, plus jamais retouchées. Le poste reste le plus long de la
-   piste, mais c'est du modelage à la main, pas de la mécanique à
-   entretenir.
+1. **La bibliothèque de pierres** — 17 familles de taille, chacune un
+   `.FCStd` **coté par une esquisse** (§7). Modelées une fois, redimensionnées
+   ensuite par une cote, jamais par une matrice. Le poste reste le plus long
+   de la piste : c'est du modelage à la main, et un ovale n'est pas un rond
+   étiré — chaque famille se dessine pour ce qu'elle est.
 2. **La distribution sur courbe et sur faces** — à ne pas coder comme une
    fonction de plus, mais comme des **nœuds** de la fonction graphe. Le §3
    de [`nodes-macros.md`](nodes-macros.md) décrit déjà ce besoin ; la
@@ -156,7 +156,7 @@ Chaque étape se tient seule et rend la suivante possible :
 |---|---|---|
 | **B1** | Table des matières (pierres, alliages, tailles de bague) + pesée ventilée par corps | `mass_properties`, `vocab.py` |
 | **B2** | Siège et griffes paramétriques sur une pierre posée à la main | `add_boolean`, `add_revolution`, `add_polar_pattern` |
-| **B3** | Bibliothèque des 17 tailles en `.brep`, posées par le gestionnaire d'actifs | §6, `insert_component` |
+| **B3** | Bibliothèque des 17 tailles en `.FCStd` cotés, posés par le gestionnaire d'actifs | §7, `insert_component` |
 | **B4** | Distribution sur courbe et semis sur faces, en nœuds | fonction graphe (N004-N006) |
 | **B5** | Écarts : contrôle, overlay Three.js, sélection des pierres trop proches | `check_interference`, `measure` |
 | **B6** | Rapport HTML et carte des pierres | `make_drawing`, lecture d'arbre |
@@ -399,7 +399,13 @@ ops : voir
 
 ---
 
-# 6. Une gemme est un BREP, pas une fonction
+# 6. Une gemme est un solide figé, pas une fonction
+
+> **Révisé au §7** : la voie retenue n'est finalement ni la
+> chaîne paramétrique lourde du §2, ni le BREP mis à l'échelle
+> décrit ici, mais un `.FCStd` **coté par une esquisse**. Ce
+> chapitre reste pour ce qu'il a établi et pour ce qu'il a
+> écarté ; la conception vivante est au §7.
 
 *Révision du 2026-08-21. Le §2 chiffrait les 17 tailles comme « le gros du
 travail : à re-modeler en BRep **paramétrique** ». C'était une erreur
@@ -596,3 +602,103 @@ Le budget des sièges du §5.6 — **3,4 s pour 200** — a été mesuré avec d
 booléen contre 36 pour une forme analytique : deux fois plus. Ce budget est
 donc à **re-mesurer avec une vraie gemme** avant d'être cité. Il ne remet pas
 en cause la linéarité établie en Q6, mais son ordonnée à l'origine, oui.
+
+---
+
+# 7. La gemme cotée — la conception retenue
+
+*Révision du 2026-08-21, la troisième et la bonne. Elle vient d'une remarque
+de l'auteur : « la pierre est un fichier FreeCAD avec une cote dans une
+esquisse pour son diamètre, donc pas d'échelle à faire, c'est
+paramétrique. »*
+
+## 7.1 Pourquoi les deux premières voies étaient fausses
+
+| Voie | Ce qui clochait |
+|---|---|
+| **§2 — 17 chaînes PartDesign** | j'y voyais « le gros du travail » et une mécanique à entretenir. Surestimé : une gemme se modèle une fois |
+| **§6 — un BREP figé, mis à l'échelle en x/y/z** | la sonde a chiffré le prix : `transformGeometry` **convertit** cône et cylindre en B-splines — **1,18 % de volume perdu avant toute mise à l'échelle** — et `BoundBox` borne alors les pôles au lieu de la surface, d'où des **cotes annoncées jusqu'à 70 % trop grosses** |
+
+La voie cotée supprime les deux **par construction** : on ne transforme plus
+rien, donc rien ne se convertit ; les surfaces restent celles que le modèle
+décrit, et la boîte englobante redevient serrée.
+
+## 7.2 L'argument qui n'est pas numérique, et qui pèse le plus
+
+Il y a mieux que la précision, et je ne l'avais pas vu :
+
+> **Un ovale n'est pas un rond étiré.**
+
+Un brillant ovale n'a pas l'agencement de facettes d'un brillant rond qu'on
+aurait tiré dans un sens — il en a un autre, avec un nombre de facettes et
+des proportions qui lui sont propres. `transformGeometry` produisait donc
+une pierre **vraisemblable et fausse**. Une gemme cotée modèle chaque famille
+de taille **pour ce qu'elle est**, et expose les cotes qui lui appartiennent :
+
+- rond, princesse, asscher, octogone → **un diamètre** ;
+- ovale, marquise, poire, émeraude, baguette → **longueur et largeur** ;
+- la profondeur suit un ratio normalisé, libérable si le client le veut.
+
+C'est exactement ce que l'esquisse sait faire, et ce qu'une matrice d'échelle
+ne saura jamais.
+
+## 7.3 Ce que ça coûte, et où
+
+Le coût se déplace : plus de conversion, mais **un recalcul par taille**.
+
+Et « par taille » n'est pas « par pierre ». Deux cents pierres de 1,5 mm sur
+un même jonc, c'est **un** recalcul et deux cents placements — Q7 et H5
+montrent que les placements sont gratuits. Ce qui pèse, c'est le nombre de
+**diamètres distincts** dans la pièce : rarement plus d'une poignée.
+
+Le moteur a donc besoin d'un **cache de formes**, clé `(taille, cotes)` :
+recalculer une fois, instancier N fois. C'est une ligne de conception, pas
+une difficulté.
+
+## 7.4 Le point d'architecture à trancher : où vit le fichier
+
+Une gemme cotée est un `.FCStd` **de bibliothèque**. Deux façons de s'en
+servir dans une pièce, et elles n'engagent pas la même chose :
+
+| | Lien externe (`App::Link` vers l'autre document) | Forme importée (recalculée puis figée dans la pièce) |
+|---|---|---|
+| La pièce reste rééditable en taille | oui, sans rouvrir la bibliothèque | non — il faut repasser par la bibliothèque |
+| Le `.FCStd` est autonome | **non** : il dépend d'un fichier externe | oui |
+| Déplacer la bibliothèque | casse la pièce | sans effet |
+
+Le second respecte mieux la promesse du projet — un `.FCStd` qui s'ouvre dans
+FreeCAD nu, sans dépendance. Mais il fige la taille dans la pièce, ce qui est
+acceptable : **changer le diamètre d'une pierre déjà sertie n'est pas une
+retouche de cote, c'est un autre bijou.** H6 mesure ce que FreeCAD fait
+réellement du lien externe avant qu'on tranche.
+
+## 7.5 Ce que ça change au reste du relevé
+
+- **§6.3, le carat** : l'argument du « facteur dérivé » devient **inutile**.
+  On ne dérive plus rien — `shape.Volume` à la taille demandée **est** le
+  volume, exact. Plus simple encore que ce que j'avais proposé.
+- **§6.4, l'échelle non uniforme** : **disparaît**. Il n'y a plus d'échelle.
+- **§6.7, le piège `BoundBox`** : **disparaît** aussi, tant que la forme
+  reste analytique. H3 le vérifie plutôt que de le supposer.
+- **§6.7, le format** : la conclusion `.FCStd` **tient**, et pour une raison
+  de plus — il faut bien un document pour porter une esquisse et une
+  variable.
+- **[`P034`](../prompts/P034-pierres-sur-surface.md)** : toujours pas touché.
+  Le mécanisme de placement ne sait pas ce qu'il y a dans la pierre, et n'a
+  pas à le savoir.
+
+## 7.6 La sonde
+
+```bash
+freecadcmd scripts/spike-gemme-parametrique.py
+```
+
+Elle construit un vrai brillant rond paramétrique — variable `diametre`,
+esquisse de profil entièrement contrainte, six cotes pilotées par
+expressions, révolution — l'enregistre, puis le rouvre à huit diamètres.
+
+Sept questions. **H2 et H3 sont le verdict** : si la forme reste analytique
+et les cotes justes, les deux pièges de la voie BREP s'évanouissent et il ne
+reste qu'à juger le coût du recalcul mesuré en H1. H6 tranche le point
+d'architecture du §7.4 ; H7 compare le siège aux 73 ms (BREP facetté) et
+36 ms (BREP analytique) déjà mesurés.

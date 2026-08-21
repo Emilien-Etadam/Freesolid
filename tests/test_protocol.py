@@ -475,17 +475,21 @@ def test_ops_snapshot_keys():
         "get_tree",
         "graph_vocabulary",
         "insert_component",
+        "list_gems",
         "list_variables",
         "make_drawing",
         "mass_properties",
         "measure",
         "move_component",
+        "move_gem",
         "new_assembly",
         "new_part",
         "open_part",
         "ping",
+        "place_gem",
         "preview",
         "redo",
+        "remove_gem",
         "rename",
         "save_part",
         "script_trust_status",
@@ -523,6 +527,7 @@ def test_ops_snapshot_keys():
         "sketch_trim",
         "solve_assembly",
         "spike_assembly",
+        "spin_gem",
         "surface_extrude",
         "surface_loft",
         "surface_revolve",
@@ -710,10 +715,11 @@ def test_dangling_deps_resolves_targets_from_every_section():
     """
     tree = {
         "features": [{"name": "Pad",
-                      "deps": ["XZ_Plane", "Surface", "SketchSurf"]}],
+                      "deps": ["XZ_Plane", "Surface", "SketchSurf", "Semis"]}],
         "planes": [{"id": "XZ", "name": "XZ_Plane"}],
         "surfaces": [{"name": "Surface",
                       "children": [{"name": "SketchSurf"}]}],
+        "gems": [{"name": "Semis"}],
     }
     assert protocol.dangling_deps(tree) == []
 
@@ -762,3 +768,35 @@ def test_pattern_features_must_be_a_list():
         protocol.validate_request(
             {"op": "add_mirror",
              "params": {"features": {"Pad": True}}})
+
+
+def test_gem_ops_declare_required_and_optional_params():
+    assert protocol.OPS["place_gem"] == ("face", "x", "y", "z")
+    assert protocol.OPS["move_gem"] == ("gem", "index", "x", "y", "z")
+    assert protocol.OPS["spin_gem"] == ("gem", "index")
+    assert protocol.OPS["remove_gem"] == ("gem", "index")
+    assert protocol.OPS["list_gems"] == ()
+    protocol.validate_request(
+        {"op": "place_gem",
+         "params": {"face": 2, "x": 1.0, "y": 0.0, "z": 3.0}})
+    protocol.validate_request(
+        {"op": "place_gem",
+         "params": {"face": 2, "x": 1, "y": 0, "z": 3,
+                    "gemme": "cylindre-plat", "diametre": 1.5,
+                    "spin": 15, "lift": -0.2}})
+    protocol.validate_request(
+        {"op": "move_gem",
+         "params": {"gem": "Semis", "index": 0, "x": 1, "y": 2, "z": 3,
+                    "face": 4}})
+    protocol.validate_request(
+        {"op": "spin_gem", "params": {"gem": "Semis", "index": 0}})
+    protocol.validate_request({"op": "list_gems"})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "place_gem",
+             "params": {"face": 2, "x": 1, "y": 0, "z": 3, "gemme": ""}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "move_gem",
+             "params": {"gem": "Semis", "index": 0, "x": 1, "y": 2}})
+

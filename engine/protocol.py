@@ -51,6 +51,7 @@ _NONEMPTY_STR_PARAMS = frozenset({
     "op", "feature", "sketch", "body", "tool", "component",
     "component1", "component2", "name", "label", "path", "prop",
     "profile", "spine", "surface", "kind", "a_kind", "b_kind",
+    "gem", "gemme",
 })
 
 _TYPE_LABELS = {
@@ -175,6 +176,18 @@ OPS: dict[str, tuple[str, ...]] = {
     "get_tree": (),
     "tessellate": (),                  # optional: deviation
     "tessellate_edges": (),            # optional: deviation — picking d'arêtes
+    # P034 — pierres aimantées sur une face. x,y,z = point du raycast ;
+    # le moteur projette et retient (u, v), jamais le point reçu.
+    "place_gem": _Req(("face", int), ("x", float), ("y", float), ("z", float),
+                      optional={"gemme": str, "diametre": float,
+                                "spin": float, "lift": float}),
+    "move_gem": _Req(("gem", str), ("index", int),
+                     ("x", float), ("y", float), ("z", float),
+                     optional={"face": int}),
+    "spin_gem": _Req(("gem", str), ("index", int),
+                     optional={"spin": float, "lift": float}),
+    "remove_gem": _Req(("gem", str), ("index", int)),
+    "list_gems": (),
     # M2 — sketch editing. Geometry travels in sketch-local 2D; the state
     # carries the placement matrix that positions it in 3D.
     "sketch_start": (),                # optional: face | plane (XY|XZ|YZ) | datum (nom)
@@ -523,7 +536,7 @@ def dangling_deps(tree):
     de noms qui a servi à le filtrer : c'est précisément là que les deux
     peuvent diverger. Toute section porteuse de noms compte donc comme
     cible légitime : ``features``, ``surfaces`` et leurs ``children``,
-    ``planes``, ``bodies``.
+    ``planes``, ``bodies``, ``gems``.
 
     Fonction pure sur un dictionnaire — pas d'import FreeCAD.
     """
@@ -540,7 +553,7 @@ def dangling_deps(tree):
                 yield child
 
     sections = (tree.get("features"), tree.get("surfaces"),
-                tree.get("planes"), tree.get("bodies"))
+                tree.get("planes"), tree.get("bodies"), tree.get("gems"))
     known = set()
     for section in sections:
         for item in walk(section):
@@ -562,24 +575,42 @@ def pack_mesh(face_meshes) -> dict:
     """Flatten per-face tessellations into one indexed buffer.
 
     Args:
-        face_meshes: iterable of ``(face_id, vertices, triangles)`` where
-            ``vertices`` is a list of ``(x, y, z)`` and ``triangles`` a list
-            of ``(a, b, c)`` indices local to that face.
+        face_meshes: iterable of ``(face_id, vertices, triangles)`` or
+            ``(face_id, vertices, triangles, normals)`` where ``vertices``
+            is a list of ``(x, y, z)``, ``triangles`` a list of
+            ``(a, b, c)`` indices local to that face, and ``normals`` —
+            optional — a list of ``(nx, ny, nz)`` aligned on ``vertices``.
 
     Returns:
         ``positions`` (flat xyz floats), ``indices`` (flat, rebased to the
         global buffer) and ``groups`` — one per face, ``{faceId, start,
         count}`` in *index* units. Picking works by construction: a raycast
         hit's triangle index maps to exactly one group, hence one OCCT face.
+        ``normals`` is present iff at least one face supplied them — same
+        length as ``positions``, zeros where a face had none.
     """
     positions: list[float] = []
     indices: list[int] = []
     groups: list[dict] = []
+    normals: list[float] = []
+    has_normals = False
     vertex_base = 0
-    for face_id, vertices, triangles in face_meshes:
+    for item in face_meshes:
+        if len(item) == 4:
+            face_id, vertices, triangles, face_normals = item
+            has_normals = True
+        else:
+            face_id, vertices, triangles = item
+            face_normals = None
         start = len(indices)
         for x, y, z in vertices:
             positions.extend((float(x), float(y), float(z)))
+        if face_normals is not None and len(face_normals) == len(vertices):
+            for nx, ny, nz in face_normals:
+                normals.extend((float(nx), float(ny), float(nz)))
+        else:
+            for _ in vertices:
+                normals.extend((0.0, 0.0, 0.0))
         for a, b, c in triangles:
             indices.extend((a + vertex_base, b + vertex_base, c + vertex_base))
         groups.append({
@@ -588,7 +619,10 @@ def pack_mesh(face_meshes) -> dict:
             "count": len(indices) - start,
         })
         vertex_base += len(vertices)
-    return {"positions": positions, "indices": indices, "groups": groups}
+    packed = {"positions": positions, "indices": indices, "groups": groups}
+    if has_normals:
+        packed["normals"] = normals
+    return packed
 
 
 def pack_edges(edge_lines) -> dict:

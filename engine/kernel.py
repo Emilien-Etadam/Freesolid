@@ -7021,18 +7021,17 @@ class Kernel:
             }
             tree = self.add_graph_feature(circle_graph)
             curve_line = next(s for s in tree["surfaces"] if s.get("graph"))
-            tree = self.add_graph_feature(plane_graph)
-            surf_line = next(
-                s for s in tree["surfaces"]
-                if s.get("graph") and s["name"] != curve_line["name"])
             tree = self.edit_graph_feature(curve_line["name"], plane_graph)
             edited = next(
                 s for s in tree["surfaces"] if s["name"] == curve_line["name"])
+            self.new_part("Pièce graphe N011b surface")
+            tree = self.add_graph_feature(plane_graph)
+            surf_line = next(s for s in tree["surfaces"] if s.get("graph"))
             report["n11b_libelle"] = (
                 curve_line["label"] == "Fonction graphe — Courbe"
-                and surf_line["label"] == "Fonction graphe — Surface"
                 and edited["label"] == "Fonction graphe — Surface"
-                and edited["label"] != curve_line["label"])
+                and edited["label"] != curve_line["label"]
+                and surf_line["label"] == "Fonction graphe — Surface")
 
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce

@@ -29,6 +29,7 @@ import {
   isParamWireSource,
   isParamWireTarget,
   layoutFunctionGraph,
+  minimalGraphCurve,
   minimalGraphFeature,
   minimalRepeatGraph,
   newGraphNode,
@@ -501,6 +502,11 @@ const VOCAB = [
     { key: "hauteur", label: "Hauteur" },
     { key: "ancrage", label: "Ancrage", kind: "point" },
   ], shape: true },
+  { type: "cercle", label: "Cercle", inputs: [
+    { key: "rayon", label: "Rayon" },
+    { key: "point", label: "Point", kind: "point" },
+    { key: "direction", label: "Direction", kind: "point" },
+  ], shape: true },
 ];
 
 describe("composition du graphe interne", () => {
@@ -566,6 +572,42 @@ describe("composition du graphe interne", () => {
     const result = composeGraphPayload(draft, VOCAB);
     assert.equal(result.ok, true);
     assert.deepEqual(result.graph.nodes[0].pos, [240, 80]);
+  });
+
+  it("un cercle pour une courbe, un cylindre pour un solide", () => {
+    const solid = minimalGraphFeature();
+    assert.equal(solid.nodes[0].type, "cylindre");
+    assert.equal(solid.output, "cyl");
+    const curve = minimalGraphCurve();
+    assert.equal(curve.nodes[0].type, "cercle");
+    assert.equal(curve.output, "circ");
+    assert.equal(curve.nodes[0].rayon, 10);
+    assert.deepEqual(curve.nodes[0].point, { x: 0, y: 0, z: 0 });
+    assert.deepEqual(curve.nodes[0].direction, { x: 0, y: 0, z: 1 });
+    assert.deepEqual(curve.nodes[0].pos, [240, 80]);
+    const composed = composeGraphPayload(curve, VOCAB);
+    assert.equal(composed.ok, true);
+    assert.equal(composed.graph.nodes[0].type, "cercle");
+  });
+
+  it("Fonction graphe : un select, trois choix, pas de contradiction", () => {
+    const entry = FEATURES.find((item) => item.button === "btn-graph-feature");
+    const select = entry.groups()[0].rows[0];
+    assert.equal(select.key, "mode");
+    assert.deepEqual(select.options, [
+      ["fuse", "Solide — Ajouter"],
+      ["cut", "Solide — Soustraire"],
+      ["curve", "Courbe ou surface"],
+    ]);
+    const fused = entry.build({ mode: "fuse" });
+    assert.equal(fused.op, "add_graph_feature");
+    assert.equal(fused.params.mode, "fuse");
+    assert.equal(fused.params.graph.nodes[0].type, "cylindre");
+    const cut = entry.build({ mode: "cut" });
+    assert.equal(cut.params.mode, "cut");
+    const curved = entry.build({ mode: "curve" });
+    assert.equal("mode" in curved.params, false);
+    assert.equal(curved.params.graph.nodes[0].type, "cercle");
   });
 
   it("newGraphNode pose les littéraux par défaut du vocabulaire", () => {

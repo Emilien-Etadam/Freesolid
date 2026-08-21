@@ -709,6 +709,22 @@ export function minimalGraphFeature() {
   };
 }
 
+/** Graphe minimal valide — un cercle — pour créer une courbe. */
+export function minimalGraphCurve() {
+  return {
+    nodes: [{
+      id: "circ",
+      type: "cercle",
+      rayon: 10,
+      point: { x: 0, y: 0, z: 0 },
+      direction: { x: 0, y: 0, z: 1 },
+      pos: [240, 80],
+    }],
+    edges: [],
+    output: "circ",
+  };
+}
+
 /** Graphe minimal d'une répétition variable — une instance à l'origine. */
 export function minimalRepeatGraph() {
   return {

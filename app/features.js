@@ -25,6 +25,16 @@ export function latestAvailableSketch(tree) {
   return sketches.length ? sketches[sketches.length - 1] : null;
 }
 
+/** Corps inactifs + semis non vides : les outils que Combiner accepte. */
+export function booleanToolOptions(ctx) {
+  const others = (ctx.lastTree?.bodies ?? []).filter((b) => !b.active);
+  const gems = (ctx.lastTree?.gems ?? []).filter((g) => (g.count || 0) > 0);
+  return [
+    ...others.map((b) => [b.name, b.label]),
+    ...gems.map((g) => [g.name, g.label]),
+  ];
+}
+
 /** Profil affiché / utilisé : sélection d'arbre sinon dernière libre. */
 export function resolveProfileSketch(ctx) {
   if (ctx.selectedSketch?.name) return ctx.selectedSketch;
@@ -519,26 +529,27 @@ export const FEATURES = [
     icon: "PartDesign_Boolean.svg",
     title: "Combiner",
     guard: (ctx) => {
-      const others = (ctx.lastTree?.bodies ?? []).filter((b) => !b.active);
-      return others.length ? null
-        : "Combiner : créez d'abord un second corps";
+      const options = booleanToolOptions(ctx);
+      return options.length ? null
+        : "Combiner : créez d'abord un second corps, ou posez un semis de pierres";
     },
     groups: (ctx) => {
-      const others = (ctx.lastTree?.bodies ?? []).filter((b) => !b.active);
+      const options = booleanToolOptions(ctx);
       return [{
         label: "Opération",
         rows: [
           { type: "select", key: "type", value: "cut",
             options: [["cut", "Soustraire"], ["fuse", "Ajouter"],
                       ["common", "Intersection"]] },
-          { type: "select", key: "tool", value: others[0].name,
+          { type: "select", key: "tool", value: options[0]?.[0] ?? "",
             label: "Corps outil",
-            options: others.map((b) => [b.name, b.label]) },
+            options },
         ],
       }];
     },
-    note: "S'applique au corps actif ; le corps outil est absorbé " +
-          "par l'opération.",
+    note: "S'applique au corps actif. Un second corps est absorbé ; "
+          + "un semis de pierres reste dans l'arbre, et l'empreinte "
+          + "se recalcule à chaque reconstruction.",
     build: (v) => ({ op: "add_boolean",
       params: { tool: v.tool, type: v.type } }),
     refresh: "part",

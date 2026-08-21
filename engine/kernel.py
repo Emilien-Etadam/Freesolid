@@ -293,6 +293,7 @@ class Kernel:
         doc.recompute()
         if not self._assembly:
             self._refresh_gem_placements()
+            self._refresh_gem_boolean_tools()
             doc.recompute()
         broken = [o for o in doc.Objects
                   if "Invalid" in (o.State or ())
@@ -334,6 +335,7 @@ class Kernel:
             self._force_recompute()
             if not self._assembly:
                 self._refresh_gem_placements()
+                self._refresh_gem_boolean_tools()
                 self._force_recompute()
         except KernelError:
             raise
@@ -1538,8 +1540,8 @@ class Kernel:
         obj.FreeSolidRepeatTool = True
 
     def _is_internal_tool(self, obj):
-        """Artefact interne (gravure, graphe, répétition ou gabarit de
-        pierre) : hors de l'arbre.
+        """Artefact interne (gravure, graphe, répétition, gabarit de
+        pierre ou corps outil dérivé d'un semis) : hors de l'arbre.
 
         Un seul test, plusieurs propriétés. Deux prédicats parallèles
         divergeraient — c'est le défaut que N001b a dû corriger.
@@ -1547,7 +1549,8 @@ class Kernel:
         return bool(getattr(obj, "FreeSolidTextTool", False)
                     or getattr(obj, "FreeSolidGraphTool", False)
                     or getattr(obj, "FreeSolidRepeatTool", False)
-                    or getattr(obj, "FreeSolidGemTool", False))
+                    or getattr(obj, "FreeSolidGemTool", False)
+                    or getattr(obj, "FreeSolidGemBooleanTool", False))
 
     _GEM_ANCHOR_PROPS = (
         ("FreeSolidGemFace", "App::PropertyString",
@@ -1571,6 +1574,16 @@ class Kernel:
             obj.addProperty("App::PropertyBool", "FreeSolidGemTool",
                             "FreeSolid", "Gabarit de pierre copié, hors arbre")
         obj.FreeSolidGemTool = True
+        if hasattr(obj, "Visibility"):
+            obj.Visibility = False
+
+    def _mark_gem_boolean_tool(self, obj):
+        """Corps / forme dérivés d'un semis pour Combiner : hors arbre."""
+        if "FreeSolidGemBooleanTool" not in obj.PropertiesList:
+            obj.addProperty("App::PropertyBool", "FreeSolidGemBooleanTool",
+                            "FreeSolid",
+                            "Outil interne d'un booléen sur un semis")
+        obj.FreeSolidGemBooleanTool = True
         if hasattr(obj, "Visibility"):
             obj.Visibility = False
 
@@ -2168,6 +2181,124 @@ class Kernel:
         self._drop_empty_semis(link)
         self._recompute()
         return self.get_tree()
+
+    def _placed_gem_copy(self, shape, placement):
+        """Copie du gabarit, géométrie déjà au placement d'instance."""
+        copy = shape.copy()
+        combined = placement
+        existing = getattr(copy, "Placement", None)
+        if existing is not None:
+            combined = placement.multiply(existing)
+        try:
+            baked = copy.transformGeometry(combined.toMatrix())
+            return baked
+        except Exception:
+            copy.Placement = combined
+            return copy
+
+    def _gem_compound_shape(self, link):
+        """Compound des N copies : une forme, une opération booléenne.
+
+        Relit ``PlacementList`` (jamais une copie figée). ``None`` si le
+        semis n'a pas encore de placement — l'appelant distingue le
+        vide initial d'un gabarit sans solide.
+        """
+        import Part
+        linked = getattr(link, "LinkedObject", None)
+        base = getattr(linked, "Shape", None) if linked is not None else None
+        if base is None or not getattr(base, "Solids", None):
+            raise KernelError(
+                "le gabarit du semis n'a pas de solide — rien à combiner")
+        placements = list(getattr(link, "PlacementList", None) or [])
+        if not placements:
+            return None
+        copies = [self._placed_gem_copy(base, place) for place in placements]
+        return Part.makeCompound(copies)
+
+    def _gem_placement_fingerprint(self, link):
+        """Signature des placements — pour ne pas recuire un compound identique."""
+        placements = list(getattr(link, "PlacementList", None) or [])
+        chunks = []
+        for place in placements:
+            base = getattr(place, "Base", None)
+            rot = getattr(place, "Rotation", None)
+            quat = getattr(rot, "Q", None) if rot is not None else None
+            if base is None:
+                chunks.append("?")
+                continue
+            qx, qy, qz, qw = (quat if quat is not None else (0, 0, 0, 1))[:4]
+            chunks.append("{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f}".format(
+                float(base.x), float(base.y), float(base.z),
+                float(qx), float(qy), float(qz), float(qw)))
+        return "{}#{}".format(link.Name, "|".join(chunks))
+
+    def _set_gem_boolean_shape(self, obj, compound, fingerprint):
+        """Pose la forme si les placements ont changé. Retourne True si écrit."""
+        if "FreeSolidGemBooleanFingerprint" not in obj.PropertiesList:
+            obj.addProperty(
+                "App::PropertyString", "FreeSolidGemBooleanFingerprint",
+                "FreeSolid", "Empreinte des placements du semis")
+        if str(getattr(obj, "FreeSolidGemBooleanFingerprint", "") or "") == fingerprint:
+            return False
+        obj.Shape = compound
+        obj.FreeSolidGemBooleanFingerprint = fingerprint
+        return True
+
+    def _derive_gem_boolean_body(self, link):
+        """Corps outil dérivé du semis — le semis lui-même n'est pas absorbé.
+
+        Même route que la gravure : ``Part::Feature`` porteur de la
+        forme, enveloppé dans un corps par ``BaseFeature``.
+        """
+        doc = self._require_doc()
+        self._refresh_gem_placements()
+        compound = self._gem_compound_shape(link)
+        if compound is None:
+            raise KernelError("semis vide — rien à combiner")
+        shape_feature = doc.addObject("Part::Feature", "GemBooleanShape")
+        shape_feature.Label = "Forme du semis"
+        if "FreeSolidGemBooleanSource" not in shape_feature.PropertiesList:
+            shape_feature.addProperty(
+                "App::PropertyString", "FreeSolidGemBooleanSource",
+                "FreeSolid", "Semis dont le compound est dérivé")
+        shape_feature.FreeSolidGemBooleanSource = link.Name
+        self._set_gem_boolean_shape(
+            shape_feature, compound, self._gem_placement_fingerprint(link))
+        self._mark_gem_boolean_tool(shape_feature)
+        tool_body = doc.addObject("PartDesign::Body", "GemBooleanBody")
+        tool_body.Label = "Corps outil du semis"
+        tool_body.BaseFeature = shape_feature
+        self._mark_gem_boolean_tool(tool_body)
+        doc.recompute()
+        return tool_body
+
+    def _refresh_gem_boolean_tools(self):
+        """Rebâtit le compound de chaque booléen dérivé d'un semis.
+
+        C'est ce qui distingue un booléen vivant d'une cuisson : bouger
+        une pierre puis reconstruire déplace son empreinte.
+        """
+        doc = self._doc
+        if doc is None:
+            return
+        for obj in list(doc.Objects):
+            if "FreeSolidGemBooleanSource" not in getattr(
+                    obj, "PropertiesList", ()):
+                continue
+            source = str(getattr(obj, "FreeSolidGemBooleanSource", "") or "")
+            if not source:
+                continue
+            link = doc.getObject(source)
+            if link is None or not self._is_gem_link(link):
+                continue
+            try:
+                compound = self._gem_compound_shape(link)
+            except KernelError:
+                continue
+            if compound is None:
+                continue
+            self._set_gem_boolean_shape(
+                obj, compound, self._gem_placement_fingerprint(link))
 
     def add_text(self, text, face, size=8.0, depth=1.0, x=0.0, y=0.0,
                  emboss=False, font=None):
@@ -2919,13 +3050,22 @@ class Kernel:
     def add_boolean(self, tool, type="cut"):
         """Combiner deux corps — Soustraire / Ajouter / Intersection.
 
-        S'applique au corps actif; le corps outil est absorbé par
-        l'opération (comportement PartDesign).
+        S'applique au corps actif. Un ``PartDesign::Body`` outil est
+        absorbé (comportement PartDesign). Un semis de pierres n'est
+        pas absorbé : le corps outil est dérivé, le compound se relit
+        depuis ``PlacementList`` à chaque recompute.
         """
         body = self._require_body()
         doc = self._require_doc()
         tool_obj = doc.getObject(str(tool))
-        if tool_obj is None or tool_obj.TypeId != "PartDesign::Body":
+        derived_names = []
+        if self._is_gem_link(tool_obj):
+            tool_obj = self._derive_gem_boolean_body(tool_obj)
+            derived_names.append(tool_obj.Name)
+            base = getattr(tool_obj, "BaseFeature", None)
+            if base is not None:
+                derived_names.append(base.Name)
+        elif tool_obj is None or tool_obj.TypeId != "PartDesign::Body":
             raise KernelError("corps outil inconnu : {}".format(tool))
         if tool_obj is body:
             raise KernelError(
@@ -2954,7 +3094,15 @@ class Kernel:
         try:
             self._recompute()
         except KernelError:
-            doc.removeObject(feature.Name)
+            try:
+                doc.removeObject(feature.Name)
+            except Exception:
+                pass
+            for name in derived_names:
+                try:
+                    doc.removeObject(name)
+                except Exception:
+                    pass
             raise
         return self.get_tree()
 
@@ -8006,6 +8154,74 @@ class Kernel:
                 == len(mesh_b.get("groups") or [])
                 and len(gems_a) == len(gems_b) == 1
                 and gems_a[0].get("count") == gems_b[0].get("count") == 1)
+
+            mark("p035: booléen sur un semis")
+
+            def _jonc_trois_pierres(name):
+                self.new_part(name)
+                state = self.sketch_start()
+                sk = state["sketch"]
+                self.sketch_add_circle(sk, 0, 0, 10)
+                self.sketch_constrain(
+                    sk, "coincident", 0, point1=3, geo2=-1, point2=1)
+                self.sketch_finish(sk)
+                tree = self.add_pad(6, sketch=sk)
+                pad_name = next(
+                    f["name"] for f in tree["features"]
+                    if f["type"] == "PartDesign::Pad")
+                side = self._side_face_id()
+                face = self._require_body().Shape.Faces[side]
+                u0, u1, v0, v1 = face.ParameterRange
+                v_mid = (v0 + v1) / 2.0
+                for i in range(3):
+                    u = u0 + (u1 - u0) * (i + 0.5) / 3.0
+                    pt = face.valueAt(u, v_mid)
+                    self.place_gem(
+                        face=side, x=pt.x, y=pt.y, z=pt.z,
+                        diametre=1.5, lift=-0.25)
+                gems = self.list_gems().get("gems") or []
+                return pad_name, side, gems, _volume()
+
+            pad_name, side, gems, vol_nu = _jonc_trois_pierres("Jonc P035")
+            semis = (gems or [{}])[0].get("name")
+            tree = self.add_boolean(tool=semis, type="cut")
+            shape_cut = self._require_body().Shape
+            vol_cut = _volume()
+            after_cut = self.list_gems().get("gems") or []
+            report["p035_cut"] = (
+                len(getattr(shape_cut, "Solids", ()) or ()) == 1
+                and vol_cut < vol_nu - 0.05
+                and len(after_cut) == 1
+                and after_cut[0].get("count") == 3
+                and not any(b.get("label", "").startswith("Corps outil du semis")
+                            for b in tree["bodies"]))
+            stone_before = (after_cut[0].get("stones") or [{}])[0]
+            mesh_before = self.tessellate()
+            self.set_tip(pad_name)
+            face = self._require_body().Shape.Faces[side]
+            u0, u1, v0, v1 = face.ParameterRange
+            moved_pt = face.valueAt(
+                u0 + (u1 - u0) * 0.05, (v0 + v1) / 2.0)
+            self.move_gem(semis, 0, moved_pt.x, moved_pt.y, moved_pt.z)
+            self.tip_to_end()
+            stone_after = ((self.list_gems().get("gems") or [{}])[0]
+                           .get("stones") or [{}])[0]
+            dx = float(stone_after.get("x", 0)) - float(stone_before.get("x", 0))
+            dy = float(stone_after.get("y", 0)) - float(stone_before.get("y", 0))
+            mesh_after = self.tessellate()
+            report["p035_deplace"] = (
+                (dx * dx + dy * dy) ** 0.5 > 1.0
+                and mesh_before.get("positions") != mesh_after.get("positions")
+                and len(self._require_body().Shape.Solids) == 1
+                and abs(_volume() - vol_cut) < 0.5)
+
+            _pad, _side, gems_fuse, vol_nu_fuse = _jonc_trois_pierres(
+                "Jonc P035 fuse")
+            semis_fuse = (gems_fuse or [{}])[0].get("name")
+            self.add_boolean(tool=semis_fuse, type="fuse")
+            report["p035_fuse"] = (
+                len(self._require_body().Shape.Solids) == 1
+                and _volume() > vol_nu_fuse + 0.05)
 
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce

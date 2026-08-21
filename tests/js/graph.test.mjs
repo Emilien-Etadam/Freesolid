@@ -485,6 +485,26 @@ describe("palette constructive", () => {
     assert.equal(filletItem.reason, GRAPH_DRESSUP_REASON);
     assert.deepEqual(graphPaletteItems(null), []);
   });
+
+  it("Combiner accepte un semis comme corps outil, sans second corps", () => {
+    const onlyActive = {
+      lastTree: { bodies: [{ name: "Body", label: "Pièce", active: true }] },
+    };
+    assert.match(combine.guard(onlyActive), /second corps/);
+    const withGem = {
+      lastTree: {
+        bodies: [{ name: "Body", label: "Pièce", active: true }],
+        gems: [{ name: "Semis", label: "Semis de pierres — cylindre-plat Ø1,5 mm",
+                 count: 3 }],
+      },
+    };
+    assert.equal(combine.guard(withGem), null);
+    const toolRow = combine.groups(withGem)[0].rows.find((row) => row.key === "tool");
+    assert.deepEqual(toolRow.options, [
+      ["Semis", "Semis de pierres — cylindre-plat Ø1,5 mm"],
+    ]);
+    assert.equal(toolRow.value, "Semis");
+  });
 });
 
 const VOCAB = [

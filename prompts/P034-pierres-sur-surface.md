@@ -19,13 +19,21 @@ vert. Les chiffres qui fondent ce prompt :
 
 **Ne sont PAS dans ce prompt**, et ne doivent pas y entrer :
 
-- la bibliothèque des 17 tailles de pierre (chantier à part, le plus lourd) ;
+- la bibliothèque des 17 tailles de pierre — chantier à part, et **du
+  modelage, pas du code** : une gemme est un `.brep`, pas une fonction
+  paramétrique ([`docs/bijouterie.md`](../docs/bijouterie.md) §6) ;
 - les sièges et les griffes — `add_boolean`, `add_revolution` et
   `add_polar_pattern` les couvrent déjà, ce sera un prompt suivant ;
 - le rapport, la carte des pierres, le contrôle d'écarts.
 
 **Une pierre est ici un cône simple**, posé comme témoin. On construit le
 *mécanisme* ; il doit être juste avant qu'on y accroche de la géométrie.
+
+Le témoin est volontairement trivial, et il le restera : le mécanisme est
+**indifférent** à ce que la pierre contient. Il pose un `Part::Feature` dans
+un `App::Link` et le déplace par `(u, v)` — que la forme dedans soit un cône
+ou un brillant relu d'un `.brep` ne change aucune décision de ce prompt. **Ne
+pas anticiper la gemme réelle** : la substitution se fera sans retouche.
 
 ## Le livrable
 

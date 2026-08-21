@@ -68,7 +68,7 @@ Verdicts, même légende que
 | Prongs (griffes) | ✅ | esquisse + `add_revolution` + `add_polar_pattern` (`kernel.py:2393`) — trois fonctions déjà là |
 | Auto Prongs (nombre et position calculés) | ✅ | dérivé de la table des tailles ; c'est de la donnée, pas de la géométrie |
 | Microprong Cutter (canal entre deux pierres) | 🟧 | `add_curve3d` (`kernel.py:982`) + `add_sweep` (`kernel.py:2211`) ; les positions se dérivent des placements de pierres |
-| Gem Add / Edit | 🟧 | **le gros du travail** : les 17 tailles à re-modeler en BRep paramétrique. Chacune = esquisse + révolution ou lissage + répétition polaire. Rien de risqué, mais rien de gratuit — et le `.blend` n'aide pas |
+| Gem Add / Edit | ✅ | **révisé le 2026-08-21 : une gemme est un BREP, pas une fonction paramétrique.** Une taille est une géométrie normalisée et figée — personne ne réédite l'angle de couronne d'un diamant. Un `.brep` par taille, mis à l'échelle en x, y, z. Voir §6 |
 | Gem Recover | ✅ | retrouver l'identité d'une pierre = relire ses métadonnées ; un `App::VarSet` par pierre suffit |
 | Asset manager (bibliothèque de composants) | ✅ | `insert_component` (`kernel.py:351`) pose déjà un `.FCStd` en `App::Link`. Manquent l'arborescence de dossiers et les aperçus côté client |
 
@@ -132,9 +132,11 @@ existent.
 
 Trois choses seulement coûtent vraiment :
 
-1. **La bibliothèque de pierres** — 17 tailles à modeler en paramétrique.
-   Incompressible, sans risque technique, et réutilisable telle quelle
-   ensuite. C'est là que part l'essentiel de l'effort.
+1. **La bibliothèque de pierres** — 17 tailles, mais **en `.brep`, pas en
+   paramétrique** (révision du 2026-08-21, §6). Modelées une fois,
+   exportées, plus jamais retouchées. Le poste reste le plus long de la
+   piste, mais c'est du modelage à la main, pas de la mécanique à
+   entretenir.
 2. **La distribution sur courbe et sur faces** — à ne pas coder comme une
    fonction de plus, mais comme des **nœuds** de la fonction graphe. Le §3
    de [`nodes-macros.md`](nodes-macros.md) décrit déjà ce besoin ; la
@@ -154,7 +156,7 @@ Chaque étape se tient seule et rend la suivante possible :
 |---|---|---|
 | **B1** | Table des matières (pierres, alliages, tailles de bague) + pesée ventilée par corps | `mass_properties`, `vocab.py` |
 | **B2** | Siège et griffes paramétriques sur une pierre posée à la main | `add_boolean`, `add_revolution`, `add_polar_pattern` |
-| **B3** | Bibliothèque des 17 tailles en `.FCStd`, posées par le gestionnaire d'actifs | `insert_component` |
+| **B3** | Bibliothèque des 17 tailles en `.brep`, posées par le gestionnaire d'actifs | §6, `insert_component` |
 | **B4** | Distribution sur courbe et semis sur faces, en nœuds | fonction graphe (N004-N006) |
 | **B5** | Écarts : contrôle, overlay Three.js, sélection des pierres trop proches | `check_interference`, `measure` |
 | **B6** | Rapport HTML et carte des pierres | `make_drawing`, lecture d'arbre |
@@ -394,3 +396,105 @@ groupée (faite), `normalAt` (fait), et le partage client/serveur de
 l'esquisse (fait). Ce qui manque tient en une projection inverse et cinq
 ops : voir
 [`prompts/P034-pierres-sur-surface.md`](../prompts/P034-pierres-sur-surface.md).
+
+---
+
+# 6. Une gemme est un BREP, pas une fonction
+
+*Révision du 2026-08-21. Le §2 chiffrait les 17 tailles comme « le gros du
+travail : à re-modeler en BRep **paramétrique** ». C'était une erreur
+d'analyse, et elle coûtait cher.*
+
+## 6.1 Ce que j'avais mal posé
+
+Une taille de pierre est une **géométrie normalisée et figée**. Un brillant
+rond a 57 facettes dans des proportions publiées : table à 57 % du diamètre,
+couronne à 16,2 %, rondiste à 3 %, culasse à 43 %. **Personne ne réédite
+l'angle de couronne d'un diamant dans un historique de fonctions** — on
+choisit une taille et trois dimensions.
+
+L'historique paramétrique est donc de la machinerie **inutile** ici. Ce
+qu'il faut d'une gemme :
+
+- une géométrie **exacte** — facettes planes, arêtes vives, rondiste net ;
+- une mise à l'échelle en **x, y, z indépendants** (un ovale est un rond
+  étiré) ;
+- un coût nul à l'instanciation, deux cents fois ;
+- un volume exact, pour le carat.
+
+Un `.brep` — la sérialisation **native d'OCCT** — donne les quatre. Pas de
+conversion, pas de tessellation, pas de perte : c'est le `TopoDS_Shape`
+lui-même, écrit sur disque.
+
+## 6.2 Ce que ça change
+
+| | Ce que j'avais écrit | Ce qu'il faut lire |
+|---|---|---|
+| La forme d'une taille | 17 chaînes PartDesign à construire et à maintenir | 17 fichiers modelés **une fois**, jamais retouchés |
+| Le dimensionnement | des cotes pilotées par expressions | une matrice d'échelle x/y/z |
+| Le verdict | 🟧 « le gros du travail » | ✅ — long à dessiner, nul à entretenir |
+| L'origine | à modeler dans FreeSolid | **n'importe quelle source** : FreeCAD, un STEP fournisseur, un scan |
+
+Le poste reste le plus long de la piste bijouterie — dessiner dix-sept
+tailles justes prend du temps. Mais c'est du **modelage à la main**, fait une
+fois, pas de la mécanique à entretenir à chaque évolution du moteur. La
+différence est celle d'un actif et d'une dette.
+
+## 6.3 Le gain caché : le carat devient exact
+
+C'est la conséquence qui vaut le détour.
+
+JewelCraft calcule le poids en carats par `x · y · z × facteur de
+correction`, où le facteur est **tabulé** par taille (de 1,025 à 1,888).
+C'est une approximation, et elle est là parce que Blender n'a que du maillage
+sous la main.
+
+Avec un BREP, `shape.Volume` est **exact**. Et sous une mise à l'échelle
+`(sx, sy, sz)`, le volume est multiplié par `sx · sy · sz` — le déterminant
+de l'affinité. Donc :
+
+> le rapport `Volume / (x · y · z)` est **invariant par dimension**.
+
+Autrement dit : **le facteur de correction de JewelCraft se dérive de la
+géométrie**, une seule fois par taille, au lieu d'être tabulé — et il devient
+exact. On calcule le volume du modèle de référence, on multiplie, c'est fini.
+Aucun volume à recalculer par pierre, aucune table à recopier — et, incident
+utile, aucun risque de licence puisqu'on ne reprend rien.
+
+## 6.4 Le point à surveiller : l'échelle non uniforme
+
+`transformGeometry()` applique une **affinité**. Un plan reste un plan : une
+gemme **tout facettes** traverse l'opération intacte.
+
+Une surface **analytique courbe**, non : un rondiste cylindrique étiré en
+ovale n'est plus un cylindre, OCCT le convertit en B-spline. Le résultat
+reste juste, mais plus lourd et plus fragile en booléen.
+
+D'où une consigne de modelage, pas de code : **facetter le rondiste**. C'est
+d'ailleurs ainsi que les pierres sont taillées. La sonde mesure les deux cas
+côte à côte pour que la consigne repose sur un chiffre.
+
+## 6.5 La sonde
+
+```bash
+freecadcmd scripts/spike-gemmes-brep.py
+```
+
+Six questions : l'aller-retour `.brep` est-il exact au bit près (G1) ; ce que
+l'échelle non uniforme fait aux surfaces (G2) ; **le volume se multiplie-t-il,
+donc le carat devient-il exact (G3, le verdict)** ; une gemme importée
+sert-elle d'outil de booléen pour creuser le siège (G4) ; 200 instances (G5) ;
+et ce que pèse la bibliothèque sur le disque (G6).
+
+Le banc d'essai construit un brillant rond en deux versions — tout facettes
+et rondiste analytique — aux proportions réelles, pour que G2 et G4 portent
+sur de la vraie géométrie de pierre et pas sur un cône.
+
+## 6.6 Ce que ça ne change pas
+
+Le mécanisme de placement ([`P034`](../prompts/P034-pierres-sur-surface.md))
+est **indifférent** à ce que la pierre contient. Il pose un `Part::Feature`
+via un `App::Link` et le déplace par `(u, v)` ; que la forme dedans vienne
+d'un cône témoin ou d'un `.brep` de brillant ne modifie aucune de ses
+décisions. P034 reste livrable tel quel, et la gemme s'y substituera sans
+retouche.

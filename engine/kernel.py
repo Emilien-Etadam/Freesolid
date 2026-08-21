@@ -6308,16 +6308,18 @@ class Kernel:
                                if f["type"] == "PartDesign::Pocket")
             n_before = len(tree["features"])
             # Source : 20×20×10 − 8×8×10 = 3360.
-            # Trois instances décalées de 40 mm, L = 10, 20, 30 :
-            # 336 × (10+20+30) = 20160. Total fuse = 23760.
+            # Trois instances qui se touchent (pas de 20 mm = largeur),
+            # L = 10, 20, 30 : 336 × 60 = 20160. Total fuse = 23760.
+            # Un Body n'accepte qu'un solide : des copies disjointes
+            # (pas de 40 mm) feraient échouer le booléen.
             tree = self.add_repeat_feature(
                 [pad_name, pocket_name],
                 [
-                    {"offset": [40, 0, 0],
+                    {"offset": [20, 0, 0],
                      "params": {pad_name: {"Length": 10}}},
-                    {"offset": [80, 0, 0],
+                    {"offset": [40, 0, 0],
                      "params": {pad_name: {"Length": 20}}},
-                    {"offset": [120, 0, 0],
+                    {"offset": [60, 0, 0],
                      "params": {pad_name: {"Length": 30}}},
                 ],
                 mode="fuse",
@@ -6336,11 +6338,11 @@ class Kernel:
             tree = self.edit_repeat_feature(
                 repeat_line["name"],
                 [
-                    {"offset": [40, 0, 0],
+                    {"offset": [20, 0, 0],
                      "params": {pad_name: {"Length": 15}}},
-                    {"offset": [80, 0, 0],
+                    {"offset": [40, 0, 0],
                      "params": {pad_name: {"Length": 25}}},
-                    {"offset": [120, 0, 0],
+                    {"offset": [60, 0, 0],
                      "params": {pad_name: {"Length": 35}}},
                 ],
             )

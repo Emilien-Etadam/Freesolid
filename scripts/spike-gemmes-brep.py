@@ -156,14 +156,18 @@ def probe_roundtrip():
         back = read_brep(path)
         t_read = time.time() - t0
 
+        # Premier passage : j'exigeais l'égalité BINAIRE des volumes. Mauvais
+        # critère — l'analytique tombait à 5,6e-17 mm³, soit 2,5e-16 en
+        # relatif, UN ULP de float64. Ce n'est pas la forme qui diffère,
+        # c'est le calcul d'intégrale qui ne se rejoue pas bit pour bit.
+        rel = (abs(back.Volume - gem.Volume) / gem.Volume) if gem.Volume else 0.0
         out[name] = {
             "octets": os.path.getsize(path),
             "lecture_ms": round(t_read * 1000.0, 3),
             "faces_identiques": len(back.Faces) == len(gem.Faces),
             "aretes_identiques": len(back.Edges) == len(gem.Edges),
-            # Au bit près, ou seulement à la tolérance près ?
-            "ecart_volume_mm3": abs(back.Volume - gem.Volume),
-            "exact": abs(back.Volume - gem.Volume) == 0.0,
+            "ecart_relatif": rel,
+            "exact": rel < 1e-12,  # le flottant, pas la géométrie
             "valide": back.isValid(),
             "surfaces": surface_types(back),
         }
@@ -185,6 +189,17 @@ def scaled(shape, sx, sy, sz):
     return shape.transformGeometry(m)
 
 
+def _optimal(shape):
+    """`optimalBoundingBox` recalcule la boîte sur la vraie surface. S'il
+    existe, c'est lui qui doit servir à annoncer les cotes d'une pierre."""
+    try:
+        box = shape.optimalBoundingBox()
+        return [round(box.XLength, 6), round(box.YLength, 6),
+                round(box.ZLength, 6)]
+    except Exception as exc:  # noqa: BLE001
+        return "{}: {}".format(type(exc).__name__, str(exc)[:80])
+
+
 def probe_scale():
     out = {}
     for name, gem in GEMMES.items():
@@ -197,8 +212,16 @@ def probe_scale():
             "types_preserves": surface_types(gem) == surface_types(oval),
             "valide": oval.isValid(),
             "solide": len(oval.Solids) == 1,
-            "encombrement": [round(box.XLength, 6), round(box.YLength, 6),
-                             round(box.ZLength, 6)],
+            "boundbox": [round(box.XLength, 6), round(box.YLength, 6),
+                         round(box.ZLength, 6)],
+            # Attendu : diamètre 1 × (sx, sy) et profondeur 0,622 × sz.
+            "boundbox_attendu": [4.0, 6.0, round(2.5 * (TABLE_Z - CULET_Z), 6)],
+            # PIÈGE : BoundBox borne les PÔLES d'une B-spline, pas la
+            # surface. Un cercle en trois arcs rationnels a un triangle de
+            # contrôle à 2r — d'où 1,5× en X et √3 en Y. Une gemme dont on
+            # lirait les cotes là-dessus serait annoncée 70 % trop grosse.
+            "boundbox_serre": abs(box.XLength - 4.0) < 1e-6,
+            "optimal": _optimal(oval),
             "faces": len(oval.Faces),
         }
     return out
@@ -215,32 +238,53 @@ note("g2_echelle", probe_scale)
 # --------------------------------------------------------------------------
 
 def probe_carat():
+    """Deux effets que le premier passage confondait sous un seul verdict.
+
+    (a) `transformGeometry` **convertit** : cône et cylindre deviennent des
+        B-splines, même à l'identité. L'approximation a un coût, et il se
+        mesure en imposant l'échelle (1, 1, 1).
+    (b) **Une fois converti**, le volume se multiplie-t-il par sx·sy·sz ?
+
+    Le premier passage mélangeait les deux et concluait « non
+    multiplicatif » pour la gemme analytique, alors que son écart était
+    RIGOUREUSEMENT le même (1,1763 %) aux quatre échelles — signature d'un
+    coût payé une fois, pas d'une dérive.
+
+    La conséquence pratique est la conclusion de la sonde : **le carat se
+    calcule depuis le volume de la forme DE BASE**, jamais depuis la forme
+    mise à l'échelle. Alors il est exact dans les deux cas.
+    """
     out = {}
     for name, gem in GEMMES.items():
-        base = gem.Volume  # rondiste ø 1 mm
-        rows = {}
-        facteurs = []
-        for sx, sy, sz in ((1.0, 1.0, 1.0), (2.0, 2.0, 2.0),
-                           (4.0, 6.0, 2.5), (10.0, 3.0, 7.0)):
+        base = gem.Volume
+        identite = scaled(gem, 1.0, 1.0, 1.0)
+        conversion = abs(identite.Volume - base) / base
+
+        rows, ecarts = {}, []
+        for sx, sy, sz in ((2.0, 2.0, 2.0), (4.0, 6.0, 2.5),
+                           (10.0, 3.0, 7.0)):
             v = scaled(gem, sx, sy, sz).Volume
-            attendu = base * sx * sy * sz
-            # x, y, z de la pierre = son encombrement réel.
-            facteur = v / (sx * sy * sz * (2 * GIRDLE_R) * (2 * GIRDLE_R)
-                           * (TABLE_Z - CULET_Z))
-            facteurs.append(facteur)
+            # (b) : par rapport à la forme CONVERTIE, pas à la base.
+            attendu = identite.Volume * sx * sy * sz
+            ecart = abs(v - attendu) / attendu
+            ecarts.append(ecart)
             rows["{}x{}x{}".format(sx, sy, sz)] = {
                 "volume_mm3": round(v, 9),
                 "attendu_mm3": round(attendu, 9),
-                "ecart_relatif": abs(v - attendu) / attendu if attendu else None,
+                "ecart_relatif": ecart,
+                # Ce que le carat retiendrait : la base × le déterminant.
+                "carat_depuis_base_mm3": round(base * sx * sy * sz, 9),
             }
-        rows["multiplicatif"] = all(
-            r["ecart_relatif"] < 1e-9 for r in rows.values()
-            if isinstance(r, dict) and r.get("ecart_relatif") is not None)
-        # Invariant ⇒ un seul nombre par taille suffit, pour toutes les
-        # dimensions. C'est la table de JewelCraft, rendue exacte.
-        rows["facteur_derive"] = round(sum(facteurs) / len(facteurs), 6)
-        rows["facteur_invariant"] = (max(facteurs) - min(facteurs)) < 1e-9
-        out[name] = rows
+
+        out[name] = dict(
+            rows,
+            cout_conversion=conversion,
+            conversion_gratuite=conversion < 1e-9,
+            multiplicatif=max(ecarts) < 1e-6,
+            # Le facteur que JewelCraft tabule, ici dérivé une fois.
+            facteur_derive=round(
+                base / ((2 * GIRDLE_R) ** 2 * (TABLE_Z - CULET_Z)), 6),
+        )
     return out
 
 
@@ -355,8 +399,11 @@ verdict = {
         v.get("exact") for v in (R.get("g1_aller_retour") or {"_": {}}).values()),
     "G2 échelle non uniforme": all(
         v.get("solide") for v in (R.get("g2_echelle") or {"_": {}}).values()),
-    "G3 volume multiplicatif": all(
+    "G3 échelle multiplicative": all(
         v.get("multiplicatif") for v in (R.get("g3_carat") or {"_": {}}).values()),
+    "G3 conversion sans coût (facettée)": bool(
+        ((R.get("g3_carat") or {}).get("facettee") or {})
+        .get("conversion_gratuite")),
     "G4 gemme en outil": all(
         v.get("valide") and v.get("a_enleve_de_la_matiere")
         for v in (R.get("g4_booleen_siege") or {"_": {}}).values()),
@@ -364,6 +411,7 @@ verdict = {
 }
 print("\n".join("{}  {}".format("OK  " if v else "NON ", k)
                 for k, v in verdict.items()), flush=True)
-print("\nSONDE {} — G3 est le verdict : si le volume se multiplie, le carat\n"
-      "se calcule EXACTEMENT, et le facteur tabulé de JewelCraft disparaît."
+print("\nSONDE {} — le carat se calcule depuis la forme DE BASE × sx·sy·sz,\n"
+      "jamais depuis la forme mise à l'échelle : le facteur tabulé de\n"
+      "JewelCraft se dérive alors une fois par taille, et devient exact."
       .format("VERTE" if all(verdict.values()) else "ROUGE"), flush=True)

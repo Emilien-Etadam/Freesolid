@@ -422,15 +422,17 @@ qu'il faut d'une gemme :
 - un coût nul à l'instanciation, deux cents fois ;
 - un volume exact, pour le carat.
 
-Un `.brep` — la sérialisation **native d'OCCT** — donne les quatre. Pas de
-conversion, pas de tessellation, pas de perte : c'est le `TopoDS_Shape`
-lui-même, écrit sur disque.
+Un **BREP** — le `TopoDS_Shape` d'OCCT lui-même — donne les quatre. Pas de
+conversion, pas de tessellation, pas de perte.
+
+*(Contenant : un `.FCStd`, pas un `.brep` nu — 6,3 × plus petit, et déjà lu
+par `insert_component`. Mesuré au §6.7.)*
 
 ## 6.2 Ce que ça change
 
 | | Ce que j'avais écrit | Ce qu'il faut lire |
 |---|---|---|
-| La forme d'une taille | 17 chaînes PartDesign à construire et à maintenir | 17 fichiers modelés **une fois**, jamais retouchés |
+| La forme d'une taille | 17 chaînes PartDesign à construire et à maintenir | 17 **solides BREP** modelés une fois, jamais retouchés |
 | Le dimensionnement | des cotes pilotées par expressions | une matrice d'échelle x/y/z |
 | Le verdict | 🟧 « le gros du travail » | ✅ — long à dessiner, nul à entretenir |
 | L'origine | à modeler dans FreeSolid | **n'importe quelle source** : FreeCAD, un STEP fournisseur, un scan |
@@ -466,13 +468,15 @@ utile, aucun risque de licence puisqu'on ne reprend rien.
 `transformGeometry()` applique une **affinité**. Un plan reste un plan : une
 gemme **tout facettes** traverse l'opération intacte.
 
-Une surface **analytique courbe**, non : un rondiste cylindrique étiré en
-ovale n'est plus un cylindre, OCCT le convertit en B-spline. Le résultat
-reste juste, mais plus lourd et plus fragile en booléen.
+Une surface **analytique courbe**, non : OCCT convertit cône et cylindre en
+B-splines — et **même à l'échelle (1, 1, 1)**, la seule conversion coûte
+**1,18 % de volume** (§6.7). Ma formulation initiale — « plus lourd et plus
+fragile » — sous-estimait : c'est 1,18 % de **carat**, soit 0,012 ct sur une
+pierre d'un carat. Commercialement, ce n'est pas du bruit.
 
-D'où une consigne de modelage, pas de code : **facetter le rondiste**. C'est
-d'ailleurs ainsi que les pierres sont taillées. La sonde mesure les deux cas
-côte à côte pour que la consigne repose sur un chiffre.
+D'où une consigne de modelage, pas de code : **facetter la gemme, rondiste
+compris**. C'est d'ailleurs ainsi que les pierres sont taillées, et la sonde
+chiffre l'écart entre les deux voies au lieu de le supposer.
 
 ## 6.5 La sonde
 
@@ -498,3 +502,97 @@ via un `App::Link` et le déplace par `(u, v)` ; que la forme dedans vienne
 d'un cône témoin ou d'un `.brep` de brillant ne modifie aucune de ses
 décisions. P034 reste livrable tel quel, et la gemme s'y substituera sans
 retouche.
+
+## 6.7 Verdict de la sonde gemmes — exécutée le 2026-08-21
+
+`scripts/spike-gemmes-brep.py` sur **FreeCAD 1.1.3**. La sonde a affiché
+**ROUGE**, et elle avait tort : **les deux échecs venaient de mes critères,
+pas de la conception.** Les deux corrections valent d'être lues, l'une
+parce qu'elle était une erreur de test, l'autre parce qu'elle a révélé un
+piège réel.
+
+### Ce qui est acquis
+
+| | Résultat |
+|---|---|
+| **G1** aller-retour `.brep` | **exact** : faces et arêtes identiques, forme valide. Lecture en **0,2–0,4 ms**. `Shape.importBrep` est le bon lecteur |
+| **G4** gemme en outil de booléen | **tient** : solide valide, un seul solide, matière enlevée. 73 ms pour la facettée, 36 ms pour l'analytique. Les facettes vives ne font pas trébucher OCCT |
+| **G5** 200 gemmes | **0,001 s**, et le document ne pèse que **113 octets par pierre** — une forme, N placements |
+| **G3** l'échelle | **rigoureusement multiplicative** dans les deux cas (écart 1,6e-9) |
+
+### Correction 1 — mon critère de G1 était faux
+
+J'exigeais l'égalité **binaire** des volumes avant et après l'aller-retour.
+La gemme analytique tombait à 5,6 × 10⁻¹⁷ mm³ d'écart, soit **2,5 × 10⁻¹⁶ en
+relatif : un ULP de `float64`**. Ce n'est pas la forme qui diffère — faces et
+arêtes sont identiques — c'est l'intégrale de volume qui ne se rejoue pas bit
+pour bit. Critère corrigé en tolérance relative. **G1 est vert.**
+
+### Correction 2 — G3 mélangeait deux effets, et le second est un piège
+
+Le premier passage annonçait « volume non multiplicatif » pour la gemme
+analytique, sur un écart de **1,1763 %**. Mais cet écart était **le même aux
+quatre échelles**, au chiffre près — signature d'un coût payé **une fois**,
+pas d'une dérive.
+
+En imposant l'échelle (1, 1, 1) — l'identité — on isole le coupable :
+
+| | Coût de la seule conversion | Échelle multiplicative ? |
+|---|---|---|
+| Gemme **facettée** | **0 %** (1 × 10⁻¹⁶) | oui, 1,3 × 10⁻¹⁶ |
+| Gemme **analytique** | **1,1763 %** | oui, 1,6 × 10⁻⁹ |
+
+Ce n'est donc pas l'échelle qui trahit, c'est la **conversion** que
+`transformGeometry` impose : cône et cylindre → B-spline, et l'approximation
+coûte 1,18 % de volume avant même qu'on ait mis à l'échelle quoi que ce soit.
+
+**La conclusion de conception, et elle sauve tout :**
+
+> Le carat se calcule depuis le volume de la forme **de base**, multiplié par
+> `sx · sy · sz`. **Jamais depuis la forme mise à l'échelle.**
+
+Alors il est exact **dans les deux cas** — la conversion n'affecte que la
+géométrie affichée et découpée, pas le poids. Ma revendication du §6.3 tient
+donc entièrement : **le facteur tabulé de JewelCraft se dérive de la
+géométrie, une fois par taille, et devient exact.** Il fallait seulement le
+calculer du bon côté de la transformation.
+
+### Le piège que la sonde a trouvé sans qu'on le cherche
+
+`BoundBox` d'une gemme analytique mise à l'échelle 4 × 6 rend
+**6,0 × 10,392** au lieu de 4,0 × 6,0. Ratios : **1,5 et √3**.
+
+Ce sont exactement les facteurs d'un cercle représenté en **trois arcs
+rationnels** : le triangle de contrôle a ses sommets à 2r, l'un d'eux sur
++X — d'où une étendue de 3r en X (1,5 × le diamètre) et 2 × 2r·sin 60° en Y
+(√3 fois). **`BoundBox` borne les pôles de la B-spline, pas la surface.**
+
+Conséquence directe : **une pierre dont on lirait les cotes sur `BoundBox`
+serait annoncée jusqu'à 70 % trop grosse** dans le rapport de fabrication.
+Les cotes se prennent sur les `(sx, sy, sz)` nominaux — qu'on connaît — ou
+sur `optimalBoundingBox()`, que la sonde interroge désormais.
+
+### Correction 3 — le format de la bibliothèque s'inverse
+
+| | Une gemme | 17 tailles |
+|---|---|---|
+| `.brep` | 47,8 ko | **793 ko** |
+| `.FCStd` | 7,5 ko | **125 ko** |
+
+**`.FCStd` est 6,3 × plus petit** — c'est une archive zip, et le BREP s'y
+comprime bien. Il est de surcroît **déjà lu par `insert_component`**
+(`engine/kernel.py:351`) et peut porter les métadonnées de la taille en
+propriétés natives.
+
+La remarque qui a lancé cette révision — *« les pierres peuvent être des
+BREP »* — reste juste sur le fond, qui était la **nature** de l'objet : une
+forme figée, pas une fonction paramétrique. Seul le **contenant** change :
+le BREP voyage dans un `.FCStd`, pas dans un `.brep` nu.
+
+### Une réserve à ne pas laisser passer
+
+Le budget des sièges du §5.6 — **3,4 s pour 200** — a été mesuré avec des
+**cônes simples**. G4 montre qu'une vraie gemme facettée coûte **73 ms** par
+booléen contre 36 pour une forme analytique : deux fois plus. Ce budget est
+donc à **re-mesurer avec une vraie gemme** avant d'être cité. Il ne remet pas
+en cause la linéarité établie en Q6, mais son ordonnée à l'origine, oui.

@@ -91,7 +91,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       + " (attendu " + expectedGroups.join(", ") + ")");
   }
 
-  // 0. Ids des 24 panneaux (registry FEATURES) + bascule libellés du ruban.
+  // 0. Ids des 25 panneaux (registry FEATURES) + bascule libellés du ruban.
   const FEATURE_PANELS = [
     { id: "btn-pad", tab: "features" },
     { id: "btn-pocket", tab: "features" },
@@ -104,6 +104,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-text", tab: "features" },
     { id: "btn-graph-feature", tab: "features" },
     { id: "btn-repeat-variable", tab: "features" },
+    { id: "btn-gem", tab: "features" },
     { id: "btn-fillet", tab: "features" },
     { id: "btn-chamfer", tab: "features" },
     { id: "btn-shell", tab: "features" },
@@ -118,8 +119,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-surf-sew", tab: "surfaces" },
     { id: "btn-surf-thicken", tab: "surfaces" },
   ];
-  if (FEATURE_PANELS.length !== 24) {
-    errors.push("harnais : 24 panneaux attendus, "
+  if (FEATURE_PANELS.length !== 25) {
+    errors.push("harnais : 25 panneaux attendus, "
       + FEATURE_PANELS.length + " déclarés");
   }
   let opened = 0;
@@ -146,7 +147,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   console.log("[panneaux] " + opened + "/" + FEATURE_PANELS.length
     + " ouverts (les gardes sans esquisse / sans 2e corps n'ouvrent pas)");
   if (opened < 15) {
-    errors.push("trop peu de panneaux ouverts : " + opened + "/24");
+    errors.push("trop peu de panneaux ouverts : " + opened + "/"
+      + FEATURE_PANELS.length);
   }
   await page.click('[data-tab="features"]');
   await sleep(200);
@@ -1863,6 +1865,264 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { timeout: 8000 },
   ).catch(() => {});
   await step("répétition variable");
+
+  // P034 — pierre aimantée sur un cylindre : pose, drag local, recalage.
+  // La vue graphe recouvre le canvas : Échap d'abord, sinon le drag
+  // clique un nœud au lieu de la pierre.
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(
+    () => !document.getElementById("graph-view")?.classList.contains("open"),
+    null,
+    { timeout: 5000 },
+  ).catch(async () => {
+    await page.keyboard.press("Escape");
+  });
+  await sleep(300);
+  const p034 = await page.evaluate(async () => {
+    const api = async (op, params = {}) => {
+      const r = await fetch("/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op, params }),
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || op);
+      return j.result;
+    };
+    await api("new_part", { name: "Jonc P034" });
+    const st = await api("sketch_start");
+    await api("sketch_add_circle", {
+      sketch: st.sketch, cx: 0, cy: 0, r: 10,
+    });
+    await api("sketch_constrain", {
+      sketch: st.sketch, kind: "coincident",
+      geo1: 0, point1: 3, geo2: -1, point2: 1,
+    });
+    const dimmed = await api("sketch_dim", { sketch: st.sketch, geo: 0 });
+    const radiusDim = Math.max(...(dimmed.dims || []).map((d) => d.id));
+    await api("sketch_finish", { sketch: st.sketch });
+    await api("add_pad", { length: 6, sketch: st.sketch });
+    const mesh = await api("tessellate");
+    // Face latérale du cylindre : les sommets sont à r ≈ 10 mm.
+    // Un plan (dessus/dessous) a des sommets près de l'axe — les
+    // écarter évite de poser la pierre sur un fond plat.
+    let side = null;
+    let best = -1;
+    for (const group of mesh.groups || []) {
+      let radial = 0;
+      const last = group.start + group.count;
+      for (let i = group.start; i < last; i += 1) {
+        const vi = mesh.indices[i];
+        const gx = mesh.positions[vi * 3];
+        const gy = mesh.positions[vi * 3 + 1];
+        if (Math.abs(Math.hypot(gx, gy) - 10) < 0.4) radial += 1;
+      }
+      if (radial > best) {
+        best = radial;
+        side = group;
+      }
+    }
+    if (!side) throw new Error("aucune face");
+    const i0 = mesh.indices[side.start];
+    const x = mesh.positions[i0 * 3];
+    const y = mesh.positions[i0 * 3 + 1];
+    const z = mesh.positions[i0 * 3 + 2];
+    const tree = await api("place_gem", {
+      face: side.faceId, x, y, z, diametre: 4,
+    });
+    return {
+      sketch: st.sketch,
+      radiusDim,
+      gems: (tree.gems || []).length,
+      normals: Array.isArray(mesh.normals) && mesh.normals.length > 0,
+    };
+  }).catch((err) => ({ error: String(err) }));
+  if (p034.error) {
+    errors.push("P034 : pose API — " + p034.error);
+  } else {
+    if (p034.gems !== 1) {
+      errors.push("P034 : un semis attendu, reçu " + p034.gems);
+    }
+    if (!p034.normals) {
+      errors.push("P034 : tessellate devrait porter des normales exactes");
+    }
+    await sleep(1500);
+    await page.evaluate(() => window.__freesolidDebug?.refresh?.());
+    await sleep(800);
+    // Recadrer : le new_part API ne touche pas la caméra, et un jonc
+    // de 20 mm est minuscule dans le cadre laissé par la pièce vitrine.
+    await page.click("#view-fit");
+    await sleep(400);
+    const gemUi = await page.evaluate(() => ({
+      meshes: window.__freesolidDebug?.gemMeshCount ?? 0,
+      instances: window.__freesolidDebug?.gemInstanceCount ?? 0,
+      screen: window.__freesolidDebug?.gemScreenPoint ?? null,
+      pos: window.__freesolidDebug?.gemWorldPositions ?? [],
+    }));
+    if (!(gemUi.meshes >= 1 && gemUi.instances >= 1 && gemUi.screen)) {
+      errors.push("P034 : InstancedMesh absent ("
+        + JSON.stringify({ meshes: gemUi.meshes, instances: gemUi.instances })
+        + ")");
+    } else {
+      const before = gemUi.pos[0];
+      const rBefore = Math.hypot(before.x, before.y);
+      await page.mouse.move(gemUi.screen.x, gemUi.screen.y);
+      await page.mouse.down();
+      await page.mouse.move(gemUi.screen.x + 40, gemUi.screen.y - 20, {
+        steps: 8,
+      });
+      await sleep(200);
+      const during = await page.evaluate(() => ({
+        dragging: window.__freesolidDebug?.gemDragging === true,
+        pos: window.__freesolidDebug?.gemWorldPositions?.[0] ?? null,
+      }));
+      await page.mouse.up();
+      await sleep(1500);
+      const afterDrag = await page.evaluate(() =>
+        window.__freesolidDebug?.gemWorldPositions?.[0] ?? null);
+      if (!during.dragging) {
+        errors.push("P034 : le drag local n'a pas démarré");
+      }
+      if (during.pos && before) {
+        const rDuring = Math.hypot(during.pos.x, during.pos.y);
+        if (Math.abs(rDuring - rBefore) > 0.5) {
+          errors.push("P034 : la pierre s'est décollée pendant le drag ("
+            + rBefore.toFixed(3) + " → " + rDuring.toFixed(3) + ")");
+        }
+      }
+      if (afterDrag && before
+          && Math.hypot(afterDrag.x - before.x, afterDrag.y - before.y,
+                        afterDrag.z - before.z) < 0.05) {
+        errors.push("P034 : la pierre n'a pas bougé au relâchement");
+      }
+      await page.evaluate(async ({ sketch, radiusDim }) => {
+        const r = await fetch("/api", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            op: "sketch_set_dim",
+            params: { sketch, dim: radiusDim, value: 12 },
+          }),
+        });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error);
+      }, { sketch: p034.sketch, radiusDim: p034.radiusDim });
+      await sleep(1500);
+      await page.evaluate(async () => {
+        const r = await fetch("/api", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op: "tessellate", params: {} }),
+        });
+        return r.json();
+      });
+      // Forcer le viewport à se mettre à jour : ping get_tree via l'UI.
+      await page.evaluate(async () => {
+        const r = await fetch("/api", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op: "get_tree", params: {} }),
+        });
+        return r.json();
+      });
+      const afterDim = await page.evaluate(async () => {
+        const r = await fetch("/api", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op: "list_gems", params: {} }),
+        });
+        const j = await r.json();
+        const stone = j.result?.gems?.[0]?.stones?.[0];
+        return stone || null;
+      });
+      if (!afterDim) {
+        errors.push("P034 : pierre absente après changement de cote");
+      } else {
+        const rAfter = Math.hypot(afterDim.x, afterDim.y);
+        if (Math.abs(rAfter - 12) > 0.05) {
+          errors.push("P034 : la pierre n'a pas suivi le rayon ("
+            + rAfter.toFixed(3) + " mm, attendu 12)");
+        }
+      }
+    }
+    await page.screenshot({
+      path: path.join(SHOTS, "11-pierre-sur-cylindre.png"),
+    });
+  }
+  await step("pierre sur surface");
+
+  // P036 — glisser par-dessus une arête, cote hors esquisse, Reconstruire.
+  const rebuildBtn = await page.$("#btn-rebuild");
+  if (!rebuildBtn) {
+    errors.push("P036 : bouton Reconstruire absent du ruban");
+  } else {
+    const p036 = await page.evaluate(async () => {
+      const api = async (op, params = {}) => {
+        const r = await fetch("/api", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op, params }),
+        });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || op);
+        return j.result;
+      };
+      const listed = await api("list_gems");
+      const gem = (listed.gems || [])[0];
+      if (!gem || !gem.stones?.length) {
+        throw new Error("aucune pierre à migrer");
+      }
+      const mesh = await api("tessellate");
+      const srcFace = gem.face_id;
+      const other = (mesh.groups || []).find((g) => g.faceId !== srcFace);
+      if (!other) throw new Error("pas de face voisine");
+      const i0 = mesh.indices[other.start];
+      const x = mesh.positions[i0 * 3];
+      const y = mesh.positions[i0 * 3 + 1];
+      const z = mesh.positions[i0 * 3 + 2];
+      const moved = await api("move_gem", {
+        gem: gem.name, index: 0, x, y, z, face: other.faceId,
+      });
+      const after = moved.gems || [];
+      const dest = after[0];
+      const pad = (await api("get_tree")).features
+        .find((f) => f.type === "PartDesign::Pad");
+      if (!pad) throw new Error("pas de bossage");
+      const volBefore = (await api("mass_properties")).volume_mm3;
+      await api("set_params", { feature: pad.name, values: { Length: 10 } });
+      const volAfter = (await api("mass_properties")).volume_mm3;
+      const rebuilt = await api("rebuild");
+      const volRebuild = (await api("mass_properties")).volume_mm3;
+      return {
+        migrated: after.length === 1
+          && dest && dest.face_id !== srcFace
+          && dest.count === 1
+          && !after.some((g) => g.name === gem.name && g.face_id === srcFace),
+        dimChanged: Math.abs(volAfter - volBefore) > 1,
+        rebuildSame: Math.abs(volRebuild - volAfter) < 1e-6,
+        rebuildTree: Array.isArray(rebuilt.features),
+      };
+    }).catch((err) => ({ error: String(err) }));
+    if (p036.error) {
+      errors.push("P036 : " + p036.error);
+    } else {
+      if (!p036.migrated) {
+        errors.push("P036 : la pierre n'a pas changé de face");
+      }
+      if (!p036.dimChanged) {
+        errors.push("P036 : la cote hors esquisse n'a pas reconstruit la pièce");
+      }
+      if (!p036.rebuildSame || !p036.rebuildTree) {
+        errors.push("P036 : Reconstruire n'a pas rendu une pièce identique");
+      }
+    }
+    await page.click("#btn-rebuild");
+    await sleep(1500);
+    await page.screenshot({
+      path: path.join(SHOTS, "12-p036-reconstruire.png"),
+    });
+  }
+  await step("glisser coter reconstruire");
 
   console.log(errors.length
     ? "ERREURS:\n" + errors.join("\n")

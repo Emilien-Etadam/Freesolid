@@ -4,8 +4,10 @@ Première brique de la piste bijouterie
 ([`docs/bijouterie.md`](../docs/bijouterie.md) §5) : des pierres **aimantées
 sur la surface** et **déplaçables à la volée**.
 
-La sonde `scripts/spike-pierres.py` a tranché sur FreeCAD 1.1.3 — verdict
-vert. Les chiffres qui fondent ce prompt :
+Deux sondes ont tranché sur FreeCAD 1.1.3, toutes deux vertes :
+`scripts/spike-pierres.py` pour le placement (Q1-Q7),
+`scripts/spike-gemme-parametrique.py` pour la gemme (H1-H9). Les chiffres qui
+fondent ce prompt :
 
 | | |
 |---|---|
@@ -20,8 +22,11 @@ vert. Les chiffres qui fondent ce prompt :
 **Ne sont PAS dans ce prompt**, et ne doivent pas y entrer :
 
 - la bibliothèque des 17 tailles de pierre — chantier à part, et **du
-  modelage, pas du code** : une gemme est un `.brep`, pas une fonction
-  paramétrique ([`docs/bijouterie.md`](../docs/bijouterie.md) §6) ;
+  modelage, pas du code** : chaque taille est un `.FCStd` **coté par une
+  esquisse** ([`docs/bijouterie.md`](../docs/bijouterie.md) §7). *(Le §6 du
+  même document décrit une voie « BREP mis à l'échelle » qui a été
+  **écartée** : elle perdait 1,18 % de volume et faussait les cotes. Ne pas
+  s'y référer.)* ;
 - **les sièges** — et ce n'est pas un report de commodité, c'est une
   décision d'architecture : **poser une pierre n'enlève pas de matière.**
   On pose, puis on **combine**, en une opération séparée et explicite
@@ -49,13 +54,30 @@ trop tard.
 
 ## Le livrable
 
+### 0. Le premier fichier de la bibliothèque
+
+`assets/gemmes/cylindre-plat.FCStd` — un `App::VarSet` nommé `Variables`
+portant `diametre` et `epaisseur`, une esquisse **entièrement contrainte**
+dont les cotes sont liées par expression à ces variables, et un `Pad`. Rien
+de plus.
+
+C'est le gabarit que tout le reste consomme. Le construire **par script**
+(un court `scripts/` ou une fonction du selftest), pas à la main : la
+bibliothèque des 17 tailles se fabriquera de la même façon, et un fichier
+binaire posé à la main n'est ni relisible ni rejouable en CI.
+
+Modèle éprouvé pour la construction headless : la sonde
+`scripts/spike-gemme-parametrique.py`, fonction `build_library` — esquisse
+sur un plan d'origine du corps, contraintes nommées puis
+`setExpression("Constraints[i]", "Variables.diametre * k")`.
+
 ### 1. Cinq ops, et pas une de plus
 
 Dans `engine/protocol.py` (`OPS`) puis `engine/kernel.py` :
 
 | Op | Params requis | Optionnels | Rend |
 |---|---|---|---|
-| `place_gem` | `face` (int), `x`, `y`, `z` (float) | `size`, `spin`, `lift` | le semis mis à jour |
+| `place_gem` | `face` (int), `x`, `y`, `z` (float) | `gemme` (nom de gabarit, défaut `cylindre-plat`), `diametre`, `spin`, `lift` | le semis mis à jour |
 | `move_gem` | `gem` (str), `index` (int), `x`, `y`, `z` | `face` — absent = même face | idem |
 | `spin_gem` | `gem` (str), `index` (int) | `spin`, `lift` — absents = inchangés | idem |
 | `remove_gem` | `gem` (str), `index` (int) | — | idem |
@@ -218,6 +240,7 @@ node --check app/main.js
 node --test tests/js/*.test.mjs
 PYTHONIOENCODING=utf-8 freecadcmd scripts/run-selftest.py
 freecadcmd scripts/spike-pierres.py
+freecadcmd scripts/spike-gemme-parametrique.py
 ```
 
 Smoke : poser une pierre sur le flanc d'un cylindre, la faire glisser à la

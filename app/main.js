@@ -10,7 +10,11 @@ import {
 import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
 import { FEATURES } from "./features.js";
-import { formatProgressStatus } from "./progress.js";
+import {
+  formatProgressStatus,
+  noteProgressForCalibration,
+  rememberCombineFinished,
+} from "./progress.js";
 import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
 import {
@@ -90,7 +94,9 @@ async function pollProgressOnce(gen) {
   try {
     const progress = await call("progress");
     if (gen !== progressGen || statusSticky) return;
-    const text = formatProgressStatus(progress, Date.now() / 1000);
+    const now = Date.now() / 1000;
+    noteProgressForCalibration(progress, now);
+    const text = formatProgressStatus(progress, now);
     if (text) say(text);
   } catch {
     // Le sondage ne doit jamais masquer l'op en cours ni son erreur.
@@ -4955,7 +4961,16 @@ function openFeaturePanel(entry, sketchOverride) {
         if (question && !confirm(question)) return;
       }
       const run = entry.refresh === "any" ? refreshAny : refresh;
-      const promise = call(built.op, built.params);
+      const gem = (ctx.lastTree?.gems ?? []).find(
+        (item) => item.name === built.params?.tool);
+      const stoneCount = gem?.count;
+      const started = Date.now();
+      const promise = call(built.op, built.params).then((tree) => {
+        if (built.op === "add_boolean" && stoneCount) {
+          rememberCombineFinished(stoneCount, (Date.now() - started) / 1000);
+        }
+        return tree;
+      });
       if (entry.openGraphEditor) {
         run(promise.then((tree) => {
           queueMicrotask(() => {

@@ -1698,9 +1698,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("nœud Python");
 
   // N010b — répétition variable : poser un nœud instance et appliquer.
+  // N008 laisse la vue graphe ouverte (exitGraphFeature ne la ferme pas).
+  const graphStillOpen = await page.evaluate(() =>
+    document.getElementById("graph-view")?.classList.contains("open") === true);
+  if (graphStillOpen) {
+    page.once("dialog", (dialog) => { dialog.accept().catch(() => {}); });
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(
+      () => !document.getElementById("graph-view")?.classList.contains("open"),
+      null,
+      { timeout: 8000 },
+    ).catch(() => {});
+  }
   await page.click('[data-tab="features"]');
   await sleep(200);
-  const repeatPadRow = page.locator("#tree li.feat").filter({ hasText: /Bossage/ }).first();
   await page.click("#btn-repeat-variable");
   await page.waitForFunction(
     () => document.querySelector("#panel .ptitle")?.textContent
@@ -1714,12 +1725,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("N010b : le panneau doit dire que la répétition s'arrête "
       + "si la topologie change (" + repeatNote.slice(0, 180) + ")");
   }
-  if (await repeatPadRow.count()) {
-    await repeatPadRow.click();
-    await sleep(400);
-  } else {
+  const pickedPad = await page.evaluate(() => {
+    const row = [...document.querySelectorAll("#tree li.feat")]
+      .find((el) => /Bossage/i.test(el.textContent || ""));
+    if (!row) return false;
+    row.scrollIntoView({ block: "nearest" });
+    row.click();
+    return true;
+  });
+  if (!pickedPad) {
     errors.push("N010b : aucune fonction Bossage dans l'arbre");
   }
+  await sleep(400);
   await page.click('#panel [title^="OK"]');
   await page.waitForFunction(
     () => window.__freesolidDebug?.graphFeatureActive === true

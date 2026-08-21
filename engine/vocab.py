@@ -137,6 +137,7 @@ class GraphPort:
 
     key: str
     kind: str = "number"  # number | point | list | shape | any
+    optional: bool = False
 
 
 @dataclass(frozen=True)
@@ -196,6 +197,7 @@ GRAPH_CATEGORY_LABELS: dict[str, tuple[str, str]] = {
     "transforms": ("Transformations", "Transforms"),
     "text": ("Texte", "Text"),
     "script": ("Python", "Python"),
+    "repeat": ("Répétition", "Repeat"),
 }
 
 _F_VALUE = (GraphField("value", "number"),)
@@ -418,6 +420,18 @@ GRAPH_NODES: tuple[GraphNode, ...] = (
                 GraphPort("c", "any")),
         fields=(GraphField("code", "code"),),
         implemented=True),
+    # --- Répétition variable : le graphe produit les instances, pas une
+    #     forme. ``evaluate_instances`` les évalue ; ``evaluate`` refuse.
+    _gn("cote", "Cote", "Dimension", "repeat", "Constraint_Dimension.svg",
+        inputs=(GraphPort("valeur"),
+                GraphPort("suite", "any", optional=True)),
+        fields=(GraphField("feature", "text"), GraphField("prop", "text")),
+        implemented=True),
+    _gn("instance", "Instance", "Instance", "repeat",
+        "PartDesign_LinearPattern.svg",
+        inputs=(GraphPort("decalage", "point"),
+                GraphPort("cotes", "any", optional=True)),
+        implemented=True),
 )
 
 GRAPH_NODE_BY_TYPE: dict[str, GraphNode] = {n.type: n for n in GRAPH_NODES}
@@ -489,6 +503,9 @@ GRAPH_INPUT_LABELS: dict[str, tuple[str, str]] = {
     "solide": ("Solide", "Solid"),
     "raye": ("Réglé", "Ruled"),
     "donnees": ("Données", "Data"),
+    "valeur": ("Valeur", "Value"),
+    "suite": ("Suite", "Next"),
+    "cotes": ("Cotes", "Dimensions"),
 }
 
 GRAPH_FIELD_LABELS: dict[str, tuple[str, str]] = {
@@ -496,6 +513,8 @@ GRAPH_FIELD_LABELS: dict[str, tuple[str, str]] = {
     "name": ("Nom", "Name"),
     "op": ("Opération", "Operation"),
     "code": ("Code", "Code"),
+    "feature": ("Fonction", "Feature"),
+    "prop": ("Cote", "Property"),
 }
 
 

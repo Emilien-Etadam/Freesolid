@@ -80,3 +80,14 @@ def test_graph_node_labels_are_french():
     assert vocab.GRAPH_NODE_BY_TYPE["script"].icon == "nodes_python.svg"
     assert vocab.graph_category_label("script") == "Python"
     assert vocab.graph_field_label("code") == "Code"
+    assert vocab.graph_category_label("repeat") == "Répétition"
+    assert vocab.graph_node_label("cote") == "Cote"
+    assert vocab.graph_node_label("instance") == "Instance"
+    assert vocab.graph_input_label("valeur") == "Valeur"
+    assert vocab.graph_input_label("suite") == "Suite"
+    assert vocab.graph_input_label("cotes") == "Cotes"
+    assert vocab.graph_field_label("feature") == "Fonction"
+    assert vocab.graph_field_label("prop") == "Cote"
+    assert vocab.GRAPH_NODE_BY_TYPE["cote"].category == "repeat"
+    assert vocab.GRAPH_NODE_BY_TYPE["instance"].implemented is True
+    assert vocab.GRAPH_NODE_BY_TYPE["cote"].inputs[1].optional is True

@@ -25,10 +25,12 @@ import {
   graphVisibleParams,
   isConstructWireSource,
   isGraphFeature,
+  isRepeatFeature,
   isParamWireSource,
   isParamWireTarget,
   layoutFunctionGraph,
   minimalGraphFeature,
+  minimalRepeatGraph,
   newGraphNode,
   nextGraphNodeId,
   nodeIdFromGraphError,
@@ -405,7 +407,7 @@ describe("palette constructive", () => {
   const edgeSel = { kind: "edges", edges: [1, 2] };
 
   it("FEATURES porte les marqueurs dressup / sketchProfile, sans table parallèle", () => {
-    assert.equal(FEATURES.length, 23);
+    assert.equal(FEATURES.length, 24);
     assert.equal(pad?.sketchProfile, true);
     assert.equal(pad?.dressup, undefined);
     assert.equal(fillet?.dressup, true);
@@ -469,7 +471,7 @@ describe("palette constructive", () => {
       lastTree: { features: [] },
       selection: null,
     });
-    assert.equal(items.length, 23);
+    assert.equal(items.length, 24);
     const padItem = items.find((item) => item.button === "btn-pad");
     const filletItem = items.find((item) => item.button === "btn-fillet");
     assert.equal(padItem.title, pad.title);
@@ -592,6 +594,13 @@ describe("composition du graphe interne", () => {
   it("isGraphFeature lit le champ graph de l'arbre, pas le type FreeCAD", () => {
     assert.equal(isGraphFeature({ graph: { nodes: [] } }), true);
     assert.equal(isGraphFeature({ type: "PartDesign::Boolean" }), false);
+    assert.equal(isRepeatFeature({ repeat: { features: [] } }), true);
+    assert.equal(isRepeatFeature({ graph: { nodes: [] } }), false);
+    assert.equal(minimalRepeatGraph().output, "inst");
+    assert.equal(minimalRepeatGraph().nodes[0].type, "instance");
+    const repeat = FEATURES.find((entry) => entry.button === "btn-repeat-variable");
+    assert.equal(repeat?.title, "Répétition variable");
+    assert.equal(repeat?.openGraphEditor, true);
   });
 
   it("layoutFunctionGraph attache les fils aux ports nommés", () => {

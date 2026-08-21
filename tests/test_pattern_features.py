@@ -173,3 +173,69 @@ def test_parse_repeat_instances_empty_refused():
     with pytest.raises(KernelError) as excinfo:
         parse_repeat_instances([], ["Pad"])
     assert "vide" in str(excinfo.value)
+
+
+def test_attachment_verdict_ok_when_count_kind_normal_match():
+    from engine.replay import attachment_verdict
+    expected = {"candidates": 1, "kind": "Plane", "normal": [0.0, 0.0, 1.0]}
+    assert attachment_verdict(expected, dict(expected)) is None
+
+
+def test_attachment_verdict_refuses_count_change():
+    from engine.replay import attachment_verdict
+    expected = {"candidates": 1, "kind": "Plane", "normal": [0.0, 0.0, 1.0]}
+    actual = {"candidates": 2, "kind": "Plane", "normal": [0.0, 0.0, 1.0]}
+    reason = attachment_verdict(expected, actual)
+    assert reason is not None
+    assert "1" in reason and "2" in reason
+
+
+def test_attachment_verdict_refuses_kind_change():
+    from engine.replay import attachment_verdict
+    expected = {"candidates": 1, "kind": "Plane", "normal": [0.0, 0.0, 1.0]}
+    actual = {"candidates": 1, "kind": "Cylinder", "normal": [0.0, 0.0, 1.0]}
+    reason = attachment_verdict(expected, actual)
+    assert reason == "la face d'attache était Plane, elle est Cylinder"
+
+
+def test_attachment_verdict_refuses_normal_change():
+    from engine.replay import attachment_verdict
+    expected = {"candidates": 1, "kind": "Plane", "normal": [0.0, 0.0, 1.0]}
+    actual = {"candidates": 1, "kind": "Plane", "normal": [1.0, 0.0, 0.0]}
+    reason = attachment_verdict(expected, actual)
+    assert reason is not None
+    assert "normale" in reason
+
+
+def test_attachment_verdict_swapped_same_kind_passes():
+    """Deux faces Plane qui échangent leur rang de hauteur : la garde ne voit rien."""
+    from engine.replay import attachment_verdict
+    expected = {"candidates": 2, "kind": "Plane", "normal": [0.0, 0.0, 1.0]}
+    actual = {"candidates": 2, "kind": "Plane", "normal": [0.0, 0.0, 1.0]}
+    assert attachment_verdict(expected, actual) is None
+
+
+def test_split_repeat_source_exclusive():
+    from engine.kernel import KernelError
+    from engine.replay import split_repeat_source
+    kind, value = split_repeat_source(
+        [{"offset": [0, 0, 0], "params": {}}], None)
+    assert kind == "instances"
+    kind, value = split_repeat_source(None, {"nodes": [], "edges": []})
+    assert kind == "graph"
+    with pytest.raises(KernelError, match="pas les deux"):
+        split_repeat_source([{}], {"nodes": []})
+    with pytest.raises(KernelError, match="graphe ou une liste"):
+        split_repeat_source(None, None)
+
+
+def test_upward_threshold_has_one_source():
+    """La garde d'attache et ``_top_face_id`` lisent la même valeur.
+
+    Deux seuils parallèles divergeraient, et la garde cesserait de
+    décrire le choix qu'elle est censée vérifier — c'est le défaut que
+    N001b a dû corriger ailleurs.
+    """
+    from engine import kernel, replay
+    assert replay.UPWARD_Z is kernel.UPWARD_Z
+    assert not hasattr(replay, "_UPWARD_Z")

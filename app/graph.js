@@ -709,6 +709,20 @@ export function minimalGraphFeature() {
   };
 }
 
+/** Graphe minimal d'une répétition variable — une instance à l'origine. */
+export function minimalRepeatGraph() {
+  return {
+    nodes: [{
+      id: "inst",
+      type: "instance",
+      decalage: { x: 0, y: 0, z: 0 },
+      pos: [240, 80],
+    }],
+    edges: [],
+    output: "inst",
+  };
+}
+
 export function cloneGraphDraft(draft) {
   return JSON.parse(JSON.stringify(draft ?? { nodes: [], edges: [], output: "" }));
 }
@@ -971,7 +985,7 @@ export function removeGraphNode(draft, id) {
     String(edge.from) !== ident && String(edge.to) !== ident);
   if (String(next.output) === ident) {
     const fallback = next.nodes.find((node) => node.type === "cylindre"
-      || node.type === "boite") ?? next.nodes[0];
+      || node.type === "boite" || node.type === "instance") ?? next.nodes[0];
     next.output = fallback ? String(fallback.id) : "";
   }
   return next;
@@ -999,6 +1013,11 @@ export function nodeIdFromGraphError(message) {
 export function isGraphFeature(item) {
   return !!(item && typeof item === "object" && item.graph
     && typeof item.graph === "object");
+}
+
+export function isRepeatFeature(item) {
+  return !!(item && typeof item === "object" && item.repeat
+    && typeof item.repeat === "object");
 }
 
 /** Le brouillon porte-t-il au moins un nœud Python ? */

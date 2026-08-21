@@ -5,7 +5,7 @@
 // build(v, ctx) rend { op, params } ou null (aperçu éteint, OK bloqué).
 
 import { num } from "./num.js";
-import { minimalGraphFeature } from "./graph.js";
+import { minimalGraphFeature, minimalRepeatGraph } from "./graph.js";
 
 /** Message moteur quand aucune esquisse libre n'est disponible. */
 export const NO_SKETCH_AVAILABLE =
@@ -637,6 +637,42 @@ export const FEATURES = [
       op: "add_graph_feature",
       params: { graph: minimalGraphFeature(), mode: v.mode },
     }),
+    refresh: "part",
+    openGraphEditor: true,
+  },
+  {
+    button: "btn-repeat-variable",
+    icon: "PartDesign_LinearPattern.svg",
+    title: "Répétition variable",
+    preview: false,
+    groups: () => [
+      { label: "Fonctions",
+        rows: [{ type: "selection", key: "features", accepts: ["feature"],
+                 multiple: true,
+                 hint: "Cliquez les fonctions dans l'arbre, dans "
+                       + "l'ordre du groupe" }] },
+      { label: "Opération",
+        rows: [
+          { type: "select", key: "mode", value: "fuse",
+            options: [["fuse", "Ajouter"], ["cut", "Soustraire"]] },
+        ] },
+    ],
+    note: "Rejoue un groupe de fonctions avec des cotes différentes. "
+      + "Si la topologie d'une instance ne correspond plus, la "
+      + "répétition s'arrête plutôt que de produire.",
+    build: (v) => {
+      const items = v.features?.items ?? [];
+      if (!items.length) return null;
+      return {
+        op: "add_repeat_feature",
+        params: {
+          features: items.map((item) => item.name),
+          graph: minimalRepeatGraph(),
+          mode: v.mode,
+        },
+      };
+    },
+    invalid: "Répétition variable : cliquez au moins une fonction dans l'arbre",
     refresh: "part",
     openGraphEditor: true,
   },

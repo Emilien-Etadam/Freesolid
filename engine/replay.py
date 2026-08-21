@@ -6,7 +6,7 @@ rejeu tout-ou-rien. FreeCAD n'est importé que dans les corps de
 fonctions.
 """
 
-from engine.kernel import Kernel, KernelError
+from engine.kernel import Kernel, KernelError, UPWARD_Z
 
 
 #: Ce que ``get_params`` + le profil suffisent à reconstituer.
@@ -140,6 +140,38 @@ def topology_verdict(expected, actual):
     return None
 
 
+def attachment_verdict(expected, actual):
+    """Rend None si l'esquisse se repose au même endroit, sinon la raison.
+
+    Compare le compte de faces candidates (normale.z > 0.5), le type
+    de la face retenue, et sa normale arrondie. Deux faces candidates
+    de même type qui échangent leur rang de hauteur passent : la garde
+    réduit le risque, elle ne l'annule pas.
+    """
+    if not isinstance(expected, dict) or not isinstance(actual, dict):
+        return "empreinte d'attache illisible"
+    exp_n = expected.get("candidates")
+    act_n = actual.get("candidates")
+    if exp_n != act_n:
+        return (
+            "le nombre de faces candidates a changé : {} attendues, "
+            "{} obtenues".format(exp_n, act_n)
+        )
+    exp_kind = expected.get("kind")
+    act_kind = actual.get("kind")
+    if exp_kind != act_kind:
+        return "la face d'attache était {}, elle est {}".format(
+            exp_kind, act_kind)
+    exp_normal = expected.get("normal")
+    act_normal = actual.get("normal")
+    if exp_normal != act_normal:
+        return (
+            "la normale d'attache a changé : {} attendue, {} obtenue"
+            .format(exp_normal, act_normal)
+        )
+    return None
+
+
 def _geom_kind(geom):
     type_id = getattr(geom, "TypeId", None)
     if isinstance(type_id, str) and type_id:
@@ -170,6 +202,71 @@ def shape_fingerprint(shape, edges, faces):
         if 0 <= int(index) < n_faces:
             kinds[key] = _geom_kind(shape.Faces[int(index)].Surface)
     return {"edges": n_edges, "faces": n_faces, "kinds": kinds}
+
+
+def attachment_fingerprint(shape):
+    """Empreinte de la face d'attache choisie par ``_top_face_id``.
+
+    ``candidates`` compte les faces dont la normale pointe vers le haut
+    (``normal.z > 0.5``). ``kind`` et ``normal`` décrivent celle dont
+    le centroïde est le plus élevé. Le centroïde lui-même n'est pas
+    une signature : il bouge dès qu'une cote change.
+    """
+    if shape is None or (hasattr(shape, "isNull") and shape.isNull()):
+        return {"candidates": 0, "kind": None, "normal": None}
+    faces = getattr(shape, "Faces", None) or ()
+    candidates = 0
+    best = None
+    best_z = None
+    best_normal = None
+    for face in faces:
+        try:
+            u0, u1, v0, v1 = face.ParameterRange
+            normal = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
+        except Exception:
+            continue
+        if getattr(normal, "z", 0) <= UPWARD_Z:
+            continue
+        candidates += 1
+        try:
+            z = float(face.CenterOfMass.z)
+        except Exception:
+            continue
+        if best_z is None or z > best_z:
+            best = face
+            best_z = z
+            best_normal = normal
+    if best is None or best_normal is None:
+        return {"candidates": candidates, "kind": None, "normal": None}
+    return {
+        "candidates": candidates,
+        "kind": _geom_kind(best.Surface),
+        "normal": [
+            round(float(best_normal.x), 6),
+            round(float(best_normal.y), 6),
+            round(float(best_normal.z), 6),
+        ],
+    }
+
+
+def split_repeat_source(instances, graph):
+    """Exclusif : graphe **ou** instances. Rend ``('graph'|'instances', valeur)``."""
+    has_graph = graph is not None
+    has_instances = instances is not None
+    if has_graph and has_instances:
+        raise KernelError(
+            "la répétition attend un graphe ou une liste d'instances, "
+            "pas les deux")
+    if not has_graph and not has_instances:
+        raise KernelError(
+            "la répétition attend un graphe ou une liste d'instances")
+    if has_graph:
+        if not isinstance(graph, dict):
+            raise KernelError("graphe de répétition illisible")
+        return "graph", graph
+    if not isinstance(instances, (list, tuple)):
+        raise KernelError("instances doit être une liste")
+    return "instances", instances
 
 
 def parse_repeat_instances(instances, feature_names):
@@ -251,7 +348,22 @@ def _base_indices(obj):
     return edges, faces
 
 
-def _dump_sketch(sketch):
+def _support_shape(sketch):
+    """Forme de l'objet d'appui d'une esquisse, ou None."""
+    support = getattr(sketch, "AttachmentSupport", None)
+    if support is None:
+        support = getattr(sketch, "Support", None)
+    for obj, _subs in Kernel._iter_link_subs(support):
+        shape = getattr(obj, "Shape", None)
+        if shape is None:
+            continue
+        if hasattr(shape, "isNull") and shape.isNull():
+            continue
+        return shape
+    return None
+
+
+def _dump_sketch(sketch, body_shape=None):
     on_face = False
     support = getattr(sketch, "AttachmentSupport", None)
     if support is None:
@@ -260,7 +372,7 @@ def _dump_sketch(sketch):
         if any(str(item).startswith("Face") for item in subs):
             on_face = True
             break
-    return {
+    dump = {
         "name": sketch.Name,
         "label": sketch.Label,
         "geometry": [geo.copy() for geo in sketch.Geometry],
@@ -272,6 +384,12 @@ def _dump_sketch(sketch):
         "placement": sketch.Placement.copy(),
         "on_face": on_face,
     }
+    if on_face:
+        shape = _support_shape(sketch)
+        if shape is None:
+            shape = body_shape
+        dump["attachment"] = attachment_fingerprint(shape)
+    return dump
 
 
 def _capture_feature(kernel, obj):
@@ -323,6 +441,7 @@ def capture_group(kernel, names):
                           "est vide")
     body = kernel._require_body()
     doc = kernel._require_doc()
+    body_shape = getattr(body, "Shape", None)
     in_body = {obj.Name for obj in body.Group}
     features = []
     sketches = {}
@@ -349,7 +468,7 @@ def capture_group(kernel, names):
             sketch = doc.getObject(profile)
             if sketch is None or sketch.TypeId != "Sketcher::SketchObject":
                 raise KernelError("esquisse inconnue : {}".format(profile))
-            sketches[profile] = _dump_sketch(sketch)
+            sketches[profile] = _dump_sketch(sketch, body_shape)
     return {"features": features, "sketches": sketches}
 
 
@@ -501,6 +620,17 @@ def _topology_refusal(feat, reason, instance=None, instance_count=None):
         "rejeu refusé : fonction « {} », {}".format(label, reason))
 
 
+def _attachment_refusal(dump, reason, instance=None, instance_count=None):
+    label = dump.get("label") or dump.get("name") or "?"
+    if instance is not None and instance_count is not None:
+        return KernelError(
+            "répétition refusée : instance n° {} sur {}, "
+            "esquisse « {} », {}".format(
+                instance, instance_count, label, reason))
+    return KernelError(
+        "rejeu refusé : esquisse « {} », {}".format(label, reason))
+
+
 def replay_group(kernel, captured, substitutions=None, offset=(0.0, 0.0, 0.0),
                  instance=None, instance_count=None):
     """Rejoue le groupe dans un corps temporaire et rend sa forme.
@@ -524,6 +654,13 @@ def replay_group(kernel, captured, substitutions=None, offset=(0.0, 0.0, 0.0),
                 dump = captured["sketches"][profile]
                 attach_face = None
                 if dump.get("on_face"):
+                    expected = dump.get("attachment")
+                    if expected is not None:
+                        actual = attachment_fingerprint(temp.Shape)
+                        reason = attachment_verdict(expected, actual)
+                        if reason:
+                            raise _attachment_refusal(
+                                dump, reason, instance, instance_count)
                     attach_face = kernel._top_face_id()
                 clone = _rebuild_sketch(kernel, dump, attach_face)
                 sketch_map[profile] = clone.Name

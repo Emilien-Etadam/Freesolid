@@ -20,7 +20,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from engine.guard import friendly_error          # noqa: E402
-from engine.nodegraph import GraphError, migrate_graph  # noqa: E402
+from engine.nodegraph import GraphError, evaluate_instances, migrate_graph  # noqa: E402
 from engine.platform import (                    # noqa: E402
     allow_from_environ, version_status,
 )
@@ -47,6 +47,13 @@ def parse_body_color(color):
         raise KernelError(
             "couleur invalide « {} » — attendu #rrggbb".format(color))
     return color
+
+
+#: Seuil « face orientée vers le haut » : ``normal.z`` au-delà duquel
+#: une face est candidate au sommet. Lu par ``Kernel._top_face_id`` et
+#: par la garde d'attache de ``engine.replay`` — une seule valeur, sinon
+#: la garde cesse de décrire le choix qu'elle est censée vérifier.
+UPWARD_Z = 0.5
 
 
 _NEUTRAL_PLANES = frozenset({"XY", "XZ", "YZ"})
@@ -1722,14 +1729,17 @@ class Kernel:
             raise KernelError("répétition persistée illisible")
         mode = getattr(obj, "FreeSolidRepeatMode", "") or parsed.get("mode") or "fuse"
         features = parsed.get("features")
-        instances = parsed.get("instances")
-        if not isinstance(features, list) or not isinstance(instances, list):
+        if not isinstance(features, list):
             raise KernelError("répétition persistée illisible")
-        return {
-            "features": features,
-            "instances": instances,
-            "mode": mode,
-        }
+        from engine.replay import split_repeat_source
+        kind, value = split_repeat_source(
+            parsed.get("instances", None)
+            if "instances" in parsed else None,
+            parsed.get("graph", None) if "graph" in parsed else None,
+        )
+        loaded = {"features": features, "mode": mode}
+        loaded[kind] = value
+        return loaded
 
     def _persist_repeat(self, obj, payload, mode, label):
         dumped = self._dump_json_payload(payload, "répétition")
@@ -1749,12 +1759,26 @@ class Kernel:
         names = [feat["name"] for feat in captured["features"]]
         return solid, names
 
-    def add_repeat_feature(self, features, instances, mode="fuse"):
+    def _resolve_repeat_instances(self, instances=None, graph=None):
+        """Graphe ou liste — exactement un des deux. Rend les instances."""
+        from engine.replay import split_repeat_source
+        kind, value = split_repeat_source(instances, graph)
+        if kind == "instances":
+            return value
+        try:
+            return evaluate_instances(value, self._current_variables())
+        except GraphError as exc:
+            raise KernelError(str(exc)) from exc
+
+    def add_repeat_feature(self, features, instances=None, graph=None,
+                           mode="fuse"):
         """Insère une répétition variable : une ligne, un booléen.
 
         Le groupe est rejoué pour chaque instance **avant** toute
         modification de la pièce. Une instance refusée par la garde
-        annule la répétition entière.
+        annule la répétition entière. ``graph`` ou ``instances`` :
+        exactement un des deux ; les instances d'un graphe sont
+        dérivées, jamais stockées à côté.
         """
         mode = str(mode)
         if mode not in ("fuse", "cut"):
@@ -1763,12 +1787,13 @@ class Kernel:
         if not isinstance(features, (list, tuple)):
             raise KernelError("features doit être une liste de noms")
         names = [str(name) for name in features]
-        solid, names = self._repeat_solid(names, instances)
-        payload = {
-            "features": names,
-            "instances": instances,
-            "mode": mode,
-        }
+        resolved = self._resolve_repeat_instances(instances, graph)
+        solid, names = self._repeat_solid(names, resolved)
+        payload = {"features": names, "mode": mode}
+        if graph is not None:
+            payload["graph"] = migrate_graph(graph)
+        else:
+            payload["instances"] = instances
         self._dump_json_payload(payload, "répétition")
         body = self._require_body()
         doc = self._require_doc()
@@ -1797,8 +1822,8 @@ class Kernel:
                 tip, payload, mode, self._repeat_label(mode))
         return self.get_tree()
 
-    def edit_repeat_feature(self, feature, instances):
-        """Réédite les instances d'une répétition variable.
+    def edit_repeat_feature(self, feature, instances=None, graph=None):
+        """Réédite une répétition variable (instances **ou** graphe).
 
         Atomique : le groupe est rejoué et la géométrie reconstruite
         **d'abord** ; si l'un ou l'autre échoue, la pièce n'est pas
@@ -1811,12 +1836,13 @@ class Kernel:
             raise KernelError("fonction inconnue : {}".format(feature))
         stored = self._load_repeat_json(obj)
         mode = stored["mode"]
-        solid, names = self._repeat_solid(stored["features"], instances)
-        payload = {
-            "features": names,
-            "instances": instances,
-            "mode": mode,
-        }
+        resolved = self._resolve_repeat_instances(instances, graph)
+        solid, names = self._repeat_solid(stored["features"], resolved)
+        payload = {"features": names, "mode": mode}
+        if graph is not None:
+            payload["graph"] = migrate_graph(graph)
+        else:
+            payload["instances"] = instances
         self._dump_json_payload(payload, "répétition")
         _, shape_feature = self._repeat_tool_parts(obj)
         old_shape = shape_feature.Shape
@@ -4681,15 +4707,15 @@ class Kernel:
     def _top_face_id(self):
         """Index of the upward-facing face with the highest centroid.
 
-        Selftest helper: finds "the top" the way a user's eye does, without
-        assuming anything about OCCT's face ordering.
+        Used on the production path when a replayed sketch sits on a
+        face: pick the current top rather than a stale face index.
         """
         body = self._require_body()
         best, best_z = None, None
         for i, face in enumerate(body.Shape.Faces):
             u0, u1, v0, v1 = face.ParameterRange
             normal = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
-            if normal.z <= 0.5:
+            if normal.z <= UPWARD_Z:
                 continue
             z = face.CenterOfMass.z
             if best_z is None or z > best_z:
@@ -6401,6 +6427,152 @@ class Kernel:
                     and fillet_g["label"] in garde_msg
                     and _close(_volume(), vol_garde)
                     and len(self.get_tree()["features"]) == n_garde
+                    and _temp_bodies_left(self) == [])
+
+            mark("n10b: le graphe pilote")
+            # Source : 20×20×10 − 8×8×10 = 3360.
+            # serie(20, 20, 3) → décalage X = 20, 40, 60
+            # serie(10, 10, 3) → Length = 10, 20, 30
+            # 336 × (10+20+30) = 20160 ; total fuse = 3360 + 20160 = 23520.
+            self.new_part("Pièce graphe N010b")
+            self.add_rect_sketch(20, 20)
+            tree = self.add_pad(10)
+            pad_b = next(f["name"] for f in tree["features"]
+                         if f["type"] == "PartDesign::Pad")
+            self.add_rect_sketch(8, 8, face=self._top_face_id())
+            tree = self.add_pocket(through=True)
+            pocket_b = next(f["name"] for f in tree["features"]
+                            if f["type"] == "PartDesign::Pocket")
+            n_before_b = len(tree["features"])
+            graph_b = {
+                "nodes": [
+                    {"id": "sx", "type": "serie",
+                     "depart": 20, "pas": 20, "nombre": 3},
+                    {"id": "vx", "type": "vecteur", "y": 0, "z": 0},
+                    {"id": "sl", "type": "serie",
+                     "depart": 10, "pas": 10, "nombre": 3},
+                    {"id": "c", "type": "cote",
+                     "feature": pad_b, "prop": "Length"},
+                    {"id": "i", "type": "instance"},
+                ],
+                "edges": [
+                    {"from": "sx", "to": "vx", "input": "x"},
+                    {"from": "vx", "to": "i", "input": "decalage"},
+                    {"from": "sl", "to": "c", "input": "valeur"},
+                    {"from": "c", "to": "i", "input": "cotes"},
+                ],
+                "output": "i",
+            }
+            tree = self.add_repeat_feature(
+                [pad_b, pocket_b], graph=graph_b, mode="fuse")
+            repeat_b = next(f for f in tree["features"] if f.get("repeat"))
+            report["n10b_graphe_pilote"] = (
+                not any(f["error"] for f in tree["features"])
+                and len(tree["features"]) == n_before_b + 1
+                and _close(_volume(), 23520.0, tol=1e-4)
+                and pad_b in (repeat_b.get("deps") or [])
+                and pocket_b in (repeat_b.get("deps") or [])
+                and not dangling_deps(tree))
+
+            mark("n10b: un seul point de vérité")
+            stored_b = self.get_repeat_feature(repeat_b["name"])
+            report["n10b_un_seul_point"] = (
+                isinstance(stored_b.get("graph"), dict)
+                and "instances" not in stored_b
+                and stored_b.get("features") == [pad_b, pocket_b])
+
+            mark("n10b: chaîne de cotes")
+            chain = {
+                "nodes": [
+                    {"id": "v", "type": "serie",
+                     "depart": 10, "pas": 5, "nombre": 2},
+                    {"id": "d", "type": "vecteur", "x": 0, "y": 0, "z": 0},
+                    {"id": "c1", "type": "cote",
+                     "feature": "Pad", "prop": "Length"},
+                    {"id": "c2", "type": "cote",
+                     "feature": "Pocket", "prop": "Diameter"},
+                    {"id": "i", "type": "instance"},
+                ],
+                "edges": [
+                    {"from": "v", "to": "c1", "input": "valeur"},
+                    {"from": "c1", "to": "c2", "input": "suite"},
+                    {"from": "v", "to": "c2", "input": "valeur"},
+                    {"from": "d", "to": "i", "input": "decalage"},
+                    {"from": "c2", "to": "i", "input": "cotes"},
+                ],
+                "output": "i",
+            }
+            chained = evaluate_instances(chain, {})
+            dup = {
+                "nodes": [
+                    {"id": "v", "type": "nombre", "value": 10},
+                    {"id": "c1", "type": "cote",
+                     "feature": "Pad", "prop": "Length"},
+                    {"id": "c2", "type": "cote",
+                     "feature": "Pad", "prop": "Length"},
+                    {"id": "i", "type": "instance",
+                     "decalage": {"x": 0, "y": 0, "z": 0}},
+                ],
+                "edges": [
+                    {"from": "v", "to": "c1", "input": "valeur"},
+                    {"from": "v", "to": "c2", "input": "valeur"},
+                    {"from": "c1", "to": "c2", "input": "suite"},
+                    {"from": "c2", "to": "i", "input": "cotes"},
+                ],
+                "output": "i",
+            }
+            dup_named = False
+            try:
+                evaluate_instances(dup, {})
+            except GraphError as exc:
+                dup_named = "Pad.Length" in str(exc)
+            report["n10b_chaine_cotes"] = (
+                len(chained) == 2
+                and all("Length" in (item["params"].get("Pad") or {})
+                        for item in chained)
+                and all("Diameter" in (item["params"].get("Pocket") or {})
+                        for item in chained)
+                and dup_named)
+
+            mark("n10b: garde d'attache")
+            self.new_part("Pièce attache N010b")
+            self.add_rect_sketch(20, 20)
+            tree = self.add_pad(10)
+            pad_a = next(f["name"] for f in tree["features"]
+                         if f["type"] == "PartDesign::Pad")
+            self.add_rect_sketch(8, 8, face=self._top_face_id())
+            tree = self.add_pocket(length=5)
+            pocket_a = next(f["name"] for f in tree["features"]
+                            if f["type"] == "PartDesign::Pocket")
+            tree = self.add_rect_sketch(6, 6, face=self._top_face_id())
+            attach_sk = next(
+                f for f in reversed(tree["features"])
+                if f["type"] == "Sketcher::SketchObject")
+            tree = self.add_pad(2)
+            pads_a = [f["name"] for f in tree["features"]
+                      if f["type"] == "PartDesign::Pad"]
+            small_a = pads_a[-1]
+            vol_attache = _volume()
+            n_attache = len(self.get_tree()["features"])
+            try:
+                self.add_repeat_feature(
+                    [pad_a, pocket_a, small_a],
+                    [
+                        {"offset": [40, 0, 0],
+                         "params": {pocket_a: {"Length": 5}}},
+                        {"offset": [80, 0, 0],
+                         "params": {pocket_a: {"Length": 20}}},
+                    ],
+                    mode="fuse",
+                )
+                report["n10b_attache_refuse"] = False
+            except KernelError as exc:
+                attache_msg = str(exc)
+                report["n10b_attache_refuse"] = (
+                    "n° 2" in attache_msg
+                    and attach_sk["label"] in attache_msg
+                    and _close(_volume(), vol_attache)
+                    and len(self.get_tree()["features"]) == n_attache
                     and _temp_bodies_left(self) == [])
 
             mark("bilan")

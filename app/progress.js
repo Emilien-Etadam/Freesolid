@@ -11,8 +11,9 @@
 // a explosé ; à 48 mm, 200 pierres qui se frôlent passent en 41 s.
 
 /**
- * Au-delà : sièges qui se frôlent (écart ≤ 0) sur une bague. C à
- * +0,085 mm passe ; A et C n'explosent qu'au chevauchement.
+ * Écart (entraxe − diamètre) au-dessous duquel on alarme. 0 = frôlement
+ * ou chevauchement. C à +0,085 mm passe ; A et C n'explosent qu'en
+ * négatif.
  */
 export const COMBINE_MEMORY_WARN_GAP_MM = 0;
 

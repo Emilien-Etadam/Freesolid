@@ -1193,3 +1193,70 @@ Une variable à la fois, et dans le régime visé :
 Tant que ce n'est pas fait, les seuils livrés restent **la meilleure
 hypothèse disponible**, et c'est déjà mieux qu'une constante linéaire — mais
 ils sont calés sur une variable que les données ne désignent pas.
+
+---
+
+# 7.11 P040 : le bon facteur, et une alarme qui ne sonnera jamais
+
+*Relu le 2026-08-21.* Le protocole est juste et le verdict tient : **c'est
+l'écart entre sièges qui décide**, pas le nombre, pas la courbure. Une
+variable par campagne, le régime d'une bague testé, et C lancée pour la
+bonne raison — A n'explosait qu'au chevauchement.
+
+Vérifié ici : `pytest` 255, tests JS 155.
+
+Deux résultats méritent d'être retenus au-delà des seuils.
+
+**La courbure est innocentée.** B tient de 8 à 48 mm à écart positif :
+1,02 s → 0,83 s. Mon hypothèse des quasi-tangences, écrite dans P040, est
+**infirmée à cet effectif** — et dite comme telle, ce qui est la bonne façon
+de traiter une hypothèse qui tombe.
+
+**Le temps n'est pas où je le croyais.** Le coût part de la **reconstruction
+de l'arbre** (~79 s sur 122), pas du booléen (~2–3 s). Or P037 posait
+l'inverse : « un `PartDesign::Boolean` est un appel OCCT opaque, c'est là que
+passe l'essentiel du temps ». C'était faux. Un recompute de document itère
+sur des objets — il est donc **plus observable** qu'un booléen, et
+l'avancement pourrait y être plus fin qu'une phase nommée.
+
+## L'alarme ne se déclenchera jamais
+
+`combineNeedsMemoryWarning` (`app/progress.js:162`) compare l'écart en
+flottant brut :
+
+- `gap < 0` → alarme ;
+- `gap > 0` → silence ;
+- `gap === 0` → alarme si le jonc fait ≤ 12 mm.
+
+Le rayon ne sert donc **qu'à l'égalité exacte à zéro**. Et cette égalité ne
+se produira jamais sur une géométrie réelle, puisque l'écart vaut
+`2πr/n − Ø` — un flottant qui tombe sur `0.0` avec une probabilité nulle.
+
+Le cas de P039 qui a consommé **12,1 GiB** le montre :
+
+| | Rayon | Pierres | Écart réel | Verdict de la règle |
+|---|---|---|---|---|
+| Explosion P039 | 11,94 mm | 50 | **+4,25 × 10⁻⁴ mm** | `gap > 0` → **silence** |
+
+Il ne tombait sur zéro exact dans la sonde que parce qu'elle **construisait
+le rayon depuis l'entraxe** : l'aller-retour s'annulait au dernier bit.
+`r = 50 × 1,5 / 2π` redonne exactement 1,5. Une bague dessinée par un
+utilisateur, non.
+
+**Autrement dit : la géométrie qui a mangé douze gigaoctets ne recevrait
+aujourd'hui aucun avertissement.**
+
+## Ce que ça demande
+
+Le critère physique n'est pas « écart nul » mais « les sièges se frôlent ».
+Il lui faut donc une **bande de tolérance**, proportionnelle au diamètre de
+pierre, et non une égalité de flottant.
+
+Où la placer ? **On ne le sait pas** : C a mesuré +0,085 mm qui passe et
+−0,12 mm qui explose. Entre les deux, rien — et l'explosion de P039 se
+trouve précisément là, à +0,0004 mm. Toute cette bande est à considérer
+comme suspecte jusqu'à mesure.
+
+C'est la troisième fois qu'un seuil se cale sur ce que les données ne disent
+pas. Les deux premières portaient sur la mauvaise **variable** ; celle-ci sur
+la mauvaise **comparaison**.

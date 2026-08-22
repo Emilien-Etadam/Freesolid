@@ -1113,3 +1113,83 @@ d'un facteur 4 au premier essai réel.
 
 Et le cas mémoire mérite son traitement propre : au-delà d'un certain nombre
 de pierres, ce n'est plus une attente, c'est un risque de perdre le document.
+
+---
+
+# 7.10 P039 : la courbe existe, mais elle ne mesure pas ce qu'on croit
+
+*Relu le 2026-08-21.* Le retrait de la constante est acquis, et le refus de
+promettre un point l'est aussi — c'était l'objet du prompt, il est atteint.
+Mais la sonde **fait varier deux choses à la fois**, et les seuils livrés
+sont calés sur celle qui n'est probablement pas la cause.
+
+## Ce que la sonde a réellement fait varier
+
+`ring_radius_mm(count)` garde l'**entraxe** constant à 1,5 mm et fait donc
+**grandir le jonc avec le nombre de pierres** :
+
+| Pierres | Rayon du jonc | Entraxe réel | Temps | RSS pic |
+|---|---|---|---|---|
+| 25 | 10,00 mm | **2,51 mm** | 0,74 s | 0,16 GiB |
+| 50 | 11,94 mm | 1,50 mm | **200 s** | **12,1 GiB** |
+| 100 | 23,87 mm | 1,50 mm | plafond 360 s | — |
+| 200 | 47,75 mm | 1,50 mm | 41 s | 1,93 GiB |
+
+Deux lectures s'imposent, et aucune ne parle du nombre de pierres :
+
+**Le point à 25 n'est pas comparable aux autres.** Son rayon a été plafonné
+à 10 mm, donc son entraxe vaut **2,51 mm** — presque le double. Il n'est pas
+bon marché parce qu'il y a peu de pierres, mais parce qu'elles sont deux fois
+plus écartées.
+
+**Entre les trois points à entraxe identique, le coût décroît quand le jonc
+s'aplatit.** 11,94 mm explose, 23,87 mm atteint le plafond, 47,75 mm passe en
+41 s. C'est monotone — en **rayon**, pas en nombre.
+
+Autrement dit : la sonde ne montre pas que « le coût explose avec le
+nombre ». Elle montre que **le coût explose quand la courbure augmente à
+entraxe donné** — ce qui est le comportement attendu d'OCCT, dont les
+booléens souffrent des quasi-tangences, d'autant plus fréquentes que les
+surfaces se referment.
+
+## Pourquoi ça compte pour ce qui vient d'être livré
+
+Les seuils de `app/progress.js` sont calés sur le **nombre de pierres** :
+silence sous 30, fourchette de 30 à 49, alarme mémoire dès 50. Or :
+
+- **à 200 pierres** l'opération a coûté 41 s et 1,9 GiB — l'alarme mémoire
+  crie au loup exactement là où tout va bien ;
+- **à 25 pierres** l'apparente gratuité tient à un entraxe deux fois plus
+  large ; 25 pierres serrées sur un jonc de bague n'ont jamais été mesurées.
+
+Et le régime que le produit vise réellement est le pire du lot : **une bague
+fait 8 à 10 mm de rayon**. Les points à 23,87 et 47,75 mm sont des bracelets.
+Le seul point proche d'une vraie bague — 11,94 mm — est celui qui a consommé
+12 GiB.
+
+## D'où vient l'erreur — de moi
+
+`ring_radius_mm` applique une consigne que j'avais écrite en corrigeant Q6 :
+
+> « à entraxe constant, chaque coupe garde la même difficulté locale et seul
+> le **nombre** varie »
+
+C'était faux. Tenir l'entraxe **force** le rayon à suivre le nombre : les
+deux variables sont liées par construction, et aucune expérience de ce
+protocole ne peut les séparer. J'ai conçu le confond, puis demandé une courbe
+que ce confond rendait ininterprétable.
+
+## Ce qu'il faut mesurer
+
+Une variable à la fois, et dans le régime visé :
+
+1. **Rayon fixe, nombre variable** — un jonc de bague à 9 mm, avec 10, 20,
+   30, 40 pierres. Répond enfin à « le coût croît-il avec le nombre ? »
+2. **Nombre fixe, rayon variable** — 30 pierres sur 8, 12, 24, 48 mm. Répond
+   à « la courbure est-elle le vrai facteur ? »
+3. **Entraxe variable à rayon et nombre fixes**, si les deux premiers ne
+   suffisent pas à isoler la cause.
+
+Tant que ce n'est pas fait, les seuils livrés restent **la meilleure
+hypothèse disponible**, et c'est déjà mieux qu'une constante linéaire — mais
+ils sont calés sur une variable que les données ne désignent pas.

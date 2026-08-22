@@ -2092,7 +2092,10 @@ class Kernel:
         return float(varset.diametre)
 
     def _gem_entry(self, link):
-        from engine.gems import is_bspline_surface, placement_at
+        from engine.gems import (
+            arc_entraxe_mm, face_radius_mm, is_bspline_surface,
+            placement_at, seating_gap_mm,
+        )
         us = list(link.FreeSolidGemU or [])
         vs = list(link.FreeSolidGemV or [])
         spins = list(link.FreeSolidGemSpin or [])
@@ -2131,13 +2134,22 @@ class Kernel:
                 except Exception:
                     pass
             stones.append(stone)
+        diametre = self._gem_diametre(link)
+        rayon = face_radius_mm(face) if face is not None else None
+        entraxe = arc_entraxe_mm(rayon, count)
+        ecart = seating_gap_mm(entraxe, diametre)
         return {
             "name": link.Name,
             "label": link.Label,
             "kind": "Semis de pierres",
             "type": link.TypeId,
             "gemme": getattr(link, "FreeSolidGemTemplate", "") or "",
-            "diametre": self._gem_diametre(link),
+            "diametre": diametre,
+            "rayon_mm": None if rayon is None else round(float(rayon), 3),
+            "entraxe_mm": None if entraxe is None else round(float(entraxe), 3),
+            "ecart_sieges_mm": (
+                None if ecart is None else round(float(ecart), 3)),
+            "chevauchement": bool(ecart is not None and ecart < 0),
             "face": getattr(link, "FreeSolidGemFace", "") or "",
             "face_id": face_id,
             "count": count,

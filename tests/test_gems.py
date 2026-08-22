@@ -54,6 +54,32 @@ def test_parse_diametre_rejects_zero_and_negative():
         gems.parse_diametre(-1)
 
 
+def test_arc_entraxe_and_gap():
+    entraxe = gems.arc_entraxe_mm(9.0, 30)
+    assert entraxe is not None
+    assert abs(entraxe - 1.885) < 0.001
+    assert gems.seating_gap_mm(entraxe, 1.5) is not None
+    assert gems.seating_gap_mm(entraxe, 1.5) > 0
+    assert gems.seating_gap_mm(1.414, 1.5) < 0
+    assert gems.arc_entraxe_mm(9.0, 0) is None
+    assert gems.seating_gap_mm(None, 1.5) is None
+
+
+def test_face_radius_mm_reads_cylinder_or_torus_without_freecad():
+    class _Surf:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class _Face:
+        def __init__(self, surface):
+            self.Surface = surface
+
+    assert gems.face_radius_mm(_Face(_Surf(Radius=9.0))) == 9.0
+    assert gems.face_radius_mm(_Face(_Surf(MajorRadius=10.0))) == 10.0
+    assert gems.face_radius_mm(_Face(_Surf())) is None
+    assert gems.face_radius_mm(None) is None
+
+
 def test_pack_mesh_optional_normals_aligned_on_vertices():
     mesh = protocol.pack_mesh([
         (0, [(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 1, 2)],

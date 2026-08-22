@@ -194,6 +194,9 @@ CAMPAIGNS = {
             _point("C", 30, 9.0, 1.15),
             _point("C", 30, 9.0, 1.50),
             _point("C", 30, 9.0, 1.80),
+            # Seul point de C sous l'entraxe : A n'a explosé qu'au
+            # chevauchement, C doit le mesurer à effectif figé.
+            _point("C", 30, 9.0, 2.00),
         ],
     },
 }
@@ -622,9 +625,23 @@ def _effect(rows):
 
 
 def _c_needed_reason(camp_a, camp_b):
-    """C si A et B ne désignent pas une cause à elles seules."""
+    """C si A et B ne désignent pas une cause à elles seules.
+
+    Une explosion d'A qui n'existe qu'aux points où les pierres se
+    chevauchent n'isole pas le nombre : c'est déjà l'écart. C tranche.
+    """
     a_strong = bool((camp_a.get("effet") or {}).get("fort"))
     b_strong = bool((camp_b.get("effet") or {}).get("fort"))
+    a_rows = camp_a.get("mesures") or []
+    sans_chevauche = [r for r in a_rows if not r.get("chevauchement")]
+    a_fort_sans_chevauche = (
+        bool(_effect(sans_chevauche).get("fort")) if sans_chevauche else False)
+    if a_strong and not a_fort_sans_chevauche and not b_strong:
+        return (
+            "A n'explose qu'au point où les pierres se chevauchent ; "
+            "sans ce point le nombre est plat, et B (écart positif) "
+            "l'est aussi. C isole l'écart."
+        )
     if a_strong and not b_strong:
         return None
     if b_strong and not a_strong:
@@ -685,6 +702,22 @@ def _verdict(camp_a, camp_b, camp_c):
             "A et B bougent, mais C — le seul levier d'écart à rayon et "
             "nombre figés — ne tranche pas. Un résultat qui ne tranche "
             "pas est un résultat."
+        )
+    elif c_ran and c_strong and a_strong and not b_strong:
+        variable = "écart entre sièges"
+        detail = (
+            "A n'explose qu'une fois les pierres trop serrées ; B, à "
+            "écart positif, reste plat sur bague comme sur bracelet. C, "
+            "rayon et effectif figés, explose quand le diamètre referme "
+            "l'écart. C'est l'écart entre sièges."
+        )
+    elif c_ran and not c_strong and a_strong and not b_strong:
+        variable = "écart entre sièges"
+        detail = (
+            "A n'explose que si les pierres se chevauchent (entraxe plus "
+            "petit que le diamètre). C, à écart encore positif, ne "
+            "l'imite pas. Ni le nombre ni la courbure : le chevauchement "
+            "des sièges."
         )
     elif a_strong and not b_strong:
         variable = "nombre"
@@ -765,7 +798,40 @@ def _print_table(campaign):
         ), flush=True)
 
 
+def _selected_campaigns():
+    raw = (os.environ.get("FREESOLID_SPIKE_CAMPAGNES") or "").strip().upper()
+    if not raw:
+        return None
+    wanted = [part.strip() for part in raw.replace(",", " ").split() if part.strip()]
+    unknown = [item for item in wanted if item not in CAMPAIGNS]
+    if unknown:
+        raise RuntimeError("campagne inconnue : {}".format(", ".join(unknown)))
+    return wanted
+
+
 def orchestrate():
+    selected = _selected_campaigns()
+    if selected is not None:
+        camps = {cid: run_campaign(cid) for cid in selected}
+        report = {
+            "sonde": "P040 une variable à la fois",
+            "plafond_rss_gi": CEILING_RSS_KIB / (1024 * 1024),
+            "plafond_s": CEILING_SECONDS,
+            "campagnes": camps,
+            "selection": selected,
+        }
+        first = []
+        for camp in camps.values():
+            first = camp.get("mesures") or []
+            if first:
+                break
+        if first:
+            report["machine"] = first[0].get("machine")
+            report["plateforme"] = first[0].get("plateforme")
+        print(json.dumps(report, ensure_ascii=False, indent=1), flush=True)
+        for cid in selected:
+            _print_table(camps[cid])
+        return report
     camp_a = run_campaign("A")
     camp_b = run_campaign("B")
     why_c = _c_needed_reason(camp_a, camp_b)

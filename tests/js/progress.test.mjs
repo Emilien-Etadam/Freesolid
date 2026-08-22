@@ -3,15 +3,17 @@ import assert from "node:assert/strict";
 
 import {
   COMBINE_CONFIRM_MIN_SECONDS,
-  COMBINE_CONFIRM_MIN_STONES,
-  COMBINE_MEMORY_WARN_STONES,
+  COMBINE_MEMORY_WARN_GAP_MM,
+  COMBINE_MEMORY_WARN_RADIUS_MM,
   combineConfirmMessage,
+  combineNeedsMemoryWarning,
   currentCombineSample,
   estimateCombineSeconds,
   formatProgressStatus,
   noteProgressForCalibration,
   rememberCombineFinished,
   resetCombineSample,
+  seatingGapMm,
 } from "../../app/progress.js";
 
 beforeEach(() => {
@@ -46,34 +48,58 @@ describe("estimateCombineSeconds", () => {
 describe("combineConfirmMessage — aucune mesure locale", () => {
   const tree = {
     gems: [
-      { name: "Semis", count: 200 },
+      { name: "Serré", count: 30, rayon_mm: 9, entraxe_mm: 1.414,
+        diametre: 1.5, ecart_sieges_mm: -0.086, chevauchement: true },
+      { name: "Bracelet", count: 200, rayon_mm: 47.75, entraxe_mm: 1.5,
+        diametre: 1.5, ecart_sieges_mm: 0, chevauchement: false },
+      { name: "BagueOk", count: 30, rayon_mm: 9, entraxe_mm: 1.885,
+        diametre: 1.5, ecart_sieges_mm: 0.385, chevauchement: false },
+      { name: "Frole", count: 50, rayon_mm: 11.94, entraxe_mm: 1.5,
+        diametre: 1.5, ecart_sieges_mm: 0, chevauchement: false },
       { name: "Moyen", count: 40 },
       { name: "Petit", count: 3 },
     ],
   };
+  const byName = Object.fromEntries(tree.gems.map((g) => [g.name, g]));
 
-  it("annonce une fourchette, jamais un point", () => {
-    const message = combineConfirmMessage(tree, "Moyen", null);
-    assert.match(message, /40 pierres/);
-    assert.match(message, /plusieurs dizaines de secondes/);
-    assert.match(message, /quelques minutes/);
-    assert.equal(POINT_SECONDS.test(message), false);
-    assert.equal(message.includes("%"), false);
+  it("se tait sans géométrie, même à 40 pierres — plus de fourchette calée sur l'effectif", () => {
+    assert.equal(combineConfirmMessage(tree, "Moyen", null), null);
+    assert.equal(combineNeedsMemoryWarning(byName.Moyen), false);
   });
 
-  it("200 pierres : le risque mémoire, pas une durée", () => {
-    const message = combineConfirmMessage(tree, "Semis", null);
-    assert.match(message, /200 pierres/);
+  it("chevauchement sur une bague : le risque mémoire, et les lots comme voie normale", () => {
+    const message = combineConfirmMessage(tree, "Serré", null);
+    assert.match(message, /30 pierres/);
+    assert.match(message, /se frôlent ou se chevauchent/);
     assert.match(message, /plusieurs Go de mémoire/);
     assert.match(message, /Enregistrez/);
     assert.match(message, /barre de reprise/);
     assert.match(message, /lots plus petits/);
+    assert.match(message, /voie normale/);
     assert.equal(POINT_SECONDS.test(message), false);
-    assert.ok(COMBINE_MEMORY_WARN_STONES <= 200);
+    assert.equal(combineNeedsMemoryWarning(byName.Serré), true);
+    assert.ok(seatingGapMm(byName.Serré) < COMBINE_MEMORY_WARN_GAP_MM);
   });
 
-  it("se tait sous le seuil d'effectif, sans inventer de secondes", () => {
-    assert.ok(3 < COMBINE_CONFIRM_MIN_STONES);
+  it("200 pierres qui se frôlent sur un bracelet : pas l'alarme mémoire", () => {
+    assert.ok(byName.Bracelet.rayon_mm > COMBINE_MEMORY_WARN_RADIUS_MM);
+    assert.equal(combineNeedsMemoryWarning(byName.Bracelet), false);
+    assert.equal(combineConfirmMessage(tree, "Bracelet", null), null);
+  });
+
+  it("30 pierres écartées sur une bague : se tait, 0,9 s mesurés", () => {
+    assert.equal(combineNeedsMemoryWarning(byName.BagueOk), false);
+    assert.equal(combineConfirmMessage(tree, "BagueOk", null), null);
+  });
+
+  it("entraxe = diamètre sur un jonc de bague : alarme, P039 à 12 GiB", () => {
+    assert.equal(combineNeedsMemoryWarning(byName.Frole), true);
+    const message = combineConfirmMessage(tree, "Frole", null);
+    assert.match(message, /50 pierres/);
+    assert.match(message, /voie normale/);
+  });
+
+  it("se tait pour un petit semis, sans inventer de secondes", () => {
     assert.equal(combineConfirmMessage(tree, "Petit", null), null);
     assert.equal(estimateCombineSeconds(3, null), null);
   });
@@ -86,7 +112,12 @@ describe("combineConfirmMessage — aucune mesure locale", () => {
 
 describe("combineConfirmMessage — mesure de session", () => {
   const tree = {
-    gems: [{ name: "Semis", count: 25 }, { name: "Gros", count: 200 }],
+    gems: [
+      { name: "Semis", count: 25, rayon_mm: 9, entraxe_mm: 2.262,
+        diametre: 1.5, ecart_sieges_mm: 0.762, chevauchement: false },
+      { name: "Gros", count: 200, rayon_mm: 9, entraxe_mm: 0.283,
+        diametre: 1.5, ecart_sieges_mm: -1.217, chevauchement: true },
+    ],
   };
 
   it("se tait si la mesure locale reste sous quelques secondes", () => {
@@ -98,7 +129,8 @@ describe("combineConfirmMessage — mesure de session", () => {
   it("cite la mesure locale, pas une constante, pour un effectif voisin", () => {
     const sample = { count: 32, totalSeconds: 18, compoundSeconds: 2 };
     const nearby = {
-      gems: [{ name: "Semis", count: 32 }],
+      gems: [{ name: "Semis", count: 32, rayon_mm: 24, entraxe_mm: 4.712,
+        diametre: 1.5, ecart_sieges_mm: 3.212, chevauchement: false }],
     };
     const message = combineConfirmMessage(nearby, "Semis", sample);
     assert.equal(
@@ -108,9 +140,10 @@ describe("combineConfirmMessage — mesure de session", () => {
     );
   });
 
-  it("ne convertit pas 25 pierres rapides en promesse pour 200", () => {
+  it("ne convertit pas 25 pierres rapides en promesse pour 200 trop serrées", () => {
     const sample = { count: 25, totalSeconds: 0.74, compoundSeconds: 0.09 };
     const message = combineConfirmMessage(tree, "Gros", sample);
+    assert.match(message, /se frôlent ou se chevauchent/);
     assert.match(message, /plusieurs Go de mémoire/);
     assert.equal(POINT_SECONDS.test(message), false);
   });

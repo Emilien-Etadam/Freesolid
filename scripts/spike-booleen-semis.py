@@ -588,7 +588,9 @@ def _effect(rows):
 
     Le temps total d'A croîtra toujours avec l'effectif si chaque pierre
     coûte quelque chose : ce n'est pas une explosion. On compare le
-    milliseconde par pierre, et le RSS. Un avortement tranche.
+    milliseconde par pierre, et le RSS. Seuls les plafonds mémoire et
+    temps comptent comme explosion — un refus de plateforme n'en est pas
+    une.
     """
     aborted = [
         {"pierres": r.get("pierres"), "rayon_mm": r.get("rayon_mm"),
@@ -596,13 +598,14 @@ def _effect(rows):
          "cause": r.get("aborted")}
         for r in rows if r.get("aborted")
     ]
+    exploded = [item for item in aborted if item.get("cause") in ("rss", "temps")]
     ms_ratio = _ratio([_ms_par_pierre(r) for r in rows])
     rss_ratio = _ratio([_rss_gi(r) for r in rows])
     known_s = [
         float(r["total_s"]) for r in rows
         if r.get("ok") and isinstance(r.get("total_s"), (int, float))
     ]
-    strong = bool(aborted) or (
+    strong = bool(exploded) or (
         ms_ratio is not None and ms_ratio >= _EFFECT_RATIO
     ) or (
         rss_ratio is not None and rss_ratio >= _EFFECT_RATIO
@@ -634,8 +637,33 @@ def _c_needed_reason(camp_a, camp_b):
     )
 
 
+def _all_aborted(campaign, cause=None):
+    rows = campaign.get("mesures") or []
+    if not rows:
+        return False
+    if cause is None:
+        return all(r.get("aborted") for r in rows)
+    return all(r.get("aborted") == cause for r in rows)
+
+
 def _verdict(camp_a, camp_b, camp_c):
     """Quelle variable décide — ou le constat qu'aucune ne tranche."""
+    if _all_aborted(camp_a, "plateforme") or _all_aborted(camp_b, "plateforme"):
+        return {
+            "variable": "aucune nette",
+            "detail": (
+                "La sonde a refusé de mesurer : FreeCAD n'est pas la "
+                "plateforme de référence. Aucune variable ne décide tant "
+                "que la courbe n'existe pas."
+            ),
+            "campagne_c_lancee": bool((camp_c or {}).get("mesures")),
+            "A_fort": False,
+            "B_fort": False,
+            "C_fort": None,
+            "ratio_A": None,
+            "ratio_B": None,
+            "ratio_C": None,
+        }
     a_strong = bool((camp_a.get("effet") or {}).get("fort"))
     b_strong = bool((camp_b.get("effet") or {}).get("fort"))
     c_rows = (camp_c or {}).get("mesures") or []

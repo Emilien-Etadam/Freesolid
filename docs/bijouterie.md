@@ -1579,3 +1579,44 @@ face cylindrique en deux. L'état « ambigu » du verdict à trois états n'a do
 jamais été exercé sur une vraie scission. Ce n'est pas bloquant : le code doit
 le traiter, mais on ne saura qu'il se déclenche que le jour où quelqu'un
 scinde une face d'appui.
+
+## Relecture de P044 — le mécanisme tient, prouvé sur le vrai moteur
+
+CI verte sur les six jobs. Et pour ce livrable-là, la CI **vaut preuve** :
+`scripts/run-selftest.py` sort en erreur dès qu'un seul indicateur booléen est
+faux. Le selftest passe, donc les deux indicateurs sont vrais sur FreeCAD
+1.1.3 :
+
+- `p044_indice_a_bouge` — le défaut se reproduit : l'indice de l'alésage
+  change après le congé ;
+- `p044_ancre` — le semis l'a suivi : pas d'erreur, une pierre, `face_id` égal
+  au **nouvel** indice de l'alésage, rayon 4 mm, placement calculé.
+
+Le test vérifie donc sa propre prémisse avant de vérifier le correctif. C'est
+ce qui le distingue d'un test qui passerait parce que rien ne bouge.
+
+`owner_couple` remonte bien au barreau le plus profond qui n'est pas une
+esquisse — pas au rang 1, qui est la pointe courante et pas forcément le
+propriétaire. Le verdict à trois états ne re-lie jamais en silence : « ambigu »
+et « perdu » gardent l'indice précédent et posent l'erreur.
+
+### Trois observations, aucune ne justifie une passe
+
+- **La branche `TypeId` de `_is_sketch_source` est morte.** `trace_pairs`
+  convertit la source en chaîne avant qu'`owner_couple` ne la voie, donc
+  `getattr(source, "TypeId", "")` rend toujours `""` et seule la
+  reconnaissance par nom opère. Elle marche : toutes les esquisses d'une pièce
+  sont créées sous le nom interne `Sketch`, donc `Sketch`, `Sketch001`… Mais
+  la robustesse annoncée par cette branche n'existe pas.
+
+- **Le repli par la pointe de `_history_pairs_for_face` n'est pas vérifié**, et
+  je dois corriger ma propre lecture au passage : la sonde Q2 mesurait
+  `isSame`, qui échoue entre la forme d'un corps et celle de sa pointe **même
+  quand les faces se correspondent une à une** — un corps PartDesign porte une
+  copie. Q2 ne dit donc ni que ce repli est fondé, ni qu'il ne l'est pas. Il ne
+  se déclenche que si la carte du corps est peuplée mais sans nom pour un
+  indice précis.
+
+- **La généalogie est recalculée pour chaque semis**, alors qu'elle ne dépend
+  que de la face. N semis × M faces de travail redondant. C'était déjà dans le
+  budget mesuré — 16 ms pour cinq semis — donc ça ne se voit pas.

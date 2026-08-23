@@ -1260,3 +1260,82 @@ comme suspecte jusqu'à mesure.
 C'est la troisième fois qu'un seuil se cale sur ce que les données ne disent
 pas. Les deux premières portaient sur la mauvaise **variable** ; celle-ci sur
 la mauvaise **comparaison**.
+
+---
+
+# La mesure remplace le calcul — et le geste redevient manuel
+
+## L'erreur de lecture, dite d'abord
+
+« Placer des pierres en pavage » : j'ai lu *remplissage automatique d'une
+face*, et j'ai écrit un algorithme de marche métrique sur la première forme
+fondamentale, avec correction du registre en quinconce, vérifié sur plan,
+cylindre et cône. Puis le designer a dit : **« les pierres sont placées une à
+une à la main. rien d'automatique pour le moment »** — et JewelCraft ne pave
+pas automatiquement non plus.
+
+La sonde a été supprimée sans être poussée. Ce qui suit ne garde de cet
+épisode que deux chiffres, au cas où le remplissage automatique reviendrait
+un jour à l'ordre du jour :
+
+- une **grille régulière en `(u, v)`** sur un cône dont le rayon passe de 6 à
+  12 mm pose des pierres à **0,299 mm** l'une de l'autre quand on en demande
+  1,7 : `(u, v)` n'est pas métrique, `u` est un angle ;
+- un **quinconce appliqué à l'aveugle** sur ce même cône retombe à 1,472 mm,
+  soit `√3/2` du pas. Chaque rangée porte un nombre entier de pierres, ce
+  nombre grimpe de rang en rang (22, 25, 29, 32…), donc le décalage d'une
+  demi-maille ne tombe plus *entre* deux pierres mais *sur* une.
+
+Corrigés tous deux, l'écart réel tient à −1,1 % du pas demandé. Le code
+n'existe plus ; le piège est noté.
+
+## Ce que le geste manuel demande vraiment
+
+Poser à la main sans chiffre à l'écran, c'est poser à l'aveugle. Trois
+manques, aucun automatisme :
+
+1. deux touches, `+` et `−`, qui changent le diamètre de 0,1 mm ;
+2. le diamètre affiché ;
+3. **l'écart entre les pierres, affiché en continu pendant qu'on en glisse
+   une.**
+
+## Deux chiffres, pas un
+
+- **entraxe** — distance entre centres ;
+- **écart** — distance entre bords : `entraxe − (Ø₁ + Ø₂)/2`.
+
+La demi-somme, et non un seul diamètre : deux semis de tailles différentes
+peuvent voisiner sur la même face. Le balayage porte donc sur **toutes les
+pierres de tous les semis**, pas semis par semis.
+
+Et la plus proche voisine se choisit sur **l'entraxe**, pas sur l'écart : dès
+que les diamètres diffèrent, les deux ne classent pas pareil.
+
+## La double boucle suffit — mesuré
+
+| Pierres | Double boucle symétrique |
+|---|---|
+| 50 | 0,3 ms |
+| 100 | 1,0 ms |
+| 200 | 4,6 ms |
+| 400 | 17,4 ms |
+| 800 | 67 ms |
+
+J'ai écrit une grille de hachage avant de mesurer, et je l'ai eue **fausse
+deux fois** : elle rate le voisin quand il est dans la même case, puis quand
+il est à plus d'une case (la règle d'arrêt doit être `meilleur ≤ r × maille`,
+et l'anneau `r = 0` — la case du point lui-même — doit être balayé). Elle ne
+gagnerait qu'au-delà du millier de pierres, effectif qu'un placement à la main
+n'atteint pas.
+
+## Ce que ça retire
+
+Une mesure réelle rend la comparaison de la section précédente inutile.
+`entraxe_mm = 2πR/n` supposait que les pierres font le tour complet du jonc ;
+sur la géométrie qui a consommé 12,1 GiB il rendait `+4,25 × 10⁻⁴ mm`, donc
+`gap > 0`, donc silence. `ecart_min_mm` est la distance qui sépare vraiment
+les deux pierres les plus proches — la branche devient atteignable sans bande
+de tolérance à calibrer.
+
+**`prompts/P041-bande-de-frolement.md` est retiré sans être exécuté.** Il
+corrigeait un seuil sur un chiffre dérivé ; le chiffre dérivé disparaît.

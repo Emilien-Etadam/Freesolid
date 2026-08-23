@@ -1393,3 +1393,51 @@ annonce — et celui-là vient de moi : mon prompt promettait que la mesure
 rendrait l'alarme atteignable sans dire par quel mécanisme. La bande garde
 tout son sens sur le **chemin de repli**, où l'erreur arc-corde vaut justement
 ~1 × 10⁻³ mm à l'échelle d'une bague. C'est là qu'elle va.
+
+## Relecture de P043 — les quatre correctifs tiennent
+
+CI verte sur `63f0ee4`, les six jobs, **selftest compris sur la version de
+référence** : le doute sur le FreeCAD 1.0.0 local est levé, `p043_booleen_suit_cote`
+passe aussi sur 1.1.3.
+
+### L'empreinte
+
+`_gem_template_signature` signe le nom du gabarit et toutes les variables
+numériques de sa VarSet, triées. Les deux chemins de `resize_gem` la font
+bouger : écriture en place sur la VarSet, ou changement de `LinkedObject`.
+Le compound est recuit depuis un `body.Shape` déjà recalculé — `_recompute`
+fait `doc.recompute()` avant d'appeler `_refresh_gem_boolean_tools`.
+
+Le test du selftest discrimine bien : sans le correctif, l'empreinte est
+identique, `_set_gem_boolean_shape` rend `False`, `obj.Shape` n'est pas
+réécrite, le volume ne bouge pas, `abs(diff) > 1e-3` est faux.
+
+Les documents déjà enregistrés portent l'ancienne empreinte (`Nom#placements`)
+et se recuisent une fois au premier recompute. C'est la bonne direction.
+
+### La sélection
+
+`move_gem` rend `gem_moved`. Le client le lit dans le `.then` de l'appel, donc
+**avant** que `refresh` ne rende l'arbre : `restoreGemSelection`, appelé plus
+tard par `showGems`, trouve la sélection déjà à jour et la peint. Sur une même
+face, `dest_index` vaut `number` et la clé porte la même adresse qu'avant.
+
+### La bande
+
+Confinée au repli : `graze = 0` dès que `ecart_min_mm` est présent. Le test
+construit les 50 points du cercle et mesure la corde au lieu d'écrire la valeur
+d'arc à la main. Trois cas couverts : mesure négative → alerte, mesure positive
+→ silence, repli sans mesure → alerte.
+
+### Deux observations qui ne valent pas un prompt
+
+- `_gem_template_signature` **saute les booléens** (`isinstance(raw, bool)`).
+  Aucun gabarit n'a de variable booléenne aujourd'hui ; le jour où il y en aura
+  une, elle ne sera pas signée — c'est la classe de défaut qu'on vient de
+  corriger, mais elle n'est pas atteignable.
+- Pendant qu'une touche est en vol, le bandeau affiche l'écart de la paire la
+  plus serrée **de la pièce**, alors qu'au repos il affiche celui du semis
+  sélectionné. Les deux coïncident sauf s'il existe un second semis plus serré
+  ailleurs. Transitoire, le retour du moteur corrige.
+
+Aucune des deux ne justifie une passe de plus.

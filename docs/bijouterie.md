@@ -1509,3 +1509,73 @@ Pas de prompt. Six questions ouvertes se branchent sur cinq conceptions
 différentes, dont quatre seraient à jeter. §4ter est déjà tombé dans ce piège
 en concluant juste sur « l'API existe » et faux sur « il suffit de stocker le
 nom ». Lire dit ce qui est exposé ; seule l'exécution dit ce qui marche.
+
+## La sonde a tourné — verdict vert, en deux passages
+
+FreeCAD 1.1.3 (CI, version de référence). Le premier passage était rouge et
+**deux de ses rouges étaient mes erreurs de conception, pas des faits.**
+
+### Ce que le premier passage a raté
+
+**Il ancrait sur la face 0 d'un plein.** Trois changements de topologie — un
+congé, un enlèvement traversant, un enlèvement borgne, les faces passant de 3
+à 4 puis 7 puis 14 — et l'indice n'a jamais bougé. J'en aurais conclu que le
+défaut n'existe pas. En réalité OCCT range d'abord les faces du solide de
+base : j'avais mesuré le barreau le plus solide de l'échelle et jugé
+l'échelle.
+
+**Et il ne testait que les deux bouts de la généalogie.** Une face de jonc en
+a trois — `[Body, Pad, Sketch]` — et c'est celui du **milieu** que §4quater
+appelle « fonction propriétaire ». J'ai évalué le conteneur et l'ancêtre
+ultime, jamais la conception en question.
+
+### Le défaut, démontré
+
+Un jonc réel est un **tube**. Sur un tube pad-é, l'alésage est à l'**indice
+1** — pas 0.
+
+| | Faces | Indice de l'alésage |
+|---|---|---|
+| avant | 4 | **1** |
+| après un congé sur le dessus | 6 | **4** |
+
+Un semis ancré sur l'alésage désignerait aujourd'hui la face 1, qui après le
+congé est une autre face. C'est le vrai mode de défaillance, et il fallait un
+tube pour le voir.
+
+### Le mécanisme, mesuré
+
+Trois barreaux, trois comportements nets :
+
+| Barreau | Unique par face ? | Survit à un changement de topologie ? |
+|---|---|---|
+| **Body** — le conteneur | ✅ oui | ❌ **perdu** (3 observations) |
+| **fonction propriétaire** — `Pad`, `Pocket`, `Fillet` | ✅ oui | ✅ **résolu** (4 observations) |
+| **Sketch** — l'ancêtre | ❌ 1 couple pour 3 faces | ✅ mais **ambigu** |
+
+Le corps est unique mais volatil ; l'esquisse est durable mais ne discrimine
+pas ; **la fonction propriétaire est les deux.** Sa forme régénérée à chaque
+recompute explique le premier : le nom porté par le corps change de fond en
+comble, celui porté par une fonction ne bouge pas.
+
+Le nom du `Pad` est resté **identique** de part et d'autre de l'enlèvement :
+`#6:1;:G;XTR;:H17e:7,F`. Et la généalogie a simplement gagné un barreau —
+`[Body, Pocket, Pad, Sketch]` — ce qui est précisément pourquoi la recherche
+doit porter sur le **couple**, cherché n'importe où dans la trace, et non sur
+un rang fixe.
+
+### Deux acquis annexes
+
+- **Le corps a bien sa propre carte** — `ElementMapSize: 8`, `Tag: 4562`. Le
+  rouge de `resolution_corps` en §4quater ne portait que sur un nom
+  *étranger* capturé sur le `Pad`. Correction nette à la doc amont.
+- **Le coût est un non-sujet** : 3,2 ms par résolution, 16 ms pour cinq semis.
+  Une référence par **semis**, pas par pierre.
+
+### Ce qui reste inconnu
+
+`scission_detectee: false` — la rainure d'essai n'a pas réellement coupé la
+face cylindrique en deux. L'état « ambigu » du verdict à trois états n'a donc
+jamais été exercé sur une vraie scission. Ce n'est pas bloquant : le code doit
+le traiter, mais on ne saura qu'il se déclenche que le jour où quelqu'un
+scinde une face d'appui.

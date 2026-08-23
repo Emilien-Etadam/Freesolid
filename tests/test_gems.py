@@ -1,6 +1,7 @@
 """Gabarit de pierre et ancrage (u, v) — pur Python, sans FreeCAD."""
 
 import os
+import math
 import random
 
 import pytest
@@ -161,3 +162,30 @@ def test_voisines_min_mm_overlap_is_negative():
     assert pairs[0][0] == 1.0
     assert pairs[0][1] == -1.0
     assert pairs[1][1] == -1.0
+
+
+def test_voisines_min_mm_circle_chord_is_negative():
+    """50 points sur un cercle de rayon 11,94 mm, Ø 1,5 : corde, pas arc.
+
+    ``entraxe_mm = 2πR/n`` donne +4,25e-4 mm ; la mesure réelle est la
+    corde ``2R·sin(π/n)``, négative. Un test ne doit pas écrire à la
+    main la valeur d'arc que le moteur ne peut pas rendre.
+    """
+    n = 50
+    radius = 11.94
+    diametre = 1.5
+    points = []
+    for i in range(n):
+        angle = 2.0 * math.pi * i / n
+        points.append((
+            radius * math.cos(angle),
+            radius * math.sin(angle),
+            0.0,
+        ))
+    pairs = gems.voisines_min_mm(points, [diametre / 2.0] * n)
+    gaps = [gap for _entraxe, gap in pairs if gap is not None]
+    assert gaps
+    assert all(gap < 0 for gap in gaps)
+    expected = 2.0 * radius * math.sin(math.pi / n) - diametre
+    assert abs(min(gaps) - expected) < 1e-9
+    assert expected < 0

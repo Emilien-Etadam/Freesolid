@@ -604,9 +604,9 @@ function updateGemHud() {
   diametreEl.textContent =
     `Ø ${formatMmFr(diametre)} mm · ${count} ${pierre}`;
   let ecart = gem.ecart_min_mm;
-  if (Object.hasOwn(gemDiametreOverride, gem.name)
-      && Number.isFinite(gem.voisine_min_mm)) {
-    ecart = gem.voisine_min_mm - diametre;
+  if (Object.hasOwn(gemDiametreOverride, gem.name)) {
+    const pair = tightestPair(allStones());
+    if (pair && Number.isFinite(pair.ecart)) ecart = pair.ecart;
   }
   if (!Number.isFinite(ecart)) {
     ecartEl.textContent = "écart mini —";
@@ -629,6 +629,14 @@ function restoreGemSelection() {
   paintGemSelection();
   updateGemHud();
   updateGapOverlay();
+}
+
+function applyGemMoved(tree) {
+  const moved = tree?.gem_moved;
+  if (!moved || typeof moved.gem !== "string") return;
+  const index = Number(moved.index);
+  if (!Number.isInteger(index) || index < 0) return;
+  selectedGem = { name: moved.gem, index };
 }
 
 function selectGem(name, index) {
@@ -1247,7 +1255,10 @@ renderer.domElement.addEventListener("pointerup", (event) => {
       x: point.x, y: point.y, z: point.z,
     };
     if (drag.lastFaceId != null) params.face = drag.lastFaceId;
-    refresh(call("move_gem", params).catch((error) => {
+    refresh(call("move_gem", params).then((tree) => {
+      applyGemMoved(tree);
+      return tree;
+    }).catch((error) => {
       drag.mesh.setMatrixAt(drag.index, drag.start);
       drag.mesh.instanceMatrix.needsUpdate = true;
       say(error.message, true);

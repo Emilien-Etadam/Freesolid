@@ -157,8 +157,10 @@ export function seatingGapMm(gem) {
 }
 
 /**
- * Demi-largeur du frôlement. L'arc à +4,25e-4 mm n'est pas un écart,
- * c'est du bruit (corde vs arc). Au-delà (C à +0,085 mm), on se tait.
+ * Demi-largeur du frôlement, sur le chemin de repli seulement
+ * (`entraxe_mm − diametre`). L'erreur arc-corde vaut ~1e-3 mm à
+ * l'échelle d'une bague. Quand `ecart_min_mm` est présent, la
+ * mesure est une distance réelle : comparer à zéro franc.
  */
 export const COMBINE_MEMORY_GRAZE_MM = 1e-3;
 
@@ -173,8 +175,10 @@ export function combineNeedsMemoryWarning(gem) {
   if (gem.chevauchement === true) return true;
   const gap = seatingGapMm(gem);
   if (gap == null) return false;
-  if (gap < COMBINE_MEMORY_WARN_GAP_MM - COMBINE_MEMORY_GRAZE_MM) return true;
-  if (gap > COMBINE_MEMORY_WARN_GAP_MM + COMBINE_MEMORY_GRAZE_MM) return false;
+  const measured = _finiteNumber(gem.ecart_min_mm);
+  const graze = measured == null ? COMBINE_MEMORY_GRAZE_MM : 0;
+  if (gap < COMBINE_MEMORY_WARN_GAP_MM - graze) return true;
+  if (gap > COMBINE_MEMORY_WARN_GAP_MM + graze) return false;
   const radius = _finiteNumber(gem.rayon_mm);
   if (radius == null) return false;
   return radius <= COMBINE_MEMORY_WARN_RADIUS_MM;

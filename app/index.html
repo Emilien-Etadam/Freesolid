@@ -105,6 +105,21 @@
   #viewbar button:hover { background: var(--panel-2); }
   #viewbar button.on { color: var(--accent); }
 
+  #gem-hud {
+    position: absolute; top: 10px; left: 10px; z-index: 4;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--ink);
+    pointer-events: none;
+    min-width: 11em;
+  }
+  #gem-hud[hidden] { display: none; }
+  #gem-hud .negative { color: var(--error); }
+
   #graph-view {
     display: none;
     position: absolute; inset: 0; z-index: 3;
@@ -737,6 +752,10 @@
       <button id="view-fit" title="Zoom au mieux (F)"><img src="icons/zoom-fit-best.svg" alt=""></button>
       <button id="btn-clip" title="Plan de coupe visuel — voir l'intérieur sans couper la pièce"><img src="icons/Std_ToggleClipPlane.svg" alt=""></button>
       <button id="btn-graph" title="Vue en graphe — dépendances des fonctions"><img src="icons/Geoassembly.svg" alt=""></button>
+    </div>
+    <div id="gem-hud" hidden>
+      <div id="gem-hud-diametre"></div>
+      <div id="gem-hud-ecart"></div>
     </div>
     <div id="graph-view">
       <div id="graph-bar">

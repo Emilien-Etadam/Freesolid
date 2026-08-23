@@ -1,6 +1,8 @@
 """Gabarit de pierre et ancrage (u, v) — pur Python, sans FreeCAD."""
 
 import os
+import math
+import random
 
 import pytest
 
@@ -99,3 +101,91 @@ def test_pack_mesh_without_normals_omits_the_key():
     ])
     assert "normals" not in mesh
     assert mesh["indices"] == [0, 1, 2]
+
+
+def _naive_voisines(points, rayons):
+    n = min(len(points), len(rayons))
+    out = [(None, None)] * n
+    for i in range(n):
+        best_e = None
+        best_g = None
+        xi, yi, zi = (float(points[i][0]), float(points[i][1]),
+                      float(points[i][2]))
+        ri = float(rayons[i])
+        for j in range(n):
+            if i == j:
+                continue
+            dx = xi - float(points[j][0])
+            dy = yi - float(points[j][1])
+            dz = zi - float(points[j][2])
+            entraxe = (dx * dx + dy * dy + dz * dz) ** 0.5
+            gap = entraxe - (ri + float(rayons[j]))
+            if best_e is None or entraxe < best_e:
+                best_e, best_g = entraxe, gap
+        out[i] = (best_e, best_g)
+    return out
+
+
+def test_voisines_min_mm_matches_naive_on_200_random_points():
+    rng = random.Random(42)
+    points = [(rng.uniform(-20, 20), rng.uniform(-20, 20), rng.uniform(-5, 5))
+              for _ in range(200)]
+    rayons = [rng.uniform(0.3, 1.2) for _ in range(200)]
+    got = gems.voisines_min_mm(points, rayons)
+    naive = _naive_voisines(points, rayons)
+    assert len(got) == 200
+    for (e1, g1), (e2, g2) in zip(got, naive):
+        assert e1 is not None and e2 is not None
+        assert abs(e1 - e2) < 1e-9
+        assert abs(g1 - g2) < 1e-9
+
+
+def test_voisines_min_mm_gap_uses_half_sum_of_diameters():
+    points = [(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]
+    rayons = [0.5, 0.75]  # Ø 1,0 et Ø 1,5
+    pairs = gems.voisines_min_mm(points, rayons)
+    assert len(pairs) == 2
+    entraxe, ecart = pairs[0]
+    assert abs(entraxe - 2.0) < 1e-12
+    assert abs(ecart - (2.0 - 1.25)) < 1e-12
+    assert pairs[0] == pairs[1]
+
+
+def test_voisines_min_mm_single_stone_is_none():
+    assert gems.voisines_min_mm([(0.0, 0.0, 0.0)], [0.75]) == [(None, None)]
+    assert gems.voisines_min_mm([], []) == []
+
+
+def test_voisines_min_mm_overlap_is_negative():
+    pairs = gems.voisines_min_mm(
+        [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)], [1.0, 1.0])
+    assert pairs[0][0] == 1.0
+    assert pairs[0][1] == -1.0
+    assert pairs[1][1] == -1.0
+
+
+def test_voisines_min_mm_circle_chord_is_negative():
+    """50 points sur un cercle de rayon 11,94 mm, Ø 1,5 : corde, pas arc.
+
+    ``entraxe_mm = 2πR/n`` donne +4,25e-4 mm ; la mesure réelle est la
+    corde ``2R·sin(π/n)``, négative. Un test ne doit pas écrire à la
+    main la valeur d'arc que le moteur ne peut pas rendre.
+    """
+    n = 50
+    radius = 11.94
+    diametre = 1.5
+    points = []
+    for i in range(n):
+        angle = 2.0 * math.pi * i / n
+        points.append((
+            radius * math.cos(angle),
+            radius * math.sin(angle),
+            0.0,
+        ))
+    pairs = gems.voisines_min_mm(points, [diametre / 2.0] * n)
+    gaps = [gap for _entraxe, gap in pairs if gap is not None]
+    assert gaps
+    assert all(gap < 0 for gap in gaps)
+    expected = 2.0 * radius * math.sin(math.pi / n) - diametre
+    assert abs(min(gaps) - expected) < 1e-9
+    assert expected < 0

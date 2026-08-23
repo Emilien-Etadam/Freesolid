@@ -1674,6 +1674,9 @@ class Kernel:
         ("FreeSolidGemError", "App::PropertyString",
          "Erreur d'ancrage (toponaming) — vide si le semis tient"),
     )
+    _GEM_VARSET_FINGERPRINT_SKIP = frozenset({
+        "Label", "Label2", "Visibility", "Proxy", "ExpressionEngine",
+    })
 
     def _mark_gem_tool(self, obj):
         if "FreeSolidGemTool" not in obj.PropertiesList:
@@ -2150,6 +2153,8 @@ class Kernel:
             "ecart_sieges_mm": (
                 None if ecart is None else round(float(ecart), 3)),
             "chevauchement": bool(ecart is not None and ecart < 0),
+            "voisine_min_mm": None,
+            "ecart_min_mm": None,
             "face": getattr(link, "FreeSolidGemFace", "") or "",
             "face_id": face_id,
             "count": count,
@@ -2163,7 +2168,43 @@ class Kernel:
         """Liste des semis — pour l'UI et le selftest."""
         self._require_body()
         self._refresh_gem_placements()
-        return {"gems": [self._gem_entry(link) for link in self._gem_links()]}
+        return {"gems": self._gem_entries()}
+
+    def _gem_entries(self):
+        entries = [self._gem_entry(link) for link in self._gem_links()]
+        return self._annotate_gem_neighbors(entries)
+
+    def _annotate_gem_neighbors(self, entries):
+        """Écart et entraxe min : balayage global, puis min par semis."""
+        from engine.gems import voisines_min_mm
+        points = []
+        radii = []
+        owners = []
+        for index, entry in enumerate(entries):
+            radius = float(entry.get("diametre") or 0) / 2.0
+            for stone in entry.get("stones") or []:
+                if "x" not in stone or "y" not in stone or "z" not in stone:
+                    continue
+                points.append((stone["x"], stone["y"], stone["z"]))
+                radii.append(radius)
+                owners.append(index)
+        pairs = voisines_min_mm(points, radii)
+        best = {}
+        for (entraxe, ecart), owner in zip(pairs, owners):
+            if entraxe is None:
+                continue
+            previous = best.get(owner)
+            if previous is None or entraxe < previous[0]:
+                best[owner] = (entraxe, ecart)
+        for index, entry in enumerate(entries):
+            pair = best.get(index)
+            if pair is None:
+                entry["voisine_min_mm"] = None
+                entry["ecart_min_mm"] = None
+            else:
+                entry["voisine_min_mm"] = round(float(pair[0]), 6)
+                entry["ecart_min_mm"] = round(float(pair[1]), 6)
+        return entries
 
     def place_gem(self, face, x, y, z, gemme=None, diametre=None,
                   spin=None, lift=None):
@@ -2231,6 +2272,8 @@ class Kernel:
         spins = list(link.FreeSolidGemSpin or [])
         lifts = list(link.FreeSolidGemLift or [])
         same_face = target_name == str(link.FreeSolidGemFace)
+        dest_link = link
+        dest_index = number
         if same_face:
             us[number] = u
             vs[number] = v
@@ -2250,14 +2293,17 @@ class Kernel:
             dest = self._find_semis(body, target_name, gemme, diametre)
             if dest is None:
                 dest = self._new_semis(body, target_name, gemme, diametre)
-            self._append_stone(dest, u, v, spin, lift)
+            dest_index = self._append_stone(dest, u, v, spin, lift)
+            dest_link = dest
             self._drop_empty_semis(link)
         try:
             self._recompute()
         except KernelError as exc:
             raise KernelError(
                 "{} — la pierre n'a pas été déplacée".format(exc)) from exc
-        return self.get_tree()
+        tree = self.get_tree()
+        tree["gem_moved"] = {"gem": dest_link.Name, "index": dest_index}
+        return tree
 
     def spin_gem(self, gem, index, spin=None, lift=None):
         """Rotation autour de la normale et enfoncement. Absents = inchangés."""
@@ -2300,6 +2346,46 @@ class Kernel:
         self._recompute()
         return self.get_tree()
 
+    def resize_gem(self, gem, diametre):
+        """Change le diamètre d'un semis. Les ``(u, v)`` ne bougent pas.
+
+        Si le gabarit ne sert que ce semis, on écrit la VarSet en place.
+        S'il en sert d'autres, on relie un gabarit au nouveau diamètre
+        sans toucher aux jumeaux — fusionner casserait la sélection.
+        """
+        from engine.gems import GemError, cache_key, parse_diametre
+        link = self._require_gem_link(gem)
+        try:
+            new_d = parse_diametre(diametre)
+        except GemError as exc:
+            raise KernelError(str(exc)) from exc
+        old_body = getattr(link, "LinkedObject", None)
+        if old_body is None:
+            raise KernelError("semis sans gabarit : {}".format(gem))
+        gemme = getattr(link, "FreeSolidGemTemplate", "") or ""
+        old_d = self._gem_diametre(link)
+        if abs(old_d - new_d) < 1e-9:
+            return self.get_tree()
+        users = [
+            other for other in self._gem_links()
+            if getattr(other, "LinkedObject", None) is old_body
+        ]
+        if len(users) <= 1:
+            varset = self._gem_varset(old_body)
+            if varset is None or not hasattr(varset, "diametre"):
+                raise KernelError(
+                    "le gabarit n'a pas sa variable — le diamètre "
+                    "ne peut pas être changé")
+            varset.diametre = float(new_d)
+            self._gem_bodies.pop(cache_key(gemme, old_d), None)
+            self._gem_bodies[cache_key(gemme, new_d)] = old_body.Name
+            old_body.Label = "Gabarit {} Ø{} mm".format(
+                gemme, _format_mm(new_d))
+        else:
+            link.LinkedObject = self._ensure_gem_body(gemme, new_d)
+        self._recompute()
+        return self.get_tree()
+
     def _placed_gem_copy(self, shape, placement):
         """Copie du gabarit, géométrie déjà au placement d'instance."""
         copy = shape.copy()
@@ -2337,8 +2423,35 @@ class Kernel:
             copies.append(self._placed_gem_copy(base, place))
         return Part.makeCompound(copies)
 
+    def _gem_template_signature(self, link):
+        """Nom du gabarit et variables de sa VarSet, triées par nom.
+
+        ``resize_gem`` ne bouge aucun placement : sans ces cotes dans
+        l'empreinte, le booléen resterait cuit à l'ancien diamètre.
+        """
+        template = str(getattr(link, "FreeSolidGemTemplate", "") or "")
+        body = getattr(link, "LinkedObject", None)
+        varset = self._gem_varset(body) if body is not None else None
+        values = []
+        if varset is not None:
+            for name in getattr(varset, "PropertiesList", ()) or ():
+                if name in self._GEM_VARSET_FINGERPRINT_SKIP:
+                    continue
+                raw = getattr(varset, name, None)
+                if isinstance(raw, bool):
+                    continue
+                try:
+                    number = float(raw)
+                except (TypeError, ValueError):
+                    continue
+                values.append((name, number))
+            values.sort(key=lambda item: item[0])
+        signed = ",".join(
+            "{}={:.6f}".format(name, number) for name, number in values)
+        return "{}#{}".format(template, signed)
+
     def _gem_placement_fingerprint(self, link):
-        """Signature des placements — pour ne pas recuire un compound identique."""
+        """Signature gabarit + placements — pour ne pas recuire un compound identique."""
         placements = list(getattr(link, "PlacementList", None) or [])
         chunks = []
         for place in placements:
@@ -2352,14 +2465,18 @@ class Kernel:
             chunks.append("{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f}".format(
                 float(base.x), float(base.y), float(base.z),
                 float(qx), float(qy), float(qz), float(qw)))
-        return "{}#{}".format(link.Name, "|".join(chunks))
+        return "{}#{}#{}".format(
+            link.Name, self._gem_template_signature(link), "|".join(chunks))
 
     def _set_gem_boolean_shape(self, obj, compound, fingerprint):
-        """Pose la forme si les placements ont changé. Retourne True si écrit."""
+        """Pose la forme si le gabarit ou les placements ont changé.
+
+        Retourne True si écrit.
+        """
         if "FreeSolidGemBooleanFingerprint" not in obj.PropertiesList:
             obj.addProperty(
                 "App::PropertyString", "FreeSolidGemBooleanFingerprint",
-                "FreeSolid", "Empreinte des placements du semis")
+                "FreeSolid", "Empreinte du gabarit et des placements du semis")
         if str(getattr(obj, "FreeSolidGemBooleanFingerprint", "") or "") == fingerprint:
             return False
         obj.Shape = compound
@@ -4745,7 +4862,7 @@ class Kernel:
         return {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,
                 "surfaces": surfaces,
-                "gems": [self._gem_entry(link) for link in self._gem_links()],
+                "gems": self._gem_entries(),
                 "variables": self.list_variables()["variables"]}
 
     def _face_mesh(self, face, face_id, deviation):
@@ -4969,6 +5086,7 @@ class Kernel:
                 "positions": geometry["positions"],
                 "indices": geometry["indices"],
                 "normals": geometry.get("normals"),
+                "diametre": entry.get("diametre"),
                 "instances": instances,
             })
         return out
@@ -8300,6 +8418,70 @@ class Kernel:
                 and len(gems_a) == len(gems_b) == 1
                 and gems_a[0].get("count") == gems_b[0].get("count") == 1)
 
+            mark("p042: lire l'écart, redimensionner")
+            top = self._top_face_id()
+            first = (self.list_gems().get("gems") or [{}])[0]
+            stone0 = (first.get("stones") or [{}])[0]
+            self.place_gem(
+                face=top,
+                x=float(stone0.get("x", 0)) + 3.0,
+                y=float(stone0.get("y", 0)),
+                z=float(stone0.get("z", 0)),
+                diametre=1.5)
+            pair = (self.list_gems().get("gems") or [{}])[0]
+            old_v = pair.get("voisine_min_mm")
+            old_e = pair.get("ecart_min_mm")
+            report["p042_deux_pierres"] = (
+                pair.get("count") == 2
+                and old_v is not None
+                and old_e is not None)
+            resized = self.resize_gem(pair.get("name"), 2.0)
+            after_r = (resized.get("gems") or [{}])[0]
+            report["p042_resize"] = (
+                abs((after_r.get("diametre") or 0) - 2.0) < 1e-9
+                and after_r.get("voisine_min_mm") is not None
+                and old_v is not None
+                and abs(after_r["voisine_min_mm"] - old_v) < 1e-6
+                and old_e is not None
+                and abs((after_r.get("ecart_min_mm") or 0) - (old_e - 0.5))
+                < 1e-4)
+
+            mark("p043: le booléen suit la cote, la sélection suit la pierre")
+            moved_info = migrated.get("gem_moved") if isinstance(
+                migrated, dict) else None
+            dest_name = (after_mig or [{}])[0].get("name")
+            report["p043_gem_moved"] = (
+                isinstance(moved_info, dict)
+                and moved_info.get("gem") == dest_name
+                and moved_info.get("index") == 0)
+
+            self.new_part("Jonc P043")
+            state = self.sketch_start()
+            sk_p043 = state["sketch"]
+            self.sketch_add_circle(sk_p043, 0, 0, 10)
+            self.sketch_constrain(
+                sk_p043, "coincident", 0, point1=3, geo2=-1, point2=1)
+            self.sketch_finish(sk_p043)
+            self.add_pad(6, sketch=sk_p043)
+            side_p043 = self._side_face_id()
+            face_p043 = self._require_body().Shape.Faces[side_p043]
+            u0, u1, v0, v1 = face_p043.ParameterRange
+            v_mid = (v0 + v1) / 2.0
+            for i in range(2):
+                u = u0 + (u1 - u0) * (i + 0.5) / 2.0
+                pt = face_p043.valueAt(u, v_mid)
+                self.place_gem(
+                    face=side_p043, x=pt.x, y=pt.y, z=pt.z,
+                    diametre=1.5, lift=-0.25)
+            gems_p043 = self.list_gems().get("gems") or []
+            semis_p043 = (gems_p043 or [{}])[0].get("name")
+            self.add_boolean(tool=semis_p043, type="cut")
+            vol_before_cote = _volume()
+            self.resize_gem(semis_p043, 2.0)
+            vol_after_cote = _volume()
+            report["p043_booleen_suit_cote"] = (
+                abs(vol_after_cote - vol_before_cote) > 1e-3)
+
             mark("p035: booléen sur un semis")
 
             def _jonc_trois_pierres(name):
@@ -8418,7 +8600,7 @@ _TRANSACTIONAL = frozenset({
     "sketch_fillet", "sketch_trim", "sketch_constrain",
     "sketch_add_spline", "sketch_add_ellipse", "sketch_mirror",
     "sketch_array", "sketch_offset", "array_component",
-    "place_gem", "move_gem", "spin_gem", "remove_gem",
+    "place_gem", "move_gem", "spin_gem", "remove_gem", "resize_gem",
 })
 
 

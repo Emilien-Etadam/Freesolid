@@ -99,6 +99,67 @@ describe("combineConfirmMessage — aucune mesure locale", () => {
     assert.match(message, /voie normale/);
   });
 
+  it("préfère ecart_min_mm à la formule d'arc", () => {
+    assert.equal(
+      seatingGapMm({
+        entraxe_mm: 2, diametre: 1.5, ecart_sieges_mm: 0.5,
+        ecart_min_mm: 4.25e-4,
+      }),
+      4.25e-4,
+    );
+  });
+
+  it("mesure réelle : 50 points d'un cercle, la corde est négative, l'alerte part sans bande", () => {
+    const n = 50;
+    const radius = 11.94;
+    const diametre = 1.5;
+    const stoneRadius = diametre / 2;
+    const points = Array.from({ length: n }, (_, i) => {
+      const angle = (2 * Math.PI * i) / n;
+      return [radius * Math.cos(angle), radius * Math.sin(angle), 0];
+    });
+    let minGap = null;
+    for (let i = 0; i < n; i += 1) {
+      for (let j = i + 1; j < n; j += 1) {
+        const entraxe = Math.hypot(
+          points[i][0] - points[j][0],
+          points[i][1] - points[j][1],
+          points[i][2] - points[j][2],
+        );
+        const gap = entraxe - 2 * stoneRadius;
+        if (minGap == null || gap < minGap) minGap = gap;
+      }
+    }
+    assert.ok(minGap < 0);
+    const gem = {
+      name: "FroleMesure", count: 50, rayon_mm: 11.94,
+      entraxe_mm: 1.500425, diametre: 1.5,
+      ecart_sieges_mm: 0.000425, ecart_min_mm: minGap,
+      chevauchement: false,
+    };
+    assert.equal(combineNeedsMemoryWarning(gem), true);
+  });
+
+  it("mesure réelle positive : pas d'alarme — la bande ne s'applique pas", () => {
+    const gem = {
+      name: "ArcPositif", count: 50, rayon_mm: 11.94,
+      entraxe_mm: 1.500425, diametre: 1.5,
+      ecart_sieges_mm: 0.000425, ecart_min_mm: 4.25e-4,
+      chevauchement: false,
+    };
+    assert.equal(seatingGapMm(gem), 4.25e-4);
+    assert.equal(combineNeedsMemoryWarning(gem), false);
+  });
+
+  it("repli arc-corde : +4,25e-4 mm sur un jonc de bague déclenche encore l'alerte", () => {
+    const gem = {
+      name: "RepliFrole", count: 50, rayon_mm: 11.94,
+      entraxe_mm: 1.500425, diametre: 1.5,
+      ecart_sieges_mm: 0.000425, chevauchement: false,
+    };
+    assert.equal(combineNeedsMemoryWarning(gem), true);
+  });
+
   it("se tait pour un petit semis, sans inventer de secondes", () => {
     assert.equal(combineConfirmMessage(tree, "Petit", null), null);
     assert.equal(estimateCombineSeconds(3, null), null);

@@ -510,6 +510,7 @@ def test_ops_snapshot_keys():
         "redo",
         "remove_gem",
         "rename",
+        "resize_gem",
         "save_part",
         "script_trust_status",
         "selftest",
@@ -800,6 +801,7 @@ def test_gem_ops_declare_required_and_optional_params():
     assert protocol.OPS["spin_gem"] == ("gem", "index")
     assert protocol.OPS["remove_gem"] == ("gem", "index")
     assert protocol.OPS["list_gems"] == ()
+    assert protocol.OPS["resize_gem"] == ("gem", "diametre")
     protocol.validate_request(
         {"op": "place_gem",
          "params": {"face": 2, "x": 1.0, "y": 0.0, "z": 3.0}})
@@ -815,6 +817,12 @@ def test_gem_ops_declare_required_and_optional_params():
     protocol.validate_request(
         {"op": "spin_gem", "params": {"gem": "Semis", "index": 0}})
     protocol.validate_request({"op": "list_gems"})
+    protocol.validate_request(
+        {"op": "resize_gem",
+         "params": {"gem": "Semis", "diametre": 1.6}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request(
+            {"op": "resize_gem", "params": {"gem": "Semis"}})
     with pytest.raises(protocol.ProtocolError):
         protocol.validate_request(
             {"op": "place_gem",

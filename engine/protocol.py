@@ -194,6 +194,7 @@ OPS: dict[str, tuple[str, ...]] = {
                      optional={"spin": float, "lift": float}),
     "remove_gem": _Req(("gem", str), ("index", int)),
     "list_gems": (),
+    "resize_gem": _Req(("gem", str), ("diametre", float)),
     # M2 — sketch editing. Geometry travels in sketch-local 2D; the state
     # carries the placement matrix that positions it in 3D.
     "sketch_start": (),                # optional: face | plane (XY|XZ|YZ) | datum (nom)

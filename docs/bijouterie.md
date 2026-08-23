@@ -1441,3 +1441,141 @@ d'arc à la main. Trois cas couverts : mesure négative → alerte, mesure posit
   ailleurs. Transitoire, le retour du moteur corrige.
 
 Aucune des deux ne justifie une passe de plus.
+
+---
+
+# Le toponaming des semis — ce qu'il reste à mesurer
+
+Un semis retient sa face d'appui sous la forme `FreeSolidGemFace = "Face3"` :
+un **indice**. OCCT ne promet pas de le conserver. Ajoutez un congé, un
+enlèvement, et l'ancre peut désigner une autre face — ou rien.
+
+## Ce qui est déjà tranché, et qui ne l'est pas
+
+[`docs/amont-freecad.md`](amont-freecad.md) §4quater a réglé la **méthode**, sur
+mesure réelle et non sur lecture de source :
+
+- un nom mappé **n'est pas une clé globale** — il est porté par la forme d'une
+  fonction. Stocker « le nom mappé » et le résoudre plus tard ne marche pas ;
+- la chaîne se traverse **à l'envers** : depuis un élément de la pointe
+  courante, `getElementHistory` remonte jusqu'à la fonction d'origine ;
+- d'où le couple `(fonction, nom sur cette fonction)`, une recherche à
+  l'envers au rejeu, et le verdict à trois états — résolu / ambigu / perdu,
+  jamais de re-liaison silencieuse.
+
+**Mais §4quater a mesuré ça sur la forme d'une fonction** — un `Pad`, un
+`Pocket`. Un semis s'ancre sur `body.Shape`, la forme du **corps**, parce que
+c'est elle que le client tessellise et raycaste (`Kernel._anchor_face`). La
+seule sonde qui ait touché au corps, `resolution_corps`, était rouge — mais
+elle ne testait qu'un nom **étranger**, capturé sur le `Pad`. Elle ne dit rien
+de la carte propre du corps.
+
+C'est le trou. `scripts/spike-toponaming-semis.py` le comble.
+
+## Ce que la sonde décide
+
+| Question | Si vert | Si rouge |
+|---|---|---|
+| **Q0** l'indice bouge vraiment | il y a quelque chose à réparer | **rien à faire** — l'indice tient seul, et tout le reste est du luxe |
+| **Q1** le corps a une carte peuplée | route directe | repli par la pointe (Q2) |
+| **Q2** corps et pointe : mêmes faces, même ordre | le repli tient | il faut d'abord apparier corps → pointe, et on retombe sur `_face_producers`, l'approche par ressemblance que §4quater écarte |
+| **Q3** un couple unique par face | on sait quoi stocker | un semis se rebrancherait sur la voisine |
+| **Q5** la renumérotation est absorbée | **le mécanisme tient** | chercher ailleurs — surtout pas écrire l'UI par-dessus |
+| **Q6** la scission dit « ambigu » | le verdict à trois états est réel | l'état est décoratif, et un semis se rebranche en silence sur un morceau |
+
+**Q0 et Q5 sont les deux verdicts.** Les autres orientent.
+
+Deux points de méthode, tirés des erreurs déjà commises ici :
+
+- **Q4 est une sonde faible et le dit.** Un reparamétrage ne déplace aucun
+  indice — c'est ce qui avait rendu `survie_reparam` trompeuse en §4quater.
+  Elle ne prouve que l'absence de régression sur le cas facile.
+- **La sonde ne choisit pas le couple à ma place.** Elle fabrique les deux
+  bouts de la généalogie — le **producteur** (le plus récent) et l'**origine**
+  (le plus ancien) — et mesure lequel est à la fois unique par face et
+  survivant. Le producteur change à chaque fonction ajoutée en aval ; l'origine
+  risque de confondre deux faces nées de la même esquisse. Aucun des deux n'est
+  évidemment bon.
+
+Un détail qui change l'échelle du problème : **`FreeSolidGemFace` est par
+semis, pas par pierre.** Deux cents pierres sur une face, c'est *une*
+référence à résoudre. Le coût de la recherche à l'envers, en O(faces de la
+pointe), est donc négligeable — ce qui retire d'avance l'objection qui aurait
+pu tuer l'approche.
+
+## Ce qui n'est pas écrit tant que la sonde n'a pas tourné
+
+Pas de prompt. Six questions ouvertes se branchent sur cinq conceptions
+différentes, dont quatre seraient à jeter. §4ter est déjà tombé dans ce piège
+en concluant juste sur « l'API existe » et faux sur « il suffit de stocker le
+nom ». Lire dit ce qui est exposé ; seule l'exécution dit ce qui marche.
+
+## La sonde a tourné — verdict vert, en deux passages
+
+FreeCAD 1.1.3 (CI, version de référence). Le premier passage était rouge et
+**deux de ses rouges étaient mes erreurs de conception, pas des faits.**
+
+### Ce que le premier passage a raté
+
+**Il ancrait sur la face 0 d'un plein.** Trois changements de topologie — un
+congé, un enlèvement traversant, un enlèvement borgne, les faces passant de 3
+à 4 puis 7 puis 14 — et l'indice n'a jamais bougé. J'en aurais conclu que le
+défaut n'existe pas. En réalité OCCT range d'abord les faces du solide de
+base : j'avais mesuré le barreau le plus solide de l'échelle et jugé
+l'échelle.
+
+**Et il ne testait que les deux bouts de la généalogie.** Une face de jonc en
+a trois — `[Body, Pad, Sketch]` — et c'est celui du **milieu** que §4quater
+appelle « fonction propriétaire ». J'ai évalué le conteneur et l'ancêtre
+ultime, jamais la conception en question.
+
+### Le défaut, démontré
+
+Un jonc réel est un **tube**. Sur un tube pad-é, l'alésage est à l'**indice
+1** — pas 0.
+
+| | Faces | Indice de l'alésage |
+|---|---|---|
+| avant | 4 | **1** |
+| après un congé sur le dessus | 6 | **4** |
+
+Un semis ancré sur l'alésage désignerait aujourd'hui la face 1, qui après le
+congé est une autre face. C'est le vrai mode de défaillance, et il fallait un
+tube pour le voir.
+
+### Le mécanisme, mesuré
+
+Trois barreaux, trois comportements nets :
+
+| Barreau | Unique par face ? | Survit à un changement de topologie ? |
+|---|---|---|
+| **Body** — le conteneur | ✅ oui | ❌ **perdu** (3 observations) |
+| **fonction propriétaire** — `Pad`, `Pocket`, `Fillet` | ✅ oui | ✅ **résolu** (4 observations) |
+| **Sketch** — l'ancêtre | ❌ 1 couple pour 3 faces | ✅ mais **ambigu** |
+
+Le corps est unique mais volatil ; l'esquisse est durable mais ne discrimine
+pas ; **la fonction propriétaire est les deux.** Sa forme régénérée à chaque
+recompute explique le premier : le nom porté par le corps change de fond en
+comble, celui porté par une fonction ne bouge pas.
+
+Le nom du `Pad` est resté **identique** de part et d'autre de l'enlèvement :
+`#6:1;:G;XTR;:H17e:7,F`. Et la généalogie a simplement gagné un barreau —
+`[Body, Pocket, Pad, Sketch]` — ce qui est précisément pourquoi la recherche
+doit porter sur le **couple**, cherché n'importe où dans la trace, et non sur
+un rang fixe.
+
+### Deux acquis annexes
+
+- **Le corps a bien sa propre carte** — `ElementMapSize: 8`, `Tag: 4562`. Le
+  rouge de `resolution_corps` en §4quater ne portait que sur un nom
+  *étranger* capturé sur le `Pad`. Correction nette à la doc amont.
+- **Le coût est un non-sujet** : 3,2 ms par résolution, 16 ms pour cinq semis.
+  Une référence par **semis**, pas par pierre.
+
+### Ce qui reste inconnu
+
+`scission_detectee: false` — la rainure d'essai n'a pas réellement coupé la
+face cylindrique en deux. L'état « ambigu » du verdict à trois états n'a donc
+jamais été exercé sur une vraie scission. Ce n'est pas bloquant : le code doit
+le traiter, mais on ne saura qu'il se déclenche que le jour où quelqu'un
+scinde une face d'appui.

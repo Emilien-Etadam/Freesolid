@@ -2150,6 +2150,8 @@ class Kernel:
             "ecart_sieges_mm": (
                 None if ecart is None else round(float(ecart), 3)),
             "chevauchement": bool(ecart is not None and ecart < 0),
+            "voisine_min_mm": None,
+            "ecart_min_mm": None,
             "face": getattr(link, "FreeSolidGemFace", "") or "",
             "face_id": face_id,
             "count": count,
@@ -2163,7 +2165,43 @@ class Kernel:
         """Liste des semis — pour l'UI et le selftest."""
         self._require_body()
         self._refresh_gem_placements()
-        return {"gems": [self._gem_entry(link) for link in self._gem_links()]}
+        return {"gems": self._gem_entries()}
+
+    def _gem_entries(self):
+        entries = [self._gem_entry(link) for link in self._gem_links()]
+        return self._annotate_gem_neighbors(entries)
+
+    def _annotate_gem_neighbors(self, entries):
+        """Écart et entraxe min : balayage global, puis min par semis."""
+        from engine.gems import voisines_min_mm
+        points = []
+        radii = []
+        owners = []
+        for index, entry in enumerate(entries):
+            radius = float(entry.get("diametre") or 0) / 2.0
+            for stone in entry.get("stones") or []:
+                if "x" not in stone or "y" not in stone or "z" not in stone:
+                    continue
+                points.append((stone["x"], stone["y"], stone["z"]))
+                radii.append(radius)
+                owners.append(index)
+        pairs = voisines_min_mm(points, radii)
+        best = {}
+        for (entraxe, ecart), owner in zip(pairs, owners):
+            if entraxe is None:
+                continue
+            previous = best.get(owner)
+            if previous is None or entraxe < previous[0]:
+                best[owner] = (entraxe, ecart)
+        for index, entry in enumerate(entries):
+            pair = best.get(index)
+            if pair is None:
+                entry["voisine_min_mm"] = None
+                entry["ecart_min_mm"] = None
+            else:
+                entry["voisine_min_mm"] = round(float(pair[0]), 6)
+                entry["ecart_min_mm"] = round(float(pair[1]), 6)
+        return entries
 
     def place_gem(self, face, x, y, z, gemme=None, diametre=None,
                   spin=None, lift=None):
@@ -2297,6 +2335,46 @@ class Kernel:
             del lifts[number]
         self._write_stone_lists(link, us, vs, spins, lifts)
         self._drop_empty_semis(link)
+        self._recompute()
+        return self.get_tree()
+
+    def resize_gem(self, gem, diametre):
+        """Change le diamètre d'un semis. Les ``(u, v)`` ne bougent pas.
+
+        Si le gabarit ne sert que ce semis, on écrit la VarSet en place.
+        S'il en sert d'autres, on relie un gabarit au nouveau diamètre
+        sans toucher aux jumeaux — fusionner casserait la sélection.
+        """
+        from engine.gems import GemError, cache_key, parse_diametre
+        link = self._require_gem_link(gem)
+        try:
+            new_d = parse_diametre(diametre)
+        except GemError as exc:
+            raise KernelError(str(exc)) from exc
+        old_body = getattr(link, "LinkedObject", None)
+        if old_body is None:
+            raise KernelError("semis sans gabarit : {}".format(gem))
+        gemme = getattr(link, "FreeSolidGemTemplate", "") or ""
+        old_d = self._gem_diametre(link)
+        if abs(old_d - new_d) < 1e-9:
+            return self.get_tree()
+        users = [
+            other for other in self._gem_links()
+            if getattr(other, "LinkedObject", None) is old_body
+        ]
+        if len(users) <= 1:
+            varset = self._gem_varset(old_body)
+            if varset is None or not hasattr(varset, "diametre"):
+                raise KernelError(
+                    "le gabarit n'a pas sa variable — le diamètre "
+                    "ne peut pas être changé")
+            varset.diametre = float(new_d)
+            self._gem_bodies.pop(cache_key(gemme, old_d), None)
+            self._gem_bodies[cache_key(gemme, new_d)] = old_body.Name
+            old_body.Label = "Gabarit {} Ø{} mm".format(
+                gemme, _format_mm(new_d))
+        else:
+            link.LinkedObject = self._ensure_gem_body(gemme, new_d)
         self._recompute()
         return self.get_tree()
 
@@ -4745,7 +4823,7 @@ class Kernel:
         return {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,
                 "surfaces": surfaces,
-                "gems": [self._gem_entry(link) for link in self._gem_links()],
+                "gems": self._gem_entries(),
                 "variables": self.list_variables()["variables"]}
 
     def _face_mesh(self, face, face_id, deviation):
@@ -4969,6 +5047,7 @@ class Kernel:
                 "positions": geometry["positions"],
                 "indices": geometry["indices"],
                 "normals": geometry.get("normals"),
+                "diametre": entry.get("diametre"),
                 "instances": instances,
             })
         return out
@@ -8300,6 +8379,34 @@ class Kernel:
                 and len(gems_a) == len(gems_b) == 1
                 and gems_a[0].get("count") == gems_b[0].get("count") == 1)
 
+            mark("p042: lire l'écart, redimensionner")
+            top = self._top_face_id()
+            first = (self.list_gems().get("gems") or [{}])[0]
+            stone0 = (first.get("stones") or [{}])[0]
+            self.place_gem(
+                face=top,
+                x=float(stone0.get("x", 0)) + 3.0,
+                y=float(stone0.get("y", 0)),
+                z=float(stone0.get("z", 0)),
+                diametre=1.5)
+            pair = (self.list_gems().get("gems") or [{}])[0]
+            old_v = pair.get("voisine_min_mm")
+            old_e = pair.get("ecart_min_mm")
+            report["p042_deux_pierres"] = (
+                pair.get("count") == 2
+                and old_v is not None
+                and old_e is not None)
+            resized = self.resize_gem(pair.get("name"), 2.0)
+            after_r = (resized.get("gems") or [{}])[0]
+            report["p042_resize"] = (
+                abs((after_r.get("diametre") or 0) - 2.0) < 1e-9
+                and after_r.get("voisine_min_mm") is not None
+                and old_v is not None
+                and abs(after_r["voisine_min_mm"] - old_v) < 1e-6
+                and old_e is not None
+                and abs((after_r.get("ecart_min_mm") or 0) - (old_e - 0.5))
+                < 1e-4)
+
             mark("p035: booléen sur un semis")
 
             def _jonc_trois_pierres(name):
@@ -8418,7 +8525,7 @@ _TRANSACTIONAL = frozenset({
     "sketch_fillet", "sketch_trim", "sketch_constrain",
     "sketch_add_spline", "sketch_add_ellipse", "sketch_mirror",
     "sketch_array", "sketch_offset", "array_component",
-    "place_gem", "move_gem", "spin_gem", "remove_gem",
+    "place_gem", "move_gem", "spin_gem", "remove_gem", "resize_gem",
 })
 
 

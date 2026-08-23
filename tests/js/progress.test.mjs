@@ -99,6 +99,30 @@ describe("combineConfirmMessage — aucune mesure locale", () => {
     assert.match(message, /voie normale/);
   });
 
+  it("préfère ecart_min_mm à la formule d'arc", () => {
+    assert.equal(
+      seatingGapMm({
+        entraxe_mm: 2, diametre: 1.5, ecart_sieges_mm: 0.5,
+        ecart_min_mm: 4.25e-4,
+      }),
+      4.25e-4,
+    );
+  });
+
+  it("r = 11,94 / 50 pierres / ecart_min_mm = +4,25e-4 déclenche l'alerte", () => {
+    const gem = {
+      name: "FroleMesure", count: 50, rayon_mm: 11.94,
+      entraxe_mm: 1.500425, diametre: 1.5,
+      ecart_sieges_mm: 0.000425, ecart_min_mm: 4.25e-4,
+      chevauchement: false,
+    };
+    assert.equal(seatingGapMm(gem), 4.25e-4);
+    assert.equal(combineNeedsMemoryWarning(gem), true);
+    const silent = { ...gem };
+    delete silent.ecart_min_mm;
+    assert.equal(seatingGapMm(silent), 0.000425);
+  });
+
   it("se tait pour un petit semis, sans inventer de secondes", () => {
     assert.equal(combineConfirmMessage(tree, "Petit", null), null);
     assert.equal(estimateCombineSeconds(3, null), null);

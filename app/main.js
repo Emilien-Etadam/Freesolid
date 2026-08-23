@@ -253,6 +253,12 @@ window.__freesolidDebug = {
   get gemScreenPoint() { return gemScreenPoint(); },
   get gemWorldPositions() { return gemWorldPositions(); },
   get gemDragging() { return gemDrag != null; },
+  get selectedGem() { return selectedGem; },
+  get gemHudText() {
+    const hud = document.getElementById("gem-hud");
+    if (!hud || hud.hidden) return "";
+    return hud.innerText.replace(/\s+/g, " ").trim();
+  },
   get featureDimCount() { return featureDimSprites.length; },
   get selectedFeatureName() { return selectedFeatureName; },
   refresh: () => refresh(call("get_tree")),
@@ -332,6 +338,17 @@ const warnedSplineFaces = new Set();
 const gemMaterial = new THREE.MeshStandardMaterial({
   color: 0xd4e4f2, metalness: 0.35, roughness: 0.22,
 });
+const GEM_STEP_MM = 0.1;
+const GEM_MIN_MM = 0.1;
+const GEM_IDLE_COLOR = new THREE.Color(0xffffff);
+const GEM_SELECTED_COLOR = new THREE.Color(0xffb040);
+let selectedGem = null; // { name, index } | null
+let gemDiametreOverride = {};
+let gemResizeInflight = false;
+let gemResizeWanted = null;
+const gemGapGroup = new THREE.Group();
+gemGapGroup.renderOrder = 25;
+scene.add(gemGapGroup);
 
 // Qui alloue dispose. Les matériaux partagés (constantes de module) ne
 // portent pas le flag et ne sont jamais disposés ; tout matériau créé
@@ -390,6 +407,7 @@ function showGems(mesh) {
       label: gem.label,
       faceId: gem.face_id,
       spline: !!gem.spline,
+      diametre: gem.diametre,
       spins: gem.instances.map((item) => item.spin ?? 0),
       lifts: gem.instances.map((item) => item.lift ?? 0),
     };
@@ -412,6 +430,7 @@ function showGems(mesh) {
       say("Surface libre : l'ancrage peut glisser si la surface se déforme.");
     }
   }
+  restoreGemSelection();
 }
 
 function gemScreenPoint() {
@@ -442,10 +461,220 @@ function gemWorldPositions() {
         name: mesh.userData.gem?.name ?? "",
         index: i,
         x: point.x, y: point.y, z: point.z,
+        diametre: mesh.userData.gem?.diametre ?? null,
       });
     }
   }
   return out;
+}
+
+function formatMmFr(value, digits = 2) {
+  if (!Number.isFinite(value)) return "—";
+  return value.toFixed(digits).replace(".", ",");
+}
+
+function currentGemDiametre(name, fallback) {
+  if (Object.hasOwn(gemDiametreOverride, name)) {
+    return gemDiametreOverride[name];
+  }
+  const gem = (lastTree?.gems ?? []).find((item) => item.name === name);
+  if (gem && Number.isFinite(gem.diametre)) return gem.diametre;
+  return fallback;
+}
+
+function allStones() {
+  return gemWorldPositions().map((stone) => ({
+    ...stone,
+    diametre: currentGemDiametre(stone.name, stone.diametre),
+  }));
+}
+
+function pairMetrics(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const dz = a.z - b.z;
+  const entraxe = Math.hypot(dx, dy, dz);
+  const d1 = Number(a.diametre) || 0;
+  const d2 = Number(b.diametre) || 0;
+  return { entraxe, ecart: entraxe - (d1 + d2) / 2, a, b };
+}
+
+function nearestOf(stones, origin) {
+  let best = null;
+  for (const stone of stones) {
+    if (stone.name === origin.name && stone.index === origin.index) continue;
+    const pair = pairMetrics(origin, stone);
+    if (!best || pair.entraxe < best.entraxe) best = pair;
+  }
+  return best;
+}
+
+function tightestPair(stones) {
+  let best = null;
+  for (let i = 0; i < stones.length; i += 1) {
+    for (let j = i + 1; j < stones.length; j += 1) {
+      const pair = pairMetrics(stones[i], stones[j]);
+      if (!best || pair.entraxe < best.entraxe) best = pair;
+    }
+  }
+  return best;
+}
+
+function clearGemGap() {
+  for (const child of [...gemGapGroup.children]) {
+    gemGapGroup.remove(child);
+    disposeSubtree(child);
+  }
+}
+
+function drawGemGap(pair) {
+  clearGemGap();
+  if (!pair) return;
+  const negative = pair.ecart < 0;
+  const color = negative ? 0xd4655c : 0x7fc4ff;
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(pair.a.x, pair.a.y, pair.a.z),
+    new THREE.Vector3(pair.b.x, pair.b.y, pair.b.z),
+  ]);
+  const material = new THREE.LineBasicMaterial({
+    color, depthTest: false, toneMapped: false,
+  });
+  material.userData.own = true;
+  const line = new THREE.Line(geometry, material);
+  line.renderOrder = 25;
+  gemGapGroup.add(line);
+  const mid = new THREE.Vector3(
+    (pair.a.x + pair.b.x) / 2,
+    (pair.a.y + pair.b.y) / 2,
+    (pair.a.z + pair.b.z) / 2,
+  );
+  const sprite = createDimSprite(
+    `${formatMmFr(pair.ecart)} mm`, mid.x, mid.y, mid.z,
+    negative ? "#d4655c" : "#7fc4ff");
+  sprite.renderOrder = 26;
+  gemGapGroup.add(sprite);
+}
+
+function updateGapOverlay() {
+  const stones = allStones();
+  if (gemDrag?.moved) {
+    const origin = stones.find(
+      (stone) => stone.name === gemDrag.name && stone.index === gemDrag.index);
+    drawGemGap(origin ? nearestOf(stones, origin) : null);
+    return;
+  }
+  if (!selectedGem) {
+    clearGemGap();
+    return;
+  }
+  drawGemGap(tightestPair(stones));
+}
+
+function paintGemSelection() {
+  for (const mesh of gemMeshes) {
+    const name = mesh.userData.gem?.name;
+    for (let i = 0; i < mesh.count; i += 1) {
+      const on = selectedGem
+        && name === selectedGem.name
+        && i === selectedGem.index;
+      mesh.setColorAt(i, on ? GEM_SELECTED_COLOR : GEM_IDLE_COLOR);
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }
+}
+
+function updateGemHud() {
+  const hud = document.getElementById("gem-hud");
+  const diametreEl = document.getElementById("gem-hud-diametre");
+  const ecartEl = document.getElementById("gem-hud-ecart");
+  if (!hud || !diametreEl || !ecartEl) return;
+  if (!selectedGem) {
+    hud.hidden = true;
+    return;
+  }
+  const gem = (lastTree?.gems ?? []).find(
+    (item) => item.name === selectedGem.name);
+  if (!gem) {
+    hud.hidden = true;
+    return;
+  }
+  const diametre = currentGemDiametre(gem.name, gem.diametre);
+  const count = Number(gem.count) || 0;
+  const pierre = count === 1 ? "pierre" : "pierres";
+  diametreEl.textContent =
+    `Ø ${formatMmFr(diametre)} mm · ${count} ${pierre}`;
+  let ecart = gem.ecart_min_mm;
+  if (Object.hasOwn(gemDiametreOverride, gem.name)
+      && Number.isFinite(gem.voisine_min_mm)) {
+    ecart = gem.voisine_min_mm - diametre;
+  }
+  if (!Number.isFinite(ecart)) {
+    ecartEl.textContent = "écart mini —";
+    ecartEl.classList.remove("negative");
+  } else {
+    ecartEl.textContent = `écart mini ${formatMmFr(ecart)} mm`;
+    ecartEl.classList.toggle("negative", ecart < 0);
+  }
+  hud.hidden = false;
+}
+
+function restoreGemSelection() {
+  if (selectedGem) {
+    const names = (lastTree?.gems ?? []).map((item) => item.name);
+    if (!names.includes(selectedGem.name)) {
+      selectedGem = null;
+      gemDiametreOverride = {};
+    }
+  }
+  paintGemSelection();
+  updateGemHud();
+  updateGapOverlay();
+}
+
+function selectGem(name, index) {
+  selectedGem = { name, index };
+  paintGemSelection();
+  updateGemHud();
+  updateGapOverlay();
+}
+
+function clearGemSelection() {
+  selectedGem = null;
+  gemDiametreOverride = {};
+  gemResizeWanted = null;
+  paintGemSelection();
+  updateGemHud();
+  clearGemGap();
+}
+
+function sendGemResize(name, diametre) {
+  if (gemResizeInflight) {
+    gemResizeWanted = { name, diametre };
+    return;
+  }
+  gemResizeInflight = true;
+  refresh(call("resize_gem", { gem: name, diametre })).finally(() => {
+    gemResizeInflight = false;
+    const pending = gemResizeWanted;
+    gemResizeWanted = null;
+    if (pending) sendGemResize(pending.name, pending.diametre);
+    else delete gemDiametreOverride[name];
+  });
+}
+
+function applyGemDiametre(delta) {
+  if (!selectedGem) return;
+  const gem = (lastTree?.gems ?? []).find(
+    (item) => item.name === selectedGem.name);
+  if (!gem) return;
+  const current = currentGemDiametre(gem.name, gem.diametre);
+  const next = Math.round((current + delta) * 10) / 10;
+  if (next < GEM_MIN_MM - 1e-9) return;
+  if (Math.abs(next - current) < 1e-9) return;
+  gemDiametreOverride[gem.name] = next;
+  updateGemHud();
+  updateGapOverlay();
+  sendGemResize(gem.name, next);
 }
 
 function hexColor(value) {
@@ -869,6 +1098,7 @@ renderer.domElement.addEventListener("pointermove", (event) => {
     gemDrag.lastNormal = normal;
     gemDrag.lastFaceId = group.faceId;
     gemDrag.moved = true;
+    updateGapOverlay();
     return;
   }
   if (planePicking) {
@@ -997,6 +1227,7 @@ renderer.domElement.addEventListener("pointerdown", (event) => {
     moved: false,
   };
   controls.enabled = false;
+  selectGem(mesh.userData.gem.name, hit.instanceId);
 });
 renderer.domElement.addEventListener("pointerup", (event) => {
   if (sketchMode.active) return;
@@ -1005,7 +1236,10 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     gemDrag = null;
     controls.enabled = true;
     pressPosition = null;
-    if (!drag.moved) return;
+    if (!drag.moved) {
+      selectGem(drag.name, drag.index);
+      return;
+    }
     const point = drag.lastPoint;
     const params = {
       gem: drag.name,
@@ -1154,6 +1388,7 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     lastFaceHit = null;
     clearPlaneChoice();
     clearFeatureDims();
+    clearGemSelection();
   }
   if (lastTree) renderTree(lastTree);
 });
@@ -1432,6 +1667,15 @@ document.addEventListener("keydown", (event) => {
   if (sketchMode.active) return;
   // Typing in a panel field must not trigger view shortcuts (F, Ctrl+1…).
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && selectedGem) {
+    const plus = event.key === "+" || event.code === "NumpadAdd";
+    const minus = event.key === "-" || event.code === "NumpadSubtract";
+    if (plus || minus) {
+      event.preventDefault();
+      applyGemDiametre(plus ? GEM_STEP_MM : -GEM_STEP_MM);
+      return;
+    }
+  }
   if ((event.key === "f" || event.key === "F")
       && !event.ctrlKey && !event.metaKey && !event.altKey) {
     frameView(null, null);
@@ -1465,6 +1709,9 @@ document.addEventListener("keydown", (event) => {
     else if (paramPickEl.style.display === "block") closeParamPicker();
     else if (graphWiring) cancelGraphWire();
     else closeGraph();
+  } else if (event.key === "Escape" && selectedGem) {
+    event.preventDefault();
+    clearGemSelection();
   } else if (graphOpen && (event.key === "Delete" || event.key === "Suppr")) {
     event.preventDefault();
     if (graphPalette.style.display === "block") return;

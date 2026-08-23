@@ -137,14 +137,17 @@ function _finiteNumber(value) {
 }
 
 /**
- * Écart entre sièges (entraxe − diamètre), ou null si le moteur n'a
- * pas encore fourni de géométrie.
+ * Écart entre sièges, ou null si le moteur n'a pas encore fourni de
+ * géométrie. Préfère la mesure réelle (`ecart_min_mm`) à la formule
+ * d'arc `entraxe_mm − diametre`.
  *
- * @param {{ entraxe_mm?: number, diametre?: number, ecart_sieges_mm?: number }|null|undefined} gem
+ * @param {{ entraxe_mm?: number, diametre?: number, ecart_sieges_mm?: number, ecart_min_mm?: number }|null|undefined} gem
  * @returns {number|null}
  */
 export function seatingGapMm(gem) {
   if (!gem) return null;
+  const measured = _finiteNumber(gem.ecart_min_mm);
+  if (measured != null) return measured;
   const stored = _finiteNumber(gem.ecart_sieges_mm);
   if (stored != null) return stored;
   const entraxe = _finiteNumber(gem.entraxe_mm);
@@ -154,18 +157,24 @@ export function seatingGapMm(gem) {
 }
 
 /**
+ * Demi-largeur du frôlement. L'arc à +4,25e-4 mm n'est pas un écart,
+ * c'est du bruit (corde vs arc). Au-delà (C à +0,085 mm), on se tait.
+ */
+export const COMBINE_MEMORY_GRAZE_MM = 1e-3;
+
+/**
  * True si A/C ont explosé pour cette géométrie : chevauchement, ou
  * frôlement (écart ≤ 0) sur un jonc de bague.
  *
- * @param {{ rayon_mm?: number, entraxe_mm?: number, diametre?: number, ecart_sieges_mm?: number, chevauchement?: boolean }|null|undefined} gem
+ * @param {{ rayon_mm?: number, entraxe_mm?: number, diametre?: number, ecart_sieges_mm?: number, ecart_min_mm?: number, chevauchement?: boolean }|null|undefined} gem
  */
 export function combineNeedsMemoryWarning(gem) {
   if (!gem) return false;
   if (gem.chevauchement === true) return true;
   const gap = seatingGapMm(gem);
   if (gap == null) return false;
-  if (gap < COMBINE_MEMORY_WARN_GAP_MM) return true;
-  if (gap > COMBINE_MEMORY_WARN_GAP_MM) return false;
+  if (gap < COMBINE_MEMORY_WARN_GAP_MM - COMBINE_MEMORY_GRAZE_MM) return true;
+  if (gap > COMBINE_MEMORY_WARN_GAP_MM + COMBINE_MEMORY_GRAZE_MM) return false;
   const radius = _finiteNumber(gem.rayon_mm);
   if (radius == null) return false;
   return radius <= COMBINE_MEMORY_WARN_RADIUS_MM;

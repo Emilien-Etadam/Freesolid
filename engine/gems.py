@@ -127,6 +127,45 @@ def seating_gap_mm(entraxe_mm, diametre_mm):
     return entraxe - diametre
 
 
+def voisines_min_mm(points, rayons):
+    """Pour chaque pierre : (entraxe, écart) avec sa plus proche voisine.
+
+    ``points`` : liste de (x, y, z). ``rayons`` : demi-diamètres, même
+    ordre. Rend une liste de (entraxe_mm, ecart_mm), ``(None, None)``
+    quand il n'y a pas d'autre pierre.
+
+    La plus proche se choisit sur l'entraxe, pas sur l'écart. Double
+    boucle symétrique : chaque paire mise à jour des deux côtés.
+    """
+    n = min(len(points), len(rayons))
+    best_entraxe = [None] * n
+    best_ecart = [None] * n
+    if n < 2:
+        return list(zip(best_entraxe, best_ecart))
+    coords = []
+    radii = []
+    for i in range(n):
+        point = points[i]
+        coords.append((float(point[0]), float(point[1]), float(point[2])))
+        radii.append(float(rayons[i]))
+    for i in range(n):
+        xi, yi, zi = coords[i]
+        ri = radii[i]
+        for j in range(i + 1, n):
+            dx = xi - coords[j][0]
+            dy = yi - coords[j][1]
+            dz = zi - coords[j][2]
+            entraxe = math.sqrt(dx * dx + dy * dy + dz * dz)
+            ecart = entraxe - (ri + radii[j])
+            if best_entraxe[i] is None or entraxe < best_entraxe[i]:
+                best_entraxe[i] = entraxe
+                best_ecart[i] = ecart
+            if best_entraxe[j] is None or entraxe < best_entraxe[j]:
+                best_entraxe[j] = entraxe
+                best_ecart[j] = ecart
+    return list(zip(best_entraxe, best_ecart))
+
+
 def face_name(index) -> str:
     """Index tessellation 0-based → nom OCCT ``FaceN`` (1-based)."""
     number = int(index)

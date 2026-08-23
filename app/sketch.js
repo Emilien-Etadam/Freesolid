@@ -16,14 +16,14 @@ import {
   dimEditPayload, dimLabel, openDimEditor, sketchDimAnchor,
 } from "./dims.js";
 
-export function createDimSprite(text, x, y, z = 0.01) {
+export function createDimSprite(text, x, y, z = 0.01, color = "#7fc4ff") {
   const canvas = document.createElement("canvas");
   canvas.width = 256; canvas.height = 40;
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "rgba(23,25,28,0.85)";
   ctx.fillRect(0, 0, 256, 40);
   ctx.font = "22px system-ui";
-  ctx.fillStyle = "#7fc4ff";
+  ctx.fillStyle = color;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, 128, 21);

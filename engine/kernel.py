@@ -1661,6 +1661,10 @@ class Kernel:
     _GEM_ANCHOR_PROPS = (
         ("FreeSolidGemFace", "App::PropertyString",
          "Face d'ancrage du semis (nom OCCT, ex. Face3)"),
+        ("FreeSolidGemOwner", "App::PropertyString",
+         "Fonction propriétaire de la face d'ancrage"),
+        ("FreeSolidGemElement", "App::PropertyString",
+         "Nom mappé de la face sur cette fonction"),
         ("FreeSolidGemU", "App::PropertyFloatList",
          "Paramètres u, un par pierre"),
         ("FreeSolidGemV", "App::PropertyFloatList",
@@ -1932,6 +1936,8 @@ class Kernel:
             link.ShowElement = False
         self._ensure_gem_anchor_props(link)
         link.FreeSolidGemFace = face_name
+        link.FreeSolidGemOwner = ""
+        link.FreeSolidGemElement = ""
         link.FreeSolidGemU = []
         link.FreeSolidGemV = []
         link.FreeSolidGemSpin = []
@@ -1943,6 +1949,7 @@ class Kernel:
         try:
             index = self._face_index_or_none(face_name)
             if index is not None:
+                self._capture_gem_couple(link, index)
                 face, _ = self._anchor_face(index)
                 if is_bspline_surface(face):
                     link.Label = link.Label + " (surface libre)"
@@ -2024,19 +2031,122 @@ class Kernel:
             except Exception:
                 pass
 
+    def _element_map_populated(self, shape=None):
+        """True si la carte d'éléments du corps est peuplée.
+
+        Repli explicite : une carte vide (FreeCAD ancien, forme
+        importée) interdit la capture — on résout par indice, comme
+        avant P044. Pas un ``try`` autour de la capture.
+        """
+        if shape is None:
+            body = self._body
+            shape = getattr(body, "Shape", None) if body is not None else None
+        if shape is None:
+            return False
+        size = getattr(shape, "ElementMapSize", None)
+        if size is None:
+            return False
+        try:
+            return int(size) > 0
+        except (TypeError, ValueError):
+            return False
+
+    def _mapped_element_name(self, shape, indexed):
+        if shape is None:
+            return ""
+        fn = getattr(shape, "getElementMappedName", None)
+        if not callable(fn):
+            return ""
+        try:
+            value = fn(indexed)
+        except Exception:
+            return ""
+        if isinstance(value, (tuple, list)):
+            value = value[0] if value else ""
+        return str(value or "")
+
+    def _element_history(self, bearer, mapped):
+        if bearer is None or not mapped:
+            return None
+        fn = getattr(bearer, "getElementHistory", None)
+        if not callable(fn):
+            shape = getattr(bearer, "Shape", None)
+            fn = getattr(shape, "getElementHistory", None) if shape is not None else None
+        if not callable(fn):
+            return None
+        try:
+            return fn(mapped)
+        except Exception:
+            return None
+
+    def _history_pairs_for_face(self, face_index):
+        """Généalogie d'une face du corps : liste de ``(fonction, nom mappé)``."""
+        from engine.gems import face_name, trace_pairs
+        body = self._body
+        if body is None:
+            return []
+        indexed = face_name(face_index)
+        mapped = self._mapped_element_name(getattr(body, "Shape", None), indexed)
+        bearer = body
+        if not mapped:
+            tip = getattr(body, "Tip", None)
+            if tip is not None:
+                mapped = self._mapped_element_name(
+                    getattr(tip, "Shape", None), indexed)
+                if mapped:
+                    bearer = tip
+        if not mapped:
+            return []
+        pairs = trace_pairs(self._element_history(bearer, mapped))
+        head = (str(getattr(bearer, "Name", "") or ""), str(mapped))
+        if head[0] and head not in pairs:
+            pairs = [head] + list(pairs)
+        return pairs
+
+    def _gem_stored_couple(self, link):
+        owner = str(getattr(link, "FreeSolidGemOwner", "") or "")
+        element = str(getattr(link, "FreeSolidGemElement", "") or "")
+        if owner and element:
+            return (owner, element)
+        return None
+
+    def _capture_gem_couple(self, link, face_index):
+        """Enregistre le couple propriétaire. No-op si la carte est vide."""
+        from engine.gems import owner_couple
+        self._ensure_gem_anchor_props(link)
+        if not self._element_map_populated():
+            return
+        couple = owner_couple(self._history_pairs_for_face(face_index))
+        if couple is None:
+            return
+        link.FreeSolidGemOwner = couple[0]
+        link.FreeSolidGemElement = couple[1]
+
+    def _resolve_gem_couple(self, couple, n_faces):
+        from engine.gems import resolution_verdict
+        hits = []
+        for index in range(n_faces):
+            if couple in self._history_pairs_for_face(index):
+                hits.append(index)
+        return resolution_verdict(hits), hits
+
     def _refresh_gem_placements(self):
         """Recalcule PlacementList depuis (u, v) et la face courante.
 
-        Jamais de matrice figée : si la face a disparu (toponaming), le
-        semis se signale en erreur et garde sa dernière pose — il ne se
-        disperse pas.
+        Si le semis porte un couple de provenance, on cherche la face à
+        l'envers dans la généalogie. Ambigu ou perdu : on ne déplace
+        rien — l'indice précédent reste, l'erreur le dit. Sans couple,
+        résolution par indice comme avant, et capture au premier
+        recompute réussi (documents existants).
         """
-        from engine.gems import is_bspline_surface, placement_at
+        from engine.gems import face_name, is_bspline_surface, placement_at
         if self._doc is None or self._body is None:
             return
         shape = getattr(self._body, "Shape", None)
         faces = list(getattr(shape, "Faces", None) or ())
+        map_ready = self._element_map_populated(shape)
         for link in self._gem_links():
+            self._ensure_gem_anchor_props(link)
             us = list(link.FreeSolidGemU or [])
             vs = list(link.FreeSolidGemV or [])
             spins = list(link.FreeSolidGemSpin or [])
@@ -2049,6 +2159,20 @@ class Kernel:
             face_id = self._face_index_or_none(link.FreeSolidGemFace)
             error = ""
             face = None
+            couple = self._gem_stored_couple(link)
+            if couple is not None and map_ready:
+                verdict, hits = self._resolve_gem_couple(couple, len(faces))
+                if verdict == "résolu":
+                    face_id = hits[0]
+                    link.FreeSolidGemFace = face_name(face_id)
+                elif verdict == "ambigu":
+                    error = ("la face d'appui s'est scindée — les pierres "
+                             "ne savent plus laquelle suivre")
+                else:
+                    error = "la face d'appui a disparu"
+            if error:
+                link.FreeSolidGemError = error
+                continue
             if face_id is None or face_id < 0 or face_id >= len(faces):
                 error = ("la face d'ancrage « {} » a disparu — "
                          "le semis n'a pas été déplacé".format(
@@ -2069,6 +2193,8 @@ class Kernel:
                 link.FreeSolidGemError = error
                 continue
             link.FreeSolidGemError = ""
+            if couple is None and map_ready and face_id is not None:
+                self._capture_gem_couple(link, face_id)
             if not hasattr(link, "ElementCount") or not hasattr(
                     link, "PlacementList"):
                 continue
@@ -8549,6 +8675,62 @@ class Kernel:
             report["p035_fuse"] = (
                 len(self._require_body().Shape.Solids) == 1
                 and _volume() > vol_nu_fuse + 0.05)
+
+            mark("p044: ancre par provenance")
+            from engine.gems import face_radius_mm as _face_radius_mm
+
+            def _cylindre_ids(radius):
+                found = []
+                for i, face in enumerate(self._require_body().Shape.Faces):
+                    surface = getattr(face, "Surface", None)
+                    type_id = str(getattr(surface, "TypeId", "") or "")
+                    if "Cylinder" not in type_id:
+                        continue
+                    r = _face_radius_mm(face)
+                    if r is not None and abs(r - radius) < 1e-6:
+                        found.append(i)
+                return found
+
+            self.new_part("Tube P044")
+            state = self.sketch_start()
+            sk_p044 = state["sketch"]
+            self.sketch_add_circle(sk_p044, 0, 0, 10)
+            self.sketch_constrain(
+                sk_p044, "coincident", 0, point1=3, geo2=-1, point2=1)
+            self.sketch_add_circle(sk_p044, 0, 0, 4)
+            self.sketch_constrain(
+                sk_p044, "coincident", 1, point1=3, geo2=-1, point2=1)
+            self.sketch_finish(sk_p044)
+            self.add_pad(6, sketch=sk_p044)
+            bore_before = _cylindre_ids(4.0)
+            report["p044_alesage_avant"] = (len(bore_before) == 1)
+            alesage = bore_before[0] if len(bore_before) == 1 else None
+            if alesage is None:
+                report["p044_ancre"] = False
+            else:
+                face = self._require_body().Shape.Faces[alesage]
+                u0, u1, v0, v1 = face.ParameterRange
+                seed = face.valueAt((u0 + u1) / 2.0, (v0 + v1) / 2.0)
+                placed = self.place_gem(
+                    face=alesage, x=seed.x, y=seed.y, z=seed.z,
+                    diametre=1.5)
+                gem0 = (placed.get("gems") or [{}])[0]
+                report["p044_pose"] = (
+                    gem0.get("count") == 1 and not gem0.get("error"))
+                self.add_fillet(0.4, face=self._top_face_id())
+                after = (self.list_gems().get("gems") or [{}])[0]
+                bore_after = _cylindre_ids(4.0)
+                stone = (after.get("stones") or [{}])[0]
+                report["p044_indice_a_bouge"] = (
+                    len(bore_after) == 1 and alesage != bore_after[0])
+                report["p044_ancre"] = (
+                    len(bore_after) == 1
+                    and alesage != bore_after[0]
+                    and not after.get("error")
+                    and after.get("count") == 1
+                    and after.get("face_id") == bore_after[0]
+                    and abs((after.get("rayon_mm") or 0) - 4.0) < 1e-3
+                    and "x" in stone)
 
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce

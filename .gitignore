@@ -7,4 +7,5 @@ scripts/smoke/node_modules/
 scripts/smoke/shots/
 selftest-echecs.txt
 spike-element-map.json
+spike-toponaming-semis.json
 spike-techdraw-coupe.txt

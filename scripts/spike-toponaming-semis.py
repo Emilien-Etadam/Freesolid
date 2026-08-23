@@ -66,6 +66,11 @@ _REPO = os.path.dirname(_HERE)
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+#: Même convention que ``spike-element-map.py`` : la CI archive le JSON.
+_REPORT_PATH = os.environ.get(
+    "FREESOLID_SPIKE_REPORT",
+    os.path.join(_REPO, "spike-toponaming-semis.json"))
+
 R = {}
 
 
@@ -690,6 +695,13 @@ note("q7_cout", probe_cout)
 # --------------------------------------------------------------------------
 
 print(json.dumps(R, ensure_ascii=False, indent=1, default=str), flush=True)
+
+try:
+    with open(_REPORT_PATH, "w", encoding="utf-8") as fh:
+        json.dump(R, fh, ensure_ascii=False, indent=2, default=str)
+    print("spike> verdict écrit dans {}".format(_REPORT_PATH), flush=True)
+except Exception as exc:  # noqa: BLE001 — le rapport imprimé suffit
+    print("spike> rapport non écrit : {}".format(exc), flush=True)
 
 q0 = R.get("q0_bug") or {}
 q1 = R.get("q1_carte_corps") or {}

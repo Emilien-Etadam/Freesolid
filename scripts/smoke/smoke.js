@@ -92,6 +92,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       + " (attendu " + expectedGroups.join(", ") + ")");
   }
 
+  await page.click('[data-tab="jewel"]');
+  await sleep(150);
+  const jewelGroups = await page.$$eval(
+    "#ribbon-jewel .ribbon-group-label",
+    (els) => els.map((e) => e.textContent),
+  );
+  const expectedJewel = ["Pierres", "Réglage", "Contrôle"];
+  if (jewelGroups.join("|") !== expectedJewel.join("|")) {
+    errors.push("groupes Bijouterie : " + jewelGroups.join(", ")
+      + " (attendu " + expectedJewel.join(", ") + ")");
+  }
+  await page.screenshot({ path: path.join(SHOTS, "0-ribbon-bijouterie.png") });
+  const gemInJewel = await page.$("#ribbon-jewel #btn-gem");
+  const gemInFeatures = await page.$("#ribbon-features #btn-gem");
+  if (!gemInJewel) errors.push("btn-gem absent du ruban Bijouterie");
+  if (gemInFeatures) errors.push("btn-gem encore dans le ruban Fonctions");
+  await page.click('[data-tab="features"]');
+  await sleep(100);
+
   // 0. Panneaux du ruban : couverture de FEATURES, pas un compteur.
   const { FEATURES } = await import(
     pathToFileURL(path.join(__dirname, "../../app/features.js")).href
@@ -108,7 +127,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-text", tab: "features" },
     { id: "btn-graph-feature", tab: "features" },
     { id: "btn-repeat-variable", tab: "features" },
-    { id: "btn-gem", tab: "features" },
+    { id: "btn-gem", tab: "jewel" },
     { id: "btn-fillet", tab: "features" },
     { id: "btn-chamfer", tab: "features" },
     { id: "btn-shell", tab: "features" },

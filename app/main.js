@@ -11,6 +11,12 @@ import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
 import { FEATURES } from "./features.js";
 import {
+  formatMmFr,
+  gemDiametreDeltaFromButton,
+  gemDiametreDeltaFromKey,
+  gemRibbonState,
+} from "./gem-controls.js";
+import {
   formatProgressStatus,
   noteProgressForCalibration,
   rememberCombineFinished,
@@ -338,7 +344,6 @@ const warnedSplineFaces = new Set();
 const gemMaterial = new THREE.MeshStandardMaterial({
   color: 0xd4e4f2, metalness: 0.35, roughness: 0.22,
 });
-const GEM_STEP_MM = 0.1;
 const GEM_MIN_MM = 0.1;
 const GEM_IDLE_COLOR = new THREE.Color(0xffffff);
 const GEM_SELECTED_COLOR = new THREE.Color(0xffb040);
@@ -468,9 +473,27 @@ function gemWorldPositions() {
   return out;
 }
 
-function formatMmFr(value, digits = 2) {
-  if (!Number.isFinite(value)) return "—";
-  return value.toFixed(digits).replace(".", ",");
+function updateGemRibbon() {
+  const minus = document.getElementById("btn-gem-minus");
+  const plus = document.getElementById("btn-gem-plus");
+  const readout = document.getElementById("gem-diametre-readout");
+  if (!minus || !plus || !readout) return;
+  const gem = selectedGem
+    ? (lastTree?.gems ?? []).find((item) => item.name === selectedGem.name)
+    : null;
+  const diametre = gem ? currentGemDiametre(gem.name, gem.diametre) : NaN;
+  const state = gemRibbonState(!!gem, diametre);
+  minus.disabled = state.disabled;
+  plus.disabled = state.disabled;
+  minus.title = state.minusTitle;
+  plus.title = state.plusTitle;
+  if (minus.parentElement?.classList.contains("ribbon-tip")) {
+    minus.parentElement.title = state.minusTitle;
+  }
+  if (plus.parentElement?.classList.contains("ribbon-tip")) {
+    plus.parentElement.title = state.plusTitle;
+  }
+  readout.textContent = state.label;
 }
 
 function currentGemDiametre(name, fallback) {
@@ -584,6 +607,7 @@ function paintGemSelection() {
 }
 
 function updateGemHud() {
+  updateGemRibbon();
   const hud = document.getElementById("gem-hud");
   const diametreEl = document.getElementById("gem-hud-diametre");
   const ecartEl = document.getElementById("gem-hud-ecart");
@@ -1679,11 +1703,10 @@ document.addEventListener("keydown", (event) => {
   // Typing in a panel field must not trigger view shortcuts (F, Ctrl+1…).
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
   if (!event.ctrlKey && !event.metaKey && !event.altKey && selectedGem) {
-    const plus = event.key === "+" || event.code === "NumpadAdd";
-    const minus = event.key === "-" || event.code === "NumpadSubtract";
-    if (plus || minus) {
+    const delta = gemDiametreDeltaFromKey(event);
+    if (delta) {
       event.preventDefault();
-      applyGemDiametre(plus ? GEM_STEP_MM : -GEM_STEP_MM);
+      applyGemDiametre(delta);
       return;
     }
   }
@@ -2802,6 +2825,7 @@ const RIBBONS = {
   sketch: "sketchbar",
   surfaces: "ribbon-surfaces",
   assembly: "ribbon-assembly",
+  jewel: "ribbon-jewel",
 };
 
 function showTab(name) {
@@ -5249,11 +5273,19 @@ function openFeaturePanel(entry, sketchOverride) {
 }
 
 function bindFeature(entry) {
-  document.getElementById(entry.button).addEventListener("click", () =>
-    featureCommand(() => openFeaturePanel(entry)));
+  const ids = entry.buttons ?? [entry.button];
+  for (const id of ids) {
+    document.getElementById(id).addEventListener("click", () =>
+      featureCommand(() => openFeaturePanel(entry)));
+  }
 }
 
 for (const entry of FEATURES) bindFeature(entry);
+
+document.getElementById("btn-gem-minus").addEventListener("click", () =>
+  applyGemDiametre(gemDiametreDeltaFromButton("minus")));
+document.getElementById("btn-gem-plus").addEventListener("click", () =>
+  applyGemDiametre(gemDiametreDeltaFromButton("plus")));
 
 document.getElementById("btn-body").addEventListener("click", () =>
   featureCommand(() => {

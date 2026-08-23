@@ -88,7 +88,22 @@
     cursor: pointer;
   }
   button:hover { border-color: var(--accent); }
+  button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+  button:disabled:hover { border-color: var(--line); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .ribbon-tip { display: inline-flex; }
+  #gem-diametre-readout {
+    min-width: 5.8em;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    user-select: none;
+    white-space: nowrap;
+  }
   button img { width: 16px; height: 16px; display: block; pointer-events: none; }
   header button, #sketchbar button, #viewbar button {
     display: inline-flex; align-items: center; gap: 6px;
@@ -569,6 +584,7 @@
       <button class="tab" data-tab="sketch">Esquisse</button>
       <button class="tab" data-tab="surfaces">Surfaces</button>
       <button class="tab" data-tab="assembly">Assemblage</button>
+      <button class="tab" data-tab="jewel">Bijouterie</button>
       <span class="push"></span>
       <button id="btn-settings" title="Réglages"><img src="icons/FreeSolid_Settings.svg" alt=""></button>
       <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt=""></button>
@@ -612,7 +628,6 @@
           <button id="btn-helix" title="Hélice — ressorts, filets réels"><img src="icons/PartDesign_AdditiveHelix.svg" alt="">Hélice</button>
           <button id="btn-text" title="Gravure / bossage de texte sur une face — marquage de pièces"><img src="icons/Draft_ShapeString.svg" alt="">Texte</button>
           <button id="btn-graph-feature" title="Fonction graphe — flux de nœuds, boucles et listes, une forme en sortie"><img src="icons/Geoassembly.svg" alt="">Fonction graphe</button>
-          <button id="btn-gem" title="Pierre — poser sur une face, aimantée à la surface"><img src="icons/nodes_cylinder.svg" alt="">Pierre</button>
         </div>
         <div class="ribbon-group-label">Fonctions</div>
       </div>
@@ -633,6 +648,32 @@
           <button id="btn-repeat-variable" title="Répétition variable — rejoue un groupe avec des cotes différentes"><img src="icons/PartDesign_LinearPattern.svg" alt="">Rép. variable</button>
         </div>
         <div class="ribbon-group-label">Répétitions</div>
+      </div>
+    </div>
+    <div id="ribbon-jewel" class="ribbon">
+      <div class="ribbon-group">
+        <div class="ribbon-group-btns">
+          <button id="btn-gem" title="Pierre — poser sur une face, aimantée à la surface"><img src="icons/nodes_cylinder.svg" alt="">Pierre</button>
+        </div>
+        <div class="ribbon-group-label">Pierres</div>
+      </div>
+      <div class="ribbon-group">
+        <div class="ribbon-group-btns">
+          <span class="ribbon-tip" title="Sélectionnez une pierre pour régler le diamètre">
+            <button id="btn-gem-minus" title="Sélectionnez une pierre pour régler le diamètre" disabled>Ø −</button>
+          </span>
+          <span id="gem-diametre-readout">Ø —</span>
+          <span class="ribbon-tip" title="Sélectionnez une pierre pour régler le diamètre">
+            <button id="btn-gem-plus" title="Sélectionnez une pierre pour régler le diamètre" disabled>Ø +</button>
+          </span>
+        </div>
+        <div class="ribbon-group-label">Réglage</div>
+      </div>
+      <div class="ribbon-group">
+        <div class="ribbon-group-btns">
+          <button id="btn-gem-combine" title="Combiner deux corps : Soustraire / Ajouter / Intersection"><img src="icons/PartDesign_Boolean.svg" alt="">Combiner</button>
+        </div>
+        <div class="ribbon-group-label">Contrôle</div>
       </div>
     </div>
     <div id="ribbon-surfaces" class="ribbon">

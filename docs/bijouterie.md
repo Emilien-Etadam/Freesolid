@@ -1193,3 +1193,251 @@ Une variable à la fois, et dans le régime visé :
 Tant que ce n'est pas fait, les seuils livrés restent **la meilleure
 hypothèse disponible**, et c'est déjà mieux qu'une constante linéaire — mais
 ils sont calés sur une variable que les données ne désignent pas.
+
+---
+
+# 7.11 P040 : le bon facteur, et une alarme qui ne sonnera jamais
+
+*Relu le 2026-08-21.* Le protocole est juste et le verdict tient : **c'est
+l'écart entre sièges qui décide**, pas le nombre, pas la courbure. Une
+variable par campagne, le régime d'une bague testé, et C lancée pour la
+bonne raison — A n'explosait qu'au chevauchement.
+
+Vérifié ici : `pytest` 255, tests JS 155.
+
+Deux résultats méritent d'être retenus au-delà des seuils.
+
+**La courbure est innocentée.** B tient de 8 à 48 mm à écart positif :
+1,02 s → 0,83 s. Mon hypothèse des quasi-tangences, écrite dans P040, est
+**infirmée à cet effectif** — et dite comme telle, ce qui est la bonne façon
+de traiter une hypothèse qui tombe.
+
+**Le temps n'est pas où je le croyais.** Le coût part de la **reconstruction
+de l'arbre** (~79 s sur 122), pas du booléen (~2–3 s). Or P037 posait
+l'inverse : « un `PartDesign::Boolean` est un appel OCCT opaque, c'est là que
+passe l'essentiel du temps ». C'était faux. Un recompute de document itère
+sur des objets — il est donc **plus observable** qu'un booléen, et
+l'avancement pourrait y être plus fin qu'une phase nommée.
+
+## L'alarme ne se déclenchera jamais
+
+`combineNeedsMemoryWarning` (`app/progress.js:162`) compare l'écart en
+flottant brut :
+
+- `gap < 0` → alarme ;
+- `gap > 0` → silence ;
+- `gap === 0` → alarme si le jonc fait ≤ 12 mm.
+
+Le rayon ne sert donc **qu'à l'égalité exacte à zéro**. Et cette égalité ne
+se produira jamais sur une géométrie réelle, puisque l'écart vaut
+`2πr/n − Ø` — un flottant qui tombe sur `0.0` avec une probabilité nulle.
+
+Le cas de P039 qui a consommé **12,1 GiB** le montre :
+
+| | Rayon | Pierres | Écart réel | Verdict de la règle |
+|---|---|---|---|---|
+| Explosion P039 | 11,94 mm | 50 | **+4,25 × 10⁻⁴ mm** | `gap > 0` → **silence** |
+
+Il ne tombait sur zéro exact dans la sonde que parce qu'elle **construisait
+le rayon depuis l'entraxe** : l'aller-retour s'annulait au dernier bit.
+`r = 50 × 1,5 / 2π` redonne exactement 1,5. Une bague dessinée par un
+utilisateur, non.
+
+**Autrement dit : la géométrie qui a mangé douze gigaoctets ne recevrait
+aujourd'hui aucun avertissement.**
+
+## Ce que ça demande
+
+Le critère physique n'est pas « écart nul » mais « les sièges se frôlent ».
+Il lui faut donc une **bande de tolérance**, proportionnelle au diamètre de
+pierre, et non une égalité de flottant.
+
+Où la placer ? **On ne le sait pas** : C a mesuré +0,085 mm qui passe et
+−0,12 mm qui explose. Entre les deux, rien — et l'explosion de P039 se
+trouve précisément là, à +0,0004 mm. Toute cette bande est à considérer
+comme suspecte jusqu'à mesure.
+
+C'est la troisième fois qu'un seuil se cale sur ce que les données ne disent
+pas. Les deux premières portaient sur la mauvaise **variable** ; celle-ci sur
+la mauvaise **comparaison**.
+
+---
+
+# La mesure remplace le calcul — et le geste redevient manuel
+
+## L'erreur de lecture, dite d'abord
+
+« Placer des pierres en pavage » : j'ai lu *remplissage automatique d'une
+face*, et j'ai écrit un algorithme de marche métrique sur la première forme
+fondamentale, avec correction du registre en quinconce, vérifié sur plan,
+cylindre et cône. Puis le designer a dit : **« les pierres sont placées une à
+une à la main. rien d'automatique pour le moment »** — et JewelCraft ne pave
+pas automatiquement non plus.
+
+La sonde a été supprimée sans être poussée. Ce qui suit ne garde de cet
+épisode que deux chiffres, au cas où le remplissage automatique reviendrait
+un jour à l'ordre du jour :
+
+- une **grille régulière en `(u, v)`** sur un cône dont le rayon passe de 6 à
+  12 mm pose des pierres à **0,299 mm** l'une de l'autre quand on en demande
+  1,7 : `(u, v)` n'est pas métrique, `u` est un angle ;
+- un **quinconce appliqué à l'aveugle** sur ce même cône retombe à 1,472 mm,
+  soit `√3/2` du pas. Chaque rangée porte un nombre entier de pierres, ce
+  nombre grimpe de rang en rang (22, 25, 29, 32…), donc le décalage d'une
+  demi-maille ne tombe plus *entre* deux pierres mais *sur* une.
+
+Corrigés tous deux, l'écart réel tient à −1,1 % du pas demandé. Le code
+n'existe plus ; le piège est noté.
+
+## Ce que le geste manuel demande vraiment
+
+Poser à la main sans chiffre à l'écran, c'est poser à l'aveugle. Trois
+manques, aucun automatisme :
+
+1. deux touches, `+` et `−`, qui changent le diamètre de 0,1 mm ;
+2. le diamètre affiché ;
+3. **l'écart entre les pierres, affiché en continu pendant qu'on en glisse
+   une.**
+
+## Deux chiffres, pas un
+
+- **entraxe** — distance entre centres ;
+- **écart** — distance entre bords : `entraxe − (Ø₁ + Ø₂)/2`.
+
+La demi-somme, et non un seul diamètre : deux semis de tailles différentes
+peuvent voisiner sur la même face. Le balayage porte donc sur **toutes les
+pierres de tous les semis**, pas semis par semis.
+
+Et la plus proche voisine se choisit sur **l'entraxe**, pas sur l'écart : dès
+que les diamètres diffèrent, les deux ne classent pas pareil.
+
+## La double boucle suffit — mesuré
+
+| Pierres | Double boucle symétrique |
+|---|---|
+| 50 | 0,3 ms |
+| 100 | 1,0 ms |
+| 200 | 4,6 ms |
+| 400 | 17,4 ms |
+| 800 | 67 ms |
+
+J'ai écrit une grille de hachage avant de mesurer, et je l'ai eue **fausse
+deux fois** : elle rate le voisin quand il est dans la même case, puis quand
+il est à plus d'une case (la règle d'arrêt doit être `meilleur ≤ r × maille`,
+et l'anneau `r = 0` — la case du point lui-même — doit être balayé). Elle ne
+gagnerait qu'au-delà du millier de pierres, effectif qu'un placement à la main
+n'atteint pas.
+
+## Ce que ça retire
+
+Une mesure réelle rend la comparaison de la section précédente inutile.
+`entraxe_mm = 2πR/n` supposait que les pierres font le tour complet du jonc ;
+sur la géométrie qui a consommé 12,1 GiB il rendait `+4,25 × 10⁻⁴ mm`, donc
+`gap > 0`, donc silence. `ecart_min_mm` est la distance qui sépare vraiment
+les deux pierres les plus proches — la branche devient atteignable sans bande
+de tolérance à calibrer.
+
+**`prompts/P041-bande-de-frolement.md` est retiré sans être exécuté.** Il
+corrigeait un seuil sur un chiffre dérivé ; le chiffre dérivé disparaît.
+
+## Relecture de P042 — trois défauts, dont un silencieux
+
+Le mécanisme est bon. `voisines_min_mm` est juste (testée contre la référence
+naïve sur 200 points), `resize_gem` traite correctement le gabarit partagé, le
+bandeau et la ligne d'écart tiennent. Le tintage d'instance par `setColorAt`
+marche sans `vertexColors` — `prefixFragment` de three r160 définit `USE_COLOR`
+dès que `instancingColor` est vrai (ligne 20149 du bundle) ; j'ai suspecté un
+défaut là et j'avais tort.
+
+### L'empreinte du booléen ignore la cote
+
+`_gem_placement_fingerprint` ne signe que position et quaternion. `resize_gem`
+ne bouge aucun placement — c'est son principe — donc l'empreinte est
+identique, donc `_set_gem_boolean_shape` rend `False`, donc `obj.Shape` n'est
+pas réécrite.
+
+**Poser, combiner, taper `+` : les pierres grossissent, le logement dans le
+métal reste à l'ancienne cote.** Rien ne le signale ; la pièce exportée est
+fausse. C'est le seul défaut qui abîme la géométrie.
+
+### La sélection ne suit pas la pierre d'une face à l'autre
+
+`selectedGem` est posé au `pointerdown` et jamais mis à jour. `move_gem` vers
+une autre face retire la pierre du semis source et l'ajoute à la fin du semis
+destination : ni le nom ni l'indice ne survivent. Ou la surbrillance saute sur
+la pierre qui a pris la place — et le clavier redimensionne le mauvais semis —
+ou la sélection tombe. C'est le croisement exact de P036 et P042.
+
+### La bande de frôlement démontre l'inverse de ce qu'on en a tiré
+
+L'observation de Cursor est fine : `entraxe_mm = 2πR/n` est un **arc**,
+`voisines_min_mm` mesure une **corde**.
+
+| | Valeur | Écart à Ø 1,5 |
+|---|---|---|
+| arc `2πR/n` | 1,5004247 | **+4,25 × 10⁻⁴** |
+| corde `2R·sin(π/n)` | 1,4994376 | **−5,62 × 10⁻⁴** |
+
+`voisines_min_mm` appelée sur 50 points d'un cercle de rayon 11,94 rend
+`ecart_min_mm = −0,0005624`. **Négatif** : `gap < 0` se déclenche seul, sans
+bande. La géométrie qui a mangé 12,1 GiB ne « frôlait » pas — mesurée, elle
+chevauchait de 0,56 µm, et c'est la formule d'arc qui affichait un jour là où
+il n'y en avait pas.
+
+Le test livré construit pourtant `ecart_min_mm: 4.25e-4` à la main : la valeur
+d'arc, que le moteur ne peut pas rendre pour cette géométrie. Il passe, mais il
+valide la bande sur une entrée impossible.
+
+Quatrième seuil de ce fichier calé sur un chiffre qui ne dit pas ce que son nom
+annonce — et celui-là vient de moi : mon prompt promettait que la mesure
+rendrait l'alarme atteignable sans dire par quel mécanisme. La bande garde
+tout son sens sur le **chemin de repli**, où l'erreur arc-corde vaut justement
+~1 × 10⁻³ mm à l'échelle d'une bague. C'est là qu'elle va.
+
+## Relecture de P043 — les quatre correctifs tiennent
+
+CI verte sur `63f0ee4`, les six jobs, **selftest compris sur la version de
+référence** : le doute sur le FreeCAD 1.0.0 local est levé, `p043_booleen_suit_cote`
+passe aussi sur 1.1.3.
+
+### L'empreinte
+
+`_gem_template_signature` signe le nom du gabarit et toutes les variables
+numériques de sa VarSet, triées. Les deux chemins de `resize_gem` la font
+bouger : écriture en place sur la VarSet, ou changement de `LinkedObject`.
+Le compound est recuit depuis un `body.Shape` déjà recalculé — `_recompute`
+fait `doc.recompute()` avant d'appeler `_refresh_gem_boolean_tools`.
+
+Le test du selftest discrimine bien : sans le correctif, l'empreinte est
+identique, `_set_gem_boolean_shape` rend `False`, `obj.Shape` n'est pas
+réécrite, le volume ne bouge pas, `abs(diff) > 1e-3` est faux.
+
+Les documents déjà enregistrés portent l'ancienne empreinte (`Nom#placements`)
+et se recuisent une fois au premier recompute. C'est la bonne direction.
+
+### La sélection
+
+`move_gem` rend `gem_moved`. Le client le lit dans le `.then` de l'appel, donc
+**avant** que `refresh` ne rende l'arbre : `restoreGemSelection`, appelé plus
+tard par `showGems`, trouve la sélection déjà à jour et la peint. Sur une même
+face, `dest_index` vaut `number` et la clé porte la même adresse qu'avant.
+
+### La bande
+
+Confinée au repli : `graze = 0` dès que `ecart_min_mm` est présent. Le test
+construit les 50 points du cercle et mesure la corde au lieu d'écrire la valeur
+d'arc à la main. Trois cas couverts : mesure négative → alerte, mesure positive
+→ silence, repli sans mesure → alerte.
+
+### Deux observations qui ne valent pas un prompt
+
+- `_gem_template_signature` **saute les booléens** (`isinstance(raw, bool)`).
+  Aucun gabarit n'a de variable booléenne aujourd'hui ; le jour où il y en aura
+  une, elle ne sera pas signée — c'est la classe de défaut qu'on vient de
+  corriger, mais elle n'est pas atteignable.
+- Pendant qu'une touche est en vol, le bandeau affiche l'écart de la paire la
+  plus serrée **de la pièce**, alors qu'au repos il affiche celui du semis
+  sélectionné. Les deux coïncident sauf s'il existe un second semis plus serré
+  ailleurs. Transitoire, le retour du moteur corrige.
+
+Aucune des deux ne justifie une passe de plus.

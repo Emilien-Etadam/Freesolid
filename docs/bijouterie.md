@@ -1339,3 +1339,57 @@ de tolérance à calibrer.
 
 **`prompts/P041-bande-de-frolement.md` est retiré sans être exécuté.** Il
 corrigeait un seuil sur un chiffre dérivé ; le chiffre dérivé disparaît.
+
+## Relecture de P042 — trois défauts, dont un silencieux
+
+Le mécanisme est bon. `voisines_min_mm` est juste (testée contre la référence
+naïve sur 200 points), `resize_gem` traite correctement le gabarit partagé, le
+bandeau et la ligne d'écart tiennent. Le tintage d'instance par `setColorAt`
+marche sans `vertexColors` — `prefixFragment` de three r160 définit `USE_COLOR`
+dès que `instancingColor` est vrai (ligne 20149 du bundle) ; j'ai suspecté un
+défaut là et j'avais tort.
+
+### L'empreinte du booléen ignore la cote
+
+`_gem_placement_fingerprint` ne signe que position et quaternion. `resize_gem`
+ne bouge aucun placement — c'est son principe — donc l'empreinte est
+identique, donc `_set_gem_boolean_shape` rend `False`, donc `obj.Shape` n'est
+pas réécrite.
+
+**Poser, combiner, taper `+` : les pierres grossissent, le logement dans le
+métal reste à l'ancienne cote.** Rien ne le signale ; la pièce exportée est
+fausse. C'est le seul défaut qui abîme la géométrie.
+
+### La sélection ne suit pas la pierre d'une face à l'autre
+
+`selectedGem` est posé au `pointerdown` et jamais mis à jour. `move_gem` vers
+une autre face retire la pierre du semis source et l'ajoute à la fin du semis
+destination : ni le nom ni l'indice ne survivent. Ou la surbrillance saute sur
+la pierre qui a pris la place — et le clavier redimensionne le mauvais semis —
+ou la sélection tombe. C'est le croisement exact de P036 et P042.
+
+### La bande de frôlement démontre l'inverse de ce qu'on en a tiré
+
+L'observation de Cursor est fine : `entraxe_mm = 2πR/n` est un **arc**,
+`voisines_min_mm` mesure une **corde**.
+
+| | Valeur | Écart à Ø 1,5 |
+|---|---|---|
+| arc `2πR/n` | 1,5004247 | **+4,25 × 10⁻⁴** |
+| corde `2R·sin(π/n)` | 1,4994376 | **−5,62 × 10⁻⁴** |
+
+`voisines_min_mm` appelée sur 50 points d'un cercle de rayon 11,94 rend
+`ecart_min_mm = −0,0005624`. **Négatif** : `gap < 0` se déclenche seul, sans
+bande. La géométrie qui a mangé 12,1 GiB ne « frôlait » pas — mesurée, elle
+chevauchait de 0,56 µm, et c'est la formule d'arc qui affichait un jour là où
+il n'y en avait pas.
+
+Le test livré construit pourtant `ecart_min_mm: 4.25e-4` à la main : la valeur
+d'arc, que le moteur ne peut pas rendre pour cette géométrie. Il passe, mais il
+valide la bande sur une entrée impossible.
+
+Quatrième seuil de ce fichier calé sur un chiffre qui ne dit pas ce que son nom
+annonce — et celui-là vient de moi : mon prompt promettait que la mesure
+rendrait l'alarme atteignable sans dire par quel mécanisme. La bande garde
+tout son sens sur le **chemin de repli**, où l'erreur arc-corde vaut justement
+~1 × 10⁻³ mm à l'échelle d'une bague. C'est là qu'elle va.

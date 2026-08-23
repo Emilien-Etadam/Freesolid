@@ -434,17 +434,27 @@ def face_lineage(body, index):
     return {"via": via, "paires": paires}
 
 
-def couple_of(lineage, quel):
-    """Le couple candidat : ``producteur`` (le plus récent) ou ``origine``.
+def rungs(lineage):
+    """Tous les barreaux de la généalogie, du plus récent au plus ancien.
 
-    §4quater dit de chercher le couple stocké **dans** la trace, pas en
-    tête — reste à savoir lequel des deux bouts identifie une face de
-    façon à la fois unique et durable. La sonde teste les deux plutôt
-    que de le décider à l'aveugle.
+    Le premier passage de cette sonde n'en testait que les **deux
+    bouts** — le corps et l'esquisse — et manquait celui du milieu. Or
+    sur un jonc la généalogie fait trois barreaux, `[Body, Pad, Sketch]`,
+    et c'est le **Pad** que §4quater appelle « fonction propriétaire » :
+    ni le conteneur, ni l'ancêtre ultime, mais la fonction qui a
+    introduit la face. Tester les extrémités et sauter celui-là, c'est
+    mesurer tout sauf la conception qu'on évalue.
     """
-    if not lineage or not lineage.get("paires"):
+    return list(lineage["paires"]) if lineage and lineage.get("paires") else []
+
+
+def couple_of(lineage, quel):
+    """``quel`` : ``producteur``, ``origine``, ou un rang entier."""
+    paires = rungs(lineage)
+    if not paires:
         return None
-    paires = lineage["paires"]
+    if isinstance(quel, int):
+        return paires[quel] if -len(paires) <= quel < len(paires) else None
     return paires[0] if quel == "producteur" else paires[-1]
 
 
@@ -505,15 +515,21 @@ def probe_couple():
             "paires": None if lineage is None else lineage["paires"],
         })
     out["fabricables"] = sum(1 for item in lineages if item)
-    for quel in ("producteur", "origine"):
-        couples = [couple_of(item, quel) for item in lineages]
+    # Tous les barreaux, pas seulement les deux bouts.
+    profond = max((len(rungs(item)) for item in lineages), default=0)
+    out["barreaux"] = profond
+    out["par_rang"] = {}
+    for rang in range(profond):
+        couples = [couple_of(item, rang) for item in lineages]
         presents = [c for c in couples if c]
-        out[quel] = {
+        if not presents:
+            continue
+        out["par_rang"]["rang{}".format(rang)] = {
+            "fonctions": sorted({c[0] for c in presents}),
             "fabricables": len(presents),
             "distincts": len(set(presents)),
             # Le seul critère qui compte ici.
-            "unique_par_face": (
-                len(presents) == len(set(presents)) and len(presents) > 0),
+            "unique_par_face": len(presents) == len(set(presents)),
             "exemples": [list(c) for c in presents[:3]],
         }
     return out
@@ -533,19 +549,25 @@ def probe_cote():
     kernel = _kernel()
     body = _body()
     side = KERNEL["side"]
-    couple = couple_for_face(body, side)
-    out = {"couple_avant": couple}
+    couples = list(enumerate(rungs(face_lineage(body, side))))
+    out = {"couples_avant": {"rang{}".format(r): list(c) for r, c in couples}}
     # La hauteur du jonc passe de 6 à 9 mm. Aucun indice ne bouge : c'est
     # tout l'intérêt d'une sonde faible — elle ne prouve rien sur la
     # survie, seulement qu'on n'a pas cassé le cas facile.
     kernel.set_param(KERNEL["pad"], "Length", 9.0)
     kernel._recompute()
     body = _body()
-    hits = resolve_couple(body, couple)
     out["faces"] = len(attr(attr(body, "Shape"), "Faces") or ())
-    out["hits"] = hits
-    out["verdict"] = verdict_for(hits)
-    out["retrouve_le_meme_indice"] = hits == [side]
+    for rang, couple in couples:
+        hits = resolve_couple(body, couple)
+        out["rang{}".format(rang)] = {
+            "couple": list(couple), "hits": hits,
+            "verdict": verdict_for(hits),
+            "retrouve_le_meme_indice": hits == [side],
+        }
+    out["rang_gagnant"] = next(
+        ("rang{}".format(r) for r, _ in couples
+         if out["rang{}".format(r)]["retrouve_le_meme_indice"]), None)
     return out
 
 
@@ -569,10 +591,11 @@ def probe_renumerote():
         "signature": face_signature(body.Shape.Faces[side]),
         "genealogie": (face_lineage(body, side) or {}).get("paires"),
     }
-    couples = {quel: couple_for_face(body, side, quel)
-               for quel in ("producteur", "origine")}
-    avant["couples"] = {k: (None if v is None else list(v))
-                        for k, v in couples.items()}
+    # Un couple par barreau — le Pad compris, qu'on avait sauté.
+    couples = {rang: couple for rang, couple in enumerate(
+        rungs(face_lineage(body, side)))}
+    avant["couples"] = {"rang{}".format(r): list(c)
+                        for r, c in couples.items()}
     haut = kernel._top_face_id()
     kernel.add_rect_sketch(6, 3, face=haut)
     kernel.add_pocket(through=True)
@@ -592,18 +615,25 @@ def probe_renumerote():
         "indice_reel": reel,
         "indice_a_bouge": reel is not None and reel != side,
         "tip_apres": str(attr(attr(body, "Tip"), "Name") or ""),
+        # Sans les généalogies d'après, un « perdu » n'est pas
+        # diagnosticable : on ne sait pas ce qui a remplacé quoi.
+        "genealogie_apres_de_la_bonne_face": (
+            None if reel is None else (face_lineage(body, reel) or {}).get(
+                "paires")),
     }
-    for quel, couple in couples.items():
+    for rang, couple in couples.items():
         hits = resolve_couple(body, couple)
-        out[quel] = {
+        out["rang{}".format(rang)] = {
+            "couple": list(couple),
             "hits": hits,
             "verdict": verdict_for(hits),
             "retrouve_la_bonne_face": (
                 hits == [reel] if reel is not None else False),
         }
-    out["retrouve_la_bonne_face"] = any(
-        out[quel].get("retrouve_la_bonne_face")
-        for quel in couples)
+    out["rang_gagnant"] = next(
+        ("rang{}".format(r) for r in couples
+         if out["rang{}".format(r)]["retrouve_la_bonne_face"]), None)
+    out["retrouve_la_bonne_face"] = out["rang_gagnant"] is not None
     return out
 
 
@@ -633,9 +663,9 @@ def probe_scission():
             break
     if cible is None:
         return {"face_cible": None}
-    couple = couple_for_face(body, cible)
+    couples = list(enumerate(rungs(face_lineage(body, cible))))
     avant = {"indice": cible, "signature": face_signature(faces[cible]),
-             "couple": couple}
+             "couples": {"rang{}".format(r): list(c) for r, c in couples}}
     # Une rainure qui traverse le flanc : la face cylindrique se scinde.
     try:
         haut = kernel._top_face_id()
@@ -647,23 +677,33 @@ def probe_scission():
                     type(exc).__name__, str(exc)[:120])}
     body = _body()
     faces = list(attr(attr(body, "Shape"), "Faces") or ())
-    hits = resolve_couple(body, couple)
     morceaux = [
         index for index, face in enumerate(faces)
         if face_signature(face).get("type") == "Part::GeomCylinder"
         and face_signature(face).get("rayon") == avant["signature"].get("rayon")
     ]
-    return {
+    out = {
         "avant": avant,
         "faces_apres": len(faces),
         "morceaux_du_meme_cylindre": morceaux,
-        "hits": hits,
-        "verdict": verdict_for(hits),
         # Le point : si le cylindre s'est scindé, le verdict doit dire
         # « ambigu », pas désigner un morceau au hasard.
         "scission_detectee": len(morceaux) > 1,
-        "honnete": (len(morceaux) <= 1) or verdict_for(hits) == "ambigu",
     }
+    for rang, couple in couples:
+        hits = resolve_couple(body, couple)
+        out["rang{}".format(rang)] = {
+            "couple": list(couple), "hits": hits,
+            "verdict": verdict_for(hits),
+            "couvre_les_morceaux": sorted(hits) == sorted(morceaux),
+        }
+    # Honnête si, quand il y a scission, un rang au moins la voit
+    # entière — ou déclare « ambigu » plutôt que d'élire un morceau.
+    out["honnete"] = (len(morceaux) <= 1) or any(
+        out["rang{}".format(r)]["couvre_les_morceaux"]
+        or out["rang{}".format(r)]["verdict"] == "ambigu"
+        for r, _ in couples)
+    return out
 
 
 note("q6_scission", probe_scission)
@@ -693,6 +733,87 @@ note("q7_cout", probe_cout)
 
 
 # --------------------------------------------------------------------------
+# Q8 — ancrer AILLEURS qu'à l'indice 0. Le vrai test de renumérotation.
+# --------------------------------------------------------------------------
+
+def probe_alesage():
+    """Q0 et Q5 ancraient sur la face 0 d'un plein — la position la plus
+    stable qui soit : OCCT range d'abord les faces du solide de base.
+
+    Un jonc réel est un **tube**. Son alésage n'est pas la face 0, et
+    c'est là qu'une renumérotation a une chance de se voir. Sans ce cas,
+    « l'indice n'a pas bougé » ne dit rien : on n'a mesuré que le
+    barreau le plus solide de l'échelle.
+    """
+    from engine.kernel import Kernel
+
+    kernel = Kernel()
+    kernel.new_part("Sonde toponaming alésage")
+    state = kernel.sketch_start()
+    sketch = state["sketch"]
+    kernel.sketch_add_circle(sketch, 0, 0, 10)
+    kernel.sketch_constrain(sketch, "coincident", 0, point1=3, geo2=-1,
+                            point2=1)
+    kernel.sketch_add_circle(sketch, 0, 0, 4)
+    kernel.sketch_constrain(sketch, "coincident", 1, point1=3, geo2=-1,
+                            point2=1)
+    kernel.sketch_finish(sketch)
+    kernel.add_pad(6, sketch=sketch)
+    body_name = kernel._require_body().Name
+
+    def body_now():
+        return kernel._doc.getObject(body_name)
+
+    faces = list(body_now().Shape.Faces)
+    avant = [{"indice": i, "signature": face_signature(f)}
+             for i, f in enumerate(faces)]
+    # L'alésage : le cylindre de rayon 4.
+    cible = next(
+        (i for i, f in enumerate(faces)
+         if face_signature(f).get("type") == "Part::GeomCylinder"
+         and face_signature(f).get("rayon") == 4.0), None)
+    out = {"faces": len(faces), "avant": avant, "indice_alesage": cible}
+    if cible is None:
+        out["tube_rate"] = True
+        return out
+    out["genealogie_avant"] = (face_lineage(body_now(), cible) or {}).get(
+        "paires")
+    couples = list(enumerate(rungs(face_lineage(body_now(), cible))))
+    try:
+        kernel.add_fillet(0.4, face=kernel._top_face_id())
+    except Exception as exc:  # noqa: BLE001 — une sonde rapporte
+        out["conge_refuse"] = "{}: {}".format(
+            type(exc).__name__, str(exc)[:160])
+        return out
+    faces = list(body_now().Shape.Faces)
+    reel = next(
+        (i for i, f in enumerate(faces)
+         if face_signature(f).get("type") == "Part::GeomCylinder"
+         and face_signature(f).get("rayon") == 4.0), None)
+    out["faces_apres"] = len(faces)
+    out["indice_reel_apres"] = reel
+    out["indice_a_bouge"] = reel is not None and reel != cible
+    out["genealogie_apres"] = (
+        None if reel is None
+        else (face_lineage(body_now(), reel) or {}).get("paires"))
+    for rang, couple in couples:
+        hits = resolve_couple(body_now(), couple)
+        out["rang{}".format(rang)] = {
+            "couple": list(couple), "hits": hits,
+            "verdict": verdict_for(hits),
+            "retrouve_la_bonne_face": (
+                hits == [reel] if reel is not None else False),
+        }
+    out["rang_gagnant"] = next(
+        ("rang{}".format(r) for r, _ in couples
+         if out["rang{}".format(r)]["retrouve_la_bonne_face"]), None)
+    return out
+
+
+note("q8_alesage", probe_alesage)
+
+
+# --------------------------------------------------------------------------
 
 print(json.dumps(R, ensure_ascii=False, indent=1, default=str), flush=True)
 
@@ -709,25 +830,35 @@ q3 = R.get("q3_couple") or {}
 q4 = R.get("q4_cote") or {}
 q5 = R.get("q5_renumerote") or {}
 q6 = R.get("q6_scission") or {}
+q8 = R.get("q8_alesage") or {}
+
+bouge = bool(q0.get("indice_a_bouge")) or bool(q8.get("indice_a_bouge"))
+rangs_uniques = [nom for nom, item in (q3.get("par_rang") or {}).items()
+                 if item.get("unique_par_face")]
 
 verdict = {
-    "Q0 le défaut existe (l'indice bouge)": bool(q0.get("indice_a_bouge")),
+    "Q0/Q8 le défaut existe (un indice bouge)": bouge,
     "Q1 le corps a une carte peuplée": bool(
         (q1.get("corps") or {}).get("peuplee")),
-    "Q3 un couple par face, tous distincts": bool(
-        q3.get("fabricables") and q3.get("couples_uniques")),
-    "Q4 la cote ne casse rien": q4.get("verdict") == "résolu",
+    "Q3 au moins un rang est unique par face": bool(rangs_uniques),
+    "Q4 la cote ne casse rien": bool(q4.get("rang_gagnant")),
     "Q5 la renumérotation est absorbée": bool(
         q5.get("retrouve_la_bonne_face")),
     "Q6 la scission dit « ambigu »": bool(q6.get("honnete")),
 }
 print("\n".join("{}  {}".format("OK  " if v else "NON ", k)
                 for k, v in verdict.items()), flush=True)
+print("\nrangs uniques par face : {}".format(rangs_uniques or "aucun"),
+      flush=True)
+for nom, source in (("Q4", q4), ("Q5", q5), ("Q8", q8)):
+    print("{} rang gagnant : {}".format(nom, source.get("rang_gagnant")),
+          flush=True)
 
-print("\nQ0 et Q5 sont les deux verdicts. Q0 rouge : il n'y a rien à\n"
-      "réparer, l'indice tient tout seul. Q5 rouge : la recherche à\n"
-      "l'envers ne rattrape pas la renumérotation, et il faut chercher\n"
-      "ailleurs — pas écrire l'UI par-dessus.", flush=True)
+print("\nDeux verdicts, dans cet ordre. Si AUCUN indice ne bouge (Q0 et\n"
+      "Q8), il n'y a pas de défaut à réparer et le mécanisme est du luxe.\n"
+      "Si un indice bouge mais qu'aucun rang ne le rattrape (Q5), la\n"
+      "recherche à l'envers ne suffit pas — chercher ailleurs, surtout\n"
+      "pas écrire l'UI par-dessus.", flush=True)
 print("\nSONDE {}".format(
-    "VERTE" if verdict["Q0 le défaut existe (l'indice bouge)"]
-    and verdict["Q5 la renumérotation est absorbée"] else "ROUGE"), flush=True)
+    "VERTE" if bouge and verdict["Q5 la renumérotation est absorbée"]
+    else "ROUGE"), flush=True)

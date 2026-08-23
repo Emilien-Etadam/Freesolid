@@ -19,6 +19,8 @@ DEFAULT_EPAISSEUR = 0.5
 #: Noms de gabarit = nom de fichier sous ``assets/gemmes/``, sans extension.
 _GEMME_NAME_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _FACE_NAME_RE = re.compile(r"^Face(\d+)$")
+#: Nom FreeCAD d'une esquisse — pas une fonction propriétaire (P044).
+_SKETCH_NAME_RE = re.compile(r"^(?:Sketch|Esquisse)\d*$", re.I)
 
 _SPLINE_TYPE_IDS = frozenset({
     "Part::GeomBSplineSurface",
@@ -181,6 +183,71 @@ def face_index(name) -> int:
     if match is None:
         raise GemError("face d'ancrage illisible : {}".format(name))
     return int(match.group(1)) - 1
+
+
+def _history_source_name(value) -> str:
+    """Nom d'un barreau d'historique : ``Name`` de l'objet, sinon ``str``."""
+    name = getattr(value, "Name", None)
+    if name:
+        return str(name)
+    return str(value)
+
+
+def _is_sketch_source(source) -> bool:
+    """True si le barreau est une esquisse, pas une fonction propriétaire."""
+    type_id = str(getattr(source, "TypeId", "") or "")
+    if "Sketcher" in type_id:
+        return True
+    return bool(_SKETCH_NAME_RE.fullmatch(_history_source_name(source)))
+
+
+def trace_pairs(trace):
+    """Normalise ``getElementHistory`` en liste de ``(source, nom)``.
+
+    Deux formes coexistent : ``Part::Feature.getElementHistory`` rend une
+    **liste de couples**, ``TopoShape.getElementHistory`` un **tuple plat**
+    ``(tag, nom, [intermédiaires])``. ``None``, une chaîne d'erreur et une
+    liste vide rendent ``[]``.
+    """
+    if not trace or isinstance(trace, str):
+        return []
+    if not isinstance(trace, (tuple, list)):
+        return []
+    first = trace[0]
+    if isinstance(first, (tuple, list)):
+        out = []
+        for entry in trace:
+            if isinstance(entry, (tuple, list)) and len(entry) >= 2:
+                out.append((_history_source_name(entry[0]), str(entry[1])))
+        return out
+    if len(trace) >= 2:
+        return [(_history_source_name(first), str(trace[1]))]
+    return []
+
+
+def owner_couple(pairs):
+    """Le couple à retenir : le barreau le plus profond qui n'est pas une esquisse.
+
+    La généalogie va du plus récent au plus ancien. Le rang 1 est la
+    pointe courante, pas forcément le propriétaire de la face — d'où
+    la recherche du plus profond, pas d'un rang fixe.
+    """
+    if not pairs:
+        return None
+    for source, name in reversed(list(pairs)):
+        if not _is_sketch_source(source):
+            return (_history_source_name(source), str(name))
+    return None
+
+
+def resolution_verdict(hits):
+    """1 → ``'résolu'``, plus d'un → ``'ambigu'``, zéro → ``'perdu'``."""
+    n = len(hits) if hits is not None else 0
+    if n == 1:
+        return "résolu"
+    if n > 1:
+        return "ambigu"
+    return "perdu"
 
 
 def is_bspline_surface(face) -> bool:

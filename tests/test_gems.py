@@ -189,3 +189,60 @@ def test_voisines_min_mm_circle_chord_is_negative():
     expected = 2.0 * radius * math.sin(math.pi / n) - diametre
     assert abs(min(gaps) - expected) < 1e-9
     assert expected < 0
+
+
+class _Named:
+    def __init__(self, name, type_id=""):
+        self.Name = name
+        self.TypeId = type_id
+
+
+def test_trace_pairs_list_of_couples():
+    pad = _Named("Pad")
+    sketch = _Named("Sketch")
+    pairs = gems.trace_pairs([
+        (pad, "#6:1;:G;XTR;:H17e:7,F"),
+        (sketch, "g1;SKT"),
+    ])
+    assert pairs == [
+        ("Pad", "#6:1;:G;XTR;:H17e:7,F"),
+        ("Sketch", "g1;SKT"),
+    ]
+
+
+def test_trace_pairs_flat_tuple():
+    assert gems.trace_pairs(
+        (42, "#6:1;:G;XTR;:H17e:7,F", ["mid"])
+    ) == [("42", "#6:1;:G;XTR;:H17e:7,F")]
+
+
+def test_trace_pairs_none_string_empty():
+    assert gems.trace_pairs(None) == []
+    assert gems.trace_pairs("erreur : historique illisible") == []
+    assert gems.trace_pairs([]) == []
+
+
+def test_owner_couple_deepest_non_sketch():
+    def _pairs(*names):
+        return [(n, "elem-{}".format(n)) for n in names]
+
+    assert gems.owner_couple(
+        _pairs("Body", "Pocket", "Pad", "Sketch")
+    ) == ("Pad", "elem-Pad")
+    assert gems.owner_couple(
+        _pairs("Body", "Pad", "Sketch")
+    ) == ("Pad", "elem-Pad")
+    assert gems.owner_couple(
+        _pairs("Body", "Sketch")
+    ) == ("Body", "elem-Body")
+    assert gems.owner_couple([]) is None
+    assert gems.owner_couple(
+        _pairs("Body", "Pad", "Sketch001")
+    ) == ("Pad", "elem-Pad")
+
+
+def test_resolution_verdict_three_states():
+    assert gems.resolution_verdict([3]) == "résolu"
+    assert gems.resolution_verdict([1, 4]) == "ambigu"
+    assert gems.resolution_verdict([]) == "perdu"
+    assert gems.resolution_verdict(None) == "perdu"

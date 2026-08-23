@@ -1,15 +1,20 @@
-"""Sonde P039 — le booléen d'un semis : courbe temps + mémoire.
+"""Sonde P040 — une variable à la fois, dans le régime d'une bague.
 
 Usage :  freecadcmd scripts/spike-booleen-semis.py
 
-Mesure le geste réel (``Kernel.add_boolean`` sur un ``App::Link``), pas un
-``Part.cut`` de cônes. Pour 25, 50, 100 et 200 pierres : durée du compound,
-durée du booléen, RSS de pic. Un plafond mémoire et un plafond temps
-arrêtent proprement plutôt que de faire ramer la machine.
+P039 tenait l'entraxe et faisait donc grandir le jonc avec le nombre :
+rayon et effectif bougeaient ensemble, et la courbe était illisible.
+Ici chaque campagne n'en bouge qu'une :
 
-Chaque effectif tourne dans un processus fils — ``ru_maxrss`` est un
-maximum de processus, et un 200 qui s'étouffe ne doit pas emporter les
-mesures déjà prises.
+  A — rayon 9 mm (bague), 10 / 20 / 30 / 40 pierres
+  B — 30 pierres, rayon 8 / 12 / 24 / 48 mm
+  C — rayon 9 mm, 30 pierres, le diamètre (donc l'écart entre sièges)
+      ne se lance que si A et B ne désignent pas une cause.
+
+Chaque ligne porte rayon, entraxe, diamètre, temps et RSS pic. Un
+plafond mémoire et un plafond temps arrêtent proprement. Chaque point
+tourne dans un processus fils — ``ru_maxrss`` est un maximum de
+processus, et un point qui s'étouffe ne doit pas emporter les autres.
 """
 
 from __future__ import annotations
@@ -37,8 +42,6 @@ _REPO = os.path.dirname(_HERE)
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-COUNTS = (25, 50, 100, 200)
-PAS_MM = 1.5
 DIAMETRE_MM = 1.5
 LIFT_MM = -0.25
 PAD_HEIGHT_MM = 6.0
@@ -46,11 +49,16 @@ PAD_HEIGHT_MM = 6.0
 #: Plafond RSS — en dessous des ~13 Go où P037 a vu le processus mourir
 #: sur une VM de 15 Go, avec une marge pour le système.
 CEILING_RSS_KIB = 8 * 1024 * 1024  # 8 GiB
-CEILING_SECONDS = 360  # 6 min par effectif
+CEILING_SECONDS = 360  # 6 min par point
 
 _MARKER = "SPIKE_N_JSON:"
-_COUNT_ENV = "FREESOLID_SPIKE_N"
+_SPEC_ENV = "FREESOLID_SPIKE_SPEC"
 _RESULT_ENV = "FREESOLID_SPIKE_RESULT"
+
+#: Un effet « fort » : le coût (ou le plafond) d'un bout à l'autre de la
+#: campagne au moins double, ou un point avorte. En dessous, la variable
+#: ne désigne pas une explosion.
+_EFFECT_RATIO = 2.0
 
 
 def rss_kib():
@@ -107,9 +115,91 @@ def machine_info(freecad):
     }
 
 
-def ring_radius_mm(count):
-    """Rayon du jonc à entraxe constant — seul le nombre de sièges varie."""
-    return max(10.0, count * PAS_MM / (2.0 * math.pi))
+def entraxe_mm(rayon, pierres):
+    """Entraxe d'arc : circonférence du jonc divisée par l'effectif."""
+    if pierres <= 0:
+        return None
+    return 2.0 * math.pi * float(rayon) / float(pierres)
+
+
+def regime_of(rayon):
+    """Une bague fait 8 à 10 mm de rayon. Le dire si on sort de là."""
+    r = float(rayon)
+    if 8.0 <= r <= 10.0:
+        return "bague"
+    if r < 8.0:
+        return "plus petit qu'une bague"
+    if r <= 12.0:
+        return "proche d'une bague"
+    return "bracelet — hors régime d'une bague"
+
+
+def geometry_of(pierres, rayon_mm, diametre_mm):
+    """Rayon, entraxe, diamètre — les trois sur chaque ligne."""
+    arc = entraxe_mm(rayon_mm, pierres)
+    return {
+        "pierres": int(pierres),
+        "rayon_mm": round(float(rayon_mm), 3),
+        "diametre_mm": round(float(diametre_mm), 3),
+        "entraxe_mm": round(arc, 3) if arc is not None else None,
+        "ecart_sieges_mm": (
+            round(arc - float(diametre_mm), 3) if arc is not None else None),
+        "chevauchement": bool(arc is not None and arc < float(diametre_mm)),
+        "regime": regime_of(rayon_mm),
+    }
+
+
+def _point(campagne, pierres, rayon_mm, diametre_mm=DIAMETRE_MM):
+    spec = geometry_of(pierres, rayon_mm, diametre_mm)
+    spec["campagne"] = campagne
+    return spec
+
+
+#: Une variable par campagne. Le diamètre reste 1,5 mm en A et B : le
+#: faire bouger là serait exactement le confond que P039 a commis, inversé.
+CAMPAIGNS = {
+    "A": {
+        "id": "A",
+        "fixe": "rayon 9 mm (bague)",
+        "varie": "nombre de pierres",
+        "question": "le coût croît-il avec le nombre ?",
+        "points": [
+            _point("A", 10, 9.0),
+            _point("A", 20, 9.0),
+            _point("A", 30, 9.0),
+            _point("A", 40, 9.0),
+        ],
+    },
+    "B": {
+        "id": "B",
+        "fixe": "30 pierres",
+        "varie": "rayon du jonc",
+        "question": "la courbure est-elle le facteur ?",
+        "points": [
+            _point("B", 30, 8.0),
+            _point("B", 30, 12.0),
+            _point("B", 30, 24.0),
+            _point("B", 30, 48.0),
+        ],
+    },
+    "C": {
+        "id": "C",
+        "fixe": "rayon 9 mm, 30 pierres",
+        "varie": "diamètre de pierre (écart entre sièges)",
+        "question": "l'écart entre sièges décide-t-il ?",
+        # Rayon et effectif figés → l'entraxe d'arc est figé (1,885 mm).
+        # Seul le diamètre bouge, donc l'écart entre sièges.
+        "points": [
+            _point("C", 30, 9.0, 0.80),
+            _point("C", 30, 9.0, 1.15),
+            _point("C", 30, 9.0, 1.50),
+            _point("C", 30, 9.0, 1.80),
+            # Seul point de C sous l'entraxe : A n'a explosé qu'au
+            # chevauchement, C doit le mesurer à effectif figé.
+            _point("C", 30, 9.0, 2.00),
+        ],
+    },
+}
 
 
 def write_result(path, payload):
@@ -124,22 +214,41 @@ def write_result(path, payload):
     print(_MARKER + text, flush=True)
 
 
-def measure_one(count):
-    """Un effectif, un document, le geste ``add_boolean`` réel."""
+def _entraxe_corde_mm(stones):
+    """Distance 3D moyenne entre voisins, dans l'ordre du semis."""
+    pts = []
+    for stone in stones or []:
+        if "x" not in stone or "y" not in stone or "z" not in stone:
+            continue
+        pts.append((float(stone["x"]), float(stone["y"]), float(stone["z"])))
+    n = len(pts)
+    if n < 2:
+        return None
+    total = 0.0
+    for i in range(n):
+        ax, ay, az = pts[i]
+        bx, by, bz = pts[(i + 1) % n]
+        total += math.sqrt((ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2)
+    return round(total / n, 3)
+
+
+def measure_one(spec):
+    """Un point, un document, le geste ``add_boolean`` réel."""
     from engine.kernel import Kernel
     from engine.platform import allow_from_environ, version_status
 
+    count = int(spec["pierres"])
+    radius = float(spec["rayon_mm"])
+    diametre = float(spec["diametre_mm"])
     result_path = os.environ.get(_RESULT_ENV) or ""
     kernel = Kernel()
     plateforme = version_status(
         kernel.ping()["freecad"], allow=allow_from_environ())
-    out = {
-        "pierres": count,
-        "plateforme": plateforme,
-        "machine": machine_info(plateforme["running"]),
-        "rss_avant_kib": rss_kib(),
-        "aborted": None,
-    }
+    out = dict(spec)
+    out["plateforme"] = plateforme
+    out["machine"] = machine_info(plateforme["running"])
+    out["rss_avant_kib"] = rss_kib()
+    out["aborted"] = None
     if not plateforme["match"] and not plateforme["override"]:
         out["aborted"] = "plateforme"
         out["erreur"] = plateforme["message"]
@@ -176,9 +285,8 @@ def measure_one(count):
         })
 
     try:
-        radius = ring_radius_mm(count)
         t_pose0 = time.perf_counter()
-        kernel.new_part("Sonde {} pierres".format(count))
+        kernel.new_part("Sonde {} pierres r={}".format(count, radius))
         state = kernel.sketch_start()
         sketch = state["sketch"]
         kernel.sketch_add_circle(sketch, 0, 0, radius)
@@ -193,7 +301,7 @@ def measure_one(count):
         first = face.valueAt(u0 + (u1 - u0) * 0.5 / count, v_mid)
         placed = kernel.place_gem(
             face=side, x=first.x, y=first.y, z=first.z,
-            diametre=DIAMETRE_MM, lift=LIFT_MM)
+            diametre=diametre, lift=LIFT_MM)
         gems = placed.get("gems") or []
         if not gems:
             raise RuntimeError("semis absent après la première pose")
@@ -213,7 +321,8 @@ def measure_one(count):
         pose_s = time.perf_counter() - t_pose0
         out["pose_s"] = round(pose_s, 3)
         out["posees"] = held
-        out["rayon_mm"] = round(radius, 3)
+        out["entraxe_corde_mm"] = _entraxe_corde_mm(
+            (listed or [{}])[0].get("stones"))
         out["rss_apres_pose_kib"] = rss_kib()
         if held != count:
             out["aborted"] = "pose"
@@ -347,20 +456,34 @@ def _child_rss_kib(pid):
     return None
 
 
-def run_child(count):
+def _spec_tag(spec):
+    return "{}-n{}-r{}-d{}".format(
+        spec.get("campagne") or "x",
+        spec["pierres"],
+        spec["rayon_mm"],
+        spec["diametre_mm"],
+    )
+
+
+def run_child(spec):
+    tag = _spec_tag(spec)
     result_path = os.path.join(
-        tempfile.gettempdir(), "spike-booleen-semis-n{}.json".format(count))
+        tempfile.gettempdir(), "spike-booleen-semis-{}.json".format(tag))
     try:
         os.remove(result_path)
     except OSError:
         pass
     env = os.environ.copy()
-    env[_COUNT_ENV] = str(count)
+    env[_SPEC_ENV] = json.dumps(spec, ensure_ascii=False)
     env[_RESULT_ENV] = result_path
     env["FREESOLID_NO_SERVE"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
-    print("spike> lancement N={} (plafond {} GiB, {} s)".format(
-        count, CEILING_RSS_KIB / (1024 * 1024), CEILING_SECONDS), flush=True)
+    print("spike> {} — {} pierres, rayon {} mm, Ø {} mm, entraxe {} mm "
+          "({} ; plafond {} GiB, {} s)".format(
+              spec.get("campagne"),
+              spec["pierres"], spec["rayon_mm"], spec["diametre_mm"],
+              spec["entraxe_mm"], spec["regime"],
+              CEILING_RSS_KIB / (1024 * 1024), CEILING_SECONDS), flush=True)
     proc = subprocess.Popen(
         _child_command(),
         cwd=_REPO,
@@ -386,6 +509,8 @@ def run_child(count):
     stdout, stderr = proc.communicate()
     payload = _parse_child_payload(stdout, result_path)
     if payload is not None:
+        for key, value in spec.items():
+            payload.setdefault(key, value)
         if aborted and not payload.get("aborted"):
             payload["aborted"] = aborted
             payload["ok"] = False
@@ -393,98 +518,379 @@ def run_child(count):
                 payload["rss_pic_kib"] = last_rss
                 payload["rss_pic_gi"] = round(last_rss / (1024 * 1024), 2)
         return payload
+    out = dict(spec)
     if aborted:
-        out = {
-            "pierres": count,
-            "aborted": aborted,
-            "ok": False,
-            "erreur": (
-                "plafond mémoire {} GiB".format(CEILING_RSS_KIB / (1024 * 1024))
-                if aborted == "rss"
-                else "plafond {} s dépassé".format(CEILING_SECONDS)
-            ),
-        }
+        out["ok"] = False
+        out["aborted"] = aborted
+        out["erreur"] = (
+            "plafond mémoire {} GiB".format(CEILING_RSS_KIB / (1024 * 1024))
+            if aborted == "rss"
+            else "plafond {} s dépassé".format(CEILING_SECONDS)
+        )
         if last_rss is not None:
             out["rss_pic_kib"] = last_rss
             out["rss_pic_gi"] = round(last_rss / (1024 * 1024), 2)
         return out
-    return {
-        "pierres": count,
+    out.update({
         "ok": False,
         "aborted": "fils",
         "code": proc.returncode,
         "erreur": "pas de JSON (code {})".format(proc.returncode),
         "stderr": (stderr or "")[-400:],
         "stdout": (stdout or "")[-400:],
+    })
+    return out
+
+
+def run_campaign(campaign_id):
+    campaign = CAMPAIGNS[campaign_id]
+    rows = [run_child(point) for point in campaign["points"]]
+    return {
+        "id": campaign["id"],
+        "fixe": campaign["fixe"],
+        "varie": campaign["varie"],
+        "question": campaign["question"],
+        "mesures": rows,
+        "effet": _effect(rows),
     }
 
 
-def _verdict(rows):
-    """Le coût est-il linéaire, ou explose-t-il ?"""
-    measured = [
-        r for r in rows
+def _ms_par_pierre(row):
+    """Coût unitaire. Un avortement compte comme infini — c'est une explosion."""
+    n = int(row.get("pierres") or 0)
+    if row.get("ok") and isinstance(row.get("total_s"), (int, float)) and n > 0:
+        return 1000.0 * float(row["total_s"]) / n
+    if row.get("aborted") in ("rss", "temps"):
+        return float("inf")
+    return None
+
+
+def _rss_gi(row):
+    if isinstance(row.get("rss_pic_gi"), (int, float)):
+        return float(row["rss_pic_gi"])
+    if row.get("aborted") == "rss":
+        return float(CEILING_RSS_KIB) / (1024 * 1024)
+    return None
+
+
+def _ratio(values):
+    finite = [v for v in values if v is not None and math.isfinite(v)]
+    if any(v is not None and not math.isfinite(v) for v in values):
+        return float("inf") if finite else None
+    if len(finite) < 2:
+        return None
+    lo = min(finite)
+    hi = max(finite)
+    if lo < 1e-9:
+        return None
+    return round(hi / lo, 2)
+
+
+def _effect(rows):
+    """Amplitude unitaire le long d'une campagne — une seule variable.
+
+    Le temps total d'A croîtra toujours avec l'effectif si chaque pierre
+    coûte quelque chose : ce n'est pas une explosion. On compare le
+    milliseconde par pierre, et le RSS. Seuls les plafonds mémoire et
+    temps comptent comme explosion — un refus de plateforme n'en est pas
+    une.
+    """
+    aborted = [
+        {"pierres": r.get("pierres"), "rayon_mm": r.get("rayon_mm"),
+         "diametre_mm": r.get("diametre_mm"), "entraxe_mm": r.get("entraxe_mm"),
+         "cause": r.get("aborted")}
+        for r in rows if r.get("aborted")
+    ]
+    exploded = [item for item in aborted if item.get("cause") in ("rss", "temps")]
+    ms_ratio = _ratio([_ms_par_pierre(r) for r in rows])
+    rss_ratio = _ratio([_rss_gi(r) for r in rows])
+    known_s = [
+        float(r["total_s"]) for r in rows
         if r.get("ok") and isinstance(r.get("total_s"), (int, float))
     ]
-    if len(measured) < 2:
-        return {
-            "courbe": "insuffisant",
-            "detail": "moins de deux points aboutis — pas de pente",
-        }
-    rates = [
-        (r["pierres"], r["total_s"] / r["pierres"], r.get("rss_pic_gi"))
-        for r in measured
-    ]
-    first_n, first_rate, _ = rates[0]
-    last_n, last_rate, last_rss = rates[-1]
-    ratio = last_rate / first_rate if first_rate > 1e-9 else None
-    exploding = bool(ratio is not None and ratio >= 2.0)
-    aborted = [r for r in rows if r.get("aborted")]
-    if aborted and not exploding:
-        exploding = True
+    strong = bool(exploded) or (
+        ms_ratio is not None and ms_ratio >= _EFFECT_RATIO
+    ) or (
+        rss_ratio is not None and rss_ratio >= _EFFECT_RATIO
+    )
     return {
-        "courbe": "explose" if exploding else "quasi-linéaire",
-        "ms_par_pierre": {
-            str(n): round(rate * 1000.0, 1) for n, rate, _ in rates
-        },
-        "ratio_dernier_sur_premier": (
-            round(ratio, 2) if ratio is not None else None),
-        "premier": first_n,
-        "dernier_abouti": last_n,
-        "rss_pic_gi_dernier": last_rss,
-        "avortés": [
-            {"pierres": r.get("pierres"), "cause": r.get("aborted")}
-            for r in aborted
-        ],
+        "fort": strong,
+        "ratio_ms_par_pierre": ms_ratio,
+        "ratio_rss": rss_ratio,
+        "ratio": ms_ratio,
+        "min_s": round(min(known_s), 3) if known_s else None,
+        "max_s": round(max(known_s), 3) if known_s else None,
+        "avortés": aborted,
     }
+
+
+def _c_needed_reason(camp_a, camp_b):
+    """C si A et B ne désignent pas une cause à elles seules.
+
+    Une explosion d'A qui n'existe qu'aux points où les pierres se
+    chevauchent n'isole pas le nombre : c'est déjà l'écart. C tranche.
+    """
+    a_strong = bool((camp_a.get("effet") or {}).get("fort"))
+    b_strong = bool((camp_b.get("effet") or {}).get("fort"))
+    a_rows = camp_a.get("mesures") or []
+    sans_chevauche = [r for r in a_rows if not r.get("chevauchement")]
+    a_fort_sans_chevauche = (
+        bool(_effect(sans_chevauche).get("fort")) if sans_chevauche else False)
+    if a_strong and not a_fort_sans_chevauche and not b_strong:
+        return (
+            "A n'explose qu'au point où les pierres se chevauchent ; "
+            "sans ce point le nombre est plat, et B (écart positif) "
+            "l'est aussi. C isole l'écart."
+        )
+    if a_strong and not b_strong:
+        return None
+    if b_strong and not a_strong:
+        return None
+    if not a_strong and not b_strong:
+        return None
+    return (
+        "A et B varient toutes les deux : nombre et courbure restent "
+        "liés à l'écart entre sièges — seule C les sépare"
+    )
+
+
+def _all_aborted(campaign, cause=None):
+    rows = campaign.get("mesures") or []
+    if not rows:
+        return False
+    if cause is None:
+        return all(r.get("aborted") for r in rows)
+    return all(r.get("aborted") == cause for r in rows)
+
+
+def _verdict(camp_a, camp_b, camp_c):
+    """Quelle variable décide — ou le constat qu'aucune ne tranche."""
+    if _all_aborted(camp_a, "plateforme") or _all_aborted(camp_b, "plateforme"):
+        return {
+            "variable": "aucune nette",
+            "detail": (
+                "La sonde a refusé de mesurer : FreeCAD n'est pas la "
+                "plateforme de référence. Aucune variable ne décide tant "
+                "que la courbe n'existe pas."
+            ),
+            "campagne_c_lancee": bool((camp_c or {}).get("mesures")),
+            "A_fort": False,
+            "B_fort": False,
+            "C_fort": None,
+            "ratio_A": None,
+            "ratio_B": None,
+            "ratio_C": None,
+        }
+    a_strong = bool((camp_a.get("effet") or {}).get("fort"))
+    b_strong = bool((camp_b.get("effet") or {}).get("fort"))
+    c_rows = (camp_c or {}).get("mesures") or []
+    c_strong = bool(((camp_c or {}).get("effet") or {}).get("fort"))
+    c_ran = bool(c_rows)
+
+    if c_ran and c_strong and a_strong and b_strong:
+        variable = "écart entre sièges"
+        detail = (
+            "A croît avec le nombre (donc avec le serrage), B croît quand "
+            "le jonc se referme (donc avec le serrage), C isolée — rayon "
+            "et effectif figés — croît quand le diamètre rapproche les "
+            "sièges. C'est l'écart, pas le nombre ni la courbure à elle "
+            "seule."
+        )
+    elif c_ran and not c_strong and a_strong and b_strong:
+        variable = "aucune nette"
+        detail = (
+            "A et B bougent, mais C — le seul levier d'écart à rayon et "
+            "nombre figés — ne tranche pas. Un résultat qui ne tranche "
+            "pas est un résultat."
+        )
+    elif c_ran and c_strong and a_strong and not b_strong:
+        variable = "écart entre sièges"
+        detail = (
+            "A n'explose qu'une fois les pierres trop serrées ; B, à "
+            "écart positif, reste plat sur bague comme sur bracelet. C, "
+            "rayon et effectif figés, explose quand le diamètre referme "
+            "l'écart. C'est l'écart entre sièges."
+        )
+    elif c_ran and not c_strong and a_strong and not b_strong:
+        variable = "écart entre sièges"
+        detail = (
+            "A n'explose que si les pierres se chevauchent (entraxe plus "
+            "petit que le diamètre). C, à écart encore positif, ne "
+            "l'imite pas. Ni le nombre ni la courbure : le chevauchement "
+            "des sièges."
+        )
+    elif a_strong and not b_strong:
+        variable = "nombre"
+        detail = (
+            "À rayon de bague figé, le coût suit l'effectif. À effectif "
+            "figé, changer le rayon ne suffit pas à exploser. C n'a pas "
+            "été lancée."
+        )
+    elif b_strong and not a_strong:
+        variable = "courbure"
+        detail = (
+            "À effectif figé, le coût explose sur le jonc serré et passe "
+            "sur le bracelet. À rayon de bague figé, l'effectif ne "
+            "suffit pas à exploser. C n'a pas été lancée."
+        )
+    elif not a_strong and not b_strong:
+        variable = "aucune nette"
+        detail = (
+            "Ni le nombre (A) ni la courbure (B) n'ont fait exploser le "
+            "coût dans la plage mesurée. C n'a pas été lancée : A et B "
+            "suffisent à dire qu'aucune des deux ne décide ici."
+        )
+    else:
+        variable = "aucune nette"
+        detail = (
+            "A et B varient toutes les deux ; C n'a pas tranché plus "
+            "nettement. Pas de conclusion arrangée."
+        )
+    return {
+        "variable": variable,
+        "detail": detail,
+        "campagne_c_lancee": c_ran,
+        "A_fort": a_strong,
+        "B_fort": b_strong,
+        "C_fort": c_strong if c_ran else None,
+        "ratio_A": (camp_a.get("effet") or {}).get("ratio"),
+        "ratio_B": (camp_b.get("effet") or {}).get("ratio"),
+        "ratio_C": (camp_c.get("effet") or {}).get("ratio") if c_ran else None,
+    }
+
+
+def _fmt(value, digits=2):
+    if value is None:
+        return "—"
+    text = "{:.{digits}f}".format(float(value), digits=digits)
+    return text.replace(".", ",")
+
+
+def _print_table(campaign):
+    print("\nCampagne {} — fixe : {} ; varie : {} — {}".format(
+        campaign["id"], campaign["fixe"], campaign["varie"],
+        campaign["question"]), flush=True)
+    header = (
+        " pierres  rayon  entraxe     Ø   écart  régime                      "
+        "t(s)   RSS    statut")
+    print(header, flush=True)
+    for row in campaign.get("mesures") or []:
+        if row.get("ok") and row.get("total_s") is not None:
+            statut = "ok"
+            t_s = _fmt(row.get("total_s"), 2)
+        elif row.get("aborted"):
+            statut = str(row.get("aborted"))
+            t_s = "plafond" if row.get("aborted") in ("rss", "temps") else "—"
+        else:
+            statut = "échec"
+            t_s = "—"
+        rss = _fmt(row.get("rss_pic_gi"), 2)
+        print(" {:>7}  {:>5}  {:>7}  {:>4}  {:>6}  {:<28} {:>6}  {:>5}  {}".format(
+            row.get("pierres"),
+            _fmt(row.get("rayon_mm"), 2),
+            _fmt(row.get("entraxe_mm"), 3),
+            _fmt(row.get("diametre_mm"), 2),
+            _fmt(row.get("ecart_sieges_mm"), 3),
+            (row.get("regime") or "")[:28],
+            t_s,
+            rss,
+            statut,
+        ), flush=True)
+
+
+def _selected_campaigns():
+    raw = (os.environ.get("FREESOLID_SPIKE_CAMPAGNES") or "").strip().upper()
+    if not raw:
+        return None
+    wanted = [part.strip() for part in raw.replace(",", " ").split() if part.strip()]
+    unknown = [item for item in wanted if item not in CAMPAIGNS]
+    if unknown:
+        raise RuntimeError("campagne inconnue : {}".format(", ".join(unknown)))
+    return wanted
 
 
 def orchestrate():
-    rows = [run_child(n) for n in COUNTS]
+    selected = _selected_campaigns()
+    if selected is not None:
+        camps = {cid: run_campaign(cid) for cid in selected}
+        report = {
+            "sonde": "P040 une variable à la fois",
+            "plafond_rss_gi": CEILING_RSS_KIB / (1024 * 1024),
+            "plafond_s": CEILING_SECONDS,
+            "campagnes": camps,
+            "selection": selected,
+        }
+        first = []
+        for camp in camps.values():
+            first = camp.get("mesures") or []
+            if first:
+                break
+        if first:
+            report["machine"] = first[0].get("machine")
+            report["plateforme"] = first[0].get("plateforme")
+        print(json.dumps(report, ensure_ascii=False, indent=1), flush=True)
+        for cid in selected:
+            _print_table(camps[cid])
+        return report
+    camp_a = run_campaign("A")
+    camp_b = run_campaign("B")
+    why_c = _c_needed_reason(camp_a, camp_b)
+    if why_c:
+        camp_c = run_campaign("C")
+        camp_c["lancee"] = True
+        camp_c["raison"] = why_c
+    else:
+        camp_c = {
+            "id": "C",
+            "lancee": False,
+            "raison": (
+                "A et B suffisent à désigner une cause — C n'est pas lancée"
+            ),
+            "fixe": CAMPAIGNS["C"]["fixe"],
+            "varie": CAMPAIGNS["C"]["varie"],
+            "question": CAMPAIGNS["C"]["question"],
+            "mesures": [],
+            "effet": None,
+        }
+    verdict = _verdict(camp_a, camp_b, camp_c)
     report = {
-        "sonde": "P039 booléen d'un semis",
-        "counts": list(COUNTS),
+        "sonde": "P040 une variable à la fois",
         "plafond_rss_gi": CEILING_RSS_KIB / (1024 * 1024),
         "plafond_s": CEILING_SECONDS,
-        "mesures": rows,
-        "verdict": _verdict(rows),
+        "campagnes": {"A": camp_a, "B": camp_b, "C": camp_c},
+        "verdict": verdict,
     }
-    if rows:
-        report["machine"] = rows[0].get("machine")
-        report["plateforme"] = rows[0].get("plateforme")
+    first_rows = camp_a.get("mesures") or camp_b.get("mesures") or []
+    if first_rows:
+        report["machine"] = first_rows[0].get("machine")
+        report["plateforme"] = first_rows[0].get("plateforme")
     print(json.dumps(report, ensure_ascii=False, indent=1), flush=True)
-    verdict = report["verdict"]
-    print("\nSONDE {} — {} (ratio ×{})".format(
-        "VERTE" if verdict.get("courbe") in ("quasi-linéaire", "explose")
-        and any(r.get("ok") for r in rows) else "ROUGE",
-        verdict.get("courbe"),
-        verdict.get("ratio_dernier_sur_premier")), flush=True)
+    _print_table(camp_a)
+    _print_table(camp_b)
+    if camp_c.get("lancee"):
+        _print_table(camp_c)
+    else:
+        print("\nCampagne C — non lancée : {}".format(
+            camp_c.get("raison")), flush=True)
+    print("\nVERDICT : {} — {}".format(
+        verdict.get("variable"), verdict.get("detail")), flush=True)
     return report
 
 
+def _load_spec():
+    raw = (os.environ.get(_SPEC_ENV) or "").strip()
+    if not raw:
+        return None
+    spec = json.loads(raw)
+    geom = geometry_of(spec["pierres"], spec["rayon_mm"], spec["diametre_mm"])
+    geom["campagne"] = spec.get("campagne")
+    return geom
+
+
 def main():
-    raw = (os.environ.get(_COUNT_ENV) or "").strip()
-    if raw:
-        measure_one(int(raw))
+    spec = _load_spec()
+    if spec is not None:
+        measure_one(spec)
         return
     orchestrate()
 

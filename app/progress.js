@@ -4,19 +4,24 @@
 // Ce module n'en invente pas. Il formate une phase nommée, un compteur
 // de pierres quand la boucle est comptable, et les secondes écoulées.
 //
-// P039 : l'annonce n'est plus une constante. La sonde (25 / 50 / 100 /
-// 200) a montré que le coût explose, et pas même de façon monotone —
-// 25 pierres : 0,74 s / 0,16 GiB ; 50 : 200 s / 12 GiB ; 100 : plafond
-// 360 s ; 200 : 41 s / 1,9 GiB — FreeCAD 1.1.3, Xeon 4 cœurs, 16 Go.
-
-/** Premier effectif où la sonde a explosé (50 pierres → 12 GiB, 200 s). */
-export const COMBINE_MEMORY_WARN_STONES = 50;
+// P040 : le coût n'explose pas avec le nombre ni avec la courbure, mais
+// quand les sièges se chevauchent (entraxe < diamètre). Sur un jonc de
+// 9 mm, 30 pierres à +0,085 mm d'écart : 1,1 s / 0,27 GiB ; les mêmes
+// à −0,12 mm : 81 s / 4,7 GiB. P039 à entraxe = Ø sur un jonc de 12 mm
+// a explosé ; à 48 mm, 200 pierres qui se frôlent passent en 41 s.
 
 /**
- * Sans mesure locale, se taire en dessous : 25 pierres ont coûté 0,74 s.
- * Au-delà, fourchette — jamais un point.
+ * Écart (entraxe − diamètre) au-dessous duquel on alarme. 0 = frôlement
+ * ou chevauchement. C à +0,085 mm passe ; A et C n'explosent qu'en
+ * négatif.
  */
-export const COMBINE_CONFIRM_MIN_STONES = 30;
+export const COMBINE_MEMORY_WARN_GAP_MM = 0;
+
+/**
+ * Rayon au-delà duquel un entraxe nul n'a pas explosé (P039, 47,75 mm,
+ * 200 pierres, 41 s / 1,9 GiB). Une bague fait 8 à 10 mm.
+ */
+export const COMBINE_MEMORY_WARN_RADIUS_MM = 12;
 
 /** Sous ce seuil, une boîte de dialogue coûterait plus que l'attente. */
 export const COMBINE_CONFIRM_MIN_SECONDS = 5;
@@ -126,11 +131,52 @@ function _stoneWord(n) {
   return n === 1 ? "pierre" : "pierres";
 }
 
+function _finiteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Écart entre sièges (entraxe − diamètre), ou null si le moteur n'a
+ * pas encore fourni de géométrie.
+ *
+ * @param {{ entraxe_mm?: number, diametre?: number, ecart_sieges_mm?: number }|null|undefined} gem
+ * @returns {number|null}
+ */
+export function seatingGapMm(gem) {
+  if (!gem) return null;
+  const stored = _finiteNumber(gem.ecart_sieges_mm);
+  if (stored != null) return stored;
+  const entraxe = _finiteNumber(gem.entraxe_mm);
+  const diametre = _finiteNumber(gem.diametre);
+  if (entraxe == null || diametre == null) return null;
+  return entraxe - diametre;
+}
+
+/**
+ * True si A/C ont explosé pour cette géométrie : chevauchement, ou
+ * frôlement (écart ≤ 0) sur un jonc de bague.
+ *
+ * @param {{ rayon_mm?: number, entraxe_mm?: number, diametre?: number, ecart_sieges_mm?: number, chevauchement?: boolean }|null|undefined} gem
+ */
+export function combineNeedsMemoryWarning(gem) {
+  if (!gem) return false;
+  if (gem.chevauchement === true) return true;
+  const gap = seatingGapMm(gem);
+  if (gap == null) return false;
+  if (gap < COMBINE_MEMORY_WARN_GAP_MM) return true;
+  if (gap > COMBINE_MEMORY_WARN_GAP_MM) return false;
+  const radius = _finiteNumber(gem.rayon_mm);
+  if (radius == null) return false;
+  return radius <= COMBINE_MEMORY_WARN_RADIUS_MM;
+}
+
 /**
  * Message de confirmation, ou null si trop court / pas un semis.
- * Sans mesure locale : fourchette, jamais un point.
+ * Sans mesure locale : se taire, sauf semis trop serré — jamais un
+ * point inventé, jamais d'alarme calée sur le seul effectif.
  *
- * @param {{ gems?: Array<{ name: string, count: number }> }|null|undefined} tree
+ * @param {{ gems?: Array<{ name: string, count: number, rayon_mm?: number, entraxe_mm?: number, diametre?: number, ecart_sieges_mm?: number, chevauchement?: boolean }> }|null|undefined} tree
  * @param {string} toolName
  * @param {CombineSample|null} [sample]
  */
@@ -142,11 +188,13 @@ export function combineConfirmMessage(tree, toolName, sample) {
   const measured = sample === undefined ? sessionSample : sample;
   const pierre = _stoneWord(n);
 
-  if (n >= COMBINE_MEMORY_WARN_STONES) {
-    return `${n} ${pierre} — cette opération peut demander plusieurs Go `
-      + "de mémoire et ne pas aboutir sur une machine modeste. "
-      + "Enregistrez avant de continuer. Reculez la barre de reprise et "
-      + "combinez par lots plus petits, en plusieurs fonctions. Continuer ?";
+  if (combineNeedsMemoryWarning(gem)) {
+    return `${n} ${pierre} — les sièges se frôlent ou se chevauchent. `
+      + "Cette opération peut demander plusieurs Go de mémoire et ne "
+      + "pas aboutir. Enregistrez avant de continuer. Reculez la barre "
+      + "de reprise et combinez par lots plus petits, en plusieurs "
+      + "fonctions : sur une bague serrée, c'est la voie normale. "
+      + "Continuer ?";
   }
 
   const seconds = estimateCombineSeconds(n, measured);
@@ -156,9 +204,7 @@ export function combineConfirmMessage(tree, toolName, sample) {
       + "d'après la dernière combinaison sur cette machine. Continuer ?";
   }
 
-  if (n < COMBINE_CONFIRM_MIN_STONES) return null;
-  return `${n} ${pierre} — de plusieurs dizaines de secondes `
-    + "à quelques minutes selon la machine. Continuer ?";
+  return null;
 }
 
 /** Texte de barre d'état. Jamais un pourcentage. */

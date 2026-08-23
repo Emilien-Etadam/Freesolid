@@ -8,6 +8,7 @@ au niveau module.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 
@@ -80,6 +81,50 @@ def parse_spin_lift(value, default=0.0) -> float:
 
 def cache_key(gemme, diametre) -> tuple:
     return (sanitize_gemme(gemme), round(float(diametre), 6))
+
+
+def face_radius_mm(face):
+    """Rayon d'une face cylindrique ou d'un tore, sinon ``None``.
+
+    Pas d'import FreeCAD : ``getattr`` sur l'objet face suffit, et rend
+    la fonction testable avec un simple stub.
+    """
+    surface = getattr(face, "Surface", None)
+    if surface is None:
+        return None
+    for attr in ("Radius", "MajorRadius"):
+        raw = getattr(surface, attr, None)
+        if raw is None:
+            continue
+        try:
+            number = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if number > 0:
+            return number
+    return None
+
+
+def arc_entraxe_mm(rayon_mm, count):
+    """Entraxe d'arc : circonférence / effectif. ``None`` si indéfini."""
+    try:
+        n = int(count)
+        radius = float(rayon_mm)
+    except (TypeError, ValueError):
+        return None
+    if n <= 0 or radius <= 0:
+        return None
+    return 2.0 * math.pi * radius / n
+
+
+def seating_gap_mm(entraxe_mm, diametre_mm):
+    """Écart entre sièges : entraxe moins diamètre. Négatif = chevauchement."""
+    try:
+        entraxe = float(entraxe_mm)
+        diametre = float(diametre_mm)
+    except (TypeError, ValueError):
+        return None
+    return entraxe - diametre
 
 
 def face_name(index) -> str:

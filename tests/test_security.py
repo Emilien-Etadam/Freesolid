@@ -205,6 +205,15 @@ def test_safe_static_path_traversal(tmp_path):
         "/../etc/passwd", app_dir=str(tmp_path)) is None
 
 
+def test_ribbon_json_sert_le_bon_mime():
+    """L'UI importe ribbon.json en module (``with { type: "json" }``) —
+    le navigateur refuse l'import si le type MIME servi n'est pas JSON."""
+    chemin = server._safe_static_path("/ribbon.json")
+    assert chemin is not None
+    ext = os.path.splitext(chemin)[1]
+    assert server._CONTENT_TYPES[ext].startswith("application/json")
+
+
 def _plugin_loaded(tmp_path, nom="alpha", directory="disk-name"):
     folder = tmp_path / directory
     ui = folder / "ui"

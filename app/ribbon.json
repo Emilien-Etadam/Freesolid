@@ -1,0 +1,188 @@
+{
+  "onglets": [
+    {
+      "id": "features",
+      "libelle": "Fonctions",
+      "groupes": [
+        {
+          "libelle": "Esquisse",
+          "boutons": [
+            { "id": "btn-sketch", "titre": "Esquisse",
+              "icon": "icons/Sketcher_NewSketch.svg", "libelle": "Esquisse" },
+            { "id": "btn-datum",
+              "titre": "Plan de référence — décalé d'un plan ou d'une face",
+              "icon": "icons/PartDesign_Plane.svg",
+              "libelle": "Plan de référence" }
+          ]
+        },
+        {
+          "libelle": "Corps",
+          "boutons": [
+            { "id": "btn-body", "titre": "Nouveau corps — pièce multi-corps",
+              "icon": "icons/PartDesign_Body.svg", "libelle": "Corps" },
+            { "id": "btn-boolean",
+              "titre": "Combiner deux corps : Soustraire / Ajouter / Intersection",
+              "icon": "icons/PartDesign_Boolean.svg", "libelle": "Combiner" }
+          ]
+        },
+        {
+          "libelle": "Fonctions",
+          "boutons": [
+            { "id": "btn-pad", "titre": "Bossage/Base extrudé",
+              "icon": "icons/PartDesign_Pad.svg", "libelle": "Bossage extrudé" },
+            { "id": "btn-revolution",
+              "titre": "Bossage/Base avec révolution — autour de l'axe vertical de l'esquisse",
+              "icon": "icons/PartDesign_Revolution.svg", "libelle": "Révolution" },
+            { "id": "btn-pocket", "titre": "Enlèvement de matière extrudé",
+              "icon": "icons/PartDesign_Pocket.svg",
+              "libelle": "Enlèvement de matière" },
+            { "id": "btn-groove",
+              "titre": "Enlèvement de matière avec révolution",
+              "icon": "icons/PartDesign_Groove.svg",
+              "libelle": "Enlèv. révolution" },
+            { "id": "btn-hole",
+              "titre": "Assistant de perçage — une esquisse de cercles positionne les trous",
+              "icon": "icons/PartDesign_Hole.svg",
+              "libelle": "Assistant de perçage" },
+            { "id": "btn-loft",
+              "titre": "Bossage/Base lissé — plusieurs profils, souvent sur des plans de référence",
+              "icon": "icons/PartDesign_AdditiveLoft.svg", "libelle": "Lissage" },
+            { "id": "btn-sweep",
+              "titre": "Bossage/Base balayé — un profil suit une trajectoire",
+              "icon": "icons/PartDesign_AdditivePipe.svg", "libelle": "Balayage" },
+            { "id": "btn-helix", "titre": "Hélice — ressorts, filets réels",
+              "icon": "icons/PartDesign_AdditiveHelix.svg", "libelle": "Hélice" },
+            { "id": "btn-text",
+              "titre": "Gravure / bossage de texte sur une face — marquage de pièces",
+              "icon": "icons/Draft_ShapeString.svg", "libelle": "Texte" },
+            { "id": "btn-graph-feature",
+              "titre": "Fonction graphe — flux de nœuds, boucles et listes, une forme en sortie",
+              "icon": "icons/Geoassembly.svg", "libelle": "Fonction graphe" }
+          ]
+        },
+        {
+          "libelle": "Habillage",
+          "boutons": [
+            { "id": "btn-fillet", "titre": "Congé",
+              "icon": "icons/PartDesign_Fillet.svg", "libelle": "Congé" },
+            { "id": "btn-chamfer", "titre": "Chanfrein",
+              "icon": "icons/PartDesign_Chamfer.svg", "libelle": "Chanfrein" },
+            { "id": "btn-shell",
+              "titre": "Coque — la face cliquée devient l'ouverture",
+              "icon": "icons/PartDesign_Thickness.svg", "libelle": "Coque" },
+            { "id": "btn-draft",
+              "titre": "Dépouille de la face cliquée (plan neutre : Plan de dessus)",
+              "icon": "icons/PartDesign_Draft.svg", "libelle": "Dépouille" }
+          ]
+        },
+        {
+          "libelle": "Répétitions",
+          "boutons": [
+            { "id": "btn-linpattern",
+              "titre": "Répétition linéaire de la dernière fonction",
+              "icon": "icons/PartDesign_LinearPattern.svg",
+              "libelle": "Rép. linéaire" },
+            { "id": "btn-polpattern",
+              "titre": "Répétition circulaire de la dernière fonction",
+              "icon": "icons/PartDesign_PolarPattern.svg",
+              "libelle": "Rép. circulaire" },
+            { "id": "btn-mirror",
+              "titre": "Symétrie de la dernière fonction par rapport à un plan d'origine",
+              "icon": "icons/PartDesign_Mirrored.svg", "libelle": "Symétrie" },
+            { "id": "btn-repeat-variable",
+              "titre": "Répétition variable — rejoue un groupe avec des cotes différentes",
+              "icon": "icons/PartDesign_LinearPattern.svg",
+              "libelle": "Rép. variable" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sketch",
+      "libelle": "Esquisse",
+      "element": "sketchbar"
+    },
+    {
+      "id": "surfaces",
+      "libelle": "Surfaces",
+      "groupes": [
+        {
+          "libelle": "Surfaces",
+          "boutons": [
+            { "id": "btn-surf-extrude",
+              "titre": "Surface extrudée — le profil peut être ouvert",
+              "icon": "icons/Surface_Filling.svg",
+              "libelle": "Surface extrudée" },
+            { "id": "btn-surf-revolve",
+              "titre": "Surface de révolution — autour de l'axe vertical de l'esquisse",
+              "icon": "icons/PartDesign_Revolution.svg",
+              "libelle": "Surface de révolution" },
+            { "id": "btn-surf-loft",
+              "titre": "Surface lissée entre plusieurs profils",
+              "icon": "icons/PartDesign_AdditiveLoft.svg",
+              "libelle": "Surface lissée" }
+          ]
+        },
+        {
+          "libelle": "Opérations",
+          "boutons": [
+            { "id": "btn-surf-sew",
+              "titre": "Coudre des surfaces — solidifie si la peau est fermée",
+              "icon": "icons/Part_3D_object.svg", "libelle": "Coudre" },
+            { "id": "btn-surf-thicken",
+              "titre": "Épaissir une surface en solide",
+              "icon": "icons/PartDesign_Thickness.svg", "libelle": "Épaissir" }
+          ]
+        },
+        {
+          "libelle": "Courbes",
+          "boutons": [
+            { "id": "btn-curve3d",
+              "titre": "Courbe 3D par points — trajectoire de balayage (le repli esquisse 3D)",
+              "icon": "icons/Sketcher_Create3PointArc.svg",
+              "libelle": "Courbe 3D" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "assembly",
+      "libelle": "Assemblage",
+      "groupes": [
+        {
+          "libelle": "Assemblage",
+          "boutons": [
+            { "id": "btn-newasm",
+              "titre": "Nouvel assemblage — pièces insérées par référence",
+              "icon": "icons/Geoassembly.svg", "libelle": "Nouvel assemblage" },
+            { "id": "btn-insert",
+              "titre": "Insérer une pièce (.FCStd) — chaque instance est un lien vers le fichier",
+              "icon": "icons/Link.svg", "libelle": "Insérer une pièce" },
+            { "id": "btn-move",
+              "titre": "Déplacer le composant sélectionné (translation + rotations)",
+              "libelle": "Déplacer" },
+            { "id": "btn-joint",
+              "titre": "Contrainte d'assemblage — deux faces, le solveur repositionne",
+              "icon": "icons/Geoassembly.svg", "libelle": "Contrainte" },
+            { "id": "btn-array-comp",
+              "titre": "Répéter le composant sélectionné au pas choisi",
+              "icon": "icons/LinkArray.svg", "libelle": "Répéter" },
+            { "id": "btn-solve", "titre": "Relancer le solveur d'assemblage",
+              "libelle": "Résoudre" }
+          ]
+        },
+        {
+          "libelle": "Évaluer",
+          "boutons": [
+            { "id": "btn-interf",
+              "titre": "Détection d'interférences — volume commun par paires de composants",
+              "libelle": "Interférences" },
+            { "id": "btn-explode",
+              "titre": "Vue éclatée (visuel) — les composants s'écartent, re-cliquer les ramène",
+              "libelle": "Éclater" }
+          ]
+        }
+      ]
+    }
+  ]
+}

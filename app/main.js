@@ -19,6 +19,10 @@ import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import {
+  buildRibbonElement, buildTabButton, installCoreRibbons, isPluginId,
+} from "./ribbon.js";
+import RIBBON_LAYOUT from "./ribbon.json" with { type: "json" };
+import {
   buildGraph,
   cloneGraphDraft,
   composeGraphPayload,
@@ -52,6 +56,11 @@ import {
   paramChoiceCaption,
   removeGraphNode,
 } from "./graph.js";
+
+// Le ruban du noyau est rendu depuis ribbon.json avant tout câblage :
+// les getElementById("btn-…") plus bas supposent les boutons présents.
+// La table onglet → bandeau est complétée par les plugins (addPluginRibbon).
+const RIBBONS = installCoreRibbons(document, RIBBON_LAYOUT);
 
 const statusEl = document.getElementById("status");
 const pickEl = document.getElementById("pick");
@@ -2398,13 +2407,6 @@ document.getElementById("ctx-delete").addEventListener("click", () => {
 
 // ---------- ruban à onglets (CommandManager) ----------
 
-const RIBBONS = {
-  features: "ribbon-features",
-  sketch: "sketchbar",
-  surfaces: "ribbon-surfaces",
-  assembly: "ribbon-assembly",
-};
-
 function showTab(name) {
   for (const tab of document.querySelectorAll("header .tab")) {
     tab.classList.toggle("active", tab.dataset.tab === name);
@@ -2418,72 +2420,14 @@ for (const tab of document.querySelectorAll("header .tab")) {
   tab.addEventListener("click", () => showTab(tab.dataset.tab));
 }
 
-function isPluginId(id) {
-  return typeof id === "string" && /^[a-z][a-z0-9_]*$/.test(id);
-}
-
-function isButtonId(id) {
-  return typeof id === "string" && /^[A-Za-z][A-Za-z0-9_-]*$/.test(id);
-}
-
-function safeIconSrc(icon) {
-  if (typeof icon !== "string" || !icon) return "";
-  if (icon.includes("..") || icon.includes("\\") || icon.includes(":")) {
-    return "";
-  }
-  if (!/^[A-Za-z0-9_./-]+$/.test(icon)) return "";
-  return icon;
-}
-
 function addPluginRibbon(spec) {
   if (!isPluginId(spec.id) || RIBBONS[spec.id]) return;
-  const libelle = typeof spec.libelle === "string" && spec.libelle.trim()
-    ? spec.libelle.trim() : spec.id;
-  const tab = document.createElement("button");
-  tab.className = "tab";
-  tab.dataset.tab = spec.id;
-  tab.textContent = libelle;
+  const tab = buildTabButton(document, spec.id, spec.libelle);
   const push = document.querySelector("#topbar .push");
   if (push) push.parentElement.insertBefore(tab, push);
   tab.addEventListener("click", () => showTab(spec.id));
 
-  const ribbon = document.createElement("div");
-  ribbon.id = "ribbon-" + spec.id;
-  ribbon.className = "ribbon";
-  for (const groupe of spec.groupes ?? []) {
-    const group = document.createElement("div");
-    group.className = "ribbon-group";
-    const btns = document.createElement("div");
-    btns.className = "ribbon-group-btns";
-    if (groupe.node instanceof Node) {
-      btns.appendChild(groupe.node);
-    } else {
-      for (const specBtn of groupe.boutons ?? []) {
-        if (!isButtonId(specBtn.id)) continue;
-        const btn = document.createElement("button");
-        btn.id = specBtn.id;
-        if (specBtn.titre) btn.title = String(specBtn.titre);
-        if (specBtn.disabled) btn.disabled = true;
-        const icon = safeIconSrc(specBtn.icon);
-        if (icon) {
-          const img = document.createElement("img");
-          img.src = icon;
-          img.alt = "";
-          btn.appendChild(img);
-        }
-        if (specBtn.libelle) {
-          btn.appendChild(document.createTextNode(String(specBtn.libelle)));
-        }
-        btns.appendChild(btn);
-      }
-    }
-    group.appendChild(btns);
-    const label = document.createElement("div");
-    label.className = "ribbon-group-label";
-    label.textContent = typeof groupe.libelle === "string" ? groupe.libelle : "";
-    group.appendChild(label);
-    ribbon.appendChild(group);
-  }
+  const ribbon = buildRibbonElement(document, spec.id, spec.groupes);
   const sketchbar = document.getElementById("sketchbar");
   sketchbar.parentElement.insertBefore(ribbon, sketchbar);
   RIBBONS[spec.id] = ribbon.id;

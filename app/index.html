@@ -580,10 +580,8 @@
   <header>
     <div id="topbar">
       <div class="logo">Free<span>Solid</span></div>
-      <button class="tab active" data-tab="features">Fonctions</button>
-      <button class="tab" data-tab="sketch">Esquisse</button>
-      <button class="tab" data-tab="surfaces">Surfaces</button>
-      <button class="tab" data-tab="assembly">Assemblage</button>
+      <!-- Les onglets du ruban viennent de ribbon.json (main.js les insère
+           avant .push ; les plugins ajoutent les leurs à la suite). -->
       <span class="push"></span>
       <button id="btn-settings" title="Réglages"><img src="icons/FreeSolid_Settings.svg" alt=""></button>
       <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt=""></button>
@@ -600,98 +598,8 @@
       <button id="btn-drawing" title="Mise en plan — Face / Dessus / Iso, cotes d'encombrement, coupe, export DXF"><img src="icons/TechDraw_PageDefault.svg" alt=""></button>
       <button id="btn-selftest">Autotest</button>
     </div>
-    <div id="ribbon-features" class="ribbon active">
-      <div class="ribbon-group">
-        <div class="ribbon-group-btns">
-          <button id="btn-sketch" title="Esquisse"><img src="icons/Sketcher_NewSketch.svg" alt="">Esquisse</button>
-          <button id="btn-datum" title="Plan de référence — décalé d'un plan ou d'une face"><img src="icons/PartDesign_Plane.svg" alt="">Plan de référence</button>
-        </div>
-        <div class="ribbon-group-label">Esquisse</div>
-      </div>
-      <div class="ribbon-group">
-        <div class="ribbon-group-btns">
-          <button id="btn-body" title="Nouveau corps — pièce multi-corps"><img src="icons/PartDesign_Body.svg" alt="">Corps</button>
-          <button id="btn-boolean" title="Combiner deux corps : Soustraire / Ajouter / Intersection"><img src="icons/PartDesign_Boolean.svg" alt="">Combiner</button>
-        </div>
-        <div class="ribbon-group-label">Corps</div>
-      </div>
-      <div class="ribbon-group">
-        <div class="ribbon-group-btns">
-          <button id="btn-pad" title="Bossage/Base extrudé"><img src="icons/PartDesign_Pad.svg" alt="">Bossage extrudé</button>
-          <button id="btn-revolution" title="Bossage/Base avec révolution — autour de l'axe vertical de l'esquisse"><img src="icons/PartDesign_Revolution.svg" alt="">Révolution</button>
-          <button id="btn-pocket" title="Enlèvement de matière extrudé"><img src="icons/PartDesign_Pocket.svg" alt="">Enlèvement de matière</button>
-          <button id="btn-groove" title="Enlèvement de matière avec révolution"><img src="icons/PartDesign_Groove.svg" alt="">Enlèv. révolution</button>
-          <button id="btn-hole" title="Assistant de perçage — une esquisse de cercles positionne les trous"><img src="icons/PartDesign_Hole.svg" alt="">Assistant de perçage</button>
-          <button id="btn-loft" title="Bossage/Base lissé — plusieurs profils, souvent sur des plans de référence"><img src="icons/PartDesign_AdditiveLoft.svg" alt="">Lissage</button>
-          <button id="btn-sweep" title="Bossage/Base balayé — un profil suit une trajectoire"><img src="icons/PartDesign_AdditivePipe.svg" alt="">Balayage</button>
-          <button id="btn-helix" title="Hélice — ressorts, filets réels"><img src="icons/PartDesign_AdditiveHelix.svg" alt="">Hélice</button>
-          <button id="btn-text" title="Gravure / bossage de texte sur une face — marquage de pièces"><img src="icons/Draft_ShapeString.svg" alt="">Texte</button>
-          <button id="btn-graph-feature" title="Fonction graphe — flux de nœuds, boucles et listes, une forme en sortie"><img src="icons/Geoassembly.svg" alt="">Fonction graphe</button>
-        </div>
-        <div class="ribbon-group-label">Fonctions</div>
-      </div>
-      <div class="ribbon-group">
-        <div class="ribbon-group-btns">
-          <button id="btn-fillet" title="Congé"><img src="icons/PartDesign_Fillet.svg" alt="">Congé</button>
-          <button id="btn-chamfer" title="Chanfrein"><img src="icons/PartDesign_Chamfer.svg" alt="">Chanfrein</button>
-          <button id="btn-shell" title="Coque — la face cliquée devient l'ouverture"><img src="icons/PartDesign_Thickness.svg" alt="">Coque</button>
-          <button id="btn-draft" title="Dépouille de la face cliquée (plan neutre : Plan de dessus)"><img src="icons/PartDesign_Draft.svg" alt="">Dépouille</button>
-        </div>
-        <div class="ribbon-group-label">Habillage</div>
-      </div>
-      <div class="ribbon-group">
-        <div class="ribbon-group-btns">
-          <button id="btn-linpattern" title="Répétition linéaire de la dernière fonction"><img src="icons/PartDesign_LinearPattern.svg" alt="">Rép. linéaire</button>
-          <button id="btn-polpattern" title="Répétition circulaire de la dernière fonction"><img src="icons/PartDesign_PolarPattern.svg" alt="">Rép. circulaire</button>
-          <button id="btn-mirror" title="Symétrie de la dernière fonction par rapport à un plan d'origine"><img src="icons/PartDesign_Mirrored.svg" alt="">Symétrie</button>
-          <button id="btn-repeat-variable" title="Répétition variable — rejoue un groupe avec des cotes différentes"><img src="icons/PartDesign_LinearPattern.svg" alt="">Rép. variable</button>
-        </div>
-        <div class="ribbon-group-label">Répétitions</div>
-      </div>
-    </div>
-    <div id="ribbon-surfaces" class="ribbon">
-      <div class="ribbon-group">
-        <div class="ribbon-group-btns">
-          <button id="btn-surf-extrude" title="Surface extrudée — le profil peut être ouvert"><img src="icons/Surface_Filling.svg" alt="">Surface extrudée</button>
-          <button id="btn-surf-revolve" title="Surface de révolution — autour de l'axe vertical de l'esquisse"><img src="icons/PartDesign_Revolution.svg" alt="">Surface de révolution</button>
-          <button id="btn-surf-loft" title="Surface lissée entre plusieurs profils"><img src="icons/PartDesign_AdditiveLoft.svg" alt="">Surface lissée</button>
-        </div>
-        <div class="ribbon-group-label">Surfaces</div>
-      </div>
-      <div class="ribbon-group">
-        <div class="ribbon-group-btns">
-          <button id="btn-surf-sew" title="Coudre des surfaces — solidifie si la peau est fermée"><img src="icons/Part_3D_object.svg" alt="">Coudre</button>
-          <button id="btn-surf-thicken" title="Épaissir une surface en solide"><img src="icons/PartDesign_Thickness.svg" alt="">Épaissir</button>
-        </div>
-        <div class="ribbon-group-label">Opérations</div>
-      </div>
-      <div class="ribbon-group">
-        <div class="ribbon-group-btns">
-          <button id="btn-curve3d" title="Courbe 3D par points — trajectoire de balayage (le repli esquisse 3D)"><img src="icons/Sketcher_Create3PointArc.svg" alt="">Courbe 3D</button>
-        </div>
-        <div class="ribbon-group-label">Courbes</div>
-      </div>
-    </div>
-    <div id="ribbon-assembly" class="ribbon">
-      <div class="ribbon-group">
-        <div class="ribbon-group-btns">
-          <button id="btn-newasm" title="Nouvel assemblage — pièces insérées par référence"><img src="icons/Geoassembly.svg" alt="">Nouvel assemblage</button>
-          <button id="btn-insert" title="Insérer une pièce (.FCStd) — chaque instance est un lien vers le fichier"><img src="icons/Link.svg" alt="">Insérer une pièce</button>
-          <button id="btn-move" title="Déplacer le composant sélectionné (translation + rotations)">Déplacer</button>
-          <button id="btn-joint" title="Contrainte d'assemblage — deux faces, le solveur repositionne"><img src="icons/Geoassembly.svg" alt="">Contrainte</button>
-          <button id="btn-array-comp" title="Répéter le composant sélectionné au pas choisi"><img src="icons/LinkArray.svg" alt="">Répéter</button>
-          <button id="btn-solve" title="Relancer le solveur d'assemblage">Résoudre</button>
-        </div>
-        <div class="ribbon-group-label">Assemblage</div>
-      </div>
-      <div class="ribbon-group">
-        <div class="ribbon-group-btns">
-          <button id="btn-interf" title="Détection d'interférences — volume commun par paires de composants">Interférences</button>
-          <button id="btn-explode" title="Vue éclatée (visuel) — les composants s'écartent, re-cliquer les ramène">Éclater</button>
-        </div>
-        <div class="ribbon-group-label">Évaluer</div>
-      </div>
-    </div>
+    <!-- Les bandeaux features/surfaces/assembly sont rendus depuis
+         ribbon.json et insérés ici, avant #sketchbar (voir ribbon.js). -->
     <div id="sketchbar" class="ribbon">
       <div class="ribbon-group">
         <div class="ribbon-group-btns">

@@ -1713,3 +1713,57 @@ appellera une méthode qui n'existe plus. Rien ne casse aujourd'hui — le promp
 demandait explicitement de laisser les méthodes sur `Kernel` — mais c'est ce
 qui bloquera le déménagement, et il vaut mieux le savoir maintenant que le
 découvrir au `git mv`.
+
+## Relecture de P047 — le déménagement est complet, à deux détails près
+
+285 tests Python (+7), 165 JS, byte-compile de `engine` **et** `plugins`. CI
+verte sur le commit des crochets ; celle du déménagement tournait encore à
+l'heure de cette relecture.
+
+**Les 44 méthodes ont bien quitté `Kernel`** — aucune ne subsiste. Et le test
+`test_ops_gem_ne_sont_plus_des_methodes_du_noyau` fait l'inversion utile : il
+n'affirme pas un comportement, il affirme **que le déménagement a eu lieu**.
+Une régression qui les remettrait sur `Kernel` serait attrapée, alors qu'elle
+ne changerait rien de visible.
+
+Les onze membres de la surface sont épinglés exactement comme mesurés. Les
+trois crochets ont bien « personne ne réclame » pour premier ordre, et le
+bouchon vit dans `tests/`, hors de `plugins/`, donc il ne charge pas en
+production.
+
+Les trois fichiers touchés hors périmètre annoncé — les deux sondes et
+`test_gem_boolean_fingerprint` — suivent des appels qui ont déménagé. Le
+byte-compile de `plugins` en CI était demandé au §6. Rien d'élargi.
+
+### Ce qui reste entre ici et le `git mv`
+
+Mon prompt promettait « après lui, ce sera un `git mv` ». C'est presque vrai.
+Deux choses restent.
+
+**`_gem_bodies` est encore de l'état du noyau.** `kernel.py:255` (constructeur)
+et `kernel.py:542` (fermeture de document) portent `self._gem_bodies = {}`, avec
+un commentaire qui nomme les gabarits, et le plugin y lit et écrit. C'est un
+**douzième membre de surface, que le test n'épingle pas** : le supprimer ne
+ferait rien échouer. Et après le départ du module, le noyau porterait encore un
+dictionnaire pour un plugin absent.
+
+Le remède est le pendant naturel du registre : un **sac d'état par plugin et
+par document**, remis à zéro au même endroit. C'est la dernière chose qui
+retient le métier dans le noyau.
+
+**Les deux sondes bijouterie vivent encore dans `scripts/`.** `spike-booleen-semis.py`
+et `spike-toponaming-semis.py` font maintenant `from bijouterie import gemkernel`,
+et la CI exécute la seconde en étape informative. Elles appartiennent au
+plugin : sans elles, le dépôt public garderait deux imports morts et une étape
+de CI pour un module parti. C'était une septième couture, que je n'avais pas
+comptée non plus.
+
+### Une erreur de mesure, notée pour ce qu'elle enseigne
+
+J'ai d'abord relevé **six** membres privés non épinglés. Cinq étaient des faux
+positifs d'un `grep` sur `kernel\.(\w+)` : dans `gemkernel._refresh_gem_placements(kernel)`,
+`kernel` est l'**argument**, pas le receveur. Un seul cas était réel.
+
+C'est exactement le mécanisme qui gonfle une liste de défauts : une mesure
+crue, une liste plausible, et six problèmes annoncés là où il y en a un.
+Vérifier chaque entrée avant de la citer coûte deux minutes.

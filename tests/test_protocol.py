@@ -451,7 +451,9 @@ def test_pocket_accepts_length_or_through():
 # -- P008 : snapshot, déclarations manquantes, types/bornes, preview ------
 
 def test_ops_snapshot_keys():
-    assert sorted(protocol.OPS) == [
+    # Les ops du NOYAU, pas ``OPS`` : un plugin chargé y fusionne les
+    # siennes, et cette liste cesserait de décrire le noyau seul.
+    assert sorted(protocol.CORE_OP_NAMES) == [
         "add_body",
         "add_boolean",
         "add_chamfer",
@@ -492,26 +494,21 @@ def test_ops_snapshot_keys():
         "get_tree",
         "graph_vocabulary",
         "insert_component",
-        "list_gems",
         "list_plugins",
         "list_variables",
         "make_drawing",
         "mass_properties",
         "measure",
         "move_component",
-        "move_gem",
         "new_assembly",
         "new_part",
         "open_part",
         "ping",
-        "place_gem",
         "preview",
         "progress",
         "rebuild",
         "redo",
-        "remove_gem",
         "rename",
-        "resize_gem",
         "save_part",
         "script_trust_status",
         "selftest",
@@ -548,7 +545,6 @@ def test_ops_snapshot_keys():
         "sketch_trim",
         "solve_assembly",
         "spike_assembly",
-        "spin_gem",
         "surface_extrude",
         "surface_loft",
         "surface_revolve",
@@ -800,42 +796,3 @@ def test_list_plugins_is_core_and_paramless():
     assert protocol.OPS["list_plugins"] == ()
     assert "list_plugins" in protocol.CORE_OP_NAMES
     protocol.validate_request({"op": "list_plugins"})
-
-
-def test_gem_ops_declare_required_and_optional_params():
-    assert protocol.OPS["place_gem"] == ("face", "x", "y", "z")
-    assert protocol.OPS["move_gem"] == ("gem", "index", "x", "y", "z")
-    assert protocol.OPS["spin_gem"] == ("gem", "index")
-    assert protocol.OPS["remove_gem"] == ("gem", "index")
-    assert protocol.OPS["list_gems"] == ()
-    assert protocol.OPS["resize_gem"] == ("gem", "diametre")
-    protocol.validate_request(
-        {"op": "place_gem",
-         "params": {"face": 2, "x": 1.0, "y": 0.0, "z": 3.0}})
-    protocol.validate_request(
-        {"op": "place_gem",
-         "params": {"face": 2, "x": 1, "y": 0, "z": 3,
-                    "gemme": "cylindre-plat", "diametre": 1.5,
-                    "spin": 15, "lift": -0.2}})
-    protocol.validate_request(
-        {"op": "move_gem",
-         "params": {"gem": "Semis", "index": 0, "x": 1, "y": 2, "z": 3,
-                    "face": 4}})
-    protocol.validate_request(
-        {"op": "spin_gem", "params": {"gem": "Semis", "index": 0}})
-    protocol.validate_request({"op": "list_gems"})
-    protocol.validate_request(
-        {"op": "resize_gem",
-         "params": {"gem": "Semis", "diametre": 1.6}})
-    with pytest.raises(protocol.ProtocolError):
-        protocol.validate_request(
-            {"op": "resize_gem", "params": {"gem": "Semis"}})
-    with pytest.raises(protocol.ProtocolError):
-        protocol.validate_request(
-            {"op": "place_gem",
-             "params": {"face": 2, "x": 1, "y": 0, "z": 3, "gemme": ""}})
-    with pytest.raises(protocol.ProtocolError):
-        protocol.validate_request(
-            {"op": "move_gem",
-             "params": {"gem": "Semis", "index": 0, "x": 1, "y": 2}})
-

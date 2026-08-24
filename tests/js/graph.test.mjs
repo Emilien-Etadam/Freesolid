@@ -416,6 +416,7 @@ describe("palette constructive", () => {
     assert.equal(fillet?.sketchProfile, undefined);
     assert.equal(combine?.dressup, undefined);
     assert.equal(combine?.sketchProfile, undefined);
+    assert.deepEqual(combine?.buttons, ["btn-boolean", "btn-gem-combine"]);
     assert.equal(FEATURES.filter((entry) => entry.dressup).length, 6);
     assert.equal(FEATURES.filter((entry) => entry.sketchProfile).length, 4);
   });

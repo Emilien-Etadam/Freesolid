@@ -150,6 +150,42 @@ function surface({ button, icon, title, groups, note, build, invalid }) {
   };
 }
 
+/** Combiner : même panneau sous `btn-boolean` (groupe Corps) et
+ *  `btn-gem-combine` (onglet Bijouterie). Un seul objet, deux ids. */
+const COMBINE_FEATURE = {
+  icon: "PartDesign_Boolean.svg",
+  title: "Combiner",
+  guard: (ctx) => {
+    const options = booleanToolOptions(ctx);
+    return options.length ? null
+      : "Combiner : créez d'abord un second corps, ou posez un semis de pierres";
+  },
+  groups: (ctx) => {
+    const options = booleanToolOptions(ctx);
+    return [{
+      label: "Opération",
+      rows: [
+        { type: "select", key: "type", value: "cut",
+          options: [["cut", "Soustraire"], ["fuse", "Ajouter"],
+                    ["common", "Intersection"]] },
+        { type: "select", key: "tool", value: options[0]?.[0] ?? "",
+          label: "Corps outil",
+          options },
+      ],
+    }];
+  },
+  note: "S'applique au corps actif. Un second corps est absorbé ; "
+        + "un semis de pierres reste dans l'arbre, et l'empreinte "
+        + "se recalcule à chaque reconstruction.",
+  // Un booléen de semis peut durer des dizaines de secondes : l'aperçu
+  // jaune le lancerait à l'ouverture du panneau, avant la confirmation.
+  preview: false,
+  confirm: (v, ctx) => combineConfirmMessage(ctx.lastTree, v.tool),
+  build: (v) => ({ op: "add_boolean",
+    params: { tool: v.tool, type: v.type } }),
+  refresh: "part",
+};
+
 export const FEATURES = [
   withSketchProfile({
     button: "btn-pad",
@@ -527,37 +563,8 @@ export const FEATURES = [
   },
   {
     button: "btn-boolean",
-    icon: "PartDesign_Boolean.svg",
-    title: "Combiner",
-    guard: (ctx) => {
-      const options = booleanToolOptions(ctx);
-      return options.length ? null
-        : "Combiner : créez d'abord un second corps, ou posez un semis de pierres";
-    },
-    groups: (ctx) => {
-      const options = booleanToolOptions(ctx);
-      return [{
-        label: "Opération",
-        rows: [
-          { type: "select", key: "type", value: "cut",
-            options: [["cut", "Soustraire"], ["fuse", "Ajouter"],
-                      ["common", "Intersection"]] },
-          { type: "select", key: "tool", value: options[0]?.[0] ?? "",
-            label: "Corps outil",
-            options },
-        ],
-      }];
-    },
-    note: "S'applique au corps actif. Un second corps est absorbé ; "
-          + "un semis de pierres reste dans l'arbre, et l'empreinte "
-          + "se recalcule à chaque reconstruction.",
-    // Un booléen de semis peut durer des dizaines de secondes : l'aperçu
-    // jaune le lancerait à l'ouverture du panneau, avant la confirmation.
-    preview: false,
-    confirm: (v, ctx) => combineConfirmMessage(ctx.lastTree, v.tool),
-    build: (v) => ({ op: "add_boolean",
-      params: { tool: v.tool, type: v.type } }),
-    refresh: "part",
+    buttons: ["btn-boolean", "btn-gem-combine"],
+    ...COMBINE_FEATURE,
   },
   surface({
     button: "btn-surf-extrude",

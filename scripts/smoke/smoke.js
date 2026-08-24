@@ -85,7 +85,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     (els) => els.map((e) => e.textContent),
   );
   const expectedGroups = [
-    "Esquisse", "Corps", "Fonctions", "Habillage", "Répétitions",
+    "Préparation", "Modélisation", "Habillage", "Transformations",
   ];
   if (featureGroups.join("|") !== expectedGroups.join("|")) {
     errors.push("groupes Fonctions : " + featureGroups.join(", ")
@@ -740,20 +740,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("esquisse sur face : aucun volume avant l'entrée ("
       + facesBeforeSketch + ")");
   }
-  let facePicked = false;
   const tryPick = async (x, y) => {
     await page.mouse.click(x, y);
     await sleep(250);
     const pick = (await page.textContent("#pick")) || "";
     return pick.includes("Face");
   };
-  facePicked = await tryPick(cx, cy);
-  if (!facePicked) {
+  // La pièce se projette là où la caméra la met — pas au centre figé du
+  // chargement : la hauteur du ruban varie d'un onglet à l'autre, donc le
+  // canvas bouge. On demande sa position à l'app, le centre reste un repli.
+  const pickSolidFace = async () => {
+    const volPoint = await page.evaluate(
+      () => window.__freesolidDebug?.volumeScreenPoint ?? null);
+    if (volPoint && await tryPick(volPoint.x, volPoint.y)) return true;
+    if (await tryPick(cx, cy)) return true;
     for (const [dx, dy] of [[0, -40], [40, 0], [-40, 20], [0, 50], [20, -20]]) {
-      facePicked = await tryPick(cx + dx, cy + dy);
-      if (facePicked) break;
+      if (await tryPick(cx + dx, cy + dy)) return true;
     }
-  }
+    return false;
+  };
+  const facePicked = await pickSolidFace();
   if (!facePicked) {
     errors.push("esquisse sur face : aucune face du bossage sélectionnée");
   }
@@ -854,13 +860,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // N005 — esquisse sur une face du solide (un bossage disjoint
   // depuis l'esquisse libre 4f est refusé par PartDesign), puis
   // palette du graphe : poser le bossage et le supprimer.
-  let n005Face = await tryPick(cx, cy);
-  if (!n005Face) {
-    for (const [dx, dy] of [[0, -40], [40, 0], [-40, 20], [0, 50], [20, -20]]) {
-      n005Face = await tryPick(cx + dx, cy + dy);
-      if (n005Face) break;
-    }
-  }
+  const n005Face = await pickSolidFace();
   let n005SketchName = null;
   if (!n005Face) {
     errors.push("N005 : aucune face pour l'esquisse du bossage");

@@ -104,6 +104,8 @@ _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
     ".css": "text/css; charset=utf-8",
+    # Un import de module `with { type: "json" }` exige ce type MIME.
+    ".json": "application/json; charset=utf-8",
     ".svg": "image/svg+xml",
     ".wasm": "application/wasm",
 }

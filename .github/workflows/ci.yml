@@ -81,6 +81,7 @@ jobs:
         run: |
           node --check app/main.js
           node --check app/plugins.js
+          node --check app/ribbon.js
           node --check app/graph.js
           node --check app/history.js
           node --check app/features.js

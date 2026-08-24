@@ -4,7 +4,10 @@ import json
 
 import pytest
 
-from engine.plugins import PluginError, Registry, discover, parse_manifest
+from engine.plugins import (
+    PluginError, Registry, client_plugins, discover, load_plugins,
+    parse_manifest,
+)
 from engine.protocol import CORE_OP_NAMES, OPS
 
 
@@ -126,3 +129,40 @@ def test_bijouterie_ops_remain_in_protocol_snapshot():
                  "list_gems", "resize_gem"):
         assert name in OPS
         assert name not in CORE_OP_NAMES
+
+
+def _write_python_plugin(root, nom, register_body="pass", with_js=True):
+    folder = _write_plugin(
+        root, nom, nom=nom, module="{}.plugin".format(nom))
+    (folder / "__init__.py").write_text("", encoding="utf-8")
+    (folder / "plugin.py").write_text(
+        "def register(registre):\n    {}\n".format(register_body),
+        encoding="utf-8")
+    if with_js:
+        ui = folder / "ui"
+        ui.mkdir()
+        (ui / "plugin.js").write_text("export function register() {}\n")
+    return folder
+
+
+def test_load_plugins_records_manifest_and_js_entry(tmp_path):
+    _write_python_plugin(tmp_path, "recok")
+    registry = load_plugins(root=str(tmp_path))
+    assert [item["nom"] for item in registry.manifests] == ["recok"]
+    assert client_plugins(registry) == {
+        "plugins": [{"nom": "recok", "entree": "/plugins/recok/plugin.js"}],
+    }
+
+
+def test_client_plugins_omits_plugin_without_js(tmp_path):
+    _write_python_plugin(tmp_path, "nojs", with_js=False)
+    registry = load_plugins(root=str(tmp_path))
+    assert [item["nom"] for item in registry.manifests] == ["nojs"]
+    assert client_plugins(registry) == {"plugins": []}
+
+
+def test_failed_plugin_is_not_in_manifests(tmp_path):
+    _write_python_plugin(tmp_path, "boompl", register_body="raise RuntimeError('boom')")
+    registry = load_plugins(root=str(tmp_path))
+    assert registry.manifests == []
+    assert any("boompl" in note for note in registry.notes)

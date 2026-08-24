@@ -210,6 +210,7 @@ class Registry:
         self.errors = []
         self.notes = []
         self.transactional = set()
+        self.manifests = []
         self._after = []
         self._tree = []
         self._mesh = []
@@ -243,6 +244,7 @@ class Registry:
         self._mesh.extend(other._mesh)
         self._ops.update(other._ops)
         self._selftest.extend(other._selftest)
+        self.manifests.extend(other.manifests)
         self.transactional.update(other.transactional)
         self.errors.extend(other.errors)
         self.notes.extend(other.notes)
@@ -328,6 +330,7 @@ def load_plugins(root=None, reserved=None):
                     manifest["nom"], exc))
             continue
         registry.extend(sub)
+        registry.manifests.append(manifest)
     return registry
 
 
@@ -337,3 +340,39 @@ def default_registry():
     if _LOADED is None:
         _LOADED = load_plugins()
     return _LOADED
+
+
+#: Fichier JS annoncé par ``list_plugins`` et servi sous ``statique/``.
+_CLIENT_ENTRY = "plugin.js"
+
+
+def client_entry_path(manifest) -> str:
+    """Chemin URL du JS client, ou « » si le plugin n'en a pas."""
+    if not isinstance(manifest, dict):
+        return ""
+    nom = manifest.get("nom") or ""
+    statique = manifest.get("statique") or ""
+    directory = manifest.get("directory") or ""
+    if not nom or not statique or not directory:
+        return ""
+    path = os.path.join(directory, statique, _CLIENT_ENTRY)
+    if not os.path.isfile(path):
+        return ""
+    return "/plugins/{}/{}".format(nom, _CLIENT_ENTRY)
+
+
+def client_plugins(registry=None):
+    """``{plugins: [{nom, entree}, …]}`` — plugins chargés qui ont un JS.
+
+    L'ordre suit le registre (noms triés à la découverte). Un plugin
+    sans ``statique`` ou sans ``plugin.js`` est omis, pas une erreur.
+    """
+    if registry is None:
+        registry = default_registry()
+    plugins = []
+    for manifest in getattr(registry, "manifests", ()):
+        entree = client_entry_path(manifest)
+        if not entree:
+            continue
+        plugins.append({"nom": manifest["nom"], "entree": entree})
+    return {"plugins": plugins}

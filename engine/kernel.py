@@ -526,6 +526,11 @@ class Kernel:
         App = self._app()
         return {"freecad": ".".join(str(v) for v in App.Version()[:3])}
 
+    def list_plugins(self):
+        """Plugins chargés : nom et point d'entrée JS. Aucun FreeCAD."""
+        from engine.plugins import client_plugins
+        return client_plugins(self._plugins)
+
     def _close_current(self):
         """Drop the engine's previous document, if any.
 

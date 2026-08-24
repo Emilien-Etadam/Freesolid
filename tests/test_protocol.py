@@ -493,6 +493,7 @@ def test_ops_snapshot_keys():
         "graph_vocabulary",
         "insert_component",
         "list_gems",
+        "list_plugins",
         "list_variables",
         "make_drawing",
         "mass_properties",
@@ -793,6 +794,12 @@ def test_pattern_features_must_be_a_list():
 def test_rebuild_is_paramless():
     assert protocol.OPS["rebuild"] == ()
     protocol.validate_request({"op": "rebuild"})
+
+
+def test_list_plugins_is_core_and_paramless():
+    assert protocol.OPS["list_plugins"] == ()
+    assert "list_plugins" in protocol.CORE_OP_NAMES
+    protocol.validate_request({"op": "list_plugins"})
 
 
 def test_gem_ops_declare_required_and_optional_params():

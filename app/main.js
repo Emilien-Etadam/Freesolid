@@ -11,18 +11,13 @@ import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
 import { FEATURES } from "./features.js";
 import {
-  formatMmFr,
-  gemDiametreDeltaFromButton,
-  gemDiametreDeltaFromKey,
-  gemRibbonState,
-} from "./gem-controls.js";
-import {
   formatProgressStatus,
   noteProgressForCalibration,
   rememberCombineFinished,
 } from "./progress.js";
 import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
+import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import {
   buildGraph,
   cloneGraphDraft,
@@ -252,14 +247,6 @@ window.__freesolidDebug = {
   get sketchScreenPoint() { return sketchScreenPoint(); },
   get surfaceMeshCount() { return surfaceMeshes.length; },
   get surfaceScreenPoint() { return surfaceScreenPoint(); },
-  get gemMeshCount() { return gemMeshes.length; },
-  get gemInstanceCount() {
-    return gemMeshes.reduce((n, mesh) => n + mesh.count, 0);
-  },
-  get gemScreenPoint() { return gemScreenPoint(); },
-  get gemWorldPositions() { return gemWorldPositions(); },
-  get gemDragging() { return gemDrag != null; },
-  get selectedGem() { return selectedGem; },
   get gemHudText() {
     const hud = document.getElementById("gem-hud");
     if (!hud || hud.hidden) return "";
@@ -330,9 +317,7 @@ let sketchLineMeshes = []; // esquisses libres, un LineSegments chacune
 let hoveredSketch = null;  // { name, label } | null
 let hoveredSurface = null; // { name, label } | null
 let selectedSurface = null; // { name, label } | null
-let gemMeshes = []; // InstancedMesh, un par semis
 let lastFaceHit = null; // { face, x, y, z } du dernier clic face
-let gemDrag = null; // drag local, zéro réseau jusqu'au pointerup
 let selectedFeatureName = null;
 const featureDimsGroup = new THREE.Group();
 featureDimsGroup.renderOrder = 24;
@@ -340,20 +325,7 @@ scene.add(featureDimsGroup);
 let featureDimSprites = [];
 let featureDimContext = null; // { feature, hit }
 let lastFaceMatch = null; // { matched, faces } du dernier tessellate
-const warnedSplineFaces = new Set();
-const gemMaterial = new THREE.MeshStandardMaterial({
-  color: 0xd4e4f2, metalness: 0.35, roughness: 0.22,
-});
-const GEM_MIN_MM = 0.1;
-const GEM_IDLE_COLOR = new THREE.Color(0xffffff);
-const GEM_SELECTED_COLOR = new THREE.Color(0xffb040);
-let selectedGem = null; // { name, index } | null
-let gemDiametreOverride = {};
-let gemResizeInflight = false;
-let gemResizeWanted = null;
-const gemGapGroup = new THREE.Group();
-gemGapGroup.renderOrder = 25;
-scene.add(gemGapGroup);
+let pluginRuntime = null;
 
 // Qui alloue dispose. Les matériaux partagés (constantes de module) ne
 // portent pas le flag et ne sont jamais disposés ; tout matériau créé
@@ -380,334 +352,6 @@ function applyPackedGeometry(geometry, packed) {
   }
 }
 
-function detachGemMeshes() {
-  for (const mesh of gemMeshes) detachMesh(mesh);
-  gemMeshes = [];
-}
-
-function gemMatrixFromHit(point, normal, spinDeg, lift) {
-  const origin = point.clone().add(
-    normal.clone().normalize().multiplyScalar(lift || 0));
-  const quat = new THREE.Quaternion().setFromUnitVectors(
-    new THREE.Vector3(0, 0, 1), normal.clone().normalize());
-  if (spinDeg) {
-    quat.multiply(new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 0, 1), spinDeg * Math.PI / 180));
-  }
-  return new THREE.Matrix4().compose(
-    origin, quat, new THREE.Vector3(1, 1, 1));
-}
-
-function showGems(mesh) {
-  detachGemMeshes();
-  for (const gem of Array.isArray(mesh.gems) ? mesh.gems : []) {
-    if (!gem.indices?.length || !gem.instances?.length) continue;
-    const geometry = new THREE.BufferGeometry();
-    applyPackedGeometry(geometry, gem);
-    const count = gem.instances.length;
-    const material = ownedMaterial(gemMaterial);
-    const inst = new THREE.InstancedMesh(geometry, material, count);
-    inst.userData.gem = {
-      name: gem.name,
-      label: gem.label,
-      faceId: gem.face_id,
-      spline: !!gem.spline,
-      diametre: gem.diametre,
-      spins: gem.instances.map((item) => item.spin ?? 0),
-      lifts: gem.instances.map((item) => item.lift ?? 0),
-    };
-    const dummy = new THREE.Matrix4();
-    gem.instances.forEach((item, i) => {
-      if (item.matrix?.length === 16) dummy.set(...item.matrix);
-      else dummy.identity();
-      inst.setMatrixAt(i, dummy);
-    });
-    inst.instanceMatrix.needsUpdate = true;
-    // La géométrie locale reste à l'origine : le frustum de la sphère
-    // de base cacherait toutes les instances dès que l'origine sort
-    // du cadre.
-    inst.frustumCulled = false;
-    volumesGroup.add(inst);
-    gemMeshes.push(inst);
-    if (gem.spline && gem.face_id != null
-        && !warnedSplineFaces.has(gem.face_id)) {
-      warnedSplineFaces.add(gem.face_id);
-      say("Surface libre : l'ancrage peut glisser si la surface se déforme.");
-    }
-  }
-  restoreGemSelection();
-}
-
-function gemScreenPoint() {
-  const mesh = gemMeshes[0];
-  if (!mesh || mesh.count < 1) return null;
-  const matrix = new THREE.Matrix4();
-  mesh.getMatrixAt(0, matrix);
-  const point = new THREE.Vector3().setFromMatrixPosition(matrix);
-  point.project(camera);
-  const rect = renderer.domElement.getBoundingClientRect();
-  return {
-    name: mesh.userData.gem?.name ?? null,
-    x: (point.x * 0.5 + 0.5) * rect.width + rect.left,
-    y: (-point.y * 0.5 + 0.5) * rect.height + rect.top,
-    count: gemMeshes.reduce((n, item) => n + item.count, 0),
-  };
-}
-
-function gemWorldPositions() {
-  const out = [];
-  const matrix = new THREE.Matrix4();
-  const point = new THREE.Vector3();
-  for (const mesh of gemMeshes) {
-    for (let i = 0; i < mesh.count; i += 1) {
-      mesh.getMatrixAt(i, matrix);
-      point.setFromMatrixPosition(matrix);
-      out.push({
-        name: mesh.userData.gem?.name ?? "",
-        index: i,
-        x: point.x, y: point.y, z: point.z,
-        diametre: mesh.userData.gem?.diametre ?? null,
-      });
-    }
-  }
-  return out;
-}
-
-function updateGemRibbon() {
-  const minus = document.getElementById("btn-gem-minus");
-  const plus = document.getElementById("btn-gem-plus");
-  const readout = document.getElementById("gem-diametre-readout");
-  if (!minus || !plus || !readout) return;
-  const gem = selectedGem
-    ? (lastTree?.gems ?? []).find((item) => item.name === selectedGem.name)
-    : null;
-  const diametre = gem ? currentGemDiametre(gem.name, gem.diametre) : NaN;
-  const state = gemRibbonState(!!gem, diametre);
-  minus.disabled = state.disabled;
-  plus.disabled = state.disabled;
-  minus.title = state.minusTitle;
-  plus.title = state.plusTitle;
-  if (minus.parentElement?.classList.contains("ribbon-tip")) {
-    minus.parentElement.title = state.minusTitle;
-  }
-  if (plus.parentElement?.classList.contains("ribbon-tip")) {
-    plus.parentElement.title = state.plusTitle;
-  }
-  readout.textContent = state.label;
-}
-
-function currentGemDiametre(name, fallback) {
-  if (Object.hasOwn(gemDiametreOverride, name)) {
-    return gemDiametreOverride[name];
-  }
-  const gem = (lastTree?.gems ?? []).find((item) => item.name === name);
-  if (gem && Number.isFinite(gem.diametre)) return gem.diametre;
-  return fallback;
-}
-
-function allStones() {
-  return gemWorldPositions().map((stone) => ({
-    ...stone,
-    diametre: currentGemDiametre(stone.name, stone.diametre),
-  }));
-}
-
-function pairMetrics(a, b) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  const dz = a.z - b.z;
-  const entraxe = Math.hypot(dx, dy, dz);
-  const d1 = Number(a.diametre) || 0;
-  const d2 = Number(b.diametre) || 0;
-  return { entraxe, ecart: entraxe - (d1 + d2) / 2, a, b };
-}
-
-function nearestOf(stones, origin) {
-  let best = null;
-  for (const stone of stones) {
-    if (stone.name === origin.name && stone.index === origin.index) continue;
-    const pair = pairMetrics(origin, stone);
-    if (!best || pair.entraxe < best.entraxe) best = pair;
-  }
-  return best;
-}
-
-function tightestPair(stones) {
-  let best = null;
-  for (let i = 0; i < stones.length; i += 1) {
-    for (let j = i + 1; j < stones.length; j += 1) {
-      const pair = pairMetrics(stones[i], stones[j]);
-      if (!best || pair.entraxe < best.entraxe) best = pair;
-    }
-  }
-  return best;
-}
-
-function clearGemGap() {
-  for (const child of [...gemGapGroup.children]) {
-    gemGapGroup.remove(child);
-    disposeSubtree(child);
-  }
-}
-
-function drawGemGap(pair) {
-  clearGemGap();
-  if (!pair) return;
-  const negative = pair.ecart < 0;
-  const color = negative ? 0xd4655c : 0x7fc4ff;
-  const geometry = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(pair.a.x, pair.a.y, pair.a.z),
-    new THREE.Vector3(pair.b.x, pair.b.y, pair.b.z),
-  ]);
-  const material = new THREE.LineBasicMaterial({
-    color, depthTest: false, toneMapped: false,
-  });
-  material.userData.own = true;
-  const line = new THREE.Line(geometry, material);
-  line.renderOrder = 25;
-  gemGapGroup.add(line);
-  const mid = new THREE.Vector3(
-    (pair.a.x + pair.b.x) / 2,
-    (pair.a.y + pair.b.y) / 2,
-    (pair.a.z + pair.b.z) / 2,
-  );
-  const sprite = createDimSprite(
-    `${formatMmFr(pair.ecart)} mm`, mid.x, mid.y, mid.z,
-    negative ? "#d4655c" : "#7fc4ff");
-  sprite.renderOrder = 26;
-  gemGapGroup.add(sprite);
-}
-
-function updateGapOverlay() {
-  const stones = allStones();
-  if (gemDrag?.moved) {
-    const origin = stones.find(
-      (stone) => stone.name === gemDrag.name && stone.index === gemDrag.index);
-    drawGemGap(origin ? nearestOf(stones, origin) : null);
-    return;
-  }
-  if (!selectedGem) {
-    clearGemGap();
-    return;
-  }
-  drawGemGap(tightestPair(stones));
-}
-
-function paintGemSelection() {
-  for (const mesh of gemMeshes) {
-    const name = mesh.userData.gem?.name;
-    for (let i = 0; i < mesh.count; i += 1) {
-      const on = selectedGem
-        && name === selectedGem.name
-        && i === selectedGem.index;
-      mesh.setColorAt(i, on ? GEM_SELECTED_COLOR : GEM_IDLE_COLOR);
-    }
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }
-}
-
-function updateGemHud() {
-  updateGemRibbon();
-  const hud = document.getElementById("gem-hud");
-  const diametreEl = document.getElementById("gem-hud-diametre");
-  const ecartEl = document.getElementById("gem-hud-ecart");
-  if (!hud || !diametreEl || !ecartEl) return;
-  if (!selectedGem) {
-    hud.hidden = true;
-    return;
-  }
-  const gem = (lastTree?.gems ?? []).find(
-    (item) => item.name === selectedGem.name);
-  if (!gem) {
-    hud.hidden = true;
-    return;
-  }
-  const diametre = currentGemDiametre(gem.name, gem.diametre);
-  const count = Number(gem.count) || 0;
-  const pierre = count === 1 ? "pierre" : "pierres";
-  diametreEl.textContent =
-    `Ø ${formatMmFr(diametre)} mm · ${count} ${pierre}`;
-  let ecart = gem.ecart_min_mm;
-  if (Object.hasOwn(gemDiametreOverride, gem.name)) {
-    const pair = tightestPair(allStones());
-    if (pair && Number.isFinite(pair.ecart)) ecart = pair.ecart;
-  }
-  if (!Number.isFinite(ecart)) {
-    ecartEl.textContent = "écart mini —";
-    ecartEl.classList.remove("negative");
-  } else {
-    ecartEl.textContent = `écart mini ${formatMmFr(ecart)} mm`;
-    ecartEl.classList.toggle("negative", ecart < 0);
-  }
-  hud.hidden = false;
-}
-
-function restoreGemSelection() {
-  if (selectedGem) {
-    const names = (lastTree?.gems ?? []).map((item) => item.name);
-    if (!names.includes(selectedGem.name)) {
-      selectedGem = null;
-      gemDiametreOverride = {};
-    }
-  }
-  paintGemSelection();
-  updateGemHud();
-  updateGapOverlay();
-}
-
-function applyGemMoved(tree) {
-  const moved = tree?.gem_moved;
-  if (!moved || typeof moved.gem !== "string") return;
-  const index = Number(moved.index);
-  if (!Number.isInteger(index) || index < 0) return;
-  selectedGem = { name: moved.gem, index };
-}
-
-function selectGem(name, index) {
-  selectedGem = { name, index };
-  paintGemSelection();
-  updateGemHud();
-  updateGapOverlay();
-}
-
-function clearGemSelection() {
-  selectedGem = null;
-  gemDiametreOverride = {};
-  gemResizeWanted = null;
-  paintGemSelection();
-  updateGemHud();
-  clearGemGap();
-}
-
-function sendGemResize(name, diametre) {
-  if (gemResizeInflight) {
-    gemResizeWanted = { name, diametre };
-    return;
-  }
-  gemResizeInflight = true;
-  refresh(call("resize_gem", { gem: name, diametre })).finally(() => {
-    gemResizeInflight = false;
-    const pending = gemResizeWanted;
-    gemResizeWanted = null;
-    if (pending) sendGemResize(pending.name, pending.diametre);
-    else delete gemDiametreOverride[name];
-  });
-}
-
-function applyGemDiametre(delta) {
-  if (!selectedGem) return;
-  const gem = (lastTree?.gems ?? []).find(
-    (item) => item.name === selectedGem.name);
-  if (!gem) return;
-  const current = currentGemDiametre(gem.name, gem.diametre);
-  const next = Math.round((current + delta) * 10) / 10;
-  if (next < GEM_MIN_MM - 1e-9) return;
-  if (Math.abs(next - current) < 1e-9) return;
-  gemDiametreOverride[gem.name] = next;
-  updateGemHud();
-  updateGapOverlay();
-  sendGemResize(gem.name, next);
-}
 
 function hexColor(value) {
   return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
@@ -816,7 +460,9 @@ function showMesh(mesh) {
     volumesGroup.add(lines);
     sketchLineMeshes.push(lines);
   }
-  showGems(mesh);
+  pluginRuntime?.applyViewport(mesh, {
+    volumesGroup, applyPackedGeometry, ownedMaterial, scene, camera,
+  }, detachMesh);
   if (!mesh.indices.length) {
     applyVolumeVisibility();
     rebuildPlanes();
@@ -1106,31 +752,31 @@ const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 let hoveredGroup = -1;
 
-renderer.domElement.addEventListener("pointermove", (event) => {
-  if (sketchMode.active) return;
+function setPointerFromEvent(event) {
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-  if (gemDrag) {
-    raycaster.setFromCamera(pointer, camera);
-    const faceHit = partMesh
-      ? raycaster.intersectObject(partMesh)[0] : undefined;
-    if (!faceHit) return;
-    const indexPosition = faceHit.faceIndex * 3;
-    const group = meshGroups.find(
-      (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
-    if (!group) return;
-    const normal = (faceHit.normal?.clone()
-      ?? new THREE.Vector3(0, 0, 1)).normalize();
-    const matrix = gemMatrixFromHit(
-      faceHit.point, normal, gemDrag.spin, gemDrag.lift);
-    gemDrag.mesh.setMatrixAt(gemDrag.index, matrix);
-    gemDrag.mesh.instanceMatrix.needsUpdate = true;
-    gemDrag.lastPoint = faceHit.point.clone();
-    gemDrag.lastNormal = normal;
-    gemDrag.lastFaceId = group.faceId;
-    gemDrag.moved = true;
-    updateGapOverlay();
+}
+
+function pointerCtx() {
+  raycaster.setFromCamera(pointer, camera);
+  return {
+    raycaster, pointer, partMesh, scene, camera, controls, meshGroups,
+    get faceHit() {
+      return partMesh ? raycaster.intersectObject(partMesh)[0] : undefined;
+    },
+  };
+}
+
+function pluginSeesPointer() {
+  return !assemblyState && !planePicking && !measuring;
+}
+
+renderer.domElement.addEventListener("pointermove", (event) => {
+  if (sketchMode.active) return;
+  setPointerFromEvent(event);
+  if (pluginSeesPointer()
+      && pluginRuntime?.dispatchPointer("move", event, pointerCtx())) {
     return;
   }
   if (planePicking) {
@@ -1234,61 +880,18 @@ let pressPosition = null;
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (sketchMode.active) return;
   pressPosition = { x: event.clientX, y: event.clientY };
-  if (assemblyState || planePicking || measuring) return;
-  const rect = renderer.domElement.getBoundingClientRect();
-  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-  raycaster.setFromCamera(pointer, camera);
-  const hit = gemMeshes.length
-    ? raycaster.intersectObjects(gemMeshes, false)[0] : null;
-  if (!hit || hit.instanceId == null) return;
-  const mesh = hit.object;
-  const start = new THREE.Matrix4();
-  mesh.getMatrixAt(hit.instanceId, start);
-  gemDrag = {
-    mesh,
-    index: hit.instanceId,
-    name: mesh.userData.gem.name,
-    faceId: mesh.userData.gem.faceId,
-    start: start.clone(),
-    spin: mesh.userData.gem.spins?.[hit.instanceId] ?? 0,
-    lift: mesh.userData.gem.lifts?.[hit.instanceId] ?? 0,
-    lastPoint: hit.point.clone(),
-    lastNormal: (hit.normal?.clone() ?? new THREE.Vector3(0, 0, 1)).normalize(),
-    lastFaceId: mesh.userData.gem.faceId,
-    moved: false,
-  };
-  controls.enabled = false;
-  selectGem(mesh.userData.gem.name, hit.instanceId);
+  if (!pluginSeesPointer()) return;
+  setPointerFromEvent(event);
+  pluginRuntime?.dispatchPointer("down", event, pointerCtx());
 });
 renderer.domElement.addEventListener("pointerup", (event) => {
   if (sketchMode.active) return;
-  if (gemDrag) {
-    const drag = gemDrag;
-    gemDrag = null;
-    controls.enabled = true;
-    pressPosition = null;
-    if (!drag.moved) {
-      selectGem(drag.name, drag.index);
+  if (pluginSeesPointer()) {
+    setPointerFromEvent(event);
+    if (pluginRuntime?.dispatchPointer("up", event, pointerCtx())) {
+      pressPosition = null;
       return;
     }
-    const point = drag.lastPoint;
-    const params = {
-      gem: drag.name,
-      index: drag.index,
-      x: point.x, y: point.y, z: point.z,
-    };
-    if (drag.lastFaceId != null) params.face = drag.lastFaceId;
-    refresh(call("move_gem", params).then((tree) => {
-      applyGemMoved(tree);
-      return tree;
-    }).catch((error) => {
-      drag.mesh.setMatrixAt(drag.index, drag.start);
-      drag.mesh.instanceMatrix.needsUpdate = true;
-      say(error.message, true);
-      throw error;
-    }));
-    return;
   }
   if (!pressPosition) return;
   const travel = Math.hypot(event.clientX - pressPosition.x,
@@ -1423,7 +1026,7 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     lastFaceHit = null;
     clearPlaneChoice();
     clearFeatureDims();
-    clearGemSelection();
+    pluginRuntime?.runPointerIdle(pointerCtx());
   }
   if (lastTree) renderTree(lastTree);
 });
@@ -1702,14 +1305,7 @@ document.addEventListener("keydown", (event) => {
   if (sketchMode.active) return;
   // Typing in a panel field must not trigger view shortcuts (F, Ctrl+1…).
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && selectedGem) {
-    const delta = gemDiametreDeltaFromKey(event);
-    if (delta) {
-      event.preventDefault();
-      applyGemDiametre(delta);
-      return;
-    }
-  }
+  if (event.key !== "Escape" && pluginRuntime?.dispatchKey(event)) return;
   if ((event.key === "f" || event.key === "F")
       && !event.ctrlKey && !event.metaKey && !event.altKey) {
     frameView(null, null);
@@ -1743,9 +1339,8 @@ document.addEventListener("keydown", (event) => {
     else if (paramPickEl.style.display === "block") closeParamPicker();
     else if (graphWiring) cancelGraphWire();
     else closeGraph();
-  } else if (event.key === "Escape" && selectedGem) {
-    event.preventDefault();
-    clearGemSelection();
+  } else if (pluginRuntime?.dispatchKey(event)) {
+    return;
   } else if (graphOpen && (event.key === "Delete" || event.key === "Suppr")) {
     event.preventDefault();
     if (graphPalette.style.display === "block") return;
@@ -2457,7 +2052,9 @@ function renderTree(tree) {
   }
 
   renderActiveBodyContents(tree);
-  for (const gem of tree.gems ?? []) appendGemRow(gem);
+  pluginRuntime?.renderTreeRows(tree, {
+    treeIcon, openMenu, append: (row) => treeEl.appendChild(row),
+  });
   syncGraphFromTree();
 }
 
@@ -2504,25 +2101,6 @@ function renderActiveBodyContents(tree) {
       }
     }
   }
-}
-
-function appendGemRow(gem) {
-  const row = document.createElement("li");
-  row.classList.add("feat");
-  row.dataset.feat = gem.name;
-  if (gem.error) row.classList.add("error");
-  row.appendChild(treeIcon("LinkArray.svg"));
-  row.appendChild(document.createTextNode(gem.label));
-  const detail = gem.error_message
-    ? gem.error_message
-    : (gem.spline
-      ? "Semis de pierres — surface libre : l'ancrage peut glisser"
-      : "Semis de pierres — clic droit : supprimer");
-  row.title = detail;
-  row.addEventListener("contextmenu", (event) => openMenu(event, {
-    name: gem.name, label: gem.label, type: "App::Link", kind: gem.kind,
-  }));
-  treeEl.appendChild(row);
 }
 
 function appendFeatureHistoryRow(feature, rolledBack) {
@@ -2825,7 +2403,6 @@ const RIBBONS = {
   sketch: "sketchbar",
   surfaces: "ribbon-surfaces",
   assembly: "ribbon-assembly",
-  jewel: "ribbon-jewel",
 };
 
 function showTab(name) {
@@ -2833,12 +2410,97 @@ function showTab(name) {
     tab.classList.toggle("active", tab.dataset.tab === name);
   }
   for (const [key, id] of Object.entries(RIBBONS)) {
-    document.getElementById(id).classList.toggle("active", key === name);
+    const ribbon = document.getElementById(id);
+    if (ribbon) ribbon.classList.toggle("active", key === name);
   }
 }
 for (const tab of document.querySelectorAll("header .tab")) {
   tab.addEventListener("click", () => showTab(tab.dataset.tab));
 }
+
+function isPluginId(id) {
+  return typeof id === "string" && /^[a-z][a-z0-9_]*$/.test(id);
+}
+
+function isButtonId(id) {
+  return typeof id === "string" && /^[A-Za-z][A-Za-z0-9_-]*$/.test(id);
+}
+
+function safeIconSrc(icon) {
+  if (typeof icon !== "string" || !icon) return "";
+  if (icon.includes("..") || icon.includes("\\") || icon.includes(":")) {
+    return "";
+  }
+  if (!/^[A-Za-z0-9_./-]+$/.test(icon)) return "";
+  return icon;
+}
+
+function addPluginRibbon(spec) {
+  if (!isPluginId(spec.id) || RIBBONS[spec.id]) return;
+  const libelle = typeof spec.libelle === "string" && spec.libelle.trim()
+    ? spec.libelle.trim() : spec.id;
+  const tab = document.createElement("button");
+  tab.className = "tab";
+  tab.dataset.tab = spec.id;
+  tab.textContent = libelle;
+  const push = document.querySelector("#topbar .push");
+  if (push) push.parentElement.insertBefore(tab, push);
+  tab.addEventListener("click", () => showTab(spec.id));
+
+  const ribbon = document.createElement("div");
+  ribbon.id = "ribbon-" + spec.id;
+  ribbon.className = "ribbon";
+  for (const groupe of spec.groupes ?? []) {
+    const group = document.createElement("div");
+    group.className = "ribbon-group";
+    const btns = document.createElement("div");
+    btns.className = "ribbon-group-btns";
+    if (groupe.node instanceof Node) {
+      btns.appendChild(groupe.node);
+    } else {
+      for (const specBtn of groupe.boutons ?? []) {
+        if (!isButtonId(specBtn.id)) continue;
+        const btn = document.createElement("button");
+        btn.id = specBtn.id;
+        if (specBtn.titre) btn.title = String(specBtn.titre);
+        if (specBtn.disabled) btn.disabled = true;
+        const icon = safeIconSrc(specBtn.icon);
+        if (icon) {
+          const img = document.createElement("img");
+          img.src = icon;
+          img.alt = "";
+          btn.appendChild(img);
+        }
+        if (specBtn.libelle) {
+          btn.appendChild(document.createTextNode(String(specBtn.libelle)));
+        }
+        btns.appendChild(btn);
+      }
+    }
+    group.appendChild(btns);
+    const label = document.createElement("div");
+    label.className = "ribbon-group-label";
+    label.textContent = typeof groupe.libelle === "string" ? groupe.libelle : "";
+    group.appendChild(label);
+    ribbon.appendChild(group);
+  }
+  const sketchbar = document.getElementById("sketchbar");
+  sketchbar.parentElement.insertBefore(ribbon, sketchbar);
+  RIBBONS[spec.id] = ribbon.id;
+}
+
+function addPluginFeature(entry) {
+  FEATURES.push(entry);
+  bindFeature(entry);
+}
+
+function addPluginHud(node) {
+  if (!(node instanceof Node)) return;
+  const viewbar = document.getElementById("viewbar");
+  if (viewbar) viewbar.after(node);
+  else document.getElementById("viewport")?.appendChild(node);
+}
+
 document.addEventListener("freesolid:sketch-enter", () => {
   sketchHidesVolumes = true;
   applyVolumeVisibility();
@@ -5275,17 +4937,15 @@ function openFeaturePanel(entry, sketchOverride) {
 function bindFeature(entry) {
   const ids = entry.buttons ?? [entry.button];
   for (const id of ids) {
-    document.getElementById(id).addEventListener("click", () =>
+    const el = document.getElementById(id);
+    if (!el || el.dataset.boundFeature) continue;
+    el.dataset.boundFeature = "1";
+    el.addEventListener("click", () =>
       featureCommand(() => openFeaturePanel(entry)));
   }
 }
 
 for (const entry of FEATURES) bindFeature(entry);
-
-document.getElementById("btn-gem-minus").addEventListener("click", () =>
-  applyGemDiametre(gemDiametreDeltaFromButton("minus")));
-document.getElementById("btn-gem-plus").addEventListener("click", () =>
-  applyGemDiametre(gemDiametreDeltaFromButton("plus")));
 
 document.getElementById("btn-body").addEventListener("click", () =>
   featureCommand(() => {
@@ -5432,10 +5092,21 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
 const sketchMode = createSketchMode(
   { scene, camera, renderer, controls, call, say, refresh, panel });
 
+pluginRuntime = createPluginApi({
+  call, refresh, say,
+  tree: () => lastTree,
+  scene, camera, controls, renderer,
+  addRibbon: addPluginRibbon,
+  addFeature: addPluginFeature,
+  addHud: addPluginHud,
+});
+
 // ---------- boot ----------
 
 call("ping")
   .then(async (info) => {
+    await loadClientPlugins(call, pluginRuntime.api);
+    for (const entry of FEATURES) bindFeature(entry);
     say(`Moteur prêt — FreeCAD ${info.freecad}`);
     // Resynchronise avec le moteur : après un rechargement de la page,
     // la pièce en cours réapparaît au lieu d'être écrasée au premier

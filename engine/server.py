@@ -160,6 +160,46 @@ def _safe_static_path(url_path, app_dir=_APP_DIR):
     return real_candidate
 
 
+def _loaded_plugin_manifests():
+    """Manifestes des plugins effectivement chargés — pas l'URL."""
+    from engine.plugins import default_registry
+    return list(getattr(default_registry(), "manifests", ()))
+
+
+def _safe_plugin_static_path(url_path, loaded=None):
+    """Résout ``/plugins/<nom>/<rel>`` sous ``directory/statique`` du plugin.
+
+    ``nom`` est cherché dans la liste chargée. L'URL ne choisit pas le
+    répertoire : un nom inconnu, un plugin sans ``statique``, ou un
+    chemin hors jail rend ``None``.
+    """
+    path = url_path.split("?", 1)[0].split("#", 1)[0]
+    prefix = "/plugins/"
+    if not path.startswith(prefix):
+        return None
+    rest = path[len(prefix):]
+    nom, sep, rel = rest.partition("/")
+    if not sep or not nom or not rel:
+        return None
+    if loaded is None:
+        loaded = _loaded_plugin_manifests()
+    jail = None
+    for manifest in loaded:
+        if not isinstance(manifest, dict):
+            continue
+        if manifest.get("nom") != nom:
+            continue
+        statique = manifest.get("statique") or ""
+        directory = manifest.get("directory") or ""
+        if not statique or not directory:
+            return None
+        jail = os.path.join(directory, statique)
+        break
+    if jail is None:
+        return None
+    return _safe_static_path("/" + rel, app_dir=jail)
+
+
 class Handler(BaseHTTPRequestHandler):
 
     # -- api -------------------------------------------------------------
@@ -190,7 +230,11 @@ class Handler(BaseHTTPRequestHandler):
     # -- static UI -------------------------------------------------------
 
     def do_GET(self):  # noqa: N802 - stdlib API name
-        candidate = _safe_static_path(self.path)
+        path = self.path.split("?", 1)[0].split("#", 1)[0]
+        if path.startswith("/plugins/"):
+            candidate = _safe_plugin_static_path(self.path)
+        else:
+            candidate = _safe_static_path(self.path)
         if candidate is None:
             self._send(404, {"ok": False, "error": "introuvable"})
             return

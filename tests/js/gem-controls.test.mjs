@@ -10,7 +10,7 @@ import {
   gemDiametreDeltaFromButton,
   gemDiametreDeltaFromKey,
   gemRibbonState,
-} from "../../app/gem-controls.js";
+} from "../../plugins/bijouterie/ui/gem-controls.js";
 
 function key(partial) {
   return {

@@ -34,6 +34,28 @@ La surface privée du noyau qu'un plugin a le droit d'appeler est
 **épinglée par un test** — `tests/test_plugins.py::test_surface_plugin_reste_disponible`.
 La renommer casserait un plugin hors dépôt sans que rien ne s'allume ici.
 
+## Un plugin absent est un silence, pas une erreur
+
+Le registre attrape toute exception autour du `register()` d'un plugin :
+un plugin cassé ne doit pas empêcher FreeSolid de démarrer. L'erreur part
+dans `registry.notes`.
+
+Ça a un revers. Le selftest ne rend alors que les indicateurs du noyau —
+tous verts — et `run-selftest.py` sort 0. **Un plugin qui ne se charge
+plus rend une CI verte.** C'est exactement ce qu'une CI de plugin croit
+vérifier et ne vérifiait pas.
+
+Deux remèdes, tous deux dans `scripts/run-selftest.py` :
+
+- les notes du registre sont **imprimées à chaque lancement** — une panne
+  de chargement est lisible au lieu d'être muette ;
+- `FREESOLID_SELFTEST_PLUGINS=nom1,nom2` **exige** ces plugins : chargés,
+  et ayant contribué au moins un indicateur. Sinon, sortie 1.
+
+C'est au dépôt du plugin de poser la variable dans sa CI — lui seul sait
+ce qui doit être là. Le noyau, lui, ne doit rien exiger : il tourne très
+bien sans aucun plugin.
+
 ## Sécurité
 
 Un plugin est du Python arbitraire, dans le processus du moteur, avec les

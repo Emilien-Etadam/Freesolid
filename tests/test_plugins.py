@@ -8,7 +8,7 @@ import pytest
 
 from engine.plugins import (
     PluginError, Registry, client_plugins, discover, load_plugins,
-    parse_manifest,
+    missing_selftest_plugins, parse_manifest,
 )
 from engine.protocol import CORE_OP_NAMES, OPS
 
@@ -312,3 +312,125 @@ def test_failed_plugin_is_not_in_manifests(tmp_path):
     registry = load_plugins(root=str(tmp_path))
     assert registry.manifests == []
     assert any("boompl" in note for note in registry.notes)
+
+
+def test_run_selftest_compte_les_indicateurs_par_plugin():
+    """Le compte distingue « a tout passé » de « n'était pas là ».
+
+    Sans lui, un plugin absent rend un rapport plus court, tous les
+    indicateurs du noyau vrais, et un selftest vert qui ne prouve rien.
+    """
+    registry = Registry()
+    alpha = Registry(nom="alpha")
+    alpha.selftest_step("deux", lambda k, mark, rep: rep.update(
+        a1=True, a2=False, a_detail="pas un indicateur"))
+    beta = Registry(nom="beta")
+    beta.selftest_step("une", lambda k, mark, rep: rep.update(b1=True))
+    registry.extend(alpha)
+    registry.extend(beta)
+
+    report = {"noyau": True}
+    registry.run_selftest(None, lambda _n: None, report)
+
+    assert registry.selftest_counts == {"alpha": 2, "beta": 1}
+
+
+def test_run_selftest_sans_plugin_ne_compte_rien():
+    registry = Registry()
+    report = {"noyau": True}
+    registry.run_selftest(None, lambda _n: None, report)
+    assert registry.selftest_counts == {}
+
+
+def test_run_selftest_additionne_deux_etapes_du_meme_plugin():
+    registry = Registry()
+    sub = Registry(nom="gamma")
+    sub.selftest_step("un", lambda k, mark, rep: rep.update(g1=True))
+    sub.selftest_step("deux", lambda k, mark, rep: rep.update(g2=True, g3=True))
+    registry.extend(sub)
+    registry.run_selftest(None, lambda _n: None, {})
+    assert registry.selftest_counts == {"gamma": 3}
+
+
+def _registre_charge(nom, indicateurs):
+    registry = Registry()
+    registry.manifests.append({"nom": nom})
+    if indicateurs:
+        registry.selftest_counts[nom] = indicateurs
+    return registry
+
+
+def test_plugin_exige_et_present_ne_manque_pas():
+    registry = _registre_charge("bijouterie", 24)
+    assert missing_selftest_plugins(registry, ["bijouterie"]) == []
+
+
+def test_plugin_exige_mais_absent_est_signale():
+    """Le cas qui rendait la CI du dépôt privé verte pour rien."""
+    manquants = missing_selftest_plugins(Registry(), ["bijouterie"])
+    assert manquants == ["bijouterie : non chargé"]
+
+
+def test_plugin_charge_mais_muet_est_signale():
+    """Chargé ne suffit pas : le noyau a pu bouger sous ses étapes."""
+    registry = _registre_charge("bijouterie", 0)
+    manquants = missing_selftest_plugins(registry, ["bijouterie"])
+    assert manquants == [
+        "bijouterie : chargé mais n'a contribué aucun indicateur"]
+
+
+def test_aucune_exigence_ne_manque_jamais_rien():
+    assert missing_selftest_plugins(Registry(), []) == []
+    assert missing_selftest_plugins(None, []) == []
+
+
+def test_registre_absent_avec_exigence_est_un_manque():
+    """Ne pas savoir vérifier n'est pas la même chose que vérifier."""
+    assert missing_selftest_plugins(None, ["bijouterie"]) == [
+        "bijouterie : non chargé"]
+
+
+def test_chaine_complete_plugin_casse_donne_un_manque(tmp_path):
+    """Du ``register()`` qui lève jusqu'au verdict, sans rien inventer.
+
+    C'est le scénario exact que la CI d'un dépôt de plugin doit voir
+    rouge : le registre avale l'erreur pour ne pas briquer FreeSolid, le
+    selftest tourne et ne rend que les indicateurs du noyau — tous vrais.
+    """
+    _write_python_plugin(
+        tmp_path, "casse", register_body="raise RuntimeError('noyau bougé')")
+    registry = load_plugins(root=str(tmp_path))
+
+    report = {"noyau": True}
+    registry.run_selftest(None, lambda _n: None, report)
+
+    # Le selftest est « vert » : aucun indicateur faux.
+    assert [k for k, v in report.items() if v is not True] == []
+    # Et pourtant le plugin exigé n'est pas là — c'est ça qu'on attrape.
+    assert any("casse" in note for note in registry.notes)
+    assert missing_selftest_plugins(registry, ["casse"]) == [
+        "casse : non chargé"]
+
+
+def test_chaine_complete_plugin_sain_ne_manque_pas(tmp_path):
+    _write_python_plugin(
+        tmp_path, "sain",
+        register_body=(
+            "registre.selftest_step('etape', "
+            "lambda k, mark, rep: rep.update(s1=True, s2=True))"))
+    registry = load_plugins(root=str(tmp_path))
+
+    report = {"noyau": True}
+    registry.run_selftest(None, lambda _n: None, report)
+
+    assert registry.selftest_counts == {"sain": 2}
+    assert missing_selftest_plugins(registry, ["sain"]) == []
+
+
+def test_compte_negatif_compte_comme_absent():
+    """Une étape qui écrase un booléen ne vaut pas contribution."""
+    registry = Registry()
+    registry.manifests.append({"nom": "delta"})
+    registry.selftest_counts["delta"] = -1
+    assert missing_selftest_plugins(registry, ["delta"]) == [
+        "delta : chargé mais n'a contribué aucun indicateur"]

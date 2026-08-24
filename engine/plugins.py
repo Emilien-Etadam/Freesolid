@@ -241,6 +241,7 @@ class Registry:
         self._tolerates_invalid = []
         self._boolean_tool = []
         self._deletes_feature = []
+        self._state = {}
 
     def after_recompute(self, fn):
         """fn(kernel) — après doc.recompute(), avant le contrôle de validité."""
@@ -273,6 +274,22 @@ class Registry:
     def deletes_feature(self, fn):
         """fn(kernel, obj) -> True si le plugin a pris en charge la suppression."""
         self._deletes_feature.append((self.nom, fn))
+
+    def state(self, nom):
+        """Dict d'état pour ce plugin, dans le document courant.
+
+        Remis à zéro par le noyau à la construction et à la fermeture
+        du document. Deux plugins ne partagent pas le même sac.
+        """
+        bag = self._state.get(nom)
+        if bag is None:
+            bag = {}
+            self._state[nom] = bag
+        return bag
+
+    def reset_state(self):
+        """Vide tous les sacs. Appelé par le noyau, pas par les plugins."""
+        self._state.clear()
 
     def extend(self, other):
         """Ajoute les crochets d'un registre, dans l'ordre."""

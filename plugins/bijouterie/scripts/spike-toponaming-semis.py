@@ -1,6 +1,6 @@
 """Sonde — l'ancrage d'un semis survit-il à une renumérotation de faces ?
 
-Usage :  freecadcmd scripts/spike-toponaming-semis.py
+Usage :  freecadcmd plugins/bijouterie/scripts/spike-toponaming-semis.py
 
 Un semis retient sa face d'appui sous la forme ``FreeSolidGemFace =
 "Face3"`` : un **indice**, c'est-à-dire précisément l'identifiant que
@@ -62,7 +62,7 @@ except Exception:  # noqa: BLE001 — stdout ASCII, sans importance ici
     pass
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_REPO = os.path.dirname(_HERE)
+_REPO = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 

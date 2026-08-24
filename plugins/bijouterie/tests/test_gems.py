@@ -6,7 +6,8 @@ import random
 
 import pytest
 
-from engine import gems, protocol
+from bijouterie import gems
+from engine import protocol
 
 
 def test_sanitize_gemme_default_and_valid():
@@ -25,10 +26,10 @@ def test_sanitize_gemme_rejects_paths(name):
     assert "gabarit" in str(excinfo.value)
 
 
-def test_library_path_stays_under_assets():
+def test_library_path_stays_under_plugin_assets():
     path = gems.library_path("cylindre-plat")
-    assert path.endswith(os.path.join("assets", "gemmes", "cylindre-plat.FCStd"))
-    assert os.path.basename(os.path.dirname(path)) == "gemmes"
+    assert path.endswith(os.path.join("bijouterie", "assets", "cylindre-plat.FCStd"))
+    assert os.path.basename(os.path.dirname(path)) == "assets"
 
 
 def test_face_name_roundtrip():

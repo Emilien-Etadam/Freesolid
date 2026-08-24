@@ -251,14 +251,15 @@ class Kernel:
         self._assembly = False  # le document courant est un assemblage
         # Consentement Python : ce document, cette session. Jamais le .FCStd.
         self._scripts_authorized = False
-        # Corps de gabarit déjà copiés : (gemme, diamètre) → nom d'objet.
-        self._gem_bodies = {}
         self._reset_face_match()
         # Callback d'avancement (phase, fait, total) — posé par le
         # transport, jamais importé d'ici. Absent = no-op.
         self._progress = None
         from engine.plugins import default_registry
         self._plugins = default_registry()
+        # État par plugin, pour ce document. Remis à zéro ici et à
+        # la fermeture — les deux seuls points du cycle de vie.
+        self._plugins.reset_state()
 
     def _report_progress(self, phase, fait=0, total=0):
         """Nourrit l'état d'avancement. Aucun appel FreeCAD."""
@@ -539,7 +540,7 @@ class Kernel:
         self._doc = self._body = None
         self._assembly = False
         self._scripts_authorized = False
-        self._gem_bodies = {}
+        self._plugins.reset_state()
 
     def _setup_doc(self, doc):
         """Active l'undo et borne la pile (mémoire en longue session).
@@ -3986,7 +3987,7 @@ class Kernel:
 
     def _face_mesh(self, face, face_id, deviation):
         """Tessellation d'une face + normales exactes ``normalAt(u, v)``."""
-        from engine.gems import is_bspline_surface, project_uv
+        from engine.surfaces import is_bspline_surface, project_uv
         vertices, triangles = face.tessellate(float(deviation))
         points = [(v.x, v.y, v.z) for v in vertices]
         normals = []
@@ -7409,7 +7410,6 @@ _TRANSACTIONAL = frozenset({
     "sketch_fillet", "sketch_trim", "sketch_constrain",
     "sketch_add_spline", "sketch_add_ellipse", "sketch_mirror",
     "sketch_array", "sketch_offset", "array_component",
-    "place_gem", "move_gem", "spin_gem", "remove_gem", "resize_gem",
 })
 
 

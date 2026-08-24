@@ -1,6 +1,6 @@
 """Sonde : une gemme est un BREP, pas une fonction paramétrique.
 
-Usage :  freecadcmd scripts/spike-gemmes-brep.py
+Usage :  freecadcmd plugins/bijouterie/scripts/spike-gemmes-brep.py
 
 Le relevé de `docs/bijouterie.md` chiffrait les 17 tailles de pierre comme
 « le gros du travail : à re-modeler en BRep **paramétrique** ». C'est faux,

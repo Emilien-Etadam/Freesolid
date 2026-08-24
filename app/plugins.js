@@ -44,3 +44,119 @@ export async function loadClientPlugins(call, api, importer = (url) => import(ur
   }
   return loaded;
 }
+
+/**
+ * API client exposée à `register(api)`. L'hôte fournit le DOM et le
+ * moteur ; ici on ne fait que collecter et dispatcher, dans l'ordre
+ * d'enregistrement.
+ *
+ * @param {{
+ *   call: Function,
+ *   refresh: Function,
+ *   say: Function,
+ *   tree: () => object|null,
+ *   scene?: object,
+ *   camera?: object,
+ *   controls?: object,
+ *   addRibbon?: Function,
+ *   addFeature?: Function,
+ *   addHud?: Function,
+ * }} host
+ */
+export function createPluginApi(host) {
+  const keys = [];
+  const treeRows = [];
+  const viewports = [];
+  let viewportObjects = [];
+
+  const api = {
+    get call() { return host.call; },
+    get refresh() { return host.refresh; },
+    get say() { return host.say; },
+    get tree() { return host.tree(); },
+    get scene() { return host.scene; },
+    get camera() { return host.camera; },
+    get controls() { return host.controls; },
+    get renderer() { return host.renderer; },
+
+    ribbon(spec) {
+      if (!spec || typeof spec !== "object") return;
+      host.addRibbon?.(spec);
+    },
+    feature(entry) {
+      if (!entry || typeof entry !== "object") return;
+      host.addFeature?.(entry);
+    },
+    hud(node) {
+      if (node) host.addHud?.(node);
+    },
+    key(handler) {
+      if (typeof handler === "function") keys.push(handler);
+    },
+    treeRow(predicat, rendu) {
+      if (typeof predicat !== "function" || typeof rendu !== "function") return;
+      treeRows.push({ predicat, rendu });
+    },
+    viewport(hooks) {
+      if (!hooks || typeof hooks !== "object") return;
+      viewports.push(hooks);
+    },
+  };
+
+  return {
+    api,
+    dispatchKey(event) {
+      for (const handler of keys) {
+        if (handler(event) === true) return true;
+      }
+      return false;
+    },
+    renderTreeRows(tree, helpers) {
+      for (const { predicat, rendu } of treeRows) {
+        let items;
+        try {
+          items = predicat(tree);
+        } catch {
+          continue;
+        }
+        const list = Array.isArray(items) ? items : [];
+        for (const item of list) {
+          let row;
+          try {
+            row = rendu(item, helpers);
+          } catch {
+            continue;
+          }
+          if (row) helpers.append(row);
+        }
+      }
+    },
+    clearViewport(detach) {
+      for (const hooks of viewports) {
+        try { hooks.onClear?.(); } catch { /* un plugin cassé n'empêche pas */ }
+      }
+      if (typeof detach === "function") {
+        for (const obj of viewportObjects) detach(obj);
+      }
+      viewportObjects = [];
+    },
+    applyViewport(mesh, ctx, detach) {
+      this.clearViewport(detach);
+      for (const hooks of viewports) {
+        let objects;
+        try {
+          objects = hooks.onMesh?.(mesh, ctx);
+        } catch {
+          continue;
+        }
+        const list = Array.isArray(objects) ? objects : (objects ? [objects] : []);
+        for (const obj of list) {
+          if (!obj) continue;
+          ctx.volumesGroup.add(obj);
+          viewportObjects.push(obj);
+        }
+      }
+    },
+    get viewportObjects() { return viewportObjects; },
+  };
+}

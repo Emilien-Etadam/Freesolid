@@ -225,6 +225,17 @@ def discover(root=None, reserved=None):
 discover.notes = []
 
 
+def _bool_count(report) -> int:
+    """Nombre d'indicateurs dans un rapport de selftest.
+
+    Même règle que run-selftest.py : un indicateur est une valeur
+    booléenne de premier niveau. Les compter avant et après chaque
+    plugin donne sa contribution réelle, sans que le plugin ait à
+    la déclarer — une déclaration mentirait dès qu'elle vieillit.
+    """
+    return sum(1 for value in report.values() if isinstance(value, bool))
+
+
 class Registry:
     """Points de contribution. Ordre d'enregistrement = ordre d'exécution."""
 
@@ -234,6 +245,9 @@ class Registry:
         self.notes = []
         self.transactional = set()
         self.manifests = []
+        # Combien d'indicateurs chaque plugin a ajoutés au rapport de
+        # selftest. Rempli par run_selftest, lu par run-selftest.py.
+        self.selftest_counts = {}
         self._after = []
         self._tree = []
         self._mesh = []
@@ -336,8 +350,20 @@ class Registry:
         return fn(kernel, **params)
 
     def run_selftest(self, kernel, mark, report):
-        for _nom, _libelle, fn in self._selftest:
+        """Étapes contribuées, en notant qui a produit combien d'indicateurs.
+
+        Le compte par plugin est le seul moyen de distinguer « le plugin
+        a tout passé » de « le plugin n'était pas là ». Sans lui, un
+        plugin absent rend un rapport plus court, tous les indicateurs du
+        noyau vrais, et un selftest vert qui ne prouve rien de ce que la
+        CI du plugin croit vérifier.
+        """
+        for nom, _libelle, fn in self._selftest:
+            avant = _bool_count(report)
             fn(kernel, mark, report)
+            self.selftest_counts[nom] = (
+                self.selftest_counts.get(nom, 0)
+                + _bool_count(report) - avant)
 
     def run_tolerates_invalid(self, kernel, obj):
         """True dès qu'un plugin réclame. Personne → False, comportement d'origine."""
@@ -377,6 +403,35 @@ def _merge_contributions(hooks, target, invoke):
                     "le plugin « {} » revendique la clé « {} », "
                     "déjà portée".format(nom or "?", key))
             target[key] = value
+
+
+def missing_selftest_plugins(registry, expected):
+    """Parmi ``expected``, ceux qui manquent au rapport — avec la raison.
+
+    Deux façons de manquer, et il faut les distinguer : le plugin n'a
+    pas été chargé du tout (répertoire absent, manifeste refusé,
+    ``register()`` qui lève), ou il s'est chargé mais n'a rien contribué
+    au selftest — ce qui arrive quand le noyau a bougé sous lui et que
+    ses étapes ne s'enregistrent plus.
+
+    Rendre une liste vide veut dire « tout ce qui était exigé est là »,
+    jamais « je n'ai pas su vérifier » : un registre absent avec des
+    exigences non vides rend ces exigences comme manquantes.
+    """
+    if not expected:
+        return []
+    charges = {m["nom"] for m in getattr(registry, "manifests", [])} \
+        if registry is not None else set()
+    counts = (getattr(registry, "selftest_counts", {})
+              if registry is not None else {})
+    manquants = []
+    for nom in expected:
+        if nom not in charges:
+            manquants.append("{} : non chargé".format(nom))
+        elif counts.get(nom, 0) <= 0:
+            manquants.append(
+                "{} : chargé mais n'a contribué aucun indicateur".format(nom))
+    return manquants
 
 
 def load_plugins(root=None, reserved=None):

@@ -1620,3 +1620,47 @@ et « perdu » gardent l'indice précédent et posent l'erreur.
 - **La généalogie est recalculée pour chaque semis**, alors qu'elle ne dépend
   que de la face. N semis × M faces de travail redondant. C'était déjà dans le
   budget mesuré — 16 ms pour cinq semis — donc ça ne se voit pas.
+
+## Relecture de P045 — l'onglet, et deux détails bien vus
+
+CI verte sur les six jobs, smoke Chromium compris — le seul qui voie
+réellement le ruban. 268 tests Python, 165 JS (+6).
+
+Le smoke vérifie le déménagement **dans les deux sens** : `btn-gem` présent
+dans `#ribbon-jewel`, et **absent** de `#ribbon-features`. Un test qui ne
+vérifierait que la présence passerait avec un bouton dupliqué.
+
+### Deux choses que Cursor a vues et que le prompt ne disait pas
+
+**Une infobulle sur un bouton grisé ne s'affiche pas.** La règle
+`button:disabled { pointer-events: none }` empêche le survol, donc le `title`
+du bouton ne sort jamais — précisément dans l'état où l'utilisateur a le plus
+besoin qu'on lui dise pourquoi. D'où le `<span class="ribbon-tip">` qui
+enveloppe chaque bouton et porte le même titre : le survol tombe sur le span,
+l'explication s'affiche. Le prompt demandait « un bouton grisé qui dit
+pourquoi dans son infobulle » sans voir que ça ne marchait pas tout seul.
+
+Vérifié au passage : **aucun autre bouton de l'app n'utilise `disabled`**, donc
+cette règle globale ne change le comportement de rien d'existant.
+
+**`bindFeature` acceptait un bouton, pas deux.** Plutôt que de dupliquer la
+configuration de Combiner, elle est extraite dans `COMBINE_FEATURE` et l'entrée
+porte `buttons: ["btn-boolean", "btn-gem-combine"]`. `entry.button` reste
+renseigné : la recherche `FEATURES.find(feat => feat.button === item.button)`
+de la palette de graphe continue de fonctionner.
+
+### Le module
+
+`app/gem-controls.js` sort la logique du pas — touches, boutons, état du
+groupe — de `main.js`. Sans DOM ni Three.js, donc testable directement : c'est
+ce qui explique les six tests JS de plus.
+
+`gemDiametreDeltaFromKey` refuse explicitement `+` et `−` de la rangée du haut.
+Le test de non-régression en dépend, et c'est le genre de retrait qu'on
+réintroduit sans y penser six mois plus tard.
+
+### Une remarque, pas un défaut
+
+`Maj+↑` fait le même pas de 0,1 mm qu'`↑` seul — rien ne filtre `shiftKey`. Si
+un pas fin à 0,01 mm arrive un jour, c'est la place naturelle, et elle est
+libre.

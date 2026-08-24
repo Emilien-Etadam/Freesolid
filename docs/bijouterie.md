@@ -1827,3 +1827,56 @@ appartient au noyau, et le fait que **la bijouterie** se comporte bien, qui
 appartient au plugin. Ce n'est pas un défaut — le noyau reste propre — mais
 c'est la dernière liste à traiter le jour du déplacement, et il vaut mieux
 l'avoir écrite que la découvrir.
+
+## Relecture de P049/P050 — le client aussi, et l'épreuve du retrait
+
+La branche P049 d'origine était partie de `c9de5eb`, le merge de P046 : ni
+P047, ni P048. P050 l'a reposée sur `main`, les trois commits distincts.
+
+**La résolution des trois conflits est correcte, vérifiée sur les ensembles et
+pas sur un total** : les dix tests que `main` apportait à
+`tests/test_plugins.py` — dont `test_le_noyau_n_importe_rien_du_plugin`, le
+filet de P048 — sont tous là, plus les trois de P049. 318 tests collectés, au
+dessus du garde-fou de 315.
+
+302 passés, 174 JS, `app/gem-controls.js` parti, zéro méthode gem sur `Kernel`.
+
+### L'épreuve du retrait, refaite avec le client
+
+Comme après P048 : plugin retiré pour de bon, puis relance.
+
+| | Résultat |
+|---|---|
+| pytest | **265 passés, 6 échoués** — les six mêmes qu'après P048 |
+| JS | **168 passés, 1 échoué** |
+| `node --check` sur `main.js`, `plugins.js`, `features.js` | ✅ |
+
+Aucun échec du noyau, ni Python ni JS. L'unique échec JS est
+`tests/js/gem-controls.test.mjs`, qui **teste le module du plugin depuis le
+dépôt noyau** : P049 a mis à jour son chemin d'import sans déplacer le fichier.
+C'est la même classe que les six Python — un test qui affirme la présence du
+plugin — et c'est **le septième à relocaliser** le jour du `git mv`.
+
+### Trois résidus bijouterie dans `app/`, tous inertes
+
+Vérifiés un par un ; les faux positifs abondent (`graphEdgeMenu` contient
+« gem »).
+
+| Où | Quoi | Sans le plugin |
+|---|---|---|
+| `index.html` | CSS `#gem-hud`, `#gem-diametre-readout` | ne correspond à rien |
+| `main.js:250` | le getter de debug `gemHudText` | `if (!hud …) return ""` |
+| `main.js:4908` | `stoneCount` pour le chrono du booléen | `?? []` |
+| `features.js:32` | `booleanToolOptions` lit `lastTree.gems` | `?? []` |
+| `features.js:566` | `buttons: ["btn-boolean", "btn-gem-combine"]` | `bindFeature` garde `if (!el)` |
+
+Le dernier mérite d'être nommé, parce qu'il est **inversé** : c'est le noyau
+qui déclare l'identifiant d'un bouton du plugin. Le plugin devrait dire
+« attache-moi aussi à cette fonction », pas l'inverse. Rien ne casse — la garde
+`if (!el)` de `bindFeature` a été ajoutée exprès, avec `dataset.boundFeature`
+pour que le rattachement puisse se refaire quand le ruban du plugin arrive —
+mais c'est la dernière inversion de la série.
+
+Les autres sont du même ordre que les reconnaissances par nom de propriété
+côté moteur : des chaînes et des règles CSS qui ne correspondent à rien. On
+avait décidé de les laisser ; la décision vaut ici aussi.

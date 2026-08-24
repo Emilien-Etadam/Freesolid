@@ -74,6 +74,22 @@
     padding-top: 3px; line-height: 1.2;
     user-select: none;
   }
+  /* Hiérarchie visuelle transposée de FreeCAD-Ribbon : les commandes
+     de tête (taille "large" dans ribbon.json) en colonne, grosse icône,
+     libellé dessous — les autres restent en ligne. */
+  .ribbon button.large {
+    flex-direction: column;
+    gap: 4px;
+    padding: 5px 8px;
+    max-width: 6.5em;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
+  }
+  .ribbon button.large img { width: 24px; height: 24px; }
+  /* Dans une rangée qui contient des boutons large, le séparateur de
+     bloc suit la hauteur de la rangée au lieu de rester à 22 px. */
+  .ribbon-group-btns .sep { align-self: stretch; height: auto; margin: 3px 0; }
   body.ribbon-icons-only .ribbon button:has(> img) {
     font-size: 0; gap: 0; padding: 6px;
   }

@@ -175,6 +175,17 @@ describe("l'organisation transposée", () => {
         "btn-repeat-variable"]);
   });
 
+  it("met en avant les commandes de tête d'APEbbers (taille large)", () => {
+    const larges = layoutButtons().filter((b) => b.taille).map((b) => b.id);
+    assert.deepEqual(larges, [
+      "btn-sketch", "btn-pad", "btn-pocket", "btn-fillet", "btn-chamfer",
+      "btn-linpattern", "btn-curve3d", "btn-newasm",
+    ]);
+    for (const bouton of layoutButtons()) {
+      if (bouton.taille !== undefined) assert.equal(bouton.taille, "large");
+    }
+  });
+
   it("met l'outil de profil en tête de l'onglet Surfaces", () => {
     const onglet = LAYOUT.onglets.find((o) => o.id === "surfaces");
     assert.deepEqual(onglet.groupes.map((g) => g.libelle),
@@ -272,6 +283,20 @@ describe("installCoreRibbons", () => {
 });
 
 describe("buildRibbonElement", () => {
+  it("rend la classe large pour taille \"large\", et rien d'autre", () => {
+    const doc = fakeDoc();
+    const ribbon = buildRibbonElement(doc, "essai", [{
+      libelle: "G",
+      boutons: [
+        { id: "btn-grand", libelle: "Grand", taille: "large" },
+        { id: "btn-moyen", libelle: "Moyen" },
+        { id: "btn-inconnu", libelle: "Inconnu", taille: "xl" },
+      ],
+    }]);
+    const btns = ribbon.children[0].children[0].children;
+    assert.deepEqual(btns.map((b) => b.className), ["large", "", ""]);
+  });
+
   it("rend un séparateur pour une entrée { sep: true }", () => {
     const doc = fakeDoc();
     const ribbon = buildRibbonElement(doc, "essai", [{

@@ -42,6 +42,12 @@ Les faits transposés :
   Create view (la vue éclatée) — Résoudre remonte en deuxième, Éclater
   rejoint ce groupe. Les liaisons ont leur panneau à part (son « Assembly
   Joints ») : Déplacer puis Contrainte.
+- **La hiérarchie visuelle.** Ses commandes de tête sont « large » :
+  Create sketch, Pad, Pocket, Fillet, Chamfer, Linear Pattern, Create
+  Assembly. Chez nous : `"taille": "large"` dans `ribbon.json` — bouton
+  en colonne, icône 24 px, libellé dessous. La Courbe 3D l'est aussi,
+  par l'analogie déjà posée « l'outil de profil ouvre l'onglet » (chez
+  lui, `Sketcher_NewSketch` est le large de tête du panneau Part).
 
 ## La correspondance, bouton par bouton
 
@@ -68,9 +74,6 @@ Sans équivalent chez lui, placés par analogie :
 
 ## Ce qui n'est pas transposé, et pourquoi
 
-- **Les tailles de boutons** (large/small — Pad, Pocket, Fillet, Chamfer
-  et Linear Pattern sont « large » chez lui). Notre CSS n'a qu'une taille ;
-  c'est la prochaine marche naturelle si on veut sa hiérarchie visuelle.
 - **La barre d'accès rapide.** Ses `quickAccessCommands` (New, Open, Save,
   Undo, Redo, Refresh…) sont notre topbar, qui les a déjà — mais la topbar
   n'est pas dans `ribbon.json` à ce jour.

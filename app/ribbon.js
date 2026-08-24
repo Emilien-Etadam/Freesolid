@@ -62,6 +62,9 @@ export function buildRibbonElement(doc, id, groupes) {
         if (!isButtonId(specBtn.id)) continue;
         const btn = doc.createElement("button");
         btn.id = specBtn.id;
+        // Hiérarchie visuelle : "large" est la seule taille reconnue,
+        // tout le reste garde le rendu en ligne par défaut.
+        if (specBtn.taille === "large") btn.className = "large";
         if (specBtn.titre) btn.title = String(specBtn.titre);
         if (specBtn.disabled) btn.disabled = true;
         const icon = safeIconSrc(specBtn.icon);

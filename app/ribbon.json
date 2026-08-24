@@ -7,7 +7,7 @@
         {
           "libelle": "Préparation",
           "boutons": [
-            { "id": "btn-sketch", "titre": "Esquisse",
+            { "id": "btn-sketch", "titre": "Esquisse", "taille": "large",
               "icon": "icons/Sketcher_NewSketch.svg", "libelle": "Esquisse" },
             { "id": "btn-body", "titre": "Nouveau corps — pièce multi-corps",
               "icon": "icons/PartDesign_Body.svg", "libelle": "Corps" },
@@ -21,6 +21,7 @@
           "libelle": "Modélisation",
           "boutons": [
             { "id": "btn-pad", "titre": "Bossage/Base extrudé",
+              "taille": "large",
               "icon": "icons/PartDesign_Pad.svg", "libelle": "Bossage extrudé" },
             { "id": "btn-revolution",
               "titre": "Bossage/Base avec révolution — autour de l'axe vertical de l'esquisse",
@@ -41,6 +42,7 @@
               "icon": "icons/Geoassembly.svg", "libelle": "Fonction graphe" },
             { "sep": true },
             { "id": "btn-pocket", "titre": "Enlèvement de matière extrudé",
+              "taille": "large",
               "icon": "icons/PartDesign_Pocket.svg",
               "libelle": "Enlèvement de matière" },
             { "id": "btn-hole",
@@ -60,9 +62,9 @@
         {
           "libelle": "Habillage",
           "boutons": [
-            { "id": "btn-fillet", "titre": "Congé",
+            { "id": "btn-fillet", "titre": "Congé", "taille": "large",
               "icon": "icons/PartDesign_Fillet.svg", "libelle": "Congé" },
-            { "id": "btn-chamfer", "titre": "Chanfrein",
+            { "id": "btn-chamfer", "titre": "Chanfrein", "taille": "large",
               "icon": "icons/PartDesign_Chamfer.svg", "libelle": "Chanfrein" },
             { "id": "btn-draft",
               "titre": "Dépouille de la face cliquée (plan neutre : Plan de dessus)",
@@ -77,6 +79,7 @@
           "boutons": [
             { "id": "btn-linpattern",
               "titre": "Répétition linéaire de la dernière fonction",
+              "taille": "large",
               "icon": "icons/PartDesign_LinearPattern.svg",
               "libelle": "Rép. linéaire" },
             { "id": "btn-polpattern",
@@ -108,6 +111,7 @@
           "boutons": [
             { "id": "btn-curve3d",
               "titre": "Courbe 3D par points — trajectoire de balayage (le repli esquisse 3D)",
+              "taille": "large",
               "icon": "icons/Sketcher_Create3PointArc.svg",
               "libelle": "Courbe 3D" }
           ]
@@ -151,6 +155,7 @@
           "boutons": [
             { "id": "btn-newasm",
               "titre": "Nouvel assemblage — pièces insérées par référence",
+              "taille": "large",
               "icon": "icons/Geoassembly.svg", "libelle": "Nouvel assemblage" },
             { "id": "btn-solve", "titre": "Relancer le solveur d'assemblage",
               "libelle": "Résoudre" },

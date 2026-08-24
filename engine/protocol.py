@@ -182,19 +182,9 @@ OPS: dict[str, tuple[str, ...]] = {
     "rebuild": (),                     # recalcul forcé de tout l'arbre
     "tessellate": (),                  # optional: deviation
     "tessellate_edges": (),            # optional: deviation — picking d'arêtes
-    # P034 — pierres aimantées sur une face. x,y,z = point du raycast ;
-    # le moteur projette et retient (u, v), jamais le point reçu.
-    "place_gem": _Req(("face", int), ("x", float), ("y", float), ("z", float),
-                      optional={"gemme": str, "diametre": float,
-                                "spin": float, "lift": float}),
-    "move_gem": _Req(("gem", str), ("index", int),
-                     ("x", float), ("y", float), ("z", float),
-                     optional={"face": int}),
-    "spin_gem": _Req(("gem", str), ("index", int),
-                     optional={"spin": float, "lift": float}),
-    "remove_gem": _Req(("gem", str), ("index", int)),
-    "list_gems": (),
-    "resize_gem": _Req(("gem", str), ("diametre", float)),
+    # Les ops bijouterie (place_gem, …) viennent du plugin : fusionnées
+    # dans OPS au chargement. Tant que le plugin est dans le dépôt, le
+    # snapshot les voit. Un plugin ne peut pas redéfinir une op du noyau.
     # M2 — sketch editing. Geometry travels in sketch-local 2D; the state
     # carries the placement matrix that positions it in 3D.
     "sketch_start": (),                # optional: face | plane (XY|XZ|YZ) | datum (nom)
@@ -252,6 +242,52 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # optional: face — contour projeté, bloqué
     "sketch_finish": _Req(("sketch", str)),
 }
+
+#: Ops du noyau, avant fusion des plugins. Un plugin ne peut pas les redéfinir.
+CORE_OP_NAMES = frozenset(OPS)
+
+_PLUGIN_KINDS = {
+    "int": int,
+    "float": float,
+    "str": str,
+    "list": list,
+    "dict": dict,
+    "bool": bool,
+}
+
+
+def req_from_plugin_op(spec) -> tuple:
+    """Convertit la spec d'un manifeste en entrée ``OPS``."""
+    if not spec:
+        return ()
+    requis = spec.get("requis") or {}
+    optionnels = spec.get("optionnels") or {}
+    items = tuple(
+        (name, _PLUGIN_KINDS[kind]) for name, kind in requis.items())
+    optional = {
+        name: _PLUGIN_KINDS[kind] for name, kind in optionnels.items()}
+    if not items and not optional:
+        return ()
+    return _Req(*items, optional=optional or None)
+
+
+def _merge_plugin_ops():
+    """Fusionne les ops des manifestes. Collision → ce plugin seul est refusé."""
+    from engine.plugins import discover
+    for manifest in discover(reserved=CORE_OP_NAMES):
+        pending = {}
+        collision = False
+        for name, spec in (manifest.get("ops") or {}).items():
+            if name in OPS:
+                collision = True
+                break
+            pending[name] = req_from_plugin_op(spec)
+        if collision:
+            continue
+        OPS.update(pending)
+
+
+_merge_plugin_ops()
 
 
 class ProtocolError(Exception):

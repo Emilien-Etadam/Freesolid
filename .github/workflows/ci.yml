@@ -59,20 +59,6 @@ jobs:
           name: spike-element-map
           path: spike-element-map.json
           if-no-files-found: ignore
-      # Sonde toponaming des semis (docs/bijouterie.md) : un semis retient
-      # sa face d'appui sous forme d'INDICE. Informatif, comme A7 — et
-      # c'est le seul endroit où elle tourne sur la version de référence.
-      - name: Spike toponaming des semis (informatif)
-        if: always()
-        continue-on-error: true
-        shell: bash -el {0}
-        run: PYTHONIOENCODING=utf-8 freecadcmd plugins/bijouterie/scripts/spike-toponaming-semis.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: spike-toponaming-semis
-          path: spike-toponaming-semis.json
-          if-no-files-found: ignore
       - name: Diagnostic d'échec
         if: failure()
         run: |
@@ -95,8 +81,6 @@ jobs:
         run: |
           node --check app/main.js
           node --check app/plugins.js
-          node --check plugins/bijouterie/ui/plugin.js
-          node --check plugins/bijouterie/ui/gem-controls.js
           node --check app/graph.js
           node --check app/history.js
           node --check app/features.js

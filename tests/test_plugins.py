@@ -125,24 +125,6 @@ def test_registry_tree_key_collision_raises():
         registre.contribute_tree(object(), {})
 
 
-def test_bijouterie_ops_remain_in_protocol_snapshot():
-    """Tant que le plugin est dans le dépôt, les six ops restent dans OPS."""
-    for name in ("place_gem", "move_gem", "spin_gem", "remove_gem",
-                 "list_gems", "resize_gem"):
-        assert name in OPS
-        assert name not in CORE_OP_NAMES
-
-
-def test_ops_gem_ne_sont_plus_des_methodes_du_noyau():
-    """getattr échoue : dispatch emprunte le registre, plus Kernel."""
-    from engine.kernel import Kernel
-    kernel = Kernel()
-    for name in ("place_gem", "move_gem", "spin_gem", "remove_gem",
-                 "list_gems", "resize_gem"):
-        assert not callable(getattr(Kernel, name, None)), name
-        assert kernel._plugins.has_op(name)
-
-
 # -- surface plugin (P047 / P048) -----------------------------------------
 
 # Douze membres : neuf du noyau, deux aides de selftest, et ``state``
@@ -221,18 +203,6 @@ def test_etat_par_plugin_distinct_et_raz_au_document():
     assert other._plugins.state("alpha") == {}
 
 
-def test_ops_bijouterie_transactionnelles_via_le_manifeste():
-    """Les six ops restent transactionnelles par le manifeste, pas la liste."""
-    from engine.kernel import Kernel, _TRANSACTIONAL, _transactional
-    kernel = Kernel()
-    for name in ("place_gem", "move_gem", "spin_gem", "remove_gem",
-                 "resize_gem"):
-        assert name not in _TRANSACTIONAL
-        assert _transactional(kernel, name)
-    assert "list_gems" not in _TRANSACTIONAL
-    assert not _transactional(kernel, "list_gems")
-
-
 # -- plugin bouchon : call_op, transaction, crochets qui ne réclament pas --
 
 class _FakeDoc:
@@ -305,24 +275,6 @@ def test_hooks_personne_ne_reclame():
     assert bouchon.run_boolean_tool(kernel, obj) is None
     assert vide.run_deletes_feature(kernel, obj) is False
     assert bouchon.run_deletes_feature(kernel, obj) is False
-
-
-def test_bijouterie_reclame_un_semis_pas_un_pad():
-    from engine.kernel import Kernel
-
-    class _Gem:
-        TypeId = "App::Link"
-        PropertiesList = ("FreeSolidGemFace",)
-
-    class _Pad:
-        TypeId = "PartDesign::Pad"
-        PropertiesList = ()
-
-    kernel = Kernel()
-    assert kernel._plugins.run_tolerates_invalid(kernel, _Gem()) is True
-    assert kernel._plugins.run_tolerates_invalid(kernel, _Pad()) is False
-    assert kernel._plugins.run_boolean_tool(kernel, _Pad()) is None
-    assert kernel._plugins.run_deletes_feature(kernel, _Pad()) is False
 
 
 def _write_python_plugin(root, nom, register_body="pass", with_js=True):

@@ -2,6 +2,7 @@
 
 import math
 
+from bijouterie import gemkernel
 from engine.kernel import KernelError
 
 
@@ -58,7 +59,7 @@ def _p034(kernel, mark, report, ctx):
     face = kernel._require_body().Shape.Faces[side]
     u0, u1, v0, v1 = face.ParameterRange
     seed = face.valueAt((u0 + u1) / 2.0, (v0 + v1) / 2.0)
-    placed = kernel.place_gem(
+    placed = gemkernel.place_gem(kernel, 
         face=side, x=seed.x, y=seed.y, z=seed.z, diametre=1.5)
     gems = placed.get("gems") or []
     report["p034_pose"] = (
@@ -83,7 +84,7 @@ def _p034(kernel, mark, report, ctx):
                     for b in tree["bodies"])
         and not dangling_deps(tree))
     kernel.sketch_set_dim(sk_gem, radius_dim, 12)
-    after = (kernel.list_gems().get("gems") or [{}])[0]
+    after = (gemkernel.list_gems(kernel).get("gems") or [{}])[0]
     stone2 = (after.get("stones") or [{}])[0]
     r_after = math.hypot(stone2.get("x", 0), stone2.get("y", 0))
     z_after = stone2.get("z", 0)
@@ -102,15 +103,15 @@ def _p034(kernel, mark, report, ctx):
                 - math.pi) < 1e-4
         and abs(r_before - 10.0) < 1e-3)
     report["p034_temoin_fige"] = abs(r_before - 12.0) > 1.0
-    moved = kernel.move_gem(
+    moved = gemkernel.move_gem(kernel, 
         gems[0]["name"], 0, seed.x, seed.y, seed.z + 1.0)
     report["p034_deplace"] = (
         (moved.get("gems") or [{}])[0].get("count") == 1)
-    removed = kernel.remove_gem(gems[0]["name"], 0)
+    removed = gemkernel.remove_gem(kernel, gems[0]["name"], 0)
     report["p034_retire"] = (removed.get("gems") or []) == []
-    kernel.place_gem(face=side, x=seed.x, y=seed.y, z=seed.z)
+    gemkernel.place_gem(kernel, face=side, x=seed.x, y=seed.y, z=seed.z)
     try:
-        kernel.place_gem(face=side, x=1000.0, y=1000.0, z=1000.0)
+        gemkernel.place_gem(kernel, face=side, x=1000.0, y=1000.0, z=1000.0)
         report["p034_hors_domaine"] = False
     except KernelError as exc:
         report["p034_hors_domaine"] = "hors" in str(exc).lower() or (
@@ -122,14 +123,14 @@ def _p034(kernel, mark, report, ctx):
 
 def _p036_migration(kernel, mark, report, ctx):
     mark("p036: glisser d'une face à l'autre")
-    current = (kernel.list_gems().get("gems") or [{}])[0]
+    current = (gemkernel.list_gems(kernel).get("gems") or [{}])[0]
     src_name = current.get("name")
     src_face = current.get("face")
     top = kernel._top_face_id()
-    top_face, _ = kernel._anchor_face(top)
+    top_face, _ = gemkernel._anchor_face(kernel, top)
     tu0, tu1, tv0, tv1 = top_face.ParameterRange
     top_pt = top_face.valueAt((tu0 + tu1) / 2.0, (tv0 + tv1) / 2.0)
-    migrated = kernel.move_gem(
+    migrated = gemkernel.move_gem(kernel, 
         src_name, 0, top_pt.x, top_pt.y, top_pt.z, face=top)
     after_mig = migrated.get("gems") or []
     report["p036_migration"] = (
@@ -155,10 +156,10 @@ def _p036_rebuild(kernel, mark, report, ctx):
     mark("p036: reconstruire")
     mesh_a = kernel.tessellate()
     vol_a = _volume(kernel)
-    gems_a = kernel.list_gems().get("gems") or []
+    gems_a = gemkernel.list_gems(kernel).get("gems") or []
     kernel.rebuild()
     mesh_b = kernel.tessellate()
-    gems_b = kernel.list_gems().get("gems") or []
+    gems_b = gemkernel.list_gems(kernel).get("gems") or []
     report["p036_rebuild"] = (
         _close(_volume(kernel), vol_a)
         and len(mesh_a.get("indices") or [])
@@ -172,22 +173,22 @@ def _p036_rebuild(kernel, mark, report, ctx):
 def _p042(kernel, mark, report, ctx):
     mark("p042: lire l'écart, redimensionner")
     top = kernel._top_face_id()
-    first = (kernel.list_gems().get("gems") or [{}])[0]
+    first = (gemkernel.list_gems(kernel).get("gems") or [{}])[0]
     stone0 = (first.get("stones") or [{}])[0]
-    kernel.place_gem(
+    gemkernel.place_gem(kernel, 
         face=top,
         x=float(stone0.get("x", 0)) + 3.0,
         y=float(stone0.get("y", 0)),
         z=float(stone0.get("z", 0)),
         diametre=1.5)
-    pair = (kernel.list_gems().get("gems") or [{}])[0]
+    pair = (gemkernel.list_gems(kernel).get("gems") or [{}])[0]
     old_v = pair.get("voisine_min_mm")
     old_e = pair.get("ecart_min_mm")
     report["p042_deux_pierres"] = (
         pair.get("count") == 2
         and old_v is not None
         and old_e is not None)
-    resized = kernel.resize_gem(pair.get("name"), 2.0)
+    resized = gemkernel.resize_gem(kernel, pair.get("name"), 2.0)
     after_r = (resized.get("gems") or [{}])[0]
     report["p042_resize"] = (
         abs((after_r.get("diametre") or 0) - 2.0) < 1e-9
@@ -226,14 +227,14 @@ def _p043(kernel, mark, report, ctx):
     for i in range(2):
         u = u0 + (u1 - u0) * (i + 0.5) / 2.0
         pt = face_p043.valueAt(u, v_mid)
-        kernel.place_gem(
+        gemkernel.place_gem(kernel, 
             face=side_p043, x=pt.x, y=pt.y, z=pt.z,
             diametre=1.5, lift=-0.25)
-    gems_p043 = kernel.list_gems().get("gems") or []
+    gems_p043 = gemkernel.list_gems(kernel).get("gems") or []
     semis_p043 = (gems_p043 or [{}])[0].get("name")
     kernel.add_boolean(tool=semis_p043, type="cut")
     vol_before_cote = _volume(kernel)
-    kernel.resize_gem(semis_p043, 2.0)
+    gemkernel.resize_gem(kernel, semis_p043, 2.0)
     vol_after_cote = _volume(kernel)
     report["p043_booleen_suit_cote"] = (
         abs(vol_after_cote - vol_before_cote) > 1e-3)
@@ -258,10 +259,10 @@ def _jonc_trois_pierres(kernel, name):
     for i in range(3):
         u = u0 + (u1 - u0) * (i + 0.5) / 3.0
         pt = face.valueAt(u, v_mid)
-        kernel.place_gem(
+        gemkernel.place_gem(kernel, 
             face=side, x=pt.x, y=pt.y, z=pt.z,
             diametre=1.5, lift=-0.25)
-    gems = kernel.list_gems().get("gems") or []
+    gems = gemkernel.list_gems(kernel).get("gems") or []
     return pad_name, side, gems, _volume(kernel)
 
 
@@ -272,7 +273,7 @@ def _p035(kernel, mark, report, ctx):
     tree = kernel.add_boolean(tool=semis, type="cut")
     shape_cut = kernel._require_body().Shape
     vol_cut = _volume(kernel)
-    after_cut = kernel.list_gems().get("gems") or []
+    after_cut = gemkernel.list_gems(kernel).get("gems") or []
     report["p035_cut"] = (
         len(getattr(shape_cut, "Solids", ()) or ()) == 1
         and vol_cut < vol_nu - 0.05
@@ -287,9 +288,9 @@ def _p035(kernel, mark, report, ctx):
     u0, u1, v0, v1 = face.ParameterRange
     moved_pt = face.valueAt(
         u0 + (u1 - u0) * 0.05, (v0 + v1) / 2.0)
-    kernel.move_gem(semis, 0, moved_pt.x, moved_pt.y, moved_pt.z)
+    gemkernel.move_gem(kernel, semis, 0, moved_pt.x, moved_pt.y, moved_pt.z)
     kernel.tip_to_end()
-    stone_after = ((kernel.list_gems().get("gems") or [{}])[0]
+    stone_after = ((gemkernel.list_gems(kernel).get("gems") or [{}])[0]
                    .get("stones") or [{}])[0]
     dx = float(stone_after.get("x", 0)) - float(stone_before.get("x", 0))
     dy = float(stone_after.get("y", 0)) - float(stone_before.get("y", 0))
@@ -345,14 +346,14 @@ def _p044(kernel, mark, report, ctx):
         face = kernel._require_body().Shape.Faces[alesage]
         u0, u1, v0, v1 = face.ParameterRange
         seed = face.valueAt((u0 + u1) / 2.0, (v0 + v1) / 2.0)
-        placed = kernel.place_gem(
+        placed = gemkernel.place_gem(kernel, 
             face=alesage, x=seed.x, y=seed.y, z=seed.z,
             diametre=1.5)
         gem0 = (placed.get("gems") or [{}])[0]
         report["p044_pose"] = (
             gem0.get("count") == 1 and not gem0.get("error"))
         kernel.add_fillet(0.4, face=kernel._top_face_id())
-        after = (kernel.list_gems().get("gems") or [{}])[0]
+        after = (gemkernel.list_gems(kernel).get("gems") or [{}])[0]
         bore_after = _cylindre_ids(4.0)
         stone = (after.get("stones") or [{}])[0]
         report["p044_indice_a_bouge"] = (

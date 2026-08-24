@@ -128,6 +128,16 @@ def test_bijouterie_ops_remain_in_protocol_snapshot():
         assert name not in CORE_OP_NAMES
 
 
+def test_ops_gem_ne_sont_plus_des_methodes_du_noyau():
+    """getattr échoue : dispatch emprunte le registre, plus Kernel."""
+    from engine.kernel import Kernel
+    kernel = Kernel()
+    for name in ("place_gem", "move_gem", "spin_gem", "remove_gem",
+                 "list_gems", "resize_gem"):
+        assert not callable(getattr(Kernel, name, None)), name
+        assert kernel._plugins.has_op(name)
+
+
 # -- surface plugin (P047) ------------------------------------------------
 
 # Onze membres : neuf du noyau, deux aides de selftest. Épinglés ici

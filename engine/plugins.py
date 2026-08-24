@@ -46,6 +46,11 @@ import sys
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEFAULT_ROOT = os.path.join(_REPO_ROOT, "plugins")
 
+# ``plugins/`` est un chemin d'import dès que ce module vit — pas
+# seulement au premier Kernel. Les tests voient alors ``bijouterie``.
+if os.path.isdir(_DEFAULT_ROOT) and _DEFAULT_ROOT not in sys.path:
+    sys.path.insert(0, _DEFAULT_ROOT)
+
 _MODULE_RE = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$")
 _DIR_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 _NOM_RE = re.compile(r"^[a-z][a-z0-9_]*$")

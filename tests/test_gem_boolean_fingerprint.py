@@ -1,5 +1,6 @@
 """Empreinte du booléen de semis — gabarit et VarSet, sans FreeCAD."""
 
+from bijouterie.gemkernel import _gem_placement_fingerprint
 from engine.kernel import Kernel
 
 
@@ -36,7 +37,7 @@ class _Link:
 
 
 def test_fingerprint_signs_template_and_sorted_varset():
-    fp = Kernel()._gem_placement_fingerprint(_Link())
+    fp = _gem_placement_fingerprint(Kernel(), _Link())
     assert fp.startswith("Semis#cylindre-plat#")
     assert "diametre=1.500000" in fp
     assert "epaisseur=0.500000" in fp
@@ -49,10 +50,10 @@ def test_fingerprint_signs_template_and_sorted_varset():
 
 def test_fingerprint_changes_when_diameter_changes():
     kernel = Kernel()
-    before = kernel._gem_placement_fingerprint(_Link())
+    before = _gem_placement_fingerprint(kernel, _Link())
     _VarSet.diametre = 1.7
     try:
-        after = kernel._gem_placement_fingerprint(_Link())
+        after = _gem_placement_fingerprint(kernel, _Link())
     finally:
         _VarSet.diametre = 1.5
     assert before != after
@@ -61,10 +62,10 @@ def test_fingerprint_changes_when_diameter_changes():
 
 def test_fingerprint_changes_when_template_name_changes():
     kernel = Kernel()
-    before = kernel._gem_placement_fingerprint(_Link())
+    before = _gem_placement_fingerprint(kernel, _Link())
     _Link.FreeSolidGemTemplate = "brillant-rond"
     try:
-        after = kernel._gem_placement_fingerprint(_Link())
+        after = _gem_placement_fingerprint(kernel, _Link())
     finally:
         _Link.FreeSolidGemTemplate = "cylindre-plat"
     assert before != after

@@ -52,7 +52,7 @@ export function dressupParams(sel) {
     ? { edges: sel.edges } : { face: sel.face };
 }
 
-function dressup({ button, icon, title, selectionLabel, group, rows, build,
+export function dressup({ button, icon, title, selectionLabel, group, rows, build,
                    accepts = ["face"], hint, note, noteFn, invalid }) {
   return {
     button, icon, title,
@@ -716,52 +716,4 @@ export const FEATURES = [
     refresh: "part",
     openGraphEditor: true,
   },
-  dressup({
-    button: "btn-gem",
-    icon: "nodes_cylinder.svg",
-    title: "Pierre",
-    selectionLabel: "Face d'appui",
-    hint: "Cliquez une face dans la zone graphique — la pierre s'y aimante",
-    group: "Pierre",
-    rows: [
-      { type: "number", key: "diametre", label: "Diamètre", value: 1.5,
-        unit: "mm", min: 0.01 },
-      { type: "number", key: "spin", label: "Rotation", value: 0,
-        unit: "°" },
-      { type: "number", key: "lift", label: "Enfoncement", value: 0,
-        unit: "mm" },
-    ],
-    noteFn: (ctx, extras) => extras?.spline
-      ? "Sur une surface libre, l'ancrage peut glisser de quelques "
-        + "dixièmes de millimètre si la surface se déforme — la pierre "
-        + "reste collée, mais pas au même endroit."
-      : "La pierre reste collée à la face : changer une cote de la pièce "
-        + "la recale. Poser n'enlève pas de matière.",
-    build: (v, ctx) => {
-      const diametre = num(v.diametre);
-      const hit = ctx.lastFaceHit;
-      if (!hasSelection(v.sel) || !(diametre > 0) || !hit
-          || hit.face !== v.sel.face) {
-        return null;
-      }
-      const params = {
-        face: v.sel.face, x: hit.x, y: hit.y, z: hit.z, diametre,
-      };
-      const spin = num(v.spin);
-      const lift = num(v.lift);
-      if (spin != null) params.spin = spin;
-      if (lift != null) params.lift = lift;
-      return { op: "place_gem", params };
-    },
-    invalid: (v, ctx) => {
-      if (!hasSelection(v.sel)) {
-        return "Pierre : cliquez d'abord une face dans la zone graphique";
-      }
-      if (!(num(v.diametre) > 0)) return "Diamètre invalide";
-      if (!ctx.lastFaceHit || ctx.lastFaceHit.face !== v.sel.face) {
-        return "Pierre : recliquez la face pour viser le point de pose";
-      }
-      return "Valeurs invalides";
-    },
-  }),
 ];

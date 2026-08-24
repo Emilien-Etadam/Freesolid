@@ -409,7 +409,7 @@ describe("palette constructive", () => {
   const edgeSel = { kind: "edges", edges: [1, 2] };
 
   it("FEATURES porte les marqueurs dressup / sketchProfile, sans table parallèle", () => {
-    assert.equal(FEATURES.length, 25);
+    assert.equal(FEATURES.length, 24);
     assert.equal(pad?.sketchProfile, true);
     assert.equal(pad?.dressup, undefined);
     assert.equal(fillet?.dressup, true);
@@ -417,7 +417,7 @@ describe("palette constructive", () => {
     assert.equal(combine?.dressup, undefined);
     assert.equal(combine?.sketchProfile, undefined);
     assert.deepEqual(combine?.buttons, ["btn-boolean", "btn-gem-combine"]);
-    assert.equal(FEATURES.filter((entry) => entry.dressup).length, 6);
+    assert.equal(FEATURES.filter((entry) => entry.dressup).length, 5);
     assert.equal(FEATURES.filter((entry) => entry.sketchProfile).length, 4);
   });
 
@@ -474,7 +474,7 @@ describe("palette constructive", () => {
       lastTree: { features: [] },
       selection: null,
     });
-    assert.equal(items.length, 25);
+    assert.equal(items.length, 24);
     const padItem = items.find((item) => item.button === "btn-pad");
     const filletItem = items.find((item) => item.button === "btn-fillet");
     assert.equal(padItem.title, pad.title);

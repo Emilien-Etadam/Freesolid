@@ -95,6 +95,8 @@ jobs:
         run: |
           node --check app/main.js
           node --check app/plugins.js
+          node --check plugins/bijouterie/ui/plugin.js
+          node --check plugins/bijouterie/ui/gem-controls.js
           node --check app/graph.js
           node --check app/history.js
           node --check app/features.js

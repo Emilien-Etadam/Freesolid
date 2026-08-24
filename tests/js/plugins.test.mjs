@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { loadClientPlugins, pluginEntryUrl } from "../../app/plugins.js";
+import { createPluginApi, loadClientPlugins, pluginEntryUrl } from "../../app/plugins.js";
 
 describe("pluginEntryUrl", () => {
   it("n'accepte que /plugins/<nom>/plugin.js avec le même nom", () => {
@@ -94,5 +94,85 @@ describe("loadClientPlugins", () => {
       async () => { throw new Error("ne doit pas importer"); },
     );
     assert.deepEqual(loaded, []);
+  });
+});
+
+describe("createPluginApi", () => {
+  it("dispatchKey s'arrête au premier handler qui rend true", () => {
+    const seen = [];
+    const host = {
+      call() {}, refresh() {}, say() {}, tree: () => null,
+    };
+    const runtime = createPluginApi(host);
+    runtime.api.key((event) => {
+      seen.push("a");
+      return event.key === "a";
+    });
+    runtime.api.key((event) => {
+      seen.push("b");
+      return event.key === "b";
+    });
+    assert.equal(runtime.dispatchKey({ key: "a" }), true);
+    assert.deepEqual(seen, ["a"]);
+    seen.length = 0;
+    assert.equal(runtime.dispatchKey({ key: "b" }), true);
+    assert.deepEqual(seen, ["a", "b"]);
+    seen.length = 0;
+    assert.equal(runtime.dispatchKey({ key: "c" }), false);
+    assert.deepEqual(seen, ["a", "b"]);
+  });
+
+  it("treeRow itère le predicat et append les lignes", () => {
+    const rows = [];
+    const host = {
+      call() {}, refresh() {}, say() {}, tree: () => null,
+    };
+    const runtime = createPluginApi(host);
+    runtime.api.treeRow(
+      (tree) => tree.gems ?? [],
+      (gem) => ({ name: gem.name }),
+    );
+    runtime.renderTreeRows(
+      { gems: [{ name: "Semis" }, { name: "Semis001" }] },
+      { append: (row) => rows.push(row) },
+    );
+    assert.deepEqual(rows, [{ name: "Semis" }, { name: "Semis001" }]);
+  });
+
+  it("viewport : onClear puis onMesh, les objets sont ajoutés au groupe", () => {
+    const log = [];
+    const group = { add(obj) { log.push(["add", obj.id]); } };
+    const host = {
+      call() {}, refresh() {}, say() {}, tree: () => null,
+    };
+    const runtime = createPluginApi(host);
+    runtime.api.viewport({
+      onClear() { log.push("clear"); },
+      onMesh(mesh) {
+        log.push(["mesh", mesh.tag]);
+        return [{ id: "g1" }, { id: "g2" }];
+      },
+    });
+    runtime.applyViewport({ tag: "t" }, { volumesGroup: group }, (obj) => {
+      log.push(["detach", obj.id]);
+    });
+    assert.deepEqual(log, [
+      "clear",
+      ["mesh", "t"],
+      ["add", "g1"],
+      ["add", "g2"],
+    ]);
+    log.length = 0;
+    runtime.applyViewport({ tag: "u" }, { volumesGroup: group }, (obj) => {
+      log.push(["detach", obj.id]);
+    });
+    assert.deepEqual(log, [
+      "clear",
+      ["detach", "g1"],
+      ["detach", "g2"],
+      ["mesh", "u"],
+      ["add", "g1"],
+      ["add", "g2"],
+    ]);
   });
 });

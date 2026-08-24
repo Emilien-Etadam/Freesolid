@@ -126,3 +126,115 @@ def test_bijouterie_ops_remain_in_protocol_snapshot():
                  "list_gems", "resize_gem"):
         assert name in OPS
         assert name not in CORE_OP_NAMES
+
+
+# -- surface plugin (P047) ------------------------------------------------
+
+# Onze membres : neuf du noyau, deux aides de selftest. Épinglés ici
+# parce que la bijouterie partira dans un dépôt privé — la CI publique
+# ne pourra plus voir un rename de ``_require_body``.
+_SURFACE_PLUGIN = (
+    "_app", "_body", "_doc", "_face_mesh", "_recompute",
+    "_report_progress", "_require_body", "_require_doc", "get_tree",
+    "_top_face_id", "_side_face_id",
+)
+
+
+def test_surface_plugin_reste_disponible():
+    """Ces membres sont appelés par des plugins hors dépôt."""
+    from engine.kernel import Kernel
+    kernel = Kernel()
+    manquants = [name for name in _SURFACE_PLUGIN if not hasattr(kernel, name)]
+    assert manquants == []
+
+
+# -- plugin bouchon : call_op, transaction, crochets qui ne réclament pas --
+
+class _FakeDoc:
+    def __init__(self):
+        self.opened = False
+        self.aborted = False
+        self.committed = False
+
+    def openTransaction(self, _name):
+        self.opened = True
+
+    def abortTransaction(self):
+        self.aborted = True
+
+    def commitTransaction(self):
+        self.committed = True
+
+
+class _FakeKernel:
+    def __init__(self, plugins, doc=None):
+        self._plugins = plugins
+        self._doc = doc
+
+
+def _bouchon():
+    from tests.plugin_bouchon import register
+    registre = Registry(nom="bouchon")
+    register(registre)
+    return registre
+
+
+def test_dispatch_emprunte_call_op():
+    from engine.kernel import dispatch
+    kernel = _FakeKernel(_bouchon())
+    result = dispatch(kernel, "echo_bouchon", {"message": "ping"})
+    assert result == {"ok": True, "result": {"echo": "ping"}}
+
+
+def test_dispatch_op_transactionnelle():
+    from engine.kernel import dispatch
+    doc = _FakeDoc()
+    kernel = _FakeKernel(_bouchon(), doc=doc)
+    result = dispatch(kernel, "muter_bouchon", {})
+    assert result == {"ok": True, "result": {"muté": True}}
+    assert doc.opened
+    assert doc.committed
+    assert not doc.aborted
+
+
+def test_dispatch_op_qui_leve_annule_la_transaction():
+    from engine.kernel import dispatch
+    doc = _FakeDoc()
+    kernel = _FakeKernel(_bouchon(), doc=doc)
+    result = dispatch(kernel, "boom_bouchon", {})
+    assert result["ok"] is False
+    assert result["error"] == "le bouchon a levé"
+    assert doc.opened
+    assert doc.aborted
+    assert not doc.committed
+
+
+def test_hooks_personne_ne_reclame():
+    """False / None / False : le noyau se comporte comme sans plugin."""
+    vide = Registry()
+    bouchon = _bouchon()
+    kernel, obj = object(), object()
+    assert vide.run_tolerates_invalid(kernel, obj) is False
+    assert bouchon.run_tolerates_invalid(kernel, obj) is False
+    assert vide.run_boolean_tool(kernel, obj) is None
+    assert bouchon.run_boolean_tool(kernel, obj) is None
+    assert vide.run_deletes_feature(kernel, obj) is False
+    assert bouchon.run_deletes_feature(kernel, obj) is False
+
+
+def test_bijouterie_reclame_un_semis_pas_un_pad():
+    from engine.kernel import Kernel
+
+    class _Gem:
+        TypeId = "App::Link"
+        PropertiesList = ("FreeSolidGemFace",)
+
+    class _Pad:
+        TypeId = "PartDesign::Pad"
+        PropertiesList = ()
+
+    kernel = Kernel()
+    assert kernel._plugins.run_tolerates_invalid(kernel, _Gem()) is True
+    assert kernel._plugins.run_tolerates_invalid(kernel, _Pad()) is False
+    assert kernel._plugins.run_boolean_tool(kernel, _Pad()) is None
+    assert kernel._plugins.run_deletes_feature(kernel, _Pad()) is False

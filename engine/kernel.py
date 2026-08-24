@@ -315,8 +315,7 @@ class Kernel:
         broken = [o for o in doc.Objects
                   if "Invalid" in (o.State or ())
                   and not self._is_internal_tool(o)
-                  and not self._is_gem_link(o)
-                  and not self._is_gem_array_child(o)]
+                  and not self._plugins.run_tolerates_invalid(self, o)]
         if broken:
             messages = []
             for obj in broken:
@@ -362,8 +361,7 @@ class Kernel:
         broken = [o for o in self._doc.Objects
                   if "Invalid" in (o.State or ())
                   and not self._is_internal_tool(o)
-                  and not self._is_gem_link(o)
-                  and not self._is_gem_array_child(o)]
+                  and not self._plugins.run_tolerates_invalid(self, o)]
         messages = []
         for obj in broken:
             text = ""
@@ -3425,8 +3423,9 @@ class Kernel:
         doc = self._require_doc()
         tool_obj = doc.getObject(str(tool))
         derived_names = []
-        if self._is_gem_link(tool_obj):
-            tool_obj = self._derive_gem_boolean_body(tool_obj)
+        hooked = self._plugins.run_boolean_tool(self, tool_obj)
+        if hooked is not None:
+            tool_obj = hooked
             derived_names.append(tool_obj.Name)
             base = getattr(tool_obj, "BaseFeature", None)
             if base is not None:
@@ -4335,14 +4334,7 @@ class Kernel:
         obj = doc.getObject(feature)
         if obj is None:
             raise KernelError("fonction inconnue : {}".format(feature))
-        if self._is_gem_link(obj):
-            body = getattr(obj, "LinkedObject", None)
-            doc.removeObject(obj.Name)
-            if body is not None and not any(
-                    getattr(other, "LinkedObject", None) is body
-                    for other in self._gem_links()):
-                self._remove_gem_body(body)
-            self._recompute()
+        if self._plugins.run_deletes_feature(self, obj):
             return self._current_tree()
         label = obj.Label
         if obj.TypeId == "PartDesign::Body":

@@ -923,8 +923,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         || "",
     };
   });
-  if (paletteState.count !== 25) {
-    errors.push("N005 : palette " + paletteState.count + " items (attendu 25)");
+  // Le compte du NOYAU seul. La palette vient de `graphPaletteItems(FEATURES)`
+  // et un plugin y ajoute les siennes : avec bijouterie installée, c'est 25.
+  // Ajouter une fonction au noyau doit faire bouger ce nombre — c'est le but.
+  const PALETTE_NOYAU = 24;
+  if (paletteState.count !== PALETTE_NOYAU) {
+    errors.push("N005 : palette " + paletteState.count
+      + " items (attendu " + PALETTE_NOYAU + " sans plugin)");
   }
   if (!paletteState.filletDisabled) {
     errors.push("N005 : Congé devrait être grisé sans face sélectionnée");

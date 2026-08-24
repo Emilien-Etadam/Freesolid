@@ -27,6 +27,7 @@ from engine.nodegraph import (  # noqa: E402
 from engine.platform import (                    # noqa: E402
     allow_from_environ, version_status,
 )
+from engine.plugins import PluginError           # noqa: E402
 from engine.protocol import dangling_deps, visible_dep_subs, visible_deps  # noqa: E402
 from engine.scriptnode import evaluate as evaluate_graph  # noqa: E402
 from engine.vocab import label_for_type          # noqa: E402
@@ -256,6 +257,8 @@ class Kernel:
         # Callback d'avancement (phase, fait, total) — posé par le
         # transport, jamais importé d'ici. Absent = no-op.
         self._progress = None
+        from engine.plugins import default_registry
+        self._plugins = default_registry()
 
     def _report_progress(self, phase, fait=0, total=0):
         """Nourrit l'état d'avancement. Aucun appel FreeCAD."""
@@ -307,8 +310,7 @@ class Kernel:
         doc.recompute()
         if not self._assembly:
             self._report_progress("Reconstruction de l'arbre")
-            self._refresh_gem_placements()
-            self._refresh_gem_boolean_tools()
+            self._plugins.run_after_recompute(self)
             doc.recompute()
         broken = [o for o in doc.Objects
                   if "Invalid" in (o.State or ())
@@ -349,8 +351,7 @@ class Kernel:
         try:
             self._force_recompute()
             if not self._assembly:
-                self._refresh_gem_placements()
-                self._refresh_gem_boolean_tools()
+                self._plugins.run_after_recompute(self)
                 self._force_recompute()
         except KernelError:
             raise
@@ -4985,11 +4986,12 @@ class Kernel:
         tip = body.Tip.Name if getattr(body, "Tip", None) else None
         # Variables dans le même appel : le FeatureManager affiche le
         # dossier Équations sans round-trip list_variables.
-        return {"body": body.Label, "tip": tip, "bodies": bodies,
+        tree = {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,
                 "surfaces": surfaces,
-                "gems": self._gem_entries(),
                 "variables": self.list_variables()["variables"]}
+        self._plugins.contribute_tree(self, tree)
+        return tree
 
     def _face_mesh(self, face, face_id, deviation):
         """Tessellation d'une face + normales exactes ``normalAt(u, v)``."""
@@ -5151,7 +5153,7 @@ class Kernel:
             })
         if sketches_out:
             mesh["sketches"] = sketches_out
-        mesh["gems"] = self._tessellate_gems(deviation)
+        self._plugins.contribute_mesh(self, mesh, deviation)
         return mesh
 
     def _tessellate_gems(self, deviation):
@@ -8428,309 +8430,7 @@ class Kernel:
                 and edited["label"] != curve_line["label"]
                 and surf_line["label"] == "Fonction graphe — Surface")
 
-            mark("p034: pierre aimantée sur un cylindre")
-            import math as _math
-            self.new_part("Jonc P034")
-            state = self.sketch_start()
-            sk_gem = state["sketch"]
-            self.sketch_add_circle(sk_gem, 0, 0, 10)
-            self.sketch_constrain(
-                sk_gem, "coincident", 0, point1=3, geo2=-1, point2=1)
-            dim_state = self.sketch_dim(sk_gem, 0)
-            radius_dim = max(d["id"] for d in dim_state["dims"])
-            self.sketch_finish(sk_gem)
-            self.add_pad(6, sketch=sk_gem)
-            side = self._side_face_id()
-            face = self._require_body().Shape.Faces[side]
-            u0, u1, v0, v1 = face.ParameterRange
-            seed = face.valueAt((u0 + u1) / 2.0, (v0 + v1) / 2.0)
-            placed = self.place_gem(
-                face=side, x=seed.x, y=seed.y, z=seed.z, diametre=1.5)
-            gems = placed.get("gems") or []
-            report["p034_pose"] = (
-                len(gems) == 1
-                and gems[0]["count"] == 1
-                and not gems[0]["error"])
-            stone = gems[0]["stones"][0]
-            r_before = _math.hypot(stone["x"], stone["y"])
-            z_before = stone["z"]
-            angle_before = _math.atan2(stone["y"], stone["x"])
-            mesh = self.tessellate()
-            report["p034_mesh"] = (
-                bool(mesh.get("normals"))
-                and len(mesh.get("gems") or []) == 1
-                and bool((mesh["gems"][0].get("instances") or [{}])[0]
-                         .get("matrix")))
-            tree = self.get_tree()
-            report["p034_arbre"] = (
-                len(tree.get("gems") or []) == 1
-                and not any(b.get("label", "").startswith("Gabarit")
-                            for b in tree["bodies"])
-                and not dangling_deps(tree))
-            self.sketch_set_dim(sk_gem, radius_dim, 12)
-            after = (self.list_gems().get("gems") or [{}])[0]
-            stone2 = (after.get("stones") or [{}])[0]
-            r_after = _math.hypot(stone2.get("x", 0), stone2.get("y", 0))
-            z_after = stone2.get("z", 0)
-            angle_after = _math.atan2(stone2.get("y", 0), stone2.get("x", 0))
-            import Part as _Part
-            face_after = self._require_body().Shape.Faces[self._side_face_id()]
-            origin = _Part.Vertex(self._app().Vector(
-                stone2.get("x", 0), stone2.get("y", 0), stone2.get("z", 0)))
-            dist = face_after.distToShape(origin)[0]
-            report["p034_ancrage"] = (
-                not after.get("error")
-                and dist < 1e-6
-                and abs(r_after - 12.0) < 1e-4
-                and abs(z_after - z_before) < 1e-4
-                and abs((angle_after - angle_before + _math.pi) % (2 * _math.pi)
-                        - _math.pi) < 1e-4
-                and abs(r_before - 10.0) < 1e-3)
-            # Témoin négatif : un placement figé aurait décollé de ~2 mm.
-            report["p034_temoin_fige"] = abs(r_before - 12.0) > 1.0
-            moved = self.move_gem(
-                gems[0]["name"], 0, seed.x, seed.y, seed.z + 1.0)
-            report["p034_deplace"] = (
-                (moved.get("gems") or [{}])[0].get("count") == 1)
-            removed = self.remove_gem(gems[0]["name"], 0)
-            report["p034_retire"] = (removed.get("gems") or []) == []
-            # Hors domaine : un point loin de la face est refusé.
-            self.place_gem(face=side, x=seed.x, y=seed.y, z=seed.z)
-            try:
-                self.place_gem(face=side, x=1000.0, y=1000.0, z=1000.0)
-                report["p034_hors_domaine"] = False
-            except KernelError as exc:
-                report["p034_hors_domaine"] = "hors" in str(exc).lower() or (
-                    "contour" in str(exc).lower())
-
-            mark("p036: glisser d'une face à l'autre")
-            current = (self.list_gems().get("gems") or [{}])[0]
-            src_name = current.get("name")
-            src_face = current.get("face")
-            top = self._top_face_id()
-            top_face, _ = self._anchor_face(top)
-            tu0, tu1, tv0, tv1 = top_face.ParameterRange
-            top_pt = top_face.valueAt((tu0 + tu1) / 2.0, (tv0 + tv1) / 2.0)
-            migrated = self.move_gem(
-                src_name, 0, top_pt.x, top_pt.y, top_pt.z, face=top)
-            after_mig = migrated.get("gems") or []
-            report["p036_migration"] = (
-                len(after_mig) == 1
-                and after_mig[0].get("count") == 1
-                and after_mig[0].get("name") != src_name
-                and after_mig[0].get("face") != src_face
-                and not after_mig[0].get("error"))
-
-            mark("p036: cote hors esquisse")
-            vol_before_dim = _volume()
-            self.sketch_set_dim(sk_gem, radius_dim, 11)
-            report["p036_cote_hors_esquisse"] = (
-                abs(_volume() - vol_before_dim) > 1.0
-                and abs(_volume() - (_math.pi * 11.0 * 11.0 * 6.0)) < 2.0)
-
-            mark("p036: reconstruire")
-            mesh_a = self.tessellate()
-            vol_a = _volume()
-            gems_a = self.list_gems().get("gems") or []
-            self.rebuild()
-            mesh_b = self.tessellate()
-            gems_b = self.list_gems().get("gems") or []
-            report["p036_rebuild"] = (
-                _close(_volume(), vol_a)
-                and len(mesh_a.get("indices") or [])
-                == len(mesh_b.get("indices") or [])
-                and len(mesh_a.get("groups") or [])
-                == len(mesh_b.get("groups") or [])
-                and len(gems_a) == len(gems_b) == 1
-                and gems_a[0].get("count") == gems_b[0].get("count") == 1)
-
-            mark("p042: lire l'écart, redimensionner")
-            top = self._top_face_id()
-            first = (self.list_gems().get("gems") or [{}])[0]
-            stone0 = (first.get("stones") or [{}])[0]
-            self.place_gem(
-                face=top,
-                x=float(stone0.get("x", 0)) + 3.0,
-                y=float(stone0.get("y", 0)),
-                z=float(stone0.get("z", 0)),
-                diametre=1.5)
-            pair = (self.list_gems().get("gems") or [{}])[0]
-            old_v = pair.get("voisine_min_mm")
-            old_e = pair.get("ecart_min_mm")
-            report["p042_deux_pierres"] = (
-                pair.get("count") == 2
-                and old_v is not None
-                and old_e is not None)
-            resized = self.resize_gem(pair.get("name"), 2.0)
-            after_r = (resized.get("gems") or [{}])[0]
-            report["p042_resize"] = (
-                abs((after_r.get("diametre") or 0) - 2.0) < 1e-9
-                and after_r.get("voisine_min_mm") is not None
-                and old_v is not None
-                and abs(after_r["voisine_min_mm"] - old_v) < 1e-6
-                and old_e is not None
-                and abs((after_r.get("ecart_min_mm") or 0) - (old_e - 0.5))
-                < 1e-4)
-
-            mark("p043: le booléen suit la cote, la sélection suit la pierre")
-            moved_info = migrated.get("gem_moved") if isinstance(
-                migrated, dict) else None
-            dest_name = (after_mig or [{}])[0].get("name")
-            report["p043_gem_moved"] = (
-                isinstance(moved_info, dict)
-                and moved_info.get("gem") == dest_name
-                and moved_info.get("index") == 0)
-
-            self.new_part("Jonc P043")
-            state = self.sketch_start()
-            sk_p043 = state["sketch"]
-            self.sketch_add_circle(sk_p043, 0, 0, 10)
-            self.sketch_constrain(
-                sk_p043, "coincident", 0, point1=3, geo2=-1, point2=1)
-            self.sketch_finish(sk_p043)
-            self.add_pad(6, sketch=sk_p043)
-            side_p043 = self._side_face_id()
-            face_p043 = self._require_body().Shape.Faces[side_p043]
-            u0, u1, v0, v1 = face_p043.ParameterRange
-            v_mid = (v0 + v1) / 2.0
-            for i in range(2):
-                u = u0 + (u1 - u0) * (i + 0.5) / 2.0
-                pt = face_p043.valueAt(u, v_mid)
-                self.place_gem(
-                    face=side_p043, x=pt.x, y=pt.y, z=pt.z,
-                    diametre=1.5, lift=-0.25)
-            gems_p043 = self.list_gems().get("gems") or []
-            semis_p043 = (gems_p043 or [{}])[0].get("name")
-            self.add_boolean(tool=semis_p043, type="cut")
-            vol_before_cote = _volume()
-            self.resize_gem(semis_p043, 2.0)
-            vol_after_cote = _volume()
-            report["p043_booleen_suit_cote"] = (
-                abs(vol_after_cote - vol_before_cote) > 1e-3)
-
-            mark("p035: booléen sur un semis")
-
-            def _jonc_trois_pierres(name):
-                self.new_part(name)
-                state = self.sketch_start()
-                sk = state["sketch"]
-                self.sketch_add_circle(sk, 0, 0, 10)
-                self.sketch_constrain(
-                    sk, "coincident", 0, point1=3, geo2=-1, point2=1)
-                self.sketch_finish(sk)
-                tree = self.add_pad(6, sketch=sk)
-                pad_name = next(
-                    f["name"] for f in tree["features"]
-                    if f["type"] == "PartDesign::Pad")
-                side = self._side_face_id()
-                face = self._require_body().Shape.Faces[side]
-                u0, u1, v0, v1 = face.ParameterRange
-                v_mid = (v0 + v1) / 2.0
-                for i in range(3):
-                    u = u0 + (u1 - u0) * (i + 0.5) / 3.0
-                    pt = face.valueAt(u, v_mid)
-                    self.place_gem(
-                        face=side, x=pt.x, y=pt.y, z=pt.z,
-                        diametre=1.5, lift=-0.25)
-                gems = self.list_gems().get("gems") or []
-                return pad_name, side, gems, _volume()
-
-            pad_name, side, gems, vol_nu = _jonc_trois_pierres("Jonc P035")
-            semis = (gems or [{}])[0].get("name")
-            tree = self.add_boolean(tool=semis, type="cut")
-            shape_cut = self._require_body().Shape
-            vol_cut = _volume()
-            after_cut = self.list_gems().get("gems") or []
-            report["p035_cut"] = (
-                len(getattr(shape_cut, "Solids", ()) or ()) == 1
-                and vol_cut < vol_nu - 0.05
-                and len(after_cut) == 1
-                and after_cut[0].get("count") == 3
-                and not any(b.get("label", "").startswith("Corps outil du semis")
-                            for b in tree["bodies"]))
-            stone_before = (after_cut[0].get("stones") or [{}])[0]
-            mesh_before = self.tessellate()
-            self.set_tip(pad_name)
-            face = self._require_body().Shape.Faces[side]
-            u0, u1, v0, v1 = face.ParameterRange
-            moved_pt = face.valueAt(
-                u0 + (u1 - u0) * 0.05, (v0 + v1) / 2.0)
-            self.move_gem(semis, 0, moved_pt.x, moved_pt.y, moved_pt.z)
-            self.tip_to_end()
-            stone_after = ((self.list_gems().get("gems") or [{}])[0]
-                           .get("stones") or [{}])[0]
-            dx = float(stone_after.get("x", 0)) - float(stone_before.get("x", 0))
-            dy = float(stone_after.get("y", 0)) - float(stone_before.get("y", 0))
-            mesh_after = self.tessellate()
-            report["p035_deplace"] = (
-                (dx * dx + dy * dy) ** 0.5 > 1.0
-                and mesh_before.get("positions") != mesh_after.get("positions")
-                and len(self._require_body().Shape.Solids) == 1
-                and abs(_volume() - vol_cut) < 0.5)
-
-            _pad, _side, gems_fuse, vol_nu_fuse = _jonc_trois_pierres(
-                "Jonc P035 fuse")
-            semis_fuse = (gems_fuse or [{}])[0].get("name")
-            self.add_boolean(tool=semis_fuse, type="fuse")
-            report["p035_fuse"] = (
-                len(self._require_body().Shape.Solids) == 1
-                and _volume() > vol_nu_fuse + 0.05)
-
-            mark("p044: ancre par provenance")
-            from engine.gems import face_radius_mm as _face_radius_mm
-
-            def _cylindre_ids(radius):
-                found = []
-                for i, face in enumerate(self._require_body().Shape.Faces):
-                    surface = getattr(face, "Surface", None)
-                    type_id = str(getattr(surface, "TypeId", "") or "")
-                    if "Cylinder" not in type_id:
-                        continue
-                    r = _face_radius_mm(face)
-                    if r is not None and abs(r - radius) < 1e-6:
-                        found.append(i)
-                return found
-
-            self.new_part("Tube P044")
-            state = self.sketch_start()
-            sk_p044 = state["sketch"]
-            self.sketch_add_circle(sk_p044, 0, 0, 10)
-            self.sketch_constrain(
-                sk_p044, "coincident", 0, point1=3, geo2=-1, point2=1)
-            self.sketch_add_circle(sk_p044, 0, 0, 4)
-            self.sketch_constrain(
-                sk_p044, "coincident", 1, point1=3, geo2=-1, point2=1)
-            self.sketch_finish(sk_p044)
-            self.add_pad(6, sketch=sk_p044)
-            bore_before = _cylindre_ids(4.0)
-            report["p044_alesage_avant"] = (len(bore_before) == 1)
-            alesage = bore_before[0] if len(bore_before) == 1 else None
-            if alesage is None:
-                report["p044_ancre"] = False
-            else:
-                face = self._require_body().Shape.Faces[alesage]
-                u0, u1, v0, v1 = face.ParameterRange
-                seed = face.valueAt((u0 + u1) / 2.0, (v0 + v1) / 2.0)
-                placed = self.place_gem(
-                    face=alesage, x=seed.x, y=seed.y, z=seed.z,
-                    diametre=1.5)
-                gem0 = (placed.get("gems") or [{}])[0]
-                report["p044_pose"] = (
-                    gem0.get("count") == 1 and not gem0.get("error"))
-                self.add_fillet(0.4, face=self._top_face_id())
-                after = (self.list_gems().get("gems") or [{}])[0]
-                bore_after = _cylindre_ids(4.0)
-                stone = (after.get("stones") or [{}])[0]
-                report["p044_indice_a_bouge"] = (
-                    len(bore_after) == 1 and alesage != bore_after[0])
-                report["p044_ancre"] = (
-                    len(bore_after) == 1
-                    and alesage != bore_after[0]
-                    and not after.get("error")
-                    and after.get("count") == 1
-                    and after.get("face_id") == bore_after[0]
-                    and abs((after.get("rayon_mm") or 0) - 4.0) < 1e-3
-                    and "x" in stone)
+            self._plugins.run_selftest(self, mark, report)
 
             mark("bilan")
             # Rouvrir la pièce vitrine : le viewport finit sur une pièce
@@ -8795,19 +8495,31 @@ def _abort(doc):
         pass
 
 
+def _transactional(kernel, op):
+    extra = getattr(getattr(kernel, "_plugins", None), "transactional", ())
+    return op in _TRANSACTIONAL or op in extra
+
+
 def dispatch(kernel: Kernel, op: str, params: dict):
     """Route one validated request to the kernel, normalizing errors.
 
     Mutating ops run inside a document transaction: one UI action = one
     Ctrl+Z, and a failed op leaves the document as it was.
+
+    Méthode du noyau si elle existe, sinon opération du registre — dans
+    cet ordre. Un plugin ne détourne pas une opération existante.
     """
     from . import protocol
-    doc = kernel._doc if op in _TRANSACTIONAL else None
+    doc = kernel._doc if _transactional(kernel, op) else None
     if doc is not None:
         doc.openTransaction("freesolid-" + op)
     try:
-        result = getattr(kernel, op)(**params)
-    except KernelError as exc:
+        method = getattr(kernel, op, None)
+        if callable(method):
+            result = method(**params)
+        else:
+            result = kernel._plugins.call_op(op, kernel, **params)
+    except (KernelError, PluginError) as exc:
         _abort(doc)
         return protocol.err(str(exc))
     except Exception as exc:  # noqa: BLE001 - the envelope is the handler

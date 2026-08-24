@@ -1,1 +1,1 @@
-# Package plugin — le métier reste dans engine.gems / Kernel.
+# Package plugin — le métier est dans gemkernel, les coutures dans plugin.

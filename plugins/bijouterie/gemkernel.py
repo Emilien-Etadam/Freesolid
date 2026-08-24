@@ -12,6 +12,11 @@ import re
 
 from engine.kernel import KernelError, _explain, _format_mm
 
+
+def _gem_bodies(kernel):
+    """Corps de gabarit déjà copiés : (gemme, diamètre) → nom d'objet."""
+    return kernel._plugins.state("bijouterie")
+
 _GEM_ANCHOR_PROPS = (
     ("FreeSolidGemFace", "App::PropertyString",
      "Face d'ancrage du semis (nom OCCT, ex. Face3)"),
@@ -103,7 +108,7 @@ def _gem_varset(kernel, body):
 
 def _library_body(kernel, gemme):
     """Ouvre le gabarit (le construit s'il manque) et rend son corps."""
-    from engine.gems import (
+    from bijouterie.gems import (
         DEFAULT_GEMME, GemError, ensure_flat_cylinder, library_path,
         sanitize_gemme,
     )
@@ -151,7 +156,7 @@ def _library_body(kernel, gemme):
 
 def _copy_gem_body(kernel, gemme, diametre):
     """Copie le corps paramétrique dans la pièce (sonde H9)."""
-    from engine.gems import cache_key
+    from bijouterie.gems import cache_key
     doc = kernel._require_doc()
     App = kernel._app()
     # Ne pas créer l'Équations avant la copie : le gabarit s'appelle
@@ -191,7 +196,7 @@ def _copy_gem_body(kernel, gemme, diametre):
         doc.recompute()
     copie.Label = "Gabarit {} Ø{} mm".format(
         gemme, _format_mm(diametre))
-    kernel._gem_bodies[cache_key(gemme, diametre)] = copie.Name
+    _gem_bodies(kernel)[cache_key(gemme, diametre)] = copie.Name
     return copie
 
 def _bind_gem_expressions(objects, varset):
@@ -215,10 +220,10 @@ def _bind_gem_expressions(objects, varset):
                 pass
 
 def _ensure_gem_body(kernel, gemme, diametre):
-    from engine.gems import cache_key
+    from bijouterie.gems import cache_key
     doc = kernel._require_doc()
     key = cache_key(gemme, diametre)
-    name = kernel._gem_bodies.get(key)
+    name = _gem_bodies(kernel).get(key)
     if name:
         obj = doc.getObject(name)
         if obj is not None:
@@ -234,7 +239,7 @@ def _ensure_gem_body(kernel, gemme, diametre):
         if varset is None or not hasattr(varset, "diametre"):
             continue
         if abs(float(varset.diametre) - float(diametre)) < 1e-9:
-            kernel._gem_bodies[key] = obj.Name
+            _gem_bodies(kernel)[key] = obj.Name
             return obj
     return _copy_gem_body(kernel, gemme, diametre)
 
@@ -248,7 +253,8 @@ def _anchor_face(kernel, face_id):
     return faces[index], index
 
 def _gem_uv(kernel, face, x, y, z):
-    from engine.gems import GemError, project_uv
+    from bijouterie.gems import GemError
+    from engine.surfaces import project_uv
     try:
         u, v, on_domain = project_uv(face, x, y, z)
     except GemError as exc:
@@ -280,7 +286,7 @@ def _find_semis(kernel, body, face_name, gemme, diametre):
     return None
 
 def _new_semis(kernel, body, face_name, gemme, diametre):
-    from engine.gems import is_bspline_surface
+    from engine.surfaces import is_bspline_surface
     doc = kernel._require_doc()
     link = doc.addObject("App::Link", "Semis")
     link.LinkedObject = body
@@ -312,7 +318,7 @@ def _new_semis(kernel, body, face_name, gemme, diametre):
     return link
 
 def _face_index_or_none(kernel, name):
-    from engine.gems import GemError, face_index
+    from bijouterie.gems import GemError, face_index
     try:
         return face_index(name)
     except GemError:
@@ -367,12 +373,12 @@ def _drop_empty_semis(kernel, link):
         _remove_gem_body(kernel, body)
 
 def _remove_gem_body(kernel, body):
-    from engine.gems import cache_key
+    from bijouterie.gems import cache_key
     doc = kernel._require_doc()
     varset = _gem_varset(kernel, body)
     gemme = getattr(body, "FreeSolidGemTemplate", "") or ""
     diametre = float(getattr(varset, "diametre", 0)) if varset else 0.0
-    kernel._gem_bodies.pop(cache_key(gemme, diametre), None)
+    _gem_bodies(kernel).pop(cache_key(gemme, diametre), None)
     to_remove = []
     if varset is not None:
         to_remove.append(varset)
@@ -435,7 +441,7 @@ def _element_history(kernel, bearer, mapped):
 
 def _history_pairs_for_face(kernel, face_index):
     """Généalogie d'une face du corps : liste de ``(fonction, nom mappé)``."""
-    from engine.gems import face_name, trace_pairs
+    from bijouterie.gems import face_name, trace_pairs
     body = kernel._body
     if body is None:
         return []
@@ -466,7 +472,7 @@ def _gem_stored_couple(kernel, link):
 
 def _capture_gem_couple(kernel, link, face_index):
     """Enregistre le couple propriétaire. No-op si la carte est vide."""
-    from engine.gems import owner_couple
+    from bijouterie.gems import owner_couple
     _ensure_gem_anchor_props(kernel, link)
     if not _element_map_populated(kernel):
         return
@@ -477,7 +483,7 @@ def _capture_gem_couple(kernel, link, face_index):
     link.FreeSolidGemElement = couple[1]
 
 def _resolve_gem_couple(kernel, couple, n_faces):
-    from engine.gems import resolution_verdict
+    from bijouterie.gems import resolution_verdict
     hits = []
     for index in range(n_faces):
         if couple in _history_pairs_for_face(kernel, index):
@@ -493,7 +499,8 @@ def _refresh_gem_placements(kernel):
     résolution par indice comme avant, et capture au premier
     recompute réussi (documents existants).
     """
-    from engine.gems import face_name, is_bspline_surface, placement_at
+    from bijouterie.gems import face_name, placement_at
+    from engine.surfaces import is_bspline_surface
     if kernel._doc is None or kernel._body is None:
         return
     shape = getattr(kernel._body, "Shape", None)
@@ -575,10 +582,11 @@ def _gem_diametre(kernel, link):
     return float(varset.diametre)
 
 def _gem_entry(kernel, link):
-    from engine.gems import (
-        arc_entraxe_mm, face_radius_mm, is_bspline_surface,
+    from bijouterie.gems import (
+        arc_entraxe_mm, face_radius_mm,
         placement_at, seating_gap_mm,
     )
+    from engine.surfaces import is_bspline_surface
     us = list(link.FreeSolidGemU or [])
     vs = list(link.FreeSolidGemV or [])
     spins = list(link.FreeSolidGemSpin or [])
@@ -656,7 +664,7 @@ def _gem_entries(kernel):
 
 def _annotate_gem_neighbors(kernel, entries):
     """Écart et entraxe min : balayage global, puis min par semis."""
-    from engine.gems import voisines_min_mm
+    from bijouterie.gems import voisines_min_mm
     points = []
     radii = []
     owners = []
@@ -693,7 +701,7 @@ def place_gem(kernel, face, x, y, z, gemme=None, diametre=None,
     L'autorité est ``(u, v)``, jamais le point du raycast ni une
     matrice de placement. Poser n'enlève pas de matière.
     """
-    from engine.gems import (
+    from bijouterie.gems import (
         DEFAULT_GEMME, GemError, face_name, parse_diametre,
         parse_spin_lift, sanitize_gemme,
     )
@@ -729,7 +737,7 @@ def place_gem(kernel, face, x, y, z, gemme=None, diametre=None,
 
 def move_gem(kernel, gem, index, x, y, z, face=None):
     """Déplace une pierre. ``face`` absent = la même face."""
-    from engine.gems import GemError, face_name
+    from bijouterie.gems import GemError, face_name
     link = _require_gem_link(kernel, gem)
     number, _count = _require_stone_index(kernel, link, index)
     if face is None:
@@ -787,7 +795,7 @@ def move_gem(kernel, gem, index, x, y, z, face=None):
 
 def spin_gem(kernel, gem, index, spin=None, lift=None):
     """Rotation autour de la normale et enfoncement. Absents = inchangés."""
-    from engine.gems import GemError, parse_spin_lift
+    from bijouterie.gems import GemError, parse_spin_lift
     link = _require_gem_link(kernel, gem)
     number, _count = _require_stone_index(kernel, link, index)
     spins = list(link.FreeSolidGemSpin or [])
@@ -833,7 +841,7 @@ def resize_gem(kernel, gem, diametre):
     S'il en sert d'autres, on relie un gabarit au nouveau diamètre
     sans toucher aux jumeaux — fusionner casserait la sélection.
     """
-    from engine.gems import GemError, cache_key, parse_diametre
+    from bijouterie.gems import GemError, cache_key, parse_diametre
     link = _require_gem_link(kernel, gem)
     try:
         new_d = parse_diametre(diametre)
@@ -857,8 +865,8 @@ def resize_gem(kernel, gem, diametre):
                 "le gabarit n'a pas sa variable — le diamètre "
                 "ne peut pas être changé")
         varset.diametre = float(new_d)
-        kernel._gem_bodies.pop(cache_key(gemme, old_d), None)
-        kernel._gem_bodies[cache_key(gemme, new_d)] = old_body.Name
+        _gem_bodies(kernel).pop(cache_key(gemme, old_d), None)
+        _gem_bodies(kernel)[cache_key(gemme, new_d)] = old_body.Name
         old_body.Label = "Gabarit {} Ø{} mm".format(
             gemme, _format_mm(new_d))
     else:
@@ -1022,7 +1030,7 @@ def _refresh_gem_boolean_tools(kernel):
 
 def _tessellate_gems(kernel, deviation):
     """Une géométrie par semis, N matrices d'instance — pas N objets."""
-    from engine.gems import matrix_list, placement_at
+    from bijouterie.gems import matrix_list, placement_at
     from engine import protocol
     _refresh_gem_placements(kernel)
     out = []

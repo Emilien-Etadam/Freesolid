@@ -1,6 +1,6 @@
 """Sonde P040 — une variable à la fois, dans le régime d'une bague.
 
-Usage :  freecadcmd scripts/spike-booleen-semis.py
+Usage :  freecadcmd plugins/bijouterie/scripts/spike-booleen-semis.py
 
 P039 tenait l'entraxe et faisait donc grandir le jonc avec le nombre :
 rayon et effectif bougeaient ensemble, et la courbe était illisible.
@@ -38,7 +38,7 @@ except Exception:  # noqa: BLE001 — stdout ASCII, sans importance ici
     pass
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_REPO = os.path.dirname(_HERE)
+_REPO = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 

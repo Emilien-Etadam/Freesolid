@@ -16,19 +16,14 @@ DEFAULT_GEMME = "cylindre-plat"
 DEFAULT_DIAMETRE = 1.5
 DEFAULT_EPAISSEUR = 0.5
 
-#: Noms de gabarit = nom de fichier sous ``assets/gemmes/``, sans extension.
+#: Noms de gabarit = nom de fichier sous ``assets/`` du plugin, sans extension.
 _GEMME_NAME_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _FACE_NAME_RE = re.compile(r"^Face(\d+)$")
 #: Nom FreeCAD d'une esquisse — pas une fonction propriétaire (P044).
 _SKETCH_NAME_RE = re.compile(r"^(?:Sketch|Esquisse)\d*$", re.I)
 
-_SPLINE_TYPE_IDS = frozenset({
-    "Part::GeomBSplineSurface",
-    "Part::GeomBezierSurface",
-})
-
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_LIBRARY_DIR = os.path.join(_REPO_ROOT, "assets", "gemmes")
+_PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
+_LIBRARY_DIR = os.path.join(_PLUGIN_DIR, "assets")
 
 
 class GemError(ValueError):
@@ -250,31 +245,6 @@ def resolution_verdict(hits):
     return "perdu"
 
 
-def is_bspline_surface(face) -> bool:
-    """La face d'ancrage se re-paramétrise si ses pôles bougent."""
-    surface = getattr(face, "Surface", None)
-    type_id = getattr(surface, "TypeId", "") if surface is not None else ""
-    return type_id in _SPLINE_TYPE_IDS
-
-
-def project_uv(face, x, y, z):
-    """Point monde → ``(u, v, sur_domaine)``.
-
-    ``Surface.parameter`` est la seule voie (sonde Q1) : les trois
-    méthodes testées rendaient des ``(u, v)`` identiques.
-    """
-    point = _vector(face, x, y, z)
-    u, v = face.Surface.parameter(point)
-    on_domain = True
-    checker = getattr(face, "isPartOfDomain", None)
-    if checker is not None:
-        try:
-            on_domain = bool(checker(u, v))
-        except TypeError:
-            on_domain = bool(checker((u, v)))
-    return float(u), float(v), on_domain
-
-
 def placement_at(face, u, v, spin=0.0, lift=0.0):
     """Placement d'une pierre : +Z aligné sur la normale de la face.
 
@@ -382,8 +352,3 @@ def ensure_flat_cylinder(path=None):
 def _app():
     import FreeCAD as App
     return App
-
-
-def _vector(face, x, y, z):
-    App = _app()
-    return App.Vector(float(x), float(y), float(z))

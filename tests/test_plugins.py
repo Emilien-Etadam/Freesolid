@@ -1,6 +1,8 @@
 """Registre de plugins — pur Python, sans FreeCAD."""
 
+import ast
 import json
+from pathlib import Path
 
 import pytest
 
@@ -138,15 +140,16 @@ def test_ops_gem_ne_sont_plus_des_methodes_du_noyau():
         assert kernel._plugins.has_op(name)
 
 
-# -- surface plugin (P047) ------------------------------------------------
+# -- surface plugin (P047 / P048) -----------------------------------------
 
-# Onze membres : neuf du noyau, deux aides de selftest. Épinglés ici
-# parce que la bijouterie partira dans un dépôt privé — la CI publique
-# ne pourra plus voir un rename de ``_require_body``.
+# Douze membres : neuf du noyau, deux aides de selftest, et ``state``
+# sur le registre. Épinglés ici parce que la bijouterie partira dans un
+# dépôt privé — la CI publique ne pourra plus voir un rename.
 _SURFACE_PLUGIN = (
     "_app", "_body", "_doc", "_face_mesh", "_recompute",
     "_report_progress", "_require_body", "_require_doc", "get_tree",
     "_top_face_id", "_side_face_id",
+    "state",
 )
 
 
@@ -154,8 +157,77 @@ def test_surface_plugin_reste_disponible():
     """Ces membres sont appelés par des plugins hors dépôt."""
     from engine.kernel import Kernel
     kernel = Kernel()
-    manquants = [name for name in _SURFACE_PLUGIN if not hasattr(kernel, name)]
+    manquants = []
+    for name in _SURFACE_PLUGIN:
+        holder = kernel._plugins if name == "state" else kernel
+        if not hasattr(holder, name):
+            manquants.append(name)
     assert manquants == []
+
+
+def test_le_noyau_n_importe_rien_du_plugin():
+    """Le jour du git mv, aucun import ne doit se briser."""
+    root = Path(__file__).resolve().parents[1] / "engine"
+    offenders = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if node.level:
+                    if module == "gems" or module.startswith("gems."):
+                        names.append("engine.gems")
+                    if not module:
+                        for alias in node.names:
+                            if alias.name == "gems":
+                                names.append("engine.gems")
+                else:
+                    names.append(module)
+                    if module == "engine":
+                        for alias in node.names:
+                            names.append("engine." + alias.name)
+            for name in names:
+                if (name == "engine.gems" or name.startswith("engine.gems.")
+                        or name == "bijouterie"
+                        or name.startswith("bijouterie.")
+                        or name == "plugins"
+                        or name.startswith("plugins.")):
+                    rel = path.relative_to(root.parent)
+                    offenders.append("{}: {}".format(rel, name))
+    assert offenders == []
+
+
+def test_etat_par_plugin_distinct_et_raz_au_document():
+    """Deux plugins ont des sacs distincts ; un nouveau document les vide."""
+    from engine.kernel import Kernel
+    kernel = Kernel()
+    alpha = kernel._plugins.state("alpha")
+    beta = kernel._plugins.state("beta")
+    assert alpha is not beta
+    alpha["k"] = 1
+    beta["k"] = 2
+    assert kernel._plugins.state("alpha") is alpha
+    kernel._close_current()
+    assert kernel._plugins.state("alpha") == {}
+    assert kernel._plugins.state("beta") == {}
+    kernel._plugins.state("alpha")["k"] = 1
+    other = Kernel()
+    assert other._plugins.state("alpha") == {}
+
+
+def test_ops_bijouterie_transactionnelles_via_le_manifeste():
+    """Les six ops restent transactionnelles par le manifeste, pas la liste."""
+    from engine.kernel import Kernel, _TRANSACTIONAL, _transactional
+    kernel = Kernel()
+    for name in ("place_gem", "move_gem", "spin_gem", "remove_gem",
+                 "resize_gem"):
+        assert name not in _TRANSACTIONAL
+        assert _transactional(kernel, name)
+    assert "list_gems" not in _TRANSACTIONAL
+    assert not _transactional(kernel, "list_gems")
 
 
 # -- plugin bouchon : call_op, transaction, crochets qui ne réclament pas --

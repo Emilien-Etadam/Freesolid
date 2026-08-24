@@ -1,6 +1,6 @@
 """Sonde : poser une pierre sur une surface courbe, et l'y garder.
 
-Usage :  freecadcmd scripts/spike-pierres.py
+Usage :  freecadcmd plugins/bijouterie/scripts/spike-pierres.py
 
 Prouve ou tue la chaîne « clic → (u,v) → placement exact », avant
 d'investir la moindre UI. Ne lève jamais : chaque question note sa

@@ -1,6 +1,6 @@
 """Construit la bibliothèque de gabarits de pierres (headless).
 
-Usage :  freecadcmd scripts/build-gem-library.py
+Usage :  freecadcmd plugins/bijouterie/scripts/build-gem-library.py
 
 Le cylindre plat est le premier fichier : VarSet + esquisse contrainte +
 Pad. Les 17 tailles se fabriqueront de la même façon — jamais à la main.
@@ -19,11 +19,13 @@ except Exception:
     pass
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_REPO = os.path.dirname(_HERE)
-if _REPO not in sys.path:
-    sys.path.insert(0, _REPO)
+_REPO = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
+_PLUGINS = os.path.join(_REPO, "plugins")
+for _path in (_REPO, _PLUGINS):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
-from engine.gems import (  # noqa: E402
+from bijouterie.gems import (  # noqa: E402
     DEFAULT_GEMME, build_flat_cylinder, library_path,
 )
 

@@ -312,7 +312,7 @@ def _p035(kernel, mark, report, ctx):
 
 def _p044(kernel, mark, report, ctx):
     mark("p044: ancre par provenance")
-    from engine.gems import face_radius_mm as _face_radius_mm
+    from bijouterie.gems import face_radius_mm as _face_radius_mm
 
     def _cylindre_ids(radius):
         found = []

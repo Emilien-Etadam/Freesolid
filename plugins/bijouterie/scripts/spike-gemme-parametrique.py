@@ -1,6 +1,6 @@
 """Sonde : la gemme est un .FCStd paramétrique, coté par une esquisse.
 
-Usage :  freecadcmd scripts/spike-gemme-parametrique.py
+Usage :  freecadcmd plugins/bijouterie/scripts/spike-gemme-parametrique.py
 
 Troisième conception essayée pour la bibliothèque de pierres, et la
 meilleure des trois — si elle tient.

@@ -249,8 +249,28 @@ function surfaceScreenPoint() {
   };
 }
 
+/** Centre du premier volume visible, en coordonnées écran — pour que le
+ *  smoke clique la pièce là où elle est, pas là où il l'espère. */
+function volumeScreenPoint() {
+  let mesh = null;
+  volumesGroup.traverse((obj) => {
+    if (!mesh && obj.isMesh && obj.visible) mesh = obj;
+  });
+  if (!mesh) return null;
+  mesh.geometry.computeBoundingSphere();
+  const center = mesh.geometry.boundingSphere?.center;
+  if (!center) return null;
+  const projected = mesh.localToWorld(center.clone()).project(camera);
+  const rect = renderer.domElement.getBoundingClientRect();
+  return {
+    x: (projected.x * 0.5 + 0.5) * rect.width + rect.left,
+    y: (-projected.y * 0.5 + 0.5) * rect.height + rect.top,
+  };
+}
+
 window.__freesolidDebug = {
   get volumeVisibleCount() { return volumeVisibleCount(); },
+  get volumeScreenPoint() { return volumeScreenPoint(); },
   get isOrthographic() { return camera.isOrthographicCamera === true; },
   get sketchLineCount() { return sketchLineMeshes.length; },
   get sketchScreenPoint() { return sketchScreenPoint(); },

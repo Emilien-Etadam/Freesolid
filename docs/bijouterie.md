@@ -1664,3 +1664,52 @@ réintroduit sans y penser six mois plus tard.
 `Maj+↑` fait le même pas de 0,1 mm qu'`↑` seul — rien ne filtre `shiftKey`. Si
 un pas fin à 0,01 mm arrive un jour, c'est la place naturelle, et elle est
 libre.
+
+## Relecture de P046 — l'oracle tient, et mon prompt comptait mal
+
+CI verte sur les six jobs. 278 tests Python (+10), 165 JS. Les cinq coutures
+sont posées exactement où elles étaient : `run_after_recompute` est bien
+**après `doc.recompute()`, dans la branche `if not self._assembly`, avant le
+contrôle de validité** — le point dont dépend tout l'ancrage `(u, v)`.
+
+### Le comptage des indicateurs — le mien était le faux
+
+Le rapport de livraison annonce 22 indicateurs bijouterie ; mon prompt en
+annonçait 26. Vérification par comparaison des ensembles avant/après :
+
+**24 indicateurs distincts, tous préservés, aucun perdu, aucun ajouté.**
+
+Mes 26 venaient d'un `grep -c`, qui compte des **lignes** — deux indicateurs
+sont assignés sur deux lignes. Les 22 du rapport excluent
+`p038_face_producers` et `p038_face_producers_historique`, qui relèvent de
+l'appariement de faces et non des pierres : découpe défendable, puisque le
+prompt interdisait de toucher `_face_producers`.
+
+L'oracle « aucun changement de comportement » tient donc, vérifié sur
+l'ensemble et pas sur un total.
+
+### Deux trous, pour l'incrément suivant
+
+**`call_op` n'est exercé par personne.** Les ops de la bijouterie sont encore
+des méthodes de `Kernel`, donc `getattr(kernel, op, None)` les trouve toujours
+et le repli par le registre n'est jamais emprunté. Aucun test ne le couvre non
+plus. C'est un chemin qui devient **porteur** dès que les méthodes quittent
+`Kernel` — exactement le genre de couture qui a l'air faite et n'a jamais
+servi. À couvrir par un plugin bouchon avant d'en dépendre.
+
+**Une sixième couture, que mon prompt n'avait pas vue.** J'en avais mesuré
+cinq ; il y en a six. Des références gem restent en dur dans la mécanique
+propre du noyau :
+
+| Où | Quoi |
+|---|---|
+| `kernel.py:318-319`, `365-366` | le contrôle de validité exclut les semis et leurs enfants |
+| `kernel.py:3428` | `add_boolean` dérive un corps outil depuis un semis |
+| `kernel.py:4338` | `delete_feature` retire un semis et son gabarit |
+
+Ce ne sont pas des restes de selftest : c'est de la logique de noyau qui
+connaît les pierres. Le jour où le module part, `self._is_gem_link(o)`
+appellera une méthode qui n'existe plus. Rien ne casse aujourd'hui — le prompt
+demandait explicitement de laisser les méthodes sur `Kernel` — mais c'est ce
+qui bloquera le déménagement, et il vaut mieux le savoir maintenant que le
+découvrir au `git mv`.

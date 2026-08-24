@@ -247,8 +247,6 @@ window.__freesolidDebug = {
   get sketchScreenPoint() { return sketchScreenPoint(); },
   get surfaceMeshCount() { return surfaceMeshes.length; },
   get surfaceScreenPoint() { return surfaceScreenPoint(); },
-  get gemDragging() { return gemDrag != null; },
-  get gemDrag() { return gemDrag; },
   get gemHudText() {
     const hud = document.getElementById("gem-hud");
     if (!hud || hud.hidden) return "";
@@ -320,7 +318,6 @@ let hoveredSketch = null;  // { name, label } | null
 let hoveredSurface = null; // { name, label } | null
 let selectedSurface = null; // { name, label } | null
 let lastFaceHit = null; // { face, x, y, z } du dernier clic face
-let gemDrag = null; // drag local, zéro réseau jusqu'au pointerup
 let selectedFeatureName = null;
 const featureDimsGroup = new THREE.Group();
 featureDimsGroup.renderOrder = 24;
@@ -755,33 +752,31 @@ const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 let hoveredGroup = -1;
 
-renderer.domElement.addEventListener("pointermove", (event) => {
-  if (sketchMode.active) return;
+function setPointerFromEvent(event) {
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-  if (gemDrag) {
-    raycaster.setFromCamera(pointer, camera);
-    const faceHit = partMesh
-      ? raycaster.intersectObject(partMesh)[0] : undefined;
-    if (!faceHit) return;
-    const indexPosition = faceHit.faceIndex * 3;
-    const group = meshGroups.find(
-      (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
-    if (!group) return;
-    const normal = (faceHit.normal?.clone()
-      ?? new THREE.Vector3(0, 0, 1)).normalize();
-    const matrix = window.__freesolidDebug.gemMatrixFromHit?.(
-      faceHit.point, normal, gemDrag.spin, gemDrag.lift);
-    if (matrix) {
-      gemDrag.mesh.setMatrixAt(gemDrag.index, matrix);
-      gemDrag.mesh.instanceMatrix.needsUpdate = true;
-    }
-    gemDrag.lastPoint = faceHit.point.clone();
-    gemDrag.lastNormal = normal;
-    gemDrag.lastFaceId = group.faceId;
-    gemDrag.moved = true;
-    window.__freesolidDebug.updateGapOverlay?.();
+}
+
+function pointerCtx() {
+  raycaster.setFromCamera(pointer, camera);
+  return {
+    raycaster, pointer, partMesh, scene, camera, controls, meshGroups,
+    get faceHit() {
+      return partMesh ? raycaster.intersectObject(partMesh)[0] : undefined;
+    },
+  };
+}
+
+function pluginSeesPointer() {
+  return !assemblyState && !planePicking && !measuring;
+}
+
+renderer.domElement.addEventListener("pointermove", (event) => {
+  if (sketchMode.active) return;
+  setPointerFromEvent(event);
+  if (pluginSeesPointer()
+      && pluginRuntime?.dispatchPointer("move", event, pointerCtx())) {
     return;
   }
   if (planePicking) {
@@ -885,62 +880,18 @@ let pressPosition = null;
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (sketchMode.active) return;
   pressPosition = { x: event.clientX, y: event.clientY };
-  if (assemblyState || planePicking || measuring) return;
-  const rect = renderer.domElement.getBoundingClientRect();
-  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-  raycaster.setFromCamera(pointer, camera);
-  const gemMeshes = window.__freesolidDebug.gemMeshes ?? [];
-  const hit = gemMeshes.length
-    ? raycaster.intersectObjects(gemMeshes, false)[0] : null;
-  if (!hit || hit.instanceId == null) return;
-  const mesh = hit.object;
-  const start = new THREE.Matrix4();
-  mesh.getMatrixAt(hit.instanceId, start);
-  gemDrag = {
-    mesh,
-    index: hit.instanceId,
-    name: mesh.userData.gem.name,
-    faceId: mesh.userData.gem.faceId,
-    start: start.clone(),
-    spin: mesh.userData.gem.spins?.[hit.instanceId] ?? 0,
-    lift: mesh.userData.gem.lifts?.[hit.instanceId] ?? 0,
-    lastPoint: hit.point.clone(),
-    lastNormal: (hit.normal?.clone() ?? new THREE.Vector3(0, 0, 1)).normalize(),
-    lastFaceId: mesh.userData.gem.faceId,
-    moved: false,
-  };
-  controls.enabled = false;
-  window.__freesolidDebug.selectGem?.(mesh.userData.gem.name, hit.instanceId);
+  if (!pluginSeesPointer()) return;
+  setPointerFromEvent(event);
+  pluginRuntime?.dispatchPointer("down", event, pointerCtx());
 });
 renderer.domElement.addEventListener("pointerup", (event) => {
   if (sketchMode.active) return;
-  if (gemDrag) {
-    const drag = gemDrag;
-    gemDrag = null;
-    controls.enabled = true;
-    pressPosition = null;
-    if (!drag.moved) {
-      window.__freesolidDebug.selectGem?.(drag.name, drag.index);
+  if (pluginSeesPointer()) {
+    setPointerFromEvent(event);
+    if (pluginRuntime?.dispatchPointer("up", event, pointerCtx())) {
+      pressPosition = null;
       return;
     }
-    const point = drag.lastPoint;
-    const params = {
-      gem: drag.name,
-      index: drag.index,
-      x: point.x, y: point.y, z: point.z,
-    };
-    if (drag.lastFaceId != null) params.face = drag.lastFaceId;
-    refresh(call("move_gem", params).then((tree) => {
-      window.__freesolidDebug.applyGemMoved?.(tree);
-      return tree;
-    }).catch((error) => {
-      drag.mesh.setMatrixAt(drag.index, drag.start);
-      drag.mesh.instanceMatrix.needsUpdate = true;
-      say(error.message, true);
-      throw error;
-    }));
-    return;
   }
   if (!pressPosition) return;
   const travel = Math.hypot(event.clientX - pressPosition.x,
@@ -1075,7 +1026,7 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     lastFaceHit = null;
     clearPlaneChoice();
     clearFeatureDims();
-    window.__freesolidDebug.clearGemSelection?.();
+    pluginRuntime?.runPointerIdle(pointerCtx());
   }
   if (lastTree) renderTree(lastTree);
 });

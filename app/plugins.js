@@ -67,6 +67,7 @@ export function createPluginApi(host) {
   const keys = [];
   const treeRows = [];
   const viewports = [];
+  const pointers = [];
   let viewportObjects = [];
 
   const api = {
@@ -100,6 +101,10 @@ export function createPluginApi(host) {
     viewport(hooks) {
       if (!hooks || typeof hooks !== "object") return;
       viewports.push(hooks);
+    },
+    pointer(hooks) {
+      if (!hooks || typeof hooks !== "object") return;
+      pointers.push(hooks);
     },
   };
 
@@ -158,5 +163,18 @@ export function createPluginApi(host) {
       }
     },
     get viewportObjects() { return viewportObjects; },
+    dispatchPointer(phase, event, ctx) {
+      if (phase !== "down" && phase !== "move" && phase !== "up") return false;
+      for (const hooks of pointers) {
+        const fn = hooks[phase];
+        if (typeof fn === "function" && fn(event, ctx) === true) return true;
+      }
+      return false;
+    },
+    runPointerIdle(ctx) {
+      for (const hooks of pointers) {
+        try { hooks.idle?.(ctx); } catch { /* un plugin cassé n'empêche pas */ }
+      }
+    },
   };
 }

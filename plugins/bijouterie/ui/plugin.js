@@ -1,6 +1,6 @@
 // Interface client de la bijouterie — ruban, panneau, HUD, touches,
-// ligne d'arbre, viewport. Le drag reste dans le noyau jusqu'à la
-// chaîne du pointeur (commit suivant).
+// ligne d'arbre, viewport, chaîne du pointeur. Le noyau ne porte plus
+// une ligne de bijouterie.
 
 import * as THREE from "three";
 import { createDimSprite } from "/sketch.js";
@@ -23,6 +23,7 @@ export function register(api) {
   });
   const warnedSplineFaces = new Set();
   let gemMeshes = [];
+  let gemDrag = null;
   let selectedGem = null;
   let gemDiametreOverride = {};
   let gemResizeInflight = false;
@@ -188,10 +189,9 @@ export function register(api) {
 
   function updateGapOverlay() {
     const stones = allStones();
-    const drag = window.__freesolidDebug?.gemDrag;
-    if (drag?.moved) {
+    if (gemDrag?.moved) {
       const origin = stones.find(
-        (stone) => stone.name === drag.name && stone.index === drag.index);
+        (stone) => stone.name === gemDrag.name && stone.index === gemDrag.index);
       drawGemGap(origin ? nearestOf(stones, origin) : null);
       return;
     }
@@ -541,6 +541,84 @@ export function register(api) {
     },
   });
 
+  api.pointer({
+    down(_event, ctx) {
+      const hit = gemMeshes.length
+        ? ctx.raycaster.intersectObjects(gemMeshes, false)[0] : null;
+      if (!hit || hit.instanceId == null) return false;
+      const mesh = hit.object;
+      const start = new THREE.Matrix4();
+      mesh.getMatrixAt(hit.instanceId, start);
+      gemDrag = {
+        mesh,
+        index: hit.instanceId,
+        name: mesh.userData.gem.name,
+        faceId: mesh.userData.gem.faceId,
+        start: start.clone(),
+        spin: mesh.userData.gem.spins?.[hit.instanceId] ?? 0,
+        lift: mesh.userData.gem.lifts?.[hit.instanceId] ?? 0,
+        lastPoint: hit.point.clone(),
+        lastNormal: (hit.normal?.clone() ?? new THREE.Vector3(0, 0, 1)).normalize(),
+        lastFaceId: mesh.userData.gem.faceId,
+        moved: false,
+      };
+      ctx.controls.enabled = false;
+      selectGem(mesh.userData.gem.name, hit.instanceId);
+      return true;
+    },
+    move(_event, ctx) {
+      if (!gemDrag) return false;
+      const faceHit = ctx.faceHit;
+      if (!faceHit) return true;
+      const indexPosition = faceHit.faceIndex * 3;
+      const group = ctx.meshGroups.find(
+        (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
+      if (!group) return true;
+      const normal = (faceHit.normal?.clone()
+        ?? new THREE.Vector3(0, 0, 1)).normalize();
+      const matrix = gemMatrixFromHit(
+        faceHit.point, normal, gemDrag.spin, gemDrag.lift);
+      gemDrag.mesh.setMatrixAt(gemDrag.index, matrix);
+      gemDrag.mesh.instanceMatrix.needsUpdate = true;
+      gemDrag.lastPoint = faceHit.point.clone();
+      gemDrag.lastNormal = normal;
+      gemDrag.lastFaceId = group.faceId;
+      gemDrag.moved = true;
+      updateGapOverlay();
+      return true;
+    },
+    up(_event, ctx) {
+      if (!gemDrag) return false;
+      const drag = gemDrag;
+      gemDrag = null;
+      ctx.controls.enabled = true;
+      if (!drag.moved) {
+        selectGem(drag.name, drag.index);
+        return true;
+      }
+      const point = drag.lastPoint;
+      const params = {
+        gem: drag.name,
+        index: drag.index,
+        x: point.x, y: point.y, z: point.z,
+      };
+      if (drag.lastFaceId != null) params.face = drag.lastFaceId;
+      api.refresh(api.call("move_gem", params).then((tree) => {
+        applyGemMoved(tree);
+        return tree;
+      }).catch((error) => {
+        drag.mesh.setMatrixAt(drag.index, drag.start);
+        drag.mesh.instanceMatrix.needsUpdate = true;
+        api.say(error.message, true);
+        throw error;
+      }));
+      return true;
+    },
+    idle() {
+      clearGemSelection();
+    },
+  });
+
   const debug = window.__freesolidDebug;
   if (debug) {
     Object.defineProperties(debug, {
@@ -567,6 +645,10 @@ export function register(api) {
       gemMeshes: {
         configurable: true,
         get: () => gemMeshes,
+      },
+      gemDragging: {
+        configurable: true,
+        get: () => gemDrag != null,
       },
     });
     debug.selectGem = selectGem;

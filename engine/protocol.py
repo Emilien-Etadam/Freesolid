@@ -68,6 +68,7 @@ _TYPE_LABELS = {
 #: params are documented in the kernel docstrings and are not typed here.
 OPS: dict[str, tuple[str, ...]] = {
     "ping": (),
+    "list_plugins": (),            # nom + point d'entrée JS de chaque plugin chargé
     # Runs the full flow headless and returns stats — the same
     # paste-me-the-report loop that debugged the Qt addon.
     "selftest": (),

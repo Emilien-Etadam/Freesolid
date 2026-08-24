@@ -23,6 +23,7 @@ import {
 } from "./progress.js";
 import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
+import { loadClientPlugins } from "./plugins.js";
 import {
   buildGraph,
   cloneGraphDraft,
@@ -5436,6 +5437,7 @@ const sketchMode = createSketchMode(
 
 call("ping")
   .then(async (info) => {
+    await loadClientPlugins(call, {});
     say(`Moteur prêt — FreeCAD ${info.freecad}`);
     // Resynchronise avec le moteur : après un rechargement de la page,
     // la pièce en cours réapparaît au lieu d'être écrasée au premier

@@ -205,6 +205,65 @@ def test_safe_static_path_traversal(tmp_path):
         "/../etc/passwd", app_dir=str(tmp_path)) is None
 
 
+def _plugin_loaded(tmp_path, nom="alpha", directory="disk-name"):
+    folder = tmp_path / directory
+    ui = folder / "ui"
+    ui.mkdir(parents=True)
+    (ui / "plugin.js").write_text("export function register() {}\n")
+    (ui / "note.txt").write_text("ok")
+    return [{
+        "nom": nom,
+        "statique": "ui",
+        "directory": str(folder),
+    }]
+
+
+def test_plugin_static_serves_under_loaded_jail(tmp_path):
+    loaded = _plugin_loaded(tmp_path)
+    got = server._safe_plugin_static_path(
+        "/plugins/alpha/plugin.js", loaded=loaded)
+    assert got == os.path.realpath(str(tmp_path / "disk-name" / "ui" / "plugin.js"))
+
+
+def test_plugin_static_uses_loaded_name_not_url_directory(tmp_path):
+    loaded = _plugin_loaded(tmp_path, nom="alpha", directory="disk-name")
+    assert server._safe_plugin_static_path(
+        "/plugins/disk-name/plugin.js", loaded=loaded) is None
+    assert server._safe_plugin_static_path(
+        "/plugins/alpha/plugin.js", loaded=loaded) is not None
+
+
+def test_plugin_static_unknown_plugin_refused(tmp_path):
+    loaded = _plugin_loaded(tmp_path)
+    assert server._safe_plugin_static_path(
+        "/plugins/inconnu/plugin.js", loaded=loaded) is None
+
+
+def test_plugin_static_traversal_refused(tmp_path):
+    loaded = _plugin_loaded(tmp_path)
+    secret = tmp_path / "secret.txt"
+    secret.write_text("no")
+    assert server._safe_plugin_static_path(
+        "/plugins/alpha/../secret.txt", loaded=loaded) is None
+    assert server._safe_plugin_static_path(
+        "/plugins/alpha/../../etc/passwd", loaded=loaded) is None
+    assert server._safe_plugin_static_path(
+        "/plugins/../alpha/plugin.js", loaded=loaded) is None
+
+
+def test_plugin_static_missing_file_refused(tmp_path):
+    loaded = _plugin_loaded(tmp_path)
+    assert server._safe_plugin_static_path(
+        "/plugins/alpha/absent.js", loaded=loaded) is None
+
+
+def test_plugin_static_query_and_fragment_ignored(tmp_path):
+    loaded = _plugin_loaded(tmp_path)
+    got = server._safe_plugin_static_path(
+        "/plugins/alpha/note.txt?x=1#y", loaded=loaded)
+    assert got == os.path.realpath(str(tmp_path / "disk-name" / "ui" / "note.txt"))
+
+
 # -- validate_expression -------------------------------------------------
 
 @pytest.mark.parametrize("text", [

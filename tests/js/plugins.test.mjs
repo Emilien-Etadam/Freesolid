@@ -175,4 +175,35 @@ describe("createPluginApi", () => {
       ["add", "g2"],
     ]);
   });
+
+  it("pointer : le premier true arrête down/move/up ; idle court à la fin", () => {
+    const log = [];
+    const host = {
+      call() {}, refresh() {}, say() {}, tree: () => null,
+    };
+    const runtime = createPluginApi(host);
+    runtime.api.pointer({
+      down() { log.push("a-down"); return true; },
+      move() { log.push("a-move"); return false; },
+      up() { log.push("a-up"); return false; },
+      idle() { log.push("a-idle"); },
+    });
+    runtime.api.pointer({
+      down() { log.push("b-down"); return true; },
+      move() { log.push("b-move"); return true; },
+      up() { log.push("b-up"); return true; },
+      idle() { log.push("b-idle"); },
+    });
+    assert.equal(runtime.dispatchPointer("down", {}, {}), true);
+    assert.deepEqual(log, ["a-down"]);
+    log.length = 0;
+    assert.equal(runtime.dispatchPointer("move", {}, {}), true);
+    assert.deepEqual(log, ["a-move", "b-move"]);
+    log.length = 0;
+    assert.equal(runtime.dispatchPointer("up", {}, {}), true);
+    assert.deepEqual(log, ["a-up", "b-up"]);
+    log.length = 0;
+    runtime.runPointerIdle({});
+    assert.deepEqual(log, ["a-idle", "b-idle"]);
+  });
 });

@@ -2055,6 +2055,47 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         + JSON.stringify({ meshes: gemUi.meshes, instances: gemUi.instances })
         + ")");
     } else {
+      // P049 — clic d'une face pendant qu'une pierre est sélectionnée :
+      // la chaîne du pointeur ne doit ni avaler la face, ni désélectionner
+      // dans idle (le vide seulement).
+      await page.mouse.click(gemUi.screen.x, gemUi.screen.y);
+      await sleep(200);
+      const selectedStone = await page.evaluate(
+        () => window.__freesolidDebug?.selectedGem);
+      if (!selectedStone) {
+        errors.push("P049 : la pierre n'est pas sélectionnée après le clic");
+      }
+      await page.mouse.click(gemUi.screen.x - 90, gemUi.screen.y);
+      await sleep(250);
+      const afterFace = await page.evaluate(() => ({
+        pick: (document.getElementById("pick")?.textContent || ""),
+        gem: window.__freesolidDebug?.selectedGem ?? null,
+      }));
+      if (!afterFace.pick.includes("Face")) {
+        errors.push("P049 : clic face avec pierre sélectionnée — pas de face ("
+          + afterFace.pick + ")");
+      }
+      if (!afterFace.gem) {
+        errors.push("P049 : le clic face a perdu la sélection de pierre");
+      }
+      await page.click('[data-tab="jewel"]');
+      await sleep(100);
+      await page.click("#btn-gem-plus");
+      await sleep(500);
+      const hudPlus = await page.evaluate(
+        () => window.__freesolidDebug?.gemHudText || "");
+      if (!hudPlus.includes("4,10")) {
+        errors.push("P049 : Ø + n'a pas passé à 4,10 mm (" + hudPlus + ")");
+      }
+      await page.keyboard.press("ArrowDown");
+      await sleep(500);
+      const hudDown = await page.evaluate(
+        () => window.__freesolidDebug?.gemHudText || "");
+      if (!hudDown.includes("4,00")) {
+        errors.push("P049 : ↓ n'a pas ramené à 4,00 mm (" + hudDown + ")");
+      }
+      await page.click('[data-tab="features"]');
+      await sleep(100);
       const before = gemUi.pos[0];
       const rBefore = Math.hypot(before.x, before.y);
       await page.mouse.move(gemUi.screen.x, gemUi.screen.y);

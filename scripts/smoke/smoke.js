@@ -85,7 +85,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     (els) => els.map((e) => e.textContent),
   );
   const expectedGroups = [
-    "Esquisse", "Corps", "Fonctions", "Habillage", "Répétitions",
+    "Préparation", "Modélisation", "Habillage", "Transformations",
   ];
   if (featureGroups.join("|") !== expectedGroups.join("|")) {
     errors.push("groupes Fonctions : " + featureGroups.join(", ")

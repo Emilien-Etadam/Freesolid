@@ -90,7 +90,9 @@ function layoutButtons() {
   const all = [];
   for (const onglet of LAYOUT.onglets) {
     for (const groupe of onglet.groupes ?? []) {
-      for (const bouton of groupe.boutons ?? []) all.push(bouton);
+      for (const bouton of groupe.boutons ?? []) {
+        if (!bouton.sep) all.push(bouton);
+      }
     }
   }
   return all;
@@ -130,6 +132,64 @@ describe("ribbon.json", () => {
       assert.ok(bouton.libelle, `libellé absent : ${bouton.id}`);
       assert.ok(bouton.titre, `titre absent : ${bouton.id}`);
     }
+  });
+});
+
+// -- l'organisation transposée de FreeCAD-Ribbon ------------------------
+// La référence est le PartDesign d'APEbbers (docs/ruban.md) : additifs,
+// séparateur, soustractifs, séparateur, booléen — un seul panneau
+// Modélisation ; l'outil de profil en tête d'onglet ; l'habillage et les
+// transformations dans l'ordre des barres FreeCAD.
+
+function groupe(ongletId, libelle) {
+  const onglet = LAYOUT.onglets.find((o) => o.id === ongletId);
+  return onglet.groupes.find((g) => g.libelle === libelle);
+}
+
+function sequence(g) {
+  return g.boutons.map((b) => (b.sep ? "|" : b.id));
+}
+
+describe("l'organisation transposée", () => {
+  it("ordonne Modélisation : additifs | soustractifs | booléen", () => {
+    assert.deepEqual(sequence(groupe("features", "Modélisation")), [
+      "btn-pad", "btn-revolution", "btn-loft", "btn-sweep", "btn-helix",
+      "btn-text", "btn-graph-feature",
+      "|",
+      "btn-pocket", "btn-hole", "btn-groove",
+      "|",
+      "btn-boolean",
+    ]);
+  });
+
+  it("ouvre l'onglet Fonctions par la préparation, esquisse en tête", () => {
+    assert.deepEqual(sequence(groupe("features", "Préparation")),
+      ["btn-sketch", "btn-body", "btn-datum"]);
+  });
+
+  it("ordonne l'habillage et les transformations comme FreeCAD", () => {
+    assert.deepEqual(sequence(groupe("features", "Habillage")),
+      ["btn-fillet", "btn-chamfer", "btn-draft", "btn-shell"]);
+    assert.deepEqual(sequence(groupe("features", "Transformations")),
+      ["btn-linpattern", "btn-polpattern", "btn-mirror",
+        "btn-repeat-variable"]);
+  });
+
+  it("met l'outil de profil en tête de l'onglet Surfaces", () => {
+    const onglet = LAYOUT.onglets.find((o) => o.id === "surfaces");
+    assert.deepEqual(onglet.groupes.map((g) => g.libelle),
+      ["Courbes", "Surfaces", "Opérations"]);
+  });
+
+  it("ordonne l'assemblage : créer, résoudre, insérer, répéter, éclater", () => {
+    const onglet = LAYOUT.onglets.find((o) => o.id === "assembly");
+    assert.deepEqual(onglet.groupes.map((g) => g.libelle),
+      ["Assemblage", "Liaisons", "Évaluer"]);
+    assert.deepEqual(sequence(groupe("assembly", "Assemblage")),
+      ["btn-newasm", "btn-solve", "btn-insert", "btn-array-comp",
+        "btn-explode"]);
+    assert.deepEqual(sequence(groupe("assembly", "Liaisons")),
+      ["btn-move", "btn-joint"]);
   });
 });
 
@@ -173,7 +233,7 @@ describe("installCoreRibbons", () => {
     const labels = features.children.map(
       (g) => g.children.find((c) => c.className === "ribbon-group-label"));
     assert.deepEqual(labels.map((l) => l.textContent),
-      ["Esquisse", "Corps", "Fonctions", "Habillage", "Répétitions"]);
+      ["Préparation", "Modélisation", "Habillage", "Transformations"]);
 
     const pad = doc.getElementById("btn-pad");
     assert.equal(pad.title, "Bossage/Base extrudé");
@@ -212,6 +272,22 @@ describe("installCoreRibbons", () => {
 });
 
 describe("buildRibbonElement", () => {
+  it("rend un séparateur pour une entrée { sep: true }", () => {
+    const doc = fakeDoc();
+    const ribbon = buildRibbonElement(doc, "essai", [{
+      libelle: "G",
+      boutons: [
+        { id: "btn-a", libelle: "A" },
+        { sep: true },
+        { id: "btn-b", libelle: "B" },
+      ],
+    }]);
+    const rangee = ribbon.children[0].children[0].children;
+    assert.deepEqual(
+      rangee.map((el) => (el.className === "sep" ? "|" : el.id)),
+      ["btn-a", "|", "btn-b"]);
+  });
+
   it("filtre les ids et les icônes dangereuses, honore disabled", () => {
     const doc = fakeDoc();
     const ribbon = buildRibbonElement(doc, "essai", [{

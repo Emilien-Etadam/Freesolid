@@ -53,6 +53,12 @@ export function buildRibbonElement(doc, id, groupes) {
       btns.appendChild(groupe.node);
     } else {
       for (const specBtn of groupe.boutons ?? []) {
+        if (specBtn.sep) {
+          const sep = doc.createElement("div");
+          sep.className = "sep";
+          btns.appendChild(sep);
+          continue;
+        }
         if (!isButtonId(specBtn.id)) continue;
         const btn = doc.createElement("button");
         btn.id = specBtn.id;

@@ -55,7 +55,9 @@
   .ribbon.active { display: flex; }
   .ribbon-group {
     display: flex; flex-direction: column;
-    flex: 0 0 auto;
+    /* shrink autorisé : un groupe seul plus large que l'écran replie ses
+       boutons (flex-wrap ci-dessous) au lieu d'être coupé à droite. */
+    flex: 0 1 auto;
     padding: 2px 10px 2px;
     border-right: 1px solid var(--line);
     min-width: min-content;

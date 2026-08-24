@@ -1767,3 +1767,63 @@ positifs d'un `grep` sur `kernel\.(\w+)` : dans `gemkernel._refresh_gem_placemen
 C'est exactement le mécanisme qui gonfle une liste de défauts : une mesure
 crue, une liste plausible, et six problèmes annoncés là où il y en a un.
 Vérifier chaque entrée avant de la citer coûte deux minutes.
+
+## Relecture de P048 — la promesse est vérifiée, pas affirmée
+
+291 tests (285 noyau + 6 plugin), 165 JS, byte-compile de `engine` et
+`plugins`.
+
+### La simulation du `git mv`
+
+Le prompt promettait qu'après P048 le déplacement serait sans casse. Plutôt que
+de le croire, on l'a **fait** : `plugins/bijouterie/` retiré entièrement du
+dépôt, puis relancé.
+
+| | Résultat |
+|---|---|
+| `compileall engine` | ✅ |
+| import de `kernel`, `plugins`, `protocol`, `surfaces` | ✅ |
+| `pytest tests/` | **255 passés, 6 échoués** |
+
+**Aucun échec du noyau.** Pas d'`ImportError`, pas de plantage. Les six échecs
+sont tous des tests qui *affirment la présence* du plugin.
+
+C'est la vérification la plus forte de toute cette série : elle prouve la
+séparation au lieu de la décrire.
+
+### Le test de séparation discrimine — vérifié sur quatre formes
+
+`test_le_noyau_n_importe_rien_du_plugin` utilise `ast.parse` et non un `grep` —
+meilleur que ce que le prompt demandait. Mis à l'épreuve en réintroduisant un
+import dans `engine/replay.py` :
+
+| Import réintroduit | |
+|---|---|
+| `from engine.gems import project_uv` | échoue ✅ |
+| `from . import gems` | échoue ✅ |
+| `from .gems import project_uv` | échoue ✅ |
+| `import plugins.bijouterie.gems` | échoue ✅ |
+
+Les deux formes relatives sont celles qu'un `grep` aurait ratées. Un test qui
+ne discrimine pas est pire que pas de test ; celui-ci discrimine.
+
+### Ce que la simulation corrige dans mon prompt
+
+J'annonçais qu'au départ du module, `test_ops_snapshot_keys` serait « une ligne
+à retirer ». **Ce sont six tests à relocaliser**, dont quatre dans
+`tests/test_plugins.py` :
+
+```
+test_bijouterie_ops_remain_in_protocol_snapshot
+test_ops_gem_ne_sont_plus_des_methodes_du_noyau
+test_ops_bijouterie_transactionnelles_via_le_manifeste
+test_bijouterie_reclame_un_semis_pas_un_pad
+test_ops_snapshot_keys                      (tests/test_protocol.py)
+test_gem_ops_declare_required_and_optional_params
+```
+
+`tests/test_plugins.py` mêle deux sujets : le **mécanisme** du registre, qui
+appartient au noyau, et le fait que **la bijouterie** se comporte bien, qui
+appartient au plugin. Ce n'est pas un défaut — le noyau reste propre — mais
+c'est la dernière liste à traiter le jour du déplacement, et il vaut mieux
+l'avoir écrite que la découvrir.

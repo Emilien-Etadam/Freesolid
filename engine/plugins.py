@@ -15,6 +15,24 @@ consentement, comme pour n'importe quel paquet.
 
 Un manifeste est une **entrée**, pas une confidence : ``module`` et
 ``statique`` sont jailés, même discipline que ``sanitize_gemme``.
+
+Surface kernel qu'un plugin a le droit d'appeler
+------------------------------------------------
+Mesurée sur le bloc bijouterie, pas supposée. Un plugin hors dépôt
+n'appelle que ces neuf membres privés :
+
+    _app  _body  _doc  _face_mesh  _recompute
+    _report_progress  _require_body  _require_doc  get_tree
+
+et, pour les étapes de selftest, deux aides de test :
+
+    _top_face_id  _side_face_id
+
+Ces membres restent privés : pas de renommage public, pas de façade
+``KernelServices``. Les nommer et les épingler (voir
+``test_surface_plugin_reste_disponible``) suffit. Retirer
+``_require_body`` casserait un plugin que la CI publique ne peut
+pas exécuter.
 """
 
 from __future__ import annotations
@@ -27,6 +45,11 @@ import sys
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEFAULT_ROOT = os.path.join(_REPO_ROOT, "plugins")
+
+# ``plugins/`` est un chemin d'import dès que ce module vit — pas
+# seulement au premier Kernel. Les tests voient alors ``bijouterie``.
+if os.path.isdir(_DEFAULT_ROOT) and _DEFAULT_ROOT not in sys.path:
+    sys.path.insert(0, _DEFAULT_ROOT)
 
 _MODULE_RE = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$")
 _DIR_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
@@ -203,7 +226,7 @@ discover.notes = []
 
 
 class Registry:
-    """Cinq points de contribution. Ordre d'enregistrement = ordre d'exécution."""
+    """Points de contribution. Ordre d'enregistrement = ordre d'exécution."""
 
     def __init__(self, nom=""):
         self.nom = nom
@@ -215,6 +238,9 @@ class Registry:
         self._mesh = []
         self._ops = {}
         self._selftest = []
+        self._tolerates_invalid = []
+        self._boolean_tool = []
+        self._deletes_feature = []
 
     def after_recompute(self, fn):
         """fn(kernel) — après doc.recompute(), avant le contrôle de validité."""
@@ -236,6 +262,18 @@ class Registry:
         """fn(kernel, mark, report) — après les étapes du noyau."""
         self._selftest.append((self.nom, libelle, fn))
 
+    def tolerates_invalid(self, fn):
+        """fn(kernel, obj) -> bool. True = cet objet a le droit d'être Invalid."""
+        self._tolerates_invalid.append((self.nom, fn))
+
+    def boolean_tool(self, fn):
+        """fn(kernel, obj) -> objet outil | None. None = personne ne réclame."""
+        self._boolean_tool.append((self.nom, fn))
+
+    def deletes_feature(self, fn):
+        """fn(kernel, obj) -> True si le plugin a pris en charge la suppression."""
+        self._deletes_feature.append((self.nom, fn))
+
     def extend(self, other):
         """Ajoute les crochets d'un registre, dans l'ordre."""
         self._after.extend(other._after)
@@ -243,6 +281,9 @@ class Registry:
         self._mesh.extend(other._mesh)
         self._ops.update(other._ops)
         self._selftest.extend(other._selftest)
+        self._tolerates_invalid.extend(other._tolerates_invalid)
+        self._boolean_tool.extend(other._boolean_tool)
+        self._deletes_feature.extend(other._deletes_feature)
         self.transactional.update(other.transactional)
         self.errors.extend(other.errors)
         self.notes.extend(other.notes)
@@ -278,6 +319,28 @@ class Registry:
     def run_selftest(self, kernel, mark, report):
         for _nom, _libelle, fn in self._selftest:
             fn(kernel, mark, report)
+
+    def run_tolerates_invalid(self, kernel, obj):
+        """True dès qu'un plugin réclame. Personne → False, comportement d'origine."""
+        for _nom, fn in self._tolerates_invalid:
+            if fn(kernel, obj):
+                return True
+        return False
+
+    def run_boolean_tool(self, kernel, obj):
+        """Premier objet outil non ``None``. Personne → ``None``, chemin par défaut."""
+        for _nom, fn in self._boolean_tool:
+            result = fn(kernel, obj)
+            if result is not None:
+                return result
+        return None
+
+    def run_deletes_feature(self, kernel, obj):
+        """True dès qu'un plugin a pris en charge. Personne → False, chemin par défaut."""
+        for _nom, fn in self._deletes_feature:
+            if fn(kernel, obj):
+                return True
+        return False
 
 
 def _merge_contributions(hooks, target, invoke):

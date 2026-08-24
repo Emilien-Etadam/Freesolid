@@ -235,6 +235,7 @@ def _entraxe_corde_mm(stones):
 def measure_one(spec):
     """Un point, un document, le geste ``add_boolean`` réel."""
     from engine.kernel import Kernel
+    from bijouterie import gemkernel
     from engine.platform import allow_from_environ, version_status
 
     count = int(spec["pierres"])
@@ -299,14 +300,14 @@ def measure_one(spec):
         u0, u1, v0, v1 = face.ParameterRange
         v_mid = (v0 + v1) / 2.0
         first = face.valueAt(u0 + (u1 - u0) * 0.5 / count, v_mid)
-        placed = kernel.place_gem(
-            face=side, x=first.x, y=first.y, z=first.z,
+        placed = gemkernel.place_gem(
+            kernel, face=side, x=first.x, y=first.y, z=first.z,
             diametre=diametre, lift=LIFT_MM)
         gems = placed.get("gems") or []
         if not gems:
             raise RuntimeError("semis absent après la première pose")
         semis = gems[0]["name"]
-        link = kernel._require_gem_link(semis)
+        link = gemkernel._require_gem_link(kernel, semis)
         us, vs, spins, lifts = [], [], [], []
         for index in range(count):
             u = u0 + (u1 - u0) * (index + 0.5) / count
@@ -316,7 +317,7 @@ def measure_one(spec):
             lifts.append(LIFT_MM)
         kernel._write_stone_lists(link, us, vs, spins, lifts)
         kernel._recompute()
-        listed = kernel.list_gems().get("gems") or []
+        listed = gemkernel.list_gems(kernel).get("gems") or []
         held = int((listed or [{}])[0].get("count") or 0)
         pose_s = time.perf_counter() - t_pose0
         out["pose_s"] = round(pose_s, 3)

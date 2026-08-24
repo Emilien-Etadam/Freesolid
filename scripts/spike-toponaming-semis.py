@@ -220,6 +220,7 @@ def probe_bug():
     question : si l'indice tient, tout ce qui suit est du luxe.
     """
     handles = make_ring("Sonde toponaming Q0")
+    from bijouterie import gemkernel
     kernel = handles["k"]
     side = handles["side"]
 
@@ -236,9 +237,9 @@ def probe_bug():
     point = before_face.valueAt(*[
         (a + b) / 2.0 for a, b in zip(before_face.ParameterRange[::2],
                                       before_face.ParameterRange[1::2])])
-    kernel.place_gem(face=side, x=point.x, y=point.y, z=point.z,
+    gemkernel.place_gem(kernel, face=side, x=point.x, y=point.y, z=point.z,
                      diametre=1.5)
-    semis = (kernel.list_gems().get("gems") or [{}])[0]
+    semis = (gemkernel.list_gems(kernel).get("gems") or [{}])[0]
     before["semis_face"] = semis.get("face")
     before["semis_erreur"] = semis.get("error")
 
@@ -261,7 +262,7 @@ def probe_bug():
                 and sig.get("rayon") == before["signature"].get("rayon")):
             cible = index
             break
-    semis_after = (kernel.list_gems().get("gems") or [{}])[0]
+    semis_after = (gemkernel.list_gems(kernel).get("gems") or [{}])[0]
     return {
         "avant": before,
         "apres": {

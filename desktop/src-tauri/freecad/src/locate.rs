@@ -150,7 +150,7 @@ fn program_files_dirs() -> Vec<PathBuf> {
         "LOCALAPPDATA",
     ]
     .iter()
-    .filter_map(|k| std::env::var_os(k))
+    .filter_map(std::env::var_os)
     .map(PathBuf::from)
     .collect()
 }

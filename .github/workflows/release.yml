@@ -1,0 +1,99 @@
+# Application de bureau : construit les installeurs (Linux, Windows, macOS)
+# à chaque tag `v*`, les signe pour l'updater et publie la release GitHub
+# avec le `latest.json` que les apps installées consultent au démarrage.
+#
+# Secrets attendus :
+#   TAURI_SIGNING_PRIVATE_KEY           clé privée minisign (desktop/README.md)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  son mot de passe (vide si aucun)
+name: Release desktop
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Tag = version déclarée
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Le tag doit être v<version de tauri.conf.json>
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          conf=$(python3 -c 'import json; print(json.load(open("desktop/src-tauri/tauri.conf.json"))["version"])')
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$conf" != "$tag" ]; then
+            echo "tauri.conf.json dit $conf, le tag dit $tag : alignez les deux (desktop/README.md)."
+            exit 1
+          fi
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+            target: aarch64-apple-darwin
+          - platform: macos-13
+            args: --target x86_64-apple-darwin
+            target: x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            args: ""
+            target: ""
+          - platform: windows-latest
+            args: ""
+            target: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Dépendances Linux (webkit2gtk, AppImage)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libgtk-3-dev libxdo-dev libssl-dev
+
+      - name: CLI Tauri
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build + release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: "FreeSolid ${{ github.ref_name }}"
+          releaseBody: |
+            Application de bureau FreeSolid. FreeCAD est détecté sur la machine,
+            ou installé automatiquement au premier lancement.
+            Les apps déjà installées se mettent à jour d'elles-mêmes.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}

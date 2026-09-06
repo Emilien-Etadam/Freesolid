@@ -9,3 +9,7 @@ selftest-echecs.txt
 spike-element-map.json
 spike-toponaming-semis.json
 spike-techdraw-coupe.txt
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/freecad/target/
+desktop/src-tauri/gen/

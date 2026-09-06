@@ -68,6 +68,15 @@ Quand le terminal affiche « FreeSolid engine prêt », ouvrez
    `freecadcmd.exe` dans le dossier d'installation.)
 4. Ouvrez **<http://localhost:8787>** dans votre navigateur.
 
+### Application de bureau
+
+Une app Tauri (`desktop/`) fait la même chose sans terminal : elle trouve
+FreeCAD sur la machine (ou propose de l'installer automatiquement), lance le
+moteur en local et se met à jour depuis les releases GitHub. Installeurs
+Linux, Windows et macOS dans les
+[releases](https://github.com/Emilien-Etadam/Freesolid/releases) ; détails
+et procédure de publication dans [`desktop/README.md`](desktop/README.md).
+
 ## Ce qui marche aujourd'hui
 
 - **Esquisse** contrainte + solveur WASM (planegcs) à ~60 fps pendant le

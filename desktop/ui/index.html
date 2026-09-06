@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FreeSolid</title>
+<style>
+  :root {
+    --bg: #181a1f; --panel: #20232a; --line: #2e323b; --fg: #e6e8ee;
+    --muted: #9aa1ad; --accent: #60a5fa; --accent-2: #2563eb; --warn: #f59e0b;
+    --err: #f87171; --ok: #34d399;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-user-select: none; user-select: none;
+  }
+  .card {
+    width: min(560px, 92vw); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 28px 32px; box-shadow: 0 20px 60px rgba(0,0,0,.4);
+  }
+  .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .brand svg { width: 44px; height: 44px; flex: none; }
+  .brand h1 { font-size: 22px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+  .brand small { color: var(--muted); display: block; font-size: 12px; }
+  .status { min-height: 48px; margin: 8px 0 16px; }
+  .status .title { font-weight: 600; }
+  .status .detail { color: var(--muted); font-size: 13px; word-break: break-all; }
+  .warn { color: var(--warn); }
+  .err { color: var(--err); white-space: pre-wrap; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; max-height: 180px; overflow: auto; }
+  .ok { color: var(--ok); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 10px 0 6px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .bar.indeterminate > i { width: 30%; animation: slide 1.2s infinite ease-in-out; }
+  @keyframes slide { from { margin-left: -30%; } to { margin-left: 100%; } }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+  button {
+    font: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: #262a33; color: var(--fg);
+  }
+  button.primary { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .update {
+    display: none; margin: -6px 0 16px; padding: 10px 12px; border-radius: 8px;
+    background: #1e2a3f; border: 1px solid #2b3f63; font-size: 13px;
+    align-items: center; gap: 10px;
+  }
+  .update.show { display: flex; }
+  .update span { flex: 1; }
+  .foot { margin-top: 18px; color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--muted); border-top-color: var(--fg); border-radius: 50%; animation: rot .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <polygon points="50,12 84,31 50,50 16,31" fill="#60a5fa"/>
+      <polygon points="16,31 50,50 50,88 16,69" fill="#2563eb"/>
+      <polygon points="84,31 50,50 50,88 84,69" fill="#1e40af"/>
+    </svg>
+    <div><h1>FreeSolid</h1><small id="app-version">application de bureau</small></div>
+  </div>
+
+  <div class="update" id="update">
+    <span id="update-text"></span>
+    <button id="update-btn" class="primary">Installer</button>
+  </div>
+
+  <div class="status">
+    <div class="title" id="title"><span class="spin"></span>Recherche de FreeCAD…</div>
+    <div class="detail" id="detail"></div>
+    <div class="bar" id="bar" hidden><i id="bar-fill"></i></div>
+    <div class="err" id="error" hidden></div>
+  </div>
+
+  <div class="actions" id="actions"></div>
+
+  <div class="foot">
+    <span id="foot-left"></span>
+    <span id="foot-right"></span>
+  </div>
+</div>
+
+<script>
+(() => {
+  const T = window.__TAURI__;
+  const invoke = T.core.invoke;
+  const $ = (id) => document.getElementById(id);
+  const fmtMo = (n) => (n / 1048576).toFixed(0) + " Mo";
+
+  let status = null;
+
+  function setTitle(html) { $("title").innerHTML = html; }
+  function setDetail(html) { $("detail").innerHTML = html; }
+  function setError(text) {
+    const el = $("error");
+    el.hidden = !text; el.textContent = text || "";
+  }
+  function setBar(fraction) {
+    const bar = $("bar");
+    if (fraction === null) { bar.hidden = true; bar.classList.remove("indeterminate"); return; }
+    bar.hidden = false;
+    if (fraction === undefined) { bar.classList.add("indeterminate"); return; }
+    bar.classList.remove("indeterminate");
+    $("bar-fill").style.width = Math.max(0, Math.min(100, fraction * 100)) + "%";
+  }
+  function setActions(list) {
+    const box = $("actions"); box.innerHTML = "";
+    for (const a of list) {
+      const b = document.createElement("button");
+      b.textContent = a.label; if (a.primary) b.className = "primary";
+      b.onclick = () => { for (const x of box.children) x.disabled = true; a.run(); };
+      box.appendChild(b);
+    }
+  }
+  function esc(s) { return String(s).replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+  async function chooseFreecad() {
+    const picked = await T.dialog.open({
+      multiple: false, directory: false,
+      title: "Choisir freecadcmd (ou le dossier de FreeCAD)",
+    });
+    if (!picked) { render(); return; }
+    setTitle('<span class="spin"></span>Vérification…'); setError(""); setActions([]);
+    try {
+      status = await invoke("choose_freecadcmd", { path: picked });
+      render();
+    } catch (e) { showFailure("FreeCAD non reconnu", String(e)); }
+  }
+
+  async function chooseFreecadDir() {
+    const picked = await T.dialog.open({ multiple: false, directory: true, title: "Dossier de FreeCAD" });
+    if (!picked) { render(); return; }
+    setTitle('<span class="spin"></span>Vérification…'); setError(""); setActions([]);
+    try {
+      status = await invoke("choose_freecadcmd", { path: picked });
+      render();
+    } catch (e) { showFailure("FreeCAD non reconnu", String(e)); }
+  }
+
+  function showFailure(title, message, extra) {
+    setTitle('<span class="err">' + esc(title) + '</span>');
+    setBar(null); setError(message);
+    setActions([
+      { label: "Réessayer", primary: true, run: boot },
+      { label: "Choisir freecadcmd…", run: chooseFreecad },
+      { label: "Choisir le dossier FreeCAD…", run: chooseFreecadDir },
+      ...(extra || []),
+    ]);
+  }
+
+  async function install() {
+    setError(""); setActions([]);
+    setTitle('<span class="spin"></span>Téléchargement de FreeCAD ' + esc(status.reference) + '…');
+    setDetail("Depuis les releases officielles de FreeCAD, vérifié par SHA-256. Une seule fois.");
+    setBar(undefined);
+    const unlisten = await T.event.listen("install-progress", (ev) => {
+      const p = ev.payload;
+      if (p.phase === "downloading") {
+        if (p.total) { setBar(p.done / p.total); setDetail(fmtMo(p.done) + " / " + fmtMo(p.total)); }
+        else { setBar(undefined); setDetail(fmtMo(p.done)); }
+      } else if (p.phase === "verifying") {
+        setTitle('<span class="spin"></span>Vérification de l\'archive…'); setBar(undefined);
+      } else if (p.phase === "extracting") {
+        setTitle('<span class="spin"></span>Extraction…'); setBar(undefined);
+        setDetail("Dans " + esc(status.install_dir));
+      }
+    });
+    try {
+      status = await invoke("install_freecad");
+      unlisten();
+      setBar(null);
+      render();
+    } catch (e) {
+      unlisten();
+      showFailure("Installation impossible", String(e));
+    }
+  }
+
+  async function start() {
+    setError(""); setActions([{ label: "Changer de FreeCAD…", run: chooseFreecad }]);
+    setTitle('<span class="spin"></span>Démarrage du moteur FreeCAD…');
+    setBar(undefined);
+    try {
+      await invoke("start_engine");
+      // La fenêtre navigue vers l'interface ; rien d'autre à faire ici.
+      setTitle('<span class="ok">Moteur prêt</span>'); setBar(null);
+    } catch (e) {
+      let log = "";
+      try { log = await invoke("engine_log_path"); } catch (_) {}
+      showFailure("Le moteur n'a pas démarré", String(e) + (log ? "\n\nJournal : " + log : ""));
+    }
+  }
+
+  function render() {
+    setBar(null); setError("");
+    $("app-version").textContent = "application de bureau · v" + status.app_version;
+    $("foot-left").textContent = status.os + " / " + status.arch;
+    $("foot-right").textContent = "référence FreeCAD " + status.reference;
+    if (status.freecadcmd) {
+      const where = { env: "variable FREESOLID_FREECADCMD", config: "votre choix", managed: "installé par FreeSolid",
+                      path: "PATH", standard: "installation système" }[status.source] || status.source;
+      setTitle("FreeCAD " + esc(status.version) + " <span class=\"detail\">(" + esc(where) + ")</span>");
+      let d = esc(status.freecadcmd);
+      if (!status.matches_reference) {
+        d += '<br><span class="warn">Version différente de la référence ' + esc(status.reference) +
+             " : FreeSolid fonctionne, mais certaines fonctions peuvent manquer.</span>";
+      }
+      setDetail(d);
+      start();
+      return;
+    }
+    setTitle('<span class="warn">FreeCAD introuvable sur cette machine</span>');
+    setDetail("FreeSolid a besoin de FreeCAD " + esc(status.reference) +
+              " (moteur de géométrie, exécuté en local, sans interface).");
+    const actions = [];
+    if (status.can_install) {
+      actions.push({ label: "Installer FreeCAD " + status.reference + " automatiquement (≈ 800 Mo)", primary: true, run: install });
+    } else {
+      setDetail("Pas d'archive automatique pour " + esc(status.os + "/" + status.arch) +
+                " : installez FreeCAD depuis freecad.org puis indiquez son emplacement.");
+    }
+    actions.push({ label: "J'ai déjà FreeCAD : choisir freecadcmd…", run: chooseFreecad });
+    actions.push({ label: "Choisir le dossier FreeCAD…", run: chooseFreecadDir });
+    setActions(actions);
+  }
+
+  async function boot() {
+    setTitle('<span class="spin"></span>Recherche de FreeCAD…'); setDetail(""); setError(""); setActions([]); setBar(null);
+    try {
+      status = await invoke("status");
+      render();
+    } catch (e) {
+      showFailure("Erreur au démarrage", String(e));
+    }
+  }
+
+  async function checkUpdate() {
+    // Silencieux si hors ligne ou si la release n'a pas de latest.json.
+    let update = null;
+    try { update = await T.updater.check(); } catch (_) { return; }
+    if (!update) return;
+    const box = $("update");
+    $("update-text").textContent = "FreeSolid " + update.version + " est disponible (vous avez " + update.currentVersion + ").";
+    box.classList.add("show");
+    $("update-btn").onclick = async () => {
+      const btn = $("update-btn"); btn.disabled = true;
+      let total = 0, done = 0;
+      try {
+        await update.downloadAndInstall((ev) => {
+          if (ev.event === "Started") { total = ev.data.contentLength || 0; }
+          else if (ev.event === "Progress") { done += ev.data.chunkLength; btn.textContent = total ? Math.round(100 * done / total) + " %" : fmtMo(done); }
+          else if (ev.event === "Finished") { btn.textContent = "Redémarrage…"; }
+        });
+        await T.process.relaunch();
+      } catch (e) {
+        btn.disabled = false; btn.textContent = "Réessayer";
+        $("update-text").textContent = "Mise à jour impossible : " + e;
+      }
+    };
+  }
+
+  checkUpdate();
+  boot();
+})();
+</script>
+</body>
+</html>

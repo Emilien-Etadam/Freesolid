@@ -4,7 +4,7 @@
 #
 # Secrets attendus :
 #   TAURI_SIGNING_PRIVATE_KEY           clé privée minisign (desktop/README.md)
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  son mot de passe (vide si aucun)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  son mot de passe (ne pas créer si aucun)
 name: Release desktop
 
 on:

@@ -96,7 +96,9 @@ correspond à `plugins.updater.pubkey` dans `tauri.conf.json`. Deux secrets
 GitHub à créer dans le dépôt (Settings → Secrets and variables → Actions) :
 
 - `TAURI_SIGNING_PRIVATE_KEY` : le contenu du fichier de clé privée
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` : son mot de passe (vide si aucun)
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` : son mot de passe. Si la clé n'en a
+  pas, **ne créez pas ce secret** (GitHub refuse une valeur vide) : le
+  workflow reçoit alors une chaîne vide, ce qui convient.
 
 Pour générer une nouvelle paire (et remplacer `pubkey` dans
 `tauri.conf.json`) :

@@ -111,6 +111,13 @@ _CONTENT_TYPES = {
 }
 
 
+_TAURI_ORIGINS = frozenset((
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+))
+
+
 def _origin_ok(origin, port=PORT):
     """``Origin`` absent = autorisé (curl, scripts) ; sinon allowlist locale."""
     if origin is None or origin == "":
@@ -119,6 +126,10 @@ def _origin_ok(origin, port=PORT):
         "http://127.0.0.1:{}".format(port),
         "http://localhost:{}".format(port),
     }
+    # L'application de bureau (desktop/, Tauri) sert son écran de lancement
+    # depuis une origine propre : tauri://localhost (Linux, macOS) ou
+    # http(s)://tauri.localhost (Windows). Même machine, même utilisateur.
+    allowed.update(_TAURI_ORIGINS)
     return origin in allowed
 
 

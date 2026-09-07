@@ -126,6 +126,14 @@ def test_origin_localhost_ok():
     assert server._origin_ok("http://localhost:8787") is True
 
 
+def test_origin_tauri_desktop_ok():
+    # desktop/ (Tauri) : l'écran de lancement parle au moteur local.
+    assert server._origin_ok("tauri://localhost") is True
+    assert server._origin_ok("http://tauri.localhost") is True
+    assert server._origin_ok("https://tauri.localhost") is True
+    assert server._origin_ok("tauri://evil") is False
+
+
 def test_origin_foreign_refused():
     assert server._origin_ok("https://evil.example") is False
     assert server._origin_ok("http://127.0.0.1:9999") is False

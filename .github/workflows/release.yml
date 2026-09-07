@@ -79,11 +79,35 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      # La clé est un seul bloc base64 (fichier écrit par `tauri signer
+      # generate`). Un copier-coller depuis un terminal y laisse souvent des
+      # retours à la ligne ou le prompt du shell collé à la fin : on nettoie
+      # et on vérifie avant de signer, pour échouer avec un message clair
+      # plutôt qu'après six minutes de compilation.
+      - name: Clé de signature de l'updater
+        shell: bash
+        env:
+          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$RAW_KEY" ]; then
+            echo "::error::Secret TAURI_SIGNING_PRIVATE_KEY absent (desktop/README.md)."
+            exit 1
+          fi
+          key=$(printf '%s' "$RAW_KEY" | tr -d '\r\n\t ' | sed -E 's/[^A-Za-z0-9+\/=].*$//')
+          echo "::add-mask::$key"
+          if [ $(( ${#key} % 4 )) -ne 0 ] || ! printf '%s' "$key" | base64 --decode > /dev/null 2>&1; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY n'est pas du base64 valide (${#key} caractères après nettoyage). Recollez le contenu exact du fichier .key, sans rien avant ni après."
+            exit 1
+          fi
+          keyfile="$RUNNER_TEMP/freesolid-updater.key"
+          printf '%s' "$key" > "$keyfile"
+          echo "TAURI_SIGNING_PRIVATE_KEY=$keyfile" >> "$GITHUB_ENV"
+          echo "Clé de signature : ${#key} caractères, fichier prêt."
+
       - name: Build + release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: desktop

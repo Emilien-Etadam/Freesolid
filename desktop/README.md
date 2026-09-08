@@ -30,7 +30,14 @@ servie par ce moteur. Fermer la fenêtre arrête le moteur.
    - macOS : DMG monté, `FreeCAD.app` copié, DMG démonté
 3. **Vérifie les mises à jour de FreeSolid** (voir plus bas) et les propose
    en un clic.
-4. **Lance le moteur** et bascule sur l'interface.
+4. **Lance le moteur** et ouvre l'interface dans une fenêtre neuve.
+
+Dans l'interface, le bouton engrenage ouvre **Paramètres** : version de
+FreeSolid et de FreeCAD, chemin de `freecadcmd`, journal du moteur, liens
+vers le dépôt, recherche et installation des mises à jour, réglages
+d'affichage. La page est servie par le moteur (`127.0.0.1:8787`) ; elle
+accède à l'API Tauri grâce à l'entrée `remote` de
+`src-tauri/capabilities/default.json`.
 
 Une version de FreeCAD différente de la référence est acceptée avec un
 avertissement. « Changer de FreeCAD… » et le choix manuel d'un fichier ou
@@ -88,9 +95,10 @@ tag `v*`, pour Linux (AppImage + deb), Windows (NSIS) et macOS (arm64 et
 x86_64, `.app` + DMG). La release GitHub reçoit aussi `latest.json` et les
 signatures que l'updater vérifie.
 
-1. Mettre la même version dans `desktop/src-tauri/tauri.conf.json`
-   (`version`) et `desktop/package.json` ; le workflow refuse un tag qui ne
-   correspond pas.
+1. Mettre la même version dans `VERSION` (racine du dépôt, lue par le
+   moteur et affichée dans Paramètres) et `desktop/src-tauri/tauri.conf.json`
+   (`version`) ; le workflow refuse un tag qui ne correspond pas, et
+   `tests/test_platform.py` vérifie que les deux fichiers s'accordent.
 2. `git tag v0.1.0 && git push origin v0.1.0`.
 
 ### Clé de signature (une fois)

@@ -25,7 +25,7 @@ from engine.nodegraph import (  # noqa: E402
     graph_surface_kind, mixed_output_message, migrate_graph, output_nature,
 )
 from engine.platform import (                    # noqa: E402
-    allow_from_environ, version_status,
+    FREECAD, allow_from_environ, freesolid_version, version_status,
 )
 from engine.plugins import PluginError           # noqa: E402
 from engine.protocol import dangling_deps, visible_dep_subs, visible_deps  # noqa: E402
@@ -522,8 +522,15 @@ class Kernel:
     # -- operations ------------------------------------------------------
 
     def ping(self):
+        """Identité du moteur — ce que le panneau Paramètres affiche."""
         App = self._app()
-        return {"freecad": ".".join(str(v) for v in App.Version()[:3])}
+        return {
+            "freecad": ".".join(str(v) for v in App.Version()[:3]),
+            "freecad_reference": FREECAD,
+            "freecadcmd": sys.executable or "",
+            "freesolid": freesolid_version(),
+            "platform": sys.platform,
+        }
 
     def list_plugins(self):
         """Plugins chargés : nom et point d'entrée JS. Aucun FreeCAD."""

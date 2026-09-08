@@ -163,18 +163,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(200);
 
   const settingsItem = async (value) => {
-    // Un clic parasite (fermeture de panneau) peut avoir refermé le
-    // menu : le rouvrir si l'entrée n'est pas visible.
-    const item = page.locator('[data-ribbon-labels="' + value + '"]');
+    // Le panneau Paramètres (settings.js) : la case « libellés du ruban »
+    // s'applique au changement ; on rouvre le panneau s'il est fermé.
+    const item = page.locator(
+      '#settings-dialog input[name="ribbon-labels"][value="' + value + '"]');
     if (!(await item.isVisible())) {
       await page.click("#btn-settings");
-      await sleep(200);
+      await sleep(300);
     }
-    await item.click({ timeout: 5000 });
+    await item.check({ timeout: 5000 });
   };
   await page.click("#btn-settings");
-  await sleep(200);
+  await sleep(400);
   await page.screenshot({ path: path.join(SHOTS, "0b-menu-reglages.png") });
+  const settingsRows = await page.$$eval("#settings-dialog .settings-info dt",
+    (dts) => dts.map((d) => d.textContent));
+  if (!settingsRows.includes("FreeSolid") || !settingsRows.includes("FreeCAD")) {
+    errors.push("Paramètres : lignes FreeSolid/FreeCAD absentes (" + settingsRows + ")");
+  }
   await settingsItem("icons-only");
   await sleep(200);
   const iconsOnly = await page.evaluate(() =>
@@ -212,6 +218,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     !document.body.classList.contains("ribbon-icons-only")
     && localStorage.getItem("freesolid.ribbonLabels") === "icons-and-text");
   if (!iconsAndText) errors.push("Icônes et texte : classe encore posée");
+  // Le panneau est une surcouche : le fermer (Échap) avant la suite, sinon
+  // il intercepterait les clics sur le ruban.
+  await page.keyboard.press("Escape");
+  await sleep(200);
+  if (await page.locator("#settings-dialog").isVisible()) {
+    errors.push("Paramètres : le panneau ne se ferme pas avec Échap");
+    await page.click('#settings-dialog [data-action="close"]').catch(() => {});
+  }
   await step("réglages ruban");
 
   // 1. Esquisse — choix du plan dans le viewport. Deux courses possibles

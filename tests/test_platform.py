@@ -5,11 +5,39 @@ from pathlib import Path
 from engine.platform import (
     FREECAD,
     OVERRIDE_ENV,
+    REPO_URL,
     allow_from_environ,
     format_selftest_failure,
+    freesolid_version,
     normalize_version,
     version_status,
 )
+
+_ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_freesolid_version_reads_the_version_file(tmp_path):
+    assert freesolid_version() == (_ROOT / "VERSION").read_text().strip()
+    fake = tmp_path / "VERSION"
+    fake.write_text("9.8.7\n")
+    assert freesolid_version(str(fake)) == "9.8.7"
+    assert freesolid_version(str(tmp_path / "absent")) == "0.0.0-dev"
+    fake.write_text("  \n")
+    assert freesolid_version(str(fake)) == "0.0.0-dev"
+
+
+def test_version_file_matches_desktop_app():
+    # Une seule version affichée partout : VERSION et tauri.conf.json.
+    import json
+    conf = json.loads(
+        (_ROOT / "desktop" / "src-tauri" / "tauri.conf.json").read_text(
+            encoding="utf-8"))
+    assert conf["version"] == freesolid_version()
+
+
+def test_repo_url_is_the_github_project():
+    assert REPO_URL.startswith("https://github.com/")
+    assert REPO_URL.endswith("/Freesolid")
 
 
 def test_normalize_version_tuple_and_string():

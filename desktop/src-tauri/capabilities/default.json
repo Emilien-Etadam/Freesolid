@@ -1,16 +1,25 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Écran de lancement (main) et interface (cad) : commandes locales, mise à jour, relance, choix de fichier.",
+  "description": "Écran de lancement (main, page embarquée) et interface (cad, servie par le moteur sur 127.0.0.1:8787) : commandes locales, mise à jour, relance, choix de fichier, ouverture de liens.",
   "windows": [
     "main",
     "cad"
   ],
   "permissions": [
     "core:default",
+    "core:app:allow-version",
+    "core:app:allow-name",
     "core:window:allow-set-title",
     "updater:default",
     "process:allow-restart",
-    "dialog:allow-open"
-  ]
+    "dialog:allow-open",
+    "opener:default"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:8787/*",
+      "http://localhost:8787/*"
+    ]
+  }
 }

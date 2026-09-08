@@ -559,7 +559,7 @@
     100% { transform: translateX(-10%); }
   }
 
-  #ctxmenu, #settings-menu, #graph-edge-menu, #param-pick, #graph-palette {
+  #ctxmenu, #graph-edge-menu, #param-pick, #graph-palette {
     position: fixed; z-index: 10; display: none;
     background: var(--panel-2);
     border: 1px solid var(--line);
@@ -568,11 +568,11 @@
     min-width: 190px; padding: 4px;
   }
   #param-pick { min-width: 240px; }
-  #ctxmenu div, #settings-menu .menu-item, #graph-edge-menu div,
+  #ctxmenu div, #graph-edge-menu div,
   #param-pick .menu-item, #graph-palette .menu-item {
     padding: 6px 10px; border-radius: 4px; cursor: pointer;
   }
-  #ctxmenu div:hover, #settings-menu .menu-item:hover,
+  #ctxmenu div:hover,
   #graph-edge-menu div:hover, #param-pick .menu-item:hover,
   #graph-palette .menu-item:hover {
     background: var(--panel); color: var(--accent);
@@ -585,13 +585,44 @@
     font-size: 11px; font-weight: 600; color: var(--ink-2);
     cursor: default; user-select: none;
   }
-  #settings-menu .menu-label {
-    padding: 6px 10px 2px;
-    font-size: 11px; font-weight: 600; color: var(--ink-2);
-    cursor: default; user-select: none;
+  /* Panneau Paramètres (settings.js) — même carte que #script-trust. */
+  #settings-dialog {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    padding: 24px;
   }
-  #settings-menu .menu-item.on { color: var(--accent); }
-  #settings-menu .menu-item.on::before { content: "✓ "; }
+  #settings-dialog[hidden] { display: none; }
+  .settings-card {
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    width: min(560px, 100%); max-height: calc(100vh - 48px); overflow: auto;
+    padding: 16px 18px 14px; font-size: 13px;
+  }
+  .settings-head { display: flex; align-items: center; justify-content: space-between; }
+  .settings-card h2 { margin: 0; font-size: 16px; font-weight: 650; }
+  .settings-card h3 {
+    margin: 14px 0 6px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2);
+  }
+  .settings-close {
+    width: 28px; height: 28px; padding: 0; font-size: 18px; line-height: 1;
+  }
+  .settings-warn {
+    margin: 8px 0 0; padding: 8px 10px; border-radius: 6px;
+    background: rgba(245, 158, 11, 0.12); color: var(--warn, #f59e0b);
+  }
+  .settings-info { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 0; }
+  .settings-info dt { color: var(--ink-2); }
+  .settings-info dd { margin: 0; word-break: break-all; user-select: text; }
+  .settings-links, .settings-update, .settings-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .settings-update-status { color: var(--ink-2); }
+  .settings-field { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin: 4px 0; }
+  .settings-field > span:first-child, .settings-field > label:first-child { color: var(--ink-2); min-width: 120px; }
+  .settings-field label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+  .settings-note { color: var(--ink-2); font-size: 11px; }
+  .settings-actions { justify-content: flex-end; margin-top: 14px; }
 </style>
 </head>
 <body>
@@ -601,7 +632,7 @@
       <!-- Les onglets du ruban viennent de ribbon.json (main.js les insère
            avant .push ; les plugins ajoutent les leurs à la suite). -->
       <span class="push"></span>
-      <button id="btn-settings" title="Réglages"><img src="icons/FreeSolid_Settings.svg" alt=""></button>
+      <button id="btn-settings" title="Paramètres — version, mises à jour, réglages"><img src="icons/FreeSolid_Settings.svg" alt=""></button>
       <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt=""></button>
       <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/edit-undo.svg" alt=""></button>
       <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img src="icons/edit-redo.svg" alt=""></button>
@@ -741,11 +772,8 @@
     </div>
   </div>
   <div id="param-pick"></div>
-  <div id="settings-menu">
-    <div class="menu-label">Libellés du ruban</div>
-    <div class="menu-item" data-ribbon-labels="icons-and-text">Icônes et texte</div>
-    <div class="menu-item" data-ribbon-labels="icons-only">Icônes seules</div>
-  </div>
+  <!-- Panneau Paramètres : rendu par settings.js à l'ouverture. -->
+  <div id="settings-dialog" hidden></div>
 
   <footer>
     <span id="status">Moteur : en attente…</span>

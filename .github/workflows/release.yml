@@ -21,13 +21,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Le tag doit être v<version de tauri.conf.json>
+      - name: Le tag doit être v<VERSION>, et tauri.conf.json d'accord
         if: startsWith(github.ref, 'refs/tags/')
         run: |
+          version=$(tr -d '[:space:]' < VERSION)
           conf=$(python3 -c 'import json; print(json.load(open("desktop/src-tauri/tauri.conf.json"))["version"])')
           tag="${GITHUB_REF_NAME#v}"
-          if [ "$conf" != "$tag" ]; then
-            echo "tauri.conf.json dit $conf, le tag dit $tag : alignez les deux (desktop/README.md)."
+          if [ "$conf" != "$version" ] || [ "$version" != "$tag" ]; then
+            echo "VERSION dit $version, tauri.conf.json dit $conf, le tag dit $tag : alignez les trois (desktop/README.md)."
             exit 1
           fi
 

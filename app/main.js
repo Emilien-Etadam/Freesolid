@@ -18,6 +18,7 @@ import {
 import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
+import { createSettingsDialog } from "./settings.js";
 import {
   buildRibbonElement, buildTabButton, installCoreRibbons, isPluginId,
 } from "./ribbon.js";
@@ -2494,9 +2495,6 @@ function readRibbonLabels() {
 function applyRibbonLabels(mode) {
   const iconsOnly = mode === "icons-only";
   document.body.classList.toggle("ribbon-icons-only", iconsOnly);
-  for (const item of document.querySelectorAll("#settings-menu [data-ribbon-labels]")) {
-    item.classList.toggle("on", item.dataset.ribbonLabels === mode);
-  }
   try {
     localStorage.setItem(RIBBON_LABELS_KEY, mode);
   } catch {
@@ -2504,36 +2502,22 @@ function applyRibbonLabels(mode) {
   }
 }
 
-const settingsMenu = document.getElementById("settings-menu");
-const settingsBtn = document.getElementById("btn-settings");
-
-function closeSettingsMenu() {
-  settingsMenu.style.display = "none";
-}
-
-function openSettingsMenu() {
-  const rect = settingsBtn.getBoundingClientRect();
-  settingsMenu.style.display = "block";
-  settingsMenu.style.left =
-    Math.min(rect.left, window.innerWidth - 220) + "px";
-  settingsMenu.style.top = (rect.bottom + 4) + "px";
-}
-
 applyRibbonLabels(readRibbonLabels());
 
-settingsBtn.addEventListener("click", (event) => {
-  event.stopPropagation();
-  if (settingsMenu.style.display === "block") closeSettingsMenu();
-  else openSettingsMenu();
+// ---------- panneau Paramètres ----------
+
+const settingsDialog = createSettingsDialog({
+  root: document.getElementById("settings-dialog"),
+  doc: document,
+  win: window,
+  call,
+  ribbonLabels: { read: readRibbonLabels, apply: applyRibbonLabels },
+  storage: (() => { try { return window.localStorage; } catch { return null; } })(),
+  navigatorLang: navigator.language,
 });
-settingsMenu.addEventListener("click", (event) => event.stopPropagation());
-for (const item of settingsMenu.querySelectorAll("[data-ribbon-labels]")) {
-  item.addEventListener("click", () => {
-    applyRibbonLabels(item.dataset.ribbonLabels);
-    closeSettingsMenu();
-  });
-}
-document.addEventListener("click", closeSettingsMenu);
+document.getElementById("btn-settings").addEventListener("click", () => {
+  settingsDialog.toggle();
+});
 
 // Cliquer une fonction pendant une esquisse la termine d'abord — le
 // réflexe SolidWorks : on dessine, puis on clique Bossage, sans passer

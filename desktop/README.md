@@ -101,7 +101,11 @@ signatures que l'updater vérifie.
    moteur et affichée dans Paramètres) et `desktop/src-tauri/tauri.conf.json`
    (`version`) ; le workflow refuse un tag qui ne correspond pas, et
    `tests/test_platform.py` vérifie que les deux fichiers s'accordent.
-2. `git tag v0.1.0 && git push origin v0.1.0`.
+2. Au choix :
+   - onglet **Actions** → « Release desktop » → **Run workflow**, numéro de
+     version (ex. `0.1.1`) : le workflow crée le tag sur la tête de `main`
+     et refuse un tag déjà existant ;
+   - ou `git tag v0.1.1 && git push origin v0.1.1`.
 
 ### Clé de signature (une fois)
 

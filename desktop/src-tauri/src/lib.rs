@@ -154,7 +154,7 @@ async fn start_engine(app: AppHandle, state: State<'_, EngineState>) -> Result<S
     })
     .await
     .map_err(|e| e.to_string())??;
-    let url = freecad::engine::url();
+    let url = engine.url();
     *state.0.lock().map_err(|e| e.to_string())? = Some(engine);
     open_cad_window(&app, &url)?;
     Ok(url)

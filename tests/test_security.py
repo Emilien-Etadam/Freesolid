@@ -116,6 +116,23 @@ def test_resolve_data_dir_env(tmp_path, monkeypatch):
 
 # -- handlers HTTP (fonctions pures) -------------------------------------
 
+def test_port_from_env():
+    assert server._port_from_env(None) == 8787
+    assert server._port_from_env("") == 8787
+    assert server._port_from_env("8790") == 8790
+    assert server._port_from_env(" 8791 ") == 8791
+    assert server._port_from_env("abc") == 8787
+    assert server._port_from_env("0") == 8787
+    assert server._port_from_env("70000") == 8787
+
+
+def test_parent_pid_from_env():
+    assert server._parent_pid_from_env("1234") == 1234
+    assert server._parent_pid_from_env(None) is None
+    assert server._parent_pid_from_env("x") is None
+    assert server._parent_pid_from_env("-1") is None
+
+
 def test_origin_absent_ok():
     assert server._origin_ok(None) is True
     assert server._origin_ok("") is True

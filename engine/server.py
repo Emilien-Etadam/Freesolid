@@ -37,7 +37,19 @@ from engine import kernel as kernel_mod          # noqa: E402
 from engine import protocol                      # noqa: E402
 from engine.i18n import translate                # noqa: E402
 
-PORT = 8787
+
+
+def _port_from_env(value, default=8787):
+    """Port d'écoute : ``FREESOLID_PORT`` (l'application de bureau en
+    choisit un libre), sinon 8787."""
+    try:
+        port = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    return port if 0 < port < 65536 else default
+
+
+PORT = _port_from_env(os.environ.get("FREESOLID_PORT"))
 _APP_DIR = os.path.join(_REPO_ROOT, "app")
 _MAX_BODY_BYTES = 4 * 1024 * 1024
 
@@ -320,9 +332,45 @@ def main():
         pass
 
 
+def _watch_parent(pid):
+    """S'arrête quand le processus parent (l'application de bureau) meurt.
+
+    Un moteur orphelin gardait son port et servait une vieille version à
+    l'app suivante. Windows : attente sur le handle du processus ; ailleurs,
+    le ppid change (init ou sous-reaper) quand le parent disparaît.
+    """
+    def wait_then_exit():
+        if sys.platform == "win32":
+            import ctypes
+            synchronize = 0x00100000
+            handle = ctypes.windll.kernel32.OpenProcess(synchronize, False, pid)
+            if handle:
+                ctypes.windll.kernel32.WaitForSingleObject(handle, 0xFFFFFFFF)
+            else:
+                return
+        else:
+            while os.getppid() == pid:
+                time.sleep(2)
+        os._exit(0)
+
+    threading.Thread(target=wait_then_exit, name="parent-watchdog",
+                     daemon=True).start()
+
+
+def _parent_pid_from_env(value):
+    try:
+        pid = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return pid if pid > 0 else None
+
+
 # No `if __name__ == "__main__"` guard: freecadcmd executes scripts without
 # setting __name__ to "__main__", so the guard made the server import cleanly
 # and exit without serving (seen on 1.1.3). The env var is the escape hatch
 # for anything that needs to import this module without binding the port.
 if os.environ.get("FREESOLID_NO_SERVE") != "1":
+    _parent = _parent_pid_from_env(os.environ.get("FREESOLID_PARENT_PID"))
+    if _parent:
+        _watch_parent(_parent)
     main()

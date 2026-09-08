@@ -34,7 +34,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     launchOptions.executablePath = process.env.CHROMIUM_PATH;
   }
   const browser = await chromium.launch(launchOptions);
-  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  // Le parcours lit les textes français ; la langue par défaut de
+  // l'interface suit navigator.language, donc on fixe la locale du
+  // navigateur (le runner CI est en en-US). Le pas « anglais » choisit
+  // l'anglais explicitement via localStorage, qui prime sur la locale.
+  const page = await browser.newPage({
+    viewport: { width: 1400, height: 900 },
+    locale: "fr-FR",
+  });
 
   // Hermétique : si three est installé localement (npm install dans ce
   // dossier), on le sert à la place d'unpkg — même version épinglée que
@@ -163,18 +170,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(200);
 
   const settingsItem = async (value) => {
-    // Un clic parasite (fermeture de panneau) peut avoir refermé le
-    // menu : le rouvrir si l'entrée n'est pas visible.
-    const item = page.locator('[data-ribbon-labels="' + value + '"]');
+    // Le panneau Paramètres (settings.js) : la case « libellés du ruban »
+    // s'applique au changement ; on rouvre le panneau s'il est fermé.
+    const item = page.locator(
+      '#settings-dialog input[name="ribbon-labels"][value="' + value + '"]');
     if (!(await item.isVisible())) {
       await page.click("#btn-settings");
-      await sleep(200);
+      await sleep(300);
     }
-    await item.click({ timeout: 5000 });
+    await item.check({ timeout: 5000 });
   };
   await page.click("#btn-settings");
-  await sleep(200);
+  await sleep(400);
   await page.screenshot({ path: path.join(SHOTS, "0b-menu-reglages.png") });
+  const settingsRows = await page.$$eval("#settings-dialog .settings-info dt",
+    (dts) => dts.map((d) => d.textContent));
+  if (!settingsRows.includes("FreeSolid") || !settingsRows.includes("FreeCAD")) {
+    errors.push("Paramètres : lignes FreeSolid/FreeCAD absentes (" + settingsRows + ")");
+  }
   await settingsItem("icons-only");
   await sleep(200);
   const iconsOnly = await page.evaluate(() =>
@@ -204,15 +217,53 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }
   }
   await page.screenshot({ path: path.join(SHOTS, "0c-icones-seules.png") });
-  await page.click("#btn-settings");
-  await sleep(150);
+  // Le panneau reste ouvert après le premier choix : settingsItem le
+  // rouvre seulement s'il est fermé (un clic sur l'engrenage derrière la
+  // surcouche serait intercepté).
   await settingsItem("icons-and-text");
   await sleep(200);
   const iconsAndText = await page.evaluate(() =>
     !document.body.classList.contains("ribbon-icons-only")
     && localStorage.getItem("freesolid.ribbonLabels") === "icons-and-text");
   if (!iconsAndText) errors.push("Icônes et texte : classe encore posée");
+  // Le panneau est une surcouche : le fermer (Échap) avant la suite, sinon
+  // il intercepterait les clics sur le ruban.
+  await page.keyboard.press("Escape");
+  await sleep(200);
+  if (await page.locator("#settings-dialog").isVisible()) {
+    errors.push("Paramètres : le panneau ne se ferme pas avec Échap");
+    await page.click('#settings-dialog [data-action="close"]').catch(() => {});
+  }
   await step("réglages ruban");
+
+  // Multilingue : la langue enregistrée s'applique au rechargement — ruban,
+  // arbre, puis retour au français pour la suite du parcours.
+  await page.evaluate(() => localStorage.setItem("freesolid.lang", "en"));
+  await page.reload();
+  // La page redémarre : on attend le ping du moteur (barre d'état en
+  // anglais) avant de lire l'interface.
+  await page.waitForFunction(
+    () => (document.getElementById("status")?.textContent || "").includes("Engine ready"),
+    null, { timeout: 15000 }).catch(() => {});
+  await sleep(300);
+  const englishTab = await page.$eval('[data-tab="features"]', (el) => el.textContent.trim());
+  const englishStatus = await status();
+  const englishFolder = await page.$$eval("#tree li", (rows) =>
+    rows.map((r) => r.textContent).join(" | "));
+  if (englishTab !== "Features") errors.push("anglais : onglet « " + englishTab + " » au lieu de Features");
+  if (!englishStatus.includes("Engine ready")) errors.push("anglais : barre d'état « " + englishStatus + " »");
+  // Avec une pièce : le dossier « Solid Bodies » ; sans : le texte vide,
+  // traduit lui aussi. Les deux prouvent que l'arbre est en anglais.
+  if (!englishFolder.includes("Solid Bodies") && !englishFolder.includes("— no document —")) {
+    errors.push("anglais : arbre non traduit (" + englishFolder.slice(0, 80) + ")");
+  }
+  const englishLang = await page.evaluate(() => document.documentElement.lang);
+  if (englishLang !== "en") errors.push("anglais : <html lang> vaut " + englishLang);
+  await page.screenshot({ path: path.join(SHOTS, "0c-anglais.png") });
+  await page.evaluate(() => localStorage.setItem("freesolid.lang", "fr"));
+  await page.reload();
+  await sleep(800);
+  await step("anglais");
 
   // 1. Esquisse — choix du plan dans le viewport. Deux courses possibles
   // juste après le balayage des panneaux : le clic #btn-sketch avalé, ou

@@ -1,5 +1,11 @@
 # FreeSolid
 
+> **Version de développement, non fonctionnelle.** FreeSolid est un
+> prototype en cours de construction : des fonctions manquent, d'autres
+> cassent, et les fichiers produits peuvent ne pas se rouvrir d'une version
+> à l'autre. Ne l'utilisez pas pour un vrai travail. Les retours sont
+> bienvenus dans les [issues](https://github.com/Emilien-Etadam/Freesolid/issues).
+
 Interface de CAO mécanique moderne sur un moteur FreeCAD headless intact — les fichiers restent des `.FCStd`
 standard, ouvrables dans FreeCAD.
 
@@ -93,6 +99,23 @@ et procédure de publication dans [`desktop/README.md`](desktop/README.md).
 - **Mise en plan** DXF cotée (vues Face / Dessus / Iso), coupe X/Y/Z
   optionnelle
 - **Image d'esquisse** (calque de fond)
+
+## Langue
+
+L'interface est en français ou en anglais : bouton engrenage → Paramètres →
+Langue (la langue du navigateur est prise par défaut). Le moteur nomme les
+fonctions de l'arbre et rédige ses messages d'erreur dans la langue de
+l'interface ; les noms déjà enregistrés dans un `.FCStd` ne sont pas
+traduits, ce sont les données de l'utilisateur.
+
+Le français est la langue source : le code et `app/ribbon.json` portent les
+textes français, `app/lang/en.json` (interface) et `engine/lang/en.json`
+(moteur) les traduisent, texte par texte, `{variable}` côté interface et
+`{}` côté moteur. Un texte sans traduction s'affiche en français. Ajouter
+une langue = un fichier JSON de chaque côté, plus son code dans
+`app/settings.js` (`LANGS`) et `engine/i18n.py` (`LANGS`). Les tests
+refusent une entrée orpheline et exigent une traduction pour chaque libellé
+du ruban et chaque titre de panneau.
 
 ## Architecture
 

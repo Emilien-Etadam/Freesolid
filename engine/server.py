@@ -16,6 +16,18 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# Les marques du selftest et les messages sont en français. Quand stdout
+# n'est pas un terminal (journal de l'application de bureau, redirection),
+# Python prend l'encodage de la locale — cp1252 sous Windows — et
+# « → » fait échouer l'étape qui l'imprime (« 'charmap' codec can't
+# encode character »). FreeCAD n'honore pas PYTHONIOENCODING ; on force
+# donc l'UTF-8 ici, comme scripts/run-selftest.py.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # pas un TextIOWrapper (console FreeCAD) : tant pis
+        pass
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_HERE)
 if _REPO_ROOT not in sys.path:
@@ -23,6 +35,7 @@ if _REPO_ROOT not in sys.path:
 
 from engine import kernel as kernel_mod          # noqa: E402
 from engine import protocol                      # noqa: E402
+from engine.i18n import translate                # noqa: E402
 
 PORT = 8787
 _APP_DIR = os.path.join(_REPO_ROOT, "app")
@@ -79,12 +92,22 @@ def _feed_progress(phase, fait=0, total=0):
     )
 
 
-def run_op(op, params):
+def _localized(envelope, lang):
+    """Enveloppe d'erreur traduite dans ``lang`` (message et indice)."""
+    if lang != "fr" and isinstance(envelope, dict) and envelope.get("ok") is False:
+        for key in ("error", "hint"):
+            if isinstance(envelope.get(key), str):
+                envelope[key] = translate(envelope[key], lang)
+    return envelope
+
+
+def run_op(op, params, lang="fr"):
     """Exécute une op validée.
 
     ``progress`` lit l'état de module et rend la main immédiatement.
     Toute autre op prend ``_KERNEL_LOCK`` et nourrit l'avancement via
-    un callback, pas un import.
+    un callback, pas un import. ``lang`` est la langue de l'interface :
+    le noyau nomme dans cette langue ce qu'il crée (libellés d'arbre).
     """
     if op == "progress":
         return protocol.ok(_progress_snapshot())
@@ -93,6 +116,7 @@ def run_op(op, params):
             op=op, phase="", fait=0, total=0, depuis=time.time())
         previous = _KERNEL._progress
         _KERNEL._progress = _feed_progress
+        _KERNEL.lang = lang
         try:
             return kernel_mod.dispatch(_KERNEL, op, params)
         finally:
@@ -232,13 +256,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(status, protocol.err(message))
             return
         length = check[1]
+        payload = None
         try:
             payload = json.loads(self.rfile.read(length) or b"{}")
             op, params = protocol.validate_request(payload)
         except (protocol.ProtocolError, ValueError) as exc:
-            self._send(400, protocol.err(str(exc)))
+            lang = protocol.request_lang(payload)
+            self._send(400, _localized(protocol.err(str(exc)), lang))
             return
-        self._send(200, run_op(op, params))
+        lang = protocol.request_lang(payload)
+        self._send(200, _localized(run_op(op, params, lang), lang))
 
     # -- static UI -------------------------------------------------------
 

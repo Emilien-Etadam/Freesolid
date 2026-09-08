@@ -18,6 +18,19 @@ import {
 import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
+import { createSettingsDialog, readLang } from "./settings.js";
+import { currentLang, setLang, t, translateDom } from "./i18n.js";
+
+// La langue avant tout rendu : ruban, panneaux et messages passent par t().
+setLang(readLang((() => { try { return window.localStorage; } catch { return null; } })(),
+  navigator.language));
+document.documentElement.lang = currentLang();
+translateDom(document.body);
+
+// prompt()/confirm() natifs, message traduit : les appels gardent le texte
+// source en français, le dictionnaire fait le reste.
+const prompt = (message, fallback) => window.prompt(t(message), fallback);
+const confirm = (message) => window.confirm(t(message));
 import {
   buildRibbonElement, buildTabButton, installCoreRibbons, isPluginId,
 } from "./ribbon.js";
@@ -72,7 +85,9 @@ async function call(op, params = {}) {
   const response = await fetch("/api", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ op, params }),
+    // La langue de l'interface part avec chaque requête : le moteur nomme
+    // ce qu'il crée et rédige ses erreurs dans cette langue.
+    body: JSON.stringify({ op, params, lang: currentLang() }),
   });
   const text = await response.text();
   let payload = null;
@@ -138,10 +153,10 @@ function stopProgressWatch() {
 function say(text, isError = false) {
   if (statusSticky && !isError) return;
   if (!isError) statusSticky = false;
-  statusEl.textContent = text;
+  statusEl.textContent = t(text);
   statusEl.className = isError ? "err" : "";
   if (statusSticky) statusEl.classList.add("sticky");
-  statusEl.title = statusSticky ? "Cliquer pour fermer" : "";
+  statusEl.title = statusSticky ? t("Cliquer pour fermer") : "";
 }
 
 /** Erreur qui reste jusqu'à ce que l'utilisateur clique la barre d'état. */
@@ -964,15 +979,15 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     const label = (p) => `${p.kind === "edge" ? "arête" : "face"} ${p.id}`;
     if (!measureFirst) {
       measureFirst = pick;
-      say(`Mesurer : ${label(pick)} — cliquez le second élément`);
+      say(t("Mesurer : {a} — cliquez le second élément", { a: label(pick) }));
     } else {
       const first = measureFirst;
       measuring = false;
       measureFirst = null;
       call("measure", { a_kind: first.kind, a_id: first.id,
                         b_kind: pick.kind, b_id: pick.id })
-        .then((r) => say(`Distance ${label(first)} ↔ ${label(pick)} : ` +
-                         `${r.distance.toFixed(3)} mm`))
+        .then((r) => say(t("Distance {a} ↔ {b} : {d} mm",
+          { a: label(first), b: label(pick), d: r.distance.toFixed(3) })))
         .catch((error) => say(error.message, true));
     }
     return;
@@ -1183,12 +1198,12 @@ async function showFeatureDims(featureName, hit) {
     featureDimSprites.push(sprite);
   }
   if (!featureDimSprites.length) {
-    say(`${feature.label} : aucune cote à afficher`);
+    say(t("{f} : aucune cote à afficher", { f: feature.label }));
     return;
   }
   if (lastTree) renderTree(lastTree);
-  say(`${feature.label} : ${featureDimSprites.length} cote(s) — `
-    + "double-clic une cote pour la changer");
+  say(t("{f} : {n} cote(s) — double-clic une cote pour la changer",
+    { f: feature.label, n: featureDimSprites.length }));
 }
 
 function pickFeatureDim(event) {
@@ -1700,7 +1715,7 @@ function openSketchInfoPanel(state, feature) {
     title: state.label || feature.label,
     noApply: true,
     groups: [{
-      label: "Propriétés",
+      label: t("Propriétés"),
       rows: [
         { type: "note",
           text: `Support : ${state.support || "—"}` },
@@ -1712,8 +1727,8 @@ function openSketchInfoPanel(state, feature) {
       ],
     }],
     actions: [{
-      label: "Modifier",
-      title: "Modifier l'esquisse",
+      label: t("Modifier"),
+      title: t("Modifier l'esquisse"),
       className: "paction",
       onClick: () => {
         sketchInfoOpen = false;
@@ -1851,7 +1866,7 @@ function appendBodyRow(bodyInfo) {
     : (bodyInfo.active ? "" : ` — ${bodyInfo.count} élément(s)`);
   bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix));
   if (!bodyInfo.active && bodyInfo.name) {
-    bodyItem.title = "Clic : activer ce corps";
+    bodyItem.title = t("Clic : activer ce corps");
     bodyItem.addEventListener("click", () =>
       refresh(call("set_active_body", { body: bodyInfo.name })));
   }
@@ -1887,9 +1902,9 @@ function appendSurfaceRow(surface, { inFolder = true, rolledBack = false } = {})
   item.appendChild(treeIcon(
     isGraphFeature(surface) ? "Geoassembly.svg" : "Part_3D_object.svg"));
   item.appendChild(document.createTextNode(surface.label));
-  item.title = "Surface / courbe — clic : sélectionner pour une " +
+  item.title = t("Surface / courbe — clic : sélectionner pour une " +
     "commande · double-clic : modifier · clic droit : modifier, " +
-    "renommer, supprimer";
+    "renommer, supprimer");
   item.addEventListener("click", () => onSurfaceClick(surface));
   item.addEventListener("dblclick", () => onSurfaceDblClick(surface));
   item.addEventListener("contextmenu", (event) => openMenu(event, surface));
@@ -1915,8 +1930,8 @@ function appendSurfaceRow(surface, { inFolder = true, rolledBack = false } = {})
 function appendRollbackBar(tree) {
   const bar = document.createElement("li");
   bar.className = "rollback";
-  bar.textContent = "▲ barre de retour arrière ▲";
-  bar.title = "Glisser pour déplacer · double-clic : revenir à l'état final";
+  bar.textContent = t("▲ barre de retour arrière ▲");
+  bar.title = t("Glisser pour déplacer · double-clic : revenir à l'état final");
   bar.addEventListener("dblclick", () => refresh(call("tip_to_end")));
   bindRollbackDrag(bar, tree);
   treeEl.appendChild(bar);
@@ -2045,26 +2060,26 @@ function renderTree(tree) {
 
   // Ordre SolidWorks : dossiers en tête, puis plans, puis fonctions.
   const bodiesOpen = appendFolder(
-    "bodies", "Corps volumiques", solidCount, "PartDesign_Body.svg",
+    "bodies", t("Corps volumiques"), solidCount, "PartDesign_Body.svg",
     bodiesDefaultOpen,
-    { title: "Corps de la pièce — clic : déplier" });
+    { title: t("Corps de la pièce — clic : déplier") });
   if (bodiesOpen) {
     for (const bodyInfo of bodies) appendBodyRow(bodyInfo);
   }
 
   const surfacesOpen = appendFolder(
-    "surfaces", "Corps surfaciques", surfaces.length, "Part_3D_object.svg",
+    "surfaces", t("Corps surfaciques"), surfaces.length, "Part_3D_object.svg",
     surfacesDefaultOpen,
-    { title: "Surfaces et courbes — clic : déplier" });
+    { title: t("Surfaces et courbes — clic : déplier") });
   if (surfacesOpen) {
     for (const surface of surfaces) appendSurfaceRow(surface);
   }
 
   const equationsOpen = appendFolder(
-    "equations", "Équations", variables.length, "VarSet.svg", false,
+    "equations", t("Équations"), variables.length, "VarSet.svg", false,
     {
       clickToggles: false,
-      title: "Double-clic : ouvrir les équations",
+      title: t("Double-clic : ouvrir les équations"),
       onDblClick: openEquationsPanel,
     });
   if (equationsOpen) {
@@ -2074,7 +2089,7 @@ function renderTree(tree) {
       row.appendChild(treeIcon("VarSet.svg"));
       row.appendChild(document.createTextNode(
         `${variable.name} = ${variable.value}`));
-      row.title = "Double-clic : ouvrir les équations";
+      row.title = t("Double-clic : ouvrir les équations");
       row.addEventListener("dblclick", openEquationsPanel);
       treeEl.appendChild(row);
     }
@@ -2094,7 +2109,7 @@ function renderActiveBodyContents(tree) {
     item.className = "plane" + (selectedPlane === plane.id ? " sel" : "");
     item.appendChild(treeIcon("Std_Plane.svg"));
     item.appendChild(document.createTextNode(plane.label));
-    item.title = "Clic : choisir ce plan pour la prochaine esquisse";
+    item.title = t("Clic : choisir ce plan pour la prochaine esquisse");
     item.addEventListener("click", () => onPlaneRow(plane.id));
     item.addEventListener("mouseenter", () => {
       treeHoverPlane = plane.id;
@@ -2258,30 +2273,30 @@ async function editFeature(feature) {
   }
   if (feature.text) {
     // Gravure rééditable (P032) : panneau dédié -> edit_text.
-    const t = feature.text;
+    const txt = feature.text;
     panel.open({
       icon: TREE_ICONS[feature.type] ?? "PartDesign_Body.svg",
       title: feature.label,
       groups: [{
-        label: "Gravure",
+        label: t("Gravure"),
         rows: [
-          { type: "text", key: "text", label: "Texte", value: t.text },
-          { type: "number", key: "size", label: "Taille", unit: "mm",
-            value: t.size },
-          { type: "number", key: "depth", label: "Profondeur", unit: "mm",
-            value: t.depth },
-          { type: "number", key: "x", label: "X", unit: "mm", value: t.x },
-          { type: "number", key: "y", label: "Y", unit: "mm", value: t.y },
+          { type: "text", key: "text", label: t("Texte"), value: txt.text },
+          { type: "number", key: "size", label: t("Taille"), unit: "mm",
+            value: txt.size },
+          { type: "number", key: "depth", label: t("Profondeur"), unit: "mm",
+            value: txt.depth },
+          { type: "number", key: "x", label: t("X"), unit: "mm", value: txt.x },
+          { type: "number", key: "y", label: t("Y"), unit: "mm", value: txt.y },
         ],
       }],
       onApply: (v) => {
         refresh(call("edit_text", {
           feature: feature.name,
-          text: String(v.text ?? t.text),
-          size: num(v.size) ?? t.size,
-          depth: num(v.depth) ?? t.depth,
-          x: num(v.x) ?? t.x,
-          y: num(v.y) ?? t.y,
+          text: String(v.text ?? txt.text),
+          size: num(v.size) ?? txt.size,
+          depth: num(v.depth) ?? txt.depth,
+          x: num(v.x) ?? txt.x,
+          y: num(v.y) ?? txt.y,
         }));
       },
     });
@@ -2290,7 +2305,7 @@ async function editFeature(feature) {
   try {
     const info = await call("get_params", { feature: feature.name });
     if (!info.params.length) {
-      say(`${info.label} : aucun paramètre numérique éditable`);
+      say(t("{f} : aucun paramètre numérique éditable", { f: info.label }));
       return;
     }
     // Champs texte : nombre OU expression (« 2*Variables.Largeur ») —
@@ -2308,7 +2323,7 @@ async function editFeature(feature) {
       icon: TREE_ICONS[feature.type] ?? "PartDesign_Body.svg",
       title: info.label,
       groups: [{
-        label: "Paramètres",
+        label: t("Paramètres"),
         rows: info.params.map((p) => {
           const [label, unit] = PROP_LABELS[p.prop] ?? [p.prop, "mm"];
           return { type: "text", key: p.prop,
@@ -2421,7 +2436,7 @@ document.getElementById("ctx-end").addEventListener("click", () =>
   refresh(call("tip_to_end")));
 document.getElementById("ctx-delete").addEventListener("click", () => {
   if (!menuFeature) return;
-  if (confirm(`Supprimer « ${menuFeature.label} » ?`))
+  if (confirm(t("Supprimer « {f} » ?", { f: menuFeature.label })))
     refreshAny(call("delete_feature", { feature: menuFeature.name }));
 });
 
@@ -2494,9 +2509,6 @@ function readRibbonLabels() {
 function applyRibbonLabels(mode) {
   const iconsOnly = mode === "icons-only";
   document.body.classList.toggle("ribbon-icons-only", iconsOnly);
-  for (const item of document.querySelectorAll("#settings-menu [data-ribbon-labels]")) {
-    item.classList.toggle("on", item.dataset.ribbonLabels === mode);
-  }
   try {
     localStorage.setItem(RIBBON_LABELS_KEY, mode);
   } catch {
@@ -2504,36 +2516,22 @@ function applyRibbonLabels(mode) {
   }
 }
 
-const settingsMenu = document.getElementById("settings-menu");
-const settingsBtn = document.getElementById("btn-settings");
-
-function closeSettingsMenu() {
-  settingsMenu.style.display = "none";
-}
-
-function openSettingsMenu() {
-  const rect = settingsBtn.getBoundingClientRect();
-  settingsMenu.style.display = "block";
-  settingsMenu.style.left =
-    Math.min(rect.left, window.innerWidth - 220) + "px";
-  settingsMenu.style.top = (rect.bottom + 4) + "px";
-}
-
 applyRibbonLabels(readRibbonLabels());
 
-settingsBtn.addEventListener("click", (event) => {
-  event.stopPropagation();
-  if (settingsMenu.style.display === "block") closeSettingsMenu();
-  else openSettingsMenu();
+// ---------- panneau Paramètres ----------
+
+const settingsDialog = createSettingsDialog({
+  root: document.getElementById("settings-dialog"),
+  doc: document,
+  win: window,
+  call,
+  ribbonLabels: { read: readRibbonLabels, apply: applyRibbonLabels },
+  storage: (() => { try { return window.localStorage; } catch { return null; } })(),
+  navigatorLang: navigator.language,
 });
-settingsMenu.addEventListener("click", (event) => event.stopPropagation());
-for (const item of settingsMenu.querySelectorAll("[data-ribbon-labels]")) {
-  item.addEventListener("click", () => {
-    applyRibbonLabels(item.dataset.ribbonLabels);
-    closeSettingsMenu();
-  });
-}
-document.addEventListener("click", closeSettingsMenu);
+document.getElementById("btn-settings").addEventListener("click", () => {
+  settingsDialog.toggle();
+});
 
 // Cliquer une fonction pendant une esquisse la termine d'abord — le
 // réflexe SolidWorks : on dessine, puis on clique Bossage, sans passer
@@ -2565,29 +2563,29 @@ function setClip(axis, position, flip) {
   if (flip) n.negate();
   renderer.clippingPlanes = [
     new THREE.Plane(n, flip ? position : -position)];
-  say(`Coupe ${axis} à ${position} mm — purement visuelle.`);
+  say(t("Coupe {axis} à {position} mm — purement visuelle.", { axis, position }));
 }
 
 document.getElementById("btn-clip").addEventListener("click", () => {
   const active = renderer.clippingPlanes.length > 0;
   panel.open({
     icon: "Std_ToggleClipPlane.svg",
-    title: "Plan de coupe",
+    title: t("Plan de coupe"),
     groups: [{
-      label: "Coupe visuelle",
+      label: t("Coupe visuelle"),
       rows: [
         { type: "select", key: "axis", value: active ? "X" : "X",
-          label: "Axe",
+          label: t("Axe"),
           options: [["off", "Aucune"], ["X", "X"], ["Y", "Y"],
                     ["Z", "Z"]] },
-        { type: "number", key: "position", label: "Position", value: 0,
+        { type: "number", key: "position", label: t("Position"), value: 0,
           unit: "mm", showIf: (v) => v.axis !== "off" },
-        { type: "check", key: "flip", label: "Inverser le côté",
+        { type: "check", key: "flip", label: t("Inverser le côté"),
           value: false, showIf: (v) => v.axis !== "off" },
       ],
     }],
-    note: "N'enlève pas de matière : la pièce est seulement montrée " +
-          "coupée à l'écran.",
+    note: t("N'enlève pas de matière : la pièce est seulement montrée " +
+          "coupée à l'écran."),
     onApply: (v) => setClip(v.axis, num(v.position) ?? 0, !!v.flip),
   });
 });
@@ -3029,12 +3027,12 @@ async function openParamPicker(featureName, variableName, clientX, clientY) {
   }
   const params = Array.isArray(info.params) ? info.params : [];
   if (!params.length) {
-    say(`${info.label ?? featureName} : aucune cote éditable`, true);
+    say(t("{f} : aucune cote éditable", { f: info.label ?? featureName }), true);
     return;
   }
   const heading = document.createElement("div");
   heading.className = "menu-label";
-  heading.textContent = "Cote à piloter";
+  heading.textContent = t("Cote à piloter");
   paramPickEl.appendChild(heading);
   for (const param of params) {
     const item = document.createElement("div");
@@ -3167,7 +3165,7 @@ function appendFunctionPorts(group, node) {
       "data-side": "out",
       "data-node": node.name,
     });
-    circle.appendChild(svgEl("title")).textContent = "Sortie";
+    circle.appendChild(svgEl("title")).textContent = t("Sortie");
     circle.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
       event.stopPropagation();
@@ -3462,7 +3460,7 @@ function moveFunctionNode(event) {
 
 function deleteFeatureWithConfirm(feature) {
   if (!feature) return;
-  if (confirm(`Supprimer « ${feature.label} » ?`)) {
+  if (confirm(t("Supprimer « {f} » ?", { f: feature.label }))) {
     refreshAny(call("delete_feature", { feature: feature.name }));
   }
 }
@@ -3512,7 +3510,7 @@ function openGraphPalette({ profileSketch = null, clientX, clientY } = {}) {
   if (graphFn.active) {
     const heading = document.createElement("div");
     heading.className = "menu-label";
-    heading.textContent = "Nœud à poser";
+    heading.textContent = t("Nœud à poser");
     graphPalette.appendChild(heading);
     for (const group of graphNodePaletteGroups(graphFn.vocabulary)) {
       const cat = document.createElement("div");
@@ -3585,7 +3583,7 @@ function openGraphPalette({ profileSketch = null, clientX, clientY } = {}) {
 
   const heading = document.createElement("div");
   heading.className = "menu-label";
-  heading.textContent = "Ajouter une fonction";
+  heading.textContent = t("Ajouter une fonction");
   graphPalette.appendChild(heading);
   if (graphPaletteProfile?.name) {
     const profile = document.createElement("div");
@@ -3638,8 +3636,8 @@ function openGraphPalette({ profileSketch = null, clientX, clientY } = {}) {
 
   const wall = document.createElement("div");
   wall.className = "menu-label graph-palette-wall";
-  wall.textContent = "L'historique est linéaire — la fonction se pose "
-    + "à la barre de reprise.";
+  wall.textContent = t("L'historique est linéaire — la fonction se pose "
+    + "à la barre de reprise.");
   graphPalette.appendChild(wall);
 
   placeGraphMenu(graphPalette, clientX ?? 24, clientY ?? 56);
@@ -3666,7 +3664,7 @@ function openLiteralEditor(nodeId, key, clientX, clientY) {
     }
     const ok = document.createElement("button");
     ok.type = "button";
-    ok.textContent = "OK";
+    ok.textContent = t("OK");
     ok.addEventListener("click", (event) => {
       event.stopPropagation();
       const axes = {};
@@ -3706,7 +3704,7 @@ function openLiteralEditor(nodeId, key, clientX, clientY) {
     });
     const ok = document.createElement("button");
     ok.type = "button";
-    ok.textContent = "OK";
+    ok.textContent = t("OK");
     ok.addEventListener("click", (event) => {
       event.stopPropagation();
       applyValue(area.value);
@@ -4152,29 +4150,29 @@ document.getElementById("btn-curve3d").addEventListener("click", () =>
 document.getElementById("btn-drawing").addEventListener("click", () => {
   panel.open({
     icon: "TechDraw_PageDefault.svg",
-    title: "Mise en plan",
+    title: t("Mise en plan"),
     groups: [
       {
-        label: "Fichier",
+        label: t("Fichier"),
         rows: [
-          { type: "text", key: "path", label: "Chemin",
+          { type: "text", key: "path", label: t("Chemin"),
             value: "~/piece-freesolid.dxf" },
-          { type: "number", key: "scale", label: "Échelle", value: "",
+          { type: "number", key: "scale", label: t("Échelle"), value: "",
             min: 0.01 },
         ],
       },
       {
-        label: "Annotations",
+        label: t("Annotations"),
         rows: [
-          { type: "check", key: "dims", label: "Cotes d'encombrement",
+          { type: "check", key: "dims", label: t("Cotes d'encombrement"),
             value: true },
-          { type: "select", key: "section", value: "", label: "Coupe",
+          { type: "select", key: "section", value: "", label: t("Coupe"),
             options: [["", "Aucune"], ["X", "X"], ["Y", "Y"],
                       ["Z", "Z"]] },
         ],
       },
     ],
-    note: "Trois vues (Face, Dessus, Iso) exportées en DXF.",
+    note: t("Trois vues (Face, Dessus, Iso) exportées en DXF."),
     onApply: (v) => {
       const path = (v.path ?? "").trim();
       if (!path) {
@@ -4189,11 +4187,10 @@ document.getElementById("btn-drawing").addEventListener("click", () => {
         try {
           const out = await call("make_drawing", params);
           let extra = "";
-          if (params.dims && out.dims_ok === false) extra += " (sans cotes)";
-          if (params.section && out.section_ok === false) extra += " (sans coupe)";
-          say(`Mise en plan exportée : ${out.path} ` +
-              `(${(out.size / 1024).toFixed(1)} Ko — Face, Dessus, Iso)` +
-              extra);
+          if (params.dims && out.dims_ok === false) extra += t(" (sans cotes)");
+          if (params.section && out.section_ok === false) extra += t(" (sans coupe)");
+              say(t("Mise en plan exportée : {path} ({size} Ko — Face, Dessus, Iso)",
+            { path: out.path, size: (out.size / 1024).toFixed(1) }) + extra);
         } catch (error) {
           say(error.message, true);
         }
@@ -4332,8 +4329,8 @@ function renderAssemblyTree(tree) {
     item.appendChild(treeIcon("Link.svg"));
     item.appendChild(document.createTextNode(
       comp.label + (comp.grounded ? " (fixé)" : "")));
-    item.title = "Clic : sélectionner · double-clic : déplacer · " +
-      "clic droit : renommer, supprimer";
+    item.title = t("Clic : sélectionner · double-clic : déplacer · " +
+      "clic droit : renommer, supprimer");
     item.addEventListener("click", () => selectComponent(comp.name));
     item.addEventListener("dblclick", () => {
       selectComponent(comp.name);
@@ -4344,7 +4341,7 @@ function renderAssemblyTree(tree) {
   }
   if (!tree.components.length) {
     const empty = document.createElement("li");
-    empty.textContent = "— insérez une pièce (.FCStd) —";
+    empty.textContent = t("— insérez une pièce (.FCStd) —");
     treeEl.appendChild(empty);
   }
   for (const joint of tree.joints ?? []) {
@@ -4371,21 +4368,21 @@ function openMovePanel() {
     icon: "Link.svg",
     title: `Déplacer — ${comp.label}`,
     groups: [
-      { label: "Translation",
+      { label: t("Translation"),
         rows: [
-          { type: "number", key: "x", label: "X", value: +x.toFixed(3), unit: "mm" },
-          { type: "number", key: "y", label: "Y", value: +y.toFixed(3), unit: "mm" },
-          { type: "number", key: "z", label: "Z", value: +z.toFixed(3), unit: "mm" },
+          { type: "number", key: "x", label: t("X"), value: +x.toFixed(3), unit: "mm" },
+          { type: "number", key: "y", label: t("Y"), value: +y.toFixed(3), unit: "mm" },
+          { type: "number", key: "z", label: t("Z"), value: +z.toFixed(3), unit: "mm" },
         ] },
-      { label: "Rotation",
+      { label: t("Rotation"),
         rows: [
-          { type: "number", key: "yaw", label: "Lacet (Z)", value: +yaw.toFixed(2), unit: "°" },
-          { type: "number", key: "pitch", label: "Tangage (Y)", value: +pitch.toFixed(2), unit: "°" },
-          { type: "number", key: "roll", label: "Roulis (X)", value: +roll.toFixed(2), unit: "°" },
+          { type: "number", key: "yaw", label: t("Lacet (Z)"), value: +yaw.toFixed(2), unit: "°" },
+          { type: "number", key: "pitch", label: t("Tangage (Y)"), value: +pitch.toFixed(2), unit: "°" },
+          { type: "number", key: "roll", label: t("Roulis (X)"), value: +roll.toFixed(2), unit: "°" },
         ] },
     ],
-    note: "v1 sans contraintes : positionnement direct — le solveur " +
-          "de contraintes d'assemblage viendra ensuite.",
+    note: t("v1 sans contraintes : positionnement direct — le solveur " +
+          "de contraintes d'assemblage viendra ensuite."),
     onApply: (v) => refreshAssembly(call("move_component", {
       component: comp.name,
       x: num(v.x) ?? 0, y: num(v.y) ?? 0,
@@ -4456,9 +4453,9 @@ document.getElementById("btn-joint").addEventListener("click", () => {
   };
   panel.open({
     icon: "Geoassembly.svg",
-    title: "Contrainte d'assemblage",
+    title: t("Contrainte d'assemblage"),
     groups: [
-      { label: "Type de contrainte",
+      { label: t("Type de contrainte"),
         rows: [
           { type: "select", key: "type", value: "fixe",
             options: [["fixe", "Fixe"], ["pivot", "Pivot"],
@@ -4469,11 +4466,11 @@ document.getElementById("btn-joint").addEventListener("click", () => {
                       ["cremaillere", "Crémaillère-pignon"],
                       ["vis", "Vis"], ["courroie", "Courroie"]] },
           { type: "number", key: "distance",
-            label: "Distance / rayon 1 / pas", value: 10,
+            label: t("Distance / rayon 1 / pas"), value: 10,
             unit: "mm", min: 0,
             showIf: (v) => v.type === "distance"
               || MECHANICAL.includes(v.type) },
-          { type: "number", key: "distance2", label: "Rayon 2", value: 10,
+          { type: "number", key: "distance2", label: t("Rayon 2"), value: 10,
             unit: "mm", min: 0,
             showIf: (v) => ["engrenages", "courroie"].includes(v.type) },
           { type: "note",
@@ -4481,28 +4478,28 @@ document.getElementById("btn-joint").addEventListener("click", () => {
                   "composants, la contrainte couple ensuite leurs " +
                   "mouvements.",
             showIf: (v) => MECHANICAL.includes(v.type) },
-          { type: "text", key: "angleMin", label: "Angle min", unit: "°",
-            placeholder: "aucune limite",
+          { type: "text", key: "angleMin", label: t("Angle min"), unit: "°",
+            placeholder: t("aucune limite"),
             showIf: (v) => ["pivot", "cylindrique"].includes(v.type) },
-          { type: "text", key: "angleMax", label: "Angle max", unit: "°",
-            placeholder: "aucune limite",
+          { type: "text", key: "angleMax", label: t("Angle max"), unit: "°",
+            placeholder: t("aucune limite"),
             showIf: (v) => ["pivot", "cylindrique"].includes(v.type) },
-          { type: "text", key: "lengthMin", label: "Longueur min",
-            unit: "mm", placeholder: "aucune limite",
+          { type: "text", key: "lengthMin", label: t("Longueur min"),
+            unit: "mm", placeholder: t("aucune limite"),
             showIf: (v) => ["glissiere", "cylindrique"].includes(v.type) },
-          { type: "text", key: "lengthMax", label: "Longueur max",
-            unit: "mm", placeholder: "aucune limite",
+          { type: "text", key: "lengthMax", label: t("Longueur max"),
+            unit: "mm", placeholder: t("aucune limite"),
             showIf: (v) => ["glissiere", "cylindrique"].includes(v.type) },
         ] },
-      { label: "Élément 1",
+      { label: t("Élément 1"),
         rows: [{ type: "selection", key: "a", accepts: ["asmface"],
-                 hint: "Cliquez une face du premier composant" }] },
-      { label: "Élément 2",
+                 hint: t("Cliquez une face du premier composant") }] },
+      { label: t("Élément 2"),
         rows: [{ type: "selection", key: "b", accepts: ["asmface"],
-                 hint: "Puis une face du second composant" }] },
+                 hint: t("Puis une face du second composant") }] },
     ],
-    note: "Le solveur natif repositionne les composants — le premier " +
-          "inséré est fixé.",
+    note: t("Le solveur natif repositionne les composants — le premier " +
+          "inséré est fixé."),
     onApply: (v) => {
       const params = build(v);
       if (!params) {
@@ -4533,15 +4530,15 @@ document.getElementById("btn-array-comp").addEventListener("click", () => {
     icon: "Link.svg",
     title: `Répéter — ${comp.label}`,
     groups: [{
-      label: "Répétition",
+      label: t("Répétition"),
       rows: [
-        { type: "number", key: "count", label: "Occurrences", value: 3,
+        { type: "number", key: "count", label: t("Occurrences"), value: 3,
           min: 2, step: 1 },
-        { type: "number", key: "dx", label: "Pas X", value: 30,
+        { type: "number", key: "dx", label: t("Pas X"), value: 30,
           unit: "mm" },
-        { type: "number", key: "dy", label: "Pas Y", value: 0,
+        { type: "number", key: "dy", label: t("Pas Y"), value: 0,
           unit: "mm" },
-        { type: "number", key: "dz", label: "Pas Z", value: 0,
+        { type: "number", key: "dz", label: t("Pas Z"), value: 0,
           unit: "mm" },
       ],
     }],
@@ -4569,7 +4566,7 @@ document.getElementById("btn-interf").addEventListener("click", async () => {
     }
     panel.open({
       icon: "Geoassembly.svg",
-      title: "Interférences",
+      title: t("Interférences"),
       groups: [{
         label: `${result.interferences.length} interférence(s)`,
         rows: [{ type: "list",
@@ -4578,8 +4575,8 @@ document.getElementById("btn-interf").addEventListener("click", async () => {
               `${(p.volume_mm3 / 1000).toFixed(3)} cm³`,
           })) }],
       }],
-      note: "Volume commun réel (booléen OCCT) — à résoudre avant " +
-            "impression.",
+      note: t("Volume commun réel (booléen OCCT) — à résoudre avant " +
+            "impression."),
       onApply: () => {},
     });
   } catch (error) {
@@ -4676,13 +4673,13 @@ async function openEquationsPanel() {
   }
   panel.open({
     icon: "VarSet.svg",
-    title: "Équations",
+    title: t("Équations"),
     groups: [
       {
-        label: "Variables globales",
+        label: t("Variables globales"),
         rows: [{
           type: "list",
-          empty: "— aucune variable —",
+          empty: t("— aucune variable —"),
           items: variables.map((variable) => ({
             label: `${variable.name} = ${variable.value}`,
             onDelete: async () => {
@@ -4697,17 +4694,17 @@ async function openEquationsPanel() {
         }],
       },
       {
-        label: "Ajouter / modifier",
+        label: t("Ajouter / modifier"),
         rows: [
-          { type: "text", key: "name", label: "Nom",
-            placeholder: "Largeur" },
-          { type: "text", key: "value", label: "Valeur",
+          { type: "text", key: "name", label: t("Nom"),
+            placeholder: t("Largeur") },
+          { type: "text", key: "value", label: t("Valeur"),
             placeholder: "100" },
         ],
       },
     ],
-    note: "Utilisez « Variables.Nom » dans toute cote ou propriété — " +
-          "ex. Variables.Largeur / 2. Retaper un nom existant le modifie.",
+    note: t("Utilisez « Variables.Nom » dans toute cote ou propriété — " +
+          "ex. Variables.Largeur / 2. Retaper un nom existant le modifie."),
     onApply: async (v) => {
       const name = (v.name ?? "").trim();
       const value = num(v.value);
@@ -4741,26 +4738,26 @@ async function openEvaluatePanel() {
   const fixed = (v, n = 1) => v.toFixed(n);
   panel.open({
     icon: "view-measurement.svg",
-    title: "Évaluer",
+    title: t("Évaluer"),
     groups: [
-      { label: "Propriétés de masse",
+      { label: t("Propriétés de masse"),
         rows: [{ type: "list", items: [
           { label: `Volume : ${fixed(props.volume_mm3 / 1000, 2)} cm³` },
           { label: `Masse : ${fixed(props.mass_g)} g ` +
                    `(à ${props.density} g/cm³)` },
           { label: `Surface : ${fixed(props.area_mm2 / 100)} cm²` },
-          { label: "Centre de gravité : "
+          { label: t("Centre de gravité : ")
                    + props.center_of_mass.map((v) => fixed(v)).join(", ") },
-          { label: "Encombrement : "
+          { label: t("Encombrement : ")
                    + props.bounding_box.map((v) => fixed(v)).join(" × ")
                    + " mm" },
         ] }] },
-      { label: "Matière",
-        rows: [{ type: "number", key: "density", label: "Densité",
+      { label: t("Matière"),
+        rows: [{ type: "number", key: "density", label: t("Densité"),
                  value: lastDensity, unit: "g/cm³", min: 0.001 }] },
     ],
-    note: "PLA ≈ 1,24 · PETG ≈ 1,27 · ABS ≈ 1,04 · Alu ≈ 2,70 · " +
-          "Acier ≈ 7,85 — OK recalcule avec la densité saisie",
+    note: t("PLA ≈ 1,24 · PETG ≈ 1,27 · ABS ≈ 1,04 · Alu ≈ 2,70 · " +
+          "Acier ≈ 7,85 — OK recalcule avec la densité saisie"),
     onApply: (v) => {
       const density = num(v.density);
       if (density > 0) {
@@ -4921,25 +4918,25 @@ document.getElementById("btn-body").addEventListener("click", () =>
 document.getElementById("btn-datum").addEventListener("click", () =>
   featureCommand(() => panel.open({
     icon: "PartDesign_Plane.svg",
-    title: "Plan de référence",
+    title: t("Plan de référence"),
     groups: [
       {
-        label: "Référence",
+        label: t("Référence"),
         rows: [
           { type: "selection", key: "sel", accepts: ["face"],
-            hint: "Cliquez une face — ou choisissez un plan ci-dessous",
+            hint: t("Cliquez une face — ou choisissez un plan ci-dessous"),
             value: currentSelection(["face"]) },
-          { type: "select", key: "base", value: "XY", label: "Plan",
+          { type: "select", key: "base", value: "XY", label: t("Plan"),
             options: [["XZ", "Plan de face"], ["XY", "Plan de dessus"],
                       ["YZ", "Plan de droite"]] },
         ],
       },
       {
-        label: "Position",
+        label: t("Position"),
         rows: [
-          { type: "number", key: "offset", label: "Décalage", value: 20,
+          { type: "number", key: "offset", label: t("Décalage"), value: 20,
             unit: "mm" },
-          { type: "number", key: "angle", label: "Angle", value: 0,
+          { type: "number", key: "angle", label: t("Angle"), value: 0,
             unit: "°" },
         ],
       },
@@ -4993,7 +4990,7 @@ document.getElementById("btn-save").addEventListener("click", async () => {
   if (!path) return;
   try {
     const saved = await call("save_part", { path });
-    say(`Enregistré : ${saved.path} — ouvrable dans FreeCAD standard.`);
+    say(t("Enregistré : {path} — ouvrable dans FreeCAD standard.", { path: saved.path }));
   } catch (error) {
     say(error.message, true);
   }
@@ -5006,7 +5003,7 @@ document.getElementById("btn-export").addEventListener("click", async () => {
   if (!path) return;
   try {
     const out = await call("export_part", { path });
-    say(`Exporté : ${out.path} (${(out.size / 1024).toFixed(1)} Ko)`);
+    say(t("Exporté : {path} ({size} Ko)", { path: out.path, size: (out.size / 1024).toFixed(1) }));
   } catch (error) {
     say(error.message, true);
   }
@@ -5027,27 +5024,29 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
         && typeof bilan.ok === "number") {
       const failed = echecs.length > 0;
       const nSteps = Array.isArray(report.steps) ? report.steps.length : 0;
-      say(`Autotest : ${nSteps} étapes, ${bilan.ok}/${bilan.verifications}` +
-          ` vérifications — ${failed ? "ÉCHEC" : "OK"}`, failed);
+      say(t("Autotest : {n} étapes, {ok}/{total} vérifications — {result}",
+        { n: nSteps, ok: bilan.ok, total: bilan.verifications,
+          result: failed ? t("ÉCHEC") : "OK" }), failed);
       if (failed) {
         panel.open({
           icon: "view-measurement.svg",
-          title: "Autotest",
+          title: t("Autotest"),
           noApply: true,
           groups: [{
-            label: "Indicateurs en échec",
+            label: t("Indicateurs en échec"),
             rows: echecs.map((name) => ({ type: "note", text: name })),
           }],
         });
       }
     } else {
-      say(`Autotest OK — ${report.mesh_faces} faces, ` +
-          `${report.mesh_triangles} triangles, reparam ${report.m0_reparam_ok ? "OK" : "ÉCHEC"}`);
+      say(t("Autotest OK — {faces} faces, {tris} triangles, reparam {result}",
+        { faces: report.mesh_faces, tris: report.mesh_triangles,
+          result: report.m0_reparam_ok ? "OK" : t("ÉCHEC") }));
     }
     console.log("selftest", report);
   } catch (error) {
     if (gen !== viewGen) return;
-    say("Autotest : " + error.message, true);
+    say(t("Autotest : ") + error.message, true);
   }
 });
 
@@ -5071,7 +5070,7 @@ call("ping")
   .then(async (info) => {
     await loadClientPlugins(call, pluginRuntime.api);
     for (const entry of FEATURES) bindFeature(entry);
-    say(`Moteur prêt — FreeCAD ${info.freecad}`);
+    say(t("Moteur prêt — FreeCAD {v}", { v: info.freecad }));
     // Resynchronise avec le moteur : après un rechargement de la page,
     // la pièce en cours réapparaît au lieu d'être écrasée au premier
     // clic sur Esquisse.

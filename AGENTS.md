@@ -40,6 +40,18 @@ corps de fonctions / méthodes.
   Esquisse → dessiner un rectangle → Bossage extrudé ; ou double-cliquer une
   fonction de l'arbre pour rééditer sa cote (reconstruction paramétrique).
 
+### Multilingue
+
+Le français est la langue source. Un texte visible dans l'interface passe
+par `t("…")` (`app/i18n.js`) ou par un « puits » qui le fait déjà : le
+ruban (`ribbon.js`), les panneaux (`panel.js` — `el()`, options,
+placeholders), la barre d'état (`say()`), `prompt()`/`confirm()` de
+`main.js`, et `translateDom()` pour le HTML statique. Chaque nouveau texte
+reçoit son entrée dans `app/lang/en.json` ; chaque nouveau message
+d'erreur ou libellé du moteur, dans `engine/lang/en.json` (gabarit avec
+`{}`). `tests/js/i18n.test.mjs` et `tests/test_i18n.py` refusent les
+entrées orphelines et vérifient la couverture du ruban et des panneaux.
+
 ### Gotcha à connaître
 
 - `engine/server.py` n'a **pas** de garde `if __name__ == "__main__"`

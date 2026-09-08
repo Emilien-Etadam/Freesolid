@@ -3,6 +3,8 @@
 // des plugins — mêmes classes CSS, mêmes règles de validation. Les
 // fonctions prennent `doc` en paramètre pour tourner au banc Node.
 
+import { t } from "./i18n.js";
+
 /** Id d'onglet : minuscules, chiffres, underscore — jamais de balisage. */
 export function isPluginId(id) {
   return typeof id === "string" && /^[a-z][a-z0-9_]*$/.test(id);
@@ -29,7 +31,7 @@ export function buildTabButton(doc, id, libelle) {
   tab.className = "tab";
   tab.dataset.tab = id;
   tab.textContent = typeof libelle === "string" && libelle.trim()
-    ? libelle.trim() : id;
+    ? t(libelle.trim()) : id;
   return tab;
 }
 
@@ -65,7 +67,7 @@ export function buildRibbonElement(doc, id, groupes) {
         // Hiérarchie visuelle : "large" est la seule taille reconnue,
         // tout le reste garde le rendu en ligne par défaut.
         if (specBtn.taille === "large") btn.className = "large";
-        if (specBtn.titre) btn.title = String(specBtn.titre);
+        if (specBtn.titre) btn.title = t(String(specBtn.titre));
         if (specBtn.disabled) btn.disabled = true;
         const icon = safeIconSrc(specBtn.icon);
         if (icon) {
@@ -75,7 +77,7 @@ export function buildRibbonElement(doc, id, groupes) {
           btn.appendChild(img);
         }
         if (specBtn.libelle) {
-          btn.appendChild(doc.createTextNode(String(specBtn.libelle)));
+          btn.appendChild(doc.createTextNode(t(String(specBtn.libelle))));
         }
         btns.appendChild(btn);
       }
@@ -83,7 +85,7 @@ export function buildRibbonElement(doc, id, groupes) {
     group.appendChild(btns);
     const label = doc.createElement("div");
     label.className = "ribbon-group-label";
-    label.textContent = typeof groupe.libelle === "string" ? groupe.libelle : "";
+    label.textContent = typeof groupe.libelle === "string" ? t(groupe.libelle) : "";
     group.appendChild(label);
     ribbon.appendChild(group);
   }

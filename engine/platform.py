@@ -14,6 +14,25 @@ FREECAD = "1.1.3"
 #: Les mesures du rapport ne sont alors pas comparables.
 OVERRIDE_ENV = "FREESOLID_ALLOW_FREECAD"
 
+#: Dépôt du projet — panneau Paramètres, notes de release.
+REPO_URL = "https://github.com/Emilien-Etadam/Freesolid"
+
+#: Version de FreeSolid : le fichier ``VERSION`` à la racine, seule source.
+#: L'application de bureau (desktop/src-tauri/tauri.conf.json) doit porter
+#: la même — le workflow de release le vérifie contre le tag.
+_VERSION_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
+
+
+def freesolid_version(path=None) -> str:
+    """Contenu de ``VERSION`` (« 0.1.0 »), ou « 0.0.0-dev » s'il manque."""
+    try:
+        with open(path or _VERSION_FILE, encoding="utf-8") as handle:
+            text = handle.read().strip()
+    except OSError:
+        return "0.0.0-dev"
+    return text or "0.0.0-dev"
+
 
 def normalize_version(value) -> str:
     """« 1.1.3 », (1, 1, 3) ou « 1.1.3R… » → « 1.1.3 »."""

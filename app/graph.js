@@ -6,6 +6,7 @@
 // écarté : son ESM CDN ne s'importe pas sous node --test (pas d'https:).
 
 import { splitHistoryAroundBar } from "./history.js";
+import { t } from "./i18n.js";
 import {
   hasSelection,
   NO_SKETCH_AVAILABLE,
@@ -674,11 +675,11 @@ export function defaultPortLiteral(input) {
 }
 
 export const LIST_SOCKET_OPS = [
-  { value: "flatten", label: "Aplatir" },
-  { value: "simplify", label: "Simplifier" },
-  { value: "graft", label: "Greffer" },
-  { value: "unwrap", label: "Déplier" },
-  { value: "wrap", label: "Envelopper" },
+  { value: "flatten", label: t("Aplatir") },
+  { value: "simplify", label: t("Simplifier") },
+  { value: "graft", label: t("Greffer") },
+  { value: "unwrap", label: t("Déplier") },
+  { value: "wrap", label: t("Envelopper") },
 ];
 
 /** Valeur initiale d'un champ propre au nœud (valeur, nom, opération). */

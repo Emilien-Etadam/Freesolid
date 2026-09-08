@@ -39,8 +39,10 @@ d'affichage. La page est servie par le moteur (`127.0.0.1:8787`) ; elle
 accède à l'API Tauri grâce à l'entrée `remote` de
 `src-tauri/capabilities/default.json`.
 
-Une version de FreeCAD différente de la référence est acceptée avec un
-avertissement. « Changer de FreeCAD… » et le choix manuel d'un fichier ou
+L'écran de lancement est en français, ou en anglais si la langue du
+système commence par « en » ; l'interface elle-même suit le choix fait dans
+Paramètres → Langue. Une version de FreeCAD différente de la référence est
+acceptée avec un avertissement. « Changer de FreeCAD… » et le choix manuel d'un fichier ou
 d'un dossier restent disponibles à chaque étape.
 
 Emplacements (par OS, via Tauri) :

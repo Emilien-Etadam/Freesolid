@@ -5,6 +5,8 @@
 // d'information, langue, pont Tauri) ; le DOM n'est touché que dans
 // createSettingsDialog.
 
+import { t } from "./i18n.js";
+
 export const REPO_URL = "https://github.com/Emilien-Etadam/Freesolid";
 export const RELEASES_URL = REPO_URL + "/releases";
 export const ISSUES_URL = REPO_URL + "/issues";
@@ -67,34 +69,34 @@ export function desktopBridge(win) {
  */
 export function infoRows(ping, { appVersion = null, engineUrl = "", logPath = "" } = {}) {
   const rows = [];
-  const version = appVersion || ping?.freesolid || "inconnue";
+  const version = appVersion || ping?.freesolid || t("inconnue");
   rows.push(["FreeSolid", version]);
   if (!ping) {
-    rows.push(["Moteur", "injoignable"]);
+    rows.push([t("Moteur"), t("injoignable")]);
   } else {
     const ref = ping.freecad_reference;
-    const freecad = ping.freecad || "inconnue";
+    const freecad = ping.freecad || t("inconnue");
     rows.push(["FreeCAD", ref && ref !== freecad
-      ? `${freecad} (référence ${ref})`
+      ? `${freecad} (${t("référence {ref}", { ref })})`
       : freecad]);
     if (ping.freecadcmd) rows.push(["freecadcmd", ping.freecadcmd]);
   }
-  if (engineUrl) rows.push(["Adresse du moteur", engineUrl]);
-  if (logPath) rows.push(["Journal du moteur", logPath]);
+  if (engineUrl) rows.push([t("Adresse du moteur"), engineUrl]);
+  if (logPath) rows.push([t("Journal du moteur"), logPath]);
   return rows;
 }
 
 /** Texte d'état de la recherche de mise à jour. */
 export function updateStatus(kind, detail = "") {
   switch (kind) {
-    case "checking": return "Recherche en cours…";
-    case "none": return "FreeSolid est à jour.";
-    case "available": return `Version ${detail} disponible.`;
-    case "downloading": return detail ? `Téléchargement… ${detail}` : "Téléchargement…";
-    case "installed": return "Mise à jour installée, relance…";
-    case "error": return `Mise à jour impossible : ${detail}`;
-    case "browser": return "Les mises à jour automatiques existent dans "
-      + "l'application de bureau. Dans le navigateur : git pull.";
+    case "checking": return t("Recherche en cours…");
+    case "none": return t("FreeSolid est à jour.");
+    case "available": return t("Version {v} disponible.", { v: detail });
+    case "downloading": return detail ? t("Téléchargement… {p}", { p: detail }) : t("Téléchargement…");
+    case "installed": return t("Mise à jour installée, relance…");
+    case "error": return t("Mise à jour impossible : {e}", { e: detail });
+    case "browser": return t("Les mises à jour automatiques existent dans "
+      + "l'application de bureau. Dans le navigateur : git pull.");
     default: return "";
   }
 }
@@ -118,54 +120,54 @@ export function createSettingsDialog({
     const rows = infoRows(ping, extra);
     const lang = readLang(storage, navigatorLang);
     const labelsMode = ribbonLabels.read();
+    const T = (text, vars) => esc(t(text, vars));
     root.innerHTML = `
       <div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="settings-head">
-          <h2 id="settings-title">Paramètres</h2>
-          <button type="button" class="settings-close" data-action="close" title="Fermer">×</button>
+          <h2 id="settings-title">${T("Paramètres")}</h2>
+          <button type="button" class="settings-close" data-action="close" title="${T("Fermer")}">×</button>
         </div>
-        <p class="settings-warn">Version de développement, non fonctionnelle :
-          un prototype pour essayer et remonter des problèmes.</p>
+        <p class="settings-warn">${T("Version de développement, non fonctionnelle : un prototype pour essayer et remonter des problèmes.")}</p>
 
-        <h3>À propos</h3>
+        <h3>${T("À propos")}</h3>
         <dl class="settings-info">
           ${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}
         </dl>
         <div class="settings-links">
-          <button type="button" data-url="${REPO_URL}">Dépôt GitHub</button>
-          <button type="button" data-url="${ISSUES_URL}">Signaler un problème</button>
-          <button type="button" data-url="${RELEASES_URL}">Versions</button>
-          <button type="button" data-url="${LICENSE_URL}">Licence LGPL-2.1</button>
+          <button type="button" data-url="${REPO_URL}">${T("Dépôt GitHub")}</button>
+          <button type="button" data-url="${ISSUES_URL}">${T("Signaler un problème")}</button>
+          <button type="button" data-url="${RELEASES_URL}">${T("Versions")}</button>
+          <button type="button" data-url="${LICENSE_URL}">${T("Licence LGPL-2.1")}</button>
         </div>
 
-        <h3>Mises à jour</h3>
+        <h3>${T("Mises à jour")}</h3>
         <div class="settings-update">
           ${bridge
-            ? `<button type="button" data-action="check-update">Rechercher des mises à jour</button>
-               <button type="button" data-action="install-update" hidden>Installer et relancer</button>`
+            ? `<button type="button" data-action="check-update">${T("Rechercher des mises à jour")}</button>
+               <button type="button" data-action="install-update" hidden>${T("Installer et relancer")}</button>`
             : ""}
           <span class="settings-update-status">${bridge ? "" : esc(updateStatus("browser"))}</span>
         </div>
 
-        <h3>Interface</h3>
+        <h3>${T("Interface")}</h3>
         <div class="settings-field">
-          <span>Libellés du ruban</span>
+          <span>${T("Libellés du ruban")}</span>
           <label><input type="radio" name="ribbon-labels" value="icons-and-text"
-            ${labelsMode === "icons-and-text" ? "checked" : ""}> Icônes et texte</label>
+            ${labelsMode === "icons-and-text" ? "checked" : ""}> ${T("Icônes et texte")}</label>
           <label><input type="radio" name="ribbon-labels" value="icons-only"
-            ${labelsMode === "icons-only" ? "checked" : ""}> Icônes seules</label>
+            ${labelsMode === "icons-only" ? "checked" : ""}> ${T("Icônes seules")}</label>
         </div>
         <div class="settings-field">
-          <label for="settings-lang">Langue</label>
+          <label for="settings-lang">${T("Langue")}</label>
           <select id="settings-lang">
             ${LANGS.map(([id, name]) =>
               `<option value="${id}" ${id === lang ? "selected" : ""}>${esc(name)}</option>`).join("")}
           </select>
-          <span class="settings-note">traduction de l'interface à venir</span>
+          <span class="settings-note">${T("la page se recharge au changement")}</span>
         </div>
 
         <div class="settings-actions">
-          <button type="button" data-action="close">Fermer</button>
+          <button type="button" data-action="close">${T("Fermer")}</button>
         </div>
       </div>`;
     wire();
@@ -240,7 +242,11 @@ export function createSettingsDialog({
       radio.addEventListener("change", () => ribbonLabels.apply(radio.value));
     }
     root.querySelector("#settings-lang")
-      ?.addEventListener("change", (event) => writeLang(storage, event.target.value));
+      ?.addEventListener("change", (event) => {
+        // La langue s'applique au chargement (ruban, panneaux, moteur) :
+        // on enregistre puis on recharge la page.
+        if (writeLang(storage, event.target.value)) win.location?.reload?.();
+      });
   }
 
   function onKey(event) {

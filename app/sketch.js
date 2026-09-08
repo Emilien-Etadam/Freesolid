@@ -5,6 +5,7 @@
 // The server owns truth (geometry, solver); this module owns gesture.
 
 import * as THREE from "three";
+import { t } from "./i18n.js";
 import { createLocalSolver } from "./solver.js";
 import {
   arcAngles, chainClickAction, distanceToEntity,
@@ -235,25 +236,25 @@ export function createSketchMode(deps) {
     abandonEntityPanel();
     panel.open({
       icon: "Sketcher_Sketch.svg",
-      title: "Image d'esquisse",
+      title: t("Image d'esquisse"),
       groups: [
         {
-          label: "Placement",
+          label: t("Placement"),
           rows: [
-            { type: "number", key: "width", label: "Largeur",
+            { type: "number", key: "width", label: t("Largeur"),
               value: params.width, unit: "mm", min: 0.01 },
-            { type: "number", key: "x", label: "X",
+            { type: "number", key: "x", label: t("X"),
               value: params.x, unit: "mm" },
-            { type: "number", key: "y", label: "Y",
+            { type: "number", key: "y", label: t("Y"),
               value: params.y, unit: "mm" },
-            { type: "number", key: "rotation", label: "Rotation",
+            { type: "number", key: "rotation", label: t("Rotation"),
               value: params.rotation, unit: "°" },
-            { type: "number", key: "opacity", label: "Opacité",
+            { type: "number", key: "opacity", label: t("Opacité"),
               value: params.opacity, min: 0.1, step: 0.05 },
           ],
         },
         {
-          label: "Calque",
+          label: t("Calque"),
           rows: [{
             type: "list",
             items: [{
@@ -267,8 +268,8 @@ export function createSketchMode(deps) {
           }],
         },
       ],
-      note: "L'image ne survit pas à la fermeture de l'esquisse — "
-        + "réimporter au besoin. Elle ne quitte pas le navigateur.",
+      note: t("L'image ne survit pas à la fermeture de l'esquisse — "
+        + "réimporter au besoin. Elle ne quitte pas le navigateur."),
       onChange: (v) => applyImageLayer(v),
       onApply: () => {},
     });
@@ -512,8 +513,8 @@ export function createSketchMode(deps) {
         mode.selection = [];
       } else {
         mode.selection = [...mode.selection, picked].slice(-8);
-        say(`Sélection : ${mode.selection.length} entité(s) — ` +
-            "relation, symétrie ou répétition ; clic dans le vide = vider");
+        say(t("Sélection : {n} entité(s) — relation, symétrie ou répétition ; clic dans le vide = vider",
+          { n: mode.selection.length }));
       }
       redraw();
       syncEntityPanel();
@@ -658,7 +659,7 @@ export function createSketchMode(deps) {
         const first = mode.pendingFillet;
         mode.pendingFillet = null;
         const radius = num(
-          prompt("Rayon du congé d'esquisse (mm) :", "3") ?? "");
+          window.prompt(t("Rayon du congé d'esquisse (mm) :"), "3") ?? "");
         if (!radius) return;
         safe(call("sketch_fillet", { sketch: name,
           geo1: first.geo, geo2: target,
@@ -681,8 +682,8 @@ export function createSketchMode(deps) {
         }
       }
       mode.pendingSpline.push({ x: snapped.x, y: snapped.y });
-      say(`Spline : ${mode.pendingSpline.length} point(s) — ` +
-          "Entrée pour terminer (min 3), Échap pour annuler");
+      say(t("Spline : {n} point(s) — Entrée pour terminer (min 3), Échap pour annuler",
+        { n: mode.pendingSpline.length }));
     } else if (mode.tool === "ellipse") {
       if (!mode.pendingEllipse) {
         mode.pendingEllipse = { c: { x: snapped.x, y: snapped.y } };
@@ -1151,7 +1152,7 @@ export function createSketchMode(deps) {
     mode.pendingEllipse = null;
     mode.selection = [];
     if (tool === "polygon") {
-      const sides = parseInt(prompt("Polygone — nombre de côtés :", "6")
+      const sides = parseInt(window.prompt(t("Polygone — nombre de côtés :"), "6")
                              ?? "", 10);
       mode.pendingPoly = sides >= 3 ? { sides } : null;
       if (!mode.pendingPoly) { setTool("select"); return; }
@@ -1276,12 +1277,12 @@ export function createSketchMode(deps) {
       noApply: true,
       autoFocus: false,
       groups: [
-        { label: "Propriétés", rows: propRows },
+        { label: t("Propriétés"), rows: propRows },
         {
-          label: "Relations",
+          label: t("Relations"),
           rows: [{
             type: "list",
-            empty: "— aucune relation sur cette entité —",
+            empty: t("— aucune relation sur cette entité —"),
             items: constraints.map((c) => {
               const driving = isDrivingConstraint(c);
               return {
@@ -1307,7 +1308,7 @@ export function createSketchMode(deps) {
         : "Pour piloter une valeur : Cotation intelligente (D).",
       actions: [
         {
-          label: "Construction",
+          label: t("Construction"),
           title: entity.construction
             ? "Géométrie de construction — cliquer pour basculer en réelle"
             : "Géométrie réelle — cliquer pour basculer en construction",
@@ -1319,8 +1320,8 @@ export function createSketchMode(deps) {
           },
         },
         {
-          label: "Supprimer",
-          title: "Supprimer l'entité (Suppr)",
+          label: t("Supprimer"),
+          title: t("Supprimer l'entité (Suppr)"),
           className: "paction",
           onClick: () => {
             safe(call("sketch_delete_geo",
@@ -1352,8 +1353,8 @@ export function createSketchMode(deps) {
     if (!mode.state) return;
     const needed = CONSTRAINT_NEEDS[kind];
     if (mode.selection.length < needed) {
-      say(`Relation : sélectionnez d'abord ${needed} entité(s) ` +
-          "avec l'outil Sélectionner", true);
+      say(t("Relation : sélectionnez d'abord {n} entité(s) avec l'outil Sélectionner",
+        { n: needed }), true);
       return;
     }
     const selection = mode.selection.slice(-needed);
@@ -1413,22 +1414,22 @@ export function createSketchMode(deps) {
     abandonEntityPanel();
     panel.open({
       icon: "Sketcher_RectangularArray.svg",
-      title: "Répétition d'entités",
+      title: t("Répétition d'entités"),
       groups: [{
-        label: "Paramètres",
+        label: t("Paramètres"),
         rows: [
-          { type: "number", key: "dx", label: "Pas X", value: 15,
+          { type: "number", key: "dx", label: t("Pas X"), value: 15,
             unit: "mm" },
-          { type: "number", key: "dy", label: "Pas Y", value: 0,
+          { type: "number", key: "dy", label: t("Pas Y"), value: 0,
             unit: "mm" },
-          { type: "number", key: "cols", label: "Colonnes", value: 3,
+          { type: "number", key: "cols", label: t("Colonnes"), value: 3,
             min: 1, step: 1 },
-          { type: "number", key: "rows", label: "Lignes", value: 1,
+          { type: "number", key: "rows", label: t("Lignes"), value: 1,
             min: 1, step: 1 },
         ],
       }],
-      note: "Le pas est piloté par des lignes de construction — " +
-            "cotables ensuite.",
+      note: t("Le pas est piloté par des lignes de construction — " +
+            "cotables ensuite."),
       onApply: (v) => safe(call("sketch_array", {
         sketch: mode.state.sketch, geos,
         dx: num(v.dx) ?? 0, dy: num(v.dy) ?? 0,
@@ -1447,18 +1448,18 @@ export function createSketchMode(deps) {
     abandonEntityPanel();
     panel.open({
       icon: "Sketcher_Copy.svg",
-      title: "Décaler les entités",
+      title: t("Décaler les entités"),
       groups: [{
-        label: "Paramètres",
+        label: t("Paramètres"),
         rows: [
-          { type: "number", key: "distance", label: "Distance", value: 5,
+          { type: "number", key: "distance", label: t("Distance"), value: 5,
             unit: "mm", min: 0.01 },
-          { type: "check", key: "reversed", label: "Inverser le côté",
+          { type: "check", key: "reversed", label: t("Inverser le côté"),
             value: false },
         ],
       }],
-      note: "Les copies restent libres — le décalage paramétrique " +
-            "viendra plus tard.",
+      note: t("Les copies restent libres — le décalage paramétrique " +
+            "viendra plus tard."),
       onApply: (v) => safe(call("sketch_offset", {
         sketch: mode.state.sketch, geos,
         distance: num(v.distance) ?? 5,
@@ -1488,8 +1489,8 @@ export function createSketchMode(deps) {
     call("sketch_convert", { sketch: mode.state.sketch })
       .then((state) => {
         applyState(state);
-        say(`Converti : ${state.converted} entité(s)`
-          + (state.skipped ? ` — ${state.skipped} ignorée(s)` : ""));
+        say(t("Converti : {n} entité(s)", { n: state.converted })
+          + (state.skipped ? t(" — {n} ignorée(s)", { n: state.skipped }) : ""));
       })
       .catch((error) => say(error.message, true));
   });

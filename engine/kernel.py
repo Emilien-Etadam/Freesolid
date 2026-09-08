@@ -30,6 +30,7 @@ from engine.platform import (                    # noqa: E402
 from engine.plugins import PluginError           # noqa: E402
 from engine.protocol import dangling_deps, visible_dep_subs, visible_deps  # noqa: E402
 from engine.scriptnode import evaluate as evaluate_graph  # noqa: E402
+from engine.i18n import label as _label_in       # noqa: E402
 from engine.vocab import label_for_type          # noqa: E402
 
 
@@ -249,6 +250,9 @@ class Kernel:
         self._doc = None
         self._body = None
         self._assembly = False  # le document courant est un assemblage
+        # Langue de l'interface (posée par le serveur à chaque requête) :
+        # les libellés que le noyau écrit dans le document la suivent.
+        self.lang = "fr"
         # Consentement Python : ce document, cette session. Jamais le .FCStd.
         self._scripts_authorized = False
         self._reset_face_match()
@@ -521,6 +525,10 @@ class Kernel:
 
     # -- operations ------------------------------------------------------
 
+    def _t(self, text):
+        """Libellé dans la langue de l'interface (« Esquisse » → « Sketch »)."""
+        return _label_in(text, self.lang)
+
     def ping(self):
         """Identité du moteur — ce que le panneau Paramètres affiche."""
         App = self._app()
@@ -711,7 +719,7 @@ class Kernel:
             JointObject.GroundedJoint(joint)
             if hasattr(joint, "ObjectToGround"):
                 joint.ObjectToGround = link
-        joint.Label = "Fixé — {}".format(link.Label)
+        joint.Label = self._t("Fixé — {}").format(link.Label)
 
     #: nos noms -> l'énumération JointType du module natif. Les quatre
     #: derniers sont les contraintes mécaniques (vues dans le spike).
@@ -822,7 +830,7 @@ class Kernel:
                   "Ball": "Rotule", "Distance": "Distance",
                   "Gears": "Engrenages", "RackPinion": "Crémaillère",
                   "Screw": "Vis", "Belt": "Courroie"}
-        joint.Label = "{} — {} / {}".format(
+        joint.Label = self._t("{} — {} / {}").format(
             labels.get(target, target),
             links[component1].Label, links[component2].Label)
         doc.recompute()
@@ -880,7 +888,7 @@ class Kernel:
         for i in range(1, total):
             copy = doc.addObject("App::Link", "Component")
             copy.LinkedObject = link.LinkedObject
-            copy.Label = "{} ({})".format(link.Label, i + 1)
+            copy.Label = self._t("{} ({})").format(link.Label, i + 1)
             offset = App.Vector(float(dx) * i, float(dy) * i,
                                 float(dz) * i)
             copy.Placement = App.Placement(
@@ -1165,7 +1173,7 @@ class Kernel:
             entry["children"] = [wire({
                 "name": sk.Name,
                 "label": sk.Label,
-                "kind": label_for_type(sk.TypeId),
+                "kind": label_for_type(sk.TypeId, self.lang),
                 "type": sk.TypeId,
                 "error": "Invalid" in (sk.State or ()),
                 "order": order_of.get(sk.Name, -1),
@@ -1694,10 +1702,10 @@ class Kernel:
                                             emboss, x, y, font)
         shape_feature = doc.addObject("Part::Feature", "TextShape")
         shape_feature.Shape = text_solid
-        shape_feature.Label = "Forme du texte"
+        shape_feature.Label = self._t("Forme du texte")
         self._mark_text_tool(shape_feature)
         tool_body = doc.addObject("PartDesign::Body", "TextBody")
-        tool_body.Label = "Corps texte"
+        tool_body.Label = self._t("Corps texte")
         tool_body.BaseFeature = shape_feature
         self._mark_text_tool(tool_body)
         doc.recompute()
@@ -1714,7 +1722,7 @@ class Kernel:
             raise
         tip = getattr(body, "Tip", None)
         if tip is not None:
-            tip.Label = "{} « {} »".format(
+            tip.Label = self._t("{} « {} »").format(
                 "Texte en relief" if emboss else "Gravure", text[:15])
             for prop, prop_type in self._TEXT_PROPS:
                 if prop not in tip.PropertiesList:
@@ -1785,7 +1793,7 @@ class Kernel:
         obj.FreeSolidTextDepth = new_depth
         obj.FreeSolidTextX = new_x
         obj.FreeSolidTextY = new_y
-        obj.Label = "{} « {} »".format(
+        obj.Label = self._t("{} « {} »").format(
             "Texte en relief" if emboss else "Gravure", new_text[:15])
         return self.get_tree()
 
@@ -2018,10 +2026,10 @@ class Kernel:
         doc = self._require_doc()
         shape_feature = doc.addObject("Part::Feature", "GraphShape")
         shape_feature.Shape = solid
-        shape_feature.Label = "Forme du graphe"
+        shape_feature.Label = self._t("Forme du graphe")
         self._mark_graph_tool(shape_feature)
         tool_body = doc.addObject("PartDesign::Body", "GraphBody")
-        tool_body.Label = "Corps graphe"
+        tool_body.Label = self._t("Corps graphe")
         tool_body.BaseFeature = shape_feature
         self._mark_graph_tool(tool_body)
         doc.recompute()
@@ -2238,10 +2246,10 @@ class Kernel:
         doc = self._require_doc()
         shape_feature = doc.addObject("Part::Feature", "RepeatShape")
         shape_feature.Shape = solid
-        shape_feature.Label = "Forme de la répétition"
+        shape_feature.Label = self._t("Forme de la répétition")
         self._mark_repeat_tool(shape_feature)
         tool_body = doc.addObject("PartDesign::Body", "RepeatBody")
-        tool_body.Label = "Corps répétition"
+        tool_body.Label = self._t("Corps répétition")
         tool_body.BaseFeature = shape_feature
         self._mark_repeat_tool(tool_body)
         doc.recompute()
@@ -2597,7 +2605,7 @@ class Kernel:
 
         sketch = doc.addObject("Sketcher::SketchObject", "Sketch")
         body.addObject(sketch)
-        sketch.Label = "Esquisse"
+        sketch.Label = self._t("Esquisse")
         if face is not None:
             self._attach_to_face(sketch, face)
         else:
@@ -2644,7 +2652,7 @@ class Kernel:
             pad.Reversed = True
         if midplane:
             pad.Midplane = True  # « plan milieu » : symétrique au plan
-        pad.Label = "Bossage extrudé"
+        pad.Label = self._t("Bossage extrudé")
         try:
             self._recompute()
         except KernelError:
@@ -2793,7 +2801,7 @@ class Kernel:
             pocket.Length = float(length)
         if reversed:
             pocket.Reversed = True
-        pocket.Label = "Enlèvement de matière"
+        pocket.Label = self._t("Enlèvement de matière")
         try:
             self._recompute()
         except KernelError:
@@ -2865,7 +2873,7 @@ class Kernel:
         plane.AttachmentOffset = App.Placement(
             App.Vector(0, 0, float(offset)),
             App.Rotation(App.Vector(1, 0, 0), float(angle)))
-        plane.Label = "Plan de référence"
+        plane.Label = self._t("Plan de référence")
         try:
             self._recompute()
         except KernelError:
@@ -2892,7 +2900,7 @@ class Kernel:
             loft.Sections = [(p, ("",)) for p in profiles[1:]]
         loft.Ruled = bool(ruled)
         loft.Closed = bool(closed)
-        loft.Label = label_for_type(type_id)
+        loft.Label = label_for_type(type_id, self.lang)
         try:
             self._recompute()
         except KernelError:
@@ -2930,7 +2938,7 @@ class Kernel:
                 binder.Support = [(path, ("",))]
             except TypeError:
                 binder.Support = (path, [""])
-            binder.Label = "Trajectoire — {}".format(path.Label)
+            binder.Label = self._t("Trajectoire — {}").format(path.Label)
             doc.recompute()
             path = binder
         type_id = ("PartDesign::SubtractivePipe" if subtractive
@@ -2941,7 +2949,7 @@ class Kernel:
             pipe.Spine = path
         except TypeError:
             pipe.Spine = (path, ("",))
-        pipe.Label = label_for_type(type_id)
+        pipe.Label = label_for_type(type_id, self.lang)
         try:
             self._recompute()
         except KernelError:
@@ -2968,7 +2976,7 @@ class Kernel:
         helix.ReferenceAxis = (profile, ["V_Axis"])
         helix.Pitch = float(pitch)
         helix.Height = float(height)
-        helix.Label = "Hélice"
+        helix.Label = self._t("Hélice")
         try:
             self._recompute()
         except KernelError:
@@ -2992,7 +3000,7 @@ class Kernel:
         feature.Profile = profile
         feature.ReferenceAxis = (profile, ["V_Axis"])
         feature.Angle = float(angle)
-        feature.Label = label_for_type(type_id)
+        feature.Label = label_for_type(type_id, self.lang)
         try:
             self._recompute()
         except KernelError:
@@ -3060,7 +3068,7 @@ class Kernel:
         feature = body.newObject(type_id, type_id.split("::")[-1])
         feature.Originals = originals
         configure(feature)
-        feature.Label = label_for_type(type_id)
+        feature.Label = label_for_type(type_id, self.lang)
         # FreeCAD 1.0 laisse le Tip sur l'original après newObject d'un
         # Transformed : la répétition existe alors sans devenir le solide
         # du corps (volume inchangé). Un Body n'a qu'un solide — les copies
@@ -3139,7 +3147,7 @@ class Kernel:
     def add_thickness(self, face, thickness):
         """Coque : évide la pièce, la face cliquée devient l'ouverture."""
         return self._dressup("PartDesign::Thickness",
-                             label_for_type("PartDesign::Thickness"),
+                             label_for_type("PartDesign::Thickness", self.lang),
                              "Value", thickness, face=face)
 
     def _tip_face_parallel_to(self, tip, plane, exclude_face=None):
@@ -3190,7 +3198,7 @@ class Kernel:
         feature.Base = (tip, ["Face{}".format(int(face) + 1)])
         feature.Angle = float(angle)
         feature.NeutralPlane = neutral_ref
-        feature.Label = label_for_type("PartDesign::Draft")
+        feature.Label = label_for_type("PartDesign::Draft", self.lang)
         try:
             self._recompute()
         except KernelError:
@@ -3439,7 +3447,7 @@ class Kernel:
             self._body = body
             solids = shape.Solids
             base = self._doc.addObject("Part::Feature", "Imported")
-            base.Label = "Import — {}".format(label)
+            base.Label = self._t("Import — {}").format(label)
             if solids:
                 base.Shape = solids[0]
                 body.BaseFeature = base
@@ -3585,7 +3593,7 @@ class Kernel:
                             and not self._is_internal_tool(item)), None)
         if obj is None and create:
             obj = doc.addObject("App::VarSet", self._VARSET_NAME)
-            obj.Label = "Équations"
+            obj.Label = self._t("Équations")
         return obj
 
     def _variable_names(self, varset):
@@ -3692,7 +3700,7 @@ class Kernel:
                 hole.HoleCutCountersinkAngle = float(cut_angle)
             except AttributeError:
                 pass  # renommée selon les versions ; l'angle par défaut sert
-        hole.Label = label_for_type("PartDesign::Hole")
+        hole.Label = label_for_type("PartDesign::Hole", self.lang)
         try:
             self._recompute()
         except KernelError:
@@ -3906,7 +3914,7 @@ class Kernel:
             item = {
                 "name": obj.Name,
                 "label": obj.Label,
-                "kind": label_for_type(obj.TypeId),
+                "kind": label_for_type(obj.TypeId, self.lang),
                 "type": obj.TypeId,
                 "error": "Invalid" in (obj.State or ()),
                 "order": order_of.get(obj.Name, -1),
@@ -4207,7 +4215,7 @@ class Kernel:
         doc = self._require_doc()
         sketch = doc.addObject("Sketcher::SketchObject", "Sketch")
         body.addObject(sketch)
-        sketch.Label = "Esquisse"
+        sketch.Label = self._t("Esquisse")
         if face is not None:
             self._attach_to_face(sketch, face)
         elif datum is not None:

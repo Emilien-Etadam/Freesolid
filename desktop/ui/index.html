@@ -63,16 +63,16 @@
       <polygon points="16,31 50,50 50,88 16,69" fill="#2563eb"/>
       <polygon points="84,31 50,50 50,88 84,69" fill="#1e40af"/>
     </svg>
-    <div><h1>FreeSolid</h1><small id="app-version">application de bureau</small></div>
+    <div><h1>FreeSolid</h1><small id="app-version" data-fr="application de bureau">application de bureau</small></div>
   </div>
 
   <div class="update" id="update">
     <span id="update-text"></span>
-    <button id="update-btn" class="primary">Installer</button>
+    <button id="update-btn" class="primary" data-fr="Installer">Installer</button>
   </div>
 
   <div class="status">
-    <div class="title" id="title"><span class="spin"></span>Recherche de FreeCAD…</div>
+    <div class="title" id="title"><span class="spin"></span><span data-fr="Recherche de FreeCAD…">Recherche de FreeCAD…</span></div>
     <div class="detail" id="detail"></div>
     <div class="bar" id="bar" hidden><i id="bar-fill"></i></div>
     <div class="err" id="error" hidden></div>
@@ -90,6 +90,56 @@
 (() => {
   const T = window.__TAURI__;
   const invoke = T.core.invoke;
+
+  // Bilingue : français source, anglais si la langue du système commence
+  // par « en ». (Le choix fait dans l'interface vit dans l'autre fenêtre.)
+  const EN = {
+    "Recherche de FreeCAD…": "Looking for FreeCAD…",
+    "Vérification…": "Checking…",
+    "Téléchargement de FreeCAD {v}…": "Downloading FreeCAD {v}…",
+    "Vérification de l'archive…": "Verifying the archive…",
+    "Extraction…": "Extracting…",
+    "Démarrage du moteur FreeCAD…": "Starting the FreeCAD engine…",
+    "Moteur prêt": "Engine ready",
+    "FreeCAD introuvable sur cette machine": "FreeCAD not found on this machine",
+    "Changer de FreeCAD…": "Change FreeCAD…",
+    "Choisir freecadcmd…": "Choose freecadcmd…",
+    "Choisir le dossier FreeCAD…": "Choose the FreeCAD folder…",
+    "Installer FreeCAD {v} automatiquement (≈ 800 Mo)": "Install FreeCAD {v} automatically (≈ 800 MB)",
+    "J'ai déjà FreeCAD : choisir freecadcmd…": "I already have FreeCAD: choose freecadcmd…",
+    "Réessayer": "Retry",
+    "Depuis les releases officielles de FreeCAD, vérifié par SHA-256. Une seule fois.": "From the official FreeCAD releases, SHA-256 verified. Once only.",
+    "Dans {d}": "Into {d}",
+    "application de bureau · v{v}": "desktop application · v{v}",
+    "application de bureau": "desktop application",
+    "référence FreeCAD {v}": "FreeCAD reference {v}",
+    "FreeSolid {v} est disponible (vous avez {c}).": "FreeSolid {v} is available (you have {c}).",
+    "Redémarrage…": "Restarting…",
+    "Mise à jour impossible : {e}": "Update failed: {e}",
+    "Installer": "Install",
+    "variable FREESOLID_FREECADCMD": "FREESOLID_FREECADCMD variable",
+    "votre choix": "your choice",
+    "installé par FreeSolid": "installed by FreeSolid",
+    "installation système": "system installation",
+    "Version différente de la référence {v} : FreeSolid fonctionne, mais certaines fonctions peuvent manquer.": "Version differs from the reference {v}: FreeSolid works, but some features may be missing.",
+    "FreeSolid a besoin de FreeCAD {v} (moteur de géométrie, exécuté en local, sans interface).": "FreeSolid needs FreeCAD {v} (geometry engine, run locally, without its interface).",
+    "Pas d'archive automatique pour {p} : installez FreeCAD depuis freecad.org puis indiquez son emplacement.": "No automatic archive for {p}: install FreeCAD from freecad.org then point to its location.",
+    "FreeCAD non reconnu": "FreeCAD not recognized",
+    "Installation impossible": "Installation failed",
+    "Le moteur n'a pas démarré": "The engine did not start",
+    "Erreur au démarrage": "Startup error",
+    "Journal : {p}": "Log: {p}",
+    "Choisir freecadcmd (ou le dossier de FreeCAD)": "Choose freecadcmd (or the FreeCAD folder)",
+    "Dossier de FreeCAD": "FreeCAD folder",
+    "Fermer": "Close"
+};
+  const LANG = String(navigator.language || "").toLowerCase().startsWith("en") ? "en" : "fr";
+  document.documentElement.lang = LANG;
+  const tr = (text, vars) => {
+    let out = LANG === "en" && Object.hasOwn(EN, text) ? EN[text] : text;
+    if (vars) out = out.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+    return out;
+  };
   const $ = (id) => document.getElementById(id);
   const fmtMo = (n) => (n / 1048576).toFixed(0) + " Mo";
 
@@ -123,41 +173,41 @@
   async function chooseFreecad() {
     const picked = await T.dialog.open({
       multiple: false, directory: false,
-      title: "Choisir freecadcmd (ou le dossier de FreeCAD)",
+      title: tr("Choisir freecadcmd (ou le dossier de FreeCAD)"),
     });
     if (!picked) { render(); return; }
-    setTitle('<span class="spin"></span>Vérification…'); setError(""); setActions([]);
+    setTitle('<span class="spin"></span>' + esc(tr("Vérification…"))); setError(""); setActions([]);
     try {
       status = await invoke("choose_freecadcmd", { path: picked });
       render();
-    } catch (e) { showFailure("FreeCAD non reconnu", String(e)); }
+    } catch (e) { showFailure(tr("FreeCAD non reconnu"), String(e)); }
   }
 
   async function chooseFreecadDir() {
-    const picked = await T.dialog.open({ multiple: false, directory: true, title: "Dossier de FreeCAD" });
+    const picked = await T.dialog.open({ multiple: false, directory: true, title: tr("Dossier de FreeCAD") });
     if (!picked) { render(); return; }
-    setTitle('<span class="spin"></span>Vérification…'); setError(""); setActions([]);
+    setTitle('<span class="spin"></span>' + esc(tr("Vérification…"))); setError(""); setActions([]);
     try {
       status = await invoke("choose_freecadcmd", { path: picked });
       render();
-    } catch (e) { showFailure("FreeCAD non reconnu", String(e)); }
+    } catch (e) { showFailure(tr("FreeCAD non reconnu"), String(e)); }
   }
 
   function showFailure(title, message, extra) {
     setTitle('<span class="err">' + esc(title) + '</span>');
     setBar(null); setError(message);
     setActions([
-      { label: "Réessayer", primary: true, run: boot },
-      { label: "Choisir freecadcmd…", run: chooseFreecad },
-      { label: "Choisir le dossier FreeCAD…", run: chooseFreecadDir },
+      { label: tr("Réessayer"), primary: true, run: boot },
+      { label: tr("Choisir freecadcmd…"), run: chooseFreecad },
+      { label: tr("Choisir le dossier FreeCAD…"), run: chooseFreecadDir },
       ...(extra || []),
     ]);
   }
 
   async function install() {
     setError(""); setActions([]);
-    setTitle('<span class="spin"></span>Téléchargement de FreeCAD ' + esc(status.reference) + '…');
-    setDetail("Depuis les releases officielles de FreeCAD, vérifié par SHA-256. Une seule fois.");
+    setTitle('<span class="spin"></span>' + esc(tr("Téléchargement de FreeCAD {v}…", { v: status.reference })));
+    setDetail(esc(tr("Depuis les releases officielles de FreeCAD, vérifié par SHA-256. Une seule fois.")));
     setBar(undefined);
     const unlisten = await T.event.listen("install-progress", (ev) => {
       const p = ev.payload;
@@ -165,10 +215,10 @@
         if (p.total) { setBar(p.done / p.total); setDetail(fmtMo(p.done) + " / " + fmtMo(p.total)); }
         else { setBar(undefined); setDetail(fmtMo(p.done)); }
       } else if (p.phase === "verifying") {
-        setTitle('<span class="spin"></span>Vérification de l\'archive…'); setBar(undefined);
+        setTitle('<span class="spin"></span>' + esc(tr("Vérification de l'archive…"))); setBar(undefined);
       } else if (p.phase === "extracting") {
-        setTitle('<span class="spin"></span>Extraction…'); setBar(undefined);
-        setDetail("Dans " + esc(status.install_dir));
+        setTitle('<span class="spin"></span>' + esc(tr("Extraction…"))); setBar(undefined);
+        setDetail(esc(tr("Dans {d}", { d: status.install_dir })));
       }
     });
     try {
@@ -178,65 +228,62 @@
       render();
     } catch (e) {
       unlisten();
-      showFailure("Installation impossible", String(e));
+      showFailure(tr("Installation impossible"), String(e));
     }
   }
 
   async function start() {
-    setError(""); setActions([{ label: "Changer de FreeCAD…", run: chooseFreecad }]);
-    setTitle('<span class="spin"></span>Démarrage du moteur FreeCAD…');
+    setError(""); setActions([{ label: tr("Changer de FreeCAD…"), run: chooseFreecad }]);
+    setTitle('<span class="spin"></span>' + esc(tr("Démarrage du moteur FreeCAD…")));
     setBar(undefined);
     try {
       await invoke("start_engine");
       // La fenêtre navigue vers l'interface ; rien d'autre à faire ici.
-      setTitle('<span class="ok">Moteur prêt</span>'); setBar(null);
+      setTitle('<span class="ok">' + esc(tr("Moteur prêt")) + '</span>'); setBar(null);
     } catch (e) {
       let log = "";
       try { log = await invoke("engine_log_path"); } catch (_) {}
-      showFailure("Le moteur n'a pas démarré", String(e) + (log ? "\n\nJournal : " + log : ""));
+      showFailure(tr("Le moteur n'a pas démarré"), String(e) + (log ? "\n\n" + tr("Journal : {p}", { p: log }) : ""));
     }
   }
 
   function render() {
     setBar(null); setError("");
-    $("app-version").textContent = "application de bureau · v" + status.app_version;
+    $("app-version").textContent = tr("application de bureau · v{v}", { v: status.app_version });
     $("foot-left").textContent = status.os + " / " + status.arch;
-    $("foot-right").textContent = "référence FreeCAD " + status.reference;
+    $("foot-right").textContent = tr("référence FreeCAD {v}", { v: status.reference });
     if (status.freecadcmd) {
-      const where = { env: "variable FREESOLID_FREECADCMD", config: "votre choix", managed: "installé par FreeSolid",
-                      path: "PATH", standard: "installation système" }[status.source] || status.source;
+      const where = { env: tr("variable FREESOLID_FREECADCMD"), config: tr("votre choix"), managed: tr("installé par FreeSolid"),
+                      path: "PATH", standard: tr("installation système") }[status.source] || status.source;
       setTitle("FreeCAD " + esc(status.version) + " <span class=\"detail\">(" + esc(where) + ")</span>");
       let d = esc(status.freecadcmd);
       if (!status.matches_reference) {
-        d += '<br><span class="warn">Version différente de la référence ' + esc(status.reference) +
-             " : FreeSolid fonctionne, mais certaines fonctions peuvent manquer.</span>";
+        d += '<br><span class="warn">' + esc(tr("Version différente de la référence {v} : FreeSolid fonctionne, mais certaines fonctions peuvent manquer.", { v: status.reference })) + "</span>";
       }
       setDetail(d);
       start();
       return;
     }
-    setTitle('<span class="warn">FreeCAD introuvable sur cette machine</span>');
-    setDetail("FreeSolid a besoin de FreeCAD " + esc(status.reference) +
-              " (moteur de géométrie, exécuté en local, sans interface).");
+    setTitle('<span class="warn">' + esc(tr("FreeCAD introuvable sur cette machine")) + '</span>');
+    setDetail(esc(tr("FreeSolid a besoin de FreeCAD {v} (moteur de géométrie, exécuté en local, sans interface).", { v: status.reference })));
     const actions = [];
     if (status.can_install) {
-      actions.push({ label: "Installer FreeCAD " + status.reference + " automatiquement (≈ 800 Mo)", primary: true, run: install });
+      actions.push({ label: tr("Installer FreeCAD {v} automatiquement (≈ 800 Mo)", { v: status.reference }), primary: true, run: install });
     } else {
-      setDetail("Pas d'archive automatique pour " + esc(status.os + "/" + status.arch) +
-                " : installez FreeCAD depuis freecad.org puis indiquez son emplacement.");
+      setDetail(esc(tr("Pas d'archive automatique pour {p} : installez FreeCAD depuis freecad.org puis indiquez son emplacement.", { p: status.os + "/" + status.arch })));
     }
-    actions.push({ label: "J'ai déjà FreeCAD : choisir freecadcmd…", run: chooseFreecad });
-    actions.push({ label: "Choisir le dossier FreeCAD…", run: chooseFreecadDir });
+    actions.push({ label: tr("J'ai déjà FreeCAD : choisir freecadcmd…"), run: chooseFreecad });
+    actions.push({ label: tr("Choisir le dossier FreeCAD…"), run: chooseFreecadDir });
     setActions(actions);
   }
 
   async function boot() {
-    setTitle('<span class="spin"></span>Recherche de FreeCAD…'); setDetail(""); setError(""); setActions([]); setBar(null);
+    setTitle('<span class="spin"></span>' + esc(tr("Recherche de FreeCAD…"))); setDetail(""); setError(""); setActions([]); setBar(null);
     try {
       status = await invoke("status");
       render();
     } catch (e) {
-      showFailure("Erreur au démarrage", String(e));
+      showFailure(tr("Erreur au démarrage"), String(e));
     }
   }
 
@@ -246,7 +293,7 @@
     try { update = await T.updater.check(); } catch (_) { return; }
     if (!update) return;
     const box = $("update");
-    $("update-text").textContent = "FreeSolid " + update.version + " est disponible (vous avez " + update.currentVersion + ").";
+    $("update-text").textContent = tr("FreeSolid {v} est disponible (vous avez {c}).", { v: update.version, c: update.currentVersion });
     box.classList.add("show");
     $("update-btn").onclick = async () => {
       const btn = $("update-btn"); btn.disabled = true;
@@ -255,16 +302,17 @@
         await update.downloadAndInstall((ev) => {
           if (ev.event === "Started") { total = ev.data.contentLength || 0; }
           else if (ev.event === "Progress") { done += ev.data.chunkLength; btn.textContent = total ? Math.round(100 * done / total) + " %" : fmtMo(done); }
-          else if (ev.event === "Finished") { btn.textContent = "Redémarrage…"; }
+          else if (ev.event === "Finished") { btn.textContent = tr("Redémarrage…"); }
         });
         await T.process.relaunch();
       } catch (e) {
-        btn.disabled = false; btn.textContent = "Réessayer";
-        $("update-text").textContent = "Mise à jour impossible : " + e;
+        btn.disabled = false; btn.textContent = tr("Réessayer");
+        $("update-text").textContent = tr("Mise à jour impossible : {e}", { e });
       }
     };
   }
 
+  for (const el of document.querySelectorAll("[data-fr]")) el.textContent = tr(el.dataset.fr);
   checkUpdate();
   boot();
 })();

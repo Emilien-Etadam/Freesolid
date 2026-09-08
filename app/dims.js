@@ -3,6 +3,7 @@
 // et hors esquisse.
 
 import { num } from "./num.js";
+import { t } from "./i18n.js";
 
 /** Libellé d'une cote : « largeur = 60.00 », préfixe Σ si expression. */
 export function dimLabel(dim) {
@@ -42,20 +43,20 @@ export function openDimEditor({ panel, dim, onApply, onCancel }) {
   const unit = isSketchAngle || dim.unit === "°" ? "°" : (dim.unit || "mm");
   panel.open({
     icon: "Constraint_Dimension.svg",
-    title: "Cote" + (dim.name ? ` — ${dim.name}` : ""),
+    title: t("Cote") + (dim.name ? ` — ${dim.name}` : ""),
     groups: [{
-      label: "Cote",
+      label: t("Cote"),
       rows: [
-        { type: "text", key: "name", label: "Nom", value: dim.name || "",
-          placeholder: "largeur",
+        { type: "text", key: "name", label: t("Nom"), value: dim.name || "",
+          placeholder: t("largeur"),
           showIf: () => dim.kind === "sketch" },
-        { type: "text", key: "value", label: "Valeur ou expression",
+        { type: "text", key: "value", label: t("Valeur ou expression"),
           value: shown, unit },
       ],
     }],
-    note: "Expression : « Variables.Largeur / 2 » ou " +
+    note: t("Expression : « Variables.Largeur / 2 » ou " +
           "« .Constraints.largeur * 2 » (les noms de cotes de cette " +
-          "esquisse s'utilisent avec .Constraints.nom)",
+          "esquisse s'utilisent avec .Constraints.nom)"),
     onApply: (values) => onApply(values, { shown, isSketchAngle }),
     onCancel,
   });

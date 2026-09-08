@@ -382,6 +382,14 @@ def _check_params(op: str, params: dict) -> None:
             _check_param(name, kind, params[name])
 
 
+def request_lang(payload) -> str:
+    """Langue demandée par la requête (« lang »), français par défaut."""
+    from engine.i18n import normalize_lang
+    if not isinstance(payload, dict):
+        return normalize_lang(None)
+    return normalize_lang(payload.get("lang"))
+
+
 def validate_request(payload) -> tuple[str, dict]:
     """Check an incoming request, returning ``(op, params)``.
 

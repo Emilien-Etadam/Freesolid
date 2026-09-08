@@ -27,6 +27,8 @@
 //
 // invalidateSelections() : vide les rows `selection` (ids périmés au rebuild).
 
+import { t } from "./i18n.js";
+
 export function createPropertyPanel({ say, onClose }) {
   const aside = document.querySelector("aside");
   const panelEl = document.getElementById("panel");
@@ -42,7 +44,7 @@ export function createPropertyPanel({ say, onClose }) {
   function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
-    if (text !== undefined) node.textContent = text;
+    if (text !== undefined) node.textContent = t(text);
     return node;
   }
 
@@ -172,7 +174,7 @@ export function createPropertyPanel({ say, onClose }) {
     if (spec.actions) {
       for (const action of spec.actions) {
         const btn = el("button", action.className ?? "pok", action.label);
-        if (action.title) btn.title = action.title;
+        if (action.title) btn.title = t(action.title);
         btn.addEventListener("click", () => {
           const values = { ...active.values };
           const run = action.onClick;
@@ -184,14 +186,14 @@ export function createPropertyPanel({ say, onClose }) {
     }
     if (!spec.noApply) {
       const ok = el("button", "pok", "✓");
-      ok.title = "OK (Entrée)";
+      ok.title = t("OK (Entrée)");
       ok.addEventListener("click", () => close(true));
       head.append(ok);
     }
     const cancel = el("button",
       spec.noApply ? "pcancel pcancel-text" : "pcancel",
       spec.noApply ? "Fermer" : "✕");
-    cancel.title = spec.noApply ? "Fermer (Échap)" : "Annuler (Échap)";
+    cancel.title = t(spec.noApply ? "Fermer (Échap)" : "Annuler (Échap)");
     cancel.addEventListener("click", () => close(false));
     head.append(cancel);
     panelEl.append(head);
@@ -261,7 +263,7 @@ export function createPropertyPanel({ say, onClose }) {
       const value = values[row.key];
       if (!hasSelectionValue(value)) {
         box.textContent =
-          row.hint ?? "Cliquez une face dans la zone graphique";
+          t(row.hint ?? "Cliquez une face dans la zone graphique");
         return box;
       }
       if (value.items) {
@@ -290,7 +292,7 @@ export function createPropertyPanel({ say, onClose }) {
       const input = document.createElement("input");
       input.type = "text";
       input.value = values[row.key] ?? "";
-      if (row.placeholder) input.placeholder = row.placeholder;
+      if (row.placeholder) input.placeholder = t(row.placeholder);
       input.addEventListener("input", () => {
         values[row.key] = input.value;
         changed();
@@ -314,7 +316,7 @@ export function createPropertyPanel({ say, onClose }) {
       for (const [value, label] of row.options) {
         const option = document.createElement("option");
         option.value = value;
-        option.textContent = label;
+        option.textContent = t(label);
         select.append(option);
       }
       select.value = values[row.key];

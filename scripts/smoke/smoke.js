@@ -228,6 +228,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await step("réglages ruban");
 
+  // Multilingue : la langue enregistrée s'applique au rechargement — ruban,
+  // arbre, puis retour au français pour la suite du parcours.
+  await page.evaluate(() => localStorage.setItem("freesolid.lang", "en"));
+  await page.reload();
+  await sleep(800);
+  const englishTab = await page.$eval('[data-tab="features"]', (el) => el.textContent.trim());
+  const englishFolder = await page.$$eval("#tree li", (rows) =>
+    rows.map((r) => r.textContent).join(" | "));
+  if (englishTab !== "Features") errors.push("anglais : onglet « " + englishTab + " » au lieu de Features");
+  if (!englishFolder.includes("Solid Bodies")) errors.push("anglais : dossier Solid Bodies absent (" + englishFolder.slice(0, 80) + ")");
+  const englishLang = await page.evaluate(() => document.documentElement.lang);
+  if (englishLang !== "en") errors.push("anglais : <html lang> vaut " + englishLang);
+  await page.screenshot({ path: path.join(SHOTS, "0c-anglais.png") });
+  await page.evaluate(() => localStorage.setItem("freesolid.lang", "fr"));
+  await page.reload();
+  await sleep(800);
+  await step("anglais");
+
   // 1. Esquisse — choix du plan dans le viewport. Deux courses possibles
   // juste après le balayage des panneaux : le clic #btn-sketch avalé, ou
   // pris en compte EN RETARD (après le clic de plan). Robuste aux deux :

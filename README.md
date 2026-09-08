@@ -100,6 +100,23 @@ et procédure de publication dans [`desktop/README.md`](desktop/README.md).
   optionnelle
 - **Image d'esquisse** (calque de fond)
 
+## Langue
+
+L'interface est en français ou en anglais : bouton engrenage → Paramètres →
+Langue (la langue du navigateur est prise par défaut). Le moteur nomme les
+fonctions de l'arbre et rédige ses messages d'erreur dans la langue de
+l'interface ; les noms déjà enregistrés dans un `.FCStd` ne sont pas
+traduits, ce sont les données de l'utilisateur.
+
+Le français est la langue source : le code et `app/ribbon.json` portent les
+textes français, `app/lang/en.json` (interface) et `engine/lang/en.json`
+(moteur) les traduisent, texte par texte, `{variable}` côté interface et
+`{}` côté moteur. Un texte sans traduction s'affiche en français. Ajouter
+une langue = un fichier JSON de chaque côté, plus son code dans
+`app/settings.js` (`LANGS`) et `engine/i18n.py` (`LANGS`). Les tests
+refusent une entrée orpheline et exigent une traduction pour chaque libellé
+du ruban et chaque titre de panneau.
+
 ## Architecture
 
 Trois couches :

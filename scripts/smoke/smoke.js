@@ -216,6 +216,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       errors.push("libellé hors groupe en icônes seules : " + box.name);
     }
   }
+  // Chaque bouton du ruban doit englober son icône : en icônes seules,
+  // font-size 0 rendait le max-width (em) des boutons large nul et l'icône
+  // débordait d'un bouton de 14 px.
+  const iconBoxes = await page.$$eval(
+    "#ribbon-features button > img",
+    (imgs) => imgs.map((img) => {
+      const b = img.parentElement.getBoundingClientRect();
+      const i = img.getBoundingClientRect();
+      return {
+        name: img.parentElement.id || img.parentElement.title,
+        w: Math.round(b.width),
+        overflow: i.left < b.left - 1 || i.right > b.right + 1
+          || i.top < b.top - 1 || i.bottom > b.bottom + 1,
+      };
+    }),
+  );
+  for (const box of iconBoxes) {
+    if (box.overflow) {
+      errors.push("icône hors de son bouton en icônes seules : " + box.name
+        + " (" + box.w + " px)");
+    }
+  }
   await page.screenshot({ path: path.join(SHOTS, "0c-icones-seules.png") });
   // Le panneau reste ouvert après le premier choix : settingsItem le
   // rouvre seulement s'il est fermé (un clic sur l'engrenage derrière la

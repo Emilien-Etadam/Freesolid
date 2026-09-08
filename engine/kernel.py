@@ -19,6 +19,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from engine import fonts                          # noqa: E402
 from engine.guard import friendly_error          # noqa: E402
 from engine.nodegraph import (  # noqa: E402
     GraphError, classify_shape_instructions, evaluate_instances,
@@ -1550,26 +1551,18 @@ class Kernel:
 
     # -- gravure de texte -------------------------------------------------
 
-    _FONT_CANDIDATES = (
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-    )
-
     def _find_font(self, font=None):
-        import glob as globmod
         if font:
-            # Police fournie par le client : jail. Les candidats internes
-            # (ci-dessous) ne passent pas par resolve_user_path.
+            # Police fournie par le client : jail. Les polices système
+            # (engine/fonts.py) ne passent pas par resolve_user_path.
             return self._user_path(font, (".ttf", ".otf"), must_exist=True)
-        for candidate in self._FONT_CANDIDATES:
-            if os.path.exists(candidate):
-                return candidate
-        found = globmod.glob("/usr/share/fonts/**/*.ttf", recursive=True)
+        dirs = fonts.font_dirs()
+        found = fonts.find_font(dirs)
         if found:
-            return sorted(found)[0]
-        raise KernelError("aucune police .ttf sur ce système — passez "
-                          "font=/chemin/vers/police.ttf")
+            return found
+        raise KernelError(
+            "aucune police .ttf sur ce système (cherché dans {}) — "
+            "passez font=/chemin/vers/police.ttf".format(", ".join(dirs)))
 
     def _build_text_solid(self, text, base, size, depth, emboss, x, y,
                           font=None):

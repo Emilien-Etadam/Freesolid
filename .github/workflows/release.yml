@@ -114,6 +114,9 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "FreeSolid ${{ github.ref_name }}"
           releaseBody: |
+            **Version de développement, non fonctionnelle** : un prototype
+            pour essayer et remonter des problèmes, pas pour produire des pièces.
+
             Application de bureau FreeSolid. FreeCAD est détecté sur la machine,
             ou installé automatiquement au premier lancement.
             Les apps déjà installées se mettent à jour d'elles-mêmes.

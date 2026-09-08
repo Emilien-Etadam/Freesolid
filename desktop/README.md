@@ -1,5 +1,9 @@
 # FreeSolid — application de bureau
 
+> **Version de développement, non fonctionnelle** : comme le reste de
+> FreeSolid, cette application est un prototype. Elle sert à essayer et à
+> remonter des problèmes, pas à produire des pièces.
+
 Une fenêtre [Tauri 2](https://tauri.app) autour du même `app/` + `engine/`
 que la version navigateur. Rien n'est recalculé ailleurs que sur la machine
 de l'utilisateur : l'app lance `freecadcmd engine/server.py` en processus

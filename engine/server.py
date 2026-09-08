@@ -16,6 +16,18 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# Les marques du selftest et les messages sont en français. Quand stdout
+# n'est pas un terminal (journal de l'application de bureau, redirection),
+# Python prend l'encodage de la locale — cp1252 sous Windows — et
+# « → » fait échouer l'étape qui l'imprime (« 'charmap' codec can't
+# encode character »). FreeCAD n'honore pas PYTHONIOENCODING ; on force
+# donc l'UTF-8 ici, comme scripts/run-selftest.py.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # pas un TextIOWrapper (console FreeCAD) : tant pis
+        pass
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_HERE)
 if _REPO_ROOT not in sys.path:

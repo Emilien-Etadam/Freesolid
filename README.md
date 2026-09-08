@@ -1,5 +1,11 @@
 # FreeSolid
 
+> **Version de développement, non fonctionnelle.** FreeSolid est un
+> prototype en cours de construction : des fonctions manquent, d'autres
+> cassent, et les fichiers produits peuvent ne pas se rouvrir d'une version
+> à l'autre. Ne l'utilisez pas pour un vrai travail. Les retours sont
+> bienvenus dans les [issues](https://github.com/Emilien-Etadam/Freesolid/issues).
+
 Interface de CAO mécanique moderne sur un moteur FreeCAD headless intact — les fichiers restent des `.FCStd`
 standard, ouvrables dans FreeCAD.
 

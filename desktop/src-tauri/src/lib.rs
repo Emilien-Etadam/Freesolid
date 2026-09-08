@@ -156,12 +156,45 @@ async fn start_engine(app: AppHandle, state: State<'_, EngineState>) -> Result<S
     .map_err(|e| e.to_string())??;
     let url = freecad::engine::url();
     *state.0.lock().map_err(|e| e.to_string())? = Some(engine);
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "fenêtre principale absente".to_string())?;
-    let target: tauri::Url = url.parse().map_err(|e| format!("{e}"))?;
-    window.navigate(target).map_err(|e| e.to_string())?;
+    open_cad_window(&app, &url)?;
     Ok(url)
+}
+
+/// Ouvre l'interface dans une fenêtre neuve, à la place de l'écran de
+/// lancement, en reprenant sa taille et son état.
+///
+/// Naviguer la fenêtre de lancement vers l'URL du moteur laissait, sous
+/// Windows, une webview plus grande que la fenêtre (barre d'état hors
+/// écran, vue 3D décentrée). Une fenêtre créée directement sur l'URL passe
+/// par le chemin standard de dimensionnement.
+fn open_cad_window(app: &AppHandle, url: &str) -> Result<(), String> {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+
+    let target: tauri::Url = url.parse().map_err(|e| format!("{e}"))?;
+    let launcher = app.get_webview_window("main");
+    let mut builder = WebviewWindowBuilder::new(app, "cad", WebviewUrl::External(target))
+        .title("FreeSolid")
+        .min_inner_size(900.0, 600.0);
+    let mut maximized = false;
+    if let Some(launcher) = &launcher {
+        maximized = launcher.is_maximized().unwrap_or(false);
+        if let (Ok(size), Ok(scale)) = (launcher.inner_size(), launcher.scale_factor()) {
+            let logical = size.to_logical::<f64>(scale);
+            builder = builder.inner_size(logical.width, logical.height);
+        }
+        if let (Ok(pos), Ok(scale)) = (launcher.outer_position(), launcher.scale_factor()) {
+            let logical = pos.to_logical::<f64>(scale);
+            builder = builder.position(logical.x, logical.y);
+        }
+    }
+    let cad = builder.build().map_err(|e| e.to_string())?;
+    if maximized {
+        let _ = cad.maximize();
+    }
+    if let Some(launcher) = launcher {
+        let _ = launcher.close();
+    }
+    Ok(())
 }
 
 /// Chemin du journal du moteur, pour l'écran d'erreur.

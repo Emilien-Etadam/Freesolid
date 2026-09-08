@@ -217,8 +217,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }
   }
   await page.screenshot({ path: path.join(SHOTS, "0c-icones-seules.png") });
-  await page.click("#btn-settings");
-  await sleep(150);
+  // Le panneau reste ouvert après le premier choix : settingsItem le
+  // rouvre seulement s'il est fermé (un clic sur l'engrenage derrière la
+  // surcouche serait intercepté).
   await settingsItem("icons-and-text");
   await sleep(200);
   const iconsAndText = await page.evaluate(() =>

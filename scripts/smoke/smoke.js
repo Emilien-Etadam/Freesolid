@@ -240,12 +240,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // arbre, puis retour au français pour la suite du parcours.
   await page.evaluate(() => localStorage.setItem("freesolid.lang", "en"));
   await page.reload();
-  await sleep(800);
+  // La page redémarre : on attend le ping du moteur (barre d'état en
+  // anglais) avant de lire l'interface.
+  await page.waitForFunction(
+    () => (document.getElementById("status")?.textContent || "").includes("Engine ready"),
+    null, { timeout: 15000 }).catch(() => {});
+  await sleep(300);
   const englishTab = await page.$eval('[data-tab="features"]', (el) => el.textContent.trim());
+  const englishStatus = await status();
   const englishFolder = await page.$$eval("#tree li", (rows) =>
     rows.map((r) => r.textContent).join(" | "));
   if (englishTab !== "Features") errors.push("anglais : onglet « " + englishTab + " » au lieu de Features");
-  if (!englishFolder.includes("Solid Bodies")) errors.push("anglais : dossier Solid Bodies absent (" + englishFolder.slice(0, 80) + ")");
+  if (!englishStatus.includes("Engine ready")) errors.push("anglais : barre d'état « " + englishStatus + " »");
+  // Avec une pièce : le dossier « Solid Bodies » ; sans : le texte vide,
+  // traduit lui aussi. Les deux prouvent que l'arbre est en anglais.
+  if (!englishFolder.includes("Solid Bodies") && !englishFolder.includes("— no document —")) {
+    errors.push("anglais : arbre non traduit (" + englishFolder.slice(0, 80) + ")");
+  }
   const englishLang = await page.evaluate(() => document.documentElement.lang);
   if (englishLang !== "en") errors.push("anglais : <html lang> vaut " + englishLang);
   await page.screenshot({ path: path.join(SHOTS, "0c-anglais.png") });

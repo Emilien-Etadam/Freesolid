@@ -89,6 +89,20 @@ describe("dictionnaire anglais", () => {
   });
 });
 
+describe("pas d'ombre sur t()", () => {
+  it("aucun fichier de app/ ne déclare une variable locale nommée t", () => {
+    // Un `const t = …` local masquerait l'import et casserait t("…")
+    // dans sa portée (vu sur le panneau Gravure).
+    const shadows = readdirSync(APP)
+      .filter((f) => f.endsWith(".js"))
+      .map((f) => [f, readFileSync(new URL(f, APP), "utf8")])
+      .filter(([, src]) => src.includes('from "./i18n.js"'))
+      .filter(([, src]) => /\b(const|let|var)\s+t\s*=/.test(src))
+      .map(([f]) => f);
+    assert.deepEqual(shadows, []);
+  });
+});
+
 describe("translateDom", () => {
   it("ne touche à rien en français et sans DOM", () => {
     assert.equal(translateDom(null), 0);

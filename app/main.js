@@ -2273,30 +2273,30 @@ async function editFeature(feature) {
   }
   if (feature.text) {
     // Gravure rééditable (P032) : panneau dédié -> edit_text.
-    const t = feature.text;
+    const txt = feature.text;
     panel.open({
       icon: TREE_ICONS[feature.type] ?? "PartDesign_Body.svg",
       title: feature.label,
       groups: [{
         label: t("Gravure"),
         rows: [
-          { type: "text", key: "text", label: t("Texte"), value: t.text },
+          { type: "text", key: "text", label: t("Texte"), value: txt.text },
           { type: "number", key: "size", label: t("Taille"), unit: "mm",
-            value: t.size },
+            value: txt.size },
           { type: "number", key: "depth", label: t("Profondeur"), unit: "mm",
-            value: t.depth },
-          { type: "number", key: "x", label: t("X"), unit: "mm", value: t.x },
-          { type: "number", key: "y", label: t("Y"), unit: "mm", value: t.y },
+            value: txt.depth },
+          { type: "number", key: "x", label: t("X"), unit: "mm", value: txt.x },
+          { type: "number", key: "y", label: t("Y"), unit: "mm", value: txt.y },
         ],
       }],
       onApply: (v) => {
         refresh(call("edit_text", {
           feature: feature.name,
-          text: String(v.text ?? t.text),
-          size: num(v.size) ?? t.size,
-          depth: num(v.depth) ?? t.depth,
-          x: num(v.x) ?? t.x,
-          y: num(v.y) ?? t.y,
+          text: String(v.text ?? txt.text),
+          size: num(v.size) ?? txt.size,
+          depth: num(v.depth) ?? txt.depth,
+          x: num(v.x) ?? txt.x,
+          y: num(v.y) ?? txt.y,
         }));
       },
     });

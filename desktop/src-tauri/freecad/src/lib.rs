@@ -21,7 +21,7 @@ pub mod version;
 
 pub use assets::{asset_for, Asset, AssetKind};
 pub use config::Config;
-pub use engine::{command_for, Engine};
+pub use engine::{command_for, free_port, Engine};
 pub use install::{install, InstallError, Progress};
 pub use locate::{candidates, find_freecadcmd_under, locate, Located, Source};
 pub use version::{parse_version, reference_version, version_of};

@@ -1273,7 +1273,9 @@ renderer.domElement.addEventListener("dblclick", (event) => {
 
 function resize() {
   const w = container.clientWidth, h = container.clientHeight;
-  renderer.setSize(w, h);
+  // updateStyle=false : le CSS (100 %) fait suivre le canvas à sa cellule,
+  // setSize ne règle que le tampon de rendu.
+  renderer.setSize(w, h, false);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   const aspect = h > 0 ? w / h : 1;
   camera.left = -ORTHO_HEIGHT * aspect / 2;

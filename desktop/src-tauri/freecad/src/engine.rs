@@ -6,11 +6,25 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// Port du serveur, celui de `engine/server.py` (`PORT`).
-pub const PORT: u16 = 8787;
+/// Ports essayés dans l'ordre. Le premier libre est passé au moteur
+/// (`FREESOLID_PORT`) ; le même jeu figure dans les capacités Tauri
+/// (`capabilities/default.json`, entrée `remote`), à garder aligné.
+pub const PORTS: [u16; 4] = [8787, 8788, 8789, 8790];
 
-pub fn url() -> String {
-    format!("http://127.0.0.1:{PORT}/")
+pub fn url_for(port: u16) -> String {
+    format!("http://127.0.0.1:{port}/")
+}
+
+/// Premier port de `candidates` sur lequel on peut écouter en local.
+///
+/// Un moteur d'une session précédente encore vivant (ancienne version,
+/// app tuée par un installeur) garde son port : on n'adopte jamais un
+/// serveur qu'on n'a pas lancé, on prend le port suivant.
+pub fn free_port(candidates: &[u16]) -> Option<u16> {
+    candidates
+        .iter()
+        .copied()
+        .find(|port| std::net::TcpListener::bind(("127.0.0.1", *port)).is_ok())
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -21,6 +35,8 @@ pub enum EngineError {
     Exited { code: Option<i32>, log_tail: String },
     #[error("le moteur ne répond pas après {0} s — fin du journal :\n{1}")]
     Timeout(u64, String),
+    #[error("aucun port libre parmi {0:?} — fermez les autres instances de FreeSolid")]
+    NoPort(Vec<u16>),
 }
 
 /// Sur Windows, pas de fenêtre console pour le processus enfant.
@@ -40,13 +56,17 @@ pub fn quiet(cmd: &mut Command) {
 /// La commande exacte, avec l'environnement que `server.py` attend :
 /// `FREESOLID_NO_SERVE` retiré (sinon le serveur quitte sans écouter, voir
 /// AGENTS.md), sortie en UTF-8 sur toutes les plateformes.
-pub fn command_for(freecadcmd: &Path, server_py: &Path) -> Command {
+pub fn command_for(freecadcmd: &Path, server_py: &Path, port: u16) -> Command {
     let mut cmd = Command::new(freecadcmd);
     cmd.arg(server_py);
     if let Some(dir) = server_py.parent() {
         cmd.current_dir(dir);
     }
     cmd.env_remove("FREESOLID_NO_SERVE");
+    cmd.env("FREESOLID_PORT", port.to_string());
+    // Le moteur s'arrête de lui-même quand ce processus disparaît
+    // (server.py, _watch_parent) : plus d'orphelin qui garde le port.
+    cmd.env("FREESOLID_PARENT_PID", std::process::id().to_string());
     cmd.env("PYTHONIOENCODING", "utf-8");
     cmd.env("PYTHONUNBUFFERED", "1");
     cmd.stdin(Stdio::null());
@@ -54,8 +74,8 @@ pub fn command_for(freecadcmd: &Path, server_py: &Path) -> Command {
     cmd
 }
 
-/// `true` si quelque chose répond déjà en HTTP sur le port du moteur.
-pub fn ping() -> bool {
+/// `true` si quelque chose répond en HTTP sur ce port.
+pub fn ping(port: u16) -> bool {
     let client = match reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(2))
         .no_proxy()
@@ -65,17 +85,16 @@ pub fn ping() -> bool {
         Err(_) => return false,
     };
     client
-        .get(url())
+        .get(url_for(port))
         .send()
         .map(|r| r.status().is_success())
         .unwrap_or(false)
 }
 
 pub struct Engine {
-    /// `None` quand un moteur tournait déjà avant nous (on l'adopte sans
-    /// le posséder : on ne l'arrêtera pas).
     child: Option<Child>,
     log_path: PathBuf,
+    port: u16,
 }
 
 impl Engine {
@@ -87,16 +106,11 @@ impl Engine {
         log_path: &Path,
         timeout: Duration,
     ) -> Result<Engine, EngineError> {
-        if ping() {
-            return Ok(Engine {
-                child: None,
-                log_path: log_path.to_path_buf(),
-            });
-        }
+        let port = free_port(&PORTS).ok_or_else(|| EngineError::NoPort(PORTS.to_vec()))?;
         if let Some(parent) = log_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let mut cmd = command_for(freecadcmd, server_py);
+        let mut cmd = command_for(freecadcmd, server_py, port);
         match File::create(log_path) {
             Ok(out) => {
                 let err = out
@@ -120,10 +134,11 @@ impl Engine {
                     log_tail: log_tail(log_path),
                 });
             }
-            if ping() {
+            if ping(port) {
                 return Ok(Engine {
                     child: Some(child),
                     log_path: log_path.to_path_buf(),
+                    port,
                 });
             }
             if started.elapsed() > timeout {
@@ -137,6 +152,15 @@ impl Engine {
 
     pub fn owned(&self) -> bool {
         self.child.is_some()
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    /// Adresse de l'interface servie par ce moteur.
+    pub fn url(&self) -> String {
+        url_for(self.port)
     }
 
     pub fn log_path(&self) -> &Path {
@@ -170,8 +194,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn free_port_skips_a_busy_one() {
+        let busy = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let taken = busy.local_addr().unwrap().port();
+        let other = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let free = other.local_addr().unwrap().port();
+        drop(other);
+        assert_eq!(free_port(&[taken, free]), Some(free));
+        assert_eq!(free_port(&[taken]), None);
+        assert_eq!(free_port(&[]), None);
+    }
+
+    #[test]
+    fn url_for_port() {
+        assert_eq!(url_for(8788), "http://127.0.0.1:8788/");
+    }
+
+    #[test]
     fn command_sets_cwd_and_env() {
-        let cmd = command_for(Path::new("/x/freecadcmd"), Path::new("/r/engine/server.py"));
+        let cmd = command_for(
+            Path::new("/x/freecadcmd"),
+            Path::new("/r/engine/server.py"),
+            8788,
+        );
         assert_eq!(cmd.get_program(), Path::new("/x/freecadcmd").as_os_str());
         let args: Vec<_> = cmd.get_args().collect();
         assert_eq!(args, vec![Path::new("/r/engine/server.py").as_os_str()]);
@@ -183,6 +228,12 @@ mod tests {
         assert!(envs
             .iter()
             .any(|(k, v)| *k == "FREESOLID_NO_SERVE" && v.is_none()));
+        assert!(envs
+            .iter()
+            .any(|(k, v)| *k == "FREESOLID_PORT" && v.map(|v| v == "8788").unwrap_or(false)));
+        assert!(envs
+            .iter()
+            .any(|(k, v)| *k == "FREESOLID_PARENT_PID" && v.is_some()));
     }
 
     #[test]

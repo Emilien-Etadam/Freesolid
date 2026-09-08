@@ -30,7 +30,12 @@ servie par ce moteur. Fermer la fenêtre arrête le moteur.
    - macOS : DMG monté, `FreeCAD.app` copié, DMG démonté
 3. **Vérifie les mises à jour de FreeSolid** (voir plus bas) et les propose
    en un clic.
-4. **Lance le moteur** et ouvre l'interface dans une fenêtre neuve.
+4. **Lance le moteur** sur le premier port libre parmi 8787 à 8790
+   (`FREESOLID_PORT`) et ouvre l'interface dans une fenêtre neuve. Un
+   moteur déjà présent sur un port n'est jamais réutilisé : une ancienne
+   version restée en vie ne peut plus servir la nouvelle interface. Le
+   moteur reçoit aussi `FREESOLID_PARENT_PID` et s'arrête de lui-même quand
+   l'application disparaît, même tuée par un installeur.
 
 Dans l'interface, le bouton engrenage ouvre **Paramètres** : version de
 FreeSolid et de FreeCAD, chemin de `freecadcmd`, journal du moteur, liens

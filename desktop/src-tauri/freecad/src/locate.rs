@@ -142,17 +142,21 @@ fn on_path(name: &str) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// Dossiers où l'installeur FreeCAD dépose « FreeCAD 1.x » : machine
+/// entière (`Program Files`) ou utilisateur courant
+/// (`%LOCALAPPDATA%\Programs`, le choix par défaut depuis 1.1).
 fn program_files_dirs() -> Vec<PathBuf> {
-    [
-        "ProgramFiles",
-        "ProgramW6432",
-        "ProgramFiles(x86)",
-        "LOCALAPPDATA",
-    ]
-    .iter()
-    .filter_map(std::env::var_os)
-    .map(PathBuf::from)
-    .collect()
+    let mut dirs: Vec<PathBuf> = ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"]
+        .iter()
+        .filter_map(std::env::var_os)
+        .map(PathBuf::from)
+        .collect();
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        let local = PathBuf::from(local);
+        dirs.push(local.join("Programs"));
+        dirs.push(local);
+    }
+    dirs
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -228,6 +232,21 @@ mod tests {
             c[0].ends_with("FreeCAD 1.1/bin/freecadcmd.exe")
                 || c[0].ends_with("FreeCAD 1.1\\bin\\freecadcmd.exe")
         );
+    }
+
+    #[test]
+    fn windows_candidates_span_all_bases() {
+        // Installeur « utilisateur courant » : %LOCALAPPDATA%\Programs\FreeCAD 1.1
+        let pf = tempfile::tempdir().unwrap();
+        let programs = pf.path().join("Programs");
+        std::fs::create_dir_all(programs.join("FreeCAD 1.1").join("bin")).unwrap();
+        let c = candidates(
+            "windows",
+            None,
+            &[pf.path().to_path_buf(), programs.clone()],
+        );
+        assert_eq!(c.len(), 1);
+        assert!(c[0].starts_with(programs.join("FreeCAD 1.1")));
     }
 
     #[test]

@@ -34,7 +34,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     launchOptions.executablePath = process.env.CHROMIUM_PATH;
   }
   const browser = await chromium.launch(launchOptions);
-  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  // Le parcours lit les textes français ; la langue par défaut de
+  // l'interface suit navigator.language, donc on fixe la locale du
+  // navigateur (le runner CI est en en-US). Le pas « anglais » choisit
+  // l'anglais explicitement via localStorage, qui prime sur la locale.
+  const page = await browser.newPage({
+    viewport: { width: 1400, height: 900 },
+    locale: "fr-FR",
+  });
 
   // Hermétique : si three est installé localement (npm install dans ce
   // dossier), on le sert à la place d'unpkg — même version épinglée que

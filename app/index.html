@@ -94,6 +94,9 @@
   body.ribbon-icons-only .ribbon button:has(> img) {
     font-size: 0; gap: 0; padding: 6px;
   }
+  /* font-size 0 rend le max-width en em des boutons large nul : le bouton
+     ferait 14 px sous une icône de 24 px. Sans libellé, plus de plafond. */
+  body.ribbon-icons-only .ribbon button.large { max-width: none; }
   header .sep { width: 1px; height: 22px; background: var(--line); }
   header .logo { font-weight: 600; letter-spacing: 0.02em; margin-right: 12px; }
   header .logo span { color: var(--accent); }

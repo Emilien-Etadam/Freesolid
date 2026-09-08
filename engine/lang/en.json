@@ -38,7 +38,7 @@
  "aucune fonction à répéter — créez d'abord un bossage ou un enlèvement de matière": "no feature to pattern — create a boss or a cut first",
  "aucune fonction à répéter — la liste features est vide": "no feature to pattern — the features list is empty",
  "aucune pièce ouverte — commencez par new_part": "no part open — start with new_part",
- "aucune police .ttf sur ce système — passez font=/chemin/vers/police.ttf": "no .ttf font on this system — pass font=/path/to/font.ttf",
+ "aucune police .ttf sur ce système (cherché dans {}) — passez font=/chemin/vers/police.ttf": "no .ttf font on this system (searched in {}) — pass font=/path/to/font.ttf",
  "axe inconnu « {} » — attendu X, Y ou Z": "unknown axis \"{}\" — expected X, Y or Z",
  "cette face ne peut pas être dépouillée par rapport à ce plan neutre — choisissez un autre plan neutre ou une autre face": "this face cannot be drafted relative to this neutral plane — choose another neutral plane or another face",
  "cette fonction graphe est un enlèvement ou un bossage ; le graphe ne produit plus de solide — la pièce n'a pas été modifiée": "this graph feature is a cut or a boss; the graph no longer produces a solid — the part was not modified",

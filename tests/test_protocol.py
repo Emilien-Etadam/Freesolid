@@ -211,6 +211,28 @@ def test_edge_ops_declared():
         {"op": "add_chamfer", "params": {"size": 2, "face": 4}})
 
 
+def test_chamfer_optional_types():
+    # Distance égale : size seul, comme avant.
+    protocol.validate_request(
+        {"op": "add_chamfer", "params": {"size": 2, "edges": [1]}})
+    protocol.validate_request({
+        "op": "add_chamfer",
+        "params": {"size": 2, "edges": [1], "chamfer_type": "deux",
+                   "size2": 4, "flip": True}})
+    protocol.validate_request({
+        "op": "add_chamfer",
+        "params": {"size": 2, "chamfer_type": "angle", "angle": 30,
+                   "flip": False}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request({
+            "op": "add_chamfer",
+            "params": {"size": 2, "flip": "yes"}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request({
+            "op": "add_chamfer",
+            "params": {"size": 2, "size2": "large"}})
+
+
 def test_hole_rename_and_atomic_edit_ops():
     assert protocol.OPS["add_hole"] == ("diameter",)
     assert protocol.OPS["rename"] == ("feature", "label")

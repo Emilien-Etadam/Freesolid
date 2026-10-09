@@ -3252,9 +3252,113 @@ class Kernel:
         return self._dressup("PartDesign::Fillet", "Congé",
                              "Radius", radius, face=face, edges=edges)
 
-    def add_chamfer(self, size, face=None, edges=None):
-        return self._dressup("PartDesign::Chamfer", "Chanfrein",
-                             "Size", size, face=face, edges=edges)
+    #: Jeton du panneau → énumération FreeCAD ``ChamferType``.
+    _CHAMFER_TYPES = {
+        "egale": "Equal distance",
+        "deux": "Two distances",
+        "angle": "Distance and Angle",
+    }
+
+    def _chamfer_kind(self, obj):
+        """``egale``, ``deux`` ou ``angle`` — ``egale`` si la propriété manque."""
+        current = str(getattr(obj, "ChamferType", "") or "")
+        for token, label in self._CHAMFER_TYPES.items():
+            if current == label:
+                return token
+        return "egale"
+
+    @staticmethod
+    def _prop_float(obj, name):
+        value = getattr(obj, name, 0)
+        return float(getattr(value, "Value", value))
+
+    def _chamfer_state(self, obj):
+        """État relu pour l'arbre et la réédition."""
+        return {
+            "type": self._chamfer_kind(obj),
+            "size": self._prop_float(obj, "Size"),
+            "size2": self._prop_float(obj, "Size2"),
+            "angle": self._prop_float(obj, "Angle"),
+            "flip": bool(getattr(obj, "FlipDirection", False)),
+        }
+
+    def _editable_props(self, obj):
+        """Cotes proposées à l'édition. Le chanfrein ne montre que celles
+        du type en cours : une distance, deux distances, ou distance et angle."""
+        if getattr(obj, "TypeId", "") != "PartDesign::Chamfer":
+            return self._EDITABLE_PROPS
+        kind = self._chamfer_kind(obj)
+        if kind == "deux":
+            return ("Size", "Size2")
+        if kind == "angle":
+            return ("Size", "Angle")
+        return ("Size",)
+
+    def add_chamfer(self, size, face=None, edges=None,
+                    size2=None, angle=None, chamfer_type="egale", flip=False):
+        """Chanfrein : distance égale, deux distances, ou distance et angle.
+
+        ``chamfer_type`` vaut ``egale`` (défaut, le geste historique),
+        ``deux`` (``size`` et ``size2``) ou ``angle`` (``size`` et ``angle``
+        en degrés, strictement entre 0 et 90). ``flip`` échange les deux
+        côtés — sans effet quand les deux côtés sont égaux.
+        """
+        kind = str(chamfer_type or "egale")
+        if kind not in self._CHAMFER_TYPES:
+            raise KernelError(
+                "type de chanfrein inconnu « {} » — attendu : {}".format(
+                    kind, ", ".join(self._CHAMFER_TYPES)))
+        try:
+            distance = float(size)
+        except (TypeError, ValueError):
+            raise KernelError("distance de chanfrein invalide")
+        if distance <= 0:
+            raise KernelError("distance de chanfrein invalide")
+        second = None
+        degrees = None
+        if kind == "deux":
+            try:
+                second = float(size2)
+            except (TypeError, ValueError):
+                raise KernelError("seconde distance de chanfrein invalide")
+            if second <= 0:
+                raise KernelError("seconde distance de chanfrein invalide")
+        elif kind == "angle":
+            try:
+                degrees = float(angle)
+            except (TypeError, ValueError):
+                degrees = None
+            if degrees is None or not (0 < degrees < 90):
+                raise KernelError(
+                    "angle de chanfrein invalide — entre 0 et 90 degrés, exclus")
+        body = self._require_body()
+        doc = self._require_doc()
+        tip = getattr(body, "Tip", None)
+        if tip is None:
+            raise KernelError("pas de solide à habiller")
+        if edges:
+            subs = ["Edge{}".format(int(e) + 1) for e in edges]
+        elif face is not None:
+            subs = ["Face{}".format(int(face) + 1)]
+        else:
+            raise KernelError(
+                "sélectionnez des arêtes ou une face de la pièce")
+        feature = body.newObject("PartDesign::Chamfer", "Chamfer")
+        feature.Base = (tip, subs)
+        feature.ChamferType = self._CHAMFER_TYPES[kind]
+        feature.Size = distance
+        if second is not None:
+            feature.Size2 = second
+        if degrees is not None:
+            feature.Angle = degrees
+        feature.FlipDirection = bool(flip) and kind != "egale"
+        feature.Label = self._t("Chanfrein")
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(feature.Name)
+            raise
+        return self.get_tree()
 
     #: Properties offered for editing, in display order. A whitelist rather
     #: than full introspection: Pad alone carries a dozen numeric properties
@@ -3272,7 +3376,7 @@ class Kernel:
             raise KernelError("fonction inconnue : {}".format(feature))
         exprs = self._expression_map(obj)
         params = []
-        for prop in self._EDITABLE_PROPS:
+        for prop in self._editable_props(obj):
             if not hasattr(obj, prop):
                 continue
             value = getattr(obj, prop)
@@ -3505,13 +3609,48 @@ class Kernel:
         # null »). On mémorise l'état pour tout restaurer sur refus.
         exprs_before = dict(obj.ExpressionEngine or [])
         previous = []  # (prop, ancienne expression ou None, ancienne valeur)
+        editable = self._EDITABLE_PROPS
+        if obj.TypeId == "PartDesign::Chamfer":
+            editable = editable + ("Size2", "ChamferType", "FlipDirection")
         for prop, value in values.items():
             prop = str(prop)
-            if prop not in self._EDITABLE_PROPS:
+            if prop not in editable:
                 raise KernelError("propriété non éditable : {}".format(prop))
             if not hasattr(obj, prop):
                 raise KernelError("{} n'a pas de propriété {}".format(
                     obj.Label, prop))
+            if prop == "ChamferType":
+                token = str(value).strip() if value is not None else ""
+                if token not in self._CHAMFER_TYPES:
+                    self._restore_props(obj, previous)
+                    raise KernelError(
+                        "type de chanfrein inconnu « {} » — attendu : {}"
+                        .format(token, ", ".join(self._CHAMFER_TYPES)))
+                previous.append((prop, exprs_before.get(prop),
+                                 getattr(obj, prop, None)))
+                try:
+                    setattr(obj, prop, self._CHAMFER_TYPES[token])
+                except Exception as exc:  # noqa: BLE001
+                    self._restore_props(obj, previous)
+                    raise KernelError(_explain(exc))
+                continue
+            if prop == "FlipDirection":
+                if isinstance(value, bool):
+                    flag = value
+                elif type(value) is int and value in (0, 1):
+                    flag = bool(value)
+                else:
+                    self._restore_props(obj, previous)
+                    raise KernelError(
+                        "inverser le chanfrein : booléen attendu")
+                previous.append((prop, exprs_before.get(prop),
+                                 getattr(obj, prop, None)))
+                try:
+                    setattr(obj, prop, flag)
+                except Exception as exc:  # noqa: BLE001
+                    self._restore_props(obj, previous)
+                    raise KernelError(_explain(exc))
+                continue
             previous.append((prop, exprs_before.get(prop),
                              getattr(obj, prop, None)))
             if isinstance(value, str):
@@ -3922,6 +4061,8 @@ class Kernel:
             if obj.TypeId == "Sketcher::SketchObject":
                 item["rolled_back"] = self._is_rolled_back(obj)
                 item["definition"] = self._sketch_definition(obj)
+            if obj.TypeId == "PartDesign::Chamfer":
+                item["chamfer"] = self._chamfer_state(obj)
             if "FreeSolidTextString" in obj.PropertiesList:
                 # Gravure rééditable : le panneau client édite ces valeurs.
                 item["text"] = {
@@ -5623,6 +5764,81 @@ class Kernel:
             except RuntimeError:
                 vol_restored = False
             report["p4_delete_feature_ok"] = chamfer_gone and vol_restored
+
+            mark("p4b: chanfrein deux distances, distance-angle, inversion")
+            self.new_part("Pièce chanfrein")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(20)
+
+            def _verts():
+                shape = self._require_body().Shape
+                solids = list(getattr(shape, "Solids", None) or [])
+                solid = solids[0] if solids else shape
+                return tuple(sorted(
+                    (round(float(v.Point.x), 3),
+                     round(float(v.Point.y), 3),
+                     round(float(v.Point.z), 3))
+                    for v in solid.Vertexes))
+
+            def _top_edge():
+                return next(
+                    i for i, item in
+                    enumerate(self._require_body().Shape.Edges)
+                    if abs(item.CenterOfMass.z - 20) < 1e-6)
+
+            edge = _top_edge()
+            tree = self.add_chamfer(size=2, edges=[edge])
+            made = next(f for f in tree["features"]
+                        if f["type"] == "PartDesign::Chamfer")
+            equal_verts = _verts()
+            report["p4_chamfer_equal_ok"] = (
+                made.get("chamfer", {}).get("type") == "egale"
+                and abs(made["chamfer"]["size"] - 2) < 1e-6
+                and made["chamfer"]["flip"] is False
+                and [p["prop"] for p in made.get("params") or []] == ["Size"]
+                and not made.get("error"))
+            tree = self.set_params(made["name"], {
+                "ChamferType": "deux", "Size2": 5, "FlipDirection": False})
+            made = next(f for f in tree["features"] if f["name"] == made["name"])
+            two_verts = _verts()
+            report["p4_chamfer_two_ok"] = (
+                made["chamfer"]["type"] == "deux"
+                and abs(made["chamfer"]["size2"] - 5) < 1e-6
+                and two_verts != equal_verts
+                and [p["prop"] for p in made.get("params") or []]
+                == ["Size", "Size2"]
+                and not made.get("error"))
+            tree = self.set_params(made["name"], {"FlipDirection": True})
+            made = next(f for f in tree["features"] if f["name"] == made["name"])
+            report["p4_chamfer_flip_ok"] = (
+                made["chamfer"]["flip"] is True
+                and _verts() != two_verts
+                and not made.get("error"))
+
+            self.new_part("Pièce chanfrein angle")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(20)
+            edge = _top_edge()
+            tree = self.add_chamfer(
+                size=4, angle=30, chamfer_type="angle", flip=True, edges=[edge])
+            made = next(f for f in tree["features"]
+                        if f["type"] == "PartDesign::Chamfer")
+            report["p4_chamfer_angle_ok"] = (
+                made["chamfer"]["type"] == "angle"
+                and abs(made["chamfer"]["angle"] - 30) < 1e-6
+                and made["chamfer"]["flip"] is True
+                and _verts() != equal_verts
+                and [p["prop"] for p in made.get("params") or []]
+                == ["Size", "Angle"]
+                and not made.get("error"))
+            before = len(tree["features"])
+            try:
+                self.add_chamfer(size=2, edges=[edge], chamfer_type="sommet")
+                refused = False
+            except KernelError as exc:
+                refused = "type de chanfrein" in str(exc)
+            report["p4_chamfer_type_refused"] = (
+                refused and len(self.get_tree()["features"]) == before)
 
             mark("p5: congé sur arêtes")
             self.new_part("Pièce arêtes")

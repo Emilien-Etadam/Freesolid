@@ -58,7 +58,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 15 | Réordonner l'arbre par glisser-déposer | P2 | reste |
 | 16 | Arbre accessible pendant une commande | P2 | reste |
 | 17 | Barre de menus | P2 | confié à Cursor (T17) |
-| 18 | Chanfrein distance-angle | P2 | confié à Cursor (T18) |
+| 18 | Chanfrein distance-angle | P2 | fait : distance égale, deux distances, distance et angle, inversion des côtés, réédition |
 | 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | reste |
 | 20 | Révolution : choix de l'axe | P2 | confié à Cursor (T20) |
 | 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | confié à Cursor (T21) |

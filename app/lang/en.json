@@ -623,5 +623,15 @@
  "Quitter sans garder": "Leave without keeping",
  "Esquisse sur cette face": "Sketch on this face",
  "Normal à (Ctrl+8)": "Normal to (Ctrl+8)",
- "Arête": "Edge"
+ "Arête": "Edge",
+ "Type de chanfrein": "Chamfer type",
+ "Distance égale": "Equal distance",
+ "Deux distances": "Two distances",
+ "Distance et angle": "Distance and angle",
+ "Seconde distance": "Second distance",
+ "Inverser les côtés": "Swap sides",
+ "Distance de chanfrein invalide": "Invalid chamfer distance",
+ "Seconde distance de chanfrein invalide": "Invalid second chamfer distance",
+ "Angle de chanfrein invalide": "Invalid chamfer angle",
+ "Valeurs du chanfrein invalides": "Invalid chamfer values"
 }

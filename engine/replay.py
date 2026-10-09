@@ -419,6 +419,9 @@ def _capture_feature(kernel, obj):
         "edges": edges,
         "faces": faces,
     }
+    if obj.TypeId == "PartDesign::Chamfer":
+        feat["chamfer_type"] = kernel._chamfer_kind(obj)
+        feat["flip"] = bool(getattr(obj, "FlipDirection", False))
     if obj.TypeId in INDEXED_TYPES:
         base = getattr(obj, "BaseFeature", None)
         shape = getattr(base, "Shape", None) if base is not None else None
@@ -548,10 +551,20 @@ def _replay_feature(kernel, feat, sketch_map, substitutions):
         return
     if type_id == "PartDesign::Chamfer":
         size = _substituted(feat, substitutions, "Size")
+        kind = feat.get("chamfer_type") or "egale"
+        extra = {}
+        if kind == "deux":
+            extra["size2"] = _substituted(feat, substitutions, "Size2")
+            extra["chamfer_type"] = "deux"
+            extra["flip"] = bool(feat.get("flip"))
+        elif kind == "angle":
+            extra["angle"] = _substituted(feat, substitutions, "Angle")
+            extra["chamfer_type"] = "angle"
+            extra["flip"] = bool(feat.get("flip"))
         if feat["edges"]:
-            kernel.add_chamfer(size=size, edges=feat["edges"])
+            kernel.add_chamfer(size=size, edges=feat["edges"], **extra)
         elif feat["faces"]:
-            kernel.add_chamfer(size=size, face=feat["faces"][0])
+            kernel.add_chamfer(size=size, face=feat["faces"][0], **extra)
         else:
             raise KernelError(
                 "chanfrein sans arête ni face : {}".format(feat["name"]))

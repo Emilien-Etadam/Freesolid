@@ -30,6 +30,48 @@ Priorités :
 
 ---
 
+## Suivi du lot « clone-sw »
+
+Lot validé : tous les écarts P1 et P2, sauf la mise en plan interactive.
+Ils sont traités du plus simple au plus gros, avec un commit par écart sur la
+branche `clone-sw`. Le comportement de référence de SolidWorks vient de la
+connaissance du logiciel et de l'aide officielle, reformulées.
+
+| # | Écart | Prio | État |
+|---|---|---|---|
+| 1 | Titre de l'arbre « FeatureManager » → « Arbre de création » | P2 | fait |
+| 2 | Vues standard Ctrl+2 / 3 / 6 / 8 | P2 | reste |
+| 3 | Navigation souris (milieu, Ctrl+milieu, molette vers le curseur, cadre au bouton gauche) | P1 | reste |
+| 4 | Couleurs d'état de contrainte de l'esquisse | P1 | reste |
+| 5 | Préfixe d'état (-) / (+) et esquisse en cours dans l'arbre | P2 | reste |
+| 6 | « Quitter » l'esquisse annule vraiment | P2 | reste |
+| 7 | Coin de confirmation ✓/✗ dans la vue | P2 | reste |
+| 8 | Barre d'espace : boîte d'orientation | P2 | reste |
+| 9 | Origine dans l'arbre et dans l'esquisse ; volumes visibles en esquisse | P2 | reste |
+| 10 | Cotation : saisie de la valeur à la pose, lignes d'attache et flèches | P1 | reste |
+| 11 | Retour pendant le tracé (inférences, symboles de relations) | P2 | reste |
+| 12 | Barre S (la spline quitte la touche S) | P2 | reste |
+| 13 | Menu et barre contextuels dans la vue | P1 | reste |
+| 14 | Barre tête haute : styles d'affichage, masquer/afficher, orientation | P2 | reste |
+| 15 | Réordonner l'arbre par glisser-déposer | P2 | reste |
+| 16 | Arbre accessible pendant une commande | P2 | reste |
+| 17 | Barre de menus | P2 | reste |
+| 18 | Chanfrein distance-angle | P2 | reste |
+| 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | reste |
+| 20 | Révolution : choix de l'axe | P2 | reste |
+| 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | reste |
+| 22 | Répétitions : choix des fonctions et de la direction | P2 | reste |
+| 23 | Ouvrir / Enregistrer : dialogue de fichiers | P2 | reste |
+| 24 | Accueil et Nouveau (Ctrl+N) | P2 | reste |
+| 25 | Assemblage : contraintes standard | P1 | reste |
+| 26 | Assemblage : insertion guidée, fixe/flottant, déplacement à la souris | P2 | reste |
+
+### Questions de conception en attente
+
+*(aucune pour l'instant)*
+
+---
+
 ## 1. Accueil / nouveau document
 
 | Élément | SolidWorks | FreeSolid | Écart | Prio |

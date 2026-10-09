@@ -8,10 +8,15 @@ d'extrusion…) sont traités ailleurs.
 
 ## Règles communes — à lire avant chaque tâche
 
-- **Branche** : partir de `clone-sw`, travailler sur `cursor/clone-sw-<n°>`.
-  Faire **un commit par tâche**, dont le message (en français) dit ce qui
-  change pour l'utilisateur. Ne pas fusionner dans `clone-sw` : ouvrir une PR
-  vers `clone-sw`.
+- **Dossier et branche** : travailler **dans `D:\Dev\Freesolid-cursor`**
+  (worktree git du même dépôt), sur la branche `cursor/clone-sw`. Ne jamais
+  modifier `D:\Dev\Freesolid` ni changer de branche là-bas : Claude y
+  travaille en parallèle sur `clone-sw`. Faire **un commit par tâche**, dont
+  le message (en français) dit ce qui change pour l'utilisateur. Claude
+  fusionne ensuite `cursor/clone-sw` dans `clone-sw`.
+- **Serveur de test** : le port 8787 peut être pris par l'application de
+  bureau et le 8797 par Claude. Lancer le moteur avec un autre port :
+  `FREESOLID_PORT=8798`.
 - **Clean-room** : on reproduit un comportement, jamais un texte, une icône,
   un nom ou un logo de Dassault. Les descriptions ci-dessous sont déjà
   reformulées. Une icône nouvelle est un dessin original `app/icons/FreeSolid_*.svg`

@@ -277,6 +277,90 @@ renderer.domElement.addEventListener("mousedown", (event) => {
   if (event.button === 1) event.preventDefault();
 });
 
+// Centre de rotation : un clic milieu (sans glisser) sur la pièce pose le
+// centre, un clic milieu dans le vide le retire. Avec un centre posé, le
+// glisser milieu tourne la vue autour de lui (il reste fixe à l'écran) ;
+// OrbitControls, qui ne sait tourner qu'autour du centre de la vue, est
+// mis de côté le temps du glisser.
+let rotationPivot = null;
+let pivotDrag = null;
+const pivotMarker = new THREE.Points(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3()]),
+  new THREE.PointsMaterial({ color: 0xd9924a, size: 10,
+    sizeAttenuation: false, depthTest: false }));
+pivotMarker.visible = false;
+pivotMarker.renderOrder = 30;
+scene.add(pivotMarker);
+
+function pickPivot(event) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const at = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(at, camera);
+  const targets = [partMesh, ...othersMeshes, ...surfaceMeshes,
+    ...(asmGroup ? asmGroup.children : [])].filter(Boolean);
+  return raycaster.intersectObjects(targets, false)[0]?.point ?? null;
+}
+
+function setRotationPivot(point) {
+  rotationPivot = point ? point.clone() : null;
+  pivotMarker.visible = !!rotationPivot;
+  if (rotationPivot) pivotMarker.position.copy(rotationPivot);
+  say(rotationPivot
+    ? "Centre de rotation posé — clic milieu dans le vide pour le retirer."
+    : "Centre de rotation : centre de la vue.");
+}
+
+/** Tourne caméra et cible autour du centre : lacet autour de l'axe haut de
+ *  la caméra (Z, ou Y après une vue de dessus), tangage autour de
+ *  l'horizontale de l'écran. Même axe haut que lookAt : pas de saut. */
+function orbitAroundPivot(dx, dy) {
+  const height = renderer.domElement.clientHeight || 1;
+  const yaw = -2 * Math.PI * dx / height;
+  const pitch = -2 * Math.PI * dy / height;
+  const view = new THREE.Vector3().subVectors(controls.target, camera.position)
+    .normalize();
+  const right = new THREE.Vector3().crossVectors(view, camera.up).normalize();
+  const up = camera.up.clone().normalize();
+  const q = new THREE.Quaternion().setFromAxisAngle(up, yaw);
+  const qPitch = new THREE.Quaternion().setFromAxisAngle(right, pitch);
+  const tilted = view.clone().applyQuaternion(qPitch);
+  if (Math.abs(tilted.dot(up)) < 0.995) q.multiply(qPitch); // pas de bascule au pôle
+  for (const point of [camera.position, controls.target]) {
+    point.sub(rotationPivot).applyQuaternion(q).add(rotationPivot);
+  }
+  camera.lookAt(controls.target);
+}
+
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  if (event.button !== 1) return;
+  pivotDrag = { x: event.clientX, y: event.clientY, last: null,
+    custom: !!rotationPivot && controls.enableRotate
+      && !event.ctrlKey && !event.metaKey && !event.shiftKey };
+  if (pivotDrag.custom) {
+    controls.enabled = false;
+    pivotDrag.last = { x: event.clientX, y: event.clientY };
+  }
+}, { capture: true });
+
+renderer.domElement.addEventListener("pointermove", (event) => {
+  if (!pivotDrag?.custom || !pivotDrag.last) return;
+  orbitAroundPivot(event.clientX - pivotDrag.last.x,
+                   event.clientY - pivotDrag.last.y);
+  pivotDrag.last = { x: event.clientX, y: event.clientY };
+});
+
+window.addEventListener("pointerup", (event) => {
+  if (!pivotDrag || event.button !== 1) return;
+  const drag = pivotDrag;
+  pivotDrag = null;
+  if (drag.custom) controls.enabled = true;
+  if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 4) return;
+  if (sketchMode?.active) return;
+  setRotationPivot(pickPivot(event));
+});
+
 function setReverseWheel(reversed) {
   writeReverseWheel(localStore, reversed);
   controls.zoomSpeed = zoomSpeedFor(reversed);
@@ -395,6 +479,15 @@ window.__freesolidDebug = {
     return hud.innerText.replace(/\s+/g, " ").trim();
   },
   get featureDimCount() { return featureDimSprites.length; },
+  /** Centre de rotation projeté à l'écran, ou null. */
+  get rotationPivotScreen() {
+    if (!rotationPivot) return null;
+    camera.updateMatrixWorld();
+    const p = rotationPivot.clone().project(camera);
+    const rect = renderer.domElement.getBoundingClientRect();
+    return { x: (p.x * 0.5 + 0.5) * rect.width + rect.left,
+             y: (-p.y * 0.5 + 0.5) * rect.height + rect.top };
+  },
   get selectedFeatureName() { return selectedFeatureName; },
   refresh: () => refresh(call("get_tree")),
   get graphFeatureActive() { return graphFn.active; },

@@ -643,5 +643,7 @@
  "Avec des contraintes posées, le solveur repositionne le composant après le déplacement. Astuce : glissez un composant libre directement dans la vue.": "With constraints in place, the solver repositions the component after the move. Tip: drag a free component directly in the view.",
  "L {v} mm": "L {v} mm",
  "R {v} mm": "R {v} mm",
- "Enlever de la matière": "Remove material"
+ "Enlever de la matière": "Remove material",
+ "Centre de rotation posé — clic milieu dans le vide pour le retirer.": "Rotation center set — middle-click in empty space to remove it.",
+ "Centre de rotation : centre de la vue.": "Rotation center: center of the view."
 }

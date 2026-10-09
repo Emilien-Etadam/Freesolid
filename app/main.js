@@ -24,6 +24,7 @@ import {
 import { arcAngles } from "./geom2d.js";
 import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
 import { contextToolbarKeys, viewMenuItems, viewMenuLabel } from "./viewmenu.js";
+import { currentPaneIndex, layoutPanes, paneRect } from "./layouts.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, readLang } from "./settings.js";
 import {
@@ -237,7 +238,9 @@ setTreeFlyoutOpen((() => {
 
 const container = document.getElementById("viewport");
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-container.appendChild(renderer.domElement);
+// En tête du conteneur : les calques posés par-dessus (boîtes, barres)
+// restent au-dessus des canvas des fenêtres multiples.
+container.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x17191c);
@@ -251,6 +254,23 @@ const camera = new THREE.OrthographicCamera(
   0.1, 10000);
 camera.position.set(160, -160, 120);
 camera.up.set(0, 0, 1); // CAD is Z-up
+
+// Dispositions multi-fenêtres (layouts.js). Le canvas principal, sa caméra
+// et ses contrôles occupent toujours la fenêtre active : sélection, cotes
+// et esquisse n'en savent rien. Les autres fenêtres sont dessinées par des
+// canvas secondaires, chacune avec l'état de caméra qu'elle avait. Cliquer
+// une fenêtre secondaire l'active : les états s'échangent, rien ne saute.
+let panes = layoutPanes("single");
+let activePane = 0;
+const extraViews = [];   // { renderer, pane } — pane : index, ou -1
+const paneCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10000);
+
+/** Taille en pixels de la fenêtre active. */
+function viewSize() {
+  const width = container.clientWidth, height = container.clientHeight;
+  if (panes.length < 2) return { width, height };
+  return paneRect(panes[activePane], width, height);
+}
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -1133,7 +1153,7 @@ function schedulePreview(built) {
 }
 
 function linePickThreshold() {
-  return ORTHO_HEIGHT / (camera.zoom * Math.max(container.clientHeight, 1)) * 8;
+  return ORTHO_HEIGHT / (camera.zoom * Math.max(viewSize().height, 1)) * 8;
 }
 
 function pickHoveredSketch() {
@@ -1703,20 +1723,132 @@ renderer.domElement.addEventListener("dblclick", (event) => {
   showFeatureDims(group.feature, hit);
 });
 
+/** Frustum orthographique pour un rapport largeur / hauteur. */
+function setOrthoFrustum(cam, width, height) {
+  const aspect = height > 0 ? width / height : 1;
+  cam.left = -ORTHO_HEIGHT * aspect / 2;
+  cam.right = ORTHO_HEIGHT * aspect / 2;
+  cam.top = ORTHO_HEIGHT / 2;
+  cam.bottom = -ORTHO_HEIGHT / 2;
+  cam.updateProjectionMatrix();
+}
+
+/** Canvas dans une fenêtre (rectangle en pixels), ou plein cadre. */
+function placeCanvas(canvas, rect) {
+  canvas.classList.toggle("fs-pane", !!rect);
+  for (const key of ["left", "top", "width", "height"]) {
+    canvas.style[key] = rect ? `${rect[key]}px` : "";
+  }
+}
+
 function resize() {
-  const w = container.clientWidth, h = container.clientHeight;
+  const { width: w, height: h } = viewSize();
+  const multi = panes.length > 1;
   // updateStyle=false : le CSS (100 %) fait suivre le canvas à sa cellule,
   // setSize ne règle que le tampon de rendu.
   renderer.setSize(w, h, false);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  const aspect = h > 0 ? w / h : 1;
-  camera.left = -ORTHO_HEIGHT * aspect / 2;
-  camera.right = ORTHO_HEIGHT * aspect / 2;
-  camera.top = ORTHO_HEIGHT / 2;
-  camera.bottom = -ORTHO_HEIGHT / 2;
-  camera.updateProjectionMatrix();
+  placeCanvas(renderer.domElement, multi
+    ? paneRect(panes[activePane], container.clientWidth, container.clientHeight)
+    : null);
+  renderer.domElement.classList.toggle("active", multi);
+  setOrthoFrustum(camera, w, h);
+  const others = panes.map((_, i) => i).filter((i) => i !== activePane);
+  while (extraViews.length < others.length) extraViews.push(createExtraView());
+  extraViews.forEach((view, k) => {
+    view.pane = others[k] ?? -1;
+    view.renderer.domElement.hidden = view.pane < 0;
+    if (view.pane < 0) return;
+    const rect = paneRect(panes[view.pane], container.clientWidth,
+                          container.clientHeight);
+    view.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    view.renderer.setSize(rect.width, rect.height, false);
+    placeCanvas(view.renderer.domElement, rect);
+  });
 }
 new ResizeObserver(resize).observe(container);
+
+/** Canvas secondaire : il dessine une fenêtre inactive ; un appui dessus
+ *  l'active. */
+function createExtraView() {
+  const view = { renderer: new THREE.WebGLRenderer({ antialias: true }),
+                 pane: -1 };
+  renderer.domElement.after(view.renderer.domElement);
+  view.renderer.domElement.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    activatePane(view.pane);
+  });
+  // La molette aussi : les crans suivants zooment la fenêtre activée.
+  view.renderer.domElement.addEventListener("wheel",
+    () => activatePane(view.pane), { passive: true });
+  return view;
+}
+
+function cameraState() {
+  return { position: camera.position.clone(), up: camera.up.clone(),
+           zoom: camera.zoom, target: controls.target.clone() };
+}
+
+function applyCameraState(state) {
+  camera.up.copy(state.up);
+  camera.position.copy(state.position);
+  camera.zoom = state.zoom;
+  controls.target.copy(state.target);
+  camera.lookAt(state.target);
+  camera.updateProjectionMatrix();
+}
+
+function activatePane(index) {
+  if (index < 0 || index === activePane || index >= panes.length) return;
+  if (sketchMode.active) {
+    say("En esquisse, la fenêtre active reste celle de l'esquisse.");
+    return;
+  }
+  hideContextToolbar();
+  panes[activePane].state = cameraState();
+  activePane = index;
+  applyCameraState(panes[index].state);
+  resize();
+}
+
+/** Une, deux ou quatre fenêtres. La vue en cours garde sa fenêtre ; les
+ *  autres partent d'une vue standard cadrée sur la pièce. */
+function setLayout(name) {
+  if (sketchMode.active) {
+    say("Terminez l'esquisse avant de changer de disposition.");
+    return;
+  }
+  const current = cameraState();
+  panes = layoutPanes(name);
+  for (const [index, pane] of panes.entries()) {
+    if (pane.view === "current" || !VIEWS[pane.view]) {
+      pane.state = current;
+      continue;
+    }
+    activePane = index;   // le cadrage se règle sur cette fenêtre
+    frameView(VIEWS[pane.view].direction, VIEWS[pane.view].up);
+    pane.state = cameraState();
+  }
+  activePane = currentPaneIndex(panes);
+  applyCameraState(current);
+  resize();
+}
+
+function renderExtraViews() {
+  for (const view of extraViews) {
+    const state = panes[view.pane]?.state;
+    if (view.pane < 0 || !state) continue;
+    const { width, height } = paneRect(panes[view.pane],
+      container.clientWidth, container.clientHeight);
+    setOrthoFrustum(paneCamera, width, height);
+    paneCamera.up.copy(state.up);
+    paneCamera.position.copy(state.position);
+    paneCamera.zoom = state.zoom;
+    paneCamera.lookAt(state.target);
+    paneCamera.updateProjectionMatrix();
+    view.renderer.render(scene, paneCamera);
+  }
+}
 
 renderer.setAnimationLoop(() => {
   controls.update();
@@ -1727,6 +1859,7 @@ renderer.setAnimationLoop(() => {
     applyExplode();
   }
   renderer.render(scene, camera);
+  renderExtraViews();
 });
 
 // ---------- vues standard (Ctrl+1 à Ctrl+8, F) ----------
@@ -1739,8 +1872,8 @@ function partCenterRadius() {
 }
 
 function fitOrthoZoom(radius) {
-  const w = container.clientWidth || 1;
-  const h = container.clientHeight || 1;
+  const w = viewSize().width || 1;
+  const h = viewSize().height || 1;
   const aspect = w / h;
   const needed = 2 * Math.max(radius, 1) * 1.25;
   camera.zoom = Math.min(ORTHO_HEIGHT * aspect, ORTHO_HEIGHT) / needed;
@@ -1861,7 +1994,8 @@ orientBox?.addEventListener("click", (event) => {
     closeOrientBox();
     return;
   }
-  if (view === "normal") viewNormalTo();
+  if (button.dataset.layout) setLayout(button.dataset.layout);
+  else if (view === "normal") viewNormalTo();
   else if (VIEWS[view]) frameView(VIEWS[view].direction, VIEWS[view].up);
   if (!orientPinned) closeOrientBox();
 });

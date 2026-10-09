@@ -679,5 +679,11 @@
  "Lignes cachées estompées": "Faded hidden lines",
  "Plans de référence": "Reference planes",
  "Esquisses": "Sketches",
- "Aperçu des arêtes": "Edge preview"
+ "Aperçu des arêtes": "Edge preview",
+ "Une fenêtre": "Single view",
+ "Deux fenêtres, l'une au-dessus de l'autre": "Two views, one above the other",
+ "Deux fenêtres côte à côte": "Two views side by side",
+ "Quatre fenêtres : dessus, face, droite et la vue en cours": "Four views: top, front, right and the current view",
+ "En esquisse, la fenêtre active reste celle de l'esquisse.": "While sketching, the active view stays on the sketch.",
+ "Terminez l'esquisse avant de changer de disposition.": "Finish the sketch before changing the view layout."
 }

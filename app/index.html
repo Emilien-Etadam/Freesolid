@@ -191,6 +191,10 @@
   .orient-head span { flex: 1; font-weight: 600; }
   .orient-head button { padding: 0 6px; }
   .orient-head button.on { border-color: var(--accent); }
+  .orient-layouts { margin-top: 3px; }
+  .orient-layouts svg {
+    width: 20px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.2;
+  }
   .orient-cross {
     display: grid; grid-template-columns: repeat(4, 1fr);
     grid-template-rows: repeat(3, 26px); gap: 3px; margin-bottom: 6px;
@@ -659,7 +663,12 @@
      hors écran. Le canvas suit la cellule ; renderer.setSize dimensionne
      le tampon de rendu sans toucher au style (main.js). */
   main { grid-area: viewport; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
-  main canvas { display: block; width: 100% !important; height: 100% !important; }
+  main canvas { display: block; }
+  main canvas:not(.fs-pane) { width: 100% !important; height: 100% !important; }
+  /* Fenêtres multiples : chaque canvas à sa place (main.js, layouts.js). */
+  main canvas.fs-pane { position: absolute; }
+  main canvas.fs-pane.active { outline: 1px solid var(--accent); outline-offset: -1px; }
+  main canvas[hidden] { display: none !important; }  /* three.js pose display: block en ligne */
   aside { min-width: 0; min-height: 0; }
   header { min-width: 0; }
 
@@ -888,6 +897,12 @@
         <button data-view="view-dimetric" title="Dimétrique">Dimétrique</button>
         <button data-view="view-trimetric" title="Trimétrique">Trimétrique</button>
         <button data-view="normal" title="Normal à la sélection (Ctrl+8)">Normal à</button>
+      </div>
+      <div class="orient-row orient-layouts">
+        <button data-layout="single" title="Une fenêtre"><svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12"/></svg></button>
+        <button data-layout="two-h" title="Deux fenêtres, l'une au-dessus de l'autre"><svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12"/><path d="M1 7h18"/></svg></button>
+        <button data-layout="two-v" title="Deux fenêtres côte à côte"><svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12"/><path d="M10 1v12"/></svg></button>
+        <button data-layout="four" title="Quatre fenêtres : dessus, face, droite et la vue en cours"><svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12"/><path d="M1 7h18M10 1v12"/></svg></button>
       </div>
     </div>
     <div id="confirm-corner" hidden>

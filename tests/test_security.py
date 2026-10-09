@@ -114,6 +114,68 @@ def test_resolve_data_dir_env(tmp_path, monkeypatch):
     assert got == os.path.realpath(str(target))
 
 
+# -- list_user_dir -------------------------------------------------------
+
+def _jail_only(monkeypatch, root):
+    """La prison de ce test est exactement ``root`` (pas le vrai dossier personnel)."""
+    real = os.path.realpath(str(root))
+    monkeypatch.setattr(protocol, "_allowed_path_roots", lambda: [real])
+    original = os.path.expanduser
+    monkeypatch.setattr(
+        os.path, "expanduser",
+        lambda path: real if path == "~" else original(path))
+
+
+def test_list_dir_dirs_first_and_skips_hidden_and_unknown(tmp_path, monkeypatch):
+    _jail_only(monkeypatch, tmp_path)
+    (tmp_path / "pieces").mkdir()
+    (tmp_path / "b.FCStd").write_text("x", encoding="utf-8")
+    (tmp_path / "a.stl").write_text("x", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("x", encoding="utf-8")
+    secret = tmp_path / ".secret"
+    secret.mkdir()
+    (secret / "cache.FCStd").write_text("x", encoding="utf-8")
+    listed = protocol.list_user_dir(None)
+    assert listed["parent"] is None
+    assert [entry["name"] for entry in listed["entries"]] == [
+        "pieces", "a.stl", "b.FCStd"]
+    assert listed["entries"][0]["kind"] == "dir"
+
+
+def test_list_dir_parent_stays_in_jail(tmp_path, monkeypatch):
+    _jail_only(monkeypatch, tmp_path)
+    sub = tmp_path / "pieces"
+    sub.mkdir()
+    listed = protocol.list_user_dir(str(sub))
+    assert os.path.realpath(listed["parent"]) == os.path.realpath(str(tmp_path))
+
+
+def test_list_dir_outside_and_dot_and_traversal_refused(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    hidden = tmp_path / ".ssh"
+    hidden.mkdir()
+    with pytest.raises(protocol.ProtocolError) as outside:
+        protocol.list_user_dir("/etc")
+    assert "hors du dossier autorisé" in str(outside.value)
+    with pytest.raises(protocol.ProtocolError) as dot:
+        protocol.list_user_dir(str(hidden))
+    assert "hors du dossier autorisé" in str(dot.value)
+    with pytest.raises(protocol.ProtocolError) as climb:
+        protocol.list_user_dir("~/../ailleurs")
+    assert "hors du dossier autorisé" in str(climb.value)
+
+
+def test_list_dir_omits_symlink_leaving_jail(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    link = tmp_path / "dehors"
+    try:
+        link.symlink_to("/etc")
+    except OSError:
+        pytest.skip("symlink non autorisé sur ce système")
+    listed = protocol.list_user_dir(str(tmp_path))
+    assert all(entry["name"] != "dehors" for entry in listed["entries"])
+
+
 # -- handlers HTTP (fonctions pures) -------------------------------------
 
 def test_port_from_env():

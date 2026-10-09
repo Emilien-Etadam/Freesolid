@@ -194,6 +194,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "delete_feature": _Req(("feature", str)),
     "save_part": _Req(("path", str)),
     "open_part": _Req(("path", str)),
+    "list_dir": _Req(optional={"path": str}),  # dossier ; absent = dossier personnel
     "get_tree": (),
     "rebuild": (),                     # recalcul forcé de tout l'arbre
     "tessellate": (),                  # optional: deviation
@@ -459,6 +460,95 @@ def _allowed_path_roots():
     return roots
 
 
+def _assert_in_jail(resolved, *, allow_root=False):
+    """Même prison que ``resolve_user_path``.
+
+    ``allow_root`` autorise la racine elle-même (lister le dossier
+    personnel). Un fichier n'a pas le droit d'être la racine.
+    """
+    matched_root = None
+    for root in _allowed_path_roots():
+        if _is_under_root(root, resolved):
+            matched_root = root
+            break
+    if matched_root is None:
+        raise ProtocolError("chemin hors du dossier autorisé")
+    relative = os.path.relpath(resolved, matched_root)
+    if relative == ".." or relative.startswith(".." + os.sep):
+        raise ProtocolError("chemin hors du dossier autorisé")
+    if relative == os.curdir:
+        if allow_root:
+            return matched_root
+        raise ProtocolError("chemin hors du dossier autorisé")
+    for component in relative.split(os.sep):
+        if component.startswith("."):
+            raise ProtocolError("chemin hors du dossier autorisé")
+    return matched_root
+
+
+#: Extensions qu'un dialogue peut montrer. Le filtre fin est côté client.
+_LIST_EXTENSIONS = frozenset({
+    ".fcstd", ".step", ".stp", ".stl", ".3mf", ".iges", ".igs",
+})
+
+
+def resolve_user_dir(path):
+    """Dossier listable, ou lève ProtocolError. Vide : le dossier personnel."""
+    if path is None or str(path).strip() == "":
+        resolved = os.path.realpath(os.path.expanduser("~"))
+    else:
+        expanded = os.path.expanduser(str(path))
+        if ".." in expanded.replace("\\", "/").split("/"):
+            raise ProtocolError("chemin hors du dossier autorisé")
+        resolved = os.path.realpath(expanded)
+    _assert_in_jail(resolved, allow_root=True)
+    if not os.path.isdir(resolved):
+        raise ProtocolError("dossier introuvable")
+    return resolved
+
+
+def list_user_dir(path=None):
+    """Contenu d'un dossier de la prison : dossiers, puis fichiers connus.
+
+    Les noms qui commencent par ``.`` sont omis. Un lien dont la cible
+    sort de la prison est omis aussi. ``parent`` est ``None`` si remonter
+    sortirait de la prison.
+    """
+    resolved = resolve_user_dir(path)
+    parent = os.path.dirname(resolved)
+    parent_ok = None
+    if parent and os.path.normcase(parent) != os.path.normcase(resolved):
+        try:
+            parent_ok = resolve_user_dir(parent)
+        except ProtocolError:
+            parent_ok = None
+    try:
+        names = os.listdir(resolved)
+    except OSError as exc:
+        raise ProtocolError("dossier introuvable") from exc
+    entries = []
+    for name in names:
+        if not name or name.startswith("."):
+            continue
+        full = os.path.join(resolved, name)
+        try:
+            real = os.path.realpath(full)
+        except OSError:
+            continue
+        try:
+            _assert_in_jail(real, allow_root=True)
+        except ProtocolError:
+            continue
+        if os.path.isdir(real):
+            entries.append({"name": name, "kind": "dir"})
+        elif os.path.isfile(real):
+            ext = os.path.splitext(name)[1].lower()
+            if ext in _LIST_EXTENSIONS:
+                entries.append({"name": name, "kind": "file"})
+    entries.sort(key=lambda entry: (entry["kind"] != "dir", entry["name"].casefold()))
+    return {"path": resolved, "parent": parent_ok, "entries": entries}
+
+
 def _is_under_root(root: str, resolved: str) -> bool:
     try:
         return os.path.commonpath([root, resolved]) == root
@@ -515,20 +605,7 @@ def resolve_user_path(path, extensions, must_exist=False):
     if ".." in expanded.replace("\\", "/").split("/"):
         raise ProtocolError("chemin hors du dossier autorisé")
     resolved = os.path.realpath(expanded)
-    matched_root = None
-    for root in _allowed_path_roots():
-        if _is_under_root(root, resolved):
-            matched_root = root
-            break
-    if matched_root is None:
-        raise ProtocolError("chemin hors du dossier autorisé")
-
-    relative = os.path.relpath(resolved, matched_root)
-    if relative == os.curdir or relative.startswith(".." + os.sep) or relative == "..":
-        raise ProtocolError("chemin hors du dossier autorisé")
-    for component in relative.split(os.sep):
-        if component.startswith("."):
-            raise ProtocolError("chemin hors du dossier autorisé")
+    _assert_in_jail(resolved)
 
     ext = os.path.splitext(resolved)[1].lower()
     if ext not in allowed_ext:

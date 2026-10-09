@@ -65,6 +65,7 @@
  "coupe : axe X, Y ou Z attendu": "section: axis X, Y or Z expected",
  "coïncidence : cliquez deux points (extrémités ou centres)": "coincident: click two points (endpoints or centers)",
  "cycle détecté dans le graphe (nœud « {} »)": "cycle detected in the graph (node \"{}\")",
+ "dossier introuvable": "folder not found",
  "dossier parent introuvable : {}": "parent folder not found: {}",
  "décalage impossible : aucun contour produit": "offset failed: no contour produced",
  "décalage impossible : {}": "offset failed: {}",

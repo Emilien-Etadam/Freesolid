@@ -13,6 +13,7 @@ import {
   isDrivingConstraint, sketchPreviewPoints,
 } from "./geom2d.js";
 import { num } from "./num.js";
+import { boxMode, isDrag, normalizeRect, pickInBox } from "./navigation.js";
 import {
   dimEditPayload, dimLabel, openDimEditor, sketchDimAnchor,
 } from "./dims.js";
@@ -38,8 +39,8 @@ export function createDimSprite(text, x, y, z = 0.01, color = "#7fc4ff") {
 }
 
 export function createSketchMode(deps) {
-  const { scene, camera, renderer, controls, call, say, refresh, panel } =
-    deps;
+  const { scene, camera, renderer, controls, call, say, refresh, panel,
+    boxOverlay } = deps;
 
   const group = new THREE.Group();
   scene.add(group);
@@ -79,6 +80,7 @@ export function createSketchMode(deps) {
     selection: [],        // [{ geo, point? }] — outil Sélectionner
     justDragged: false,   // un drag qui finit ne doit pas sélectionner
     drag: null,           // { geo, point } while dragging
+    box: null,            // { x, y } — appui dans le vide : cadre possible
     dragLocal: null,      // dernière position locale d'un drag local (M3)
     solverOk: false,      // l'esquisse est chargée dans le solveur local
     savedCamera: null,
@@ -788,7 +790,7 @@ export function createSketchMode(deps) {
   }
 
   function onPointerDown(event) {
-    if (mode.tool !== "select" || !mode.state) return;
+    if (event.button !== 0 || mode.tool !== "select" || !mode.state) return;
     const p = overEndpoint(event);
     if (p) {
       mode.drag = { geo: p.geo, point: p.point };
@@ -800,7 +802,10 @@ export function createSketchMode(deps) {
     }
     // Drag d'arête entière (Sketcher point 0 = courbe).
     const entity = overEntity(event);
-    if (!entity) return;
+    if (!entity) {
+      mode.box = { x: event.clientX, y: event.clientY };
+      return;
+    }
     const local = toLocal(event);
     if (!local) return;
     mode.drag = {
@@ -901,8 +906,48 @@ export function createSketchMode(deps) {
     }
   }
 
+  /** Points écran d'une entité, en polyligne, pour le cadre. */
+  function entityScreenPoints(entity) {
+    let pts = [];
+    if (entity.type === "line") {
+      pts = [entity.p1, entity.p2];
+    } else if (entity.type === "circle" || entity.type === "arc") {
+      const { a1, a2 } = entity.type === "arc"
+        ? arcAngles(entity) : { a1: 0, a2: Math.PI * 2 };
+      for (let i = 0; i <= 32; i++) {
+        const a = a1 + (i / 32) * (a2 - a1);
+        pts.push([entity.c[0] + entity.r * Math.cos(a),
+                  entity.c[1] + entity.r * Math.sin(a)]);
+      }
+    } else if (entity.points) {
+      pts = entity.points;
+    }
+    return pts.map((p) => toScreen(p[0], p[1]));
+  }
+
+  function selectInBox(start, end, additive) {
+    const items = (mode.state?.entities ?? []).map((entity) => ({
+      id: entity.id, points: entityScreenPoints(entity),
+    }));
+    const ids = pickInBox(items, normalizeRect(start, end),
+      boxMode(start, end));
+    const kept = additive ? mode.selection : [];
+    const fresh = ids.filter((id) => !kept.some((s) => s.geo === id))
+      .map((geo) => ({ geo }));
+    mode.selection = [...kept, ...fresh];
+    say(t("Sélection : {n} entité(s) — relation, symétrie ou répétition ; clic dans le vide = vider",
+      { n: mode.selection.length }));
+    redraw();
+    syncEntityPanel();
+  }
+
   function onPointerMove(event) {
     mode.lastMouse = { clientX: event.clientX, clientY: event.clientY };
+    if (mode.box) {
+      const here = { x: event.clientX, y: event.clientY };
+      if (isDrag(mode.box, here)) boxOverlay?.show(mode.box, here);
+      return;
+    }
     if (mode.tool === "select" && !mode.drag) {
       const hot = overEndpoint(event) || overEntity(event);
       setCursor(hot ? "grab" : "default");
@@ -1004,7 +1049,18 @@ export function createSketchMode(deps) {
     }
   }
 
-  function onPointerUp() {
+  function onPointerUp(event) {
+    if (mode.box) {
+      const start = mode.box;
+      mode.box = null;
+      boxOverlay?.hide();
+      const end = { x: event.clientX, y: event.clientY };
+      if (isDrag(start, end)) {
+        mode.justDragged = true; // le click qui suit ne vide pas la sélection
+        selectInBox(start, end, event.ctrlKey || event.metaKey);
+      }
+      return;
+    }
     if (mode.drag) {
       // Drag local (M3) : un seul sketch_move au lâcher, via la même
       // file — il ne double pas un move serveur déjà en vol.

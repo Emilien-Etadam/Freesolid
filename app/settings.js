@@ -111,7 +111,7 @@ function esc(text) {
  * `call` la fonction d'appel du moteur ; `ribbonLabels` {read, apply}.
  */
 export function createSettingsDialog({
-  root, doc, win, call, ribbonLabels, storage, navigatorLang,
+  root, doc, win, call, ribbonLabels, wheel, storage, navigatorLang,
 }) {
   const bridge = desktopBridge(win);
   let pendingUpdate = null;
@@ -156,6 +156,11 @@ export function createSettingsDialog({
             ${labelsMode === "icons-and-text" ? "checked" : ""}> ${T("Icônes et texte")}</label>
           <label><input type="radio" name="ribbon-labels" value="icons-only"
             ${labelsMode === "icons-only" ? "checked" : ""}> ${T("Icônes seules")}</label>
+        </div>
+        <div class="settings-field">
+          <span>${T("Molette")}</span>
+          <label><input type="checkbox" data-action="reverse-wheel"
+            ${wheel?.read() ? "checked" : ""}> ${T("Inverser le sens du zoom")}</label>
         </div>
         <div class="settings-field">
           <label for="settings-lang">${T("Langue")}</label>
@@ -241,6 +246,8 @@ export function createSettingsDialog({
     for (const radio of root.querySelectorAll('input[name="ribbon-labels"]')) {
       radio.addEventListener("change", () => ribbonLabels.apply(radio.value));
     }
+    root.querySelector('[data-action="reverse-wheel"]')
+      ?.addEventListener("change", (event) => wheel?.apply(event.target.checked));
     root.querySelector("#settings-lang")
       ?.addEventListener("change", (event) => {
         // La langue s'applique au chargement (ruban, panneaux, moteur) :

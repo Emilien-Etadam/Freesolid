@@ -19,6 +19,10 @@ import { arcAngles } from "./geom2d.js";
 import { splitHistoryAroundBar } from "./history.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, readLang } from "./settings.js";
+import {
+  boxMode, isDrag, middleAction, normalizeRect, pickInBox,
+  readReverseWheel, writeReverseWheel, zoomSpeedFor,
+} from "./navigation.js";
 import { currentLang, setLang, t, translateDom } from "./i18n.js";
 
 // La langue avant tout rendu : ruban, panneaux et messages passent par t().
@@ -204,6 +208,59 @@ camera.up.set(0, 0, 1); // CAD is Z-up
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+
+// Navigation (navigation.js) : le milieu tourne, Ctrl + milieu déplace,
+// Maj + milieu zoome, la molette zoome vers le curseur ; le bouton gauche
+// sélectionne (clic ou cadre), le droit reste au menu contextuel.
+const localStore = (() => { try { return window.localStorage; } catch { return null; } })();
+controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: null };
+controls.zoomToCursor = true;
+controls.zoomSpeed = zoomSpeedFor(readReverseWheel(localStore));
+
+// OrbitControls inverse lui-même ROTATE/PAN quand Ctrl ou Maj est tenu :
+// on lui donne le bouton qui, avec ces touches, produit le bon geste.
+function orbitButtonFor(action, event) {
+  const mod = event.ctrlKey || event.metaKey || event.shiftKey;
+  if (action === "dolly") return THREE.MOUSE.DOLLY;
+  if (action === "pan") return mod ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
+  return mod ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+}
+// Capture : passe avant le pointerdown d'OrbitControls, qui lit
+// mouseButtons à l'appui.
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  if (event.button !== 1) return;
+  controls.mouseButtons.MIDDLE = orbitButtonFor(
+    middleAction(event, { rotateLocked: !controls.enableRotate }), event);
+}, { capture: true });
+// Pas de défilement automatique du navigateur au clic milieu.
+renderer.domElement.addEventListener("mousedown", (event) => {
+  if (event.button === 1) event.preventDefault();
+});
+
+function setReverseWheel(reversed) {
+  writeReverseWheel(localStore, reversed);
+  controls.zoomSpeed = zoomSpeedFor(reversed);
+}
+
+// Cadre de sélection : un rectangle HTML posé sur la vue. Trait plein en
+// fenêtre (gauche → droite), tirets en capture (droite → gauche).
+const boxEl = document.createElement("div");
+boxEl.id = "box-select";
+boxEl.hidden = true;
+const boxOverlay = {
+  show(start, end) {
+    const host = container.getBoundingClientRect();
+    const r = normalizeRect(start, end);
+    boxEl.hidden = false;
+    boxEl.className = boxMode(start, end);
+    boxEl.style.left = `${r.left - host.left}px`;
+    boxEl.style.top = `${r.top - host.top}px`;
+    boxEl.style.width = `${r.right - r.left}px`;
+    boxEl.style.height = `${r.bottom - r.top}px`;
+  },
+  hide() { boxEl.hidden = true; },
+};
+container.appendChild(boxEl);
 
 // Maillages volumiques (corps, autres corps, surfaces, arêtes, aperçu).
 // Masqués en bloc pendant l'esquisse — visible=false sur le groupe,
@@ -818,6 +875,9 @@ function pluginSeesPointer() {
 
 renderer.domElement.addEventListener("pointermove", (event) => {
   if (sketchMode.active) return;
+  if (boxStart && isDrag(boxStart, { x: event.clientX, y: event.clientY })) {
+    boxOverlay.show(boxStart, { x: event.clientX, y: event.clientY });
+  }
   setPointerFromEvent(event);
   if (pluginSeesPointer()
       && pluginRuntime?.dispatchPointer("move", event, pointerCtx())) {
@@ -921,9 +981,47 @@ function repaintGroups() {
 // Click selects the hovered face (sticky); click in the void deselects.
 // Guarded against orbit drags: a press that travels is navigation, not a pick.
 let pressPosition = null;
+let boxStart = null; // appui gauche dans le vide : peut devenir un cadre
+
+/** Arêtes du corps actif retenues par le cadre (fenêtre ou capture). */
+function selectEdgesInBox(start, end, additive) {
+  if (!partEdges) return;
+  const rect = normalizeRect(start, end);
+  const host = renderer.domElement.getBoundingClientRect();
+  const pos = partEdges.geometry.getAttribute("position");
+  const index = partEdges.geometry.getIndex();
+  const v = new THREE.Vector3();
+  const items = edgeGroups.map((g) => {
+    const points = [];
+    for (let k = g.start; k < g.start + g.count; k++) {
+      v.fromBufferAttribute(pos, index.getX(k)).project(camera);
+      points.push({
+        x: (v.x * 0.5 + 0.5) * host.width + host.left,
+        y: (-v.y * 0.5 + 0.5) * host.height + host.top,
+      });
+    }
+    return { id: g.edgeId, points };
+  });
+  const ids = pickInBox(items, rect, boxMode(start, end));
+  selectedEdges = additive ? new Set([...selectedEdges, ...ids]) : new Set(ids);
+  selectedFaceId = null;
+  cancelPendingSurfaceClick();
+  clearSketchSelection({ quiet: true });
+  clearSurfaceSelection({ quiet: true });
+  repaintGroups();
+  repaintEdges();
+  if (lastTree) renderTree(lastTree);
+  panel.notifyPick("edges", { kind: "edges", edges: [...selectedEdges] });
+}
+
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (sketchMode.active) return;
   pressPosition = { x: event.clientX, y: event.clientY };
+  const nothingHovered = hoveredGroup < 0 && hoveredEdgeGroup < 0
+    && !hoveredSketch && !hoveredSurface;
+  boxStart = event.button === 0 && nothingHovered && !assemblyState
+    && !planePicking && !measuring && partEdges
+    ? { x: event.clientX, y: event.clientY } : null;
   if (!pluginSeesPointer()) return;
   setPointerFromEvent(event);
   pluginRuntime?.dispatchPointer("down", event, pointerCtx());
@@ -936,6 +1034,15 @@ renderer.domElement.addEventListener("pointerup", (event) => {
       pressPosition = null;
       return;
     }
+  }
+  const box = boxStart;
+  boxStart = null;
+  boxOverlay.hide();
+  if (box && isDrag(box, { x: event.clientX, y: event.clientY })) {
+    pressPosition = null;
+    selectEdgesInBox(box, { x: event.clientX, y: event.clientY },
+      event.ctrlKey || event.metaKey);
+    return;
   }
   if (!pressPosition) return;
   const travel = Math.hypot(event.clientX - pressPosition.x,
@@ -1394,6 +1501,11 @@ document.addEventListener("keydown", (event) => {
   if ((event.key === "f" || event.key === "F")
       && !event.ctrlKey && !event.metaKey && !event.altKey) {
     frameView(null, null);
+  } else if ((event.key === "z" || event.key === "Z")
+             && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    // Z : zoom arrière, Maj+Z : zoom avant, autour du centre de la vue.
+    camera.zoom *= event.shiftKey ? 1.25 : 0.8;
+    camera.updateProjectionMatrix();
   } else if ((event.ctrlKey || event.metaKey) && event.key === "8") {
     event.preventDefault();
     viewNormalTo();
@@ -2570,6 +2682,7 @@ const settingsDialog = createSettingsDialog({
   win: window,
   call,
   ribbonLabels: { read: readRibbonLabels, apply: applyRibbonLabels },
+  wheel: { read: () => readReverseWheel(localStore), apply: setReverseWheel },
   storage: (() => { try { return window.localStorage; } catch { return null; } })(),
   navigatorLang: navigator.language,
 });
@@ -5097,7 +5210,7 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
 // ---------- sketch mode ----------
 
 const sketchMode = createSketchMode(
-  { scene, camera, renderer, controls, call, say, refresh, panel });
+  { scene, camera, renderer, controls, call, say, refresh, panel, boxOverlay });
 
 pluginRuntime = createPluginApi({
   call, refresh, say,

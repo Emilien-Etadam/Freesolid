@@ -142,6 +142,18 @@
   #viewbar button:hover { background: var(--panel-2); }
   #viewbar button.on { color: var(--accent); }
 
+  /* Cadre de sélection : plein en fenêtre, tirets en capture. */
+  #box-select {
+    position: absolute; z-index: 5; pointer-events: none;
+    border: 1px solid var(--accent);
+    background: rgba(79, 143, 219, 0.08);
+  }
+  #box-select.crossing {
+    border-style: dashed;
+    border-color: #6fcf97;
+    background: rgba(111, 207, 151, 0.08);
+  }
+
   #gem-hud {
     position: absolute; top: 10px; left: 10px; z-index: 4;
     background: var(--panel);

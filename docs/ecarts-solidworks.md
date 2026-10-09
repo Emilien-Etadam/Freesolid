@@ -41,7 +41,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 |---|---|---|---|
 | 1 | Titre de l'arbre « FeatureManager » → « Arbre de création » | P2 | fait |
 | 2 | Vues standard Ctrl+2 / 3 / 6 / 8 | P2 | fait |
-| 3 | Navigation souris (milieu, Ctrl+milieu, molette vers le curseur, cadre au bouton gauche) | P1 | reste |
+| 3 | Navigation souris (milieu, Ctrl+milieu, molette vers le curseur, cadre au bouton gauche) | P1 | fait : milieu = rotation, Ctrl+milieu = panoramique, Maj+milieu = zoom, molette vers le curseur (vers l'avant = zoom arrière, vérifié dans SolidWorks ; inversion dans Paramètres), Z / Maj+Z, cadre fenêtre ou capture (arêtes en 3D, entités en esquisse, Ctrl = ajouter). Reste : centre de rotation au clic milieu sur une entité ; en esquisse, le milieu fait du panoramique car la rotation y est bloquée |
 | 4 | Couleurs d'état de contrainte de l'esquisse | P1 | reste |
 | 5 | Préfixe d'état (-) / (+) et esquisse en cours dans l'arbre | P2 | reste |
 | 6 | « Quitter » l'esquisse annule vraiment | P2 | reste |

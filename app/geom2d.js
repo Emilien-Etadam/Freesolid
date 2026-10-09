@@ -390,3 +390,41 @@ export function applicableRelations(selection, entities) {
   return out;
 }
 
+/** Saisie numérique pendant le tracé : libellés des champs par outil. */
+export function numericFields(tool) {
+  if (tool === "line") return ["Longueur", "Angle"];
+  if (tool === "circle") return ["Rayon"];
+  if (tool === "rect" || tool === "rectc") return ["Largeur", "Hauteur"];
+  return [];
+}
+
+/**
+ * Point à poser quand on tape les cotes au lieu de cliquer. ``pending`` :
+ * le point déjà posé (départ de la ligne, centre, premier sommet) ;
+ * ``cursor`` : le curseur, qui donne la direction ou le quadrant ;
+ * ``a``, ``b`` : les valeurs tapées (``b`` facultatif : NaN).
+ * Ligne : longueur puis angle en degrés (sinon vers le curseur). Cercle :
+ * rayon. Rectangle : largeur puis hauteur (sinon celle du curseur), du
+ * côté du curseur ; par le centre, ce sont les dimensions totales.
+ */
+export function numericDrawTarget(tool, pending, cursor, a, b) {
+  if (!pending || !(a > 0)) return null;
+  const here = cursor ?? pending;
+  const dx = here.x - pending.x, dy = here.y - pending.y;
+  const towards = dx || dy ? Math.atan2(dy, dx) : 0;
+  if (tool === "line" || tool === "circle") {
+    const angle = tool === "line" && Number.isFinite(b)
+      ? b * Math.PI / 180 : towards;
+    return { x: pending.x + a * Math.cos(angle),
+             y: pending.y + a * Math.sin(angle) };
+  }
+  if (tool === "rect" || tool === "rectc") {
+    const half = tool === "rectc" ? 0.5 : 1;
+    const h = Number.isFinite(b) && b > 0 ? b : Math.abs(dy) / half;
+    if (!(h > 0)) return null;
+    return { x: pending.x + (dx < 0 ? -1 : 1) * a * half,
+             y: pending.y + (dy < 0 ? -1 : 1) * h * half };
+  }
+  return null;
+}
+

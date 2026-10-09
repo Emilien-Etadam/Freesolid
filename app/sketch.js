@@ -9,7 +9,7 @@ import { t } from "./i18n.js";
 import { createLocalSolver } from "./solver.js";
 import {
   applicableRelations, arcAngles, chainClickAction, distanceToEntity,
-  relationGlyphs,
+  numericDrawTarget, numericFields, relationGlyphs,
   entityKindTitle, entityPropertyLines,
   isDrivingConstraint, sketchPreviewPoints,
 } from "./geom2d.js";
@@ -303,6 +303,7 @@ export function createSketchMode(deps) {
     const local = toLocal(event);
     if (!local || !mode.state) { clearInference(); emitPointer(null); return; }
     const s = snap(local, event);
+    mode.lastLocal = { x: s.x, y: s.y };
     emitPointer(s);
     for (const obj of [inferLines, snapPoint]) {
       if (obj) { group.remove(obj); obj.geometry.dispose(); }
@@ -705,6 +706,118 @@ export function createSketchMode(deps) {
     };
   }
 
+  /** Le point qui termine l'entité en cours (second clic, ou cotes
+   *  tapées) : ligne (la chaîne continue), rectangle, cercle. */
+  async function placeDrawPoint(point) {
+    const name = mode.state.sketch;
+    if (mode.tool === "line" && mode.chain) {
+      const from = mode.chain;
+      mode.chain = point.onPoint ? null : { x: point.x, y: point.y };
+      safe(call("sketch_add_line", { sketch: name,
+        x1: from.x, y1: from.y, x2: point.x, y2: point.y }));
+    } else if (mode.tool === "rect" && mode.pendingRect) {
+      const a = mode.pendingRect;
+      mode.pendingRect = null;
+      building = true;
+      try {
+        await addRectangle(name, a, point);
+      } finally {
+        building = false;
+      }
+    } else if (mode.tool === "rectc" && mode.pendingRectC) {
+      const c = mode.pendingRectC;
+      mode.pendingRectC = null;
+      building = true;
+      try {
+        await addRectangle(name,
+          { x: 2 * c.x - point.x, y: 2 * c.y - point.y }, point);
+      } finally {
+        building = false;
+      }
+    } else if (mode.tool === "circle" && mode.pendingCircle) {
+      const c = mode.pendingCircle;
+      mode.pendingCircle = null;
+      const r = Math.hypot(point.x - c.x, point.y - c.y);
+      if (r > 0) safe(call("sketch_add_circle",
+        { sketch: name, cx: c.x, cy: c.y, r }));
+    }
+  }
+
+  /** Point déjà posé par l'outil en cours, si la saisie numérique a un
+   *  sens maintenant. */
+  function pendingDrawPoint() {
+    if (mode.tool === "line") return mode.chain;
+    if (mode.tool === "circle") return mode.pendingCircle;
+    if (mode.tool === "rect") return mode.pendingRect;
+    if (mode.tool === "rectc") return mode.pendingRectC;
+    return null;
+  }
+
+  // Saisie numérique : taper un chiffre pendant le tracé ouvre, près du
+  // curseur, les cotes de l'entité (longueur et angle, rayon, largeur et
+  // hauteur). Tab passe au champ suivant, Entrée pose, Échap renonce.
+  let numericBox = null;
+
+  function closeNumericEntry() {
+    numericBox?.remove();
+    numericBox = null;
+  }
+
+  function openNumericEntry(firstKey) {
+    const pending = pendingDrawPoint();
+    const labels = numericFields(mode.tool);
+    if (!pending || !labels.length) return;
+    closeNumericEntry();
+    const host = renderer.domElement.parentElement;
+    const box = document.createElement("div");
+    box.className = "dim-modify sk-numeric";
+    box.dataset.ownKeys = "";
+    const inputs = labels.map((label, index) => {
+      const field = document.createElement("label");
+      field.append(t(label) + " ");
+      const input = document.createElement("input");
+      input.type = "text";
+      input.inputMode = "decimal";
+      if (index === 0) input.value = firstKey;
+      field.append(input);
+      box.append(field);
+      return input;
+    });
+    const rect = host.getBoundingClientRect();
+    const at = mode.lastMouse ?? { clientX: rect.left + rect.width / 2,
+                                   clientY: rect.top + rect.height / 2 };
+    box.style.left = `${at.clientX - rect.left + 16}px`;
+    box.style.top = `${at.clientY - rect.top + 18}px`;
+    host.appendChild(box);
+    numericBox = box;
+    const tool = mode.tool;
+    const apply = async () => {
+      const [a, b] = inputs.map((input) => num(input.value) ?? NaN);
+      const target = numericDrawTarget(tool, pendingDrawPoint(),
+        mode.lastLocal, a, b);
+      closeNumericEntry();
+      if (!target) {
+        say("Saisie numérique : valeur invalide", true);
+        return;
+      }
+      if (mode.tool !== tool) return;
+      clearInference();
+      await placeDrawPoint({ ...target, onPoint: false });
+    };
+    box.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key === "Enter") {
+        event.preventDefault();
+        apply();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        closeNumericEntry();
+      }
+    });
+    inputs[0].focus();
+    inputs[0].setSelectionRange(firstKey.length, firstKey.length);
+  }
+
   async function onClick(event) {
     if (building) return;
     const local = toLocal(event);
@@ -742,49 +855,28 @@ export function createSketchMode(deps) {
           setTool("select");
           return;
         }
-        mode.chain = snapped.onPoint ? null : { x: snapped.x, y: snapped.y };
-        safe(call("sketch_add_line", { sketch: name,
-          x1: from.x, y1: from.y, x2: snapped.x, y2: snapped.y }));
+        await placeDrawPoint(snapped);
       }
     } else if (mode.tool === "rect") {
       if (!mode.pendingRect) {
         mode.pendingRect = { x: snapped.x, y: snapped.y };
-        say("Rectangle : cliquez le sommet opposé");
+        say("Rectangle : cliquez le sommet opposé — ou tapez la largeur");
       } else {
-        const a = mode.pendingRect;
-        mode.pendingRect = null;
-        building = true;
-        try {
-          await addRectangle(name, a, snapped);
-        } finally {
-          building = false;
-        }
+        await placeDrawPoint(snapped);
       }
     } else if (mode.tool === "rectc") {
       if (!mode.pendingRectC) {
         mode.pendingRectC = { x: snapped.x, y: snapped.y };
-        say("Rectangle par le centre : cliquez un sommet");
+        say("Rectangle par le centre : cliquez un sommet — ou tapez la largeur");
       } else {
-        const c = mode.pendingRectC;
-        mode.pendingRectC = null;
-        building = true;
-        try {
-          await addRectangle(name,
-            { x: 2 * c.x - snapped.x, y: 2 * c.y - snapped.y }, snapped);
-        } finally {
-          building = false;
-        }
+        await placeDrawPoint(snapped);
       }
     } else if (mode.tool === "circle") {
       if (!mode.pendingCircle) {
         mode.pendingCircle = { x: snapped.x, y: snapped.y };
-        say("Cercle : cliquez pour donner le rayon");
+        say("Cercle : cliquez pour donner le rayon — ou tapez-le");
       } else {
-        const c = mode.pendingCircle;
-        mode.pendingCircle = null;
-        const r = Math.hypot(snapped.x - c.x, snapped.y - c.y);
-        if (r > 0) safe(call("sketch_add_circle",
-          { sketch: name, cx: c.x, cy: c.y, r }));
+        await placeDrawPoint(snapped);
       }
     } else if (mode.tool === "arc") {
       if (!mode.pendingArc) {
@@ -1463,6 +1555,12 @@ export function createSketchMode(deps) {
     // Taper dans un champ du panneau ne doit pas changer d'outil.
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
     const key = event.key.toLowerCase();
+    if (/^[0-9.,]$/.test(event.key) && !event.ctrlKey && !event.metaKey
+        && !event.altKey && pendingDrawPoint()) {
+      event.preventDefault();
+      openNumericEntry(event.key);
+      return;
+    }
     if (event.key === "Escape") {
       if (previewLine) previewLine.visible = false;
       setTool("select");
@@ -1501,6 +1599,7 @@ export function createSketchMode(deps) {
 
   function setTool(tool) {
     if (building) return;
+    closeNumericEntry();
     clearInference();
     mode.tool = tool;
     mode.chain = null;

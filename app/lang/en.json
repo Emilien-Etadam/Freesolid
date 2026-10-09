@@ -59,7 +59,6 @@
  "Ce nœud exécute du code Python dans le moteur — pas une formule.\n        Il n'y a pas de bac à sable : le code a les mêmes droits que\n        FreeSolid. Une boucle infinie bloquera le moteur.": "This node runs Python code inside the engine — not a formula. There is no sandbox: the code has the same rights as FreeSolid. An infinite loop will block the engine.",
  "Centre de gravité : ": "Center of mass: ",
  "Cercle (C)": "Circle (C)",
- "Cercle : cliquez pour donner le rayon": "Circle: click to set the radius",
  "Cette valeur est informative — coter l'entité (D) pour la piloter.": "This value is informative — dimension the entity (D) to drive it.",
  "Chanfrein": "Chamfer",
  "Chemin": "Path",
@@ -324,10 +323,8 @@
  "Rayon du congé d'esquisse (mm) :": "Sketch fillet radius (mm):",
  "Reconstruire": "Rebuild",
  "Reconstruire — recalcul forcé de tout l'arbre": "Rebuild — forced recompute of the whole tree",
- "Rectangle : cliquez le sommet opposé": "Rectangle: click the opposite corner",
  "Rectangle : les sommets doivent être en diagonale": "Rectangle: the corners must be diagonal",
  "Rectangle par le centre": "Center Rectangle",
- "Rectangle par le centre : cliquez un sommet": "Center Rectangle: click a corner",
  "Rectangle par sommet (R)": "Corner Rectangle (R)",
  "Refuser": "Deny",
  "Rejoue un groupe de fonctions avec des cotes différentes. Si la topologie d'une instance ne correspond plus, la répétition s'arrête plutôt que de produire.": "Replays a group of features with different dimensions. If an instance's topology no longer matches, the pattern stops rather than producing.",
@@ -743,5 +740,9 @@
  "{n} faces": "{n} faces",
  "Épaisseur invalide": "Invalid thickness",
  "Perspective": "Perspective",
- "Perspective ou projection orthographique": "Perspective or orthographic projection"
+ "Perspective ou projection orthographique": "Perspective or orthographic projection",
+ "Saisie numérique : valeur invalide": "Numeric input: invalid value",
+ "Rectangle : cliquez le sommet opposé — ou tapez la largeur": "Rectangle: click the opposite corner — or type the width",
+ "Rectangle par le centre : cliquez un sommet — ou tapez la largeur": "Center rectangle: click a corner — or type the width",
+ "Cercle : cliquez pour donner le rayon — ou tapez-le": "Circle: click to set the radius — or type it"
 }

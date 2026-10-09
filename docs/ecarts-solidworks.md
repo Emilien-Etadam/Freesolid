@@ -86,7 +86,7 @@ moteur, vont à Cursor (T28 à T33 dans [`taches-cursor.md`](taches-cursor.md)).
 | 37 | Relations proposées selon la sélection | P3 | fait : avec une sélection, seules les relations possibles restent actives et sont mises en avant (ligne, deux lignes, cercles, points, symétrie) |
 | 38 | Coque : plusieurs faces, vers l'extérieur, épaisseurs par face | P3 | fait : plusieurs faces à ouvrir (un second clic retire), coque vers l'extérieur. Non fait : épaisseur différente par face (la coque native de FreeCAD n'a qu'une épaisseur) et coque fermée sans ouverture |
 | 39 | Projection perspective ou orthographique | P3 | fait : « Perspective » dans le menu de style d'affichage, mémorisé ; même taille de pièce au basculement ; sélection, zoom, panoramique et fenêtres multiples suivent |
-| 40 | Esquisse : saisie numérique pendant le tracé | P3 | reste |
+| 40 | Esquisse : saisie numérique pendant le tracé | P3 | fait : taper un chiffre pendant le tracé ouvre les cotes près du curseur — ligne (longueur, angle), cercle (rayon), rectangle (largeur, hauteur) ; Tab, Entrée, Échap |
 | 41 | Étiquettes des plans superposées ; « MMGS » ; textes français en anglais | P3 | fait (c6b0694, écart 27) |
 
 ### Questions de conception en attente

@@ -719,5 +719,6 @@
  "Maillage (.stl)": "Mesh (.stl)",
  "Tous les fichiers autorisés": "All allowed files",
  "Remplacer « {name} » ?": "Replace \"{name}\"?",
- "Fichier introuvable.": "File not found."
+ "Fichier introuvable.": "File not found.",
+ "Aperçu : afficher ou masquer": "Preview: show or hide"
 }

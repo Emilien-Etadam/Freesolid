@@ -613,6 +613,24 @@
   #panel .pok { color: #6fbf8f; border-color: #4a7c5d; }
   #panel .pok:hover { border-color: #6fbf8f; }
   #panel .pcancel { color: var(--error); border-color: #8a4a45; }
+  /* Œil : aperçu affiché ou coupé. */
+  #panel .peye {
+    width: 28px; height: 28px; padding: 4px; flex: none; border-radius: 4px;
+    background: none; border: 1px solid transparent; cursor: pointer;
+  }
+  #panel .peye svg {
+    width: 18px; height: 14px; fill: none; stroke: var(--ink); stroke-width: 1.4;
+  }
+  #panel .peye.off svg { stroke: var(--ink-2); opacity: 0.5; }
+  #panel .peye:hover { border-color: var(--line); }
+  /* Ce qu'il manque pour valider, sur fond ambré. */
+  #panel .phint {
+    margin: 8px 10px 2px; padding: 6px 9px; border-radius: 4px;
+    font-size: 11px; line-height: 1.35;
+    background: rgba(245, 158, 11, 0.14); color: #f3d9a0;
+    border-left: 3px solid var(--warn, #f59e0b);
+  }
+  #panel .phint[hidden] { display: none; }
   #panel .pcancel:hover { border-color: var(--error); }
   #panel .paction {
     flex: none; height: 28px; padding: 0 8px;

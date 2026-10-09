@@ -45,6 +45,16 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
 
   let active = null; // { spec, values }
   let editedInput = null; // champ modifié depuis le dernier Entrée
+  let hintEl = null;      // message d'aide (ce qui manque encore)
+  let previewOn = true;   // bascule de l'aperçu (œil de l'en-tête)
+
+  /** Message d'aide : ce qu'il manque pour pouvoir valider. */
+  function updateHint() {
+    if (!hintEl || !active) return;
+    const text = active.spec.hint?.({ ...active.values });
+    hintEl.hidden = !text;
+    hintEl.textContent = text ? t(text) : "";
+  }
 
   // Chaque modification de valeur notifie la commande — c'est ce qui
   // alimente l'aperçu jaune en temps réel.
@@ -53,6 +63,8 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     if (focused?.tagName === "INPUT" && panelEl.contains(focused)) {
       editedInput = focused;
     }
+    updateHint();
+    if (active?.spec.onPreview && !previewOn) return; // aperçu coupé
     active?.spec.onChange?.({ ...active.values });
   }
 
@@ -72,6 +84,7 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     if (active) close(false, { silent: true });
     active = { spec, values: {} };
     editedInput = null;
+    previewOn = true;
     for (const group of spec.groups) {
       for (const row of group.rows ?? []) {
         if (row.key !== undefined) active.values[row.key] = row.value ?? null;
@@ -201,6 +214,19 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     icon.src = "icons/" + spec.icon;
     icon.alt = "";
     head.append(icon, el("span", "ptitle", spec.title));
+    if (spec.onPreview) {
+      const eye = el("button", previewOn ? "peye" : "peye off");
+      eye.innerHTML = '<svg viewBox="0 0 20 14" aria-hidden="true">'
+        + '<path d="M1 7c2.5-4 5.5-6 9-6s6.5 2 9 6c-2.5 4-5.5 6-9 6s-6.5-2-9-6z"/>'
+        + '<circle cx="10" cy="7" r="2.6"/></svg>';
+      eye.title = t("Aperçu : afficher ou masquer");
+      eye.addEventListener("click", () => {
+        previewOn = !previewOn;
+        eye.classList.toggle("off", !previewOn);
+        active.spec.onPreview(previewOn, { ...active.values });
+      });
+      head.append(eye);
+    }
     if (spec.actions) {
       for (const action of spec.actions) {
         const btn = el("button", action.className ?? "pok", action.label);
@@ -227,6 +253,10 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     cancel.addEventListener("click", () => close(false));
     head.append(cancel);
     panelEl.append(head);
+    hintEl = el("div", "phint");
+    hintEl.setAttribute("role", "status");
+    panelEl.append(hintEl);
+    updateHint();
 
     for (const group of spec.groups) {
       const box = el("div", "pgroup");

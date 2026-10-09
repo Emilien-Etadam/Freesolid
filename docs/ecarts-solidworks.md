@@ -81,7 +81,7 @@ moteur, vont à Cursor (T28 à T33 dans [`taches-cursor.md`](taches-cursor.md)).
 | 32 | Zoom au mieux (F) en esquisse | P3 | confié à Cursor (T32) |
 | 33 | Flèches du clavier : rotation, panoramique (Ctrl), rotation dans le plan (Alt) | P3 | confié à Cursor (T33) |
 | 34 | Panneau : Entrée dans un champ applique la valeur sans valider la fonction | P3 | fait : premier Entrée = valeur prise (aperçu à jour, panneau ouvert), second Entrée = validation |
-| 35 | Panneau : message d'aide quand une sélection manque, bascule de l'aperçu | P3 | reste |
+| 35 | Panneau : message d'aide quand une sélection manque, bascule de l'aperçu | P3 | fait : bandeau ambré « ce qu'il manque » tant que la saisie est incomplète ; œil dans l'en-tête pour couper ou rallumer l'aperçu |
 | 36 | Barre d'état : coordonnées du curseur, longueur de la sélection, mode d'édition | P3 | reste |
 | 37 | Relations proposées selon la sélection | P3 | reste |
 | 38 | Coque : plusieurs faces, vers l'extérieur, épaisseurs par face | P3 | reste |

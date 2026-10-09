@@ -6091,7 +6091,14 @@ function openFeaturePanel(entry, sketchOverride) {
   };
   if (entry.preview !== false) {
     spec.onChange = (v) => schedulePreview(entry.build(v, ctx));
+    // Œil de l'en-tête : couper l'aperçu (fonction lourde), le rallumer.
+    spec.onPreview = (on, v) =>
+      schedulePreview(on ? entry.build(v, ctx) : null);
   }
+  // Tant que la saisie est incomplète, le panneau dit ce qui manque.
+  spec.hint = (v) => (entry.build(v, ctx) ? null
+    : typeof entry.invalid === "function" ? entry.invalid(v, ctx)
+      : entry.invalid ?? null);
   panel.open(spec);
 }
 

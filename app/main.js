@@ -186,8 +186,46 @@ const panel = createPropertyPanel({
     clearGhost();
     sketchInfoOpen = false;
   },
-  onToggle: () => updateConfirmCorner(),
+  onToggle: () => {
+    updateConfirmCorner();
+    updateTreeFlyout();
+  },
 });
+
+// ---------- arbre en surimpression pendant une commande ----------
+// Le panneau prend la place de l'arbre : l'arbre (le même élément, avec
+// ses écouteurs) passe dans un volet en haut à gauche de la vue, pour y
+// cliquer une fonction, une esquisse ou un plan pendant la commande.
+
+const treeFlyout = document.getElementById("tree-flyout");
+const treeFlyoutBody = document.getElementById("tree-flyout-body");
+const TREE_FLYOUT_KEY = "freesolid.treeFlyoutOpen";
+
+function updateTreeFlyout() {
+  if (!treeFlyout) return;
+  const tree = document.getElementById("tree");
+  if (panel.active) {
+    if (tree.parentElement !== treeFlyoutBody) treeFlyoutBody.appendChild(tree);
+    treeFlyout.hidden = false;
+  } else {
+    const aside = document.querySelector("aside");
+    if (tree.parentElement !== aside) {
+      aside.insertBefore(tree, document.getElementById("panel"));
+    }
+    treeFlyout.hidden = true;
+  }
+}
+
+function setTreeFlyoutOpen(open) {
+  treeFlyout?.classList.toggle("collapsed", !open);
+  try { localStorage.setItem(TREE_FLYOUT_KEY, open ? "1" : "0"); } catch { /* ok */ }
+}
+
+document.getElementById("tree-flyout-toggle")?.addEventListener("click", () =>
+  setTreeFlyoutOpen(treeFlyout.classList.contains("collapsed")));
+setTreeFlyoutOpen((() => {
+  try { return localStorage.getItem(TREE_FLYOUT_KEY) !== "0"; } catch { return true; }
+})());
 
 // ---------- viewport ----------
 

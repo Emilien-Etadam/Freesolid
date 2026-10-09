@@ -56,7 +56,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 13 | Menu et barre contextuels dans la vue | P1 | fait pour le menu : clic droit sur face, arête, esquisse, surface ou vide, et en esquisse (app/viewmenu.js, testé). Reste : barre d'icônes contextuelle au clic gauche |
 | 14 | Barre tête haute : styles d'affichage, masquer/afficher, orientation | P2 | confié à Cursor (T14) |
 | 15 | Réordonner l'arbre par glisser-déposer | P2 | reste |
-| 16 | Arbre accessible pendant une commande | P2 | reste |
+| 16 | Arbre accessible pendant une commande | P2 | fait : volet repliable en haut à gauche de la vue, mêmes clics que l'arbre |
 | 17 | Barre de menus | P2 | confié à Cursor (T17) |
 | 18 | Chanfrein distance-angle | P2 | confié à Cursor (T18) |
 | 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | fait : borgne, jusqu'au suivant, jusqu'au dernier / à travers tout, jusqu'à la face (+ décalage), plan milieu, deuxième direction, dépouille (vers l'intérieur ou l'extérieur). Reste : paroi mince (pas d'équivalent direct dans PartDesign) |

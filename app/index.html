@@ -142,6 +142,24 @@
   #viewbar button:hover { background: var(--panel-2); }
   #viewbar button.on { color: var(--accent); }
 
+  /* Arbre en surimpression pendant une commande (haut gauche de la vue). */
+  #tree-flyout {
+    position: absolute; top: 10px; left: 10px; z-index: 4;
+    max-width: 280px; max-height: 60%; display: flex; flex-direction: column;
+    background: rgba(23, 25, 28, 0.82); border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  #tree-flyout[hidden] { display: none; }
+  #tree-flyout-toggle {
+    text-align: left; padding: 4px 8px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; color: var(--ink-2);
+    background: none; border: none; cursor: pointer;
+  }
+  #tree-flyout-toggle::before { content: "▾ "; }
+  #tree-flyout.collapsed #tree-flyout-toggle::before { content: "▸ "; }
+  #tree-flyout.collapsed #tree-flyout-body { display: none; }
+  #tree-flyout-body { overflow: auto; padding: 0 4px 4px; }
+
   /* Boîte d'orientation : vues standard en croix, ouverte sous le curseur. */
   #orient-box {
     position: absolute; z-index: 6; width: 300px;
@@ -807,6 +825,10 @@
   </aside>
 
   <main id="viewport">
+    <div id="tree-flyout" hidden>
+      <button id="tree-flyout-toggle" title="Afficher ou replier l'arbre">Arbre de création</button>
+      <div id="tree-flyout-body"></div>
+    </div>
     <div id="orient-box" hidden role="dialog" aria-label="Orientation">
       <div class="orient-head">
         <span>Orientation</span>

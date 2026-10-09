@@ -1,5 +1,7 @@
 // Géométrie 2D partagée esquisse / solveur local.
 
+import { t } from "./i18n.js";
+
 // Sweep CCW p1 → p2 autour de c, comme le moteur stocke les arcs.
 export function arcAngles(entity) {
   const a1 = Math.atan2(entity.p1[1] - entity.c[1],
@@ -15,9 +17,9 @@ export function distancePointSegment(px, py, a, b) {
   const abx = b[0] - a[0], aby = b[1] - a[1];
   const len2 = abx * abx + aby * aby;
   if (len2 < 1e-18) return Math.hypot(px - a[0], py - a[1]);
-  let t = ((px - a[0]) * abx + (py - a[1]) * aby) / len2;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (a[0] + t * abx), py - (a[1] + t * aby));
+  let u = ((px - a[0]) * abx + (py - a[1]) * aby) / len2;
+  u = Math.max(0, Math.min(1, u));
+  return Math.hypot(px - (a[0] + u * abx), py - (a[1] + u * aby));
 }
 
 /** Distance réelle à l'entité en coordonnées locales d'esquisse. */
@@ -255,16 +257,16 @@ export function entityPropertyLines(entity) {
     const length = Math.hypot(
       entity.p2[0] - entity.p1[0], entity.p2[1] - entity.p1[1]);
     return [
-      `Longueur : ${fmtMm(length)} mm`,
-      `Départ : ${fmtXy(entity.p1)} mm`,
-      `Arrivée : ${fmtXy(entity.p2)} mm`,
+      t("Longueur : {v} mm", { v: fmtMm(length) }),
+      t("Départ : {v} mm", { v: fmtXy(entity.p1) }),
+      t("Arrivée : {v} mm", { v: fmtXy(entity.p2) }),
     ];
   }
   if (entity.type === "circle" && entity.c && entity.r != null) {
     return [
-      `Centre : ${fmtXy(entity.c)} mm`,
-      `Rayon : ${fmtMm(entity.r)} mm`,
-      `Diamètre : ${fmtMm(entity.r * 2)} mm`,
+      t("Centre : {v} mm", { v: fmtXy(entity.c) }),
+      t("Rayon : {v} mm", { v: fmtMm(entity.r) }),
+      t("Diamètre : {v} mm", { v: fmtMm(entity.r * 2) }),
     ];
   }
   if (entity.type === "arc" && entity.c && entity.r != null
@@ -272,21 +274,25 @@ export function entityPropertyLines(entity) {
     const { a1, a2 } = arcAngles(entity);
     const sweepDeg = (a2 - a1) * 180 / Math.PI;
     return [
-      `Centre : ${fmtXy(entity.c)} mm`,
-      `Rayon : ${fmtMm(entity.r)} mm`,
-      `Angle balayé : ${fmtMm(sweepDeg)} °`,
+      t("Centre : {v} mm", { v: fmtXy(entity.c) }),
+      t("Rayon : {v} mm", { v: fmtMm(entity.r) }),
+      t("Angle balayé : {v} °", { v: fmtMm(sweepDeg) }),
     ];
   }
   if (entity.type === "poly" && entity.kind === "ellipse") {
     const lines = [];
-    if (entity.c) lines.push(`Centre : ${fmtXy(entity.c)} mm`);
-    if (entity.rx != null) lines.push(`Grand rayon : ${fmtMm(entity.rx)} mm`);
-    if (entity.ry != null) lines.push(`Petit rayon : ${fmtMm(entity.ry)} mm`);
+    if (entity.c) lines.push(t("Centre : {v} mm", { v: fmtXy(entity.c) }));
+    if (entity.rx != null) {
+      lines.push(t("Grand rayon : {v} mm", { v: fmtMm(entity.rx) }));
+    }
+    if (entity.ry != null) {
+      lines.push(t("Petit rayon : {v} mm", { v: fmtMm(entity.ry) }));
+    }
     return lines;
   }
   if (entity.type === "poly") {
     const n = entity.npoints ?? entity.points?.length ?? 0;
-    return [`Nombre de points : ${n}`];
+    return [t("Nombre de points : {n}", { n })];
   }
   return [];
 }

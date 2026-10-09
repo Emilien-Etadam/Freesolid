@@ -65,6 +65,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 24 | Accueil et Nouveau (Ctrl+N) | P2 | reste |
 | 25 | Assemblage : contraintes standard | P1 | reste |
 | 26 | Assemblage : insertion guidée, fixe/flottant, déplacement à la souris | P2 | reste |
+| 27 | Interface anglaise sans texte français (demande du 2026-10-09) | P1 | fait : textes interpolés passés par t(), libellés de panneaux, noms moteur (pièce, corps, plans, combiner) |
 
 ### Questions de conception en attente
 

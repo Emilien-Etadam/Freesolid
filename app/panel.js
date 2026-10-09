@@ -271,18 +271,19 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
       if (value.items) {
         box.textContent = value.items.length <= 2
           ? value.items.map((i) => i.label).join(" → ")
-          : `${value.items.length} profils : `
+          : t("{n} profils : ", { n: value.items.length })
             + value.items.map((i) => i.label).join(" → ");
       } else if (value.kind === "edges") {
         box.textContent = value.edges.length <= 3
-          ? value.edges.map((e) => `Arête ${e}`).join(", ")
-          : `${value.edges.length} arêtes`;
+          ? value.edges.map((e) => t("Arête {n}", { n: e })).join(", ")
+          : t("{n} arêtes", { n: value.edges.length });
       } else if (value.kind === "sketch" || value.kind === "surface") {
         box.textContent = value.label;
       } else if (value.kind === "asmface") {
-        box.textContent = `${value.componentLabel} · Face ${value.face}`;
+        box.textContent = `${value.componentLabel} · `
+          + t("Face {n}", { n: value.face });
       } else {
-        box.textContent = `Face ${value.face}`;
+        box.textContent = t("Face {n}", { n: value.face });
       }
       box.classList.add("filled");
       return box;

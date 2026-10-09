@@ -10,6 +10,8 @@
 // à −0,12 mm : 81 s / 4,7 GiB. P039 à entraxe = Ø sur un jonc de 12 mm
 // a explosé ; à 48 mm, 200 pierres qui se frôlent passent en 41 s.
 
+import { t } from "./i18n.js";
+
 /**
  * Écart (entraxe − diamètre) au-dessous duquel on alarme. 0 = frôlement
  * ou chevauchement. C à +0,085 mm passe ; A et C n'explosent qu'en
@@ -128,7 +130,7 @@ function _similarCount(n, sampleCount) {
 }
 
 function _stoneWord(n) {
-  return n === 1 ? "pierre" : "pierres";
+  return n === 1 ? t("pierre") : t("pierres");
 }
 
 function _finiteNumber(value) {
@@ -202,19 +204,21 @@ export function combineConfirmMessage(tree, toolName, sample) {
   const pierre = _stoneWord(n);
 
   if (combineNeedsMemoryWarning(gem)) {
-    return `${n} ${pierre} — les sièges se frôlent ou se chevauchent. `
+    return `${n} ${pierre} — `
+      + t("les sièges se frôlent ou se chevauchent. "
       + "Cette opération peut demander plusieurs Go de mémoire et ne "
       + "pas aboutir. Enregistrez avant de continuer. Reculez la barre "
       + "de reprise et combinez par lots plus petits, en plusieurs "
       + "fonctions : sur une bague serrée, c'est la voie normale. "
-      + "Continuer ?";
+      + "Continuer ?");
   }
 
   const seconds = estimateCombineSeconds(n, measured);
   if (seconds != null) {
     if (seconds < COMBINE_CONFIRM_MIN_SECONDS) return null;
-    return `${n} ${pierre} — environ ${seconds} secondes, `
-      + "d'après la dernière combinaison sur cette machine. Continuer ?";
+    return `${n} ${pierre} — `
+      + t("environ {s} secondes, d'après la dernière combinaison sur cette "
+      + "machine. Continuer ?", { s: seconds });
   }
 
   return null;

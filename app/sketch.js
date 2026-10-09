@@ -1353,7 +1353,8 @@ export function createSketchMode(deps) {
     }));
     propRows.push({
       type: "note",
-      text: `Construction : ${entity.construction ? "oui" : "non"}`,
+      text: t("Construction : {v}",
+        { v: entity.construction ? t("oui") : t("non") }),
       readonly: true,
     });
     const constraints = listed.constraints ?? [];

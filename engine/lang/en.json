@@ -263,5 +263,11 @@
  "Content-Type application/json requis": "Content-Type application/json required",
  "Content-Length manquant ou invalide": "Content-Length missing or invalid",
  "introuvable": "not found",
- "erreur moteur non traduite — à signaler": "untranslated engine error — please report it"
+ "erreur moteur non traduite — à signaler": "untranslated engine error — please report it",
+ "Pièce": "Part",
+ "Assemblage": "Assembly",
+ "Corps": "Body",
+ "Combiner — Soustraire": "Combine — Subtract",
+ "Combiner — Ajouter": "Combine — Add",
+ "Combiner — Intersection": "Combine — Common"
 }

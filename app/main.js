@@ -663,7 +663,7 @@ const sketchHighlightMaterial = new THREE.LineBasicMaterial({
 
 // Mêmes noms que vocab.ORIGIN_PLANES — affichés sur les plans eux-mêmes.
 const PLANE_LABELS = {
-  XY: "Plan de dessus", XZ: "Plan de face", YZ: "Plan de droite",
+  XY: t("Plan de dessus"), XZ: t("Plan de face"), YZ: t("Plan de droite"),
 };
 
 function makePlaneLabel(text) {
@@ -1005,16 +1005,17 @@ function repaintGroups() {
   } else if (hoveredSurface) {
     parts.push(hoveredSurface.label);
   } else if (hoveredEdgeGroup >= 0) {
-    parts.push(`Arête ${edgeGroups[hoveredEdgeGroup].edgeId}`);
+    parts.push(t("Arête {n}", { n: edgeGroups[hoveredEdgeGroup].edgeId }));
   } else if (hoveredGroup >= 0) {
-    parts.push(`Face ${meshGroups[hoveredGroup].faceId}`);
+    parts.push(t("Face {n}", { n: meshGroups[hoveredGroup].faceId }));
   }
   if (selectedEdges.size) {
-    parts.push(`sél. ${selectedEdges.size} arête(s) — Ctrl+clic : ajouter`);
+    parts.push(t("sél. {n} arête(s) — Ctrl+clic : ajouter",
+      { n: selectedEdges.size }));
   } else if (selectedFaceId !== null) {
-    parts.push(`sél. Face ${selectedFaceId}`);
+    parts.push(t("sél. Face {n}", { n: selectedFaceId }));
   } else if (selectedSurface) {
-    parts.push(`sél. ${selectedSurface.label}`);
+    parts.push(t("sél. {s}", { s: selectedSurface.label }));
   }
   pickEl.textContent = parts.join(" · ");
 }
@@ -1124,7 +1125,8 @@ renderer.domElement.addEventListener("pointerup", (event) => {
         ? { kind: "face", id: meshGroups[hoveredGroup].faceId }
         : null;
     if (!pick) return;
-    const label = (p) => `${p.kind === "edge" ? "arête" : "face"} ${p.id}`;
+    const label = (p) => (p.kind === "edge"
+      ? t("arête {n}", { n: p.id }) : t("face {n}", { n: p.id }));
     if (!measureFirst) {
       measureFirst = pick;
       say(t("Mesurer : {a} — cliquez le second élément", { a: label(pick) }));
@@ -1282,9 +1284,10 @@ async function showFeatureDims(featureName, hit) {
   if (!featureName) {
     const match = lastFaceMatch;
     const detail = match && match.faces
-      ? ` (${match.matched}/${match.faces} face(s) appariée(s) à une fonction)`
+      ? " " + t("({m}/{n} face(s) appariée(s) à une fonction)",
+        { m: match.matched, n: match.faces })
       : "";
-    say("cette face n'a pas de fonction associée" + detail, true);
+    say(t("cette face n'a pas de fonction associée") + detail, true);
     clearFeatureDims();
     return;
   }
@@ -1739,7 +1742,8 @@ function onDatumRow(feature) {
   refreshDatumGhost(null);
   if (lastTree) renderTree(lastTree);
   say(selectedDatumFeature
-    ? `${feature.label} choisi — cliquez Esquisse pour dessiner dessus`
+    ? t("{f} choisi — cliquez Esquisse pour dessiner dessus",
+      { f: feature.label })
     : "Plan de référence désélectionné");
 }
 
@@ -1965,10 +1969,10 @@ function openSketchInfoPanel(state, feature) {
   const nCon = state.constraints?.length ?? 0;
   const dof = state.dof;
   const status = state.fullyConstrained
-    ? "totalement contrainte"
+    ? t("totalement contrainte")
     : dof !== null && dof !== undefined
-      ? `${dof} degré${dof === 1 ? "" : "s"} de liberté`
-      : "état inconnu";
+      ? t("{n} degré(s) de liberté", { n: dof })
+      : t("état inconnu");
   sketchInfoOpen = true;
   panel.open({
     icon: "Sketcher_Sketch.svg",
@@ -1978,12 +1982,12 @@ function openSketchInfoPanel(state, feature) {
       label: t("Propriétés"),
       rows: [
         { type: "note",
-          text: `Support : ${state.support || "—"}` },
+          text: t("Support : {s}", { s: state.support || "—" }) },
         { type: "note",
-          text: `Entités : ${nEnt} — Contraintes : ${nCon}` },
-        { type: "note", text: `État : ${status}` },
+          text: t("Entités : {e} — Contraintes : {c}", { e: nEnt, c: nCon }) },
+        { type: "note", text: t("État : {s}", { s: status }) },
         { type: "note",
-          text: `Utilisée par : ${usedBy ?? "libre"}` },
+          text: t("Utilisée par : {f}", { f: usedBy ?? t("libre") }) },
       ],
     }],
     actions: [{
@@ -2122,8 +2126,9 @@ function appendBodyRow(bodyInfo) {
     bodyItem.appendChild(swatch);
   }
   const suffix = empty
-    ? " — vide"
-    : (bodyInfo.active ? "" : ` — ${bodyInfo.count} élément(s)`);
+    ? " — " + t("vide")
+    : (bodyInfo.active ? ""
+      : " — " + t("{n} élément(s)", { n: bodyInfo.count }));
   bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix));
   if (!bodyInfo.active && bodyInfo.name) {
     bodyItem.title = t("Clic : activer ce corps");
@@ -2177,8 +2182,8 @@ function appendSurfaceRow(surface, { inFolder = true, rolledBack = false } = {})
         + (rolledBack ? " rolled-back" : "");
       row.appendChild(treeIcon("Sketcher_Sketch.svg"));
       row.appendChild(document.createTextNode(child.label));
-      row.title = `${child.kind} — double-clic : modifier l'esquisse · ` +
-        "clic droit : modifier";
+      row.title = `${child.kind} — `
+        + t("double-clic : modifier l'esquisse · clic droit : modifier");
       row.addEventListener("dblclick", () => onSketchRowDblClick(child));
       row.addEventListener("contextmenu", (event) => openMenu(event, child));
       row.addEventListener("click", () => onSketchRowClick(child));
@@ -2449,8 +2454,8 @@ function appendFeatureHistoryRow(feature, rolledBack) {
       ? sketchTreeLabel(feature.label, sketchDefinitionOf(feature))
       : feature.label));
   if (sketchMode.editing === feature.name) row.classList.add("editing");
-  row.title = `${feature.kind} — double-clic : modifier · ` +
-    "clic droit : modifier, barre de retour, supprimer";
+  row.title = `${feature.kind} — `
+    + t("double-clic : modifier · clic droit : modifier, barre de retour, supprimer");
   row.addEventListener("dblclick", () => {
     if (feature.type === "Sketcher::SketchObject") {
       onSketchRowDblClick(feature);
@@ -2492,8 +2497,8 @@ function appendFeatureHistoryRow(feature, rolledBack) {
       childRow.appendChild(document.createTextNode(
         sketchTreeLabel(child.label, sketchDefinitionOf(child))));
       if (sketchMode.editing === child.name) childRow.classList.add("editing");
-      childRow.title = `${child.kind} — double-clic : modifier l'esquisse · ` +
-      "clic droit : modifier";
+      childRow.title = `${child.kind} — `
+        + t("double-clic : modifier l'esquisse · clic droit : modifier");
       childRow.addEventListener("dblclick", () => onSketchRowDblClick(child));
       childRow.addEventListener("contextmenu", (event) => openMenu(event, child));
       childRow.addEventListener("click", () => onSketchRowClick(child));
@@ -3585,8 +3590,8 @@ function renderGraph(data) {
       group.appendChild(sub);
     }
     const geomTitle = subCaption
-      ? `Liaison géométrique — ${subCaption}`
-      : "Liaison géométrique — non modifiable pour l'instant";
+      ? t("Liaison géométrique — {s}", { s: subCaption })
+      : t("Liaison géométrique — non modifiable pour l'instant");
     const title = edge.kind === "param"
       ? "Liaison paramétrique"
       : edge.kind === "data"
@@ -4652,14 +4657,14 @@ function renderAssemblyTree(tree) {
   const head = document.createElement("li");
   head.className = "body active";
   head.appendChild(treeIcon("Geoassembly.svg"));
-  head.appendChild(document.createTextNode("Assemblage"));
+  head.appendChild(document.createTextNode(t("Assemblage")));
   treeEl.appendChild(head);
   for (const comp of tree.components) {
     const item = document.createElement("li");
     if (comp.name === selectedComponent) item.className = "sel-comp";
     item.appendChild(treeIcon("Link.svg"));
     item.appendChild(document.createTextNode(
-      comp.label + (comp.grounded ? " (fixé)" : "")));
+      comp.label + (comp.grounded ? " " + t("(fixé)") : "")));
     item.title = t("Clic : sélectionner · double-clic : déplacer · " +
       "clic droit : renommer, supprimer");
     item.addEventListener("click", () => selectComponent(comp.name));
@@ -4680,7 +4685,7 @@ function renderAssemblyTree(tree) {
     row.className = "child";
     row.appendChild(treeIcon("Geoassembly.svg"));
     row.appendChild(document.createTextNode(joint.label));
-    row.title = `${joint.type} — clic droit : renommer, supprimer`;
+    row.title = `${joint.type} — ` + t("clic droit : renommer, supprimer");
     row.addEventListener("contextmenu", (e) => openMenu(e, joint));
     treeEl.appendChild(row);
   }
@@ -4697,7 +4702,7 @@ function openMovePanel() {
   const [yaw, pitch, roll] = comp.rotation;
   panel.open({
     icon: "Link.svg",
-    title: `Déplacer — ${comp.label}`,
+    title: t("Déplacer — {c}", { c: comp.label }),
     groups: [
       { label: t("Translation"),
         rows: [
@@ -4859,7 +4864,7 @@ document.getElementById("btn-array-comp").addEventListener("click", () => {
   }
   panel.open({
     icon: "Link.svg",
-    title: `Répéter — ${comp.label}`,
+    title: t("Répéter — {c}", { c: comp.label }),
     groups: [{
       label: t("Répétition"),
       rows: [
@@ -4899,7 +4904,7 @@ document.getElementById("btn-interf").addEventListener("click", async () => {
       icon: "Geoassembly.svg",
       title: t("Interférences"),
       groups: [{
-        label: `${result.interferences.length} interférence(s)`,
+        label: t("{n} interférence(s)", { n: result.interferences.length }),
         rows: [{ type: "list",
           items: result.interferences.map((p) => ({
             label: `${p.a} ↔ ${p.b} : ` +
@@ -5073,10 +5078,11 @@ async function openEvaluatePanel() {
     groups: [
       { label: t("Propriétés de masse"),
         rows: [{ type: "list", items: [
-          { label: `Volume : ${fixed(props.volume_mm3 / 1000, 2)} cm³` },
-          { label: `Masse : ${fixed(props.mass_g)} g ` +
-                   `(à ${props.density} g/cm³)` },
-          { label: `Surface : ${fixed(props.area_mm2 / 100)} cm²` },
+          { label: t("Volume : {v} cm³",
+            { v: fixed(props.volume_mm3 / 1000, 2) }) },
+          { label: t("Masse : {m} g (à {d} g/cm³)",
+            { m: fixed(props.mass_g), d: props.density }) },
+          { label: t("Surface : {s} cm²", { s: fixed(props.area_mm2 / 100) }) },
           { label: t("Centre de gravité : ")
                    + props.center_of_mass.map((v) => fixed(v)).join(", ") },
           { label: t("Encombrement : ")
@@ -5305,11 +5311,11 @@ document.getElementById("btn-open").addEventListener("click", async () => {
     await updateViewport(gen);
     if (gen !== viewGen) return;
     say(tree.imported_solids !== undefined
-      ? `Importé — ${tree.imported_solids} solide(s), la forme est la ` +
-        "base du corps."
+      ? t("Importé — {n} solide(s), la forme est la base du corps.",
+        { n: tree.imported_solids })
       : tree.bodies_in_file > 1
-        ? `Ouvert — ${tree.bodies_in_file} corps dans le fichier.`
-        : "Ouvert.");
+        ? t("Ouvert — {n} corps dans le fichier.", { n: tree.bodies_in_file })
+        : t("Ouvert."));
   } catch (error) {
     if (gen !== viewGen) return;
     say(error.message, true);

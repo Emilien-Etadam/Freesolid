@@ -4,6 +4,7 @@
 // Chaque entrée décrit un panneau « ouvrir → éditer → aperçu → OK ».
 // build(v, ctx) rend { op, params } ou null (aperçu éteint, OK bloqué).
 
+import { t } from "./i18n.js";
 import { num } from "./num.js";
 import { minimalGraphCurve, minimalGraphFeature, minimalRepeatGraph } from "./graph.js";
 import { combineConfirmMessage } from "./progress.js";
@@ -70,7 +71,7 @@ export function dressup({ button, icon, title, selectionLabel, group, rows, buil
       if (typeof invalid === "function") return invalid(v, ctx);
       return hasSelection(v.sel)
         ? (invalid ?? "Valeur invalide")
-        : `${title} : cliquez d'abord dans la zone graphique`;
+        : t("{f} : cliquez d'abord dans la zone graphique", { f: t(title) });
     },
     refresh: "part",
   };
@@ -89,9 +90,7 @@ function withSketchProfile(entry) {
       return [
         { label: "Profil",
           rows: [{ type: "note",
-            text: profile
-              ? `Profil : ${profile.label}`
-              : "Profil : —" }] },
+            text: t("Profil : {p}", { p: profile ? profile.label : "—" }) }] },
         ...groups,
       ];
     },

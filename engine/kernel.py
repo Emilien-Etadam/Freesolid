@@ -586,13 +586,13 @@ class Kernel:
             return doc.getMaxUndoStackSize()
         return None
 
-    def new_part(self, name="Pièce"):
+    def new_part(self, name=None):
         App = self._app()
         self._close_current()
         self._doc = App.newDocument("FreeSolid")
         self._setup_doc(self._doc)
         self._body = self._doc.addObject("PartDesign::Body", "Body")
-        self._body.Label = name
+        self._body.Label = name or self._t("Pièce")
         self._recompute()
         return self.get_tree()
 
@@ -615,7 +615,7 @@ class Kernel:
         self._setup_doc(self._doc)
         self._assembly = True
         asm = self._doc.addObject("Assembly::AssemblyObject", "Assembly")
-        asm.Label = str(name) if name else "Assemblage"
+        asm.Label = str(name) if name else self._t("Assemblage")
         joints = self._doc.addObject("Assembly::JointGroup", "Joints")
         asm.addObject(joints)
         return self.assembly_tree()
@@ -2390,7 +2390,7 @@ class Kernel:
         """
         doc = self._require_doc()
         body = doc.addObject("PartDesign::Body", "Body")
-        body.Label = str(name).strip() if name else "Corps"
+        body.Label = str(name).strip() if name else self._t("Corps")
         self._body = body
         doc.recompute()
         return self.get_tree()
@@ -2447,9 +2447,9 @@ class Kernel:
                 "un corps ne se combine pas avec lui-même — choisissez "
                 "un autre corps outil")
         types = {"cut": "Cut", "fuse": "Fuse", "common": "Common"}
-        labels = {"cut": "Combiner — Soustraire",
-                  "fuse": "Combiner — Ajouter",
-                  "common": "Combiner — Intersection"}
+        labels = {"cut": self._t("Combiner — Soustraire"),
+                  "fuse": self._t("Combiner — Ajouter"),
+                  "common": self._t("Combiner — Intersection")}
         boolean_type = types.get(str(type))
         if boolean_type is None:
             raise KernelError(
@@ -3969,7 +3969,7 @@ class Kernel:
             feature = self._origin_feature_or_none(role)
             planes.append({
                 "id": wire,
-                "label": label_for_origin(role),
+                "label": label_for_origin(role, self.lang),
                 "name": feature.Name if feature is not None else "",
             })
         bodies = []
@@ -4401,8 +4401,7 @@ class Kernel:
             getattr(sk, "RedundantConstraints", []),
             getattr(sk, "MalformedConstraints", []))
 
-    @staticmethod
-    def _sketch_support_label(sk):
+    def _sketch_support_label(self, sk):
         """Label du plan ou de la face d'appui — pour le panneau infos."""
         from engine.vocab import label_for_origin
         support = (getattr(sk, "AttachmentSupport", None)
@@ -4414,7 +4413,7 @@ class Kernel:
                 # Plan d'origine : vocabulaire SolidWorks (« Plan de
                 # face ») via le Name interne ; sinon label utilisateur.
                 name = getattr(obj, "Name", "") or ""
-                label = label_for_origin(name)
+                label = label_for_origin(name, self.lang)
                 if label == name:
                     label = obj.Label
                 for sub in subs or ():

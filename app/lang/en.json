@@ -645,5 +645,6 @@
  "R {v} mm": "R {v} mm",
  "Enlever de la matière": "Remove material",
  "Centre de rotation posé — clic milieu dans le vide pour le retirer.": "Rotation center set — middle-click in empty space to remove it.",
- "Centre de rotation : centre de la vue.": "Rotation center: center of the view."
+ "Centre de rotation : centre de la vue.": "Rotation center: center of the view.",
+ "Unités : millimètre, gramme, seconde": "Units: millimetre, gram, second"
 }

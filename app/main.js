@@ -847,7 +847,9 @@ function rebuildPlanes() {
     const border = new THREE.LineSegments(
       new THREE.EdgesGeometry(fill.geometry), borderMaterial);
     const label = makePlaneLabel(PLANE_LABELS[id]);
-    label.position.set(0, size * 0.46, 0);
+    // Décalée vers un coin : au centre du bord, les étiquettes du plan de
+    // dessus et du plan de droite tombaient au même endroit.
+    label.position.set(-size * 0.3, size * 0.46, 0);
     label.scale.set(size * 0.42, size * 0.42 * (44 / 256), 1);
     holder.add(fill, border, label);
     planesGroup.add(holder);

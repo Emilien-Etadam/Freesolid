@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createSketchMode, createDimSprite } from "./sketch.js";
 import {
-  dimEditPayload, dimLabel, openDimEditor, sketchDimAnchor,
+  dimEditPayload, dimLabel, filletRadiusLabel, openDimEditor, sketchDimAnchor,
 } from "./dims.js";
 import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
@@ -194,6 +194,7 @@ const panel = createPropertyPanel({
   say,
   onClose: () => {
     clearGhost();
+    clearFilletRadiusBubble();
     sketchInfoOpen = false;
   },
   onToggle: () => updateConfirmCorner(),
@@ -963,7 +964,7 @@ function clearGhost() {
   if (partBaseMaterial) partBaseMaterial.opacity = 1;
 }
 
-function showGhost(mesh) {
+function showGhost(mesh, { bothSides = false } = {}) {
   if (ghostMesh) {
     ghostMesh.removeFromParent();
     ghostMesh.geometry.dispose();
@@ -972,11 +973,91 @@ function showGhost(mesh) {
   if (!mesh.indices.length) return;
   const geometry = new THREE.BufferGeometry();
   applyPackedGeometry(geometry, mesh);
+  // Le congé OCCT renvoie la face arrondie avec des normales vers
+  // l'intérieur : en FrontSide elle reste une bande sombre. DoubleSide
+  // l'éclaire. Les autres aperçus gardent FrontSide.
+  ghostMaterial.side = bothSides ? THREE.DoubleSide : THREE.FrontSide;
+  ghostMaterial.needsUpdate = true;
   ghostMesh = new THREE.Mesh(geometry, ghostMaterial);
   volumesGroup.add(ghostMesh);
   applyVolumeVisibility();
   baseMaterial.opacity = 0.15; // la pièce s'efface derrière le résultat
   if (partBaseMaterial) partBaseMaterial.opacity = 0.15;
+}
+
+// Bulle « R = … » pendant le congé, près de l'arête choisie.
+const filletBubbleGroup = new THREE.Group();
+filletBubbleGroup.renderOrder = 24;
+scene.add(filletBubbleGroup);
+let filletRadiusSprite = null;
+
+function clearFilletRadiusBubble() {
+  if (!filletRadiusSprite) return;
+  filletRadiusSprite.removeFromParent();
+  const material = filletRadiusSprite.material;
+  material.map?.dispose();
+  material.dispose();
+  filletRadiusSprite = null;
+}
+
+function selectedEdgeCenter(edgeId) {
+  if (!partEdges) return null;
+  const position = partEdges.geometry.getAttribute("position");
+  const index = partEdges.geometry.index;
+  if (!position || !index) return null;
+  let x = 0, y = 0, z = 0, count = 0;
+  partEdges.geometry.groups.forEach((group, i) => {
+    if (edgeGroups[i]?.edgeId !== edgeId) return;
+    for (let k = group.start; k < group.start + group.count; k++) {
+      const vertex = index.getX(k);
+      x += position.getX(vertex);
+      y += position.getY(vertex);
+      z += position.getZ(vertex);
+      count++;
+    }
+  });
+  return count ? new THREE.Vector3(x / count, y / count, z / count) : null;
+}
+
+function filletBubbleAnchor(sel) {
+  if (sel?.kind === "edges" && sel.edges?.length) {
+    return selectedEdgeCenter(sel.edges[0]);
+  }
+  if (sel?.kind === "face" && lastFaceHit && lastFaceHit.face === sel.face) {
+    return new THREE.Vector3(lastFaceHit.x, lastFaceHit.y, lastFaceHit.z);
+  }
+  return null;
+}
+
+function updateFilletRadiusBubble(values) {
+  clearFilletRadiusBubble();
+  const text = filletRadiusLabel(values?.radius);
+  const anchor = filletBubbleAnchor(values?.sel);
+  if (!text || !anchor) return;
+  const towardCamera = camera.position.clone().sub(controls.target);
+  if (towardCamera.lengthSq() > 1e-8) {
+    anchor.add(towardCamera.normalize().multiplyScalar(8));
+  }
+  filletRadiusSprite = createDimSprite(text, anchor.x, anchor.y, anchor.z);
+  filletRadiusSprite.renderOrder = 24;
+  filletBubbleGroup.add(filletRadiusSprite);
+}
+
+function focusPanelField(key) {
+  const input = document.querySelector(`#panel input[data-key="${key}"]`);
+  if (!input) return false;
+  input.focus();
+  input.select();
+  return true;
+}
+
+function pickFilletRadiusBubble(event) {
+  if (!filletRadiusSprite) return false;
+  const rect = renderer.domElement.getBoundingClientRect();
+  const projected = filletRadiusSprite.position.clone().project(camera);
+  const sx = (projected.x * 0.5 + 0.5) * rect.width + rect.left;
+  const sy = (-projected.y * 0.5 + 0.5) * rect.height + rect.top;
+  return Math.hypot(sx - event.clientX, sy - event.clientY) < 28;
 }
 
 // Chaque frappe dans le panneau relance l'aperçu, débouncé — le serveur
@@ -993,7 +1074,7 @@ function schedulePreview(built) {
         { op: built.op, params: built.params });
       if (gen !== previewGen) return;
       if (!panel.active) return;
-      showGhost(mesh);
+      showGhost(mesh, { bothSides: built.op === "add_fillet" });
     } catch (error) {
       if (gen !== previewGen) return;
       if (!panel.active) return;
@@ -1557,6 +1638,10 @@ renderer.domElement.addEventListener("dblclick", (event) => {
   if (sketchMode.active || assemblyState || planePicking || measuring) return;
   if (hoveredSurface) {
     onSurfaceDblClick(hoveredSurface);
+    return;
+  }
+  if (pickFilletRadiusBubble(event)) {
+    focusPanelField("radius");
     return;
   }
   if (pickFeatureDim(event)) return;
@@ -5607,7 +5692,10 @@ function openFeaturePanel(entry, sketchOverride) {
     },
   };
   if (entry.preview !== false) {
-    spec.onChange = (v) => schedulePreview(entry.build(v, ctx));
+    spec.onChange = (v) => {
+      schedulePreview(entry.build(v, ctx));
+      if (entry.button === "btn-fillet") updateFilletRadiusBubble(v);
+    };
   }
   panel.open(spec);
 }

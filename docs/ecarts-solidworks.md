@@ -61,7 +61,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 18 | Chanfrein distance-angle | P2 | fait : distance égale, deux distances, distance et angle, inversion des côtés, réédition |
 | 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | reste |
 | 20 | Révolution : choix de l'axe | P2 | fait : axe vertical, ligne de construction, axes d'origine, plan milieu, réédition |
-| 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | confié à Cursor (T21) |
+| 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | fait |
 | 22 | Répétitions : choix des fonctions et de la direction | P2 | reste |
 | 23 | Ouvrir / Enregistrer : dialogue de fichiers | P2 | fait : liste, filtre, nom, écrasement, prison de chemins |
 | 24 | Accueil et Nouveau (Ctrl+N) | P2 | fait |

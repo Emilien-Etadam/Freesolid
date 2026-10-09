@@ -309,6 +309,7 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
       input.type = "number";
       input.value = values[row.key];
       input.step = row.step ?? "any";
+      input.dataset.key = row.key;
       if (row.min !== undefined) input.min = row.min;
       input.addEventListener("input", () => {
         values[row.key] = input.value;

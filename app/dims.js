@@ -17,6 +17,17 @@ export function dimLabel(dim) {
     + (dim.name ? dim.name + " = " : "") + symbol + number;
 }
 
+/** Bulle du congé en cours : « R = 3.00 », ou l'expression telle quelle. */
+export function filletRadiusLabel(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  const numeric = Number(text.replace(",", "."));
+  if (Number.isFinite(numeric) && /^-?\d+(?:[.,]\d+)?$/.test(text)) {
+    return `R = ${numeric.toFixed(2)}`;
+  }
+  return `R = ${text}`;
+}
+
 // ---------- tracé d'une cote d'esquisse ----------
 // Coordonnées locales de l'esquisse. `size` est l'unité de tracé (écart
 // entre la pièce et la ligne de cote), choisie par l'appelant à l'échelle

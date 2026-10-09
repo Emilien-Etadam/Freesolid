@@ -836,6 +836,41 @@
   .settings-field label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
   .settings-note { color: var(--ink-2); font-size: 11px; }
   .settings-actions { justify-content: flex-end; margin-top: 14px; }
+  #file-dialog {
+    position: fixed; inset: 0; z-index: 70;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.45); padding: 24px;
+  }
+  #file-dialog[hidden] { display: none; }
+  .file-card {
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    width: min(480px, 100%); padding: 14px 16px;
+  }
+  .file-card h2 { margin: 0 0 8px; font-size: 16px; }
+  .file-path { color: var(--ink-2); font-size: 11px; word-break: break-all; margin: 0 0 8px; }
+  .file-row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .file-row select, .file-card input[type="text"] {
+    background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 4px; padding: 4px 6px; font: inherit;
+  }
+  .file-row select { flex: 1; }
+  .file-list {
+    max-height: 240px; overflow: auto; border: 1px solid var(--line);
+    border-radius: 6px; margin-bottom: 8px;
+  }
+  .file-list button {
+    display: block; width: 100%; text-align: left;
+    background: none; border: none; border-radius: 0; padding: 4px 8px;
+  }
+  .file-list button.dir { color: var(--accent); }
+  .file-list button.on { background: var(--panel); }
+  .file-name { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .file-name span { color: var(--ink-2); }
+  .file-name input { flex: 1; }
+  .file-actions { display: flex; justify-content: flex-end; gap: 6px; }
+  .file-error { color: var(--error); font-size: 12px; margin: 0 0 8px; }
 </style>
 </head>
 <body>
@@ -1040,6 +1075,7 @@
     </div>
   </div>
   <div id="param-pick"></div>
+  <div id="file-dialog" hidden></div>
   <!-- Panneau Paramètres : rendu par settings.js à l'ouverture. -->
   <div id="settings-dialog" hidden></div>
 

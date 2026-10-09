@@ -318,5 +318,6 @@
  "extrémités fermées : leur épaisseur doit rester inférieure à la moitié de la profondeur": "capped ends: their thickness must stay below half the depth",
  "extrémités fermées : réservées à l'extrusion": "capped ends: extrude only",
  "épaisseur des extrémités invalide": "invalid end thickness",
- "Cavité de paroi mince": "Thin wall cavity"
+ "Cavité de paroi mince": "Thin wall cavity",
+ "dossier introuvable": "folder not found"
 }

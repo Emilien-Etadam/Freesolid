@@ -4138,6 +4138,18 @@ class Kernel:
                 "{} supprimé, mais l'aval casse : {}".format(label, exc))
         return self._current_tree()
 
+    def list_dir(self, path=None):
+        """Liste un dossier de la prison de chemins. Lecture seule.
+
+        ``path`` absent : le dossier personnel. Même règles que
+        l'ouverture et l'enregistrement (``protocol.list_user_dir``).
+        """
+        from . import protocol
+        try:
+            return protocol.list_user_dir(path)
+        except protocol.ProtocolError as exc:
+            raise KernelError(str(exc))
+
     def open_part(self, path):
         """Open an existing .FCStd — the user's real files, not our demos.
 

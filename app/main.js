@@ -29,6 +29,7 @@ import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, ISSUES_URL, readLang } from "./settings.js";
 import { installMenuBar, menuBarModel } from "./menubar.js";
 import { installShortcutBar } from "./shortcutbar.js";
+import { installFileDialog } from "./filedialog.js";
 import {
   boxMode, isDrag, middleAction, normalizeRect, pickInBox,
   readReverseWheel, writeReverseWheel, zoomSpeedFor,
@@ -6151,9 +6152,13 @@ document.getElementById("btn-datum").addEventListener("click", () =>
     },
   })));
 
+const pickFile = installFileDialog(document, {
+  listDir: (path) => call("list_dir", path ? { path } : {}),
+  storage: localStore,
+});
+
 document.getElementById("btn-open").addEventListener("click", async () => {
-  const path = prompt("Ouvrir (.FCStd, .step, .iges) :",
-                      "~/piece-freesolid.FCStd");
+  const path = await pickFile("open");
   if (!path) return;
   const gen = ++viewGen;
   try {
@@ -6185,7 +6190,7 @@ document.getElementById("btn-open").addEventListener("click", async () => {
 });
 
 document.getElementById("btn-save").addEventListener("click", async () => {
-  const path = prompt("Enregistrer sous :", "~/piece-freesolid.FCStd");
+  const path = await pickFile("save");
   if (!path) return;
   try {
     const saved = await call("save_part", { path });
@@ -6196,9 +6201,7 @@ document.getElementById("btn-save").addEventListener("click", async () => {
 });
 
 document.getElementById("btn-export").addEventListener("click", async () => {
-  const path = prompt(
-    "Exporter (.stl / .3mf pour l'impression, .step pour l'échange) :",
-    "~/piece-freesolid.stl");
+  const path = await pickFile("export");
   if (!path) return;
   try {
     const out = await call("export_part", { path });

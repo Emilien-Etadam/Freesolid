@@ -63,7 +63,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 20 | Révolution : choix de l'axe | P2 | fait : axe vertical, ligne de construction, axes d'origine, plan milieu, réédition |
 | 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | confié à Cursor (T21) |
 | 22 | Répétitions : choix des fonctions et de la direction | P2 | fait : fonctions choisies dans l'arbre (plusieurs), direction par axe d'origine ou arête droite, pas ou longueur totale, inversion ; idem pour la symétrie (fonctions) |
-| 23 | Ouvrir / Enregistrer : dialogue de fichiers | P2 | confié à Cursor (T23) |
+| 23 | Ouvrir / Enregistrer : dialogue de fichiers | P2 | fait : liste, filtre, nom, écrasement, prison de chemins |
 | 24 | Accueil et Nouveau (Ctrl+N) | P2 | confié à Cursor (T24) |
 | 25 | Assemblage : contraintes standard | P1 | fait : coïncidente, concentrique, parallèle, perpendiculaire, tangente, distance, angle, verrouillage, option « opposé » ; traduites en liaisons natives (distance nulle, cylindrique…) |
 | 26 | Assemblage : insertion guidée, fixe/flottant, déplacement à la souris | P2 | fait : insertion enchaînée après « Nouvel assemblage » (premier composant fixé), Fixer / Libérer au clic droit, glisser d'un composant libre dans le plan de l'écran. Le choix du fichier passera par le dialogue de T23 |

@@ -96,6 +96,10 @@ def test_m1_ops_declare_their_required_params():
     assert protocol.OPS["add_chamfer"] == ("size",)
     assert protocol.OPS["save_part"] == ("path",)
     assert protocol.OPS["open_part"] == ("path",)
+    assert protocol.OPS["list_dir"] == ()
+    protocol.validate_request({"op": "list_dir", "params": {}})
+    protocol.validate_request(
+        {"op": "list_dir", "params": {"path": "~/pieces"}})
     assert protocol.OPS["get_params"] == ("feature",)
     # feature optionnel : absent = barre avant la première fonction.
     assert protocol.OPS["set_tip"] == ()
@@ -537,6 +541,7 @@ def test_ops_snapshot_keys():
         "get_tree",
         "graph_vocabulary",
         "insert_component",
+        "list_dir",
         "list_plugins",
         "list_variables",
         "make_drawing",

@@ -155,7 +155,6 @@
  "Enlèvement extrudé": "Extrude Cut",
  "Enlèvement par révolution": "Revolve Cut",
  "Enregistrer (.FCStd)": "Save (.FCStd)",
- "Enregistrer sous :": "Save as:",
  "Enregistré : {path} — ouvrable dans FreeCAD standard.": "Saved: {path} — opens in standard FreeCAD.",
  "Envelopper": "Wrap",
  "Esquisse": "Sketch",
@@ -168,7 +167,6 @@
  "Esquisse désélectionnée": "Sketch deselected",
  "Esquisse fermée — contour ouvert : utilisable comme trajectoire ou surface, pas comme profil de bossage.": "Sketch closed — open contour: usable as a path or a surface, not as a boss profile.",
  "Esquisse quittée sans enregistrer les modifications.": "Sketch closed without keeping the changes.",
- "Exporter (.stl / .3mf pour l'impression, .step pour l'échange) :": "Export (.stl / .3mf for printing, .step for exchange):",
  "Exporter en STL (impression 3D) ou STEP": "Export to STL (3D printing) or STEP",
  "Exporté : {path} ({size} Ko)": "Exported: {path} ({size} KB)",
  "Expression : « Variables.Largeur / 2 » ou « .Constraints.largeur * 2 » (les noms de cotes de cette esquisse s'utilisent avec .Constraints.nom)": "Expression: \"Variables.Width / 2\" or \".Constraints.width * 2\" (this sketch's dimension names are used as .Constraints.name)",
@@ -278,7 +276,6 @@
  "Opération": "Operation",
  "Opérations": "Operations",
  "Outils": "Tools",
- "Ouvrir (.FCStd, .step, .iges) :": "Open (.FCStd, .step, .iges):",
  "Ouvrir un .FCStd": "Open an .FCStd",
  "PLA ≈ 1,24 · PETG ≈ 1,27 · ABS ≈ 1,04 · Alu ≈ 2,70 · Acier ≈ 7,85 — OK recalcule avec la densité saisie": "PLA ≈ 1.24 · PETG ≈ 1.27 · ABS ≈ 1.04 · Aluminum ≈ 2.70 · Steel ≈ 7.85 — OK recomputes with the entered density",
  "Paramètres": "Settings",
@@ -714,5 +711,13 @@
  "Raccourcis": "Shortcuts",
  "Aucune commande": "No command",
  "Extrémités fermées": "Capped ends",
- "Épaisseur des extrémités": "End thickness"
+ "Épaisseur des extrémités": "End thickness",
+ "Enregistrer sous": "Save as",
+ "Dossier parent": "Parent folder",
+ "Nom du fichier": "File name",
+ "Pièce (.FCStd)": "Part (.FCStd)",
+ "Maillage (.stl)": "Mesh (.stl)",
+ "Tous les fichiers autorisés": "All allowed files",
+ "Remplacer « {name} » ?": "Replace \"{name}\"?",
+ "Fichier introuvable.": "File not found."
 }

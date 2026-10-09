@@ -186,6 +186,20 @@
   .orient-cross .r3 { grid-row: 3; }
   .orient-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
 
+  /* Barre d'icônes contextuelle, près du curseur après une sélection. */
+  #ctx-toolbar {
+    position: absolute; z-index: 6; display: flex; gap: 2px; padding: 3px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.4);
+  }
+  #ctx-toolbar[hidden] { display: none; }
+  #ctx-toolbar button {
+    padding: 4px; background: none; border: 1px solid transparent;
+    border-radius: 4px; cursor: pointer;
+  }
+  #ctx-toolbar button:hover { border-color: var(--accent); background: var(--panel-2); }
+  #ctx-toolbar img { width: 20px; height: 20px; }
+
   /* Lecture près du curseur pendant le tracé. */
   .sk-readout {
     position: absolute; z-index: 6; pointer-events: none;

@@ -44,6 +44,26 @@ function featureSection(feature) {
   return items;
 }
 
+/** Barre d'icônes contextuelle : les actions les plus courantes sur ce
+ *  qu'un clic gauche vient de sélectionner (clés du menu ci-dessous). */
+export function contextToolbarKeys(hit) {
+  if (hit?.kind === "face") {
+    return ["sketch-on-face", "normal-to", "fillet", "chamfer", "shell",
+      ...(hit.feature ? ["edit-feature"] : [])];
+  }
+  if (hit?.kind === "edge") return ["fillet", "chamfer", "measure"];
+  if (hit?.kind === "sketch") return ["edit-sketch", "pad", "pocket", "revolve"];
+  return [];
+}
+
+/** Libellé d'infobulle d'une clé, repris du menu contextuel. */
+export function viewMenuLabel(key, ctx = {}) {
+  for (const item of viewMenuItems(ctx)) {
+    if (item.key === key) return item.label;
+  }
+  return key;
+}
+
 export function viewMenuItems(ctx = {}) {
   if (ctx.mode === "sketch") {
     return [

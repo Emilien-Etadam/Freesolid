@@ -1,7 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { viewMenuItems } from "../../app/viewmenu.js";
+import {
+  contextToolbarKeys, viewMenuItems, viewMenuLabel,
+} from "../../app/viewmenu.js";
 
 const keys = (items) => items.filter((i) => i.key).map((i) => i.key);
 
@@ -43,6 +45,22 @@ describe("viewMenuItems", () => {
   it("le libellé de l'origine suit son état", () => {
     const shown = viewMenuItems({ originShown: true }).find((i) => i.key === "origin");
     assert.equal(shown.label, "Masquer l'origine");
+  });
+
+  it("barre contextuelle : actions courantes selon la sélection", () => {
+    assert.deepEqual(contextToolbarKeys({ kind: "edge" }),
+      ["fillet", "chamfer", "measure"]);
+    assert.ok(contextToolbarKeys({ kind: "face", feature: { name: "Pad" } })
+      .includes("edit-feature"));
+    assert.ok(!contextToolbarKeys({ kind: "face" }).includes("edit-feature"));
+    assert.deepEqual(contextToolbarKeys(null), []);
+    // Chaque clé de la barre existe dans le menu (même action, même libellé).
+    for (const hit of [{ kind: "edge" }, { kind: "sketch" },
+                       { kind: "face", feature: { name: "Pad", label: "P" } }]) {
+      for (const key of contextToolbarKeys(hit)) {
+        assert.notEqual(viewMenuLabel(key, { hit }), key, key);
+      }
+    }
   });
 
   it("en esquisse : outils de tracé et sortie", () => {

@@ -17,7 +17,7 @@ import {
 } from "./progress.js";
 import { arcAngles } from "./geom2d.js";
 import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
-import { viewMenuItems } from "./viewmenu.js";
+import { contextToolbarKeys, viewMenuItems, viewMenuLabel } from "./viewmenu.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, readLang } from "./settings.js";
 import {
@@ -1202,6 +1202,7 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     repaintGroups();
     repaintEdges();
     selectSketch(hoveredSketch);
+    if (event.button === 0) showContextToolbar(event);
     return;
   }
 
@@ -1233,6 +1234,7 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     repaintEdges();
     panel.notifyPick("edges",
       { kind: "edges", edges: [...selectedEdges] });
+    if (event.button === 0) showContextToolbar(event);
     return;
   }
 
@@ -1262,6 +1264,7 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     }
     // A command panel with a selection box absorbs the pick.
     panel.notifyPick("face", { kind: "face", face: selectedFaceId });
+    if (event.button === 0) showContextToolbar(event);
   } else {
     lastFaceHit = null;
     clearPlaneChoice();
@@ -2923,6 +2926,70 @@ const VIEW_MENU_ACTIONS = {
 function hideViewMenu() {
   viewMenuEl.style.display = "none";
 }
+
+// Barre d'icônes contextuelle : après un clic gauche sur une face, une
+// arête ou une esquisse, les actions courantes s'offrent près du curseur ;
+// elle s'efface quand la souris s'éloigne.
+const ctxBarEl = document.createElement("div");
+ctxBarEl.id = "ctx-toolbar";
+ctxBarEl.hidden = true;
+container.appendChild(ctxBarEl);
+let ctxBarAnchor = null;
+let ctxBarHit = null;
+
+const CTX_BAR_ICONS = {
+  "sketch-on-face": "Sketcher_NewSketch.svg", "normal-to": "view-front.svg",
+  fillet: "PartDesign_Fillet.svg", chamfer: "PartDesign_Chamfer.svg",
+  shell: "PartDesign_Thickness.svg", measure: "view-measurement.svg",
+  "edit-feature": "Sketcher_EditSketch.svg",
+  "edit-sketch": "Sketcher_EditSketch.svg", pad: "PartDesign_Pad.svg",
+  pocket: "PartDesign_Pocket.svg", revolve: "PartDesign_Revolution.svg",
+};
+
+function hideContextToolbar() {
+  ctxBarEl.hidden = true;
+  ctxBarAnchor = null;
+}
+
+function showContextToolbar(event) {
+  if (panel.active || measuring || assemblyState) return;
+  const ctx = viewMenuContext();
+  const keys = contextToolbarKeys(ctx.hit);
+  if (!keys.length) { hideContextToolbar(); return; }
+  ctxBarHit = ctx.hit;
+  ctxBarEl.innerHTML = "";
+  for (const key of keys) {
+    const button = document.createElement("button");
+    const icon = document.createElement("img");
+    icon.src = "icons/" + CTX_BAR_ICONS[key];
+    icon.alt = "";
+    button.appendChild(icon);
+    button.title = t(viewMenuLabel(key, ctx));
+    button.addEventListener("click", (clickEvent) => {
+      clickEvent.stopPropagation();
+      hideContextToolbar();
+      VIEW_MENU_ACTIONS[key]?.(ctxBarHit);
+    });
+    ctxBarEl.appendChild(button);
+  }
+  const host = container.getBoundingClientRect();
+  ctxBarEl.hidden = false;
+  ctxBarEl.style.left = `${Math.min(event.clientX - host.left + 14,
+    host.width - ctxBarEl.offsetWidth - 4)}px`;
+  ctxBarEl.style.top = `${Math.max(event.clientY - host.top - 46, 4)}px`;
+  ctxBarAnchor = { x: event.clientX, y: event.clientY };
+}
+
+renderer.domElement.addEventListener("pointermove", (event) => {
+  if (ctxBarAnchor && Math.hypot(event.clientX - ctxBarAnchor.x,
+                                 event.clientY - ctxBarAnchor.y) > 160) {
+    hideContextToolbar();
+  }
+});
+renderer.domElement.addEventListener("pointerdown", hideContextToolbar);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") hideContextToolbar();
+});
 
 renderer.domElement.addEventListener("contextmenu", (event) => {
   event.preventDefault();

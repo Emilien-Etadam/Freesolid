@@ -44,7 +44,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 3 | Navigation souris (milieu, Ctrl+milieu, molette vers le curseur, cadre au bouton gauche) | P1 | fait : milieu = rotation, Ctrl+milieu = panoramique, Maj+milieu = zoom, molette vers le curseur (vers l'avant = zoom arrière, vérifié dans SolidWorks ; inversion dans Paramètres), Z / Maj+Z, cadre fenêtre ou capture (arêtes en 3D, entités en esquisse, Ctrl = ajouter). Reste : centre de rotation au clic milieu sur une entité ; en esquisse, le milieu fait du panoramique car la rotation y est bloquée |
 | 4 | Couleurs d'état de contrainte de l'esquisse | P1 | fait : bleu = libre, clair = défini (le « noir » sur fond sombre), rouge = en trop ; état « sur-contrainte » dans la barre d'état ; textes d'état traduits |
 | 5 | Préfixe d'état (-) / (+) et esquisse en cours dans l'arbre | P2 | fait |
-| 6 | « Quitter » l'esquisse annule vraiment | P2 | reste |
+| 6 | « Quitter » l'esquisse annule vraiment | P2 | fait : op moteur sketch_cancel (transactions défaites + instantané de la géométrie) |
 | 7 | Coin de confirmation ✓/✗ dans la vue | P2 | reste |
 | 8 | Barre d'espace : boîte d'orientation | P2 | reste |
 | 9 | Origine dans l'arbre et dans l'esquisse ; volumes visibles en esquisse | P2 | reste |

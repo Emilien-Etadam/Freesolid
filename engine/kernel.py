@@ -256,6 +256,8 @@ class Kernel:
         self.lang = "fr"
         # Consentement Python : ce document, cette session. Jamais le .FCStd.
         self._scripts_authorized = False
+        # Esquisse ouverte : de quoi l'annuler (sketch_cancel).
+        self._sketch_session = None
         self._reset_face_match()
         # Callback d'avancement (phase, fait, total) — posé par le
         # transport, jamais importé d'ici. Absent = no-op.
@@ -4208,8 +4210,13 @@ class Kernel:
         named origin plane (XY/XZ/YZ), or a datum plane by name."""
         body = self._require_body()
         doc = self._require_doc()
+        # La transaction de sketch_start est ouverte, pas encore validée :
+        # UndoCount est encore celui d'avant l'esquisse.
+        mark = doc.UndoCount
         sketch = doc.addObject("Sketcher::SketchObject", "Sketch")
         body.addObject(sketch)
+        self._sketch_session = {"sketch": sketch.Name, "mark": mark,
+                                "snapshot": None}
         sketch.Label = self._t("Esquisse")
         if face is not None:
             self._attach_to_face(sketch, face)
@@ -4231,7 +4238,38 @@ class Kernel:
 
     def sketch_edit(self, feature):
         """Re-enter an existing sketch."""
-        return self.sketch_state(self._get_sketch(feature).Name)
+        sk = self._get_sketch(feature)
+        doc = self._require_doc()
+        self._sketch_session = {
+            "sketch": sk.Name, "mark": doc.UndoCount,
+            # Les glisser (sketch_move) ne passent pas par une transaction :
+            # l'instantané les rattrape.
+            "snapshot": (list(sk.Geometry), list(sk.Constraints)),
+        }
+        return self.sketch_state(sk.Name)
+
+    def sketch_cancel(self, sketch):
+        """Quitter l'esquisse sans garder les modifications.
+
+        Défait les transactions ouvertes depuis l'entrée en esquisse —
+        une esquisse neuve disparaît — puis restaure la géométrie et les
+        contraintes d'une esquisse rééditée (les glisser n'ont pas de
+        transaction)."""
+        doc = self._require_doc()
+        session = self._sketch_session
+        self._sketch_session = None
+        if not session or session["sketch"] != str(sketch):
+            return self.get_tree()
+        while doc.UndoCount > session["mark"] and doc.UndoNames:
+            doc.undo()
+        sk = doc.getObject(session["sketch"])
+        if sk is not None and session["snapshot"] is not None:
+            geometry, constraints = session["snapshot"]
+            sk.Constraints = []
+            sk.Geometry = geometry
+            sk.Constraints = constraints
+        doc.recompute()
+        return self.get_tree()
 
     def sketch_state(self, sketch):
         """Everything the client needs to draw the sketch.
@@ -5214,6 +5252,7 @@ class Kernel:
     def sketch_finish(self, sketch):
         """Close the sketch: recompute and hand back the feature tree."""
         self._get_sketch(sketch)
+        self._sketch_session = None
         self._recompute()
         tree = self.get_tree()
         tree["open_profile"] = self._sketch_open_profile(sketch)

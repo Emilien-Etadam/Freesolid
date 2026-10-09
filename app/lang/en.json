@@ -173,6 +173,7 @@
  "Esquisse : en édition": "Sketch: editing",
  "Esquisse désélectionnée": "Sketch deselected",
  "Esquisse fermée — contour ouvert : utilisable comme trajectoire ou surface, pas comme profil de bossage.": "Sketch closed — open contour: usable as a path or a surface, not as a boss profile.",
+ "Esquisse quittée sans enregistrer les modifications.": "Sketch closed without keeping the changes.",
  "Exporter (.stl / .3mf pour l'impression, .step pour l'échange) :": "Export (.stl / .3mf for printing, .step for exchange):",
  "Exporter en STL (impression 3D) ou STEP": "Export to STL (3D printing) or STEP",
  "Exporté : {path} ({size} Ko)": "Exported: {path} ({size} KB)",

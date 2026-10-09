@@ -526,6 +526,7 @@ def test_ops_snapshot_keys():
         "sketch_add_slot",
         "sketch_add_spline",
         "sketch_array",
+        "sketch_cancel",
         "sketch_constrain",
         "sketch_constraints",
         "sketch_convert",

@@ -242,6 +242,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_convert": _Req(("sketch", str)),
                                        # optional: face — contour projeté, bloqué
     "sketch_finish": _Req(("sketch", str)),
+    "sketch_cancel": _Req(("sketch", str)),  # quitter sans garder
 }
 
 #: Ops du noyau, avant fusion des plugins. Un plugin ne peut pas les redéfinir.

@@ -1656,6 +1656,14 @@ export function createSketchMode(deps) {
       } catch (error) {
         say(error.message, true);
       }
+    } else if (mode.state) {
+      // Quitter sans garder : le moteur défait tout depuis l'entrée.
+      try {
+        await refresh(call("sketch_cancel", { sketch: mode.state.sketch }));
+        say("Esquisse quittée sans enregistrer les modifications.");
+      } catch (error) {
+        say(error.message, true);
+      }
     } else {
       await refresh(call("get_tree"));
     }

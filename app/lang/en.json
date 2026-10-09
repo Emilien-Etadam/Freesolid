@@ -534,5 +534,9 @@
  "Arrière": "Back",
  "Dessous": "Bottom",
  "Iso": "Iso",
- "Normal à": "Normal to"
+ "Normal à": "Normal to",
+ "Origine": "Origin",
+ "Clic : afficher ou masquer l'origine": "Click: show or hide the origin",
+ "Origine affichée.": "Origin shown.",
+ "Origine masquée.": "Origin hidden."
 }

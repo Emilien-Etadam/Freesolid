@@ -438,6 +438,24 @@ export function createSketchMode(deps) {
         group.add(line);
       }
     }
+    // Origine de l'esquisse : deux flèches courtes, à taille d'écran.
+    const span = (camera.top - camera.bottom) / (camera.zoom || 1);
+    const size = span * 0.035;
+    for (const [dx, dy] of [[1, 0], [0, 1]]) {
+      const arrow = new THREE.ArrowHelper(
+        new THREE.Vector3(dx, dy, 0), new THREE.Vector3(0, 0, 0),
+        size, 0xe06666, size * 0.3, size * 0.18);
+      arrow.traverse((obj) => {
+        if (obj.material) {
+          obj.material.transparent = true;
+          obj.material.depthTest = false;
+          obj.material.userData.own = true;
+        }
+        obj.renderOrder = 19;
+      });
+      group.add(arrow);
+    }
+
     if (points.length) {
       const flat = new Float32Array(points.flatMap((p) => [p[0], p[1], 0]));
       const geometry = new THREE.BufferGeometry();

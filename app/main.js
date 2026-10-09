@@ -721,6 +721,46 @@ function rebuildPlanes() {
     planeMeshes[id] = fill;
   }
   updatePlaneVisibility();
+  if (originShown) rebuildOrigin();
+}
+
+// Origine de la pièce : trois axes courts depuis (0, 0, 0), affichés à la
+// demande (ligne « Origine » de l'arbre), à la taille de la pièce.
+const originGroup = new THREE.Group();
+originGroup.visible = false;
+originGroup.renderOrder = 12;
+scene.add(originGroup);
+let originShown = false;
+
+function rebuildOrigin() {
+  disposeSubtree(originGroup);
+  originGroup.clear();
+  const { radius } = partCenterRadius();
+  const length = Math.max(radius * 0.35, 12);
+  const axes = [[1, 0, 0, 0xe06666], [0, 1, 0, 0x6aa84f], [0, 0, 1, 0x4b9bd5]];
+  for (const [x, y, z, color] of axes) {
+    const arrow = new THREE.ArrowHelper(
+      new THREE.Vector3(x, y, z), new THREE.Vector3(0, 0, 0),
+      length, color, length * 0.2, length * 0.1);
+    arrow.traverse((obj) => {
+      if (obj.material) {
+        // Passe transparente : dessinée après la pièce, qui l'est aussi.
+        obj.material.transparent = true;
+        obj.material.depthTest = false;
+        obj.material.userData.own = true;
+      }
+      obj.renderOrder = 12;
+    });
+    originGroup.add(arrow);
+  }
+  originGroup.visible = originShown;
+}
+
+function toggleOrigin() {
+  originShown = !originShown;
+  rebuildOrigin();
+  if (lastTree) renderTree(lastTree);
+  say(originShown ? "Origine affichée." : "Origine masquée.");
 }
 
 function updatePlaneVisibility() {
@@ -2341,6 +2381,14 @@ function renderActiveBodyContents(tree) {
     });
     treeEl.appendChild(item);
   }
+  // L'origine ferme le groupe des références, comme d'habitude en CAO.
+  const origin = document.createElement("li");
+  origin.className = "plane origin" + (originShown ? " sel" : "");
+  origin.appendChild(treeIcon("FreeSolid_Origin.svg"));
+  origin.appendChild(document.createTextNode(t("Origine")));
+  origin.title = t("Clic : afficher ou masquer l'origine");
+  origin.addEventListener("click", toggleOrigin);
+  treeEl.appendChild(origin);
 
   const features = tree.features ?? [];
   const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip);

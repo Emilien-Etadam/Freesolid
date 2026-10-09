@@ -25,6 +25,7 @@ import { arcAngles } from "./geom2d.js";
 import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
 import { contextToolbarKeys, viewMenuItems, viewMenuLabel } from "./viewmenu.js";
 import { currentPaneIndex, layoutPanes, paneRect } from "./layouts.js";
+import { perspectiveFrustum } from "./projection.js";
 import {
   coordsText, editModeText, measureText, sketchEntityLength,
 } from "./statusbar.js";
@@ -260,7 +261,48 @@ scene.background = new THREE.Color(0x17191c);
 // Hauteur du frustum (unités monde) à zoom = 1. Le zoom OrbitControls
 // et « Zoom au mieux » ajustent camera.zoom, pas la distance.
 const ORTHO_HEIGHT = 200;
-const camera = new THREE.OrthographicCamera(
+
+/** Caméra de vue : pilotée comme une vue orthographique (zoom,
+ *  panoramique, cadrage), elle projette en perspective quand
+ *  ``perspective`` est vrai (projection.js). ``focus`` : le centre de la
+ *  vue, d'où se mesure le recul de l'œil. */
+class ViewCamera extends THREE.OrthographicCamera {
+  constructor(...args) {
+    super(...args);
+    this.perspective = false;
+    this.focus = null;
+  }
+
+  updateProjectionMatrix() {
+    super.updateProjectionMatrix();
+    if (!this.perspective || !this.focus) return;
+    const f = perspectiveFrustum({
+      width: (this.right - this.left) / this.zoom,
+      height: (this.top - this.bottom) / this.zoom,
+      rigDistance: this.position.distanceTo(this.focus),
+    });
+    this.projectionMatrix
+      .makePerspective(f.left, f.right, f.top, f.bottom, f.near, f.far)
+      .multiply(new THREE.Matrix4().makeTranslation(0, 0, -f.back));
+    this.projectionMatrixInverse.copy(this.projectionMatrix).invert();
+  }
+}
+
+// Le lancer de rayons de three.js choisit rayons parallèles ou divergents
+// selon le type de caméra ; la caméra de vue est « orthographique » pour
+// les contrôles, donc on lui donne ici le rayon de sa vraie projection.
+{
+  const baseSetFromCamera = THREE.Raycaster.prototype.setFromCamera;
+  THREE.Raycaster.prototype.setFromCamera = function setFromCamera(coords, cam) {
+    if (!cam?.perspective) return baseSetFromCamera.call(this, coords, cam);
+    this.camera = cam;
+    this.ray.origin.set(coords.x, coords.y, -1).unproject(cam);
+    this.ray.direction.set(coords.x, coords.y, 1).unproject(cam)
+      .sub(this.ray.origin).normalize();
+  };
+}
+
+const camera = new ViewCamera(
   -ORTHO_HEIGHT / 2, ORTHO_HEIGHT / 2,
   ORTHO_HEIGHT / 2, -ORTHO_HEIGHT / 2,
   0.1, 10000);
@@ -275,7 +317,7 @@ camera.up.set(0, 0, 1); // CAD is Z-up
 let panes = layoutPanes("single");
 let activePane = 0;
 const extraViews = [];   // { renderer, pane } — pane : index, ou -1
-const paneCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10000);
+const paneCamera = new ViewCamera(-1, 1, 1, -1, 0.1, 10000);
 
 /** Taille en pixels de la fenêtre active. */
 function viewSize() {
@@ -285,6 +327,7 @@ function viewSize() {
 }
 
 const controls = new OrbitControls(camera, renderer.domElement);
+camera.focus = controls.target;
 controls.enableDamping = true;
 
 // Navigation (navigation.js) : le milieu tourne, Ctrl + milieu déplace,
@@ -968,6 +1011,8 @@ function updatePlaneVisibility() {
 
 function applyDisplay() {
   const fx = displayEffects(displayState);
+  camera.perspective = !!displayState.perspective;
+  camera.updateProjectionMatrix();
   const meshes = [partMesh, ...othersMeshes, ...surfaceMeshes].filter(Boolean);
   for (const mesh of meshes) {
     if (fx.mask) {
@@ -1019,6 +1064,8 @@ function syncStyleMenu() {
   for (const button of menu.querySelectorAll("[data-style]")) {
     button.classList.toggle("on", button.dataset.style === displayState.style);
   }
+  menu.querySelector("[data-projection]")?.classList.toggle(
+    "on", !!displayState.perspective);
 }
 
 function syncVisibilityMenu() {
@@ -1060,6 +1107,11 @@ function setDisplay(patch) {
     syncVisibilityMenu();
   });
   styleMenu?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-projection]")) {
+      setDisplay({ perspective: !displayState.perspective });
+      closeViewMenus();
+      return;
+    }
     const button = event.target.closest("[data-style]");
     if (!button) return;
     setDisplay({ style: button.dataset.style });
@@ -1945,11 +1997,13 @@ function renderExtraViews() {
     if (view.pane < 0 || !state) continue;
     const { width, height } = paneRect(panes[view.pane],
       container.clientWidth, container.clientHeight);
-    setOrthoFrustum(paneCamera, width, height);
+    paneCamera.perspective = camera.perspective;
+    paneCamera.focus = state.target;
     paneCamera.up.copy(state.up);
     paneCamera.position.copy(state.position);
     paneCamera.zoom = state.zoom;
     paneCamera.lookAt(state.target);
+    setOrthoFrustum(paneCamera, width, height);
     paneCamera.updateProjectionMatrix();
     view.renderer.render(scene, paneCamera);
   }
@@ -1963,6 +2017,9 @@ renderer.setAnimationLoop(() => {
       * Math.min(step, Math.abs(explodeTarget - explodeFactor));
     applyExplode();
   }
+  // En perspective, le recul de l'œil suit la distance au centre de la vue
+  // (cadrage, panoramique) : la projection se recalcule à chaque image.
+  if (camera.perspective) camera.updateProjectionMatrix();
   renderer.render(scene, camera);
   renderExtraViews();
 });

@@ -741,5 +741,7 @@
  "Coque vers l'extérieur": "Shell outward",
  "Coque : cliquez au moins une face à ouvrir": "Shell: click at least one face to open",
  "{n} faces": "{n} faces",
- "Épaisseur invalide": "Invalid thickness"
+ "Épaisseur invalide": "Invalid thickness",
+ "Perspective": "Perspective",
+ "Perspective ou projection orthographique": "Perspective or orthographic projection"
 }

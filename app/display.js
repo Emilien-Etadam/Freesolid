@@ -11,6 +11,7 @@ const DEFAULTS = {
   origin: false,
   sketches: true,
   edges: true,
+  perspective: false,
 };
 
 export function defaultDisplay() {
@@ -26,7 +27,7 @@ export function readDisplay(storage) {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return state;
     if (DISPLAY_STYLES.includes(parsed.style)) state.style = parsed.style;
-    for (const key of ["planes", "origin", "sketches", "edges"]) {
+    for (const key of ["planes", "origin", "sketches", "edges", "perspective"]) {
       if (typeof parsed[key] === "boolean") state[key] = parsed[key];
     }
   } catch {
@@ -43,6 +44,7 @@ export function writeDisplay(storage, state) {
       origin: !!state.origin,
       sketches: !!state.sketches,
       edges: !!state.edges,
+      perspective: !!state.perspective,
     }));
   } catch {
     // stockage indisponible : le réglage tient pour la session.

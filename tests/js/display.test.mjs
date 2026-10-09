@@ -17,7 +17,7 @@ describe("réglage d'affichage", () => {
   it("part de l'ombré + arêtes, sans plans ni origine", () => {
     assert.deepEqual(defaultDisplay(), {
       style: "shaded-edges", planes: false, origin: false,
-      sketches: true, edges: true,
+      sketches: true, edges: true, perspective: false,
     });
     assert.deepEqual(readDisplay(null), defaultDisplay());
   });
@@ -29,7 +29,7 @@ describe("réglage d'affichage", () => {
     }));
     assert.deepEqual(readDisplay(storage), {
       style: "shaded-edges", planes: true, origin: false,
-      sketches: false, edges: true,
+      sketches: false, edges: true, perspective: false,
     });
   });
 
@@ -37,8 +37,10 @@ describe("réglage d'affichage", () => {
     const storage = memory();
     writeDisplay(storage, {
       style: "hidden", planes: true, origin: true, sketches: false, edges: false,
+      perspective: true,
     });
     assert.deepEqual(readDisplay(storage).style, "hidden");
+    assert.equal(readDisplay(storage).perspective, true);
     assert.equal(readDisplay(storage).planes, true);
     assert.equal(readDisplay(storage).edges, false);
   });

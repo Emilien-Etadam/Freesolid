@@ -52,7 +52,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 9 | Origine dans l'arbre et dans l'esquisse ; volumes visibles en esquisse | P2 | fait : origine (ligne de l'arbre, trièdre, repère d'esquisse) ; la pièce reste visible en esquisse (Q1 tranchée) |
 | 10 | Cotation : saisie de la valeur à la pose, lignes d'attache et flèches | P1 | fait : boîte de saisie flottante à la pose et au double-clic (Entrée applique, Échap garde la mesure, « … » pour nom/expression) ; lignes d'attache, flèches, arcs d'angle ; cercle coté au diamètre (Ø), arc au rayon (R) |
 | 11 | Retour pendant le tracé (inférences, symboles de relations) | P2 | fait : lignes d'inférence (alignement sur les points existants, H/V de la chaîne), point accroché en évidence, lecture longueur / angle / dimensions près du curseur, symboles de relations sur la géométrie |
-| 12 | Barre S (la spline quitte la touche S) | P2 | confié à Cursor (T12) |
+| 12 | Barre S (la spline quitte la touche S) | P2 | fait : boîte sous le curseur, recherche, spline au bouton |
 | 13 | Menu et barre contextuels dans la vue | P1 | fait pour le menu : clic droit sur face, arête, esquisse, surface ou vide, et en esquisse (app/viewmenu.js, testé) ; barre d'icônes contextuelle au clic gauche sur face, arête ou esquisse |
 | 14 | Barre tête haute : styles d'affichage, masquer/afficher, orientation | P2 | fait : ombré, filaire, lignes cachées, visibilité mémorisée |
 | 15 | Réordonner l'arbre par glisser-déposer | P2 | fait : glisser une fonction (avec ses esquisses) ; refus clair si elle passerait avant ce dont elle dépend ; l'arbre suit l'ordre du corps |

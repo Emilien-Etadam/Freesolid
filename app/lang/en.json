@@ -381,7 +381,6 @@
  "Solide — Soustraire": "Solid — Subtract",
  "Sortie": "Output",
  "Soustraire": "Subtract",
- "Spline (S) — points cliqués, Entrée pour terminer": "Spline (S) — clicked points, Enter to finish",
  "Spline : au moins 3 points avant Entrée": "Spline: at least 3 points before Enter",
  "Spline : {n} point(s) — Entrée pour terminer (min 3), Échap pour annuler": "Spline: {n} point(s) — Enter to finish (min 3), Esc to cancel",
  "Suppr : survolez d'abord la géométrie à supprimer": "Delete: hover the geometry to delete first",
@@ -709,5 +708,9 @@
  "Arc 3 points": "3 point arc",
  "Rainure droite": "Straight slot",
  "Polygone": "Polygon",
- "Spline : cliquez les points, Entrée pour terminer": "Spline: click the points, Enter to finish"
+ "Spline : cliquez les points, Entrée pour terminer": "Spline: click the points, Enter to finish",
+ "Spline — points cliqués, Entrée pour terminer": "Spline — clicked points, Enter to finish",
+ "Rechercher une commande": "Search for a command",
+ "Raccourcis": "Shortcuts",
+ "Aucune commande": "No command"
 }

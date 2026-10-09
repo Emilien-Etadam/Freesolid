@@ -209,6 +209,33 @@
     border-radius: 8px; padding: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.4);
   }
   #orient-box[hidden] { display: none; }
+  #shortcut-box {
+    position: fixed; z-index: 60; width: 292px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  }
+  #shortcut-box[hidden] { display: none; }
+  #shortcut-search {
+    width: 100%; margin: 0 0 6px; box-sizing: border-box;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 4px 6px; font: inherit;
+  }
+  #shortcut-list {
+    display: flex; flex-wrap: wrap; gap: 2px;
+    max-height: 220px; overflow: auto;
+  }
+  #shortcut-list button {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: flex-start; gap: 2px;
+    width: 68px; min-height: 52px; padding: 4px;
+    background: none; border: none; border-radius: 4px;
+    font-size: 10px; line-height: 1.15; text-align: center;
+  }
+  #shortcut-list button img { width: 20px; height: 20px; }
+  #shortcut-list button:hover:not(:disabled) { background: var(--panel-2); }
+  .shortcut-empty { color: var(--ink-2); font-size: 12px; margin: 0; padding: 4px 6px; }
   #orient-box button {
     background: var(--panel-2); border: 1px solid var(--line);
     border-radius: 4px; padding: 4px 2px; font-size: 11px; cursor: pointer;
@@ -839,17 +866,17 @@
     <div id="sketchbar" class="ribbon">
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button data-tool="select" title="Sélectionner — glisser un point, cliquer des entités">Sélectionner</button>
-          <button data-tool="line" title="Ligne (L)"><img src="icons/Sketcher_CreateLine.svg" alt=""></button>
-          <button data-tool="rect" title="Rectangle par sommet (R)"><img src="icons/Sketcher_CreateRectangle.svg" alt=""></button>
-          <button data-tool="rectc" title="Rectangle par le centre"><img src="icons/Sketcher_CreateRectangle_Center.svg" alt=""></button>
-          <button data-tool="circle" title="Cercle (C)"><img src="icons/Sketcher_CreateCircle.svg" alt=""></button>
-          <button data-tool="spline" title="Spline (S) — points cliqués, Entrée pour terminer"><img src="icons/Sketcher_CreateBSpline.svg" alt=""></button>
-          <button data-tool="ellipse" title="Ellipse (E) — centre, grand axe, petit rayon"><img src="icons/Sketcher_CreateEllipseByCenter.svg" alt=""></button>
-          <button data-tool="arc" title="Arc par centre — centre, départ, arrivée"><img src="icons/Sketcher_CreateArc.svg" alt=""></button>
-          <button data-tool="arc3" title="Arc 3 points (A) — départ, arrivée, passage"><img src="icons/Sketcher_Create3PointArc.svg" alt=""></button>
-          <button data-tool="slot" title="Rainure droite — deux centres puis largeur"><img src="icons/Sketcher_CreateSlot.svg" alt=""></button>
-          <button data-tool="polygon" title="Polygone — nombre de côtés, centre, sommet"><img src="icons/Sketcher_CreateRegularPolygon.svg" alt=""></button>
+          <button data-tool="select" data-label="Sélectionner" title="Sélectionner — glisser un point, cliquer des entités">Sélectionner</button>
+          <button data-tool="line" data-label="Ligne" title="Ligne (L)"><img src="icons/Sketcher_CreateLine.svg" alt=""></button>
+          <button data-tool="rect" data-label="Rectangle par sommet" title="Rectangle par sommet (R)"><img src="icons/Sketcher_CreateRectangle.svg" alt=""></button>
+          <button data-tool="rectc" data-label="Rectangle par le centre" title="Rectangle par le centre"><img src="icons/Sketcher_CreateRectangle_Center.svg" alt=""></button>
+          <button data-tool="circle" data-label="Cercle" title="Cercle (C)"><img src="icons/Sketcher_CreateCircle.svg" alt=""></button>
+          <button data-tool="spline" data-label="Spline" title="Spline — points cliqués, Entrée pour terminer"><img src="icons/Sketcher_CreateBSpline.svg" alt=""></button>
+          <button data-tool="ellipse" data-label="Ellipse" title="Ellipse (E) — centre, grand axe, petit rayon"><img src="icons/Sketcher_CreateEllipseByCenter.svg" alt=""></button>
+          <button data-tool="arc" data-label="Arc par centre" title="Arc par centre — centre, départ, arrivée"><img src="icons/Sketcher_CreateArc.svg" alt=""></button>
+          <button data-tool="arc3" data-label="Arc 3 points" title="Arc 3 points (A) — départ, arrivée, passage"><img src="icons/Sketcher_Create3PointArc.svg" alt=""></button>
+          <button data-tool="slot" data-label="Rainure droite" title="Rainure droite — deux centres puis largeur"><img src="icons/Sketcher_CreateSlot.svg" alt=""></button>
+          <button data-tool="polygon" data-label="Polygone" title="Polygone — nombre de côtés, centre, sommet"><img src="icons/Sketcher_CreateRegularPolygon.svg" alt=""></button>
         </div>
         <div class="ribbon-group-label">Contours</div>
       </div>
@@ -859,7 +886,7 @@
           <button data-tool="trim" title="Ajuster (T) — cliquez le tronçon à supprimer"><img src="icons/Sketcher_Trimming.svg" alt=""></button>
           <button data-tool="construction" title="Géométrie de construction (G) — cliquez une entité"><img src="icons/Sketcher_ToggleConstruction.svg" alt=""></button>
           <button id="sk-convert" title="Projeter les arêtes — le contour de la face porteuse devient de la géométrie bloquée"><img src="icons/Sketcher_Projection.svg" alt=""></button>
-          <button data-tool="dim" title="Cotation (D) — 1 ou 2 entités, cote pilotante"><img src="icons/Constraint_Dimension.svg" alt=""></button>
+          <button data-tool="dim" data-label="Cotation" title="Cotation (D) — 1 ou 2 entités, cote pilotante"><img src="icons/Constraint_Dimension.svg" alt=""></button>
         </div>
         <div class="ribbon-group-label">Outils</div>
       </div>
@@ -1015,6 +1042,12 @@
   <div id="param-pick"></div>
   <!-- Panneau Paramètres : rendu par settings.js à l'ouverture. -->
   <div id="settings-dialog" hidden></div>
+
+  <div id="shortcut-box" hidden role="dialog" aria-label="Raccourcis">
+    <input id="shortcut-search" type="text" autocomplete="off"
+      placeholder="Rechercher une commande">
+    <div id="shortcut-list"></div>
+  </div>
 
   <footer>
     <span id="status">Moteur : en attente…</span>

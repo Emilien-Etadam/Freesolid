@@ -40,6 +40,16 @@ def entity_status(geo_count, dependent, constraint_geos, conflicting,
     return status
 
 
+def definition_from_flags(fully, conflicting=(), redundant=(),
+                          malformed=()):
+    """Résumé lu sur l'objet esquisse après son dernier calcul — pour
+    l'arbre, sans relancer le solveur."""
+    if (list(conflicting or ()) or list(redundant or ())
+            or list(malformed or ())):
+        return OVER
+    return FULL if fully else UNDER
+
+
 def sketch_definition(status, solver_code=0):
     """Résumé de l'esquisse : over si le solveur se plaint ou si une entité
     est sur-contrainte, under si une entité est libre, full sinon."""

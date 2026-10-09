@@ -485,6 +485,7 @@ export function createSketchMode(deps) {
     mode.plane.setFromNormalAndCoplanarPoint(normal, origin);
     mode.solverOk = localSolver.ready && localSolver.load(state);
     redraw();
+    document.dispatchEvent(new Event("freesolid:sketch-state"));
     if (!mode.drag && entityPanelOpen) syncEntityPanel({ refresh: true });
   }
 
@@ -1670,6 +1671,9 @@ export function createSketchMode(deps) {
 
   return {
     get active() { return mode.active; },
+    /** Nom de l'esquisse ouverte, ou null. */
+    get editing() { return mode.active ? mode.state?.sketch ?? null : null; },
+    get definition() { return mode.active ? mode.state?.definition ?? null : null; },
     get lastFinished() { return mode.lastFinished; },
     enter,
     // Termine l'esquisse en la gardant — cliquer une fonction du ruban

@@ -1,6 +1,13 @@
 // Découpe de l'historique autour de la barre de retour.
 // Module pur — testable en Node, sans DOM.
 
+/** Libellé d'esquisse dans l'arbre : (-) encore libre, (+) en trop. */
+export function sketchTreeLabel(label, definition) {
+  if (definition === "under") return `(-) ${label}`;
+  if (definition === "over") return `(+) ${label}`;
+  return label;
+}
+
 function isFreeSketchType(type) {
   return type === "Sketcher::SketchObject";
 }

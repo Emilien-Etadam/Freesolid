@@ -34,3 +34,12 @@ def test_resume_de_l_esquisse():
     assert sketch_definition([UNDER, OVER]) == OVER
     assert sketch_definition([FULL], solver_code=-3) == OVER
     assert sketch_definition([]) == FULL
+
+
+def test_resume_lu_sur_l_objet_esquisse():
+    from engine.sketchstatus import definition_from_flags
+    assert definition_from_flags(True) == FULL
+    assert definition_from_flags(False) == UNDER
+    assert definition_from_flags(True, redundant=[3]) == OVER
+    assert definition_from_flags(False, conflicting=[1]) == OVER
+    assert definition_from_flags(True, malformed=[2]) == OVER

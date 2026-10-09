@@ -1178,6 +1178,7 @@ class Kernel:
                 "type": sk.TypeId,
                 "error": "Invalid" in (sk.State or ()),
                 "order": order_of.get(sk.Name, -1),
+                "definition": self._sketch_definition(sk),
             }, sk) for sk in sketches]
         entry["rolled_back"] = self._is_rolled_back(obj)
         return entry
@@ -3918,6 +3919,7 @@ class Kernel:
                     float(v) for v in obj.Placement.Matrix.A]
             if obj.TypeId == "Sketcher::SketchObject":
                 item["rolled_back"] = self._is_rolled_back(obj)
+                item["definition"] = self._sketch_definition(obj)
             if "FreeSolidTextString" in obj.PropertiesList:
                 # Gravure rééditable : le panneau client édite ces valeurs.
                 item["text"] = {
@@ -4350,6 +4352,16 @@ class Kernel:
             "definition": sketch_definition(status, solver_code),
             "placement": [float(v) for v in matrix],
         }
+
+    @staticmethod
+    def _sketch_definition(sk):
+        """under | full | over — préfixe (-) / (+) de l'arbre."""
+        from engine.sketchstatus import definition_from_flags
+        return definition_from_flags(
+            bool(getattr(sk, "FullyConstrained", False)),
+            getattr(sk, "ConflictingConstraints", []),
+            getattr(sk, "RedundantConstraints", []),
+            getattr(sk, "MalformedConstraints", []))
 
     @staticmethod
     def _sketch_support_label(sk):

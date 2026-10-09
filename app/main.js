@@ -16,7 +16,7 @@ import {
   rememberCombineFinished,
 } from "./progress.js";
 import { arcAngles } from "./geom2d.js";
-import { splitHistoryAroundBar } from "./history.js";
+import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, readLang } from "./settings.js";
 import {
@@ -2332,7 +2332,11 @@ function appendFeatureHistoryRow(feature, rolledBack) {
       ? "PartDesign_LinearPattern.svg"
       : TREE_ICONS[feature.type];
   if (icon) row.appendChild(treeIcon(icon));
-  row.appendChild(document.createTextNode(feature.label));
+  row.appendChild(document.createTextNode(
+    feature.type === "Sketcher::SketchObject"
+      ? sketchTreeLabel(feature.label, sketchDefinitionOf(feature))
+      : feature.label));
+  if (sketchMode.editing === feature.name) row.classList.add("editing");
   row.title = `${feature.kind} — double-clic : modifier · ` +
     "clic droit : modifier, barre de retour, supprimer";
   row.addEventListener("dblclick", () => {
@@ -2373,7 +2377,9 @@ function appendFeatureHistoryRow(feature, rolledBack) {
       if (rolledBack) childRow.classList.add("rolled-back");
       if (selectedSketch?.name === child.name) childRow.classList.add("sel");
       childRow.appendChild(treeIcon("Sketcher_Sketch.svg"));
-      childRow.appendChild(document.createTextNode(child.label));
+      childRow.appendChild(document.createTextNode(
+        sketchTreeLabel(child.label, sketchDefinitionOf(child))));
+      if (sketchMode.editing === child.name) childRow.classList.add("editing");
       childRow.title = `${child.kind} — double-clic : modifier l'esquisse · ` +
       "clic droit : modifier";
       childRow.addEventListener("dblclick", () => onSketchRowDblClick(child));
@@ -2384,6 +2390,14 @@ function appendFeatureHistoryRow(feature, rolledBack) {
   }
 }
 // (fin du rendu du corps actif)
+
+/** En cours d'édition, l'état vient du solveur de l'esquisse ouverte. */
+function sketchDefinitionOf(item) {
+  if (sketchMode.editing === item.name && sketchMode.definition) {
+    return sketchMode.definition;
+  }
+  return item.definition;
+}
 
 // Property names -> designer-facing labels for the edit panel.
 const PROP_LABELS = {
@@ -2640,6 +2654,12 @@ document.addEventListener("freesolid:sketch-enter", () => {
   sketchHidesVolumes = true;
   applyVolumeVisibility();
   showTab("sketch");
+  // L'esquisse ouverte apparaît dans l'arbre dès sa création.
+  call("get_tree").then((tree) => renderTree(tree)).catch(() => {});
+});
+// À chaque calcul de l'esquisse ouverte, son préfixe (-)/(+) suit.
+document.addEventListener("freesolid:sketch-state", () => {
+  if (lastTree) renderTree(lastTree);
 });
 document.addEventListener("freesolid:sketch-exit", () => {
   sketchHidesVolumes = false;

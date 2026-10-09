@@ -105,3 +105,13 @@ describe("splitHistoryAroundBar", () => {
     assert.deepEqual(split.after.map((row) => row.item.name), ["Fillet"]);
   });
 });
+
+describe("sketchTreeLabel", () => {
+  it("préfixe (-) une esquisse encore libre, (+) une esquisse en trop", async () => {
+    const { sketchTreeLabel } = await import("../../app/history.js");
+    assert.equal(sketchTreeLabel("Esquisse1", "under"), "(-) Esquisse1");
+    assert.equal(sketchTreeLabel("Esquisse1", "over"), "(+) Esquisse1");
+    assert.equal(sketchTreeLabel("Esquisse1", "full"), "Esquisse1");
+    assert.equal(sketchTreeLabel("Esquisse1", undefined), "Esquisse1");
+  });
+});

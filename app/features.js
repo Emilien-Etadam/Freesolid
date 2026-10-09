@@ -282,6 +282,48 @@ export function extrudeInvalid(v) {
   return "Profondeur invalide";
 }
 
+// ---------- répétitions et symétrie ----------
+// Fonctions à répéter : clic dans l'arbre (plusieurs, un second clic
+// retire) ; vide = la dernière fonction. Direction : un axe d'origine ou
+// une arête droite cliquée dans la zone graphique.
+
+export function patternFeaturesGroup() {
+  return {
+    label: "Fonctions à répéter",
+    rows: [{ type: "selection", key: "features", accepts: ["feature"],
+             multiple: true,
+             hint: "Cliquez les fonctions dans l'arbre — vide : la dernière" }],
+  };
+}
+
+export function patternFeaturesParams(v) {
+  const items = v.features?.items ?? [];
+  return items.length ? { features: items.map((i) => i.name) } : {};
+}
+
+export function patternDirectionRows(defaultAxis) {
+  return [
+    { type: "select", key: "dirKind", value: "axis",
+      options: [["axis", "Axe d'origine"], ["edge", "Arête"]] },
+    { type: "select", key: "axis", value: defaultAxis,
+      options: [["X", "Axe X"], ["Y", "Axe Y"], ["Z", "Axe Z"]],
+      showIf: (v) => v.dirKind !== "edge" },
+    { type: "selection", key: "edge", accepts: ["edges"],
+      hint: "Cliquez une arête droite",
+      showIf: (v) => v.dirKind === "edge" },
+    { type: "check", key: "reversed", label: "Inverser la direction",
+      value: false },
+  ];
+}
+
+export function patternDirectionParams(v) {
+  const params = { reversed: !!v.reversed };
+  const edge = v.edge?.edges?.[0];
+  if (v.dirKind === "edge" && edge != null) params.edge = edge;
+  else params.axis = v.axis;
+  return params;
+}
+
 export const FEATURES = [
   withSketchProfile({
     button: "btn-pad",
@@ -563,23 +605,30 @@ export const FEATURES = [
     button: "btn-linpattern",
     icon: "PartDesign_LinearPattern.svg",
     title: "Répétition linéaire",
-    groups: () => [{
-      label: "Direction 1",
-      rows: [
-        { type: "select", key: "axis", value: "X", label: "Direction",
-          options: [["X", "Axe X"], ["Y", "Axe Y"], ["Z", "Axe Z"]] },
-        { type: "number", key: "length", label: "Longueur totale",
-          value: 40, unit: "mm", min: 0.01 },
-        { type: "number", key: "count", label: "Nombre d'occurrences",
-          value: 3, min: 2, step: 1 },
-      ],
-    }],
-    note: "S'applique à la dernière fonction (bossage ou enlèvement)",
+    groups: () => [
+      patternFeaturesGroup(),
+      {
+        label: "Direction 1",
+        rows: [
+          ...patternDirectionRows("X"),
+          { type: "select", key: "mode", value: "spacing",
+            options: [["spacing", "Pas entre occurrences"],
+                      ["extent", "Longueur totale"]] },
+          { type: "number", key: "length", label: "Distance",
+            value: 20, unit: "mm", min: 0.01 },
+          { type: "number", key: "count", label: "Nombre d'occurrences",
+            value: 3, min: 2, step: 1 },
+        ],
+      },
+    ],
     build: (v) => {
       const length = num(v.length);
       const count = parseInt(v.count, 10);
       return length && count >= 2
-        ? { op: "add_linear_pattern", params: { axis: v.axis, length, count } }
+        ? { op: "add_linear_pattern",
+            params: { ...patternDirectionParams(v), length, count,
+                      spacing: v.mode === "spacing",
+                      ...patternFeaturesParams(v) } }
         : null;
     },
     invalid: "Valeurs invalides",
@@ -589,21 +638,27 @@ export const FEATURES = [
     button: "btn-polpattern",
     icon: "PartDesign_PolarPattern.svg",
     title: "Répétition circulaire",
-    groups: () => [{
-      label: "Direction 1",
-      rows: [
-        { type: "number", key: "angle", label: "Angle", value: 360,
-          unit: "°", min: 0.01 },
-        { type: "number", key: "count", label: "Nombre d'occurrences",
-          value: 4, min: 2, step: 1 },
-      ],
-    }],
-    note: "Axe : Z — s'applique à la dernière fonction",
+    groups: () => [
+      patternFeaturesGroup(),
+      {
+        label: "Axe",
+        rows: [
+          ...patternDirectionRows("Z"),
+          { type: "number", key: "angle", label: "Angle total", value: 360,
+            unit: "°", min: 0.01 },
+          { type: "number", key: "count", label: "Nombre d'occurrences",
+            value: 4, min: 2, step: 1 },
+        ],
+      },
+    ],
     build: (v) => {
       const angle = num(v.angle);
       const count = parseInt(v.count, 10);
       return angle && count >= 2
-        ? { op: "add_polar_pattern", params: { count, angle } } : null;
+        ? { op: "add_polar_pattern",
+            params: { ...patternDirectionParams(v), count, angle,
+                      ...patternFeaturesParams(v) } }
+        : null;
     },
     invalid: "Valeurs invalides",
     refresh: "part",
@@ -612,16 +667,19 @@ export const FEATURES = [
     button: "btn-mirror",
     icon: "PartDesign_Mirrored.svg",
     title: "Symétrie",
-    groups: () => [{
-      label: "Plan de symétrie",
-      rows: [
-        { type: "select", key: "plane", value: "YZ",
-          options: [["YZ", "Plan de droite"], ["XZ", "Plan de face"],
-                    ["XY", "Plan de dessus"]] },
-      ],
-    }],
-    note: "S'applique à la dernière fonction (bossage ou enlèvement)",
-    build: (v) => ({ op: "add_mirror", params: { plane: v.plane } }),
+    groups: () => [
+      patternFeaturesGroup(),
+      {
+        label: "Plan de symétrie",
+        rows: [
+          { type: "select", key: "plane", value: "YZ",
+            options: [["YZ", "Plan de droite"], ["XZ", "Plan de face"],
+                      ["XY", "Plan de dessus"]] },
+        ],
+      },
+    ],
+    build: (v) => ({ op: "add_mirror",
+                     params: { plane: v.plane, ...patternFeaturesParams(v) } }),
     refresh: "part",
   },
   {

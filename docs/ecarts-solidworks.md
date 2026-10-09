@@ -62,7 +62,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | fait : borgne, jusqu'au suivant, jusqu'au dernier / à travers tout, jusqu'à la face (+ décalage), plan milieu, deuxième direction, dépouille (vers l'intérieur ou l'extérieur). Reste : paroi mince (pas d'équivalent direct dans PartDesign) |
 | 20 | Révolution : choix de l'axe | P2 | confié à Cursor (T20) |
 | 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | confié à Cursor (T21) |
-| 22 | Répétitions : choix des fonctions et de la direction | P2 | reste |
+| 22 | Répétitions : choix des fonctions et de la direction | P2 | fait : fonctions choisies dans l'arbre (plusieurs), direction par axe d'origine ou arête droite, pas ou longueur totale, inversion ; idem pour la symétrie (fonctions) |
 | 23 | Ouvrir / Enregistrer : dialogue de fichiers | P2 | confié à Cursor (T23) |
 | 24 | Accueil et Nouveau (Ctrl+N) | P2 | confié à Cursor (T24) |
 | 25 | Assemblage : contraintes standard | P1 | reste |

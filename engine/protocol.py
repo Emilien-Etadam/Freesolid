@@ -152,10 +152,14 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_mirror": _Req(optional={"features": list}),
                                        # optional: plane (XY|XZ|YZ), features
     "add_linear_pattern": _Req(("length", float), ("count", int),
-                               optional={"features": list}),
+                               optional={"features": list, "axis": str,
+                                         "edge": int, "spacing": bool,
+                                         "reversed": bool}),
                                        # optional: axis (X|Y|Z), features
     "add_polar_pattern": _Req(("count", int),
-                              optional={"features": list}),
+                              optional={"features": list, "axis": str,
+                                        "edge": int, "angle": float,
+                                        "reversed": bool}),
                                        # optional: angle (°), axis, features
     "add_thickness": _Req(("face", int), ("thickness", float)),
     "add_draft": _Req(("face", int), ("angle", float)),

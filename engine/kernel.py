@@ -3136,39 +3136,62 @@ class Kernel:
                 "axe inconnu « {} » — attendu X, Y ou Z".format(axis))
         return self._origin_feature(role)
 
-    def add_linear_pattern(self, length, count, axis="X", features=None):
-        """Répétition linéaire d'une ou plusieurs fonctions le long d'un axe.
+    def _pattern_direction(self, axis, edge):
+        """Direction d'une répétition : arête droite de la pièce (numéro
+        d'arête 0-based), sinon axe d'origine."""
+        if edge is not None:
+            tip = self._require_body().Tip
+            if tip is None:
+                raise KernelError("aucune arête : la pièce est vide")
+            return (tip, ["Edge{}".format(int(edge) + 1)])
+        return (self._origin_axis(axis), [""])
 
-        ``length`` is the total span, occurrences included — FreeCAD's
-        convention, same as SolidWorks' « jusqu'à » spacing mode.
-        ``features`` : noms des fonctions à répéter. Absent : la dernière
-        fonction additive ou soustractive du corps actif.
+    def add_linear_pattern(self, length, count, axis="X", features=None,
+                           edge=None, spacing=False, reversed=False):
+        """Répétition linéaire d'une ou plusieurs fonctions le long d'un axe
+        ou d'une arête droite.
+
+        ``length`` : longueur totale (par défaut) ou, avec ``spacing``,
+        pas entre deux occurrences. ``features`` : noms des fonctions à
+        répéter. Absent : la dernière fonction additive ou soustractive.
         """
-        axis_obj = self._origin_axis(axis)
+        direction = self._pattern_direction(axis, edge)
         occurrences = int(count)
         if occurrences < 2:
             raise KernelError("au moins 2 occurrences")
 
         def configure(feature):
-            feature.Direction = (axis_obj, [""])
-            feature.Length = float(length)
+            feature.Direction = direction
+            if spacing and "Mode" in feature.PropertiesList:
+                feature.Mode = "Spacing"
+                feature.Offset = float(length)
+            elif spacing:
+                feature.Length = float(length) * (occurrences - 1)
+            else:
+                feature.Length = float(length)
             feature.Occurrences = occurrences
+            if reversed:
+                feature.Reversed = True
         return self._transform("PartDesign::LinearPattern", configure,
                                features=features)
 
-    def add_polar_pattern(self, count, angle=360.0, axis="Z", features=None):
-        """Répétition circulaire d'une ou plusieurs fonctions autour d'un axe.
+    def add_polar_pattern(self, count, angle=360.0, axis="Z", features=None,
+                          edge=None, reversed=False):
+        """Répétition circulaire d'une ou plusieurs fonctions autour d'un
+        axe d'origine ou d'une arête droite.
 
         ``features`` : noms des fonctions à répéter. Absent : la dernière
         fonction additive ou soustractive du corps actif.
         """
-        axis_obj = self._origin_axis(axis)
+        axis_ref = self._pattern_direction(axis, edge)
         occurrences = int(count)
         if occurrences < 2:
             raise KernelError("au moins 2 occurrences")
 
         def configure(feature):
-            feature.Axis = (axis_obj, [""])
+            feature.Axis = axis_ref
+            if reversed:
+                feature.Reversed = True
             feature.Angle = float(angle)
             feature.Occurrences = occurrences
         return self._transform("PartDesign::PolarPattern", configure,

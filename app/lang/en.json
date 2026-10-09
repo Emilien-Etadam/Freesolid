@@ -42,7 +42,6 @@
  "Autotest en cours…": "Self-test running…",
  "Autour de l'axe vertical de la dernière esquisse.": "Around the vertical axis of the last sketch.",
  "Axe": "Axis",
- "Axe : Z — s'applique à la dernière fonction": "Axis: Z — applies to the last feature",
  "Axe X": "X axis",
  "Axe Y": "Y axis",
  "Axe Z": "Z axis",
@@ -385,7 +384,6 @@
  "Rétablir (Ctrl+Y)": "Redo (Ctrl+Y)",
  "Révolution": "Revolve",
  "S'applique au corps actif. Un second corps est absorbé ; un semis de pierres reste dans l'arbre, et l'empreinte se recalcule à chaque reconstruction.": "Applies to the active body. A second body is absorbed; a stone layout stays in the tree, and its footprint is recomputed at each rebuild.",
- "S'applique à la dernière fonction (bossage ou enlèvement)": "Applies to the last feature (boss or cut)",
  "Si la peau cousue est fermée, elle devient un solide.": "If the knitted skin is closed, it becomes a solid.",
  "Simplifier": "Simplify",
  "Solide — Ajouter": "Solid — Add",
@@ -632,5 +630,11 @@
  "Direction 2": "Direction 2",
  "Deuxième direction": "Second direction",
  "Jusqu'à la face : cliquez la face d'arrivée": "Up to face: click the target face",
- "Dépouille vers l'extérieur": "Draft outward"
+ "Dépouille vers l'extérieur": "Draft outward",
+ "Fonctions à répéter": "Features to pattern",
+ "Cliquez les fonctions dans l'arbre — vide : la dernière": "Click the features in the tree — empty: the last one",
+ "Axe d'origine": "Origin axis",
+ "Cliquez une arête droite": "Click a straight edge",
+ "Pas entre occurrences": "Spacing between instances",
+ "Angle total": "Total angle"
 }

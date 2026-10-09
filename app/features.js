@@ -9,11 +9,10 @@ import { num } from "./num.js";
 import { minimalGraphCurve, minimalGraphFeature, minimalRepeatGraph } from "./graph.js";
 import { combineConfirmMessage } from "./progress.js";
 
-/** Message moteur quand aucune esquisse libre n'est disponible. */
+/** Message moteur quand aucune esquisse libre n'est disponible (d'un
+ *  seul tenant : c'est aussi la clé de traduction). */
 export const NO_SKETCH_AVAILABLE =
-  "aucune esquisse disponible — les esquisses existantes "
-  + "sont déjà utilisées par des fonctions, dessinez-en une "
-  + "nouvelle";
+  "aucune esquisse disponible — les esquisses existantes sont déjà utilisées par des fonctions, dessinez-en une nouvelle";
 
 /** Esquisses libres (non consommées) dans l'ordre du corps — comme
  *  `_latest_sketch` côté moteur. */
@@ -241,7 +240,43 @@ export function extrudeGroups(kind) {
           unit: "°", showIf: (v) => v.dir2 && v.cond !== "milieu" },
       ],
     },
+    {
+      label: "Paroi mince",
+      rows: [
+        { type: "check", key: "thin", label: "Paroi d'épaisseur constante",
+          value: false },
+        { type: "select", key: "thinType", value: "un",
+          options: THIN_TYPES, showIf: (v) => v.thin },
+        { type: "number", key: "thinT", label: "Épaisseur", value: 2,
+          unit: "mm", min: 0.01, showIf: (v) => v.thin },
+        { type: "number", key: "thinT2", label: "Épaisseur côté 2",
+          value: 2, unit: "mm", min: 0.01,
+          showIf: (v) => v.thin && v.thinType === "deux" },
+        { type: "check", key: "thinReversed", label: "Inverser le côté",
+          value: false, showIf: (v) => v.thin && v.thinType !== "milieu" },
+      ],
+    },
   ];
+}
+
+// Paroi mince : vers l'extérieur d'un profil fermé (à droite du tracé
+// d'un profil ouvert) ; « Inverser le côté » passe de l'autre côté.
+const THIN_TYPES = [["un", "Un côté"], ["milieu", "Plan milieu"],
+                    ["deux", "Deux côtés"]];
+
+/** Paroi mince pour le moteur, ``undefined`` sans, ``null`` si invalide. */
+function thinParams(v) {
+  if (!v.thin) return undefined;
+  const thickness = Math.abs(num(v.thinT) ?? 0);
+  if (!thickness) return null;
+  const type = v.thinType ?? "un";
+  const thin = { type, thickness, reversed: type !== "milieu" && !!v.thinReversed };
+  if (type === "deux") {
+    const thickness2 = Math.abs(num(v.thinT2) ?? 0);
+    if (!thickness2) return null;
+    thin.thickness2 = thickness2;
+  }
+  return thin;
 }
 
 /** Paramètres moteur, ou null si la saisie est incomplète. */
@@ -272,6 +307,9 @@ export function extrudeBuild(op, v) {
     const taper2 = num(v.taper2) ?? 0;
     if (taper2) params.taper2 = taper2;
   }
+  const thin = thinParams(v);
+  if (thin === null) return null;
+  if (thin) params.thin = thin;
   return { op, params };
 }
 
@@ -279,6 +317,7 @@ export function extrudeInvalid(v) {
   if (v.cond === "face" && v.face?.face == null) {
     return "Jusqu'à la face : cliquez la face d'arrivée";
   }
+  if (thinParams(v) === null) return "Épaisseur de paroi invalide";
   return "Profondeur invalide";
 }
 

@@ -76,3 +76,44 @@ def extrude_settings(kind, cond="borgne", length=None, face=None,
         props.update(_side(kind, cond2, length2, face2, offset2, taper2, "2"))
     props["Reversed"] = bool(reversed)
     return props
+
+
+#: Paroi mince : un côté, plan milieu, deux côtés (épaisseurs distinctes).
+THIN_TYPES = ("un", "milieu", "deux")
+
+
+def thin_settings(type="un", thickness=None, thickness2=None,
+                  reversed=False):
+    """Paroi mince validée : ``{type, thickness, thickness2, reversed}``.
+
+    ``thickness`` s'applique vers l'extérieur d'un profil fermé (à droite
+    du sens de tracé d'un profil ouvert) ; ``reversed`` change de côté.
+    En « deux côtés », ``thickness2`` est l'épaisseur de l'autre côté.
+    """
+    if type not in THIN_TYPES:
+        raise ExtrudeError("paroi mince : type inconnu : {}".format(type))
+    if thickness is None or float(thickness) <= 0:
+        raise ExtrudeError("épaisseur de paroi invalide")
+    spec = {"type": type, "thickness": float(thickness),
+            "thickness2": 0.0, "reversed": bool(reversed)}
+    if type == "deux":
+        if thickness2 is None or float(thickness2) <= 0:
+            raise ExtrudeError("épaisseur de paroi (côté 2) invalide")
+        spec["thickness2"] = float(thickness2)
+    return spec
+
+
+def thin_offsets(spec):
+    """Décalages 2D successifs du profil : ``[(décalage, remplir), …]``.
+
+    Un seul décalage rempli donne la bande entre le profil et son
+    décalé ; pour une bande à cheval sur le profil, on décale d'abord
+    (sans remplir) vers l'intérieur, puis on remplit sur toute la largeur.
+    """
+    t, t2 = spec["thickness"], spec["thickness2"]
+    if spec["type"] == "un":
+        return [(-t if spec["reversed"] else t, True)]
+    if spec["type"] == "milieu":
+        return [(-t / 2, False), (t, True)]
+    outer, inner = (t2, t) if spec["reversed"] else (t, t2)
+    return [(-inner, False), (outer + inner, True)]

@@ -656,5 +656,12 @@
  "Distance de chanfrein invalide": "Invalid chamfer distance",
  "Seconde distance de chanfrein invalide": "Invalid second chamfer distance",
  "Angle de chanfrein invalide": "Invalid chamfer angle",
- "Valeurs du chanfrein invalides": "Invalid chamfer values"
+ "Valeurs du chanfrein invalides": "Invalid chamfer values",
+ "Paroi mince": "Thin wall",
+ "Paroi d'épaisseur constante": "Constant-thickness wall",
+ "Épaisseur côté 2": "Thickness side 2",
+ "Un côté": "One side",
+ "Deux côtés": "Two sides",
+ "Épaisseur de paroi invalide": "Invalid wall thickness",
+ "aucune esquisse disponible — les esquisses existantes sont déjà utilisées par des fonctions, dessinez-en une nouvelle": "no sketch available — existing sketches are already used by features, draw a new one"
 }

@@ -301,5 +301,12 @@
  "distance de chanfrein invalide": "invalid chamfer distance",
  "seconde distance de chanfrein invalide": "invalid second chamfer distance",
  "angle de chanfrein invalide — entre 0 et 90 degrés, exclus": "invalid chamfer angle — between 0 and 90 degrees, exclusive",
- "inverser le chanfrein : booléen attendu": "chamfer flip: boolean expected"
+ "inverser le chanfrein : booléen attendu": "chamfer flip: boolean expected",
+ "Profil de paroi mince": "Thin wall profile",
+ "paroi mince : objet attendu": "thin wall: object expected",
+ "paroi mince : type inconnu : {}": "thin wall: unknown type: {}",
+ "épaisseur de paroi invalide": "invalid wall thickness",
+ "épaisseur de paroi (côté 2) invalide": "invalid wall thickness (side 2)",
+ "épaisseur de paroi : valeur numérique attendue": "wall thickness: numeric value expected",
+ "paroi mince incomplète : profil décalé absent": "incomplete thin wall: offset profile missing"
 }

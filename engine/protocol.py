@@ -42,7 +42,7 @@ class _Req(tuple):
 
 
 #: Conditions de fin d'extrusion communes au bossage et à l'enlèvement.
-_EXTRUDE_OPTIONAL = {"cond": str, "face": int, "offset": float, "taper": float, "midplane": bool, "reversed": bool, "cond2": str, "length2": float, "face2": int, "offset2": float, "taper2": float, "sketch": str}
+_EXTRUDE_OPTIONAL = {"cond": str, "face": int, "offset": float, "taper": float, "midplane": bool, "reversed": bool, "cond2": str, "length2": float, "face2": int, "offset2": float, "taper2": float, "sketch": str, "thin": dict}
 
 #: Comptes / occurrences : entier ≥ 1, plafond anti-absurde.
 _COUNT_PARAMS = frozenset({"count", "cols", "rows", "sides"})

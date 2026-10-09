@@ -2,7 +2,8 @@
 
 import pytest
 
-from engine.extrude import ExtrudeError, extrude_settings
+from engine.extrude import (ExtrudeError, extrude_settings, thin_offsets,
+                            thin_settings)
 
 
 def test_borgne_par_defaut():
@@ -63,3 +64,28 @@ def test_profondeur_nulle_refusee():
 def test_condition_inconnue():
     with pytest.raises(ExtrudeError):
         extrude_settings("pad", cond="spirale", length=3)
+
+
+def test_paroi_mince_un_cote():
+    spec = thin_settings("un", thickness=2)
+    assert thin_offsets(spec) == [(2.0, True)]
+    assert thin_offsets(thin_settings("un", 2, reversed=True)) == [(-2.0, True)]
+
+
+def test_paroi_mince_plan_milieu_et_deux_cotes():
+    assert thin_offsets(thin_settings("milieu", 4)) == [(-2.0, False),
+                                                       (4.0, True)]
+    spec = thin_settings("deux", thickness=3, thickness2=1)
+    assert thin_offsets(spec) == [(-1.0, False), (4.0, True)]
+    spec = thin_settings("deux", thickness=3, thickness2=1, reversed=True)
+    assert thin_offsets(spec) == [(-3.0, False), (4.0, True)]
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"type": "un", "thickness": 0},
+    {"type": "deux", "thickness": 1},
+    {"type": "coque", "thickness": 1},
+])
+def test_paroi_mince_refusee(kwargs):
+    with pytest.raises(ExtrudeError):
+        thin_settings(**kwargs)

@@ -338,6 +338,7 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
       input.checked = !!values[row.key];
       input.addEventListener("change", () => {
         values[row.key] = input.checked;
+        render(); // showIf rows may appear/disappear
         changed();
       });
       const label = el("label", "pcheck", row.label);

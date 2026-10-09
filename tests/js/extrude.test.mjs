@@ -25,6 +25,23 @@ describe("extrudeBuild", () => {
     assert.equal(b.params.length, undefined);
   });
 
+  it("paroi mince : un côté, plan milieu, deux côtés", () => {
+    const base = { cond: "borgne", length: 10, thin: true, thinT: "2" };
+    assert.deepEqual(extrudeBuild("add_pad", base).params.thin,
+      { type: "un", thickness: 2, reversed: false });
+    assert.deepEqual(extrudeBuild("add_pad",
+      { ...base, thinType: "milieu", thinReversed: true }).params.thin,
+      { type: "milieu", thickness: 2, reversed: false });
+    assert.deepEqual(extrudeBuild("add_pocket",
+      { ...base, thinType: "deux", thinT2: "1,5" }).params.thin,
+      { type: "deux", thickness: 2, thickness2: 1.5, reversed: false });
+    assert.equal(extrudeBuild("add_pad", { ...base, thinT: "0" }), null);
+    assert.equal(extrudeInvalid({ ...base, thinT: "0" }),
+      "Épaisseur de paroi invalide");
+    assert.equal(extrudeBuild("add_pad", { cond: "borgne", length: 10 })
+      .params.thin, undefined);
+  });
+
   it("à travers tout : pas de profondeur", () => {
     assert.deepEqual(extrudeBuild("add_pocket", { cond: "travers" }).params,
       { reversed: false, cond: "travers" });

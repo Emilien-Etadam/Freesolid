@@ -2734,6 +2734,75 @@ class Kernel:
                 value = (tip, ["Face{}".format(int(value) + 1)])
             setattr(obj, name, value)
 
+    def reorder_feature(self, feature, target, after=False):
+        """Déplacer une fonction (avec ses esquisses) avant ou après une
+        autre, par glisser-déposer dans l'arbre. Refusé si l'arbre ne se
+        reconstruit plus (une fonction viendrait avant ce dont elle
+        dépend) : la transaction est alors annulée."""
+        body = self._require_body()
+        doc = self._require_doc()
+        moved = doc.getObject(str(feature))
+        anchor = doc.getObject(str(target))
+        members = list(body.Group)
+        if moved not in members or anchor not in members:
+            raise KernelError("réordonner : fonction inconnue dans ce corps")
+        if moved is anchor:
+            return self.get_tree()
+        consumed = self._consumed_sketches()
+        # La fonction voyage avec ses esquisses ; « avant » une fonction,
+        # c'est avant ses esquisses à elle aussi.
+        group = [o for o in members if consumed.get(o.Name) == moved.Name]
+        group.append(moved)
+        if anchor in group:
+            return self.get_tree()
+        if not after:
+            anchor_sketches = [o for o in members
+                               if consumed.get(o.Name) == anchor.Name]
+            if anchor_sketches:
+                anchor = anchor_sketches[0]
+        tip_at_end = body.Tip is not None and body.Tip is self._last_body_feature()
+        for obj in group:
+            body.removeObject(obj)
+        if after:
+            for obj in reversed(group):
+                body.insertObject(obj, anchor, True)
+        else:
+            for obj in group:
+                body.insertObject(obj, anchor, False)
+        if tip_at_end:
+            last = self._last_body_feature()
+            if last is not None:
+                body.Tip = last
+        # Chaque objet doit venir après ce qu'il référence dans le corps
+        # (esquisse posée sur une face, habillage sur des arêtes…). Le
+        # chaînage BaseFeature, lui, est refait par FreeCAD.
+        order = {o.Name: i for i, o in enumerate(body.Group)}
+        for obj in body.Group:
+            base = getattr(obj, "BaseFeature", None)
+            for dep in getattr(obj, "OutList", ()):
+                if dep is base or dep.Name not in order:
+                    continue
+                if order[dep.Name] > order[obj.Name]:
+                    raise KernelError(
+                        "réordonner : « {} » dépend de « {} », qui viendrait "
+                        "après".format(obj.Label, dep.Label))
+        doc.recompute()
+        broken = [o.Label for o in body.Group if "Invalid" in (o.State or ())]
+        if broken:
+            raise KernelError(
+                "réordonner : l'arbre ne se reconstruit plus ({}) — une "
+                "fonction viendrait avant ce dont elle dépend".format(
+                    ", ".join(broken)))
+        return self.get_tree()
+
+    def _last_body_feature(self):
+        """Dernière fonction solide du corps (hors esquisses et plans)."""
+        body = self._require_body()
+        for obj in reversed(list(body.Group)):
+            if obj.isDerivedFrom("PartDesign::Feature"):
+                return obj
+        return None
+
     def _consumed_sketches(self):
         """Esquisse → nom du parent (fonction PartDesign ou surface)."""
         body = self._require_body()
@@ -4008,6 +4077,13 @@ class Kernel:
         """
         body = self._require_body()
         order_of = {obj.Name: i for i, obj in enumerate(self._doc.Objects)}
+        # Dans le corps, l'ordre fait foi (réordonner le change sans toucher
+        # l'ordre de création) : on redistribue ses rangs selon body.Group,
+        # ce qui garde l'entrelacement avec les surfaces hors corps.
+        members = [o for o in body.Group if o.Name in order_of]
+        for slot, obj in zip(sorted(order_of[o.Name] for o in members),
+                             members):
+            order_of[obj.Name] = slot
 
         consumed = self._consumed_sketches()
         known_names = self._tree_known_names(body)
@@ -7599,7 +7675,7 @@ _TRANSACTIONAL = frozenset({
     "sketch_fillet", "sketch_trim", "sketch_constrain",
     "sketch_add_spline", "sketch_add_ellipse", "sketch_mirror",
     "sketch_array", "sketch_offset", "array_component",
-    "set_component_grounded",
+    "set_component_grounded", "reorder_feature",
 })
 
 

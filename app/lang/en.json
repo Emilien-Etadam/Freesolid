@@ -555,7 +555,7 @@
  "vide": "empty",
  "{n} élément(s)": "{n} item(s)",
  "double-clic : modifier l'esquisse · clic droit : modifier": "double-click: edit the sketch · right-click: edit",
- "double-clic : modifier · clic droit : modifier, barre de retour, supprimer": "double-click: edit · right-click: edit, rollback bar, delete",
+ "double-clic : modifier · clic droit : modifier, barre de retour, supprimer · glisser : réordonner": "double-click: edit · right-click: edit, rollback bar, delete · drag: reorder",
  "Liaison géométrique — {s}": "Geometric link — {s}",
  "Liaison géométrique — non modifiable pour l'instant": "Geometric link — not editable yet",
  "(fixé)": "(fixed)",

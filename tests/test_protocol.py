@@ -509,6 +509,7 @@ def test_ops_snapshot_keys():
         "rebuild",
         "redo",
         "rename",
+        "reorder_feature",
         "save_part",
         "script_trust_status",
         "selftest",

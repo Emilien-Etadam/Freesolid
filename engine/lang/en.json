@@ -292,5 +292,8 @@
  "Engrenages": "Gears",
  "Crémaillère": "Rack and pinion",
  "Vis": "Screw",
- "Courroie": "Belt"
+ "Courroie": "Belt",
+ "réordonner : fonction inconnue dans ce corps": "reorder: unknown feature in this body",
+ "réordonner : l'arbre ne se reconstruit plus ({}) — une fonction viendrait avant ce dont elle dépend": "reorder: the tree no longer rebuilds ({}) — a feature would come before what it depends on",
+ "réordonner : « {} » dépend de « {} », qui viendrait après": "reorder: “{}” depends on “{}”, which would come after"
 }

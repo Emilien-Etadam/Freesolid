@@ -2242,6 +2242,58 @@ function appendRollbackBar(tree) {
   treeEl.appendChild(bar);
 }
 
+// Glisser-déposer d'une fonction dans l'arbre : le repère d'insertion de
+// la barre de retour montre où elle ira ; le moteur la déplace avec ses
+// esquisses, et refuse si l'arbre ne se reconstruit plus.
+let suppressTreeClick = false;
+treeEl.addEventListener("click", (event) => {
+  if (!suppressTreeClick) return;
+  suppressTreeClick = false;
+  event.stopPropagation();
+  event.preventDefault();
+}, true);
+
+function bindFeatureDrag(row, feature) {
+  row.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || panel.active || sketchMode.active) return;
+    const start = { x: event.clientX, y: event.clientY };
+    let dragging = false;
+    const onMove = (moveEvent) => {
+      if (!dragging && Math.hypot(moveEvent.clientX - start.x,
+                                  moveEvent.clientY - start.y) < 6) return;
+      dragging = true;
+      row.classList.add("dragging");
+      const slots = rollbackSlotPositions();
+      if (slots.length) showInsertMark(nearestRollbackSlot(moveEvent.clientY, slots));
+    };
+    const onUp = (upEvent) => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      hideInsertMark();
+      row.classList.remove("dragging");
+      if (!dragging) return;
+      // Le clic qui suit le lâcher ne doit pas sélectionner ; s'il ne vient
+      // pas (lâcher hors de la ligne), le drapeau retombe aussitôt.
+      suppressTreeClick = true;
+      setTimeout(() => { suppressTreeClick = false; }, 0);
+      const rows = [...treeEl.querySelectorAll("li[data-hist]")];
+      const slots = rollbackSlotPositions();
+      if (!slots.length) return;
+      const slot = nearestRollbackSlot(upEvent.clientY, slots);
+      const own = rows.indexOf(row);
+      if (slot.index === own || slot.index === own + 1) return;
+      const params = slot.index < rows.length
+        ? { feature: feature.name, target: rows[slot.index].dataset.hist,
+            after: false }
+        : { feature: feature.name, target: rows[rows.length - 1].dataset.hist,
+            after: true };
+      refresh(call("reorder_feature", params));
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  });
+}
+
 function applyRollbackSlot(index, history) {
   if (index <= 0) {
     refresh(call("set_tip", {}));
@@ -2495,7 +2547,7 @@ function appendFeatureHistoryRow(feature, rolledBack) {
       : feature.label));
   if (sketchMode.editing === feature.name) row.classList.add("editing");
   row.title = `${feature.kind} — `
-    + t("double-clic : modifier · clic droit : modifier, barre de retour, supprimer");
+    + t("double-clic : modifier · clic droit : modifier, barre de retour, supprimer · glisser : réordonner");
   row.addEventListener("dblclick", () => {
     if (feature.type === "Sketcher::SketchObject") {
       onSketchRowDblClick(feature);
@@ -2504,6 +2556,7 @@ function appendFeatureHistoryRow(feature, rolledBack) {
     }
   });
   row.addEventListener("contextmenu", (event) => openMenu(event, feature));
+  bindFeatureDrag(row, feature);
   if (feature.type === "PartDesign::Plane") {
     // Un plan de référence se choisit comme un plan d'origine.
     row.classList.add("plane");

@@ -190,6 +190,8 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # Absent = barre avant la première
     "tip_to_end": (),                  # back to the final state
     "delete_feature": _Req(("feature", str)),
+    "reorder_feature": _Req(("feature", str), ("target", str),
+                            optional={"after": bool}),
     "save_part": _Req(("path", str)),
     "open_part": _Req(("path", str)),
     "get_tree": (),

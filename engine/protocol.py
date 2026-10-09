@@ -155,8 +155,18 @@ OPS: dict[str, tuple[str, ...]] = {
         "flip": bool,            # échange les deux côtés
     }),  # face OU edges
     # Palier 2 — fonctions volumiques, aucune interaction nouvelle.
-    "add_revolution": (),              # optional: angle (°), sketch
-    "add_groove": (),                  # optional: angle (°), sketch
+    "add_revolution": _Req(optional={
+        "angle": float,          # degrés, défaut 360
+        "axis": str,             # vertical | horizontal | line:<id> | X | Y | Z
+        "reversed": bool,
+        "midplane": bool,
+    }),                                # sketch reste libre (nom d'esquisse)
+    "add_groove": _Req(optional={
+        "angle": float,
+        "axis": str,
+        "reversed": bool,
+        "midplane": bool,
+    }),
     "add_mirror": _Req(optional={"features": list}),
                                        # optional: plane (XY|XZ|YZ), features
     "add_linear_pattern": _Req(("length", float), ("count", int),

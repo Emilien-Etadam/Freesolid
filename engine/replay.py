@@ -422,6 +422,8 @@ def _capture_feature(kernel, obj):
     if obj.TypeId == "PartDesign::Chamfer":
         feat["chamfer_type"] = kernel._chamfer_kind(obj)
         feat["flip"] = bool(getattr(obj, "FlipDirection", False))
+    if obj.TypeId in ("PartDesign::Revolution", "PartDesign::Groove"):
+        feat["axis"] = kernel._revolution_axis_token(obj)
     if obj.TypeId in INDEXED_TYPES:
         base = getattr(obj, "BaseFeature", None)
         shape = getattr(base, "Shape", None) if base is not None else None
@@ -532,12 +534,18 @@ def _replay_feature(kernel, feat, sketch_map, substitutions):
     if type_id == "PartDesign::Revolution":
         kernel.add_revolution(
             angle=_substituted(feat, substitutions, "Angle"),
-            sketch=sketch)
+            sketch=sketch,
+            axis=feat.get("axis") or "vertical",
+            reversed=bool(feat.get("reversed")),
+            midplane=bool(feat.get("midplane")))
         return
     if type_id == "PartDesign::Groove":
         kernel.add_groove(
             angle=_substituted(feat, substitutions, "Angle"),
-            sketch=sketch)
+            sketch=sketch,
+            axis=feat.get("axis") or "vertical",
+            reversed=bool(feat.get("reversed")),
+            midplane=bool(feat.get("midplane")))
         return
     if type_id == "PartDesign::Fillet":
         radius = _substituted(feat, substitutions, "Radius")

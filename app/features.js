@@ -114,22 +114,103 @@ function withSketchProfile(entry) {
   };
 }
 
+function lineAxisLabel(line) {
+  const key = line.construction
+    ? "Ligne de construction {n} ({x1}, {y1}) → ({x2}, {y2})"
+    : "Ligne {n} ({x1}, {y1}) → ({x2}, {y2})";
+  return t(key, {
+    n: line.id + 1,
+    x1: line.x1, y1: line.y1, x2: line.x2, y2: line.y2,
+  });
+}
+
+/** Options d'axe : vertical, lignes (construction d'abord), origine. */
+export function revolutionAxisOptions(sketch, current = "vertical") {
+  const options = [
+    ["vertical", "Axe vertical de l'esquisse"],
+    ["horizontal", "Axe horizontal de l'esquisse"],
+  ];
+  const lines = [...(sketch?.lines ?? [])].sort((a, b) =>
+    Number(b.construction) - Number(a.construction) || a.id - b.id);
+  for (const line of lines) options.push(["line:" + line.id, lineAxisLabel(line)]);
+  options.push(
+    ["X", "Axe X de l'origine"],
+    ["Y", "Axe Y de l'origine"],
+    ["Z", "Axe Z de l'origine"],
+  );
+  if (current && !options.some(([value]) => value === current)) {
+    const id = Number(String(current).replace(/^line:/, ""));
+    options.push([current, t("Ligne {n} ({x1}, {y1}) → ({x2}, {y2})", {
+      n: Number.isFinite(id) ? id + 1 : current,
+      x1: "—", y1: "—", x2: "—", y2: "—",
+    })]);
+  }
+  return options;
+}
+
+/** Groupes du panneau révolution / gorge, à la création comme à la réédition. */
+export function revolutionGroups(sketch, {
+  angle = 360, axis = "vertical", reversed = false, midplane = false,
+} = {}) {
+  return [
+    { label: "Direction 1", rows: [
+      { type: "select", key: "cond", value: midplane ? "milieu" : "one",
+        options: [["one", "Une direction"], ["milieu", "Plan milieu"]] },
+      measureRow("angle", "Angle", angle, "°"),
+      { type: "check", key: "reversed", label: "Inverser la direction",
+        value: !!reversed && !midplane,
+        showIf: (v) => v.cond !== "milieu" },
+    ] },
+    { label: "Axe", rows: [
+      { type: "select", key: "axis", label: "Axe", value: axis,
+        options: revolutionAxisOptions(sketch, axis) },
+    ] },
+  ];
+}
+
+/** Params `add_revolution` / `add_groove`, ou null si l'angle est invalide. */
+export function revolutionCreationParams(v, op) {
+  const angle = pureNumber(v.angle);
+  if (!(angle > 0) || angle > 360) return null;
+  const params = { angle };
+  const axis = v.axis || "vertical";
+  if (axis !== "vertical") params.axis = axis;
+  if (v.cond === "milieu") params.midplane = true;
+  else if (v.reversed) params.reversed = true;
+  return { op, params };
+}
+
+export function revolutionProblem() {
+  return "Angle de révolution invalide";
+}
+
+/**
+ * Valeurs `set_params` pour rééditer une révolution ou une gorge.
+ * `{}` si rien n'a changé, `null` si l'angle est invalide.
+ */
+export function revolutionEditValues(v, revolution, params) {
+  const stored = storedMeasure(params, "Angle", revolution.angle);
+  const angle = readMeasure(v.angle, stored, { min: 0, max: 360.0001 });
+  if (angle == null) return null;
+  const axis = v.axis || "vertical";
+  const midplane = v.cond === "milieu";
+  const reversed = midplane ? false : !!v.reversed;
+  const values = {};
+  if (!sameMeasure(angle, stored)) values.Angle = angle;
+  if (axis !== (revolution.axis || "vertical")) values.axis = axis;
+  if (reversed !== !!revolution.reversed || midplane !== !!revolution.midplane) {
+    values.Reversed = reversed;
+    values.Midplane = midplane;
+  }
+  return values;
+}
+
 function revolved({ button, op, icon, title }) {
   return withSketchProfile({
     button, icon, title,
-    groups: () => [{
-      label: "Direction 1",
-      rows: [
-        { type: "number", key: "angle", label: "Angle", value: 360,
-          unit: "°", min: 0.01 },
-      ],
-    }],
-    note: "Axe de révolution : l'axe vertical de l'esquisse",
-    build: (v) => {
-      const angle = num(v.angle);
-      return angle ? { op, params: { angle } } : null;
-    },
-    invalid: "Angle invalide",
+    groups: (ctx) => revolutionGroups(resolveProfileSketch(ctx)),
+    build: (v) => revolutionCreationParams(v, op),
+    invalid: () => revolutionProblem(),
     refresh: "part",
   });
 }

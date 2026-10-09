@@ -308,5 +308,9 @@
  "épaisseur de paroi invalide": "invalid wall thickness",
  "épaisseur de paroi (côté 2) invalide": "invalid wall thickness (side 2)",
  "épaisseur de paroi : valeur numérique attendue": "wall thickness: numeric value expected",
- "paroi mince incomplète : profil décalé absent": "incomplete thin wall: offset profile missing"
+ "paroi mince incomplète : profil décalé absent": "incomplete thin wall: offset profile missing",
+ "axe de révolution inconnu « {} »": "unknown revolution axis \"{}\"",
+ "l'axe de révolution doit être une ligne": "the revolution axis must be a line",
+ "angle de révolution invalide": "invalid revolution angle",
+ "sens de révolution : booléen attendu": "revolution direction: boolean expected"
 }

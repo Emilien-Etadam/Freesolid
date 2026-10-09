@@ -54,13 +54,13 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 11 | Retour pendant le tracé (inférences, symboles de relations) | P2 | fait : lignes d'inférence (alignement sur les points existants, H/V de la chaîne), point accroché en évidence, lecture longueur / angle / dimensions près du curseur, symboles de relations sur la géométrie |
 | 12 | Barre S (la spline quitte la touche S) | P2 | confié à Cursor (T12) |
 | 13 | Menu et barre contextuels dans la vue | P1 | fait pour le menu : clic droit sur face, arête, esquisse, surface ou vide, et en esquisse (app/viewmenu.js, testé) ; barre d'icônes contextuelle au clic gauche sur face, arête ou esquisse |
-| 14 | Barre tête haute : styles d'affichage, masquer/afficher, orientation | P2 | confié à Cursor (T14) |
+| 14 | Barre tête haute : styles d'affichage, masquer/afficher, orientation | P2 | fait : ombré, filaire, lignes cachées, visibilité mémorisée |
 | 15 | Réordonner l'arbre par glisser-déposer | P2 | fait : glisser une fonction (avec ses esquisses) ; refus clair si elle passerait avant ce dont elle dépend ; l'arbre suit l'ordre du corps |
 | 16 | Arbre accessible pendant une commande | P2 | fait : volet repliable en haut à gauche de la vue, mêmes clics que l'arbre |
 | 17 | Barre de menus | P2 | confié à Cursor (T17) |
 | 18 | Chanfrein distance-angle | P2 | fait : distance égale, deux distances, distance et angle, inversion des côtés, réédition |
 | 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | fait : borgne, jusqu'au suivant, jusqu'au dernier / à travers tout, jusqu'à la face (+ décalage), plan milieu, deuxième direction, dépouille (vers l'intérieur ou l'extérieur), paroi mince (un côté, plan milieu, deux côtés ; profil fermé ou ouvert ; épaisseurs rééditables). Reste (P3) : extrémités fermées d'une paroi mince sur profil fermé |
-| 20 | Révolution : choix de l'axe | P2 | confié à Cursor (T20) |
+| 20 | Révolution : choix de l'axe | P2 | fait : axe vertical, ligne de construction, axes d'origine, plan milieu, réédition |
 | 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | confié à Cursor (T21) |
 | 22 | Répétitions : choix des fonctions et de la direction | P2 | fait : fonctions choisies dans l'arbre (plusieurs), direction par axe d'origine ou arête droite, pas ou longueur totale, inversion ; idem pour la symétrie (fonctions) |
 | 23 | Ouvrir / Enregistrer : dialogue de fichiers | P2 | confié à Cursor (T23) |

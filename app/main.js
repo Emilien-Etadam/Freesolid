@@ -10,7 +10,11 @@ import {
 import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
 import {
+  readDisplay, writeDisplay, displayEffects,
+} from "./display.js";
+import {
   FEATURES, chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
+  revolutionGroups, revolutionEditValues, revolutionProblem,
 } from "./features.js";
 import {
   formatProgressStatus,
@@ -400,6 +404,7 @@ let inSketchMode = false;
 function applyVolumeVisibility() {
   volumesGroup.visible = true;
   featureDimsGroup.visible = !inSketchMode;
+  applyDisplay();
 }
 
 function volumeVisibleCount() {
@@ -728,6 +733,15 @@ function showMesh(mesh) {
 const edgeBaseMaterial = new THREE.LineBasicMaterial({ color: 0x11141a });
 const edgeHoverMaterial = new THREE.LineBasicMaterial({ color: 0x4f8fdb });
 const edgeSelectedMaterial = new THREE.LineBasicMaterial({ color: 0xd9924a });
+const hiddenEdgeMaterial = new THREE.LineBasicMaterial({
+  color: 0x7d8792,
+  depthFunc: THREE.GreaterEqualDepth,
+});
+const maskMaterial = new THREE.MeshBasicMaterial({
+  color: 0x17191c,
+  polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+});
+let hiddenEdgeLines = null;
 
 function showEdgeLines(data) {
   if (partEdges) {
@@ -867,7 +881,8 @@ const originGroup = new THREE.Group();
 originGroup.visible = false;
 originGroup.renderOrder = 12;
 scene.add(originGroup);
-let originShown = false;
+let displayState = readDisplay(localStore);
+let originShown = displayState.origin;
 
 function rebuildOrigin() {
   disposeSubtree(originGroup);
@@ -894,21 +909,141 @@ function rebuildOrigin() {
 }
 
 function toggleOrigin() {
-  originShown = !originShown;
-  rebuildOrigin();
-  if (lastTree) renderTree(lastTree);
+  setOriginShown(!originShown);
   say(originShown ? "Origine affichée." : "Origine masquée.");
 }
 
+function setOriginShown(shown) {
+  originShown = !!shown;
+  displayState = { ...displayState, origin: originShown };
+  writeDisplay(localStore, displayState);
+  rebuildOrigin();
+  if (lastTree) renderTree(lastTree);
+  syncVisibilityMenu();
+}
+
 function updatePlaneVisibility() {
+  const showAll = displayEffects(displayState).planes;
   const single = planePicking ? null : (treeHoverPlane ?? selectedPlane);
-  planesGroup.visible = planePicking || single !== null;
+  planesGroup.visible = planePicking || showAll || single !== null;
   for (const [id, mesh] of Object.entries(planeMeshes)) {
-    mesh.parent.visible = planePicking || id === single;
+    mesh.parent.visible = planePicking || showAll || id === single;
     mesh.material.opacity =
       (planePicking && id === hoverPlane) || id === selectedPlane
         ? 0.28 : 0.1;
   }
+}
+
+function applyDisplay() {
+  const fx = displayEffects(displayState);
+  const meshes = [partMesh, ...othersMeshes, ...surfaceMeshes].filter(Boolean);
+  for (const mesh of meshes) {
+    if (fx.mask) {
+      if (!mesh.userData.savedMaterial) mesh.userData.savedMaterial = mesh.material;
+      mesh.material = maskMaterial;
+    } else if (mesh.userData.savedMaterial) {
+      mesh.material = mesh.userData.savedMaterial;
+      delete mesh.userData.savedMaterial;
+    }
+    mesh.visible = fx.faces;
+    if (fx.mask) mesh.renderOrder = 0;
+  }
+  if (partEdges) {
+    partEdges.visible = fx.edges;
+    partEdges.renderOrder = 2;
+    // Sur le solide clair, les arêtes sont sombres. Sur le fond, elles
+    // doivent rester lisibles (filaire, lignes cachées).
+    edgeBaseMaterial.color.setHex(
+      fx.faces && !fx.mask ? 0x11141a : 0xd5dde6);
+  }
+  if (hiddenEdgeLines) {
+    hiddenEdgeLines.removeFromParent();
+    hiddenEdgeLines = null;
+  }
+  if (fx.ghostEdges && partEdges) {
+    hiddenEdgeLines = new THREE.LineSegments(
+      partEdges.geometry, hiddenEdgeMaterial);
+    hiddenEdgeLines.renderOrder = 1;
+    hiddenEdgeLines.raycast = () => {};
+    volumesGroup.add(hiddenEdgeLines);
+  }
+  for (const lines of sketchLineMeshes) lines.visible = fx.sketches;
+  if (sketchHighlightGroup) sketchHighlightGroup.visible = fx.sketches;
+  originGroup.visible = !!displayState.origin;
+}
+
+function closeViewMenus() {
+  const style = document.getElementById("style-menu");
+  const visibility = document.getElementById("visibility-menu");
+  const open = (style && !style.hidden) || (visibility && !visibility.hidden);
+  if (style) style.hidden = true;
+  if (visibility) visibility.hidden = true;
+  return open;
+}
+
+function syncStyleMenu() {
+  const menu = document.getElementById("style-menu");
+  if (!menu) return;
+  for (const button of menu.querySelectorAll("[data-style]")) {
+    button.classList.toggle("on", button.dataset.style === displayState.style);
+  }
+}
+
+function syncVisibilityMenu() {
+  const menu = document.getElementById("visibility-menu");
+  if (!menu) return;
+  for (const input of menu.querySelectorAll("[data-vis]")) {
+    input.checked = !!displayState[input.dataset.vis];
+  }
+}
+
+function setDisplay(patch) {
+  displayState = { ...displayState, ...patch };
+  if ("origin" in patch) originShown = !!patch.origin;
+  writeDisplay(localStore, displayState);
+  if ("origin" in patch) rebuildOrigin();
+  applyDisplay();
+  syncStyleMenu();
+  syncVisibilityMenu();
+  if ("origin" in patch && lastTree) renderTree(lastTree);
+}
+
+{
+  const styleButton = document.getElementById("btn-style");
+  const styleMenu = document.getElementById("style-menu");
+  const visibilityButton = document.getElementById("btn-visibility");
+  const visibilityMenu = document.getElementById("visibility-menu");
+  styleButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const open = styleMenu.hidden;
+    closeViewMenus();
+    styleMenu.hidden = !open;
+    syncStyleMenu();
+  });
+  visibilityButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const open = visibilityMenu.hidden;
+    closeViewMenus();
+    visibilityMenu.hidden = !open;
+    syncVisibilityMenu();
+  });
+  styleMenu?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-style]");
+    if (!button) return;
+    setDisplay({ style: button.dataset.style });
+    closeViewMenus();
+  });
+  visibilityMenu?.addEventListener("change", (event) => {
+    const input = event.target.closest("[data-vis]");
+    if (!input) return;
+    const key = input.dataset.vis;
+    if (key === "origin") setOriginShown(input.checked);
+    else setDisplay({ [key]: input.checked });
+  });
+  visibilityMenu?.addEventListener("click", (event) => event.stopPropagation());
+  document.addEventListener("click", () => closeViewMenus());
+  syncStyleMenu();
+  syncVisibilityMenu();
 }
 
 function startPlanePick() {
@@ -1745,6 +1880,7 @@ document.addEventListener("keydown", (event) => {
     closeOrientBox();
     return;
   }
+  if (event.key === "Escape" && closeViewMenus()) return;
   if ((event.key === "f" || event.key === "F")
       && !event.ctrlKey && !event.metaKey && !event.altKey) {
     frameView(null, null);
@@ -2742,6 +2878,48 @@ async function editSurface(surface) {
   });
 }
 
+function findSketch(tree, name) {
+  const stack = [...(tree?.features ?? [])];
+  while (stack.length) {
+    const item = stack.pop();
+    if (!item) continue;
+    if (item.name === name) return item;
+    if (item.children) stack.push(...item.children);
+  }
+  return null;
+}
+
+function editRevolved(feature) {
+  const spec = feature.revolution;
+  const sketch = findSketch(lastTree, spec.profile);
+  panel.open({
+    icon: TREE_ICONS[feature.type] ?? "PartDesign_Revolution.svg",
+    title: feature.label,
+    groups: revolutionGroups(sketch, {
+      angle: chamferFieldValue(feature.params, "Angle", spec.angle),
+      axis: spec.axis,
+      reversed: spec.reversed,
+      midplane: spec.midplane,
+    }),
+    onChange: (v) => {
+      const values = revolutionEditValues(v, spec, feature.params);
+      schedulePreview(values && Object.keys(values).length
+        ? { op: "set_params",
+            params: { feature: feature.name, values } }
+        : null);
+    },
+    onApply: (v) => {
+      const values = revolutionEditValues(v, spec, feature.params);
+      if (values === null) {
+        say(revolutionProblem(), true);
+        return;
+      }
+      if (!Object.keys(values).length) return;
+      refresh(call("set_params", { feature: feature.name, values }));
+    },
+  });
+}
+
 function editChamfer(feature) {
   const spec = feature.chamfer;
   panel.open({
@@ -2819,6 +2997,11 @@ async function editFeature(feature) {
   }
   if (feature.type === "PartDesign::Chamfer" && feature.chamfer) {
     editChamfer(feature);
+    return;
+  }
+  if ((feature.type === "PartDesign::Revolution"
+       || feature.type === "PartDesign::Groove") && feature.revolution) {
+    editRevolved(feature);
     return;
   }
   try {

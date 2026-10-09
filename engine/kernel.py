@@ -315,6 +315,7 @@ class Kernel:
 
     def _recompute(self):
         doc = self._require_doc()
+        self._sync_revolution_axes()
         doc.recompute()
         if not self._assembly:
             self._report_progress("Reconstruction de l'arbre")
@@ -3266,36 +3267,247 @@ class Kernel:
 
     # -- palier 2 : révolutions, transformations, habillages avancés ------
 
-    def _revolved(self, type_id, angle, sketch):
-        """Revolution/Groove share everything but add-vs-cut.
+    _SKETCH_AXES = {"vertical": "V_Axis", "horizontal": "H_Axis"}
 
-        The axis is the sketch's own vertical axis — draw the profile beside
-        it, exactly the SolidWorks revolve reflex.
+    def _revolution_reference(self, profile, axis):
+        """Référence d'axe : axe d'esquisse, ligne, ou axe d'origine."""
+        token = str(axis or "vertical").strip() or "vertical"
+        if token in self._SKETCH_AXES:
+            return (profile, [self._SKETCH_AXES[token]])
+        if token.upper() in self._AXIS_ROLES:
+            return (self._origin_axis(token), [""])
+        if token.startswith("line:"):
+            try:
+                gid = int(token.split(":", 1)[1])
+            except ValueError:
+                gid = -1
+            geometry = list(getattr(profile, "Geometry", []) or [])
+            if gid < 0 or gid >= len(geometry):
+                raise KernelError("l'axe de révolution doit être une ligne")
+            geo = geometry[gid]
+            if getattr(geo, "TypeId", "") != "Part::GeomLineSegment":
+                raise KernelError("l'axe de révolution doit être une ligne")
+            # La géométrie de construction n'est pas dans la forme de
+            # l'esquisse : une ligne de référence, cachée, la porte.
+            if self._is_construction(profile, gid, geo):
+                return (self._axis_datum(profile, gid), [""])
+            edge = 0
+            for index, item in enumerate(geometry):
+                if self._is_construction(profile, index, item):
+                    continue
+                edge += 1
+                if index == gid:
+                    return (profile, ["Edge{}".format(edge)])
+            raise KernelError("l'axe de révolution doit être une ligne")
+        raise KernelError(
+            "axe de révolution inconnu « {} »".format(token))
+
+    def _axis_datum(self, profile, gid):
+        """Ligne de référence cachée, calée sur une ligne de construction."""
+        body = self._require_body()
+        for obj in body.Group:
+            if not getattr(obj, "FreeSolidAxisTool", False):
+                continue
+            if (getattr(obj, "AxisSketch", None) == profile
+                    and int(getattr(obj, "AxisGeo", -1)) == int(gid)):
+                self._place_axis_datum(obj, profile, gid)
+                return obj
+        tip = getattr(body, "Tip", None)
+        datum = body.newObject("PartDesign::Line", "AxisLine")
+        if "FreeSolidAxisTool" not in datum.PropertiesList:
+            datum.addProperty("App::PropertyBool", "FreeSolidAxisTool",
+                              "FreeSolid", "Axe interne d'une révolution")
+            datum.addProperty("App::PropertyLink", "AxisSketch",
+                              "FreeSolid", "Esquisse portée")
+            datum.addProperty("App::PropertyInteger", "AxisGeo",
+                              "FreeSolid", "Géométrie d'axe")
+        datum.FreeSolidAxisTool = True
+        datum.AxisSketch = profile
+        datum.AxisGeo = int(gid)
+        datum.MapMode = "Deactivated"
+        try:
+            datum.Visibility = False
+        except Exception:
+            pass
+        self._place_axis_datum(datum, profile, gid)
+        if tip is not None and getattr(body, "Tip", None) is not tip:
+            body.Tip = tip
+        return datum
+
+    def _place_axis_datum(self, datum, profile, gid):
+        geometry = list(getattr(profile, "Geometry", []) or [])
+        if gid < 0 or gid >= len(geometry):
+            raise KernelError("l'axe de révolution doit être une ligne")
+        geo = geometry[gid]
+        if getattr(geo, "TypeId", "") != "Part::GeomLineSegment":
+            raise KernelError("l'axe de révolution doit être une ligne")
+        p1 = profile.Placement.multVec(geo.StartPoint)
+        p2 = profile.Placement.multVec(geo.EndPoint)
+        direction = p2.sub(p1)
+        if float(direction.Length) < 1e-9:
+            raise KernelError("l'axe de révolution doit être une ligne")
+        app = self._app()
+        datum.MapMode = "Deactivated"
+        datum.Placement = app.Placement(
+            p1, app.Rotation(app.Vector(0, 0, 1), direction))
+
+    def _sync_revolution_axes(self):
+        """Recale les axes internes avant le recalcul du solide."""
+        doc = getattr(self, "_doc", None)
+        if doc is None:
+            return
+        for obj in list(doc.Objects):
+            if not getattr(obj, "FreeSolidAxisTool", False):
+                continue
+            sketch = getattr(obj, "AxisSketch", None)
+            if sketch is None:
+                continue
+            self._place_axis_datum(obj, sketch, int(getattr(obj, "AxisGeo", -1)))
+
+    def _drop_unused_axis_tools(self):
+        doc = self._require_doc()
+        used = set()
+        for obj in doc.Objects:
+            ref = getattr(obj, "ReferenceAxis", None)
+            try:
+                target = ref[0]
+            except Exception:
+                continue
+            if getattr(target, "FreeSolidAxisTool", False):
+                used.add(target.Name)
+        for obj in list(doc.Objects):
+            if getattr(obj, "FreeSolidAxisTool", False) and obj.Name not in used:
+                try:
+                    doc.removeObject(obj.Name)
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _as_object(link):
+        """Lien simple ou sous-lien ``(objet, [sous])`` → l'objet."""
+        if isinstance(link, (list, tuple)) and link:
+            return link[0]
+        return link
+
+    def _revolution_axis_token(self, obj):
+        """Jeton d'axe relu sur la fonction (vertical par défaut)."""
+        profile = self._as_object(getattr(obj, "Profile", None))
+        ref = getattr(obj, "ReferenceAxis", None)
+        try:
+            target, subs = ref[0], ref[1]
+        except Exception:
+            return "vertical"
+        sub = ""
+        try:
+            sub = str(list(subs)[0]) if subs else ""
+        except Exception:
+            sub = ""
+        profile_name = getattr(profile, "Name", "") or ""
+        target_name = getattr(target, "Name", "") or ""
+        if getattr(target, "FreeSolidAxisTool", False):
+            return "line:{}".format(int(getattr(target, "AxisGeo", -1)))
+        if target_name and target_name == profile_name:
+            if sub == "H_Axis":
+                return "horizontal"
+            if sub.startswith("Edge"):
+                try:
+                    wanted = int(sub[4:])
+                except ValueError:
+                    return "vertical"
+                edge = 0
+                for index, geo in enumerate(getattr(profile, "Geometry", []) or []):
+                    if self._is_construction(profile, index, geo):
+                        continue
+                    edge += 1
+                    if edge == wanted:
+                        return "line:{}".format(index)
+                return "vertical"
+            return "vertical"
+        for token, role in self._AXIS_ROLES.items():
+            if target_name == role or target_name.startswith(role):
+                return token
+        return "vertical"
+
+    def _revolution_state(self, obj):
+        profile = self._as_object(getattr(obj, "Profile", None))
+        return {
+            "axis": self._revolution_axis_token(obj),
+            "angle": self._prop_float(obj, "Angle"),
+            "reversed": bool(getattr(obj, "Reversed", False)),
+            "midplane": bool(getattr(obj, "Midplane", False)),
+            "profile": getattr(profile, "Name", "") or "",
+        }
+
+    def _sketch_line_axes(self, sk):
+        """Lignes de l'esquisse proposées comme axe de révolution."""
+        lines = []
+        try:
+            geometry = list(sk.Geometry)
+        except Exception:
+            return lines
+        for gid, geo in enumerate(geometry):
+            if getattr(geo, "TypeId", "") != "Part::GeomLineSegment":
+                continue
+            lines.append({
+                "id": int(gid),
+                "construction": bool(self._is_construction(sk, gid, geo)),
+                "x1": round(float(geo.StartPoint.x), 2),
+                "y1": round(float(geo.StartPoint.y), 2),
+                "x2": round(float(geo.EndPoint.x), 2),
+                "y2": round(float(geo.EndPoint.y), 2),
+            })
+        return lines
+
+    def _revolved(self, type_id, angle, sketch, axis=None,
+                  reversed=False, midplane=False):
+        """Révolution ou gorge : même axe, ajout ou enlèvement.
+
+        Sans axe, l'axe vertical de l'esquisse — le profil se dessine à
+        côté. ``axis`` peut être ``horizontal``, ``line:<id>`` (une ligne
+        de l'esquisse, de construction de préférence) ou ``X``, ``Y``, ``Z``.
         """
         body = self._require_body()
         doc = self._require_doc()
+        try:
+            degrees = float(angle)
+        except (TypeError, ValueError):
+            raise KernelError("angle de révolution invalide")
+        if not (degrees > 0 and degrees <= 360):
+            raise KernelError("angle de révolution invalide")
         profile = (self._get_sketch(sketch) if sketch is not None
                    else self._latest_sketch())
+        reference = self._revolution_reference(profile, axis)
         feature = body.newObject(type_id, type_id.split("::")[-1])
         feature.Profile = profile
-        feature.ReferenceAxis = (profile, ["V_Axis"])
-        feature.Angle = float(angle)
+        feature.ReferenceAxis = reference
+        feature.Angle = degrees
+        if reversed:
+            feature.Reversed = True
+        if midplane:
+            feature.Midplane = True
         feature.Label = label_for_type(type_id, self.lang)
+        self._drop_unused_axis_tools()
         try:
             self._recompute()
         except KernelError:
             doc.removeObject(feature.Name)
+            self._drop_unused_axis_tools()
             raise
         return self.get_tree()
 
-    def add_revolution(self, angle=360.0, sketch=None):
-        """Révolution, autour de l'axe vertical de
-        l'esquisse."""
-        return self._revolved("PartDesign::Revolution", angle, sketch)
+    def add_revolution(self, angle=360.0, sketch=None, axis=None,
+                       reversed=False, midplane=False):
+        """Révolution."""
+        return self._revolved(
+            "PartDesign::Revolution", angle, sketch, axis=axis,
+            reversed=reversed, midplane=midplane)
 
-    def add_groove(self, angle=360.0, sketch=None):
+    def add_groove(self, angle=360.0, sketch=None, axis=None,
+                   reversed=False, midplane=False):
         """Enlèvement par révolution."""
-        return self._revolved("PartDesign::Groove", angle, sketch)
+        return self._revolved(
+            "PartDesign::Groove", angle, sketch, axis=axis,
+            reversed=reversed, midplane=midplane)
 
     _AXIS_ROLES = {"X": "X_Axis", "Y": "Y_Axis", "Z": "Z_Axis"}
 
@@ -3921,12 +4133,51 @@ class Kernel:
         previous = []  # (prop, ancienne expression ou None, ancienne valeur)
         editable = self._EDITABLE_PROPS
         thin = self._thin_spec(obj) is not None
+        revolved = obj.TypeId in (
+            "PartDesign::Revolution", "PartDesign::Groove")
         if obj.TypeId == "PartDesign::Chamfer":
             editable = editable + ("Size2", "ChamferType", "FlipDirection")
+        if revolved:
+            editable = editable + ("Reversed", "Midplane", "axis")
         for prop, value in values.items():
             prop = str(prop)
             if prop not in editable:
                 raise KernelError("propriété non éditable : {}".format(prop))
+            if prop == "axis":
+                profile = self._as_object(getattr(obj, "Profile", None))
+                if profile is None:
+                    self._restore_props(obj, previous)
+                    raise KernelError("l'axe de révolution doit être une ligne")
+                token = str(value).strip() if value is not None else ""
+                try:
+                    reference = self._revolution_reference(profile, token)
+                except KernelError:
+                    self._restore_props(obj, previous)
+                    raise
+                previous.append(("ReferenceAxis", exprs_before.get("ReferenceAxis"),
+                                 getattr(obj, "ReferenceAxis", None)))
+                try:
+                    obj.ReferenceAxis = reference
+                except Exception as exc:  # noqa: BLE001
+                    self._restore_props(obj, previous)
+                    raise KernelError(_explain(exc))
+                continue
+            if prop in ("Reversed", "Midplane") and revolved:
+                if isinstance(value, bool):
+                    flag = value
+                elif type(value) is int and value in (0, 1):
+                    flag = bool(value)
+                else:
+                    self._restore_props(obj, previous)
+                    raise KernelError("sens de révolution : booléen attendu")
+                previous.append((prop, exprs_before.get(prop),
+                                 getattr(obj, prop, None)))
+                try:
+                    setattr(obj, prop, flag)
+                except Exception as exc:  # noqa: BLE001
+                    self._restore_props(obj, previous)
+                    raise KernelError(_explain(exc))
+                continue
             if not hasattr(obj, prop):
                 raise KernelError("{} n'a pas de propriété {}".format(
                     obj.Label, prop))
@@ -4008,6 +4259,7 @@ class Kernel:
                 pass  # l'état d'origine était déjà sain : ne pas masquer exc
             raise KernelError(
                 "{} — la pièce n'a pas été modifiée".format(exc))
+        self._drop_unused_axis_tools()
         return self.get_tree()
 
     @staticmethod
@@ -4194,8 +4446,10 @@ class Kernel:
         # nœud. Filtrer ici ferait diverger l'ensemble des cibles de ce que
         # le payload expose, et perdrait des arêtes réelles en silence.
         for obj in body.Group:
-            if not self._is_thin_helper(obj):   # hors arbre, voir get_tree
-                names.add(obj.Name)
+            if (getattr(obj, "FreeSolidAxisTool", False)
+                    or self._is_thin_helper(obj)):   # hors arbre
+                continue
+            names.add(obj.Name)
         for obj in self._doc.Objects:
             if obj.TypeId == "PartDesign::Body" and not self._is_internal_tool(obj):
                 names.add(obj.Name)
@@ -4390,11 +4644,16 @@ class Kernel:
             if obj.TypeId == "Sketcher::SketchObject":
                 item["rolled_back"] = self._is_rolled_back(obj)
                 item["definition"] = self._sketch_definition(obj)
+                lines = self._sketch_line_axes(obj)
+                if lines:
+                    item["lines"] = lines
             if obj.TypeId == "PartDesign::Chamfer":
                 item["chamfer"] = self._chamfer_state(obj)
             thin = self._thin_spec(obj)
             if thin is not None:
                 item["thin"] = thin
+            if obj.TypeId in ("PartDesign::Revolution", "PartDesign::Groove"):
+                item["revolution"] = self._revolution_state(obj)
             if "FreeSolidTextString" in obj.PropertiesList:
                 # Gravure rééditable : le panneau client édite ces valeurs.
                 item["text"] = {
@@ -4420,6 +4679,8 @@ class Kernel:
 
         items = []
         for obj in body.Group:
+            if getattr(obj, "FreeSolidAxisTool", False):
+                continue
             if (obj.TypeId == "Sketcher::SketchObject"
                     and obj.Name in consumed) or self._is_thin_helper(obj):
                 continue
@@ -5995,6 +6256,53 @@ class Kernel:
             tree = self.add_groove(360, sketch=groove_sk)
             report["p2_groove_ok"] = not any(
                 f["error"] for f in tree["features"])
+
+            mark("p2: révolution autour d'une ligne de construction")
+            import math
+            self.new_part("Pièce axe")
+            state = self.sketch_start()
+            axis_sk = state["sketch"]
+            for line in ((10, 0, 20, 0), (20, 0, 20, 10),
+                         (20, 10, 10, 10), (10, 10, 10, 0)):
+                self.sketch_add_line(axis_sk, *line)
+            state = self.sketch_add_line(axis_sk, 5, -2, 5, 12)
+            axis_id = state["entities"][-1]["id"]
+            self.sketch_toggle_construction(axis_sk, axis_id)
+            self.sketch_finish(axis_sk)
+            tree = self.add_revolution(
+                360, sketch=axis_sk, axis="line:{}".format(axis_id))
+            rev = next(f for f in tree["features"]
+                       if f["type"] == "PartDesign::Revolution")
+            sketch_child = rev["children"][0]
+            tube = abs(float(self._require_body().Shape.Volume)
+                       - 2000.0 * math.pi) < 1.0
+            report["p2_revolution_axis_ok"] = (
+                tube
+                and rev.get("revolution", {}).get("axis") == "line:{}".format(axis_id)
+                and any(line["id"] == axis_id and line["construction"]
+                        for line in sketch_child.get("lines") or []))
+            tree = self.set_params(rev["name"], {"axis": "vertical"})
+            rev = next(f for f in tree["features"]
+                       if f["type"] == "PartDesign::Revolution")
+            report["p2_revolution_axis_edit_ok"] = (
+                abs(float(self._require_body().Shape.Volume)
+                    - 3000.0 * math.pi) < 1.0
+                and rev.get("revolution", {}).get("axis") == "vertical")
+            kept = float(self._require_body().Shape.Volume)
+            refused = False
+            try:
+                self.set_params(rev["name"], {"axis": "sommet"})
+            except KernelError:
+                refused = True
+            report["p2_revolution_axis_refused"] = (
+                refused
+                and abs(float(self._require_body().Shape.Volume) - kept) < 0.01)
+            tree = self.set_params(rev["name"], {"Midplane": True})
+            rev = next(f for f in tree["features"]
+                       if f["type"] == "PartDesign::Revolution")
+            report["p2_revolution_midplane_ok"] = (
+                rev.get("revolution", {}).get("midplane") is True
+                and not rev.get("error"))
 
             mark("p2: symétrie + répétition linéaire")
             self.new_part("Pièce symétrie")

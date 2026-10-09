@@ -85,6 +85,8 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
   }
 
   function onKey(event) {
+    // Une saisie flottante (boîte de cote) gère ses propres touches.
+    if (event.target?.closest?.("[data-own-keys]")) return;
     if (event.key === "Enter" && event.target.tagName !== "SELECT") {
       if (active?.spec.noApply) return;
       event.preventDefault();

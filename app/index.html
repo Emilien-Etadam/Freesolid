@@ -168,6 +168,22 @@
   .orient-cross .r3 { grid-row: 3; }
   .orient-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
 
+  /* Boîte de saisie d'une cote, posée près de la cote. */
+  .dim-modify {
+    position: absolute; z-index: 7; display: flex; align-items: center;
+    gap: 4px; padding: 4px; background: var(--panel);
+    border: 1px solid var(--accent); border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.45);
+  }
+  .dim-modify input { width: 110px; font-size: 13px; }
+  .dim-modify span { color: var(--ink-2); font-size: 12px; }
+  .dim-modify button {
+    min-width: 24px; padding: 2px 4px; cursor: pointer;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px;
+  }
+  .dim-modify .ok { color: #46c37b; }
+  .dim-modify .no { color: #ff5c5c; }
+
   /* Coin de confirmation : sous la barre de vue, en haut à droite. */
   #confirm-corner {
     position: absolute; top: 52px; right: 10px; z-index: 4;

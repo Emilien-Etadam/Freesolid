@@ -15,7 +15,7 @@ import {
 import { num } from "./num.js";
 import { boxMode, isDrag, normalizeRect, pickInBox } from "./navigation.js";
 import {
-  dimEditPayload, dimLabel, openDimEditor, sketchDimAnchor,
+  arrowSegments, dimEditPayload, dimGeometry, dimLabel, openDimEditor,
 } from "./dims.js";
 
 export function createDimSprite(text, x, y, z = 0.01, color = "#7fc4ff") {
@@ -65,6 +65,12 @@ export function createSketchMode(deps) {
     { color: 0x4f8fdb, depthTest: false });
   const selectedMaterial = new THREE.LineBasicMaterial(
     { color: 0xd9924a, depthTest: false });
+  // Cotes : lignes d'attache, ligne de cote et flèches. Pilotante en bleu
+  // clair, de référence (pilotée) en gris.
+  const dimLineMaterial = new THREE.LineBasicMaterial(
+    { color: 0x7fc4ff, depthTest: false });
+  const drivenDimLineMaterial = new THREE.LineBasicMaterial(
+    { color: 0x8b939d, depthTest: false });
   const pointMaterial = new THREE.PointsMaterial({
     color: 0x4f8fdb, size: 7, sizeAttenuation: false, depthTest: false });
   group.renderOrder = 20;
@@ -465,10 +471,31 @@ export function createSketchMode(deps) {
       group.add(cloud);
     }
 
+    // L'unité de tracé suit le zoom : la cote garde sa taille à l'écran.
+    const dimSize = span * 0.02;
     for (const dim of mode.state.dims) {
-      const anchor = sketchDimAnchor(dim, mode.state.entities);
-      if (!anchor) continue;
-      const sprite = createDimSprite(dimLabel(dim), anchor.x, anchor.y);
+      const constraint = (mode.state.constraints ?? [])
+        .find((c) => c.id === dim.id);
+      const shape = dimGeometry(dim, constraint, mode.state.entities, dimSize);
+      if (!shape) continue;
+      const segments = [
+        ...shape.segments,
+        ...shape.arrows.flatMap((a) => arrowSegments(a, dimSize * 0.9)),
+      ];
+      if (segments.length) {
+        const flat = new Float32Array(segments.flatMap(
+          ([x1, y1, x2, y2]) => [x1, y1, 0, x2, y2, 0]));
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.BufferAttribute(flat, 3));
+        const lines = new THREE.LineSegments(geometry,
+          constraint?.driving === false ? drivenDimLineMaterial
+            : dimLineMaterial);
+        lines.renderOrder = 21;
+        group.add(lines);
+      }
+      const sprite = createDimSprite(dimLabel(dim), shape.label.x, shape.label.y);
+      // Étiquette à taille d'écran constante (le canevas fait 256 × 40).
+      sprite.scale.set(span * 0.16, span * 0.16 * 40 / 256, 1);
       sprite.userData.dim = dim;
       sprite.renderOrder = 22;
       group.add(sprite);
@@ -760,14 +787,25 @@ export function createSketchMode(deps) {
       } else {
         const first = mode.pendingDim;
         mode.pendingDim = null;
+        let params;
         if (!target
             || (target.geo === first.geo && target.point === first.point)) {
-          safe(call("sketch_dim", { sketch: name, geo: first.geo }));
+          params = { sketch: name, geo: first.geo };
         } else {
-          const params = { sketch: name, geo: first.geo, geo2: target.geo };
+          params = { sketch: name, geo: first.geo, geo2: target.geo };
           if (first.point != null) params.point = first.point;
           if (target.point != null) params.point2 = target.point;
-          safe(call("sketch_dim", params));
+        }
+        // La cote est posée à la valeur mesurée, puis on saisit la vraie.
+        const before = new Set((mode.state.dims ?? []).map((d) => d.id));
+        const at = { x: event.clientX, y: event.clientY };
+        try {
+          applyState(await call("sketch_dim", params));
+          const created = (mode.state.dims ?? [])
+            .find((d) => !before.has(d.id));
+          if (created) openModifyBox(created, at);
+        } catch (error) {
+          say(error.message, true);
         }
       }
     }
@@ -1177,10 +1215,94 @@ export function createSketchMode(deps) {
       if (!dim) continue;
       const s = toScreen(child.position.x, child.position.y);
       if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < 22) {
-        editDim(dim);
+        openModifyBox(dim, { x: s.x, y: s.y });
         return;
       }
     }
+  }
+
+  // ---------- boîte de saisie d'une cote ----------
+  // Petite boîte flottante près de la cote : la valeur mesurée est
+  // sélectionnée, on tape la nouvelle (ou une expression), Entrée applique,
+  // Échap garde la valeur mesurée. « … » ouvre le panneau complet (nom).
+
+  let modifyBox = null;
+
+  function closeModifyBox() {
+    modifyBox?.remove();
+    modifyBox = null;
+  }
+
+  function openModifyBox(dim, at) {
+    closeModifyBox();
+    const host = renderer.domElement.parentElement;
+    const rect = host.getBoundingClientRect();
+    const sketchDim = { ...dim, kind: "sketch" };
+    const isSketchAngle = dim.type === "Angle";
+    const shown = dim.expr
+      || (isSketchAngle
+        ? (dim.value * 180 / Math.PI).toFixed(2)
+        : String(+Number(dim.value).toFixed(4)));
+    const box = document.createElement("div");
+    box.className = "dim-modify";
+    box.dataset.ownKeys = "1"; // le panneau ne capte pas Entrée / Échap ici
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = shown;
+    input.title = t("Valeur ou expression — Entrée pour appliquer, Échap pour garder la valeur mesurée");
+    const unitEl = document.createElement("span");
+    unitEl.textContent = isSketchAngle ? "°" : "mm";
+    const ok = document.createElement("button");
+    ok.className = "ok";
+    ok.textContent = "✓";
+    ok.title = t("Appliquer (Entrée)");
+    const cancel = document.createElement("button");
+    cancel.className = "no";
+    cancel.textContent = "✗";
+    cancel.title = t("Garder la valeur mesurée (Échap)");
+    const more = document.createElement("button");
+    more.textContent = "…";
+    more.title = t("Nom et expression de la cote");
+    box.append(input, unitEl, ok, cancel, more);
+    host.appendChild(box);
+    const left = Math.min(Math.max(at.x - rect.left + 12, 4),
+      rect.width - box.offsetWidth - 4);
+    const top = Math.min(Math.max(at.y - rect.top - box.offsetHeight - 12, 4),
+      rect.height - box.offsetHeight - 4);
+    box.style.left = `${left}px`;
+    box.style.top = `${top}px`;
+    modifyBox = box;
+
+    const apply = () => {
+      const extra = dimEditPayload({ value: input.value, name: dim.name ?? "" },
+        sketchDim, { shown, isSketchAngle });
+      closeModifyBox();
+      if (extra.value === undefined && extra.expr === undefined) return;
+      const params = { sketch: mode.state.sketch, dim: dim.id, ...extra };
+      safe((async () => {
+        const state = await call("sketch_set_dim", params);
+        await refresh(call("get_tree"));
+        return state;
+      })(), { keepSelection: true });
+    };
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        apply();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        closeModifyBox();
+      }
+      event.stopPropagation();
+    });
+    ok.addEventListener("click", apply);
+    cancel.addEventListener("click", closeModifyBox);
+    more.addEventListener("click", () => {
+      closeModifyBox();
+      editDim(dim);
+    });
+    input.focus();
+    input.select();
   }
 
   function onKey(event) {
@@ -1640,6 +1762,7 @@ export function createSketchMode(deps) {
   async function exit(keep) {
     if (!mode.active) return;
     closeEntityPanel();
+    closeModifyBox();
     mode.active = false;
     document.dispatchEvent(new Event("freesolid:sketch-exit"));
     for (const [type, handler] of listeners) {

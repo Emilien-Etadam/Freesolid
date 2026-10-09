@@ -606,5 +606,9 @@
  "Surface lissée : au moins deux profils": "Lofted surface: at least two profiles",
  "Coudre : au moins deux surfaces": "Knit: at least two surfaces",
  "Épaissir : une surface et une épaisseur non nulle": "Thicken: a surface and a non-zero thickness",
- "Répétition variable : cliquez au moins une fonction dans l'arbre": "Variable pattern: click at least one feature in the tree"
+ "Répétition variable : cliquez au moins une fonction dans l'arbre": "Variable pattern: click at least one feature in the tree",
+ "Valeur ou expression — Entrée pour appliquer, Échap pour garder la valeur mesurée": "Value or expression — Enter to apply, Esc to keep the measured value",
+ "Appliquer (Entrée)": "Apply (Enter)",
+ "Garder la valeur mesurée (Échap)": "Keep the measured value (Esc)",
+ "Nom et expression de la cote": "Dimension name and expression"
 }

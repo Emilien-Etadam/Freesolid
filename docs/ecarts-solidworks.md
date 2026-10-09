@@ -50,7 +50,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 7 | Coin de confirmation ✓/✗ dans la vue | P2 | fait : agit sur la commande ouverte, sinon sur l'esquisse (fermer / quitter sans garder) |
 | 8 | Barre d'espace : boîte d'orientation | P2 | fait : 6 vues en croix, iso / dimétrique / trimétrique, Normal à, épingle. Reste : dispositions multi-fenêtres |
 | 9 | Origine dans l'arbre et dans l'esquisse ; volumes visibles en esquisse | P2 | fait : origine (ligne de l'arbre, trièdre, repère d'esquisse) ; la pièce reste visible en esquisse (Q1 tranchée) |
-| 10 | Cotation : saisie de la valeur à la pose, lignes d'attache et flèches | P1 | reste |
+| 10 | Cotation : saisie de la valeur à la pose, lignes d'attache et flèches | P1 | fait : boîte de saisie flottante à la pose et au double-clic (Entrée applique, Échap garde la mesure, « … » pour nom/expression) ; lignes d'attache, flèches, arcs d'angle ; cercle coté au diamètre (Ø), arc au rayon (R) |
 | 11 | Retour pendant le tracé (inférences, symboles de relations) | P2 | reste |
 | 12 | Barre S (la spline quitte la touche S) | P2 | confié à Cursor (T12) |
 | 13 | Menu et barre contextuels dans la vue | P1 | reste |

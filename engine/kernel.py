@@ -4988,8 +4988,8 @@ class Kernel:
 
     def sketch_dim(self, sketch, geo, value=None,
                    geo2=None, point=None, point2=None):
-        """Smart dimension: length on a line, radius on a circle or arc,
-        distance/angle between two entities.
+        """Smart dimension: length on a line, diameter on a circle,
+        radius on an arc, distance/angle between two entities.
 
         Driving, SolidWorks-style: dimension it and the geometry obeys.
         """
@@ -5013,8 +5013,13 @@ class Kernel:
                               target.EndPoint))
                 sk.addConstraint(Sketcher.Constraint(
                     "Distance", gid, float(length)))
-            elif target.TypeId in ("Part::GeomCircle",
-                                   "Part::GeomArcOfCircle"):
+            elif target.TypeId == "Part::GeomCircle":
+                # Un cercle se cote au diamètre, un arc au rayon.
+                diameter = (value if value is not None
+                            else 2 * target.Radius)
+                sk.addConstraint(Sketcher.Constraint(
+                    "Diameter", gid, float(diameter)))
+            elif target.TypeId == "Part::GeomArcOfCircle":
                 radius = value if value is not None else target.Radius
                 sk.addConstraint(Sketcher.Constraint(
                     "Radius", gid, float(radius)))

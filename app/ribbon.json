@@ -147,6 +147,31 @@
       ]
     },
     {
+      "id": "evaluate",
+      "libelle": "Évaluer",
+      "groupes": [
+        {
+          "libelle": "Évaluer",
+          "boutons": [
+            { "id": "ribbon-measure", "relais": "btn-measure",
+              "titre": "Mesurer — distance entre deux faces ou arêtes",
+              "libelle": "Mesurer" },
+            { "id": "ribbon-mass", "relais": "btn-evaluate",
+              "titre": "Évaluer — volume, masse (densité), centre de gravité",
+              "icon": "icons/view-measurement.svg",
+              "libelle": "Évaluer" },
+            { "id": "ribbon-equations", "relais": "btn-equations",
+              "titre": "Équations — variables globales pour piloter cotes et fonctions",
+              "icon": "icons/VarSet.svg",
+              "libelle": "Équations" },
+            { "id": "btn-interf",
+              "titre": "Détection d'interférences — volume commun par paires de composants",
+              "libelle": "Interférences" }
+          ]
+        }
+      ]
+    },
+    {
       "id": "assembly",
       "libelle": "Assemblage",
       "groupes": [
@@ -178,15 +203,7 @@
               "libelle": "Déplacer" },
             { "id": "btn-joint",
               "titre": "Contrainte d'assemblage — deux faces, le solveur repositionne",
-              "icon": "icons/Geoassembly.svg", "libelle": "Contrainte" }
-          ]
-        },
-        {
-          "libelle": "Évaluer",
-          "boutons": [
-            { "id": "btn-interf",
-              "titre": "Détection d'interférences — volume commun par paires de composants",
-              "libelle": "Interférences" }
+              "icon": "icons/Geoassembly.svg",               "libelle": "Contrainte" }
           ]
         }
       ]

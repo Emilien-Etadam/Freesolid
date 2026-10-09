@@ -39,6 +39,28 @@
     padding: 4px 12px 0;
   }
   #topbar .push { margin-left: auto; }
+  #command-search { position: relative; }
+  #command-query {
+    width: 180px; box-sizing: border-box;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 4px 8px; font: inherit; font-size: 12px;
+  }
+  #command-results {
+    position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+    width: 260px; max-height: 280px; overflow: auto;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 4px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  }
+  #command-results[hidden] { display: none; }
+  #command-results button {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 8px; width: 100%; background: none; border: none;
+    text-align: left; padding: 4px 6px; border-radius: 4px; font-size: 12px;
+  }
+  #command-results button:hover:not(:disabled) { background: var(--panel-2); }
+  #command-results .cmd-tab { color: var(--ink-2); font-size: 11px; }
   header .tab {
     background: none; border: none; border-radius: 0;
     border-bottom: 2px solid transparent;
@@ -157,6 +179,7 @@
   header button, #sketchbar button, #viewbar button {
     display: inline-flex; align-items: center; gap: 6px;
   }
+  header button[hidden] { display: none; }
 
   #viewbar {
     position: absolute; top: 10px; right: 10px;
@@ -939,7 +962,13 @@
       <button id="btn-save" title="Enregistrer (.FCStd)"><img src="icons/document-save.svg" alt=""></button>
       <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img src="icons/document-save-as.svg" alt=""></button>
       <button id="btn-drawing" title="Mise en plan — Face / Dessus / Iso, cotes d'encombrement, coupe, export DXF"><img src="icons/TechDraw_PageDefault.svg" alt=""></button>
-      <button id="btn-selftest">Autotest</button>
+      <button id="btn-selftest" hidden>Autotest</button>
+      <div id="command-search">
+        <input id="command-query" type="search" autocomplete="off"
+          placeholder="Rechercher une commande"
+          aria-label="Rechercher une commande">
+        <div id="command-results" hidden role="listbox"></div>
+      </div>
     </div>
     <!-- Les bandeaux features/surfaces/assembly sont rendus depuis
          ribbon.json et insérés ici, avant #sketchbar (voir ribbon.js). -->

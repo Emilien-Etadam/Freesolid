@@ -69,6 +69,12 @@ export function buildRibbonElement(doc, id, groupes) {
         if (specBtn.taille === "large") btn.className = "large";
         if (specBtn.titre) btn.title = t(String(specBtn.titre));
         if (specBtn.disabled) btn.disabled = true;
+        if (isButtonId(specBtn.relais)) {
+          const targetId = specBtn.relais;
+          btn.addEventListener("click", () => {
+            doc.getElementById(targetId)?.click();
+          });
+        }
         const icon = safeIconSrc(specBtn.icon);
         if (icon) {
           const img = doc.createElement("img");

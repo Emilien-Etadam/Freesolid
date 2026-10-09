@@ -36,6 +36,7 @@
  "Autoriser": "Allow",
  "Autoriser le Python de ce document ?": "Allow this document's Python?",
  "Autotest": "Self-test",
+ "Autotest du moteur": "Engine self-test",
  "Autotest : ": "Self-test: ",
  "Autotest : {n} étapes, {ok}/{total} vérifications — {result}": "Self-test: {n} steps, {ok}/{total} checks — {result}",
  "Autotest OK — {faces} faces, {tris} triangles, reparam {result}": "Self-test OK — {faces} faces, {tris} triangles, reparam {result}",

@@ -61,10 +61,10 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 18 | Chanfrein distance-angle | P2 | fait : distance égale, deux distances, distance et angle, inversion des côtés, réédition |
 | 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | fait : borgne, jusqu'au suivant, jusqu'au dernier / à travers tout, jusqu'à la face (+ décalage), plan milieu, deuxième direction, dépouille (vers l'intérieur ou l'extérieur), paroi mince (un côté, plan milieu, deux côtés ; profil fermé ou ouvert ; épaisseurs rééditables), extrémités fermées sur profil fermé (épaisseur propre, profondeur borgne) |
 | 20 | Révolution : choix de l'axe | P2 | fait : axe vertical, ligne de construction, axes d'origine, plan milieu, réédition |
-| 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | confié à Cursor (T21) |
+| 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | fait |
 | 22 | Répétitions : choix des fonctions et de la direction | P2 | fait : fonctions choisies dans l'arbre (plusieurs), direction par axe d'origine ou arête droite, pas ou longueur totale, inversion ; idem pour la symétrie (fonctions) |
 | 23 | Ouvrir / Enregistrer : dialogue de fichiers | P2 | fait : liste, filtre, nom, écrasement, prison de chemins |
-| 24 | Accueil et Nouveau (Ctrl+N) | P2 | confié à Cursor (T24) |
+| 24 | Accueil et Nouveau (Ctrl+N) | P2 | fait |
 | 25 | Assemblage : contraintes standard | P1 | fait : coïncidente, concentrique, parallèle, perpendiculaire, tangente, distance, angle, verrouillage, option « opposé » ; traduites en liaisons natives (distance nulle, cylindrique…) |
 | 26 | Assemblage : insertion guidée, fixe/flottant, déplacement à la souris | P2 | fait : insertion enchaînée après « Nouvel assemblage » (premier composant fixé), Fixer / Libérer au clic droit, glisser d'un composant libre dans le plan de l'écran. Le choix du fichier passera par le dialogue de T23 |
 | 27 | Interface anglaise sans texte français (demande du 2026-10-09) | P1 | fait : textes interpolés passés par t(), libellés de panneaux, noms moteur (pièce, corps, plans, combiner) |

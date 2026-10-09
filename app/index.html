@@ -860,6 +860,30 @@
     background: rgba(0, 0, 0, 0.45); padding: 24px;
   }
   #file-dialog[hidden] { display: none; }
+  #welcome, #new-dialog {
+    position: fixed; inset: 0; z-index: 65;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.45); padding: 24px;
+  }
+  #welcome[hidden], #new-dialog[hidden] { display: none; }
+  .welcome-card {
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    width: min(440px, 100%); padding: 18px 18px 14px;
+  }
+  .welcome-card h2 { margin: 0 0 12px; font-size: 18px; }
+  .welcome-card h3 {
+    margin: 14px 0 6px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2);
+  }
+  .welcome-actions, .new-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  #welcome-recent { display: flex; flex-direction: column; gap: 2px; }
+  #welcome-recent button {
+    background: none; border: none; text-align: left; padding: 4px 6px;
+  }
+  .welcome-empty, .welcome-tip { color: var(--ink-2); font-size: 12px; margin: 4px 0 0; }
+  .welcome-tip { margin-top: 12px; }
   .file-card {
     background: var(--panel-2); color: var(--ink);
     border: 1px solid var(--line); border-radius: 10px;
@@ -900,6 +924,7 @@
            avant .push ; les plugins ajoutent les leurs à la suite). -->
       <span class="push"></span>
       <button id="btn-settings" title="Paramètres — version, mises à jour, réglages"><img src="icons/FreeSolid_Settings.svg" alt=""></button>
+      <button id="btn-home" title="Accueil">Accueil</button>
       <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt=""></button>
       <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/edit-undo.svg" alt=""></button>
       <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img src="icons/edit-redo.svg" alt=""></button>
@@ -1093,6 +1118,29 @@
     </div>
   </div>
   <div id="param-pick"></div>
+  <div id="welcome" hidden>
+    <div class="welcome-card" role="dialog" aria-modal="true" aria-label="Accueil">
+      <h2>Accueil</h2>
+      <div class="welcome-actions">
+        <button type="button" data-welcome="part">Nouvelle pièce</button>
+        <button type="button" data-welcome="assembly">Nouvel assemblage</button>
+        <button type="button" data-welcome="open">Ouvrir</button>
+      </div>
+      <h3>Récents</h3>
+      <div id="welcome-recent"></div>
+      <p id="welcome-tip" class="welcome-tip"></p>
+    </div>
+  </div>
+  <div id="new-dialog" hidden>
+    <div class="welcome-card" role="dialog" aria-modal="true" aria-label="Nouveau">
+      <h2>Nouveau</h2>
+      <div class="new-actions">
+        <button type="button" data-new="part">Pièce</button>
+        <button type="button" data-new="assembly">Assemblage</button>
+        <button type="button" data-new="cancel">Annuler (Échap)</button>
+      </div>
+    </div>
+  </div>
   <div id="file-dialog" hidden></div>
   <!-- Panneau Paramètres : rendu par settings.js à l'ouverture. -->
   <div id="settings-dialog" hidden></div>

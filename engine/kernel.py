@@ -724,6 +724,27 @@ class Kernel:
                 joint.ObjectToGround = link
         joint.Label = self._t("Fixé — {}").format(link.Label)
 
+    def set_component_grounded(self, component, grounded=True):
+        """Fixer ou libérer un composant (menu du composant)."""
+        doc = self._require_assembly()
+        link = doc.getObject(str(component))
+        if link is None or link.TypeId != "App::Link":
+            raise KernelError("composant inconnu : {}".format(component))
+        anchors = [o for o in self._joint_group().Group
+                   if getattr(o, "ObjectToGround", None) is link]
+        if grounded and not anchors:
+            self._ground(link)
+        elif not grounded:
+            for anchor in anchors:
+                doc.removeObject(anchor.Name)
+        doc.recompute()
+        try:
+            self._solve_assembly()
+            doc.recompute()
+        except KernelError:
+            pass  # rien à résoudre ou sur-contraint : l'état reste lisible
+        return self.assembly_tree()
+
     #: nos noms -> l'énumération JointType du module natif. Les quatre
     #: derniers sont les contraintes mécaniques (vues dans le spike).
     _JOINT_TYPES = {
@@ -7578,6 +7599,7 @@ _TRANSACTIONAL = frozenset({
     "sketch_fillet", "sketch_trim", "sketch_constrain",
     "sketch_add_spline", "sketch_add_ellipse", "sketch_mirror",
     "sketch_array", "sketch_offset", "array_component",
+    "set_component_grounded",
 })
 
 

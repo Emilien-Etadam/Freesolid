@@ -86,6 +86,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "new_assembly": (),                # optional: name
     "insert_component": _Req(("path", str)),  # .FCStd — App::Link vers son corps
     "move_component": _Req(("component", str)),  # optional: x, y, z, yaw, pitch, roll
+    "set_component_grounded": _Req(("component", str),
+                                   optional={"grounded": bool}),
     "array_component": _Req(("component", str), ("count", int)),  # optional: dx, dy, dz
     "assembly_tree": (),
     "tessellate_assembly": (),         # optional: deviation

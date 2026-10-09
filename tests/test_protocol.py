@@ -514,6 +514,7 @@ def test_ops_snapshot_keys():
         "selftest",
         "set_active_body",
         "set_body_color",
+        "set_component_grounded",
         "set_param",
         "set_params",
         "set_tip",

@@ -215,7 +215,6 @@
  "Indicateurs en échec": "Failed checks",
  "Insérer une pièce": "Insert Component",
  "Insérer une pièce (.FCStd) — chaque instance est un lien vers le fichier": "Insert Component (.FCStd) — each instance is a link to the file",
- "Insérer une pièce (chemin .FCStd) :": "Insert component (.FCStd path):",
  "Interférences": "Interferences",
  "Intersection": "Common",
  "Inverser la direction": "Reverse direction",
@@ -451,7 +450,6 @@
  "cette face n'a pas de fonction associée": "this face has no associated feature",
  "cette face n'appartient à aucune fonction éditable": "this face belongs to no editable feature",
  "largeur": "width",
- "v1 sans contraintes : positionnement direct — le solveur de contraintes d'assemblage viendra ensuite.": "v1 without mates: direct positioning — the assembly mate solver will come next.",
  "vocabulaire des nœuds illisible": "node vocabulary unreadable",
  "{f} : aucun paramètre numérique éditable": "{f}: no editable numeric parameter",
  "{f} : aucune cote à afficher": "{f}: no dimension to show",
@@ -644,5 +642,10 @@
  "Perpendiculaire": "Perpendicular",
  "Tangente": "Tangent",
  "Verrouillage": "Lock",
- "Opposé (retourner l'alignement)": "Opposed (flip alignment)"
+ "Opposé (retourner l'alignement)": "Opposed (flip alignment)",
+ "Fixer": "Fix",
+ "Libérer": "Float",
+ "Premier composant (chemin .FCStd) — il sera fixé à l'origine :": "First component (.FCStd path) — it will be fixed at the origin:",
+ "Composant suivant (chemin .FCStd) — Annuler pour terminer :": "Next component (.FCStd path) — Cancel to finish:",
+ "Avec des contraintes posées, le solveur repositionne le composant après le déplacement. Astuce : glissez un composant libre directement dans la vue.": "With mates in place, the solver repositions the component after the move. Tip: drag a free component directly in the view."
 }

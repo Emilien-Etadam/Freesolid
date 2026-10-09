@@ -2718,9 +2718,16 @@ function openMenu(event, feature) {
   event.preventDefault();
   menuFeature = feature;
   const onBody = isBodyMenuTarget(feature);
+  // Un composant d'assemblage : fixer / libérer, pas de barre de retour.
+  const onComponent = !!assemblyState && typeof feature.grounded === "boolean";
   document.getElementById("ctx-modify").hidden = !canModifyMenuTarget(feature);
   document.getElementById("ctx-color").hidden = !onBody;
   document.getElementById("ctx-color-reset").hidden = !onBody;
+  const ground = document.getElementById("ctx-ground");
+  ground.hidden = !onComponent;
+  ground.textContent = t(feature.grounded ? "Libérer" : "Fixer");
+  document.getElementById("ctx-rollback").hidden = !!assemblyState;
+  document.getElementById("ctx-end").hidden = !!assemblyState;
   menuEl.style.display = "block";
   menuEl.style.left = Math.min(event.clientX, window.innerWidth - 200) + "px";
   menuEl.style.top = event.clientY + "px";
@@ -2754,6 +2761,13 @@ document.getElementById("ctx-color").addEventListener("click", () => {
 document.getElementById("ctx-color-reset").addEventListener("click", () => {
   if (!menuFeature) return;
   refresh(call("set_body_color", { body: menuFeature.name, color: null }));
+});
+
+document.getElementById("ctx-ground").addEventListener("click", () => {
+  if (!menuFeature || typeof menuFeature.grounded !== "boolean") return;
+  refreshAssembly(call("set_component_grounded", {
+    component: menuFeature.name, grounded: !menuFeature.grounded,
+  }));
 });
 
 document.getElementById("ctx-rollback").addEventListener("click", () => {
@@ -4881,8 +4895,9 @@ function openMovePanel() {
           { type: "number", key: "roll", label: t("Roulis (X)"), value: +roll.toFixed(2), unit: "°" },
         ] },
     ],
-    note: t("v1 sans contraintes : positionnement direct — le solveur " +
-          "de contraintes d'assemblage viendra ensuite."),
+    note: t("Avec des contraintes posées, le solveur repositionne le "
+          + "composant après le déplacement. Astuce : glissez un composant "
+          + "libre directement dans la vue."),
     onApply: (v) => refreshAssembly(call("move_component", {
       component: comp.name,
       x: num(v.x) ?? 0, y: num(v.y) ?? 0,
@@ -4893,20 +4908,82 @@ function openMovePanel() {
   });
 }
 
-document.getElementById("btn-newasm").addEventListener("click", () => {
+// Un assemblage neuf enchaîne sur l'insertion du premier composant
+// (fixé à l'origine), puis propose d'en insérer d'autres.
+document.getElementById("btn-newasm").addEventListener("click", async () => {
   clearGhost();
-  refreshAssembly(call("new_assembly"));
+  await refreshAssembly(call("new_assembly"));
+  if (assemblyState) insertComponents();
 });
+
+async function insertComponents() {
+  for (;;) {
+    const first = !assemblyState?.components.length;
+    const path = prompt(first
+      ? "Premier composant (chemin .FCStd) — il sera fixé à l'origine :"
+      : "Composant suivant (chemin .FCStd) — Annuler pour terminer :",
+    "~/piece-freesolid.FCStd");
+    if (!path) return;
+    await refreshAssembly(call("insert_component", { path }));
+  }
+}
 
 document.getElementById("btn-insert").addEventListener("click", () => {
   if (!assemblyState) {
     say("Créez d'abord un assemblage (Nouvel assemblage)", true);
     return;
   }
-  const path = prompt("Insérer une pièce (chemin .FCStd) :",
-                      "~/piece-freesolid.FCStd");
-  if (!path) return;
-  refreshAssembly(call("insert_component", { path }));
+  insertComponents();
+});
+
+// ---------- déplacer un composant à la souris ----------
+// Bouton gauche glissé sur un composant libre : il suit le curseur dans le
+// plan de l'écran ; au lâcher, sa position part au moteur (qui résout les
+// contraintes posées, comme un glisser de modeleur).
+
+let asmDrag = null; // { comp, mesh, plane, from, start }
+
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  if (!assemblyState || !asmGroup || event.button !== 0 || panel.active) return;
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObjects(asmGroup.children, false)[0];
+  if (!hit) return;
+  const comp = assemblyState.components.find(
+    (c) => c.name === hit.object.userData.component);
+  if (!comp || comp.grounded) return;
+  const normal = camera.getWorldDirection(new THREE.Vector3());
+  asmDrag = {
+    comp, mesh: hit.object,
+    plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.point),
+    from: hit.point.clone(),
+    start: { x: event.clientX, y: event.clientY },
+    moved: false,
+  };
+});
+
+renderer.domElement.addEventListener("pointermove", (event) => {
+  if (!asmDrag) return;
+  if (Math.hypot(event.clientX - asmDrag.start.x,
+                 event.clientY - asmDrag.start.y) > 5) asmDrag.moved = true;
+  if (!asmDrag.moved) return;
+  setPointerFromEvent(event);
+  raycaster.setFromCamera(pointer, camera);
+  const at = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(asmDrag.plane, at)) return;
+  asmDrag.mesh.position.copy(at.sub(asmDrag.from));
+});
+
+renderer.domElement.addEventListener("pointerup", () => {
+  const drag = asmDrag;
+  asmDrag = null;
+  if (!drag?.moved) return;
+  const d = drag.mesh.position;
+  const [x, y, z] = drag.comp.position;
+  const [yaw, pitch, roll] = drag.comp.rotation;
+  refreshAssembly(call("move_component", {
+    component: drag.comp.name,
+    x: x + d.x, y: y + d.y, z: z + d.z, yaw, pitch, roll,
+  }));
 });
 
 document.getElementById("btn-move").addEventListener("click", openMovePanel);

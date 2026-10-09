@@ -142,6 +142,32 @@
   #viewbar button:hover { background: var(--panel-2); }
   #viewbar button.on { color: var(--accent); }
 
+  /* Boîte d'orientation : vues standard en croix, ouverte sous le curseur. */
+  #orient-box {
+    position: absolute; z-index: 6; width: 300px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  }
+  #orient-box[hidden] { display: none; }
+  #orient-box button {
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 4px 2px; font-size: 11px; cursor: pointer;
+  }
+  #orient-box button:hover { border-color: var(--accent); color: var(--accent); }
+  .orient-head { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+  .orient-head span { flex: 1; font-weight: 600; }
+  .orient-head button { padding: 0 6px; }
+  .orient-head button.on { border-color: var(--accent); }
+  .orient-cross {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(3, 26px); gap: 3px; margin-bottom: 6px;
+  }
+  .orient-cross .c1 { grid-column: 1; } .orient-cross .c2 { grid-column: 2; }
+  .orient-cross .c3 { grid-column: 3; } .orient-cross .c4 { grid-column: 4; }
+  .orient-cross .r1 { grid-row: 1; } .orient-cross .r2 { grid-row: 2; }
+  .orient-cross .r3 { grid-row: 3; }
+  .orient-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+
   /* Coin de confirmation : sous la barre de vue, en haut à droite. */
   #confirm-corner {
     position: absolute; top: 52px; right: 10px; z-index: 4;
@@ -755,6 +781,27 @@
   </aside>
 
   <main id="viewport">
+    <div id="orient-box" hidden role="dialog" aria-label="Orientation">
+      <div class="orient-head">
+        <span>Orientation</span>
+        <button data-action="pin" title="Garder la boîte ouverte">📌</button>
+        <button data-action="close" title="Fermer (Échap)">×</button>
+      </div>
+      <div class="orient-cross">
+        <button data-view="view-top" class="c2 r1" title="Dessus (Ctrl+5)">Dessus</button>
+        <button data-view="view-left" class="c1 r2" title="Gauche (Ctrl+3)">Gauche</button>
+        <button data-view="view-front" class="c2 r2" title="Face (Ctrl+1)">Face</button>
+        <button data-view="view-right" class="c3 r2" title="Droite (Ctrl+4)">Droite</button>
+        <button data-view="view-back" class="c4 r2" title="Arrière (Ctrl+2)">Arrière</button>
+        <button data-view="view-bottom" class="c2 r3" title="Dessous (Ctrl+6)">Dessous</button>
+      </div>
+      <div class="orient-row">
+        <button data-view="view-iso" title="Isométrique (Ctrl+7)">Iso</button>
+        <button data-view="view-dimetric" title="Dimétrique">Dimétrique</button>
+        <button data-view="view-trimetric" title="Trimétrique">Trimétrique</button>
+        <button data-view="normal" title="Normal à la sélection (Ctrl+8)">Normal à</button>
+      </div>
+    </div>
     <div id="confirm-corner" hidden>
       <button id="confirm-ok" class="ok" title="OK (Entrée)">✓</button>
       <button id="confirm-cancel" class="no" title="Annuler (Échap)">✗</button>

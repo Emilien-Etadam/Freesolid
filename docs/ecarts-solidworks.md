@@ -46,7 +46,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 5 | Préfixe d'état (-) / (+) et esquisse en cours dans l'arbre | P2 | fait |
 | 6 | « Quitter » l'esquisse annule vraiment | P2 | fait : op moteur sketch_cancel (transactions défaites + instantané de la géométrie) |
 | 7 | Coin de confirmation ✓/✗ dans la vue | P2 | fait : agit sur la commande ouverte, sinon sur l'esquisse (fermer / quitter sans garder) |
-| 8 | Barre d'espace : boîte d'orientation | P2 | reste |
+| 8 | Barre d'espace : boîte d'orientation | P2 | fait : 6 vues en croix, iso / dimétrique / trimétrique, Normal à, épingle. Reste : dispositions multi-fenêtres |
 | 9 | Origine dans l'arbre et dans l'esquisse ; volumes visibles en esquisse | P2 | reste |
 | 10 | Cotation : saisie de la valeur à la pose, lignes d'attache et flèches | P1 | reste |
 | 11 | Retour pendant le tracé (inférences, symboles de relations) | P2 | reste |

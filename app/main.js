@@ -1448,6 +1448,9 @@ function frameView(direction, up) {
 // Vue de face = normale au Plan de face (XZ), etc. — mêmes plans que le vocab.
 const VIEWS = {
   "view-iso":    { direction: [1, -1, 1], up: [0, 0, 1] },
+  // Dimétrique : deux axes raccourcis pareil ; trimétrique : trois différents.
+  "view-dimetric":  { direction: [1, -1, 0.55], up: [0, 0, 1] },
+  "view-trimetric": { direction: [1, -0.62, 0.5], up: [0, 0, 1] },
   "view-front":  { direction: [0, -1, 0], up: [0, 0, 1] },
   "view-back":   { direction: [0, 1, 0],  up: [0, 0, 1] },
   "view-left":   { direction: [-1, 0, 0], up: [0, 0, 1] },
@@ -1494,11 +1497,71 @@ const VIEW_KEYS = {
   1: "view-front", 2: "view-back", 3: "view-left", 4: "view-right",
   5: "view-top", 6: "view-bottom", 7: "view-iso",
 };
+
+// ---------- boîte d'orientation (barre d'espace) ----------
+// Les vues standard dépliées en croix autour de la face, plus iso,
+// dimétrique, trimétrique et « Normal à ». Elle s'ouvre sous le curseur ;
+// l'épingle la garde ouverte après un choix.
+
+const orientBox = document.getElementById("orient-box");
+let orientPinned = false;
+let lastViewportPointer = null;
+
+container.addEventListener("pointermove", (event) => {
+  lastViewportPointer = { x: event.clientX, y: event.clientY };
+});
+
+function openOrientBox() {
+  if (!orientBox) return;
+  const host = container.getBoundingClientRect();
+  const at = lastViewportPointer ?? {
+    x: host.left + host.width / 2, y: host.top + host.height / 2 };
+  orientBox.hidden = false;
+  const box = orientBox.getBoundingClientRect();
+  const left = Math.min(Math.max(at.x - host.left - box.width / 2, 4),
+    host.width - box.width - 4);
+  const top = Math.min(Math.max(at.y - host.top - box.height / 2, 4),
+    host.height - box.height - 4);
+  orientBox.style.left = `${left}px`;
+  orientBox.style.top = `${top}px`;
+}
+
+function closeOrientBox() {
+  if (orientBox) orientBox.hidden = true;
+}
+
+orientBox?.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  const view = button.dataset.view;
+  if (button.dataset.action === "pin") {
+    orientPinned = !orientPinned;
+    button.classList.toggle("on", orientPinned);
+    return;
+  }
+  if (button.dataset.action === "close") {
+    closeOrientBox();
+    return;
+  }
+  if (view === "normal") viewNormalTo();
+  else if (VIEWS[view]) frameView(VIEWS[view].direction, VIEWS[view].up);
+  if (!orientPinned) closeOrientBox();
+});
 document.addEventListener("keydown", (event) => {
   if (sketchMode.active) return;
   // Typing in a panel field must not trigger view shortcuts (F, Ctrl+1…).
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
   if (event.key !== "Escape" && pluginRuntime?.dispatchKey(event)) return;
+  if (event.key === " " && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    if (orientBox?.hidden === false) closeOrientBox();
+    else openOrientBox();
+    return;
+  }
+  if (event.key === "Escape" && orientBox?.hidden === false) {
+    closeOrientBox();
+    return;
+  }
   if ((event.key === "f" || event.key === "F")
       && !event.ctrlKey && !event.metaKey && !event.altKey) {
     frameView(null, null);

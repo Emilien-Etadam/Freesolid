@@ -25,6 +25,13 @@ function element(tag) {
     className: "",
     dataset: {},
     children: [],
+    _listeners: {},
+    addEventListener(type, fn) {
+      (el._listeners[type] ??= []).push(fn);
+    },
+    click() {
+      for (const fn of el._listeners.click ?? []) fn();
+    },
     parentElement: null,
     textContent: "",
     appendChild(child) {
@@ -195,12 +202,30 @@ describe("l'organisation transposée", () => {
   it("ordonne l'assemblage : créer, résoudre, insérer, répéter, éclater", () => {
     const onglet = LAYOUT.onglets.find((o) => o.id === "assembly");
     assert.deepEqual(onglet.groupes.map((g) => g.libelle),
-      ["Assemblage", "Liaisons", "Évaluer"]);
+      ["Assemblage", "Liaisons"]);
     assert.deepEqual(sequence(groupe("assembly", "Assemblage")),
       ["btn-newasm", "btn-solve", "btn-insert", "btn-array-comp",
         "btn-explode"]);
     assert.deepEqual(sequence(groupe("assembly", "Liaisons")),
       ["btn-move", "btn-joint"]);
+  });
+
+  it("regroupe mesurer, la masse, les équations et les interférences", () => {
+    const onglet = LAYOUT.onglets.find((o) => o.id === "evaluate");
+    assert.equal(onglet.libelle, "Évaluer");
+    assert.deepEqual(sequence(groupe("evaluate", "Évaluer")), [
+      "ribbon-measure", "ribbon-mass", "ribbon-equations", "btn-interf",
+    ]);
+    const byId = Object.fromEntries(
+      groupe("evaluate", "Évaluer").boutons.map((button) => [button.id, button]));
+    assert.equal(byId["ribbon-measure"].relais, "btn-measure");
+    assert.equal(byId["ribbon-measure"].libelle, "Mesurer");
+    assert.equal(byId["ribbon-mass"].relais, "btn-evaluate");
+    assert.equal(byId["ribbon-mass"].libelle, "Évaluer");
+    assert.equal(byId["ribbon-equations"].relais, "btn-equations");
+    assert.equal(byId["ribbon-equations"].libelle, "Équations");
+    assert.equal(byId["btn-interf"].libelle, "Interférences");
+    assert.equal(byId["btn-interf"].relais, undefined);
   });
 });
 
@@ -214,25 +239,27 @@ describe("installCoreRibbons", () => {
       features: "ribbon-features",
       sketch: "sketchbar",
       surfaces: "ribbon-surfaces",
+      evaluate: "ribbon-evaluate",
       assembly: "ribbon-assembly",
     });
 
     const tabs = doc.topbar.children.filter((c) => c.className?.includes("tab"));
     assert.deepEqual(tabs.map((t) => t.dataset.tab),
-      ["features", "sketch", "surfaces", "assembly"]);
+      ["features", "sketch", "surfaces", "evaluate", "assembly"]);
     assert.deepEqual(tabs.map((t) => t.textContent),
-      ["Fonctions", "Esquisse", "Surfaces", "Assemblage"]);
+      ["Fonctions", "Esquisse", "Surfaces", "Évaluer", "Assemblage"]);
     // Les onglets précèdent .push (la droite de la topbar reste à droite).
     assert.equal(doc.topbar.children.at(-1), doc.push);
 
     // Le premier onglet est actif, et lui seul.
     assert.deepEqual(tabs.map((t) => t.className),
-      ["tab active", "tab", "tab", "tab"]);
+      ["tab active", "tab", "tab", "tab", "tab"]);
 
     // Les bandeaux construits précèdent #sketchbar, dans l'ordre du JSON.
     const bars = doc.header.children.filter((c) => c !== doc.topbar);
     assert.deepEqual(bars.map((b) => b.id),
-      ["ribbon-features", "ribbon-surfaces", "ribbon-assembly", "sketchbar"]);
+      ["ribbon-features", "ribbon-surfaces", "ribbon-evaluate",
+        "ribbon-assembly", "sketchbar"]);
     assert.equal(bars[0].className, "ribbon active");
     assert.equal(bars[1].className, "ribbon");
   });
@@ -311,6 +338,22 @@ describe("buildRibbonElement", () => {
     assert.deepEqual(
       rangee.map((el) => (el.className === "sep" ? "|" : el.id)),
       ["btn-a", "|", "btn-b"]);
+  });
+
+  it("un relais déclenche le bouton déjà présent", () => {
+    const doc = fakeDoc();
+    const target = doc.createElement("button");
+    target.id = "btn-measure";
+    let clicks = 0;
+    target.addEventListener("click", () => { clicks += 1; });
+    doc.header.appendChild(target);
+    const ribbon = buildRibbonElement(doc, "evaluate", [{
+      libelle: "Évaluer",
+      boutons: [{ id: "ribbon-measure", libelle: "Mesurer",
+        relais: "btn-measure" }],
+    }]);
+    ribbon.children[0].children[0].children[0].click();
+    assert.equal(clicks, 1);
   });
 
   it("filtre les ids et les icônes dangereuses, honore disabled", () => {

@@ -1867,6 +1867,11 @@ renderer.setAnimationLoop(() => {
 // ---------- vues standard (Ctrl+1 à Ctrl+8, F) ----------
 
 function partCenterRadius() {
+  // La sphère n'existe qu'une fois calculée (un lancer de rayon le fait) :
+  // juste après un chargement, le cadrage prenait le rayon par défaut.
+  if (partMesh && !partMesh.geometry.boundingSphere) {
+    partMesh.geometry.computeBoundingSphere();
+  }
   if (!partMesh || !partMesh.geometry.boundingSphere)
     return { center: new THREE.Vector3(0, 0, 20), radius: 90 };
   const sphere = partMesh.geometry.boundingSphere;

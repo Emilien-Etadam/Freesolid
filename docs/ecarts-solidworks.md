@@ -40,7 +40,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | # | Écart | Prio | État |
 |---|---|---|---|
 | 1 | Titre de l'arbre « FeatureManager » → « Arbre de création » | P2 | fait |
-| 2 | Vues standard Ctrl+2 / 3 / 6 / 8 | P2 | reste |
+| 2 | Vues standard Ctrl+2 / 3 / 6 / 8 | P2 | fait |
 | 3 | Navigation souris (milieu, Ctrl+milieu, molette vers le curseur, cadre au bouton gauche) | P1 | reste |
 | 4 | Couleurs d'état de contrainte de l'esquisse | P1 | reste |
 | 5 | Préfixe d'état (-) / (+) et esquisse en cours dans l'arbre | P2 | reste |

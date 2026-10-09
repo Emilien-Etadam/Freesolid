@@ -1059,9 +1059,15 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     const faceHit = partMesh
       ? raycaster.intersectObject(partMesh)[0] : null;
     if (faceHit) {
+      // La normale sert à « Normal à » (Ctrl+8).
+      const normal = faceHit.face
+        ? faceHit.face.normal.clone()
+          .transformDirection(faceHit.object.matrixWorld)
+        : null;
       lastFaceHit = {
         face: selectedFaceId,
         x: faceHit.point.x, y: faceHit.point.y, z: faceHit.point.z,
+        normal: normal ? [normal.x, normal.y, normal.z] : null,
       };
     }
     // A command panel with a selection box absorbs the pick.
@@ -1297,7 +1303,7 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
-// ---------- standard views (SolidWorks: Ctrl+1/4/5/7, F) ----------
+// ---------- vues standard (Ctrl+1 à Ctrl+8, F) ----------
 
 function partCenterRadius() {
   if (!partMesh || !partMesh.geometry.boundingSphere)
@@ -1333,20 +1339,53 @@ function frameView(direction, up) {
 
 // Vue de face = normale au Plan de face (XZ), etc. — mêmes plans que le vocab.
 const VIEWS = {
-  "view-iso":   { direction: [1, -1, 1], up: [0, 0, 1] },
-  "view-front": { direction: [0, -1, 0], up: [0, 0, 1] },
-  "view-top":   { direction: [0, 0, 1],  up: [0, 1, 0] },
-  "view-right": { direction: [1, 0, 0],  up: [0, 0, 1] },
-  "view-fit":   { direction: null,       up: null },
+  "view-iso":    { direction: [1, -1, 1], up: [0, 0, 1] },
+  "view-front":  { direction: [0, -1, 0], up: [0, 0, 1] },
+  "view-back":   { direction: [0, 1, 0],  up: [0, 0, 1] },
+  "view-left":   { direction: [-1, 0, 0], up: [0, 0, 1] },
+  "view-right":  { direction: [1, 0, 0],  up: [0, 0, 1] },
+  "view-top":    { direction: [0, 0, 1],  up: [0, 1, 0] },
+  // Vue de dessous : l'avant de la pièce passe en haut de l'écran.
+  "view-bottom": { direction: [0, 0, -1], up: [0, -1, 0] },
+  "view-fit":    { direction: null,       up: null },
 };
 for (const [id, view] of Object.entries(VIEWS)) {
-  document.getElementById(id).addEventListener("click", () => {
+  document.getElementById(id)?.addEventListener("click", () => {
     if (sketchMode.active) return; // en esquisse, la caméra suit le plan
     frameView(view.direction, view.up);
   });
 }
 
-const VIEW_KEYS = { 1: "view-front", 4: "view-right", 5: "view-top", 7: "view-iso" };
+// Normale des plans d'origine, côté d'où on les regarde (même sens que
+// les vues Face / Dessus / Droite).
+const PLANE_VIEW_NORMALS = { XY: [0, 0, 1], XZ: [0, -1, 0], YZ: [1, 0, 0] };
+
+/** « Normal à » : la face ou le plan sélectionné face à l'écran. Un second
+ *  appui, alors qu'on regarde déjà dans cet axe, passe de l'autre côté. */
+function viewNormalTo() {
+  let normal = null;
+  if (selectedFaceId !== null && lastFaceHit?.face === selectedFaceId
+      && lastFaceHit.normal) {
+    normal = new THREE.Vector3(...lastFaceHit.normal);
+  } else if (selectedPlane !== null && PLANE_VIEW_NORMALS[selectedPlane]) {
+    normal = new THREE.Vector3(...PLANE_VIEW_NORMALS[selectedPlane]);
+  }
+  if (!normal || normal.lengthSq() < 1e-12) {
+    say("Normal à : sélectionnez d'abord une face plane ou un plan.");
+    return;
+  }
+  normal.normalize();
+  const looking = camera.position.clone().sub(controls.target).normalize();
+  if (looking.dot(normal) > 0.999) normal.negate();
+  // Haut de l'écran : Z, sauf si on regarde le long de Z.
+  const up = Math.abs(normal.z) > 0.9 ? [0, 1, 0] : [0, 0, 1];
+  frameView([normal.x, normal.y, normal.z], up);
+}
+
+const VIEW_KEYS = {
+  1: "view-front", 2: "view-back", 3: "view-left", 4: "view-right",
+  5: "view-top", 6: "view-bottom", 7: "view-iso",
+};
 document.addEventListener("keydown", (event) => {
   if (sketchMode.active) return;
   // Typing in a panel field must not trigger view shortcuts (F, Ctrl+1…).
@@ -1355,6 +1394,9 @@ document.addEventListener("keydown", (event) => {
   if ((event.key === "f" || event.key === "F")
       && !event.ctrlKey && !event.metaKey && !event.altKey) {
     frameView(null, null);
+  } else if ((event.ctrlKey || event.metaKey) && event.key === "8") {
+    event.preventDefault();
+    viewNormalTo();
   } else if ((event.ctrlKey || event.metaKey) && VIEW_KEYS[event.key]) {
     event.preventDefault();
     frameView(VIEWS[VIEW_KEYS[event.key]].direction,

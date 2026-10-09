@@ -269,5 +269,11 @@
  "Corps": "Body",
  "Combiner — Soustraire": "Combine — Subtract",
  "Combiner — Ajouter": "Combine — Add",
- "Combiner — Intersection": "Combine — Common"
+ "Combiner — Intersection": "Combine — Common",
+ "condition de fin inconnue : {}": "unknown end condition: {}",
+ "profondeur invalide": "invalid depth",
+ "jusqu'à la face : cliquez la face d'arrivée": "up to face: click the target face",
+ "plan milieu et deuxième direction s'excluent": "mid plane and second direction are mutually exclusive",
+ "deuxième direction : FreeCAD {} requis": "second direction: FreeCAD {} required",
+ "jusqu'à la face : la pièce n'a pas encore de face": "up to face: the part has no face yet"
 }

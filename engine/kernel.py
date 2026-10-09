@@ -2634,20 +2634,26 @@ class Kernel:
         self._recompute()
         return self.get_tree()
 
-    def add_pad(self, length, sketch=None, reversed=False, midplane=False):
+    def add_pad(self, length=None, sketch=None, reversed=False,
+                midplane=False, **conditions):
+        """Bossage extrudé. ``conditions`` : voir ``engine.extrude`` —
+        cond, face, offset, taper, cond2, length2, face2, offset2, taper2."""
         body = self._require_body()
         doc = self._require_doc()
         if sketch is not None:
             profile = self._get_sketch(sketch)
         else:
             profile = self._latest_sketch()
+        tip = body.Tip  # les faces visées appartiennent à l'état d'avant
         pad = body.newObject("PartDesign::Pad", "Pad")
         pad.Profile = profile
-        pad.Length = float(length)
-        if reversed:
-            pad.Reversed = True
-        if midplane:
-            pad.Midplane = True  # « plan milieu » : symétrique au plan
+        try:
+            self._apply_extrude(pad, "pad", tip, length=length,
+                                reversed=reversed, midplane=midplane,
+                                **conditions)
+        except KernelError:
+            doc.removeObject(pad.Name)
+            raise
         pad.Label = self._t("Bossage extrudé")
         try:
             self._recompute()
@@ -2655,6 +2661,29 @@ class Kernel:
             doc.removeObject(pad.Name)
             raise
         return self.get_tree()
+
+    def _apply_extrude(self, obj, kind, tip, **params):
+        """Pose les propriétés calculées par ``engine.extrude``."""
+        from engine.extrude import ExtrudeError, extrude_settings
+        try:
+            props = extrude_settings(kind, **params)
+        except (ExtrudeError, TypeError, ValueError) as exc:
+            raise KernelError(str(exc))
+        side = props.pop("SideType")
+        if "SideType" in obj.PropertiesList:
+            obj.SideType = side
+        elif side == "Symmetric":
+            obj.Midplane = True          # FreeCAD 1.0 : pas de SideType
+        elif side == "Two sides":
+            raise KernelError(
+                "deuxième direction : FreeCAD {} requis".format("1.1"))
+        for name, value in props.items():
+            if name.startswith("UpToFace"):
+                if tip is None:
+                    raise KernelError(
+                        "jusqu'à la face : la pièce n'a pas encore de face")
+                value = (tip, ["Face{}".format(int(value) + 1)])
+            setattr(obj, name, value)
 
     def _consumed_sketches(self):
         """Esquisse → nom du parent (fonction PartDesign ou surface)."""
@@ -2780,23 +2809,28 @@ class Kernel:
         return sketches[-1]
 
     def add_pocket(self, length=None, through=False, reversed=False,
-                   sketch=None):
+                   sketch=None, midplane=False, cond=None, **conditions):
         """Cut with the latest sketch — Extruded Cut, in SolidWorks terms.
 
         No length (or ``through``) means « À travers tout » — the option a
-        SolidWorks hand reaches for by default on a cut.
+        SolidWorks hand reaches for by default on a cut. ``cond`` and the
+        other conditions: see ``engine.extrude``.
         """
         body = self._require_body()
         doc = self._require_doc()
+        tip = body.Tip
         pocket = body.newObject("PartDesign::Pocket", "Pocket")
         pocket.Profile = (self._get_sketch(sketch) if sketch is not None
                           else self._latest_sketch())
-        if through or length is None:
-            pocket.Type = "ThroughAll"
-        else:
-            pocket.Length = float(length)
-        if reversed:
-            pocket.Reversed = True
+        if cond is None:
+            cond = "travers" if (through or length is None) else "borgne"
+        try:
+            self._apply_extrude(pocket, "pocket", tip, cond=cond,
+                                length=length, reversed=reversed,
+                                midplane=midplane, **conditions)
+        except KernelError:
+            doc.removeObject(pocket.Name)
+            raise
         pocket.Label = self._t("Enlèvement de matière")
         try:
             self._recompute()

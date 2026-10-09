@@ -185,56 +185,120 @@ const COMBINE_FEATURE = {
   refresh: "part",
 };
 
+
+// ---------- conditions de fin d'extrusion (bossage, enlèvement) ----------
+// Direction 1 : borgne, jusqu'au suivant, jusqu'au dernier / à travers
+// tout, jusqu'à une face (décalage), plan milieu ; dépouille. Direction 2
+// facultative. Le moteur traduit (engine/extrude.py).
+
+const EXTRUDE_CONDITIONS = {
+  pad: [["borgne", "Borgne"], ["suivant", "Jusqu'au suivant"],
+        ["dernier", "Jusqu'au dernier"], ["face", "Jusqu'à la face"],
+        ["milieu", "Plan milieu"]],
+  pocket: [["travers", "À travers tout"], ["borgne", "Borgne"],
+           ["suivant", "Jusqu'au suivant"], ["face", "Jusqu'à la face"],
+           ["milieu", "Plan milieu"]],
+};
+
+const usesLength = (cond) => cond === "borgne" || cond === "milieu";
+
+export function extrudeGroups(kind) {
+  const conditions = EXTRUDE_CONDITIONS[kind];
+  const second = conditions.filter(([c]) => c !== "face" && c !== "milieu");
+  return [
+    {
+      label: "Direction 1",
+      rows: [
+        { type: "select", key: "cond", value: conditions[0][0],
+          options: conditions },
+        { type: "number", key: "length", label: "Profondeur", value: 10,
+          unit: "mm", min: 0.01, showIf: (v) => usesLength(v.cond) },
+        { type: "selection", key: "face", accepts: ["face"],
+          label: "Face d'arrivée", hint: "Cliquez la face d'arrivée",
+          showIf: (v) => v.cond === "face" },
+        { type: "number", key: "offset", label: "Décalage", value: 0,
+          unit: "mm", showIf: (v) => v.cond === "face" },
+        { type: "check", key: "reversed", label: "Inverser la direction",
+          value: false, showIf: (v) => v.cond !== "milieu" },
+        { type: "number", key: "taper", label: "Dépouille", value: 0,
+          unit: "°" },
+        { type: "check", key: "taperOut", label: "Dépouille vers l'extérieur",
+          value: false, showIf: (v) => (num(v.taper) ?? 0) !== 0 },
+      ],
+    },
+    {
+      label: "Direction 2",
+      rows: [
+        { type: "check", key: "dir2", label: "Deuxième direction",
+          value: false, showIf: (v) => v.cond !== "milieu" },
+        { type: "select", key: "cond2", value: second[0][0], options: second,
+          showIf: (v) => v.dir2 && v.cond !== "milieu" },
+        { type: "number", key: "length2", label: "Profondeur", value: 10,
+          unit: "mm", min: 0.01,
+          showIf: (v) => v.dir2 && v.cond !== "milieu"
+            && v.cond2 === "borgne" },
+        { type: "number", key: "taper2", label: "Dépouille", value: 0,
+          unit: "°", showIf: (v) => v.dir2 && v.cond !== "milieu" },
+      ],
+    },
+  ];
+}
+
+/** Paramètres moteur, ou null si la saisie est incomplète. */
+export function extrudeBuild(op, v) {
+  const params = { reversed: !!v.reversed };
+  const midplane = v.cond === "milieu";
+  params.cond = midplane ? "borgne" : v.cond;
+  if (midplane) params.midplane = true;
+  if (usesLength(v.cond)) {
+    const length = Math.abs(num(v.length) ?? 0);
+    if (!length) return null;
+    params.length = length;
+  }
+  if (v.cond === "face") {
+    if (v.face?.face == null) return null;
+    params.face = v.face.face;
+    params.offset = num(v.offset) ?? 0;
+  }
+  const taper = Math.abs(num(v.taper) ?? 0);
+  if (taper) params.taper = v.taperOut ? -taper : taper;
+  if (v.dir2 && !midplane) {
+    params.cond2 = v.cond2;
+    if (v.cond2 === "borgne") {
+      const length2 = Math.abs(num(v.length2) ?? 0);
+      if (!length2) return null;
+      params.length2 = length2;
+    }
+    const taper2 = num(v.taper2) ?? 0;
+    if (taper2) params.taper2 = taper2;
+  }
+  return { op, params };
+}
+
+export function extrudeInvalid(v) {
+  if (v.cond === "face" && v.face?.face == null) {
+    return "Jusqu'à la face : cliquez la face d'arrivée";
+  }
+  return "Profondeur invalide";
+}
+
 export const FEATURES = [
   withSketchProfile({
     button: "btn-pad",
     icon: "PartDesign_Pad.svg",
     title: "Bossage/Base extrudé",
-    groups: () => [{
-      label: "Direction 1",
-      rows: [
-        { type: "select", key: "cond", value: "borgne",
-          options: [["borgne", "Borgne"], ["milieu", "Plan milieu"]] },
-        { type: "number", key: "length", label: "Profondeur", value: 10,
-          unit: "mm", min: 0.01 },
-        { type: "check", key: "reversed", label: "Inverser la direction",
-          value: false, showIf: (v) => v.cond !== "milieu" },
-      ],
-    }],
-    build: (v) => {
-      const length = Math.abs(num(v.length) ?? 0);
-      if (!length) return null;
-      return { op: "add_pad",
-               params: { length, reversed: !!v.reversed,
-                         midplane: v.cond === "milieu" } };
-    },
-    invalid: "Profondeur invalide",
+    groups: () => extrudeGroups("pad"),
+    build: (v) => extrudeBuild("add_pad", v),
+    invalid: extrudeInvalid,
     refresh: "part",
   }),
   withSketchProfile({
     button: "btn-pocket",
     icon: "PartDesign_Pocket.svg",
     title: "Enlèvement de matière extrudé",
-    groups: () => [{
-      label: "Direction 1",
-      rows: [
-        { type: "select", key: "cond", value: "travers",
-          options: [["travers", "À travers tout"], ["borgne", "Borgne"]] },
-        { type: "number", key: "length", label: "Profondeur", value: 10,
-          unit: "mm", min: 0.01, showIf: (v) => v.cond === "borgne" },
-        { type: "check", key: "reversed", label: "Inverser la direction",
-          value: false },
-      ],
-    }],
-    build: (v) => {
-      const reversed = !!v.reversed;
-      if (v.cond === "travers") {
-        return { op: "add_pocket", params: { through: true, reversed } };
-      }
-      const length = Math.abs(num(v.length) ?? 0);
-      return length ? { op: "add_pocket", params: { length, reversed } } : null;
-    },
-    invalid: "Profondeur invalide",
+    groups: () => extrudeGroups("pocket"),
+    build: (v) => extrudeBuild("add_pocket", v),
+    invalid: extrudeInvalid,
     refresh: "part",
   }),
   revolved({

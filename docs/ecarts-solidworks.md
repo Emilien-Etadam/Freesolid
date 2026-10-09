@@ -59,7 +59,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 16 | Arbre accessible pendant une commande | P2 | reste |
 | 17 | Barre de menus | P2 | confié à Cursor (T17) |
 | 18 | Chanfrein distance-angle | P2 | confié à Cursor (T18) |
-| 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | reste |
+| 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | fait : borgne, jusqu'au suivant, jusqu'au dernier / à travers tout, jusqu'à la face (+ décalage), plan milieu, deuxième direction, dépouille (vers l'intérieur ou l'extérieur). Reste : paroi mince (pas d'équivalent direct dans PartDesign) |
 | 20 | Révolution : choix de l'axe | P2 | confié à Cursor (T20) |
 | 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | confié à Cursor (T21) |
 | 22 | Répétitions : choix des fonctions et de la direction | P2 | reste |

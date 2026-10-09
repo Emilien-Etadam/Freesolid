@@ -41,6 +41,9 @@ class _Req(tuple):
         return obj
 
 
+#: Conditions de fin d'extrusion communes au bossage et à l'enlèvement.
+_EXTRUDE_OPTIONAL = {"cond": str, "face": int, "offset": float, "taper": float, "midplane": bool, "reversed": bool, "cond2": str, "length2": float, "face2": int, "offset2": float, "taper2": float, "sketch": str}
+
 #: Comptes / occurrences : entier ≥ 1, plafond anti-absurde.
 _COUNT_PARAMS = frozenset({"count", "cols", "rows", "sides"})
 _COUNT_MIN = 1
@@ -136,8 +139,11 @@ OPS: dict[str, tuple[str, ...]] = {
     "progress": (),                    # avancement hors noyau — jamais de verrou
     "add_rect_sketch": _Req(("width", float), ("height", float)),
                                        # optional: face (id) to attach
-    "add_pad": _Req(("length", float)),  # optional: sketch, reversed, midplane
-    "add_pocket": (),                  # optional: length | through — sans profondeur = à travers tout ; reversed, sketch
+    # Conditions de fin : engine/extrude.py. Sans length : jusqu'à…
+    "add_pad": _Req(optional={"length": float, **_EXTRUDE_OPTIONAL}),
+    # Sans profondeur ni condition = à travers tout.
+    "add_pocket": _Req(optional={"length": float, "through": bool,
+                                 **_EXTRUDE_OPTIONAL}),
     "add_fillet": _Req(("radius", float)),  # face OU edges (liste d'ids)
     "add_chamfer": _Req(("size", float)),  # face OU edges
     # Palier 2 — fonctions volumiques, aucune interaction nouvelle.

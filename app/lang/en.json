@@ -623,5 +623,14 @@
  "Quitter sans garder": "Leave without keeping",
  "Esquisse sur cette face": "Sketch on this face",
  "Normal à (Ctrl+8)": "Normal to (Ctrl+8)",
- "Arête": "Edge"
+ "Arête": "Edge",
+ "Jusqu'au suivant": "Up to next",
+ "Jusqu'au dernier": "Up to last",
+ "Jusqu'à la face": "Up to face",
+ "Face d'arrivée": "Target face",
+ "Cliquez la face d'arrivée": "Click the target face",
+ "Direction 2": "Direction 2",
+ "Deuxième direction": "Second direction",
+ "Jusqu'à la face : cliquez la face d'arrivée": "Up to face: click the target face",
+ "Dépouille vers l'extérieur": "Draft outward"
 }

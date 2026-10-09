@@ -33,6 +33,8 @@ Priorités :
 ## Suivi du lot « clone-sw »
 
 Lot validé : tous les écarts P1 et P2, sauf la mise en plan interactive.
+Les écarts simples sont confiés à Cursor : briefs dans
+[`taches-cursor.md`](taches-cursor.md).
 Ils sont traités du plus simple au plus gros, avec un commit par écart sur la
 branche `clone-sw`. Le comportement de référence de SolidWorks vient de la
 connaissance du logiciel et de l'aide officielle, reformulées.
@@ -50,19 +52,19 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 9 | Origine dans l'arbre et dans l'esquisse ; volumes visibles en esquisse | P2 | fait pour l'origine (ligne de l'arbre, trièdre, repère d'esquisse). Volumes en esquisse : question Q1 |
 | 10 | Cotation : saisie de la valeur à la pose, lignes d'attache et flèches | P1 | reste |
 | 11 | Retour pendant le tracé (inférences, symboles de relations) | P2 | reste |
-| 12 | Barre S (la spline quitte la touche S) | P2 | reste |
+| 12 | Barre S (la spline quitte la touche S) | P2 | confié à Cursor (T12) |
 | 13 | Menu et barre contextuels dans la vue | P1 | reste |
-| 14 | Barre tête haute : styles d'affichage, masquer/afficher, orientation | P2 | reste |
+| 14 | Barre tête haute : styles d'affichage, masquer/afficher, orientation | P2 | confié à Cursor (T14) |
 | 15 | Réordonner l'arbre par glisser-déposer | P2 | reste |
 | 16 | Arbre accessible pendant une commande | P2 | reste |
-| 17 | Barre de menus | P2 | reste |
-| 18 | Chanfrein distance-angle | P2 | reste |
+| 17 | Barre de menus | P2 | confié à Cursor (T17) |
+| 18 | Chanfrein distance-angle | P2 | confié à Cursor (T18) |
 | 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | reste |
-| 20 | Révolution : choix de l'axe | P2 | reste |
-| 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | reste |
+| 20 | Révolution : choix de l'axe | P2 | confié à Cursor (T20) |
+| 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | confié à Cursor (T21) |
 | 22 | Répétitions : choix des fonctions et de la direction | P2 | reste |
-| 23 | Ouvrir / Enregistrer : dialogue de fichiers | P2 | reste |
-| 24 | Accueil et Nouveau (Ctrl+N) | P2 | reste |
+| 23 | Ouvrir / Enregistrer : dialogue de fichiers | P2 | confié à Cursor (T23) |
+| 24 | Accueil et Nouveau (Ctrl+N) | P2 | confié à Cursor (T24) |
 | 25 | Assemblage : contraintes standard | P1 | reste |
 | 26 | Assemblage : insertion guidée, fixe/flottant, déplacement à la souris | P2 | reste |
 | 27 | Interface anglaise sans texte français (demande du 2026-10-09) | P1 | fait : textes interpolés passés par t(), libellés de panneaux, noms moteur (pièce, corps, plans, combiner) |

@@ -148,7 +148,12 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_pocket": _Req(optional={"length": float, "through": bool,
                                  **_EXTRUDE_OPTIONAL}),
     "add_fillet": _Req(("radius", float)),  # face OU edges (liste d'ids)
-    "add_chamfer": _Req(("size", float)),  # face OU edges
+    "add_chamfer": _Req(("size", float), optional={
+        "size2": float,          # deux distances
+        "angle": float,          # distance et angle, degrés
+        "chamfer_type": str,     # egale | deux | angle
+        "flip": bool,            # échange les deux côtés
+    }),  # face OU edges
     # Palier 2 — fonctions volumiques, aucune interaction nouvelle.
     "add_revolution": (),              # optional: angle (°), sketch
     "add_groove": (),                  # optional: angle (°), sketch

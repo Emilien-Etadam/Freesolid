@@ -646,5 +646,15 @@
  "Enlever de la matière": "Remove material",
  "Centre de rotation posé — clic milieu dans le vide pour le retirer.": "Rotation center set — middle-click in empty space to remove it.",
  "Centre de rotation : centre de la vue.": "Rotation center: center of the view.",
- "Unités : millimètre, gramme, seconde": "Units: millimetre, gram, second"
+ "Unités : millimètre, gramme, seconde": "Units: millimetre, gram, second",
+ "Type de chanfrein": "Chamfer type",
+ "Distance égale": "Equal distance",
+ "Deux distances": "Two distances",
+ "Distance et angle": "Distance and angle",
+ "Seconde distance": "Second distance",
+ "Inverser les côtés": "Swap sides",
+ "Distance de chanfrein invalide": "Invalid chamfer distance",
+ "Seconde distance de chanfrein invalide": "Invalid second chamfer distance",
+ "Angle de chanfrein invalide": "Invalid chamfer angle",
+ "Valeurs du chanfrein invalides": "Invalid chamfer values"
 }

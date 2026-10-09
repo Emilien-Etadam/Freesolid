@@ -324,6 +324,170 @@ export function patternDirectionParams(v) {
   return params;
 }
 
+/** Nombre entier ou décimal, pas une expression (« 2*Largeur »). */
+function pureNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const text = String(value ?? "").trim().replace(",", ".");
+  if (!/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/i.test(text)) return null;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function expressionText(raw) {
+  const text = String(raw ?? "").trim();
+  return text.length > 0 && pureNumber(text) == null;
+}
+
+function measureRow(key, label, value, unit, showIf) {
+  const parsed = pureNumber(value);
+  const row = parsed == null
+    ? { type: "text", key, label, unit, value: String(value ?? "") }
+    : { type: "number", key, label, unit, value: parsed, min: 0.01 };
+  if (showIf) row.showIf = showIf;
+  return row;
+}
+
+const CHAMFER_KINDS = new Set(["egale", "deux", "angle"]);
+
+/** Champs du panneau : le type décide de ce qui est visible. */
+export function chamferRows({
+  kind = "egale", size = 2, size2 = 2, angle = 45, flip = false,
+} = {}) {
+  return [
+    { type: "select", key: "kind", value: kind, label: "Type de chanfrein",
+      options: [["egale", "Distance égale"], ["deux", "Deux distances"],
+                ["angle", "Distance et angle"]] },
+    measureRow("size", "Distance", size, "mm"),
+    measureRow("size2", "Seconde distance", size2, "mm",
+      (v) => v.kind === "deux"),
+    measureRow("angle", "Angle", angle, "°",
+      (v) => v.kind === "angle"),
+    { type: "check", key: "flip", label: "Inverser les côtés",
+      value: !!flip, showIf: (v) => v.kind === "deux" || v.kind === "angle" },
+  ];
+}
+
+/** Valeur affichée : l'expression si la cote en a une, sinon le nombre. */
+export function chamferFieldValue(params, prop, fallback) {
+  const found = (params ?? []).find((item) => item.prop === prop);
+  if (found?.expr) return found.expr;
+  if (found && found.value != null) return found.value;
+  return fallback;
+}
+
+/** Params `add_chamfer`, ou null si les champs visibles sont invalides. */
+export function chamferCreationParams(v) {
+  const kind = v.kind || "egale";
+  if (!CHAMFER_KINDS.has(kind)) return null;
+  const size = pureNumber(v.size);
+  if (!(size > 0)) return null;
+  const params = { size, chamfer_type: kind };
+  if (kind === "deux") {
+    const size2 = pureNumber(v.size2);
+    if (!(size2 > 0)) return null;
+    params.size2 = size2;
+    params.flip = !!v.flip;
+  } else if (kind === "angle") {
+    const angle = pureNumber(v.angle);
+    if (!(angle > 0) || !(angle < 90)) return null;
+    params.angle = angle;
+    params.flip = !!v.flip;
+  }
+  return params;
+}
+
+/** Message français quand la saisie ne peut pas être appliquée. */
+export function chamferProblem(v) {
+  const kind = v.kind || "egale";
+  const size = pureNumber(v.size);
+  if (size == null) {
+    if (!expressionText(v.size)) return "Distance de chanfrein invalide";
+  } else if (!(size > 0)) {
+    return "Distance de chanfrein invalide";
+  }
+  if (kind === "deux") {
+    const size2 = pureNumber(v.size2);
+    if (size2 == null) {
+      if (!expressionText(v.size2)) return "Seconde distance de chanfrein invalide";
+    } else if (!(size2 > 0)) {
+      return "Seconde distance de chanfrein invalide";
+    }
+  }
+  if (kind === "angle") {
+    const angle = pureNumber(v.angle);
+    if (angle == null) {
+      if (!expressionText(v.angle)) return "Angle de chanfrein invalide";
+    } else if (!(angle > 0) || !(angle < 90)) {
+      return "Angle de chanfrein invalide";
+    }
+  }
+  return "Valeurs du chanfrein invalides";
+}
+
+function storedMeasure(params, prop, fallback) {
+  const found = (params ?? []).find((item) => item.prop === prop);
+  if (found?.expr) return { expr: String(found.expr) };
+  if (found && found.value != null) return { numeric: Number(found.value) };
+  const parsed = pureNumber(fallback);
+  return parsed == null
+    ? { expr: String(fallback ?? "") }
+    : { numeric: parsed };
+}
+
+function readMeasure(raw, stored, bounds) {
+  const text = typeof raw === "string" ? raw.trim() : raw;
+  if (stored.expr && String(text ?? "").trim() === stored.expr) return stored.expr;
+  const parsed = pureNumber(text);
+  if (parsed == null) {
+    const expr = String(text ?? "").trim();
+    return expr ? expr : null;
+  }
+  if (!(parsed > bounds.min) || !(parsed < bounds.max)) return null;
+  return parsed;
+}
+
+function sameMeasure(value, stored) {
+  if (typeof value === "string") return stored.expr === value;
+  return stored.numeric != null && Math.abs(value - stored.numeric) < 1e-9;
+}
+
+/**
+ * Valeurs `set_params` pour rééditer un chanfrein.
+ * `{}` si rien n'a changé, `null` si la saisie est invalide.
+ */
+export function chamferEditValues(v, chamfer, params) {
+  const kind = v.kind || "egale";
+  if (!CHAMFER_KINDS.has(kind)) return null;
+  const sizeStored = storedMeasure(params, "Size", chamfer.size);
+  const size = readMeasure(v.size, sizeStored, { min: 0, max: Infinity });
+  if (size == null) return null;
+  const values = { ChamferType: kind, Size: size };
+  const flip = kind === "egale" ? false : !!v.flip;
+  let secondSame = true;
+  if (kind === "deux") {
+    const stored = storedMeasure(params, "Size2", chamfer.size2);
+    const size2 = readMeasure(v.size2, stored, { min: 0, max: Infinity });
+    if (size2 == null) return null;
+    values.Size2 = size2;
+    values.FlipDirection = flip;
+    secondSame = sameMeasure(size2, stored);
+  } else if (kind === "angle") {
+    const stored = storedMeasure(params, "Angle", chamfer.angle);
+    const angle = readMeasure(v.angle, stored, { min: 0, max: 90 });
+    if (angle == null) return null;
+    values.Angle = angle;
+    values.FlipDirection = flip;
+    secondSame = sameMeasure(angle, stored);
+  } else {
+    values.FlipDirection = false;
+  }
+  const unchanged = kind === chamfer.type
+    && flip === !!chamfer.flip
+    && sameMeasure(size, sizeStored)
+    && secondSame;
+  return unchanged ? {} : values;
+}
+
 export const FEATURES = [
   withSketchProfile({
     button: "btn-pad",
@@ -556,14 +720,20 @@ export const FEATURES = [
     accepts: ["edges", "face"],
     hint: "Cliquez des arêtes (Ctrl = ajouter) ou une face",
     group: "Paramètres du chanfrein",
-    rows: [{ type: "number", key: "size", label: "Distance", value: 2,
-             unit: "mm", min: 0.01 }],
+    rows: chamferRows(),
     build: (v) => {
-      const size = num(v.size);
-      return size > 0
+      const params = chamferCreationParams(v);
+      return params
         ? { op: "add_chamfer",
-            params: { ...dressupParams(v.sel), size } }
+            params: { ...dressupParams(v.sel), ...params } }
         : null;
+    },
+    invalid: (v) => {
+      if (!hasSelection(v.sel)) {
+        return t("{f} : cliquez d'abord dans la zone graphique",
+          { f: t("Chanfrein") });
+      }
+      return chamferProblem(v);
     },
   }),
   dressup({

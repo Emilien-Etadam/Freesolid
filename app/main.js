@@ -9,7 +9,9 @@ import {
 } from "./dims.js";
 import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
-import { FEATURES } from "./features.js";
+import {
+  FEATURES, chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
+} from "./features.js";
 import {
   formatProgressStatus,
   noteProgressForCalibration,
@@ -2739,6 +2741,40 @@ async function editSurface(surface) {
   });
 }
 
+function editChamfer(feature) {
+  const spec = feature.chamfer;
+  panel.open({
+    icon: "PartDesign_Chamfer.svg",
+    title: feature.label,
+    groups: [{
+      label: "Paramètres du chanfrein",
+      rows: chamferRows({
+        kind: spec.type,
+        size: chamferFieldValue(feature.params, "Size", spec.size),
+        size2: chamferFieldValue(feature.params, "Size2", spec.size2),
+        angle: chamferFieldValue(feature.params, "Angle", spec.angle),
+        flip: spec.flip,
+      }),
+    }],
+    onChange: (v) => {
+      const values = chamferEditValues(v, spec, feature.params);
+      schedulePreview(values && Object.keys(values).length
+        ? { op: "set_params",
+            params: { feature: feature.name, values } }
+        : null);
+    },
+    onApply: (v) => {
+      const values = chamferEditValues(v, spec, feature.params);
+      if (values === null) {
+        say(chamferProblem(v), true);
+        return;
+      }
+      if (!Object.keys(values).length) return;
+      refresh(call("set_params", { feature: feature.name, values }));
+    },
+  });
+}
+
 async function editFeature(feature) {
   if (isGraphFeature(feature) || isRepeatFeature(feature)) {
     enterGraphFeature(feature);
@@ -2778,6 +2814,10 @@ async function editFeature(feature) {
         }));
       },
     });
+    return;
+  }
+  if (feature.type === "PartDesign::Chamfer" && feature.chamfer) {
+    editChamfer(feature);
     return;
   }
   try {

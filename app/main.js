@@ -26,7 +26,8 @@ import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
 import { contextToolbarKeys, viewMenuItems, viewMenuLabel } from "./viewmenu.js";
 import { currentPaneIndex, layoutPanes, paneRect } from "./layouts.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
-import { createSettingsDialog, readLang } from "./settings.js";
+import { createSettingsDialog, ISSUES_URL, readLang } from "./settings.js";
+import { installMenuBar, menuBarModel } from "./menubar.js";
 import {
   boxMode, isDrag, middleAction, normalizeRect, pickInBox,
   readReverseWheel, writeReverseWheel, zoomSpeedFor,
@@ -2065,6 +2066,25 @@ document.addEventListener("keydown", (event) => {
     else if (graphSelectedEdge) unlinkParamEdge(graphSelectedEdge);
     else deleteSelectedGraphNode();
   }
+});
+
+installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
+  onAction(name) {
+    if (name === "delete") {
+      const feature = findFeatureInTree(lastTree, selectedFeatureName);
+      if (!feature) {
+        say("Sélectionnez une fonction à supprimer.");
+        return;
+      }
+      deleteFeatureWithConfirm(feature);
+    } else if (name === "orient") {
+      openOrientBox();
+    } else if (name === "origin") {
+      toggleOrigin();
+    } else if (name === "report") {
+      window.open(ISSUES_URL, "_blank", "noopener");
+    }
+  },
 });
 
 // ---------- feature tree ----------

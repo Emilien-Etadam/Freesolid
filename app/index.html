@@ -179,6 +179,7 @@
   header button, #sketchbar button, #viewbar button {
     display: inline-flex; align-items: center; gap: 6px;
   }
+  header button[hidden] { display: none; }
 
   #viewbar {
     position: absolute; top: 10px; right: 10px;
@@ -959,7 +960,7 @@
       <button id="btn-save" title="Enregistrer (.FCStd)"><img src="icons/document-save.svg" alt=""></button>
       <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img src="icons/document-save-as.svg" alt=""></button>
       <button id="btn-drawing" title="Mise en plan — Face / Dessus / Iso, cotes d'encombrement, coupe, export DXF"><img src="icons/TechDraw_PageDefault.svg" alt=""></button>
-      <button id="btn-selftest">Autotest</button>
+      <button id="btn-selftest" hidden>Autotest</button>
       <div id="command-search">
         <input id="command-query" type="search" autocomplete="off"
           placeholder="Rechercher une commande"

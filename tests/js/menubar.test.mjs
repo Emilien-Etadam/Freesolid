@@ -66,6 +66,9 @@ describe("contenu", () => {
       "btn-measure");
     assert.equal(byId.help.items.find((entry) => entry.label === "À propos").click,
       "btn-settings");
+    assert.equal(
+      byId.help.items.find((entry) => entry.label === "Autotest du moteur").click,
+      "btn-selftest");
     assert.equal(byId.help.items.find((entry) => entry.action === "report").label,
       "Signaler un problème");
   });

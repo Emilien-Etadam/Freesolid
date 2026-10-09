@@ -1273,7 +1273,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.screenshot({ path: path.join(SHOTS, "6c-p030-reprise-bas.png") });
 
   // 7. P031 — Autotest lisible : statut + vérifications vertes.
-  await page.click("#btn-selftest");
+  // Le bouton a quitté la barre : il reste dans le DOM, masqué.
+  // click() exige un élément visible ; le clic programmatique suffit.
+  await page.$eval("#btn-selftest", (el) => el.click());
   try {
     await page.waitForFunction(
       () => {

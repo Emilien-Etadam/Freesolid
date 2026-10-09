@@ -79,6 +79,7 @@ export function menuBarModel(ribbon) {
     ] },
     { id: "help", label: "Aide", items: [
       item("À propos", { click: "btn-settings" }),
+      item("Autotest du moteur", { click: "btn-selftest" }),
       item("Signaler un problème", { action: "report" }),
     ] },
   ];

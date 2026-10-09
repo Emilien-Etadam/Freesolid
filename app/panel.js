@@ -29,7 +29,7 @@
 
 import { t } from "./i18n.js";
 
-export function createPropertyPanel({ say, onClose }) {
+export function createPropertyPanel({ say, onClose, onToggle }) {
   const aside = document.querySelector("aside");
   const panelEl = document.getElementById("panel");
 
@@ -63,6 +63,7 @@ export function createPropertyPanel({ say, onClose }) {
     }
     render();
     aside.classList.add("panel-open");
+    onToggle?.();
     document.addEventListener("keydown", onKey, true);
     if (spec.autoFocus !== false) {
       panelEl.querySelector("input, select")?.focus();
@@ -78,6 +79,7 @@ export function createPropertyPanel({ say, onClose }) {
     document.removeEventListener("keydown", onKey, true);
     panelEl.innerHTML = "";
     onClose?.(); // efface l'aperçu avant d'appliquer ou d'abandonner
+    onToggle?.();
     if (apply) spec.onApply?.({ ...values });
     else if (!silent) spec.onCancel?.();
   }
@@ -345,8 +347,12 @@ export function createPropertyPanel({ say, onClose }) {
   return {
     open,
     close: (opts) => close(false, opts),
+    /** OK, comme le bouton ✓ — sans effet sur un panneau d'information. */
+    apply: () => { if (active && !active.spec.noApply) close(true); },
     notifyPick,
     invalidateSelections,
     get active() { return active !== null; },
+    /** Un panneau de commande (avec OK) est ouvert. */
+    get applicable() { return active !== null && !active.spec.noApply; },
   };
 }

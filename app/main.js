@@ -185,6 +185,7 @@ const panel = createPropertyPanel({
     clearGhost();
     sketchInfoOpen = false;
   },
+  onToggle: () => updateConfirmCorner(),
 });
 
 // ---------- viewport ----------
@@ -2650,7 +2651,48 @@ function addPluginHud(node) {
   else document.getElementById("viewport")?.appendChild(node);
 }
 
+// ---------- coin de confirmation ----------
+// En haut à droite de la vue : ✓ valide, ✗ abandonne. Il agit sur la
+// commande ouverte, sinon sur l'esquisse en cours ; caché le reste du temps.
+
+const confirmCorner = document.getElementById("confirm-corner");
+const confirmOk = document.getElementById("confirm-ok");
+const confirmCancel = document.getElementById("confirm-cancel");
+
+function confirmTarget() {
+  if (panel.applicable) return "panel";
+  if (sketchMode?.active) return "sketch";
+  return null;
+}
+
+function updateConfirmCorner() {
+  if (!confirmCorner) return;
+  // sketchMode n'existe pas encore pendant le chargement du module.
+  let target = null;
+  try { target = confirmTarget(); } catch { target = null; }
+  confirmCorner.hidden = target === null;
+  if (target === "sketch") {
+    confirmOk.title = t("Fermer l'esquisse en gardant les modifications");
+    confirmCancel.title = t("Quitter l'esquisse sans garder les modifications");
+  } else {
+    confirmOk.title = t("OK (Entrée)");
+    confirmCancel.title = t("Annuler (Échap)");
+  }
+}
+
+confirmOk?.addEventListener("click", () => {
+  const target = confirmTarget();
+  if (target === "panel") panel.apply();
+  else if (target === "sketch") sketchMode.finish();
+});
+confirmCancel?.addEventListener("click", () => {
+  const target = confirmTarget();
+  if (target === "panel") panel.close();
+  else if (target === "sketch") sketchMode.cancel();
+});
+
 document.addEventListener("freesolid:sketch-enter", () => {
+  updateConfirmCorner();
   sketchHidesVolumes = true;
   applyVolumeVisibility();
   showTab("sketch");
@@ -2662,6 +2704,7 @@ document.addEventListener("freesolid:sketch-state", () => {
   if (lastTree) renderTree(lastTree);
 });
 document.addEventListener("freesolid:sketch-exit", () => {
+  updateConfirmCorner();
   sketchHidesVolumes = false;
   applyVolumeVisibility();
   showTab("features");

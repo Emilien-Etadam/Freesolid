@@ -45,7 +45,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 4 | Couleurs d'état de contrainte de l'esquisse | P1 | fait : bleu = libre, clair = défini (le « noir » sur fond sombre), rouge = en trop ; état « sur-contrainte » dans la barre d'état ; textes d'état traduits |
 | 5 | Préfixe d'état (-) / (+) et esquisse en cours dans l'arbre | P2 | fait |
 | 6 | « Quitter » l'esquisse annule vraiment | P2 | fait : op moteur sketch_cancel (transactions défaites + instantané de la géométrie) |
-| 7 | Coin de confirmation ✓/✗ dans la vue | P2 | reste |
+| 7 | Coin de confirmation ✓/✗ dans la vue | P2 | fait : agit sur la commande ouverte, sinon sur l'esquisse (fermer / quitter sans garder) |
 | 8 | Barre d'espace : boîte d'orientation | P2 | reste |
 | 9 | Origine dans l'arbre et dans l'esquisse ; volumes visibles en esquisse | P2 | reste |
 | 10 | Cotation : saisie de la valeur à la pose, lignes d'attache et flèches | P1 | reste |

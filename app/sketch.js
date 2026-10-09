@@ -1687,5 +1687,7 @@ export function createSketchMode(deps) {
     // Termine l'esquisse en la gardant — cliquer une fonction du ruban
     // pendant le dessin appelle ceci avant d'ouvrir son panneau.
     finish: () => exit(true),
+    /** Quitter sans garder (coin de confirmation, bouton Quitter). */
+    cancel: () => exit(false),
   };
 }

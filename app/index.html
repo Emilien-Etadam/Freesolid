@@ -142,6 +142,21 @@
   #viewbar button:hover { background: var(--panel-2); }
   #viewbar button.on { color: var(--accent); }
 
+  /* Coin de confirmation : sous la barre de vue, en haut à droite. */
+  #confirm-corner {
+    position: absolute; top: 52px; right: 10px; z-index: 4;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  #confirm-corner[hidden] { display: none; }
+  #confirm-corner button {
+    width: 40px; height: 40px; font-size: 24px; line-height: 1;
+    border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel); cursor: pointer;
+  }
+  #confirm-corner .ok { color: #46c37b; }
+  #confirm-corner .no { color: #ff5c5c; }
+  #confirm-corner button:hover { background: var(--panel-2); }
+
   /* Cadre de sélection : plein en fenêtre, tirets en capture. */
   #box-select {
     position: absolute; z-index: 5; pointer-events: none;
@@ -740,6 +755,10 @@
   </aside>
 
   <main id="viewport">
+    <div id="confirm-corner" hidden>
+      <button id="confirm-ok" class="ok" title="OK (Entrée)">✓</button>
+      <button id="confirm-cancel" class="no" title="Annuler (Échap)">✗</button>
+    </div>
     <div id="viewbar">
       <button id="view-iso" title="Vue isométrique (Ctrl+7)"><img src="icons/view-isometric.svg" alt=""></button>
       <button id="view-front" title="Vue de face (Ctrl+1)"><img src="icons/view-front.svg" alt=""></button>

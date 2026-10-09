@@ -29,15 +29,30 @@
 
 import { t } from "./i18n.js";
 
+/** Que fait Entrée dans le panneau ? Une valeur tout juste tapée dans un
+ *  champ est d'abord appliquée (l'aperçu suit, le panneau reste ouvert) ;
+ *  un second appui — ou Entrée hors d'un champ modifié — valide la
+ *  fonction. */
+export function enterAction({ tag, edited, noApply }) {
+  if (tag === "SELECT" || tag === "TEXTAREA") return "none";
+  if (tag === "INPUT" && edited) return "commit";
+  return noApply ? "none" : "apply";
+}
+
 export function createPropertyPanel({ say, onClose, onToggle }) {
   const aside = document.querySelector("aside");
   const panelEl = document.getElementById("panel");
 
   let active = null; // { spec, values }
+  let editedInput = null; // champ modifié depuis le dernier Entrée
 
   // Chaque modification de valeur notifie la commande — c'est ce qui
   // alimente l'aperçu jaune en temps réel.
   function changed() {
+    const focused = document.activeElement;
+    if (focused?.tagName === "INPUT" && panelEl.contains(focused)) {
+      editedInput = focused;
+    }
     active?.spec.onChange?.({ ...active.values });
   }
 
@@ -56,6 +71,7 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     // close(false) qui appelle onCancel.
     if (active) close(false, { silent: true });
     active = { spec, values: {} };
+    editedInput = null;
     for (const group of spec.groups) {
       for (const row of group.rows ?? []) {
         if (row.key !== undefined) active.values[row.key] = row.value ?? null;
@@ -87,10 +103,20 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
   function onKey(event) {
     // Une saisie flottante (boîte de cote) gère ses propres touches.
     if (event.target?.closest?.("[data-own-keys]")) return;
-    if (event.key === "Enter" && event.target.tagName !== "SELECT") {
-      if (active?.spec.noApply) return;
+    if (event.key === "Enter") {
+      const action = enterAction({
+        tag: event.target.tagName,
+        edited: event.target === editedInput,
+        noApply: active?.spec.noApply,
+      });
+      if (action === "none") return;
       event.preventDefault();
       event.stopPropagation(); // le mode esquisse écoute aussi le clavier
+      if (action === "commit") {
+        editedInput = null;
+        event.target.select?.(); // la valeur est prise : on la montre
+        return;
+      }
       close(true);
     } else if (event.key === "Escape") {
       event.preventDefault();

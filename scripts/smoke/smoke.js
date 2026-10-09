@@ -805,7 +805,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(250);
   await step("modifier au clic droit");
 
-  // 4e. Esquisse sur une face du bossage : aucun maillage volumique visible.
+  // 4e. Esquisse sur une face du bossage : la pièce reste visible (Q1).
   const volumeCount = () => page.evaluate(
     () => window.__freesolidDebug?.volumeVisibleCount ?? -1);
   const facesBeforeSketch = await volumeCount();
@@ -838,25 +838,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await page.click("#btn-sketch");
   await sleep(2000);
-  const hiddenCount = await volumeCount();
-  if (hiddenCount !== 0) {
-    errors.push("esquisse : volumes encore visibles (" + hiddenCount + ")");
+  const sketchCount = await volumeCount();
+  if (!(sketchCount > 0)) {
+    errors.push("esquisse : la pièce a disparu (" + sketchCount + ")");
   }
   const sketchTab = await page.evaluate(() =>
     document.getElementById("sketchbar")?.classList.contains("active"));
   if (!sketchTab) {
     errors.push("esquisse sur face : le ruban Esquisse n'est pas actif");
   }
-  await step("esquisse sans volume");
-  await page.screenshot({ path: path.join(SHOTS, "4e-esquisse-sans-volume.png") });
+  await step("esquisse sur la pièce visible");
+  await page.screenshot({ path: path.join(SHOTS, "4e-esquisse-sur-piece.png") });
   await page.click("#sk-cancel");
   await sleep(1800);
   const shownCount = await volumeCount();
   if (!(shownCount > 0)) {
-    errors.push("sortie esquisse : volumes toujours masqués ("
+    errors.push("sortie esquisse : volumes masqués ("
       + shownCount + ")");
   }
-  await step("volumes rétablis");
+  await step("volumes toujours visibles");
 
   // 4f. P024 — esquisse libre décalée, cliquable dans le viewport.
   await page.locator("#tree li.plane").first().click();

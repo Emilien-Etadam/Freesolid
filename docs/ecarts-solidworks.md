@@ -49,7 +49,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 6 | « Quitter » l'esquisse annule vraiment | P2 | fait : op moteur sketch_cancel (transactions défaites + instantané de la géométrie) |
 | 7 | Coin de confirmation ✓/✗ dans la vue | P2 | fait : agit sur la commande ouverte, sinon sur l'esquisse (fermer / quitter sans garder) |
 | 8 | Barre d'espace : boîte d'orientation | P2 | fait : 6 vues en croix, iso / dimétrique / trimétrique, Normal à, épingle. Reste : dispositions multi-fenêtres |
-| 9 | Origine dans l'arbre et dans l'esquisse ; volumes visibles en esquisse | P2 | fait pour l'origine (ligne de l'arbre, trièdre, repère d'esquisse). Volumes en esquisse : question Q1 |
+| 9 | Origine dans l'arbre et dans l'esquisse ; volumes visibles en esquisse | P2 | fait : origine (ligne de l'arbre, trièdre, repère d'esquisse) ; la pièce reste visible en esquisse (Q1 tranchée) |
 | 10 | Cotation : saisie de la valeur à la pose, lignes d'attache et flèches | P1 | reste |
 | 11 | Retour pendant le tracé (inférences, symboles de relations) | P2 | reste |
 | 12 | Barre S (la spline quitte la touche S) | P2 | confié à Cursor (T12) |
@@ -75,7 +75,11 @@ connaissance du logiciel et de l'aide officielle, reformulées.
   pendant l'édition d'une esquisse ; FreeSolid la masque, par un choix
   explicite antérieur (ticket P023, vérifié par le test smoke `4e`).
   Faut-il revenir sur P023 et afficher la pièce (éventuellement estompée) ?
-  En attendant, rien n'est changé.
+  **Réponse (2026-10-09) : oui.** La pièce reste visible, le smoke `4e` le
+  vérifie désormais.
+- **Q2 — Vocabulaire de commandes.** `engine/vocab.py` reprend des noms de
+  commandes propres à SolidWorks (« Extruded Boss/Base », « Hole Wizard »…).
+  Faut-il les neutraliser pour rester clean-room ? En attente.
 
 ---
 

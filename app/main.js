@@ -264,16 +264,17 @@ const boxOverlay = {
 container.appendChild(boxEl);
 
 // Maillages volumiques (corps, autres corps, surfaces, arêtes, aperçu).
-// Masqués en bloc pendant l'esquisse — visible=false sur le groupe,
-// jamais de dispose.
+// La pièce reste visible pendant l'esquisse (on dessine en s'appuyant sur
+// elle, l'esquisse se lit par-dessus) ; seules les cotes de fonction,
+// propres au mode 3D, se masquent. (Revient sur P023, décision Q1.)
 const volumesGroup = new THREE.Group();
 volumesGroup.name = "volumes";
 scene.add(volumesGroup);
-let sketchHidesVolumes = false;
+let inSketchMode = false;
 
 function applyVolumeVisibility() {
-  volumesGroup.visible = !sketchHidesVolumes;
-  featureDimsGroup.visible = !sketchHidesVolumes;
+  volumesGroup.visible = true;
+  featureDimsGroup.visible = !inSketchMode;
 }
 
 function volumeVisibleCount() {
@@ -2809,7 +2810,7 @@ confirmCancel?.addEventListener("click", () => {
 
 document.addEventListener("freesolid:sketch-enter", () => {
   updateConfirmCorner();
-  sketchHidesVolumes = true;
+  inSketchMode = true;
   applyVolumeVisibility();
   showTab("sketch");
   // L'esquisse ouverte apparaît dans l'arbre dès sa création.
@@ -2821,7 +2822,7 @@ document.addEventListener("freesolid:sketch-state", () => {
 });
 document.addEventListener("freesolid:sketch-exit", () => {
   updateConfirmCorner();
-  sketchHidesVolumes = false;
+  inSketchMode = false;
   applyVolumeVisibility();
   showTab("features");
 });

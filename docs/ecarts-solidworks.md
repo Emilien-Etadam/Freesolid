@@ -59,7 +59,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 16 | Arbre accessible pendant une commande | P2 | fait : volet repliable en haut à gauche de la vue, mêmes clics que l'arbre |
 | 17 | Barre de menus | P2 | fait : six menus, raccourcis, survol, Échap |
 | 18 | Chanfrein distance-angle | P2 | fait : distance égale, deux distances, distance et angle, inversion des côtés, réédition |
-| 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | fait : borgne, jusqu'au suivant, jusqu'au dernier / à travers tout, jusqu'à la face (+ décalage), plan milieu, deuxième direction, dépouille (vers l'intérieur ou l'extérieur), paroi mince (un côté, plan milieu, deux côtés ; profil fermé ou ouvert ; épaisseurs rééditables). Reste (P3) : extrémités fermées d'une paroi mince sur profil fermé |
+| 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | fait : borgne, jusqu'au suivant, jusqu'au dernier / à travers tout, jusqu'à la face (+ décalage), plan milieu, deuxième direction, dépouille (vers l'intérieur ou l'extérieur), paroi mince (un côté, plan milieu, deux côtés ; profil fermé ou ouvert ; épaisseurs rééditables), extrémités fermées sur profil fermé (épaisseur propre, profondeur borgne) |
 | 20 | Révolution : choix de l'axe | P2 | fait : axe vertical, ligne de construction, axes d'origine, plan milieu, réédition |
 | 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | confié à Cursor (T21) |
 | 22 | Répétitions : choix des fonctions et de la direction | P2 | fait : fonctions choisies dans l'arbre (plusieurs), direction par axe d'origine ou arête droite, pas ou longueur totale, inversion ; idem pour la symétrie (fonctions) |

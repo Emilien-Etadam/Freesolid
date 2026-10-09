@@ -83,19 +83,24 @@ THIN_TYPES = ("un", "milieu", "deux")
 
 
 def thin_settings(type="un", thickness=None, thickness2=None,
-                  reversed=False):
+                  reversed=False, caps=0.0):
     """Paroi mince validée : ``{type, thickness, thickness2, reversed}``.
 
     ``thickness`` s'applique vers l'extérieur d'un profil fermé (à droite
     du sens de tracé d'un profil ouvert) ; ``reversed`` change de côté.
     En « deux côtés », ``thickness2`` est l'épaisseur de l'autre côté.
+    ``caps`` > 0 ferme les deux extrémités (profil fermé) avec cette
+    épaisseur.
     """
     if type not in THIN_TYPES:
         raise ExtrudeError("paroi mince : type inconnu : {}".format(type))
     if thickness is None or float(thickness) <= 0:
         raise ExtrudeError("épaisseur de paroi invalide")
+    if caps is None or float(caps) < 0:
+        raise ExtrudeError("épaisseur des extrémités invalide")
     spec = {"type": type, "thickness": float(thickness),
-            "thickness2": 0.0, "reversed": bool(reversed)}
+            "thickness2": 0.0, "reversed": bool(reversed),
+            "caps": float(caps)}
     if type == "deux":
         if thickness2 is None or float(thickness2) <= 0:
             raise ExtrudeError("épaisseur de paroi (côté 2) invalide")
@@ -117,3 +122,48 @@ def thin_offsets(spec):
         return [(-t / 2, False), (t, True)]
     outer, inner = (t2, t) if spec["reversed"] else (t, t2)
     return [(-inner, False), (outer + inner, True)]
+
+
+def thin_cap_offsets(spec):
+    """Paroi mince à extrémités fermées : ``(extérieur, intérieur)``.
+
+    La fonction extrude le contour décalé de ``extérieur`` (≥ 0), plein ;
+    une cavité décalée de ``intérieur`` (≤ 0) est creusée entre les deux
+    extrémités. Même répartition des épaisseurs que ``thin_offsets``.
+    """
+    t, t2 = spec["thickness"], spec["thickness2"]
+    if spec["type"] == "un":
+        return (0.0, -t) if spec["reversed"] else (t, 0.0)
+    if spec["type"] == "milieu":
+        return (t / 2, -t / 2)
+    outer, inner = (t2, t) if spec["reversed"] else (t, t2)
+    return (outer, -inner)
+
+
+def check_cavity(side, length, length2, caps):
+    """Refuse des extrémités qui se rejoindraient (``side`` : ``SideType``
+    de l'extrusion, profondeurs borgnes)."""
+    total = length + (length2 if side == "Two sides" else 0.0)
+    if total <= 2 * caps:
+        raise ExtrudeError(
+            "extrémités fermées : leur épaisseur doit rester inférieure à "
+            "la moitié de la profondeur")
+
+
+def cavity_plan(side, feature):
+    """Cavité d'une paroi mince fermée : propriétés de l'enlèvement.
+
+    Les profondeurs sont des expressions sur la fonction ``feature``
+    (ses ``Length``, ``Length2`` et ``CapThickness``) : la cavité suit
+    quand on réédite. Elle laisse ``CapThickness`` de matière à chaque
+    bout ; en un seul côté, ``Length2`` négatif décale son départ.
+    """
+    cap = feature + ".CapThickness"
+    if side == "Symmetric":
+        return {"SideType": "Symmetric",
+                "Length": "{}.Length - 2 * {}".format(feature, cap)}
+    second = ("{}.Length2 - {}".format(feature, cap) if side == "Two sides"
+              else "-" + cap)
+    return {"SideType": "Two sides",
+            "Length": "{}.Length - {}".format(feature, cap),
+            "Length2": second}

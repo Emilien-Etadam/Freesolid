@@ -3014,6 +3014,7 @@ const PROP_LABELS = {
   Angle: ["Angle", "°"],
   Thickness: ["Épaisseur", "mm"],
   Thickness2: ["Épaisseur côté 2", "mm"],
+  CapThickness: ["Épaisseur des extrémités", "mm"],
   Value: ["Épaisseur", "mm"],
   Occurrences: ["Nombre d'occurrences", ""],
   Diameter: ["Diamètre", "mm"],

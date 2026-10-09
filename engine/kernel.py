@@ -2703,24 +2703,55 @@ class Kernel:
             self._apply_extrude(pad, "pad", tip, length=length,
                                 reversed=reversed, midplane=midplane,
                                 **conditions)
-        except KernelError:
-            self._remove_all([pad] + helpers)
-            raise
-        pad.Label = self._t("Extrusion")
-        if spec is not None:
-            self._mark_thin(pad, spec)
-        try:
+            pad.Label = self._t("Extrusion")
+            if spec is not None:
+                self._mark_thin(pad, spec)
+                self._own_thin_helpers(pad, helpers)
+                if spec["caps"]:
+                    helpers += self._thin_cavity(body, pad, profile, spec)
             self._recompute()
         except KernelError:
             self._remove_all([pad] + helpers)
             raise
         return self.get_tree()
 
-    #: Profil décalé d'une paroi mince : hors arbre, rangé sous sa fonction.
+    #: Objets d'une paroi mince : hors arbre, ils suivent leur fonction
+    #: (``FreeSolidThinOwner`` = son nom ; une chaîne, pas un lien — un lien
+    #: de la fonction vers sa cavité, placée après elle, ferait un cycle).
     _THIN_HELPER = "FreeSolidThinHelper"
 
     def _is_thin_helper(self, obj):
         return bool(getattr(obj, self._THIN_HELPER, False))
+
+    def _new_thin_helper(self, body, type_id, name, label):
+        obj = body.newObject(type_id, name)
+        obj.addProperty("App::PropertyBool", self._THIN_HELPER,
+                        "FreeSolid", "Objet de paroi mince")
+        setattr(obj, self._THIN_HELPER, True)
+        obj.Label = self._t(label)
+        return obj
+
+    def _new_thin_binder(self, body, source, offset, fill, label):
+        binder = self._new_thin_helper(
+            body, "PartDesign::SubShapeBinder", "ThinProfile", label)
+        try:
+            binder.Support = [(source, ("",))]
+        except TypeError:
+            binder.Support = (source, [""])
+        binder.OffsetJoinType = "Intersection"  # coins vifs
+        binder.OffsetOpenResult = True  # profil ouvert : un côté
+        binder.OffsetFill = fill
+        binder.Offset = offset
+        binder.Visibility = False
+        return binder
+
+    def _own_thin_helpers(self, feature, helpers):
+        for helper in helpers:
+            if "FreeSolidThinOwner" not in helper.PropertiesList:
+                helper.addProperty("App::PropertyString",
+                                   "FreeSolidThinOwner", "FreeSolid",
+                                   "Fonction de cette paroi mince")
+            helper.FreeSolidThinOwner = feature.Name
 
     def _thin_profile(self, body, profile, thin):
         """Paroi mince : le profil devient une bande d'épaisseur constante.
@@ -2728,45 +2759,89 @@ class Kernel:
         Un ou deux ``SubShapeBinder`` décalés (objets natifs, recalculés
         quand l'esquisse change) tiennent la bande dans le corps ; la
         fonction l'extrude comme n'importe quel profil, avec toutes ses
-        conditions de fin. Renvoie ``(spec, liants)`` — ``(None, [])``
-        sans paroi mince.
+        conditions de fin. Extrémités fermées : le profil est le contour
+        extérieur plein, la cavité vient après (``_thin_cavity``).
+        Renvoie ``(spec, liants)`` — ``(None, [])`` sans paroi mince.
         """
         if not thin:
             return None, []
-        from engine.extrude import ExtrudeError, thin_offsets, thin_settings
+        from engine.extrude import (
+            ExtrudeError, thin_cap_offsets, thin_offsets, thin_settings)
         if not isinstance(thin, dict):
             raise KernelError("paroi mince : objet attendu")
         try:
             spec = thin_settings(**thin)
         except (ExtrudeError, TypeError, ValueError) as exc:
             raise KernelError(str(exc))
+        if spec["caps"]:
+            profile.recompute()   # une esquisse tout juste tracée
+            wires = getattr(profile.Shape, "Wires", None) or []
+            if not wires or not all(w.isClosed() for w in wires):
+                raise KernelError(
+                    "extrémités fermées : le profil doit être fermé")
+            steps = [(thin_cap_offsets(spec)[0], False)]
+        else:
+            steps = thin_offsets(spec)
         doc = self._require_doc()
         helpers = []
         source = profile
         try:
-            for offset, fill in thin_offsets(spec):
-                binder = body.newObject("PartDesign::SubShapeBinder",
-                                        "ThinProfile")
-                helpers.append(binder)
-                binder.addProperty("App::PropertyBool", self._THIN_HELPER,
-                                   "FreeSolid", "Profil de paroi mince")
-                setattr(binder, self._THIN_HELPER, True)
-                try:
-                    binder.Support = [(source, ("",))]
-                except TypeError:
-                    binder.Support = (source, [""])
-                binder.OffsetJoinType = "Intersection"  # coins vifs
-                binder.OffsetOpenResult = True  # profil ouvert : un côté
-                binder.OffsetFill = fill
-                binder.Offset = offset
-                binder.Label = self._t("Profil de paroi mince")
-                binder.Visibility = False
-                source = binder
+            for offset, fill in steps:
+                source = self._new_thin_binder(
+                    body, source, offset, fill, "Profil de paroi mince")
+                helpers.append(source)
             doc.recompute()
         except Exception as exc:  # noqa: BLE001
             self._remove_all(helpers)
             raise KernelError(_explain(exc))
         return spec, helpers
+
+    def _thin_cavity(self, body, feature, profile, spec):
+        """Extrémités fermées : la cavité, un enlèvement caché entre les
+        deux bouts, dont les profondeurs suivent la fonction."""
+        from engine.extrude import ExtrudeError, cavity_plan, thin_cap_offsets
+        side = str(getattr(feature, "SideType", "One side"))
+        borgne = (feature.Type == "Length"
+                  and (side != "Two sides" or feature.Type2 == "Length"))
+        tapered = any(abs(float(getattr(feature, prop, 0) or 0)) > 1e-9
+                      for prop in ("TaperAngle", "TaperAngle2"))
+        if not borgne or tapered:
+            raise KernelError(
+                "extrémités fermées : profondeur borgne, sans dépouille")
+        try:
+            self._check_cavity(feature)
+        except ExtrudeError as exc:
+            raise KernelError(str(exc))
+        helpers = []
+        try:
+            binder = self._new_thin_binder(
+                body, profile, thin_cap_offsets(spec)[1], False,
+                "Profil de paroi mince")
+            helpers.append(binder)
+            cavity = self._new_thin_helper(
+                body, "PartDesign::Pocket", "ThinCavity",
+                "Cavité de paroi mince")
+            helpers.append(cavity)
+            self._own_thin_helpers(feature, helpers)
+            cavity.Profile = binder
+            plan = cavity_plan(side, feature.Name)
+            cavity.SideType = plan.pop("SideType")
+            # L'enlèvement part à l'opposé de l'extrusion.
+            cavity.Reversed = not feature.Reversed
+            for prop, expr in plan.items():
+                cavity.setExpression(prop, expr)
+        except Exception as exc:  # noqa: BLE001
+            self._remove_all(helpers)
+            raise KernelError(_explain(exc))
+        return helpers
+
+    def _check_cavity(self, feature):
+        from engine.extrude import check_cavity
+        def mm(prop):
+            value = getattr(feature, prop, 0.0)
+            return float(getattr(value, "Value", value))
+        check_cavity(str(getattr(feature, "SideType", "One side")),
+                     mm("Length"), mm("Length2"), mm("CapThickness"))
 
     def _mark_thin(self, feature, spec):
         """Épaisseurs sur la fonction : rééditables par ``set_params``."""
@@ -2775,6 +2850,8 @@ class Kernel:
                  ("Thickness", "App::PropertyLength")]
         if spec["type"] == "deux":
             props.append(("Thickness2", "App::PropertyLength"))
+        if spec["caps"]:
+            props.append(("CapThickness", "App::PropertyLength"))
         for prop, prop_type in props:
             if prop not in feature.PropertiesList:
                 feature.addProperty(prop_type, prop, "FreeSolid",
@@ -2784,6 +2861,8 @@ class Kernel:
         feature.Thickness = spec["thickness"]
         if spec["type"] == "deux":
             feature.Thickness2 = spec["thickness2"]
+        if spec["caps"]:
+            feature.CapThickness = spec["caps"]
 
     def _thin_spec(self, obj):
         """Paroi mince d'une fonction (dict de ``thin_settings``) ou None."""
@@ -2796,7 +2875,8 @@ class Kernel:
         return {"type": kind, "thickness": mm("Thickness"),
                 "thickness2": mm("Thickness2") if kind == "deux" else 0.0,
                 "reversed": bool(getattr(obj, "FreeSolidThinReversed",
-                                         False))}
+                                         False)),
+                "caps": mm("CapThickness")}
 
     def _thin_chain(self, obj):
         """Liants de paroi mince d'une fonction (du premier au dernier) et
@@ -2810,15 +2890,44 @@ class Kernel:
             linked = support[0][0] if support else None
         return chain, (linked if chain else None)
 
+    def _thin_helpers(self, obj):
+        """Tous les objets cachés d'une paroi mince, dans l'ordre du corps."""
+        chain, _ = self._thin_chain(obj)
+        group = getattr(obj.getParentGeoFeatureGroup(), "Group", None) or []
+        return [o for o in group
+                if o in chain or getattr(o, "FreeSolidThinOwner", "") == obj.Name]
+
+    def _thin_owner(self, obj):
+        """La fonction d'un objet caché de paroi mince, sinon l'objet."""
+        owner = getattr(obj, "FreeSolidThinOwner", "") if obj else ""
+        found = self._doc.getObject(owner) if owner else None
+        return found or obj
+
+    def _tip_with_helpers(self, obj):
+        """Barre de retour sur une fonction : après sa cavité éventuelle."""
+        features = [h for h in self._thin_helpers(obj)
+                    if h.isDerivedFrom("PartDesign::Feature")]
+        return features[-1] if features else obj
+
     def _sync_thin(self, obj):
         """Recopie les épaisseurs de la fonction dans ses liants."""
-        from engine.extrude import ExtrudeError, thin_offsets, thin_settings
+        from engine.extrude import (
+            ExtrudeError, thin_cap_offsets, thin_offsets, thin_settings)
         spec = self._thin_spec(obj)
         chain, _ = self._thin_chain(obj)
         if spec is None or not chain:
             return
         try:
-            steps = thin_offsets(thin_settings(**spec))
+            spec = thin_settings(**spec)
+            if spec["caps"]:
+                self._check_cavity(obj)
+                outer, inner = thin_cap_offsets(spec)
+                binders = [h for h in self._thin_helpers(obj)
+                           if h.TypeId == "PartDesign::SubShapeBinder"]
+                steps = [(outer, False), (inner, False)]
+                chain = binders
+            else:
+                steps = thin_offsets(spec)
         except ExtrudeError as exc:
             raise KernelError(str(exc))
         if len(steps) != len(chain):
@@ -2875,15 +2984,15 @@ class Kernel:
         consumed = self._consumed_sketches()
         # La fonction voyage avec ses esquisses ; « avant » une fonction,
         # c'est avant ses esquisses à elle aussi.
-        group = [o for o in members if consumed.get(o.Name) == moved.Name]
-        group.append(moved)
+        # Une paroi mince fermée a sa cavité *après* elle : le groupe garde
+        # l'ordre du corps, et « après » une fonction, c'est après sa cavité.
+        group = [o for o in members if consumed.get(o.Name) == moved.Name
+                 or o is moved]
         if anchor in group:
             return self.get_tree()
-        if not after:
-            anchor_sketches = [o for o in members
-                               if consumed.get(o.Name) == anchor.Name]
-            if anchor_sketches:
-                anchor = anchor_sketches[0]
+        anchor_group = [o for o in members
+                        if consumed.get(o.Name) == anchor.Name or o is anchor]
+        anchor = anchor_group[-1] if after else anchor_group[0]
         tip_at_end = body.Tip is not None and body.Tip is self._last_body_feature()
         for obj in group:
             body.removeObject(obj)
@@ -2932,6 +3041,12 @@ class Kernel:
         body = self._require_body()
         consumed = {}
         for obj in body.Group:
+            owner = getattr(obj, "FreeSolidThinOwner", "")
+            if owner:
+                # Objet caché de paroi mince : il voyage avec sa fonction ;
+                # la cavité (un enlèvement) ne consomme pas l'esquisse.
+                consumed[obj.Name] = owner
+                continue
             profile = getattr(obj, "Profile", None)
             linked = profile[0] if isinstance(profile, tuple) else profile
             chain, source = self._thin_chain(obj)
@@ -2963,6 +3078,8 @@ class Kernel:
 
     def _history_kind(self, obj, consumed):
         """``feature`` / ``sketch`` / ``surface``, ou None si hors historique."""
+        if self._is_thin_helper(obj):
+            return None
         if obj.TypeId in self._SURFACE_TYPE_IDS:
             return "surface"
         if obj.TypeId == "Sketcher::SketchObject":
@@ -3068,6 +3185,9 @@ class Kernel:
         tip = body.Tip
         profile = (self._get_sketch(sketch) if sketch is not None
                    else self._latest_sketch())
+        if isinstance(thin, dict) and thin.get("caps"):
+            raise KernelError(
+                "extrémités fermées : réservées à l'extrusion")
         spec, helpers = self._thin_profile(body, profile, thin)
         pocket = body.newObject("PartDesign::Pocket", "Pocket")
         pocket.Profile = helpers[-1] if helpers else profile
@@ -3083,6 +3203,7 @@ class Kernel:
         pocket.Label = self._t("Enlèvement extrudé")
         if spec is not None:
             self._mark_thin(pocket, spec)
+            self._own_thin_helpers(pocket, helpers)
         try:
             self._recompute()
         except KernelError:
@@ -3884,7 +4005,8 @@ class Kernel:
     #: and prompting through Offset/TaperAngle/Length2 buries the one that
     #: matters.
     _EDITABLE_PROPS = ("Length", "LengthFwd", "Radius", "Size", "Angle",
-                       "Thickness", "Thickness2", "Value", "Occurrences",
+                       "Thickness", "Thickness2", "CapThickness", "Value",
+                       "Occurrences",
                        "Diameter", "Depth", "HoleCutDiameter",
                        "HoleCutDepth")
 
@@ -3939,7 +4061,7 @@ class Kernel:
             body.Tip = None
         else:
             tip_obj = self._require_doc().getObject(tip_name)
-            body.Tip = tip_obj
+            body.Tip = self._tip_with_helpers(tip_obj)
         self._apply_rollback_flags(flags)
         self._recompute()
         return self.get_tree()
@@ -3955,7 +4077,8 @@ class Kernel:
         if tip_name is None:
             body.Tip = None
         else:
-            body.Tip = self._require_doc().getObject(tip_name)
+            body.Tip = self._tip_with_helpers(
+                self._require_doc().getObject(tip_name))
         self._apply_rollback_flags(flags)
         self._recompute()
         return self.get_tree()
@@ -3989,11 +4112,22 @@ class Kernel:
         # fonction précédente de la chaîne (None si c'était la seule —
         # corps vide légitime).
         parent_body = obj.getParentGeoFeatureGroup()
-        if parent_body is not None and getattr(parent_body, "Tip", None) is obj:
+        thin_helpers = self._thin_helpers(obj)
+        if parent_body is not None and getattr(parent_body, "Tip", None) in (
+                [obj] + thin_helpers):
             parent_body.Tip = getattr(obj, "BaseFeature", None)
-        thin_helpers, _ = self._thin_chain(obj)
+        # Paroi mince : la cavité (après la fonction) part avant elle, les
+        # profils décalés (avant) après.
+        order = {o.Name: i for i, o in enumerate(
+            getattr(parent_body, "Group", None) or [])}
+        rank = order.get(obj.Name, -1)
+        later = [o for o in thin_helpers if order.get(o.Name, -1) > rank]
+        earlier = [o.Name for o in thin_helpers if o not in later]
+        self._remove_all(later)
         doc.removeObject(obj.Name)
-        self._remove_all(thin_helpers)
+        for name in reversed(earlier):
+            if doc.getObject(name) is not None:
+                doc.removeObject(name)
         try:
             if self._assembly:
                 doc.recompute()
@@ -4213,7 +4347,7 @@ class Kernel:
                     self._restore_props(obj, previous)
                     raise KernelError(_explain(exc))
                 continue
-            if (prop in ("Thickness", "Thickness2") and thin
+            if (prop in ("Thickness", "Thickness2", "CapThickness") and thin
                     and isinstance(value, str)
                     and parse_user_number(value) is None):
                 self._restore_props(obj, previous)
@@ -4717,8 +4851,9 @@ class Kernel:
                 "label": obj.Label,
                 "active": obj is body,
                 "count": len([o for o in obj.Group
-                              if o.isDerivedFrom("PartDesign::Feature")
-                              or o.TypeId == "Sketcher::SketchObject"]),
+                              if (o.isDerivedFrom("PartDesign::Feature")
+                                  or o.TypeId == "Sketcher::SketchObject")
+                              and not self._is_thin_helper(o)]),
                 "color": getattr(obj, "FreeSolidColor", "") or None,
                 "has_solid": self._body_has_solid(obj),
             })
@@ -4726,7 +4861,8 @@ class Kernel:
                     for o in self._doc.Objects
                     if o.TypeId in self._SURFACE_TYPE_IDS
                     and not self._is_internal_tool(o)]
-        tip = body.Tip.Name if getattr(body, "Tip", None) else None
+        tip = (self._thin_owner(body.Tip).Name
+               if getattr(body, "Tip", None) else None)
         # Variables dans le même appel : le FeatureManager affiche le
         # dossier Équations sans round-trip list_variables.
         tree = {"body": body.Label, "tip": tip, "bodies": bodies,
@@ -4782,7 +4918,8 @@ class Kernel:
                 group["spline"] = True
             feature = producers.get(group.get("faceId"))
             if feature:
-                group["feature"] = feature
+                group["feature"] = self._thin_owner(
+                    self._doc.getObject(feature)).Name
         match = getattr(self, "_face_match", None) or {}
         mesh["face_match"] = {
             "matched": int(match.get("matched") or 0),
@@ -8333,6 +8470,60 @@ class Kernel:
                 report["p19_paroi_mince_refus"] = (
                     len([o for o in self._require_body().Group
                          if self._is_thin_helper(o)]) == 1)
+
+            mark("p19b: paroi mince à extrémités fermées")
+            self.new_part("Pièce paroi fermée")
+            self.add_rect_sketch(40, 20)
+            body = self._require_body()
+            tree = self.add_pad(10, thin={"type": "un", "thickness": 2,
+                                          "caps": 1})
+            capped = tree["features"][-1]["name"]
+            def near(expected):
+                return abs(body.Shape.Volume - expected) < 1e-3
+            ok = (near(44 * 24 * 10 - 40 * 20 * 8)
+                  and len(body.Shape.Solids) == 1
+                  and len(tree["features"]) == 1
+                  and tree["tip"] == capped
+                  and tree["features"][0]["thin"]["caps"] == 1
+                  and len(tree["features"][0].get("children") or []) == 1)
+            self.set_params(capped, {"Length": 20})
+            ok = ok and near(44 * 24 * 20 - 40 * 20 * 18)
+            self.set_params(capped, {"CapThickness": 2})
+            ok = ok and near(44 * 24 * 20 - 40 * 20 * 16)
+            try:
+                self.set_params(capped, {"CapThickness": 10})
+                ok = False
+            except KernelError:
+                ok = ok and near(44 * 24 * 20 - 40 * 20 * 16)
+            mesh = self.tessellate()
+            ok = ok and all(g.get("feature") == capped
+                            for g in mesh["groups"])
+            tree = self.set_tip(capped)
+            ok = (ok and tree["tip"] == capped
+                  and self._is_thin_helper(body.Tip)
+                  and near(44 * 24 * 20 - 40 * 20 * 16))
+            self.delete_feature(capped)
+            ok = ok and not [o for o in body.Group
+                             if self._is_thin_helper(o)]
+            self.add_pad(20, midplane=True, thin={
+                "type": "milieu", "thickness": 2, "caps": 1})
+            bb = body.Shape.BoundBox
+            ok = (ok and near(42 * 22 * 20 - 38 * 18 * 18)
+                  and abs(bb.ZMin + 10) < 1e-6 and abs(bb.ZMax - 10) < 1e-6)
+            report["p19b_extremites_fermees"] = ok
+            refused = 0
+            for call_refused in (
+                    lambda: self.add_pad(cond="suivant", thin={
+                        "type": "un", "thickness": 1, "caps": 1}),
+                    lambda: self.add_pocket(5, thin={
+                        "type": "un", "thickness": 1, "caps": 1})):
+                try:
+                    call_refused()
+                except KernelError:
+                    refused += 1
+            report["p19b_extremites_refus"] = (
+                refused == 2 and len([o for o in body.Group
+                                      if self._is_thin_helper(o)]) == 3)
 
             self._plugins.run_selftest(self, mark, report)
 

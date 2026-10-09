@@ -42,6 +42,22 @@ describe("extrudeBuild", () => {
       .params.thin, undefined);
   });
 
+  it("extrémités fermées : extrusion borgne seulement", () => {
+    const v = { cond: "borgne", length: 10, thin: true, thinT: 2,
+                thinCaps: true, thinCapT: "1,5" };
+    assert.equal(extrudeBuild("add_pad", v).params.thin.caps, 1.5);
+    assert.equal(extrudeBuild("add_pocket", v).params.thin.caps, undefined);
+    assert.equal(extrudeBuild("add_pad", { ...v, cond: "suivant" })
+      .params.thin.caps, undefined);
+    assert.equal(extrudeBuild("add_pad", { ...v, taper: 3 })
+      .params.thin.caps, undefined);
+    assert.equal(extrudeBuild("add_pad", { ...v, thinCapT: 0 }), null);
+    const rows = extrudeGroups("pad").flatMap((g) => g.rows);
+    assert.ok(rows.some((r) => r.key === "thinCaps"));
+    assert.ok(!extrudeGroups("pocket").flatMap((g) => g.rows)
+      .some((r) => r.key === "thinCaps"));
+  });
+
   it("à travers tout : pas de profondeur", () => {
     assert.deepEqual(extrudeBuild("add_pocket", { cond: "travers" }).params,
       { reversed: false, cond: "travers" });

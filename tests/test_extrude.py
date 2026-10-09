@@ -2,7 +2,8 @@
 
 import pytest
 
-from engine.extrude import (ExtrudeError, extrude_settings, thin_offsets,
+from engine.extrude import (ExtrudeError, cavity_plan, check_cavity,
+                            extrude_settings, thin_cap_offsets, thin_offsets,
                             thin_settings)
 
 
@@ -89,3 +90,27 @@ def test_paroi_mince_plan_milieu_et_deux_cotes():
 def test_paroi_mince_refusee(kwargs):
     with pytest.raises(ExtrudeError):
         thin_settings(**kwargs)
+
+
+def test_extremites_fermees_contour_et_cavite():
+    assert thin_cap_offsets(thin_settings("un", 2, caps=1)) == (2.0, 0.0)
+    assert thin_cap_offsets(thin_settings("un", 2, reversed=True,
+                                          caps=1)) == (0.0, -2.0)
+    assert thin_cap_offsets(thin_settings("milieu", 2, caps=1)) == (1.0, -1.0)
+    assert thin_cap_offsets(thin_settings("deux", 3, 1, caps=1)) == (3.0, -1.0)
+    with pytest.raises(ExtrudeError):
+        thin_settings("un", 2, caps=-1)
+
+
+def test_cavite_suit_la_fonction():
+    assert cavity_plan("One side", "Pad") == {
+        "SideType": "Two sides", "Length": "Pad.Length - Pad.CapThickness",
+        "Length2": "-Pad.CapThickness"}
+    assert cavity_plan("Symmetric", "Pad")["Length"] == (
+        "Pad.Length - 2 * Pad.CapThickness")
+    assert cavity_plan("Two sides", "Pad")["Length2"] == (
+        "Pad.Length2 - Pad.CapThickness")
+    check_cavity("One side", 10, 0, 4)
+    with pytest.raises(ExtrudeError):
+        check_cavity("One side", 10, 0, 5)
+    check_cavity("Two sides", 4, 4, 3)

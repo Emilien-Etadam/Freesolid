@@ -712,5 +712,7 @@
  "Spline — points cliqués, Entrée pour terminer": "Spline — clicked points, Enter to finish",
  "Rechercher une commande": "Search for a command",
  "Raccourcis": "Shortcuts",
- "Aucune commande": "No command"
+ "Aucune commande": "No command",
+ "Extrémités fermées": "Capped ends",
+ "Épaisseur des extrémités": "End thickness"
 }

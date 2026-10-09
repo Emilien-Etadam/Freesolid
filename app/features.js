@@ -335,10 +335,23 @@ export function extrudeGroups(kind) {
           showIf: (v) => v.thin && v.thinType === "deux" },
         { type: "check", key: "thinReversed", label: "Inverser le côté",
           value: false, showIf: (v) => v.thin && v.thinType !== "milieu" },
+        ...(kind === "pad" ? [
+          { type: "check", key: "thinCaps", label: "Extrémités fermées",
+            value: false, showIf: (v) => v.thin && capsAllowed(v) },
+          { type: "number", key: "thinCapT", label: "Épaisseur des extrémités",
+            value: 1, unit: "mm", min: 0.01,
+            showIf: (v) => v.thin && v.thinCaps && capsAllowed(v) },
+        ] : []),
       ],
     },
   ];
 }
+
+// Extrémités fermées (extrusion, profil fermé) : profondeurs borgnes et
+// sans dépouille — la cavité se règle sur elles.
+const capsAllowed = (v) => usesLength(v.cond) && !(num(v.taper) ?? 0)
+  && !(v.dir2 && v.cond !== "milieu"
+       && (v.cond2 !== "borgne" || (num(v.taper2) ?? 0)));
 
 // Paroi mince : vers l'extérieur d'un profil fermé (à droite du tracé
 // d'un profil ouvert) ; « Inverser le côté » passe de l'autre côté.
@@ -346,7 +359,7 @@ const THIN_TYPES = [["un", "Un côté"], ["milieu", "Plan milieu"],
                     ["deux", "Deux côtés"]];
 
 /** Paroi mince pour le moteur, ``undefined`` sans, ``null`` si invalide. */
-function thinParams(v) {
+function thinParams(v, op) {
   if (!v.thin) return undefined;
   const thickness = Math.abs(num(v.thinT) ?? 0);
   if (!thickness) return null;
@@ -356,6 +369,11 @@ function thinParams(v) {
     const thickness2 = Math.abs(num(v.thinT2) ?? 0);
     if (!thickness2) return null;
     thin.thickness2 = thickness2;
+  }
+  if (op === "add_pad" && v.thinCaps && capsAllowed(v)) {
+    const caps = Math.abs(num(v.thinCapT) ?? 0);
+    if (!caps) return null;
+    thin.caps = caps;
   }
   return thin;
 }
@@ -388,7 +406,7 @@ export function extrudeBuild(op, v) {
     const taper2 = num(v.taper2) ?? 0;
     if (taper2) params.taper2 = taper2;
   }
-  const thin = thinParams(v);
+  const thin = thinParams(v, op);
   if (thin === null) return null;
   if (thin) params.thin = thin;
   return { op, params };
@@ -398,7 +416,7 @@ export function extrudeInvalid(v) {
   if (v.cond === "face" && v.face?.face == null) {
     return "Jusqu'à la face : cliquez la face d'arrivée";
   }
-  if (thinParams(v) === null) return "Épaisseur de paroi invalide";
+  if (thinParams(v, "add_pad") === null) return "Épaisseur de paroi invalide";
   return "Profondeur invalide";
 }
 

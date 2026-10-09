@@ -312,5 +312,11 @@
  "axe de révolution inconnu « {} »": "unknown revolution axis \"{}\"",
  "l'axe de révolution doit être une ligne": "the revolution axis must be a line",
  "angle de révolution invalide": "invalid revolution angle",
- "sens de révolution : booléen attendu": "revolution direction: boolean expected"
+ "sens de révolution : booléen attendu": "revolution direction: boolean expected",
+ "extrémités fermées : le profil doit être fermé": "capped ends: the profile must be closed",
+ "extrémités fermées : profondeur borgne, sans dépouille": "capped ends: blind depth, no draft",
+ "extrémités fermées : leur épaisseur doit rester inférieure à la moitié de la profondeur": "capped ends: their thickness must stay below half the depth",
+ "extrémités fermées : réservées à l'extrusion": "capped ends: extrude only",
+ "épaisseur des extrémités invalide": "invalid end thickness",
+ "Cavité de paroi mince": "Thin wall cavity"
 }

@@ -56,8 +56,11 @@ describe("contenu", () => {
   });
 
   it("Fichier, Outils et Aide déclenchent les boutons existants", () => {
-    assert.deepEqual(byId.file.items.map((entry) => entry.click), [
-      "btn-new", "btn-open", "btn-save", "btn-export", "btn-drawing",
+    assert.equal(byId.file.items[0].action, "create");
+    assert.equal(byId.file.items[0].shortcut, "Ctrl+N");
+    assert.equal(byId.file.items[1].action, "home");
+    assert.deepEqual(byId.file.items.slice(2).map((entry) => entry.click), [
+      "btn-open", "btn-save", "btn-export", "btn-drawing",
     ]);
     assert.equal(byId.tools.items.find((entry) => entry.label === "Mesurer").click,
       "btn-measure");

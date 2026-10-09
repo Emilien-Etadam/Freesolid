@@ -64,7 +64,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 21 | Congé : aperçu corrigé, bulle de cote dans la vue | P2 | confié à Cursor (T21) |
 | 22 | Répétitions : choix des fonctions et de la direction | P2 | reste |
 | 23 | Ouvrir / Enregistrer : dialogue de fichiers | P2 | fait : liste, filtre, nom, écrasement, prison de chemins |
-| 24 | Accueil et Nouveau (Ctrl+N) | P2 | confié à Cursor (T24) |
+| 24 | Accueil et Nouveau (Ctrl+N) | P2 | fait |
 | 25 | Assemblage : contraintes standard | P1 | reste |
 | 26 | Assemblage : insertion guidée, fixe/flottant, déplacement à la souris | P2 | reste |
 | 27 | Interface anglaise sans texte français (demande du 2026-10-09) | P1 | fait : textes interpolés passés par t(), libellés de panneaux, noms moteur (pièce, corps, plans, combiner) |

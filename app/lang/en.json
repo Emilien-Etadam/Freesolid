@@ -682,5 +682,14 @@
  "Maillage (.stl)": "Mesh (.stl)",
  "Tous les fichiers autorisés": "All allowed files",
  "Remplacer « {name} » ?": "Replace \"{name}\"?",
- "Fichier introuvable.": "File not found."
+ "Fichier introuvable.": "File not found.",
+ "Accueil": "Home",
+ "Récents": "Recent",
+ "Pièce": "Part",
+ "Aucun fichier récent": "No recent file",
+ "S ouvre les raccourcis sous le curseur.": "S opens the shortcuts under the cursor.",
+ "Ctrl+1 à Ctrl+7 changent de vue. F cadre la pièce.": "Ctrl+1 through Ctrl+7 change the view. F frames the part.",
+ "La molette zoome, le bouton du milieu tourne la vue.": "The wheel zooms, the middle button orbits the view.",
+ "Échap ferme le menu, le dialogue ou l'outil en cours.": "Esc closes the menu, the dialog, or the current tool.",
+ "Ctrl+N crée une pièce ou un assemblage.": "Ctrl+N creates a part or an assembly."
 }

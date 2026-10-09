@@ -29,6 +29,7 @@ import { createSettingsDialog, ISSUES_URL, readLang } from "./settings.js";
 import { installMenuBar, menuBarModel } from "./menubar.js";
 import { installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
+import { installWelcome, rememberRecent } from "./welcome.js";
 import {
   boxMode, isDrag, middleAction, normalizeRect, pickInBox,
   readReverseWheel, writeReverseWheel, zoomSpeedFor,
@@ -1800,6 +1801,8 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+let welcomeApi = null;
+
 installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
   onAction(name) {
     if (name === "delete") {
@@ -1815,6 +1818,10 @@ installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
       toggleOrigin();
     } else if (name === "report") {
       window.open(ISSUES_URL, "_blank", "noopener");
+    } else if (name === "home") {
+      welcomeApi?.showWelcome();
+    } else if (name === "create") {
+      welcomeApi?.showNew();
     }
   },
 });
@@ -2465,6 +2472,7 @@ function bindRollbackDrag(bar, tree) {
 }
 
 function renderTree(tree) {
+  welcomeApi?.hideWelcome();
   clearAssemblyView(); // un arbre de pièce = le mode assemblage s'efface
   dropRolledBackSelection(tree);
   lastTree = tree;
@@ -5022,6 +5030,7 @@ async function refreshAny(treePromise) {
 }
 
 function renderAssemblyTree(tree) {
+  welcomeApi?.hideWelcome();
   lastTree = null; // le mode pièce est inactif
   closeGraph();
   treeEl.innerHTML = "";
@@ -5665,8 +5674,7 @@ const pickFile = installFileDialog(document, {
   storage: localStore,
 });
 
-document.getElementById("btn-open").addEventListener("click", async () => {
-  const path = await pickFile("open");
+async function openDocument(path) {
   if (!path) return;
   const gen = ++viewGen;
   try {
@@ -5680,11 +5688,13 @@ document.getElementById("btn-open").addEventListener("click", async () => {
       showAssemblyMeshes(meshes);
       showTab("assembly");
       say("Assemblage ouvert.");
+      rememberRecent(localStore, path);
       return;
     }
     renderTree(tree);
     await updateViewport(gen);
     if (gen !== viewGen) return;
+    rememberRecent(localStore, path);
     say(tree.imported_solids !== undefined
       ? t("Importé — {n} solide(s), la forme est la base du corps.",
         { n: tree.imported_solids })
@@ -5695,6 +5705,11 @@ document.getElementById("btn-open").addEventListener("click", async () => {
     if (gen !== viewGen) return;
     say(error.message, true);
   }
+}
+
+document.getElementById("btn-open").addEventListener("click", async () => {
+  const path = await pickFile("open");
+  if (path) openDocument(path);
 });
 
 document.getElementById("btn-save").addEventListener("click", async () => {
@@ -5702,6 +5717,7 @@ document.getElementById("btn-save").addEventListener("click", async () => {
   if (!path) return;
   try {
     const saved = await call("save_part", { path });
+    rememberRecent(localStore, saved.path);
     say(t("Enregistré : {path} — ouvrable dans FreeCAD standard.", { path: saved.path }));
   } catch (error) {
     say(error.message, true);
@@ -5781,6 +5797,15 @@ pluginRuntime = createPluginApi({
 
 // ---------- boot ----------
 
+welcomeApi = installWelcome(document, {
+  storage: localStore,
+  hasDocument: () => Boolean(lastTree || assemblyState),
+  onPart: () => document.getElementById("btn-new").click(),
+  onAssembly: () => document.getElementById("btn-newasm").click(),
+  onOpen: () => document.getElementById("btn-open").click(),
+  onRecent: (path) => openDocument(path),
+});
+
 call("ping")
   .then(async (info) => {
     await loadClientPlugins(call, pluginRuntime.api);
@@ -5807,7 +5832,8 @@ call("ping")
         showAssemblyMeshes(meshes);
         showTab("assembly");
       } catch {
-        // pas encore de document — Esquisse créera une pièce
+        // pas encore de document — l'accueil propose d'en créer un
+        welcomeApi?.showWelcome();
       }
     }
   })

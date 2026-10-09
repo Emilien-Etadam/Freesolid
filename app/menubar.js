@@ -44,7 +44,8 @@ export function insertionItems(ribbon) {
 export function menuBarModel(ribbon) {
   return [
     { id: "file", label: "Fichier", items: [
-      item("Nouveau", { click: "btn-new" }),
+      item("Nouveau", { action: "create", shortcut: "Ctrl+N" }),
+      item("Accueil", { action: "home" }),
       item("Ouvrir", { click: "btn-open" }),
       item("Enregistrer", { click: "btn-save" }),
       item("Exporter", { click: "btn-export" }),

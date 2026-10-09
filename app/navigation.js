@@ -198,3 +198,112 @@ export function coverBounds(points, spheres = []) {
   }
   return { center, radius: Math.max(radius, 1) };
 }
+
+// Pas des flèches : 15° autour d'un axe de l'écran, ou un dixième de la
+// hauteur visible pour le panoramique.
+export const VIEW_TURN_DEG = 15;
+export const VIEW_PAN_FRACTION = 0.1;
+
+const ARROW_KEYS = {
+  ArrowLeft: "left",
+  ArrowRight: "right",
+  ArrowUp: "up",
+  ArrowDown: "down",
+};
+
+function sub3(a, b) {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+
+function add3(a, b) {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+
+function scale3(a, factor) {
+  return [a[0] * factor, a[1] * factor, a[2] * factor];
+}
+
+function dot3(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function cross3(a, b) {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
+function length3(a) {
+  return Math.hypot(a[0], a[1], a[2]);
+}
+
+function unit3(a) {
+  const n = length3(a);
+  if (n < 1e-12) return null;
+  return scale3(a, 1 / n);
+}
+
+function rotate3(vector, axis, radians) {
+  const k = unit3(axis);
+  if (!k) return vector.slice();
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  return add3(
+    add3(scale3(vector, cosine), scale3(cross3(k, vector), sine)),
+    scale3(k, dot3(k, vector) * (1 - cosine)));
+}
+
+function finite3(value) {
+  return Array.isArray(value) && value.length >= 3
+    && [value[0], value[1], value[2]].every(Number.isFinite);
+}
+
+/** Nouveau poste de caméra pour une flèche. `rotateLocked` (esquisse) ne
+ *  garde que le panoramique. null si la touche ne pilote pas la vue. */
+export function nudgeView(state, { rotateLocked = false } = {}) {
+  const direction = ARROW_KEYS[state?.key];
+  if (!direction || state.shift) return null;
+  if (!finite3(state.position) || !finite3(state.target) || !finite3(state.up)) {
+    return null;
+  }
+  const position = state.position.slice(0, 3);
+  const target = state.target.slice(0, 3);
+  const offset = sub3(position, target);
+  const forward = unit3(sub3(target, position));
+  const up0 = unit3(state.up);
+  if (!forward || !up0) return null;
+  const right = unit3(cross3(forward, up0));
+  if (!right) return null;
+  const up = unit3(cross3(right, forward));
+  const radians = VIEW_TURN_DEG * Math.PI / 180;
+
+  if (state.ctrl) {
+    const height = Number(state.viewHeight);
+    if (!Number.isFinite(height) || height <= 0) return null;
+    const step = height * VIEW_PAN_FRACTION;
+    const pan = direction === "left" ? scale3(right, -step)
+      : direction === "right" ? scale3(right, step)
+        : direction === "up" ? scale3(up, step)
+          : scale3(up, -step);
+    return { position: add3(position, pan), target: add3(target, pan), up };
+  }
+  if (rotateLocked) return null;
+  if (state.alt) {
+    if (direction !== "left" && direction !== "right") return null;
+    const sign = direction === "left" ? -1 : 1;
+    return {
+      position,
+      target,
+      up: unit3(rotate3(up, forward, sign * radians)),
+    };
+  }
+  const axis = direction === "left" || direction === "right" ? up : right;
+  const sign = direction === "left" || direction === "down" ? 1 : -1;
+  return {
+    position: add3(target, rotate3(offset, axis, sign * radians)),
+    target,
+    up: unit3(rotate3(up, axis, sign * radians)),
+  };
+}

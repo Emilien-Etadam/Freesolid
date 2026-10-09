@@ -35,8 +35,8 @@ import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
 import { installWelcome, rememberRecent } from "./welcome.js";
 import {
-  boxMode, coverBounds, isDrag, middleAction, normalizeRect, pickInBox,
-  readReverseWheel, writeReverseWheel, zoomSpeedFor,
+  boxMode, coverBounds, isDrag, middleAction, normalizeRect, nudgeView,
+  pickInBox, readReverseWheel, writeReverseWheel, zoomSpeedFor,
 } from "./navigation.js";
 import { currentLang, setLang, t, translateDom } from "./i18n.js";
 import { renameClickAction } from "./rename.js";
@@ -2131,6 +2131,27 @@ orientBox?.addEventListener("click", (event) => {
   else if (VIEWS[view]) frameView(VIEWS[view].direction, VIEWS[view].up);
   if (!orientPinned) closeOrientBox();
 });
+
+function applyViewNudge(event) {
+  const next = nudgeView({
+    position: camera.position.toArray(),
+    target: controls.target.toArray(),
+    up: camera.up.toArray(),
+    key: event.key,
+    ctrl: event.ctrlKey || event.metaKey,
+    alt: event.altKey,
+    shift: event.shiftKey,
+    viewHeight: (camera.top - camera.bottom) / (camera.zoom || 1),
+  }, { rotateLocked: sketchMode.active });
+  if (!next) return false;
+  event.preventDefault();
+  camera.position.fromArray(next.position);
+  controls.target.fromArray(next.target);
+  camera.up.fromArray(next.up);
+  camera.lookAt(controls.target);
+  return true;
+}
+
 document.addEventListener("keydown", (event) => {
   if (event.key === "F2" && !event.repeat
       && !/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) {
@@ -2140,6 +2161,7 @@ document.addEventListener("keydown", (event) => {
   }
   if (sketchMode.active) {
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
+    if (applyViewNudge(event)) return;
     if ((event.key === "f" || event.key === "F")
         && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
@@ -2153,6 +2175,7 @@ document.addEventListener("keydown", (event) => {
   }
   // Typing in a panel field must not trigger view shortcuts (F, Ctrl+1…).
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
+  if (applyViewNudge(event)) return;
   if (event.key !== "Escape" && pluginRuntime?.dispatchKey(event)) return;
   if (event.key === " " && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();

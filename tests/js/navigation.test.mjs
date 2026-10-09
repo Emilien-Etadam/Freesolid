@@ -10,6 +10,7 @@ import {
   pickInBox,
   readReverseWheel,
   segmentHitsRect,
+  nudgeView,
   sketchLocalPoints,
   writeReverseWheel,
   zoomSpeedFor,
@@ -113,3 +114,64 @@ describe("cadrage d'esquisse", () => {
     assert.ok(covered.radius > 50);
   });
 });
+
+function closeTo(actual, expected, epsilon = 1e-6) {
+  assert.equal(actual.length, expected.length);
+  for (let i = 0; i < expected.length; i++) {
+    assert.ok(Math.abs(actual[i] - expected[i]) < epsilon,
+      `${actual} ≠ ${expected}`);
+  }
+}
+
+describe("flèches de la vue", () => {
+  const view = {
+    position: [0, -10, 0],
+    target: [0, 0, 0],
+    up: [0, 0, 1],
+    viewHeight: 100,
+  };
+
+  it("tourne de 15° autour de la verticale de l'écran", () => {
+    const next = nudgeView({ ...view, key: "ArrowLeft" });
+    const s = Math.sin(15 * Math.PI / 180);
+    const c = Math.cos(15 * Math.PI / 180);
+    closeTo(next.position, [10 * s, -10 * c, 0]);
+    closeTo(next.target, [0, 0, 0]);
+    closeTo(next.up, [0, 0, 1]);
+  });
+
+  it("tourne autour de l'horizontale de l'écran", () => {
+    const next = nudgeView({ ...view, key: "ArrowUp" });
+    assert.ok(next.position[2] > 1);
+    closeTo(next.target, [0, 0, 0]);
+  });
+
+  it("Ctrl décale d'un dixième de la hauteur visible", () => {
+    const next = nudgeView({ ...view, key: "ArrowLeft", ctrl: true });
+    closeTo(next.position, [-10, -10, 0]);
+    closeTo(next.target, [-10, 0, 0]);
+    closeTo(sub(next.position, next.target), sub(view.position, view.target));
+  });
+
+  it("Alt tourne dans le plan de l'écran", () => {
+    const next = nudgeView({ ...view, key: "ArrowLeft", alt: true });
+    closeTo(next.position, view.position);
+    assert.ok(next.up[0] < -0.2);
+    assert.equal(nudgeView({ ...view, key: "ArrowUp", alt: true }), null);
+  });
+
+  it("en esquisse, seul le panoramique reste", () => {
+    assert.equal(
+      nudgeView({ ...view, key: "ArrowLeft" }, { rotateLocked: true }), null);
+    assert.equal(
+      nudgeView({ ...view, key: "ArrowLeft", alt: true }, { rotateLocked: true }),
+      null);
+    const next = nudgeView(
+      { ...view, key: "ArrowRight", ctrl: true }, { rotateLocked: true });
+    closeTo(next.position, [10, -10, 0]);
+  });
+});
+
+function sub(a, b) {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}

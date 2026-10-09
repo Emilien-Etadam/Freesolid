@@ -90,3 +90,18 @@ describe("extrudeBuild", () => {
     assert.equal(extrudeGroups("pad")[0].rows[0].value, "borgne");
   });
 });
+
+describe("coque", async () => {
+  const { shellBuild } = await import("../../app/features.js");
+  it("plusieurs faces, vers l'extérieur sur demande", () => {
+    const v = { faces: { kind: "face", items: [{ face: 3 }, { face: 5 }] },
+                thickness: "1,5", outward: true };
+    assert.deepEqual(shellBuild(v), { op: "add_thickness",
+      params: { faces: [3, 5], thickness: 1.5, outward: true } });
+  });
+  it("sans face ou sans épaisseur : rien", () => {
+    assert.equal(shellBuild({ faces: { items: [] }, thickness: 2 }), null);
+    assert.equal(shellBuild({ faces: { items: [{ face: 1 }] }, thickness: 0 }),
+      null);
+  });
+});

@@ -36,6 +36,7 @@ import {
   readReverseWheel, writeReverseWheel, zoomSpeedFor,
 } from "./navigation.js";
 import { currentLang, setLang, t, translateDom } from "./i18n.js";
+import { renameClickAction } from "./rename.js";
 
 // La langue avant tout rendu : ruban, panneaux et messages passent par t().
 setLang(readLang((() => { try { return window.localStorage; } catch { return null; } })(),
@@ -2094,6 +2095,12 @@ orientBox?.addEventListener("click", (event) => {
   if (!orientPinned) closeOrientBox();
 });
 document.addEventListener("keydown", (event) => {
+  if (event.key === "F2" && !event.repeat
+      && !/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) {
+    event.preventDefault();
+    beginRenameSelected();
+    return;
+  }
   if (sketchMode.active) return;
   // Typing in a panel field must not trigger view shortcuts (F, Ctrl+1…).
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
@@ -2659,12 +2666,15 @@ function appendBodyRow(bodyInfo) {
     : (bodyInfo.active ? ""
       : " — " + t("{n} élément(s)", { n: bodyInfo.count }));
   bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix));
-  if (!bodyInfo.active && bodyInfo.name) {
-    bodyItem.title = t("Clic : activer ce corps");
-    bodyItem.addEventListener("click", () =>
-      refresh(call("set_active_body", { body: bodyInfo.name })));
-  }
   if (bodyInfo.name) {
+    bodyItem.dataset.feat = bodyInfo.name;
+    if (!bodyInfo.active) bodyItem.title = t("Clic : activer ce corps");
+    bodyItem.addEventListener("click", (event) => {
+      if (consumeTreeRenameClick(event, bodyItem, bodyInfo)) return;
+      if (!bodyInfo.active) {
+        refresh(call("set_active_body", { body: bodyInfo.name }));
+      }
+    });
     bodyItem.addEventListener("contextmenu",
       (event) => openMenu(event, bodyInfo));
   }
@@ -2677,6 +2687,7 @@ function appendSurfaceRow(surface, { inFolder = true, rolledBack = false } = {})
     + (selectedSurface?.name === surface.name ? " sel" : "")
     + (rolledBack ? " rolled-back" : "");
   if (!inFolder) item.dataset.hist = surface.name;
+  item.dataset.feat = surface.name;
   const children = surface.children ?? [];
   const hasChildren = children.length > 0;
   const arrow = document.createElement("span");
@@ -2699,7 +2710,10 @@ function appendSurfaceRow(surface, { inFolder = true, rolledBack = false } = {})
   item.title = t("Surface / courbe — clic : sélectionner pour une " +
     "commande · double-clic : modifier · clic droit : modifier, " +
     "renommer, supprimer");
-  item.addEventListener("click", () => onSurfaceClick(surface));
+  item.addEventListener("click", (event) => {
+    if (consumeTreeRenameClick(event, item, surface)) return;
+    onSurfaceClick(surface);
+  });
   item.addEventListener("dblclick", () => onSurfaceDblClick(surface));
   item.addEventListener("contextmenu", (event) => openMenu(event, surface));
   treeEl.appendChild(item);
@@ -2709,13 +2723,17 @@ function appendSurfaceRow(surface, { inFolder = true, rolledBack = false } = {})
       row.className = "child" + (inFolder ? " in-folder" : "")
         + (child.error ? " error" : "")
         + (rolledBack ? " rolled-back" : "");
+      row.dataset.feat = child.name;
       row.appendChild(treeIcon("Sketcher_Sketch.svg"));
       row.appendChild(document.createTextNode(child.label));
       row.title = `${child.kind} — `
         + t("double-clic : modifier l'esquisse · clic droit : modifier");
       row.addEventListener("dblclick", () => onSketchRowDblClick(child));
       row.addEventListener("contextmenu", (event) => openMenu(event, child));
-      row.addEventListener("click", () => onSketchRowClick(child));
+      row.addEventListener("click", (event) => {
+        if (consumeTreeRenameClick(event, row, child)) return;
+        onSketchRowClick(child);
+      });
       treeEl.appendChild(row);
     }
   }
@@ -2735,6 +2753,116 @@ function appendRollbackBar(tree) {
 // la barre de retour montre où elle ira ; le moteur la déplace avec ses
 // esquisses, et refuse si l'arbre ne se reconstruit plus.
 let suppressTreeClick = false;
+let treeRenameClick = { name: null, at: null };
+let renameState = null;
+
+function consumeTreeRenameClick(event, row, feature) {
+  if (!feature?.name || event.target.closest(".arrow, input")) return false;
+  const action = renameClickAction({
+    previousAt: treeRenameClick.at,
+    sameRow: treeRenameClick.name === feature.name,
+    now: Date.now(),
+    moved: false,
+    dragging: row.classList.contains("dragging") || suppressTreeClick,
+  });
+  treeRenameClick = { name: feature.name, at: Date.now() };
+  if (action === "select") {
+    for (const item of treeEl.querySelectorAll("li.sel")) {
+      if (item !== row) item.classList.remove("sel");
+    }
+    row.classList.add("sel");
+  }
+  if (action === "rename") {
+    event.stopPropagation();
+    beginInlineRename(row, feature);
+    return true;
+  }
+  return action === "ignore";
+}
+
+function rowLabelNode(row) {
+  const nodes = [...row.childNodes].filter(
+    (node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+  return nodes.at(-1) ?? null;
+}
+
+function beginInlineRename(row, feature) {
+  if (!row || !feature?.name || !feature.label) return;
+  if (renameState?.input?.isConnected) commitInlineRename();
+  if (row.querySelector("input.tree-rename")) return;
+  const text = rowLabelNode(row);
+  if (!text) return;
+  const shown = text.textContent;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "tree-rename";
+  input.value = feature.label;
+  input.setAttribute("aria-label", t("Nouveau nom :"));
+  text.replaceWith(input);
+  renameState = { input, feature, shown };
+  input.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitInlineRename();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancelInlineRename();
+    }
+  });
+  input.addEventListener("blur", () => {
+    if (renameState?.input === input) commitInlineRename();
+  });
+  input.focus();
+  input.select();
+}
+
+function finishRenameField(input, shown) {
+  if (input.isConnected) input.replaceWith(document.createTextNode(shown));
+}
+
+function commitInlineRename() {
+  if (!renameState) return;
+  const state = renameState;
+  renameState = null;
+  const label = state.input.value.trim();
+  if (!label || label === state.feature.label) {
+    finishRenameField(state.input, state.shown);
+    return;
+  }
+  finishRenameField(state.input, label);
+  refreshAny(call("rename", { feature: state.feature.name, label }));
+}
+
+function cancelInlineRename() {
+  if (!renameState) return;
+  const state = renameState;
+  renameState = null;
+  finishRenameField(state.input, state.shown);
+}
+
+function treeRowFor(name) {
+  if (!name) return null;
+  return treeEl.querySelector(`li[data-feat="${CSS.escape(name)}"]`);
+}
+
+function renameRecord(name) {
+  return findFeatureInTree(lastTree, name)
+    ?? (lastTree?.bodies ?? []).find((body) => body.name === name)
+    ?? null;
+}
+
+function beginRenameSelected() {
+  if (treeEl.querySelector("li.dragging")) return;
+  const clicked = treeRenameClick.name ? treeRowFor(treeRenameClick.name) : null;
+  const row = clicked?.classList.contains("sel")
+    ? clicked
+    : treeEl.querySelector("li.sel[data-feat]");
+  if (!row) return;
+  const feature = renameRecord(row.dataset.feat);
+  if (!feature?.label) return;
+  beginInlineRename(row, feature);
+}
 treeEl.addEventListener("click", (event) => {
   if (!suppressTreeClick) return;
   suppressTreeClick = false;
@@ -2745,6 +2873,7 @@ treeEl.addEventListener("click", (event) => {
 function bindFeatureDrag(row, feature) {
   row.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || panel.active || sketchMode.active) return;
+    if (event.target.closest("input")) return;
     const start = { x: event.clientX, y: event.clientY };
     let dragging = false;
     const onMove = (moveEvent) => {
@@ -3053,15 +3182,23 @@ function appendFeatureHistoryRow(feature, rolledBack) {
     if (selectedDatumFeature?.name === feature.name) {
       row.classList.add("sel");
     }
-    row.addEventListener("click", () => onDatumRow(feature));
+    row.addEventListener("click", (event) => {
+      if (consumeTreeRenameClick(event, row, feature)) return;
+      onDatumRow(feature);
+    });
     row.addEventListener("mouseenter", () => refreshDatumGhost(feature));
     row.addEventListener("mouseleave", () => refreshDatumGhost(null));
   }
   if (feature.type === "Sketcher::SketchObject") {
     if (selectedSketch?.name === feature.name) row.classList.add("sel");
-    row.addEventListener("click", () => onSketchRowClick(feature));
+    row.addEventListener("click", (event) => {
+      if (consumeTreeRenameClick(event, row, feature)) return;
+      onSketchRowClick(feature);
+    });
   } else if (feature.type !== "PartDesign::Plane") {
-    row.addEventListener("click", () => {
+    row.addEventListener("click", (event) => {
+      if (consumeTreeRenameClick(event, row, feature)) return;
+      selectedFeatureName = feature.name;
       panel.notifyPick("feature", {
         kind: "feature", name: feature.name, label: feature.label,
       });
@@ -3074,6 +3211,7 @@ function appendFeatureHistoryRow(feature, rolledBack) {
     for (const child of feature.children) {
       const childRow = document.createElement("li");
       childRow.className = "child" + (child.error ? " error" : "");
+      childRow.dataset.feat = child.name;
       if (rolledBack) childRow.classList.add("rolled-back");
       if (selectedSketch?.name === child.name) childRow.classList.add("sel");
       childRow.appendChild(treeIcon("Sketcher_Sketch.svg"));
@@ -3084,7 +3222,10 @@ function appendFeatureHistoryRow(feature, rolledBack) {
         + t("double-clic : modifier l'esquisse · clic droit : modifier");
       childRow.addEventListener("dblclick", () => onSketchRowDblClick(child));
       childRow.addEventListener("contextmenu", (event) => openMenu(event, child));
-      childRow.addEventListener("click", () => onSketchRowClick(child));
+      childRow.addEventListener("click", (event) => {
+        if (consumeTreeRenameClick(event, childRow, child)) return;
+        onSketchRowClick(child);
+      });
       treeEl.appendChild(childRow);
     }
   }
@@ -3371,10 +3512,9 @@ document.getElementById("ctx-modify").addEventListener("click", () => {
 
 document.getElementById("ctx-rename").addEventListener("click", () => {
   if (!menuFeature) return;
-  const label = prompt("Nouveau nom :", menuFeature.label);
-  if (label === null || !label.trim()) return;
-  refreshAny(call("rename",
-    { feature: menuFeature.name, label: label.trim() }));
+  const row = treeRowFor(menuFeature.name);
+  if (!row) return;
+  beginInlineRename(row, menuFeature);
 });
 
 document.getElementById("ctx-color").addEventListener("click", () => {

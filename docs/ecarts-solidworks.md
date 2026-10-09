@@ -77,7 +77,7 @@ moteur, vont à Cursor (T28 à T33 dans [`taches-cursor.md`](taches-cursor.md)).
 | 28 | Onglet « Évaluer » (mesurer, propriétés de masse, équations, interférences) | P3 | fait |
 | 29 | Recherche de commandes dans la barre du haut | P3 | fait |
 | 30 | Autotest retiré de la barre du haut (menu Aide) | P3 | fait |
-| 31 | Renommer en place dans l'arbre (F2, clic lent) | P3 | confié à Cursor (T31) |
+| 31 | Renommer en place dans l'arbre (F2, clic lent) | P3 | fait |
 | 32 | Zoom au mieux (F) en esquisse | P3 | confié à Cursor (T32) |
 | 33 | Flèches du clavier : rotation, panoramique (Ctrl), rotation dans le plan (Alt) | P3 | confié à Cursor (T33) |
 | 34 | Panneau : Entrée dans un champ applique la valeur sans valider la fonction | P3 | fait : premier Entrée = valeur prise (aperçu à jour, panneau ouvert), second Entrée = validation |

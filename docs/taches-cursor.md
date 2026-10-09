@@ -235,3 +235,82 @@ qu'un document existe, et que les récents rouvrent le bon fichier.
 
 **Fini quand** l'aperçu montre la face arrondie sur un bloc, et que la
 bulle suit le rayon saisi.
+
+---
+
+# Lot P3
+
+Mêmes règles communes. **Avant chaque tâche : `git merge clone-sw`** dans
+`D:\Dev\Freesolid-cursor`, pour partir du travail de Claude et du
+vocabulaire neutre. Ne jamais employer un nom de commande SolidWorks
+(« Cotation intelligente », « Convertir les entités »,
+« Bossage »…) : reprendre les libellés déjà présents dans
+`app/lang/en.json`, ou un terme générique de CAO.
+
+## T28 — Onglet « Évaluer »
+
+**Comportement visé.** Un onglet de ruban « Évaluer » (anglais
+« Evaluate ») regroupe les outils d'analyse : Mesurer, propriétés de masse
+(le bouton « Évaluer » actuel), Équations, et la détection d'interférences
+quand on est en assemblage. Les boutons de la barre du haut restent (raccourcis),
+l'onglet les rend découvrables.
+
+**Où.** `app/ribbon.json` (nouvel onglet ; chaque bouton reprend l'`id` du
+bouton existant ou déclenche son `click()`), `app/ribbon.js` si un bouton
+doit relayer un autre. Test dans `tests/js/` sur la présence de l'onglet et
+de ses boutons.
+
+## T29 — Recherche de commandes dans la barre du haut
+
+**Comportement visé.** Un champ de recherche dans la barre du haut (à
+droite) : on tape quelques lettres, une liste des commandes du ruban
+apparaît (libellé traduit + onglet) ; Entrée ou un clic lance la commande.
+Raccourci pour y aller : Ctrl+F (hors champ de saisie). Les commandes
+d'esquisse ne sont proposées qu'en esquisse.
+
+**Où.** Réutiliser le modèle pur de `app/shortcutbar.js`
+(`ribbonCommands`, filtrage) — ne pas dupliquer la logique ; `app/index.html`
+pour le champ, `app/main.js` pour le brancher. Tests dans
+`tests/js/shortcutbar.test.mjs` ou un nouveau fichier.
+
+## T30 — Autotest hors de la barre du haut
+
+**Comportement visé.** Le bouton « Autotest » (`#btn-selftest`) quitte la
+barre du haut : c'est un outil de diagnostic. On le lance depuis le menu
+Aide (« Autotest du moteur ») ; le comportement et le rapport ne changent
+pas. Le smoke (`scripts/smoke/`) et le selftest qui cliquent ce bouton
+doivent continuer de marcher (garder l'élément dans le DOM, masqué, ou
+adapter le smoke).
+
+## T31 — Renommer en place dans l'arbre
+
+**Comportement visé.** Sur une ligne de l'arbre sélectionnée : F2, ou un
+second clic lent (plus de ~0,5 s après le premier, sans double-clic),
+transforme le libellé en champ éditable sur place. Entrée valide (op
+moteur de renommage existante), Échap annule, perte du focus valide. Le
+menu contextuel « Renommer » ouvre le même champ au lieu du `prompt()`.
+Ne pas déclencher pendant un glisser-déposer (réordonner).
+
+**Où.** `app/main.js` (rendu de l'arbre, menu contextuel). Logique de
+détection du « clic lent » dans un petit module pur testé.
+
+## T32 — Zoom au mieux (F) en esquisse
+
+**Comportement visé.** En esquisse, F cadre l'esquisse (sa géométrie, et la
+pièce si elle est visible) sans quitter la vue normale au plan : la
+direction de vue ne change pas, seuls le centre et le zoom. Hors esquisse,
+inchangé. Aujourd'hui le gestionnaire de touches de `app/main.js` sort dès
+que `sketchMode.active` : y faire une exception pour F (et Z / Maj+Z).
+
+## T33 — Flèches du clavier
+
+**Comportement visé.** Dans la vue (hors champ de saisie, hors esquisse
+pour la rotation) :
+- flèches : rotation de la vue par pas de 15° (gauche/droite autour de
+  l'axe vertical de l'écran, haut/bas autour de l'axe horizontal) ;
+- Ctrl+flèches : panoramique d'un dixième de la vue ;
+- Alt+gauche/droite : rotation dans le plan de l'écran (autour de l'axe de
+  visée), pas de 15°.
+En esquisse, seules Ctrl+flèches (panoramique) restent actives. Les pas
+sont calculés dans un module pur testé (`app/navigation.js` existe déjà).
+

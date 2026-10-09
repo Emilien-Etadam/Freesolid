@@ -69,6 +69,26 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 26 | Assemblage : insertion guidée, fixe/flottant, déplacement à la souris | P2 | fait : insertion enchaînée après « Nouvel assemblage » (premier composant fixé), Fixer / Libérer au clic droit, glisser d'un composant libre dans le plan de l'écran. Le choix du fichier passera par le dialogue de T23 |
 | 27 | Interface anglaise sans texte français (demande du 2026-10-09) | P1 | fait : textes interpolés passés par t(), libellés de panneaux, noms moteur (pièce, corps, plans, combiner) |
 
+**Lot P3** (demandé le 2026-10-09) — même méthode ; les plus simples, sans
+moteur, vont à Cursor (T28 à T33 dans [`taches-cursor.md`](taches-cursor.md)).
+
+| # | Écart | Prio | État |
+|---|---|---|---|
+| 28 | Onglet « Évaluer » (mesurer, propriétés de masse, équations, interférences) | P3 | confié à Cursor (T28) |
+| 29 | Recherche de commandes dans la barre du haut | P3 | confié à Cursor (T29) |
+| 30 | Autotest retiré de la barre du haut (menu Aide) | P3 | confié à Cursor (T30) |
+| 31 | Renommer en place dans l'arbre (F2, clic lent) | P3 | confié à Cursor (T31) |
+| 32 | Zoom au mieux (F) en esquisse | P3 | confié à Cursor (T32) |
+| 33 | Flèches du clavier : rotation, panoramique (Ctrl), rotation dans le plan (Alt) | P3 | confié à Cursor (T33) |
+| 34 | Panneau : Entrée dans un champ applique la valeur sans valider la fonction | P3 | reste |
+| 35 | Panneau : message d'aide quand une sélection manque, bascule de l'aperçu | P3 | reste |
+| 36 | Barre d'état : coordonnées du curseur, longueur de la sélection, mode d'édition | P3 | reste |
+| 37 | Relations proposées selon la sélection | P3 | reste |
+| 38 | Coque : plusieurs faces, vers l'extérieur, épaisseurs par face | P3 | reste |
+| 39 | Projection perspective ou orthographique | P3 | reste |
+| 40 | Esquisse : saisie numérique pendant le tracé | P3 | reste |
+| 41 | Étiquettes des plans superposées ; « MMGS » ; textes français en anglais | P3 | fait (c6b0694, écart 27) |
+
 ### Questions de conception en attente
 
 - **Q1 — Volumes pendant l'esquisse.** SolidWorks laisse la pièce visible

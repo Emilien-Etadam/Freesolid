@@ -57,7 +57,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 14 | Barre tête haute : styles d'affichage, masquer/afficher, orientation | P2 | fait : ombré, filaire, lignes cachées, visibilité mémorisée |
 | 15 | Réordonner l'arbre par glisser-déposer | P2 | reste |
 | 16 | Arbre accessible pendant une commande | P2 | reste |
-| 17 | Barre de menus | P2 | confié à Cursor (T17) |
+| 17 | Barre de menus | P2 | fait : six menus, raccourcis, survol, Échap |
 | 18 | Chanfrein distance-angle | P2 | fait : distance égale, deux distances, distance et angle, inversion des côtés, réédition |
 | 19 | Extrusion et enlèvement : conditions de fin, direction 2, dépouille, paroi mince | P2 | reste |
 | 20 | Révolution : choix de l'axe | P2 | fait : axe vertical, ligne de construction, axes d'origine, plan milieu, réédition |

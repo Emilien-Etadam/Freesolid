@@ -100,6 +100,33 @@
   header .sep { width: 1px; height: 22px; background: var(--line); }
   header .logo { font-weight: 600; letter-spacing: 0.02em; margin-right: 12px; }
   header .logo span { color: var(--accent); }
+  #menubar { display: flex; align-items: stretch; gap: 2px; padding: 2px 8px 0; }
+  #menubar .menu-top {
+    position: relative;
+    background: transparent; border: 1px solid transparent;
+    border-radius: 4px 4px 0 0; padding: 3px 10px; color: var(--ink);
+  }
+  #menubar .menu-top.open,
+  #menubar .menu-top:hover { background: var(--panel-2); border-color: var(--line); }
+  #menubar .menu-panel {
+    position: absolute; top: 100%; left: 0; z-index: 50;
+    min-width: 240px; max-height: 70vh; overflow: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+  #menubar .menu-panel[hidden] { display: none; }
+  #menubar .menu-panel button {
+    display: flex; width: 100%; justify-content: space-between; gap: 16px;
+    background: none; border: none; border-radius: 4px;
+    text-align: left; padding: 4px 8px;
+  }
+  #menubar .menu-panel button:hover:not(:disabled) { background: var(--panel-2); }
+  #menubar .menu-heading {
+    font-size: 10px; color: var(--ink-2); text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 6px 8px 2px; user-select: none;
+  }
+  #menubar .menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+  #menubar .menu-shortcut { color: var(--ink-2); font-size: 11px; }
   button {
     background: var(--panel-2);
     color: var(--ink);
@@ -734,6 +761,7 @@
 </head>
 <body>
   <header>
+    <nav id="menubar"></nav>
     <div id="topbar">
       <div class="logo">Free<span>Solid</span></div>
       <!-- Les onglets du ruban viennent de ribbon.json (main.js les insère

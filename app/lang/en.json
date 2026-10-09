@@ -649,5 +649,19 @@
  "Lignes cachées estompées": "Faded hidden lines",
  "Plans de référence": "Reference planes",
  "Esquisses": "Sketches",
- "Aperçu des arêtes": "Edge preview"
+ "Aperçu des arêtes": "Edge preview",
+ "Édition": "Edit",
+ "Affichage": "View",
+ "Insertion": "Insert",
+ "Aide": "Help",
+ "Nouveau": "New",
+ "Ouvrir": "Open",
+ "Enregistrer": "Save",
+ "Exporter": "Export",
+ "Annuler": "Undo",
+ "Rétablir": "Redo",
+ "Zoom au mieux": "Zoom to fit",
+ "Boîte d'orientation": "Orientation box",
+ "Espace": "Space",
+ "Sélectionnez une fonction à supprimer.": "Select a feature to delete."
 }

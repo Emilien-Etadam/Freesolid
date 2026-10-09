@@ -229,6 +229,66 @@ export function sketchPreviewPoints(tool, pending, cursor) {
   return [];
 }
 
+// ---------- symboles de relations ----------
+// Un petit symbole près de chaque entité contrainte : H horizontale,
+// V verticale, ∥ parallèle, ⊥ perpendiculaire, = égale, T tangente,
+// ⚓ fixe, ≡ colinéaire, M milieu, S symétrique, ◎ concentrique.
+// Les coïncidences, trop nombreuses, ne sont pas marquées (comme les
+// points d'extrémité partagés qui les montrent déjà).
+
+const RELATION_GLYPHS = {
+  Horizontal: "H", Vertical: "V", Parallel: "∥", Perpendicular: "⊥",
+  Equal: "=", Tangent: "T", Block: "⚓", Symmetric: "S",
+};
+
+function entityMid(entity) {
+  if (!entity) return null;
+  if (entity.p1 && entity.p2 && entity.type === "line") {
+    return { x: (entity.p1[0] + entity.p2[0]) / 2,
+             y: (entity.p1[1] + entity.p2[1]) / 2,
+             nx: -(entity.p2[1] - entity.p1[1]),
+             ny: entity.p2[0] - entity.p1[0] };
+  }
+  if (entity.c && entity.r != null) {
+    return { x: entity.c[0], y: entity.c[1] + entity.r, nx: 0, ny: 1 };
+  }
+  if (entity.points?.length) {
+    const p = entity.points[Math.floor(entity.points.length / 2)];
+    return { x: p[0], y: p[1], nx: 0, ny: 1 };
+  }
+  return null;
+}
+
+/**
+ * Symboles à dessiner : [{ text, x, y }] en coordonnées d'esquisse,
+ * décalés de `offset` hors de l'entité. Plusieurs symboles sur la même
+ * entité s'étalent le long de la normale.
+ */
+export function relationGlyphs(constraints, entities, offset = 2) {
+  const byId = new Map((entities ?? []).map((e) => [e.id, e]));
+  const count = new Map();
+  const glyphs = [];
+  for (const c of constraints ?? []) {
+    const text = RELATION_GLYPHS[c.type];
+    if (!text) continue;
+    // Une relation entre un point et une ligne (milieu, sur l'objet…)
+    // ne se marque pas ; une relation entre deux courbes se marque sur
+    // chacune.
+    const geos = (c.geos ?? []).filter((g) => g != null && g >= 0);
+    for (const g of c.type === "Symmetric" ? geos.slice(0, 2) : geos) {
+      const mid = entityMid(byId.get(g));
+      if (!mid) continue;
+      const k = count.get(g) ?? 0;
+      count.set(g, k + 1);
+      const len = Math.hypot(mid.nx, mid.ny) || 1;
+      const d = offset * (1 + k * 1.2);
+      glyphs.push({ text, x: mid.x + mid.nx / len * d,
+                    y: mid.y + mid.ny / len * d, geo: g });
+    }
+  }
+  return glyphs;
+}
+
 function fmtXy(point) {
   return `(${fmtMm(point[0])}, ${fmtMm(point[1])})`;
 }

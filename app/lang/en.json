@@ -647,5 +647,7 @@
  "Libérer": "Float",
  "Premier composant (chemin .FCStd) — il sera fixé à l'origine :": "First component (.FCStd path) — it will be fixed at the origin:",
  "Composant suivant (chemin .FCStd) — Annuler pour terminer :": "Next component (.FCStd path) — Cancel to finish:",
- "Avec des contraintes posées, le solveur repositionne le composant après le déplacement. Astuce : glissez un composant libre directement dans la vue.": "With mates in place, the solver repositions the component after the move. Tip: drag a free component directly in the view."
+ "Avec des contraintes posées, le solveur repositionne le composant après le déplacement. Astuce : glissez un composant libre directement dans la vue.": "With mates in place, the solver repositions the component after the move. Tip: drag a free component directly in the view.",
+ "L {v} mm": "L {v} mm",
+ "R {v} mm": "R {v} mm"
 }

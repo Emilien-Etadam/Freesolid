@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { t } from "./i18n.js";
 import { createLocalSolver } from "./solver.js";
 import {
-  arcAngles, chainClickAction, distanceToEntity,
+  arcAngles, chainClickAction, distanceToEntity, relationGlyphs,
   entityKindTitle, entityPropertyLines,
   isDrivingConstraint, sketchPreviewPoints,
 } from "./geom2d.js";
@@ -36,6 +36,29 @@ export function createDimSprite(text, x, y, z = 0.01, color = "#7fc4ff") {
   sprite.position.set(x, y, z);
   sprite.scale.set(26, 4.1, 1);
   return sprite;
+}
+
+/** Petit symbole de relation (H, V, ∥…) : pastille ronde lisible. */
+function createGlyphSprite(text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 48; canvas.height = 48;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgba(23,25,28,0.85)";
+  ctx.beginPath();
+  ctx.arc(24, 24, 22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#6fcf97";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.font = "bold 26px system-ui";
+  ctx.fillStyle = "#6fcf97";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 24, 26);
+  const material = new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(canvas), depthTest: false });
+  material.userData.own = true;
+  return new THREE.Sprite(material);
 }
 
 export function createSketchMode(deps) {
@@ -177,25 +200,130 @@ export function createSketchMode(deps) {
   }
 
   function snap(local, event) {
-    // Endpoint snap first (screen-space), then axis snap along the chain.
+    // Endpoint snap first (screen-space), then axis snap along the chain,
+    // then inference lines: alignment on any existing point (a guide only,
+    // no relation is created for it).
     for (const p of endpoints()) {
       const s = toScreen(p.x, p.y);
       if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < SNAP_PX) {
-        return { x: p.x, y: p.y, onPoint: p };
+        return { x: p.x, y: p.y, onPoint: p, guides: [], hv: null };
       }
     }
     let { x, y } = local;
+    let hv = null;
+    const guides = [];
     if (mode.chain) {
       const sHere = toScreen(x, y);
       const sAxisV = toScreen(mode.chain.x, y);
       const sAxisH = toScreen(x, mode.chain.y);
       if (Math.hypot(sHere.x - sAxisV.x, sHere.y - sAxisV.y) < SNAP_PX) {
         x = mode.chain.x;
+        hv = "V";
       } else if (Math.hypot(sHere.x - sAxisH.x, sHere.y - sAxisH.y) < SNAP_PX) {
         y = mode.chain.y;
+        hv = "H";
       }
     }
-    return { x, y, onPoint: null };
+    // Tolérance en unités d'esquisse : les axes de l'esquisse ne suivent
+    // pas forcément ceux de l'écran.
+    const s0 = toScreen(0, 0), s1 = toScreen(1, 0);
+    const tol = (SNAP_PX * 0.7) / (Math.hypot(s1.x - s0.x, s1.y - s0.y) || 1);
+    let alignX = null, alignY = null;
+    for (const p of endpoints()) {
+      if (mode.chain && p.x === mode.chain.x && p.y === mode.chain.y) continue;
+      if (!alignX && hv !== "V" && Math.abs(p.x - x) < tol) alignX = p;
+      if (!alignY && hv !== "H" && Math.abs(p.y - y) < tol) alignY = p;
+    }
+    if (alignX) { x = alignX.x; guides.push(alignX); }
+    if (alignY) { y = alignY.y; guides.push(alignY); }
+    if (hv && mode.chain) guides.push(mode.chain);
+    return { x, y, onPoint: null, guides, hv };
+  }
+
+  // ---------- aides au tracé ----------
+  // Lignes d'inférence pointillées, point accroché en évidence et lecture
+  // (longueur, angle, dimensions) près du curseur.
+
+  const DRAW_TOOLS = new Set(["line", "rect", "rectc", "circle", "arc",
+    "arc3", "slot", "polygon", "spline", "ellipse"]);
+  const guideMaterial = new THREE.LineDashedMaterial({
+    color: 0x5aa9ff, dashSize: 1.5, gapSize: 1.2, depthTest: false,
+    transparent: true, opacity: 0.8 });
+  const snapMaterial = new THREE.PointsMaterial({
+    color: 0xd9924a, size: 11, sizeAttenuation: false, depthTest: false });
+  let inferLines = null;
+  let snapPoint = null;
+  let readoutEl = null;
+
+  function clearInference() {
+    for (const obj of [inferLines, snapPoint]) {
+      if (obj) { group.remove(obj); obj.geometry.dispose(); }
+    }
+    inferLines = null;
+    snapPoint = null;
+    if (readoutEl) readoutEl.hidden = true;
+  }
+
+  function fmt(value) {
+    return Number(value).toFixed(2);
+  }
+
+  function readoutText(s) {
+    const parts = [];
+    if (s.hv) parts.push(s.hv);
+    if (mode.tool === "line" && mode.chain) {
+      const dx = s.x - mode.chain.x, dy = s.y - mode.chain.y;
+      parts.push(t("L {v} mm", { v: fmt(Math.hypot(dx, dy)) }),
+        `${fmt(Math.atan2(dy, dx) * 180 / Math.PI)}°`);
+    } else if (mode.tool === "rect" && mode.pendingRect) {
+      parts.push(`${fmt(Math.abs(s.x - mode.pendingRect.x))} × `
+        + `${fmt(Math.abs(s.y - mode.pendingRect.y))} mm`);
+    } else if (mode.tool === "rectc" && mode.pendingRectC) {
+      parts.push(`${fmt(2 * Math.abs(s.x - mode.pendingRectC.x))} × `
+        + `${fmt(2 * Math.abs(s.y - mode.pendingRectC.y))} mm`);
+    } else if (mode.tool === "circle" && mode.pendingCircle) {
+      const r = Math.hypot(s.x - mode.pendingCircle.x, s.y - mode.pendingCircle.y);
+      parts.push(t("R {v} mm", { v: fmt(r) }));
+    } else {
+      parts.push(`${fmt(s.x)}, ${fmt(s.y)}`);
+    }
+    return parts.join(" · ");
+  }
+
+  function updateInference(event) {
+    const local = toLocal(event);
+    if (!local || !mode.state) { clearInference(); return; }
+    const s = snap(local, event);
+    for (const obj of [inferLines, snapPoint]) {
+      if (obj) { group.remove(obj); obj.geometry.dispose(); }
+    }
+    inferLines = null;
+    snapPoint = null;
+    if (s.guides.length) {
+      const pts = s.guides.flatMap((g) => [
+        new THREE.Vector3(g.x, g.y, 0), new THREE.Vector3(s.x, s.y, 0)]);
+      inferLines = new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(pts), guideMaterial);
+      inferLines.computeLineDistances();
+      inferLines.renderOrder = 23;
+      group.add(inferLines);
+    }
+    if (s.onPoint) {
+      snapPoint = new THREE.Points(new THREE.BufferGeometry().setFromPoints(
+        [new THREE.Vector3(s.x, s.y, 0)]), snapMaterial);
+      snapPoint.renderOrder = 24;
+      group.add(snapPoint);
+    }
+    if (!readoutEl) {
+      readoutEl = document.createElement("div");
+      readoutEl.className = "sk-readout";
+      renderer.domElement.parentElement.appendChild(readoutEl);
+    }
+    const host = renderer.domElement.parentElement.getBoundingClientRect();
+    readoutEl.hidden = false;
+    readoutEl.textContent = readoutText(s);
+    readoutEl.style.left = `${event.clientX - host.left + 16}px`;
+    readoutEl.style.top = `${event.clientY - host.top + 18}px`;
   }
 
   // ---------- drawing ----------
@@ -469,6 +597,15 @@ export function createSketchMode(deps) {
       const cloud = new THREE.Points(geometry, pointMaterial);
       cloud.renderOrder = 21;
       group.add(cloud);
+    }
+
+    for (const glyph of relationGlyphs(mode.state.constraints,
+      mode.state.entities, span * 0.025)) {
+      const sprite = createGlyphSprite(glyph.text);
+      sprite.position.set(glyph.x, glyph.y, 0.01);
+      sprite.scale.set(span * 0.028, span * 0.028, 1);
+      sprite.renderOrder = 22;
+      group.add(sprite);
     }
 
     // L'unité de tracé suit le zoom : la cote garde sa taille à l'écran.
@@ -1014,6 +1151,8 @@ export function createSketchMode(deps) {
 
   function onPointerMove(event) {
     mode.lastMouse = { clientX: event.clientX, clientY: event.clientY };
+    if (DRAW_TOOLS.has(mode.tool)) updateInference(event);
+    else if (inferLines || snapPoint || !readoutEl?.hidden) clearInference();
     if (mode.box) {
       const here = { x: event.clientX, y: event.clientY };
       if (isDrag(mode.box, here)) boxOverlay?.show(mode.box, here);
@@ -1349,6 +1488,7 @@ export function createSketchMode(deps) {
 
   function setTool(tool) {
     if (building) return;
+    clearInference();
     mode.tool = tool;
     mode.chain = null;
     mode.pendingCircle = null;
@@ -1763,6 +1903,9 @@ export function createSketchMode(deps) {
     if (!mode.active) return;
     closeEntityPanel();
     closeModifyBox();
+    clearInference();
+    readoutEl?.remove();
+    readoutEl = null;
     mode.active = false;
     document.dispatchEvent(new Event("freesolid:sketch-exit"));
     for (const [type, handler] of listeners) {

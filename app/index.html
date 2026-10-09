@@ -186,6 +186,15 @@
   .orient-cross .r3 { grid-row: 3; }
   .orient-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
 
+  /* Lecture près du curseur pendant le tracé. */
+  .sk-readout {
+    position: absolute; z-index: 6; pointer-events: none;
+    padding: 2px 6px; font-size: 11px; white-space: nowrap;
+    background: rgba(23, 25, 28, 0.85); color: #9fd0ff;
+    border: 1px solid var(--line); border-radius: 4px;
+  }
+  .sk-readout[hidden] { display: none; }
+
   /* Boîte de saisie d'une cote, posée près de la cote. */
   .dim-modify {
     position: absolute; z-index: 7; display: flex; align-items: center;

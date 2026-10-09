@@ -641,7 +641,7 @@
     100% { transform: translateX(-10%); }
   }
 
-  #ctxmenu, #graph-edge-menu, #param-pick, #graph-palette {
+  #ctxmenu, #view-menu, #graph-edge-menu, #param-pick, #graph-palette {
     position: fixed; z-index: 10; display: none;
     background: var(--panel-2);
     border: 1px solid var(--line);
@@ -650,16 +650,26 @@
     min-width: 190px; padding: 4px;
   }
   #param-pick { min-width: 240px; }
-  #ctxmenu div, #graph-edge-menu div,
+  #ctxmenu div, #view-menu div, #graph-edge-menu div,
   #param-pick .menu-item, #graph-palette .menu-item {
     padding: 6px 10px; border-radius: 4px; cursor: pointer;
   }
-  #ctxmenu div:hover,
+  #ctxmenu div:hover, #view-menu div:hover,
   #graph-edge-menu div:hover, #param-pick .menu-item:hover,
   #graph-palette .menu-item:hover {
     background: var(--panel); color: var(--accent);
   }
-  #ctxmenu div.danger:hover, #graph-edge-menu div.danger:hover {
+  /* En-têtes et séparateurs du menu de la zone graphique. */
+  #view-menu div.head, #view-menu div.head:hover {
+    padding: 6px 10px 2px; font-size: 11px; font-weight: 600;
+    color: var(--ink-2); background: none; cursor: default;
+  }
+  #view-menu div.sep, #view-menu div.sep:hover {
+    padding: 0; margin: 4px 6px; height: 1px;
+    background: var(--line); cursor: default;
+  }
+  #ctxmenu div.danger:hover, #view-menu div.danger:hover,
+  #graph-edge-menu div.danger:hover {
     color: var(--error);
   }
   #param-pick .menu-label, #graph-palette .menu-label {

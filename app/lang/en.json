@@ -610,5 +610,18 @@
  "Valeur ou expression — Entrée pour appliquer, Échap pour garder la valeur mesurée": "Value or expression — Enter to apply, Esc to keep the measured value",
  "Appliquer (Entrée)": "Apply (Enter)",
  "Garder la valeur mesurée (Échap)": "Keep the measured value (Esc)",
- "Nom et expression de la cote": "Dimension name and expression"
+ "Nom et expression de la cote": "Dimension name and expression",
+ "Vue": "View",
+ "Orientation… (Espace)": "Orientation… (Space)",
+ "Masquer l'origine": "Hide origin",
+ "Afficher l'origine": "Show origin",
+ "Modifier la fonction": "Edit feature",
+ "Rectangle (R)": "Rectangle (R)",
+ "Cotation intelligente (D)": "Smart dimension (D)",
+ "Ajuster (T)": "Trim (T)",
+ "Fermer l'esquisse": "Close sketch",
+ "Quitter sans garder": "Leave without keeping",
+ "Esquisse sur cette face": "Sketch on this face",
+ "Normal à (Ctrl+8)": "Normal to (Ctrl+8)",
+ "Arête": "Edge"
 }

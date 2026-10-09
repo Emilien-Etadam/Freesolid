@@ -17,6 +17,7 @@ import {
 } from "./progress.js";
 import { arcAngles } from "./geom2d.js";
 import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
+import { viewMenuItems } from "./viewmenu.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, readLang } from "./settings.js";
 import {
@@ -2726,6 +2727,130 @@ document.getElementById("ctx-delete").addEventListener("click", () => {
   if (!menuFeature) return;
   if (confirm(t("Supprimer « {f} » ?", { f: menuFeature.label })))
     refreshAny(call("delete_feature", { feature: menuFeature.name }));
+});
+
+// ---------- menu contextuel de la zone graphique ----------
+// Clic droit : ce qui est visé (face, arête, esquisse, surface) décide
+// des entrées (viewmenu.js) ; le clic droit a déjà sélectionné l'élément.
+
+const viewMenuEl = document.createElement("div");
+viewMenuEl.id = "view-menu";
+document.body.appendChild(viewMenuEl);
+let viewMenuHit = null;
+
+function viewMenuContext() {
+  if (sketchMode.active) return { mode: "sketch" };
+  let hit = null;
+  if (hoveredEdgeGroup >= 0) {
+    hit = { kind: "edge", edge: edgeGroups[hoveredEdgeGroup].edgeId };
+  } else if (hoveredSketch) {
+    hit = { kind: "sketch", sketch: hoveredSketch, label: hoveredSketch.label };
+  } else if (hoveredSurface) {
+    hit = { kind: "surface", surface: hoveredSurface, label: hoveredSurface.label };
+  } else if (hoveredGroup >= 0) {
+    const group = meshGroups[hoveredGroup];
+    const feature = findFeatureInTree(lastTree, group.feature);
+    const sketch = (feature?.children ?? [])
+      .find((child) => child.type === "Sketcher::SketchObject");
+    hit = {
+      kind: "face",
+      face: group.faceId,
+      feature: feature ? {
+        name: feature.name, label: feature.label, sketch: sketch?.name,
+        item: feature, sketchItem: sketch,
+      } : null,
+    };
+  }
+  return { hit, originShown };
+}
+
+function clickButton(id) {
+  document.getElementById(id)?.click();
+}
+
+function sketchTool(tool) {
+  document.querySelector(`#sketchbar [data-tool="${tool}"]`)?.click();
+}
+
+async function withSketchSelected(hit, buttonId) {
+  if (selectedSketch?.name !== hit.sketch.name) await selectSketch(hit.sketch);
+  clickButton(buttonId);
+}
+
+const VIEW_MENU_ACTIONS = {
+  "zoom-fit": () => frameView(null, null),
+  orient: () => openOrientBox(),
+  origin: () => toggleOrigin(),
+  undo: () => refreshAny(call("undo")),
+  redo: () => refreshAny(call("redo")),
+  rebuild: () => clickButton("btn-rebuild"),
+  "sketch-on-face": () => clickButton("btn-sketch"),
+  "normal-to": () => viewNormalTo(),
+  fillet: () => clickButton("btn-fillet"),
+  chamfer: () => clickButton("btn-chamfer"),
+  shell: () => clickButton("btn-shell"),
+  measure: () => clickButton("btn-measure"),
+  "edit-feature": (hit) => editFeature(hit.feature.item),
+  "edit-sketch": (hit) => onSketchRowDblClick(hit.kind === "sketch"
+    ? { name: hit.sketch.name, label: hit.sketch.label,
+        type: "Sketcher::SketchObject" }
+    : hit.feature.sketchItem),
+  rollback: (hit) => refresh(call("set_tip", { feature: hit.feature.name })),
+  "delete-feature": (hit) => {
+    if (confirm(t("Supprimer « {f} » ?", { f: hit.feature.label }))) {
+      refreshAny(call("delete_feature", { feature: hit.feature.name }));
+    }
+  },
+  pad: (hit) => withSketchSelected(hit, "btn-pad"),
+  pocket: (hit) => withSketchSelected(hit, "btn-pocket"),
+  revolve: (hit) => withSketchSelected(hit, "btn-revolution"),
+  "edit-surface": (hit) => onSurfaceDblClick(hit.surface),
+  "sk-select": () => sketchTool("select"),
+  "sk-line": () => sketchTool("line"),
+  "sk-rect": () => sketchTool("rect"),
+  "sk-circle": () => sketchTool("circle"),
+  "sk-dim": () => sketchTool("dim"),
+  "sk-trim": () => sketchTool("trim"),
+  "sk-finish": () => sketchMode.finish(),
+  "sk-cancel": () => sketchMode.cancel(),
+};
+
+function hideViewMenu() {
+  viewMenuEl.style.display = "none";
+}
+
+renderer.domElement.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  if (assemblyState || planePicking || measuring) return;
+  menuEl.style.display = "none";
+  const ctx = viewMenuContext();
+  viewMenuHit = ctx.hit;
+  viewMenuEl.innerHTML = "";
+  for (const item of viewMenuItems(ctx)) {
+    const row = document.createElement("div");
+    if (item.separator) {
+      row.className = "sep";
+    } else if (item.header) {
+      row.className = "head";
+      row.textContent = t(item.header);
+    } else {
+      row.textContent = t(item.label);
+      if (item.danger) row.classList.add("danger");
+      row.addEventListener("click", () => {
+        hideViewMenu();
+        VIEW_MENU_ACTIONS[item.key]?.(viewMenuHit);
+      });
+    }
+    viewMenuEl.appendChild(row);
+  }
+  viewMenuEl.style.display = "block";
+  const { offsetWidth: w, offsetHeight: h } = viewMenuEl;
+  viewMenuEl.style.left = `${Math.min(event.clientX, window.innerWidth - w - 4)}px`;
+  viewMenuEl.style.top = `${Math.min(event.clientY, window.innerHeight - h - 4)}px`;
+});
+document.addEventListener("click", hideViewMenu);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") hideViewMenu();
 });
 
 // ---------- ruban à onglets (CommandManager) ----------

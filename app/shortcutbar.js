@@ -130,6 +130,12 @@ export function installCommandSearch(doc, { ribbon, sketchActive }) {
       return;
     }
     results.hidden = false;
+    // Liste alignée à droite du champ, sauf si elle sortirait de l'écran
+    // à gauche (fenêtre étroite : le champ passe en début de ligne).
+    const openRight = input.getBoundingClientRect().right
+      - results.offsetWidth < 4;
+    results.style.left = openRight ? "0" : "";
+    results.style.right = openRight ? "auto" : "";
     if (!found.length) {
       const empty = doc.createElement("p");
       empty.className = "shortcut-empty";

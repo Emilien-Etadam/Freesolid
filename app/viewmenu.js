@@ -52,7 +52,7 @@ export function viewMenuItems(ctx = {}) {
       { key: "sk-line", label: "Ligne (L)" },
       { key: "sk-rect", label: "Rectangle (R)" },
       { key: "sk-circle", label: "Cercle (C)" },
-      { key: "sk-dim", label: "Cotation intelligente (D)" },
+      { key: "sk-dim", label: "Cotation (D)" },
       { key: "sk-trim", label: "Ajuster (T)" },
       SEP,
       { key: "sk-finish", label: "Fermer l'esquisse" },
@@ -85,8 +85,8 @@ export function viewMenuItems(ctx = {}) {
     items = [
       { header: hit.label ?? "Esquisse" },
       { key: "edit-sketch", label: "Modifier l'esquisse" },
-      { key: "pad", label: "Bossage extrudé" },
-      { key: "pocket", label: "Enlèvement de matière" },
+      { key: "pad", label: "Extrusion" },
+      { key: "pocket", label: "Enlèvement extrudé" },
       { key: "revolve", label: "Révolution" },
     ];
   } else if (hit?.kind === "surface") {

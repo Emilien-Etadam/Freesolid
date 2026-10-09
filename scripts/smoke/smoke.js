@@ -1936,7 +1936,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click("#btn-repeat-variable");
   await page.waitForFunction(
     () => document.querySelector("#panel .ptitle")?.textContent
-      === "Répétition variable",
+      === "Réseau variable",
     null,
     { timeout: 8000 },
   );

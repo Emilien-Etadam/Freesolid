@@ -53,7 +53,7 @@ describe("buildGraph", () => {
     const graph = buildGraph({
       features: [
         { name: "Sketch", label: "Esquisse1", kind: "Esquisse", order: 0 },
-        { name: "Pad", label: "Bossage1", kind: "Bossage/Base extrudé",
+        { name: "Pad", label: "Bossage1", kind: "Extrusion",
           order: 1, deps: ["Sketch"] },
         { name: "Fillet", label: "Congé1", kind: "Congé",
           order: 2, deps: ["Pad"] },
@@ -74,7 +74,7 @@ describe("buildGraph", () => {
       features: [
         { name: "Sketch", label: "Esquisse1", kind: "Esquisse", order: 1,
           deps: ["XZ_Plane"] },
-        { name: "Pad", label: "Bossage1", kind: "Bossage/Base extrudé",
+        { name: "Pad", label: "Bossage1", kind: "Extrusion",
           order: 2, deps: ["Sketch"],
           driven: { Length: "2 * largeur + 5" } },
       ],
@@ -95,7 +95,7 @@ describe("buildGraph", () => {
         { name: "largeur", value: 20 },
       ],
       features: [{
-        name: "Pad", label: "Bossage1", kind: "Bossage/Base extrudé",
+        name: "Pad", label: "Bossage1", kind: "Extrusion",
         order: 1, driven: { Length: "2 * largeur + 5" },
       }],
     });
@@ -116,7 +116,7 @@ describe("buildGraph", () => {
         { name: "hauteur", value: 10 },
       ],
       features: [{
-        name: "Pad", label: "Bossage1", kind: "Bossage/Base extrudé",
+        name: "Pad", label: "Bossage1", kind: "Extrusion",
         order: 1, driven: { Length: "largeur + hauteur / 2" },
       }],
     });
@@ -140,7 +140,7 @@ describe("buildGraph", () => {
           type: "Sketcher::SketchObject", deps: ["XZ_Plane"],
         },
         {
-          name: "Pad", label: "Bossage1", kind: "Bossage/Base extrudé",
+          name: "Pad", label: "Bossage1", kind: "Extrusion",
           order: 2, deps: ["Sketch", "Fantome"],
           driven: { Length: "2 * largeur + 5" },
           children: [{
@@ -200,7 +200,7 @@ describe("buildGraph", () => {
       features: [
         { name: "Sketch", label: "Esquisse1", kind: "Esquisse",
           type: "Sketcher::SketchObject", order: 0 },
-        { name: "Pad", label: "Bossage1", kind: "Bossage/Base extrudé",
+        { name: "Pad", label: "Bossage1", kind: "Extrusion",
           type: "PartDesign::Pad", order: 1, deps: ["Sketch"] },
         { name: "Fillet", label: "Congé1", kind: "Congé",
           type: "PartDesign::Fillet", order: 2, deps: ["Pad"],
@@ -224,7 +224,7 @@ describe("buildGraph", () => {
       features: [
         { name: "Sketch", label: "Esquisse1", kind: "Esquisse", order: 0,
           deps: ["XY_Plane"] },
-        { name: "Pad", label: "Bossage1", kind: "Bossage/Base extrudé",
+        { name: "Pad", label: "Bossage1", kind: "Extrusion",
           order: 1, deps: ["Sketch"],
           params: [{ prop: "Length", value: 12 }] },
         { name: "Fillet", label: "Congé1", kind: "Congé",
@@ -663,7 +663,7 @@ describe("composition du graphe interne", () => {
     assert.equal(minimalRepeatGraph().output, "inst");
     assert.equal(minimalRepeatGraph().nodes[0].type, "instance");
     const repeat = FEATURES.find((entry) => entry.button === "btn-repeat-variable");
-    assert.equal(repeat?.title, "Répétition variable");
+    assert.equal(repeat?.title, "Réseau variable");
     assert.equal(repeat?.openGraphEditor, true);
   });
 

@@ -328,7 +328,7 @@ export const FEATURES = [
   withSketchProfile({
     button: "btn-pad",
     icon: "PartDesign_Pad.svg",
-    title: "Bossage/Base extrudé",
+    title: "Extrusion",
     groups: () => extrudeGroups("pad"),
     build: (v) => extrudeBuild("add_pad", v),
     invalid: extrudeInvalid,
@@ -337,7 +337,7 @@ export const FEATURES = [
   withSketchProfile({
     button: "btn-pocket",
     icon: "PartDesign_Pocket.svg",
-    title: "Enlèvement de matière extrudé",
+    title: "Enlèvement extrudé",
     groups: () => extrudeGroups("pocket"),
     build: (v) => extrudeBuild("add_pocket", v),
     invalid: extrudeInvalid,
@@ -347,18 +347,18 @@ export const FEATURES = [
     button: "btn-revolution",
     op: "add_revolution",
     icon: "PartDesign_Revolution.svg",
-    title: "Bossage/Base avec révolution",
+    title: "Révolution",
   }),
   revolved({
     button: "btn-groove",
     op: "add_groove",
     icon: "PartDesign_Groove.svg",
-    title: "Enlèvement de matière avec révolution",
+    title: "Enlèvement par révolution",
   }),
   {
     button: "btn-hole",
     icon: "PartDesign_Hole.svg",
-    title: "Assistant de perçage",
+    title: "Perçage",
     groups: () => [
       {
         label: "Type de perçage",
@@ -423,7 +423,7 @@ export const FEATURES = [
   {
     button: "btn-loft",
     icon: "PartDesign_AdditiveLoft.svg",
-    title: "Bossage/Base lissé",
+    title: "Lissage",
     groups: () => [
       { label: "Profils",
         rows: [{ type: "selection", key: "profiles", accepts: ["sketch"],
@@ -433,7 +433,7 @@ export const FEATURES = [
       { label: "Options",
         rows: [
           { type: "check", key: "subtractive",
-            label: "Enlèvement de matière", value: false },
+            label: "Enlever de la matière", value: false },
           { type: "check", key: "ruled", label: "Lissage droit (réglé)",
             value: false },
           { type: "check", key: "closed", label: "Boucle fermée",
@@ -455,7 +455,7 @@ export const FEATURES = [
   {
     button: "btn-sweep",
     icon: "PartDesign_AdditivePipe.svg",
-    title: "Bossage/Base balayé",
+    title: "Balayage",
     groups: () => [
       { label: "Profil",
         rows: [{ type: "selection", key: "profile", accepts: ["sketch"],
@@ -465,7 +465,7 @@ export const FEATURES = [
                  hint: "Puis l'esquisse de la trajectoire" }] },
       { label: "Options",
         rows: [{ type: "check", key: "subtractive",
-                 label: "Enlèvement de matière", value: false }] },
+                 label: "Enlever de la matière", value: false }] },
     ],
     build: (v) => {
       if (!v.profile || !v.spine) return null;
@@ -604,7 +604,7 @@ export const FEATURES = [
   {
     button: "btn-linpattern",
     icon: "PartDesign_LinearPattern.svg",
-    title: "Répétition linéaire",
+    title: "Réseau linéaire",
     groups: () => [
       patternFeaturesGroup(),
       {
@@ -637,7 +637,7 @@ export const FEATURES = [
   {
     button: "btn-polpattern",
     icon: "PartDesign_PolarPattern.svg",
-    title: "Répétition circulaire",
+    title: "Réseau circulaire",
     groups: () => [
       patternFeaturesGroup(),
       {
@@ -804,7 +804,7 @@ export const FEATURES = [
   {
     button: "btn-repeat-variable",
     icon: "PartDesign_LinearPattern.svg",
-    title: "Répétition variable",
+    title: "Réseau variable",
     preview: false,
     groups: () => [
       { label: "Fonctions",
@@ -833,7 +833,7 @@ export const FEATURES = [
         },
       };
     },
-    invalid: "Répétition variable : cliquez au moins une fonction dans l'arbre",
+    invalid: "Réseau variable : cliquez au moins une fonction dans l'arbre",
     refresh: "part",
     openGraphEditor: true,
   },

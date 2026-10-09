@@ -2092,7 +2092,7 @@ class Kernel:
         if tip is not None:
             self._persist_graph(
                 tip, graph, mode,
-                "Fonction graphe — Bossage" if mode == "fuse"
+                "Fonction graphe — Ajout" if mode == "fuse"
                 else "Fonction graphe — Enlèvement")
         return self.get_tree()
 
@@ -2174,7 +2174,7 @@ class Kernel:
         mode = getattr(obj, "FreeSolidGraphMode", "") or "cut"
         self._persist_graph(
             obj, graph, mode,
-            "Fonction graphe — Bossage" if mode == "fuse"
+            "Fonction graphe — Ajout" if mode == "fuse"
             else "Fonction graphe — Enlèvement")
         return self.get_tree()
 
@@ -2196,8 +2196,8 @@ class Kernel:
         return {"graph": migrate_graph(parsed), "mode": mode}
 
     def _repeat_label(self, mode):
-        return ("Répétition variable — Bossage" if mode == "fuse"
-                else "Répétition variable — Enlèvement")
+        return ("Réseau variable — Ajout" if mode == "fuse"
+                else "Réseau variable — Enlèvement")
 
     def _repeat_tool_parts(self, obj):
         tool_body = next(
@@ -2685,7 +2685,7 @@ class Kernel:
 
     def add_pad(self, length=None, sketch=None, reversed=False,
                 midplane=False, **conditions):
-        """Bossage extrudé. ``conditions`` : voir ``engine.extrude`` —
+        """Extrusion. ``conditions`` : voir ``engine.extrude`` —
         cond, face, offset, taper, cond2, length2, face2, offset2, taper2."""
         body = self._require_body()
         doc = self._require_doc()
@@ -2703,7 +2703,7 @@ class Kernel:
         except KernelError:
             doc.removeObject(pad.Name)
             raise
-        pad.Label = self._t("Bossage extrudé")
+        pad.Label = self._t("Extrusion")
         try:
             self._recompute()
         except KernelError:
@@ -2949,7 +2949,7 @@ class Kernel:
         except KernelError:
             doc.removeObject(pocket.Name)
             raise
-        pocket.Label = self._t("Enlèvement de matière")
+        pocket.Label = self._t("Enlèvement extrudé")
         try:
             self._recompute()
         except KernelError:
@@ -3031,7 +3031,7 @@ class Kernel:
 
     def add_loft(self, sketches, subtractive=False, ruled=False,
                  closed=False):
-        """Bossage/Base lissé (ou enlèvement) entre plusieurs profils —
+        """Lissage (ou enlèvement) entre plusieurs profils —
         typiquement des esquisses posées sur des plans de référence."""
         body = self._require_body()
         doc = self._require_doc()
@@ -3057,7 +3057,7 @@ class Kernel:
         return self.get_tree()
 
     def add_sweep(self, profile, spine, subtractive=False):
-        """Bossage/Base balayé (ou enlèvement) : un profil suit une
+        """Balayage (ou enlèvement) : un profil suit une
         trajectoire — deux esquisses, souvent sur des plans différents."""
         body = self._require_body()
         doc = self._require_doc()
@@ -3157,12 +3157,12 @@ class Kernel:
         return self.get_tree()
 
     def add_revolution(self, angle=360.0, sketch=None):
-        """Bossage/Base avec révolution, autour de l'axe vertical de
+        """Révolution, autour de l'axe vertical de
         l'esquisse."""
         return self._revolved("PartDesign::Revolution", angle, sketch)
 
     def add_groove(self, angle=360.0, sketch=None):
-        """Enlèvement de matière avec révolution."""
+        """Enlèvement par révolution."""
         return self._revolved("PartDesign::Groove", angle, sketch)
 
     _AXIS_ROLES = {"X": "X_Axis", "Y": "Y_Axis", "Z": "Z_Axis"}
@@ -3266,7 +3266,7 @@ class Kernel:
 
     def add_linear_pattern(self, length, count, axis="X", features=None,
                            edge=None, spacing=False, reversed=False):
-        """Répétition linéaire d'une ou plusieurs fonctions le long d'un axe
+        """Réseau linéaire d'une ou plusieurs fonctions le long d'un axe
         ou d'une arête droite.
 
         ``length`` : longueur totale (par défaut) ou, avec ``spacing``,
@@ -3295,7 +3295,7 @@ class Kernel:
 
     def add_polar_pattern(self, count, angle=360.0, axis="Z", features=None,
                           edge=None, reversed=False):
-        """Répétition circulaire d'une ou plusieurs fonctions autour d'un
+        """Réseau circulaire d'une ou plusieurs fonctions autour d'un
         axe d'origine ou d'une arête droite.
 
         ``features`` : noms des fonctions à répéter. Absent : la dernière
@@ -3836,7 +3836,7 @@ class Kernel:
 
     def add_hole(self, diameter, depth=None, through=False, cut="none",
                  cut_diameter=None, cut_depth=None, cut_angle=None):
-        """Assistant de perçage — version simple.
+        """Perçage — version simple.
 
         Le profil est la dernière esquisse non utilisée : ses cercles (un
         par perçage) positionnent les trous ; le diamètre saisi remplace
@@ -4777,7 +4777,7 @@ class Kernel:
         return self.sketch_state(sketch)
 
     def sketch_array(self, sketch, geos, dx, dy, cols, rows):
-        """Répétition linéaire d'entités d'esquisse (grille cols × rows)."""
+        """Réseau linéaire d'entités d'esquisse (grille cols × rows)."""
         sk = self._get_sketch(sketch)
         App = self._app()
         ids = [int(g) for g in (geos or ())]

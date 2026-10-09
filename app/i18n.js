@@ -3,7 +3,7 @@
 // « texte source → traduction » dans app/lang/. Un texte absent du
 // dictionnaire s'affiche tel quel : une traduction manquante ne casse rien.
 //
-//   t("Bossage extrudé")                    → "Extruded Boss" en anglais
+//   t("Extrusion")                    → "Extrude" en anglais
 //   t("Autotest : {n} étapes", { n: 12 })   → variables entre accolades,
 //                                             aussi remplacées en français
 //   translateDom(root)                      → textes, title, placeholder

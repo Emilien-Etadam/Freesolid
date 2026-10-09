@@ -3176,7 +3176,7 @@ const GRAPH_HINT_AT = 60;
 const GRAPH_FN_HINT =
   "Fonction graphe — la géométrie produite est figée. Échap pour fermer.";
 const REPEAT_FN_HINT =
-  "Répétition variable — le graphe produit les instances. "
+  "Réseau variable — le graphe produit les instances. "
   + "Si la topologie d'une instance ne correspond plus, la répétition "
   + "s'arrête plutôt que de produire. Échap pour fermer.";
 
@@ -4475,7 +4475,7 @@ async function applyGraphFeature() {
     await updateViewport(gen);
     renderGraphFunction();
     say(graphFn.kind === "repetition"
-      ? "Répétition variable appliquée."
+      ? "Réseau variable appliqué."
       : "Fonction graphe appliquée.");
   } catch (error) {
     graphFn.errorNode = nodeIdFromGraphError(error.message);

@@ -293,7 +293,7 @@ function fmtXy(point) {
   return `(${fmtMm(point[0])}, ${fmtMm(point[1])})`;
 }
 
-/** Titre PropertyManager — vocabulaire SolidWorks 2025, en français. */
+/** Titre du panneau d'une entité d'esquisse. */
 export function entityKindTitle(entity) {
   if (!entity) return "Entité";
   if (entity.type === "line") return "Ligne";

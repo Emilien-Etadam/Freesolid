@@ -9,7 +9,7 @@
 // Spec shape:
 //   {
 //     icon: "PartDesign_Pad.svg",
-//     title: "Bossage/Base extrudé",
+//     title: "Extrusion",
 //     groups: [{ label, rows: [row…] }],
 //     note?: string,
 //     noApply?: boolean,   // panneau info : pas de bouton OK

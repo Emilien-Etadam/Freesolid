@@ -1531,7 +1531,7 @@ export function createSketchMode(deps) {
       skfillet: "Congé d'esquisse : cliquez la première ligne, près du coin",
       trim: "Ajuster : cliquez le tronçon à supprimer",
       construction: "Construction : cliquez une entité pour la basculer",
-      dim: "Cotation intelligente : cliquez une entité ou une extrémité",
+      dim: "Cotation : cliquez une entité ou une extrémité",
     };
     say(hints[tool]);
     redraw();
@@ -1657,7 +1657,7 @@ export function createSketchMode(deps) {
       ],
       note: hasDriving
         ? "Cliquez une cote dans Relations pour la modifier."
-        : "Pour piloter une valeur : Cotation intelligente (D).",
+        : "Pour piloter une valeur : Cotation (D).",
       actions: [
         {
           label: t("Construction"),
@@ -1766,7 +1766,7 @@ export function createSketchMode(deps) {
     abandonEntityPanel();
     panel.open({
       icon: "Sketcher_RectangularArray.svg",
-      title: t("Répétition d'entités"),
+      title: t("Réseau d'esquisse"),
       groups: [{
         label: t("Paramètres"),
         rows: [
@@ -1800,7 +1800,7 @@ export function createSketchMode(deps) {
     abandonEntityPanel();
     panel.open({
       icon: "Sketcher_Copy.svg",
-      title: t("Décaler les entités"),
+      title: t("Décaler"),
       groups: [{
         label: t("Paramètres"),
         rows: [

@@ -247,8 +247,8 @@ describe("installCoreRibbons", () => {
       ["Préparation", "Modélisation", "Habillage", "Transformations"]);
 
     const pad = doc.getElementById("btn-pad");
-    assert.equal(pad.title, "Bossage/Base extrudé");
-    assert.equal(buttonText(pad), "Bossage extrudé");
+    assert.equal(pad.title, "Extrusion");
+    assert.equal(buttonText(pad), "Extrusion");
     const img = pad.children.find((c) => c.tagName === "img");
     assert.equal(img.src, "icons/PartDesign_Pad.svg");
 

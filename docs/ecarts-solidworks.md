@@ -79,7 +79,14 @@ connaissance du logiciel et de l'aide officielle, reformulées.
   vérifie désormais.
 - **Q2 — Vocabulaire de commandes.** `engine/vocab.py` reprend des noms de
   commandes propres à SolidWorks (« Extruded Boss/Base », « Hole Wizard »…).
-  Faut-il les neutraliser pour rester clean-room ? En attente.
+  Faut-il les neutraliser pour rester clean-room ?
+  **Réponse (2026-10-09) : oui.** Termes génériques partout (moteur, ruban,
+  panneaux, menus, traductions) : Extrusion / Extrude, Enlèvement extrudé /
+  Extrude Cut, Révolution / Revolve, Balayage / Sweep, Lissage / Loft,
+  Perçage / Hole, Réseau linéaire / circulaire, Cotation, Décaler,
+  Projeter les arêtes, Contrainte / Constraint, Coudre / Sew. Les documents
+  déjà enregistrés gardent leurs libellés (ce sont les données de
+  l'utilisateur).
 
 ---
 

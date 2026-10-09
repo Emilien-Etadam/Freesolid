@@ -24,9 +24,9 @@ def test_commands_are_namespaced():
 
 
 @pytest.mark.parametrize("obj_type,expected", [
-    ("PartDesign::Pad", "Bossage/Base extrudé"),
-    ("PartDesign::Pocket", "Enlèvement de matière extrudé"),
-    ("PartDesign::Hole", "Assistant de perçage"),
+    ("PartDesign::Pad", "Extrusion"),
+    ("PartDesign::Pocket", "Enlèvement extrudé"),
+    ("PartDesign::Hole", "Perçage"),
 ])
 def test_label_for_known_type(obj_type, expected):
     assert vocab.label_for_type(obj_type) == expected
@@ -53,8 +53,7 @@ def test_unknown_origin_name_is_returned_verbatim():
 
 
 def test_english_labels_available():
-    assert vocab.label_for_type("PartDesign::Pad", lang="en") == \
-        "Extruded Boss/Base"
+    assert vocab.label_for_type("PartDesign::Pad", lang="en") == "Extrude"
     assert vocab.label_for_origin("XY_Plane", lang="en") == "Top Plane"
 
 

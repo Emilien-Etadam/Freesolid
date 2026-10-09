@@ -640,5 +640,14 @@
  "Ligne de construction {n} ({x1}, {y1}) → ({x2}, {y2})": "Construction line {n} ({x1}, {y1}) → ({x2}, {y2})",
  "Ligne {n} ({x1}, {y1}) → ({x2}, {y2})": "Line {n} ({x1}, {y1}) → ({x2}, {y2})",
  "Une direction": "One direction",
- "Angle de révolution invalide": "Invalid revolution angle"
+ "Angle de révolution invalide": "Invalid revolution angle",
+ "Style d'affichage": "Display style",
+ "Masquer / afficher": "Hide / show",
+ "Ombré avec arêtes": "Shaded with edges",
+ "Ombré sans arêtes": "Shaded without edges",
+ "Filaire": "Wireframe",
+ "Lignes cachées estompées": "Faded hidden lines",
+ "Plans de référence": "Reference planes",
+ "Esquisses": "Sketches",
+ "Aperçu des arêtes": "Edge preview"
 }

@@ -141,6 +141,21 @@
   #viewbar button { padding: 5px; border: none; background: none; }
   #viewbar button:hover { background: var(--panel-2); }
   #viewbar button.on { color: var(--accent); }
+  .view-drop { position: relative; display: flex; }
+  .view-menu {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 6;
+    min-width: 220px; padding: 4px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  }
+  .view-menu[hidden] { display: none; }
+  .view-menu button, .view-menu label {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 6px 8px; border: none; background: none;
+    text-align: left; border-radius: 4px; cursor: pointer;
+  }
+  .view-menu button:hover, .view-menu label:hover { background: var(--panel-2); }
+  .view-menu button.on { color: var(--accent); }
 
   /* Boîte d'orientation : vues standard en croix, ouverte sous le curseur. */
   #orient-box {
@@ -833,6 +848,24 @@
       <button id="confirm-cancel" class="no" title="Annuler (Échap)">✗</button>
     </div>
     <div id="viewbar">
+      <div class="view-drop">
+        <button type="button" id="btn-style" title="Style d'affichage"><img src="icons/FreeSolid_DisplayStyle.svg" alt=""></button>
+        <div id="style-menu" class="view-menu" hidden>
+          <button type="button" data-style="shaded-edges">Ombré avec arêtes</button>
+          <button type="button" data-style="shaded">Ombré sans arêtes</button>
+          <button type="button" data-style="wireframe">Filaire</button>
+          <button type="button" data-style="hidden">Lignes cachées estompées</button>
+        </div>
+      </div>
+      <div class="view-drop">
+        <button type="button" id="btn-visibility" title="Masquer / afficher"><img src="icons/FreeSolid_Visibility.svg" alt=""></button>
+        <div id="visibility-menu" class="view-menu" hidden>
+          <label><input type="checkbox" data-vis="planes"> Plans de référence</label>
+          <label><input type="checkbox" data-vis="origin"> Origine</label>
+          <label><input type="checkbox" data-vis="sketches"> Esquisses</label>
+          <label><input type="checkbox" data-vis="edges"> Aperçu des arêtes</label>
+        </div>
+      </div>
       <button id="view-iso" title="Vue isométrique (Ctrl+7)"><img src="icons/view-isometric.svg" alt=""></button>
       <button id="view-front" title="Vue de face (Ctrl+1)"><img src="icons/view-front.svg" alt=""></button>
       <button id="view-top" title="Vue de dessus (Ctrl+5)"><img src="icons/view-top.svg" alt=""></button>

@@ -760,6 +760,8 @@
   footer .err { color: var(--error); }
   footer .err.sticky { cursor: pointer; }
   footer .push { margin-left: auto; }
+  footer .coords { font-variant-numeric: tabular-nums; min-width: 17em; text-align: right; }
+  footer #measure:empty, footer #edit-mode:empty { display: none; }
 
   body.op-en-cours .ribbon button {
     opacity: 0.45;
@@ -1154,6 +1156,9 @@
   <footer>
     <span id="status">Moteur : en attente…</span>
     <span id="pick" class="push"></span>
+    <span id="measure"></span>
+    <span id="coords" class="coords"></span>
+    <span id="edit-mode"></span>
     <span title="Unités : millimètre, gramme, seconde">mm · g · s</span>
   </footer>
 

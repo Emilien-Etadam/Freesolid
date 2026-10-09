@@ -5068,7 +5068,8 @@ class Kernel:
                     points = edge.discretize(Number=24)
                 except Exception:
                     continue  # arête dégénérée : les ids restent justes
-            lines.append((i, [(p.x, p.y, p.z) for p in points]))
+            lines.append((i, [(p.x, p.y, p.z) for p in points],
+                          float(edge.Length)))
         return protocol.pack_edges(lines)
 
     # -- M2 : sketch editing --------------------------------------------

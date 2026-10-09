@@ -290,10 +290,17 @@ export function createSketchMode(deps) {
     return parts.join(" · ");
   }
 
+  /** Position du curseur dans l'esquisse, pour la barre d'état. */
+  function emitPointer(local) {
+    document.dispatchEvent(new CustomEvent("freesolid:sketch-pointer", {
+      detail: local ? { x: local.x, y: local.y } : null }));
+  }
+
   function updateInference(event) {
     const local = toLocal(event);
-    if (!local || !mode.state) { clearInference(); return; }
+    if (!local || !mode.state) { clearInference(); emitPointer(null); return; }
     const s = snap(local, event);
+    emitPointer(s);
     for (const obj of [inferLines, snapPoint]) {
       if (obj) { group.remove(obj); obj.geometry.dispose(); }
     }
@@ -1152,7 +1159,10 @@ export function createSketchMode(deps) {
   function onPointerMove(event) {
     mode.lastMouse = { clientX: event.clientX, clientY: event.clientY };
     if (DRAW_TOOLS.has(mode.tool)) updateInference(event);
-    else if (inferLines || snapPoint || !readoutEl?.hidden) clearInference();
+    else {
+      if (inferLines || snapPoint || !readoutEl?.hidden) clearInference();
+      emitPointer(toLocal(event));
+    }
     if (mode.box) {
       const here = { x: event.clientX, y: event.clientY };
       if (isDrag(mode.box, here)) boxOverlay?.show(mode.box, here);
@@ -1578,6 +1588,10 @@ export function createSketchMode(deps) {
   function syncEntityPanel({ refresh = false } = {}) {
     if (!mode.active || mode.drag) return;
     const geos = uniqueSelectionGeos();
+    // Barre d'état : la longueur de ce qui est sélectionné.
+    document.dispatchEvent(new CustomEvent("freesolid:sketch-selection", {
+      detail: geos.map((id) => mode.state?.entities.find((e) => e.id === id))
+        .filter(Boolean) }));
     if (geos.length !== 1) {
       closeEntityPanel();
       return;

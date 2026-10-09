@@ -729,5 +729,11 @@
  "Ctrl+1 à Ctrl+7 changent de vue. F cadre la pièce.": "Ctrl+1 through Ctrl+7 change the view. F frames the part.",
  "La molette zoome, le bouton du milieu tourne la vue.": "The wheel zooms, the middle button orbits the view.",
  "Échap ferme le menu, le dialogue ou l'outil en cours.": "Esc closes the menu, the dialog, or the current tool.",
- "Ctrl+N crée une pièce ou un assemblage.": "Ctrl+N creates a part or an assembly."
+ "Ctrl+N crée une pièce ou un assemblage.": "Ctrl+N creates a part or an assembly.",
+ "X {x}  Y {y} mm": "X {x}  Y {y} mm",
+ "X {x}  Y {y}  Z {z} mm": "X {x}  Y {y}  Z {z} mm",
+ "Longueur totale : {v} mm ({n} entités)": "Total length: {v} mm ({n} entities)",
+ "Édition : esquisse « {name} »": "Editing sketch “{name}”",
+ "Édition : assemblage": "Editing assembly",
+ "Édition : pièce « {name} »": "Editing part “{name}”"
 }

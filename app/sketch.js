@@ -1336,7 +1336,6 @@ export function createSketchMode(deps) {
     else if (key === "r") setTool("rect");
     else if (key === "c") setTool("circle");
     else if (key === "a") setTool("arc3");
-    else if (key === "s") setTool("spline");
     else if (key === "e") setTool("ellipse");
     else if (key === "t") setTool("trim");
     else if (key === "g") setTool("construction");
@@ -1382,7 +1381,7 @@ export function createSketchMode(deps) {
       rect: "Rectangle par sommet : cliquez le premier sommet",
       rectc: "Rectangle par le centre : cliquez le centre",
       circle: "Cercle : cliquez le centre",
-      spline: "Spline : cliquez les points, Entrée pour terminer (S)",
+      spline: "Spline : cliquez les points, Entrée pour terminer",
       ellipse: "Ellipse : cliquez le centre",
       arc: "Arc par centre : cliquez le centre",
       arc3: "Arc 3 points : cliquez le point de départ",

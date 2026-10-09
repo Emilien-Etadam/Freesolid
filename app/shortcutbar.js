@@ -33,6 +33,7 @@ export function ribbonCommands(ribbon) {
         if (!isButtonId(button.id)) continue;
         commands.push({
           kind: "button", id: button.id, label: String(button.libelle),
+          tab: String(tab.libelle || ""),
         });
       }
     }
@@ -67,6 +68,135 @@ export function shortcutOffers({
   if (sketch) return sketchTools;
   const byId = new Map(commands.map((command) => [command.id, command]));
   return PART_SHORTCUTS.map((id) => byId.get(id)).filter(Boolean);
+}
+
+/**
+ * Recherche de la barre du haut. Rien tant que la saisie est vide.
+ * Les outils d'esquisse n'entrent dans la liste qu'en esquisse.
+ */
+export function commandSearch({
+  query, commands, sketchTools, sketch, translate = (text) => text,
+}) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return [];
+  const tools = sketch
+    ? (sketchTools ?? []).map((tool) => ({
+      ...tool, tab: tool.tab || "Esquisse",
+    }))
+    : [];
+  return dedupe([...(commands ?? []), ...tools]).filter((command) =>
+    String(translate(command.label)).toLowerCase().includes(q));
+}
+
+/** Champ de la barre du haut : Ctrl+F l'ouvre, Entrée lance la première. */
+export function installCommandSearch(doc, { ribbon, sketchActive }) {
+  const input = doc.getElementById("command-query");
+  const results = doc.getElementById("command-results");
+  if (!input || !results) return;
+  const commands = ribbonCommands(ribbon);
+
+  function offers() {
+    return commandSearch({
+      query: input.value,
+      commands,
+      sketchTools: readSketchTools(doc),
+      sketch: Boolean(sketchActive?.()),
+      translate: t,
+    });
+  }
+
+  function hide() {
+    results.hidden = true;
+    results.replaceChildren();
+  }
+
+  function launch(offer) {
+    if (!offer) return;
+    const source = offer.kind === "tool"
+      ? doc.querySelector(`#sketchbar button[data-tool="${offer.tool}"]`)
+      : doc.getElementById(offer.id);
+    if (!source || source.disabled) return;
+    input.value = "";
+    hide();
+    input.blur();
+    source.click();
+  }
+
+  function render() {
+    const found = offers();
+    results.replaceChildren();
+    if (!String(input.value || "").trim()) {
+      results.hidden = true;
+      return;
+    }
+    results.hidden = false;
+    if (!found.length) {
+      const empty = doc.createElement("p");
+      empty.className = "shortcut-empty";
+      empty.textContent = t("Aucune commande");
+      results.appendChild(empty);
+      return;
+    }
+    for (const offer of found) {
+      const button = doc.createElement("button");
+      button.type = "button";
+      const label = doc.createElement("span");
+      label.textContent = t(offer.label);
+      const tab = doc.createElement("span");
+      tab.className = "cmd-tab";
+      tab.textContent = t(offer.tab || "");
+      button.append(label, tab);
+      const source = offer.kind === "tool"
+        ? doc.querySelector(`#sketchbar button[data-tool="${offer.tool}"]`)
+        : doc.getElementById(offer.id);
+      button.disabled = Boolean(source?.disabled);
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        launch(offer);
+      });
+      results.appendChild(button);
+    }
+  }
+
+  input.addEventListener("input", render);
+  input.addEventListener("focus", render);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      input.value = "";
+      hide();
+      input.blur();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      launch(offers().find((offer) => {
+        const source = offer.kind === "tool"
+          ? doc.querySelector(`#sketchbar button[data-tool="${offer.tool}"]`)
+          : doc.getElementById(offer.id);
+        return source && !source.disabled;
+      }));
+    }
+  });
+  doc.addEventListener("click", (event) => {
+    if (!results.hidden && !event.target.closest("#command-search")) hide();
+  });
+  doc.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    if (event.key !== "f" && event.key !== "F") return;
+    if (event.altKey) return;
+    const tag = event.target?.tagName;
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(tag) && event.target !== input) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    input.focus();
+    input.select();
+    render();
+  }, true);
+
+  return { render, hide };
 }
 
 /** Coin supérieur gauche, juste sous le pointeur, sans sortir de l'écran. */

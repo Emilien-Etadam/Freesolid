@@ -28,7 +28,7 @@ import { currentPaneIndex, layoutPanes, paneRect } from "./layouts.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, ISSUES_URL, readLang } from "./settings.js";
 import { installMenuBar, menuBarModel } from "./menubar.js";
-import { installShortcutBar } from "./shortcutbar.js";
+import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
 import { installWelcome, rememberRecent } from "./welcome.js";
 import {
@@ -6369,6 +6369,10 @@ const sketchMode = createSketchMode(
   { scene, camera, renderer, controls, call, say, refresh, panel, boxOverlay });
 
 installShortcutBar(document, {
+  ribbon: RIBBON_LAYOUT,
+  sketchActive: () => sketchMode.active,
+});
+installCommandSearch(document, {
   ribbon: RIBBON_LAYOUT,
   sketchActive: () => sketchMode.active,
 });

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import LAYOUT from "../../app/ribbon.json" with { type: "json" };
 import {
-  commandLabel, placeNearPointer, ribbonCommands, shortcutOffers,
+  commandLabel, commandSearch, placeNearPointer, ribbonCommands,
+  shortcutOffers,
 } from "../../app/shortcutbar.js";
 
 const TOOLS = [
@@ -49,6 +50,34 @@ describe("boîte de raccourcis", () => {
     assert.equal(commandLabel("Spline — points cliqués, Entrée pour terminer"),
       "Spline");
     assert.equal(commandLabel("", "line"), "line");
+  });
+
+  it("la recherche du haut nomme l'onglet et cache l'esquisse", () => {
+    const sketchTools = [
+      { kind: "tool", tool: "line", label: "Ligne" },
+    ];
+    assert.equal(commands.some((command) => command.tab === "Fonctions"), true);
+    assert.deepEqual(commandSearch({
+      query: "  ", commands, sketchTools, sketch: false,
+    }), []);
+    const fillet = commandSearch({
+      query: "congé", commands, sketchTools, sketch: false,
+    });
+    assert.ok(fillet.some((command) =>
+      command.id === "btn-fillet" && command.tab === "Fonctions"));
+    assert.equal(commandSearch({
+      query: "ligne", commands, sketchTools, sketch: false,
+    }).some((command) => command.tool === "line"), false);
+    const drawing = commandSearch({
+      query: "ligne", commands, sketchTools, sketch: true,
+    });
+    assert.ok(drawing.some((command) =>
+      command.tool === "line" && command.tab === "Esquisse"));
+    const english = commandSearch({
+      query: "fillet", commands, sketchTools, sketch: false,
+      translate: (label) => (label === "Congé" ? "Fillet" : label),
+    });
+    assert.ok(english.some((command) => command.id === "btn-fillet"));
   });
 
   it("se pose sous le pointeur et reste dans l'écran", () => {

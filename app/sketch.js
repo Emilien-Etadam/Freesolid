@@ -13,7 +13,9 @@ import {
   isDrivingConstraint, sketchPreviewPoints,
 } from "./geom2d.js";
 import { num } from "./num.js";
-import { boxMode, isDrag, normalizeRect, pickInBox } from "./navigation.js";
+import {
+  boxMode, isDrag, normalizeRect, pickInBox, sketchLocalPoints,
+} from "./navigation.js";
 import {
   arrowSegments, dimEditPayload, dimGeometry, dimLabel, openDimEditor,
 } from "./dims.js";
@@ -1987,5 +1989,13 @@ export function createSketchMode(deps) {
     finish: () => exit(true),
     /** Quitter sans garder (coin de confirmation, bouton Quitter). */
     cancel: () => exit(false),
+    /** Points monde de la géométrie, pour cadrer sans quitter le plan. */
+    framePoints() {
+      if (!mode.active) return [];
+      return sketchLocalPoints(mode.state?.entities).map(([x, y]) => {
+        const world = new THREE.Vector3(x, y, 0).applyMatrix4(mode.matrix);
+        return [world.x, world.y, world.z];
+      });
+    },
   };
 }

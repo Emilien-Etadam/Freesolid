@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 
 import {
   boxMode,
+  coverBounds,
   isDrag,
   middleAction,
   normalizeRect,
   pickInBox,
   readReverseWheel,
   segmentHitsRect,
+  sketchLocalPoints,
   writeReverseWheel,
   zoomSpeedFor,
 } from "../../app/navigation.js";
@@ -88,5 +90,26 @@ describe("sélection par cadre", () => {
     const items = [{ id: 1, points: [{ x: -10, y: 5 }, { x: 20, y: 5 }] }];
     assert.deepEqual(pickInBox(items, r, "crossing"), [1]);
     assert.deepEqual(pickInBox(items, r, "window"), []);
+  });
+});
+
+describe("cadrage d'esquisse", () => {
+  it("englobe une ligne et le rayon d'un cercle", () => {
+    const points = sketchLocalPoints([
+      { type: "line", p1: [0, 0], p2: [40, 0] },
+      { type: "circle", c: [10, 10], r: 5 },
+    ]);
+    assert.deepEqual(points[0], [0, 0]);
+    assert.ok(points.some((p) => p[0] === 5 && p[1] === 10));
+    assert.ok(points.some((p) => p[0] === 15 && p[1] === 10));
+  });
+
+  it("couvre les points et une sphère éloignée", () => {
+    assert.equal(coverBounds([], []), null);
+    const covered = coverBounds(
+      [[0, 0, 0], [10, 0, 0]],
+      [{ center: [0, 100, 0], radius: 10 }]);
+    assert.ok(covered.center[1] > 40);
+    assert.ok(covered.radius > 50);
   });
 });

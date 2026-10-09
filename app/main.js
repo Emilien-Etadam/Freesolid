@@ -35,7 +35,7 @@ import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
 import { installWelcome, rememberRecent } from "./welcome.js";
 import {
-  boxMode, isDrag, middleAction, normalizeRect, pickInBox,
+  boxMode, coverBounds, isDrag, middleAction, normalizeRect, pickInBox,
   readReverseWheel, writeReverseWheel, zoomSpeedFor,
 } from "./navigation.js";
 import { currentLang, setLang, t, translateDom } from "./i18n.js";
@@ -1991,8 +1991,9 @@ function fitOrthoZoom(radius) {
 }
 
 // direction = d'où l'on regarde ; null = garder l'angle actuel (zoom au mieux).
-function frameView(direction, up) {
-  const { center, radius } = partCenterRadius();
+// bounds, s'il est donné, remplace la sphère de la pièce (esquisse).
+function frameView(direction, up, bounds = null) {
+  const { center, radius } = bounds ?? partCenterRadius();
   if (up) camera.up.set(...up);
   const dir = direction
     ? new THREE.Vector3(...direction).normalize()
@@ -2021,9 +2022,30 @@ const VIEWS = {
   "view-bottom": { direction: [0, 0, -1], up: [0, -1, 0] },
   "view-fit":    { direction: null,       up: null },
 };
+function visiblePartSphere() {
+  if (!partMesh || (!partMesh.visible && !partEdges?.visible)) return null;
+  if (!partMesh.geometry.boundingSphere) partMesh.geometry.computeBoundingSphere();
+  if (!partMesh.geometry.boundingSphere) return null;
+  const { center, radius } = partCenterRadius();
+  return { center: [center.x, center.y, center.z], radius };
+}
+
+/** En esquisse : cadrer la géométrie et la pièce visible, sans tourner. */
+function frameSketch() {
+  const sphere = visiblePartSphere();
+  const covered = coverBounds(
+    sketchMode.framePoints(), sphere ? [sphere] : []);
+  frameView(null, null, covered
+    ? { center: new THREE.Vector3(...covered.center), radius: covered.radius }
+    : null);
+}
+
 for (const [id, view] of Object.entries(VIEWS)) {
   document.getElementById(id)?.addEventListener("click", () => {
-    if (sketchMode.active) return; // en esquisse, la caméra suit le plan
+    if (sketchMode.active) {
+      if (id === "view-fit") frameSketch();
+      return; // les autres vues quitteraient le plan
+    }
     frameView(view.direction, view.up);
   });
 }
@@ -2116,7 +2138,19 @@ document.addEventListener("keydown", (event) => {
     beginRenameSelected();
     return;
   }
-  if (sketchMode.active) return;
+  if (sketchMode.active) {
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
+    if ((event.key === "f" || event.key === "F")
+        && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      frameSketch();
+    } else if ((event.key === "z" || event.key === "Z")
+               && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      camera.zoom *= event.shiftKey ? 1.25 : 0.8;
+      camera.updateProjectionMatrix();
+    }
+    return;
+  }
   // Typing in a panel field must not trigger view shortcuts (F, Ctrl+1…).
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
   if (event.key !== "Escape" && pluginRuntime?.dispatchKey(event)) return;

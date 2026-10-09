@@ -115,3 +115,86 @@ export function pickInBox(items, rect, mode) {
   }
   return picked;
 }
+
+function push2(out, point) {
+  if (!Array.isArray(point) || point.length < 2) return;
+  const x = Number(point[0]);
+  const y = Number(point[1]);
+  if (Number.isFinite(x) && Number.isFinite(y)) out.push([x, y]);
+}
+
+/** Points locaux qui englobent la géométrie d'esquisse (lignes, arcs,
+ *  cercles, polylignes). Le cercle et l'arc prennent le rayon, pas seulement
+ *  le centre. */
+export function sketchLocalPoints(entities) {
+  const points = [];
+  for (const entity of entities ?? []) {
+    if (!entity || typeof entity !== "object") continue;
+    if (entity.type === "line") {
+      push2(points, entity.p1);
+      push2(points, entity.p2);
+    } else if (entity.type === "circle" || entity.type === "arc") {
+      const center = entity.c;
+      const radius = Number(entity.r);
+      if (Array.isArray(center) && center.length >= 2
+          && Number.isFinite(radius) && radius >= 0) {
+        const x = Number(center[0]);
+        const y = Number(center[1]);
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          points.push([x - radius, y], [x + radius, y],
+            [x, y - radius], [x, y + radius]);
+        }
+      }
+      if (entity.type === "arc") {
+        push2(points, entity.p1);
+        push2(points, entity.p2);
+      }
+    } else if (entity.type === "poly") {
+      for (const point of entity.points ?? []) push2(points, point);
+    }
+  }
+  return points;
+}
+
+/** Sphère couvrant des points [x,y,z] et des sphères {center, radius}.
+ *  null s'il n'y a rien à cadrer. */
+export function coverBounds(points, spheres = []) {
+  const samples = [];
+  for (const point of points ?? []) {
+    if (!Array.isArray(point) || point.length < 3) continue;
+    const sample = [Number(point[0]), Number(point[1]), Number(point[2])];
+    if (sample.every(Number.isFinite)) samples.push(sample);
+  }
+  for (const sphere of spheres ?? []) {
+    const center = sphere?.center;
+    const radius = Number(sphere?.radius);
+    if (!Array.isArray(center) || center.length < 3
+        || !Number.isFinite(radius) || radius < 0) continue;
+    const c = [Number(center[0]), Number(center[1]), Number(center[2])];
+    if (!c.every(Number.isFinite)) continue;
+    samples.push(
+      [c[0] + radius, c[1], c[2]], [c[0] - radius, c[1], c[2]],
+      [c[0], c[1] + radius, c[2]], [c[0], c[1] - radius, c[2]],
+      [c[0], c[1], c[2] + radius], [c[0], c[1], c[2] - radius]);
+  }
+  if (!samples.length) return null;
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (const sample of samples) {
+    for (let axis = 0; axis < 3; axis++) {
+      min[axis] = Math.min(min[axis], sample[axis]);
+      max[axis] = Math.max(max[axis], sample[axis]);
+    }
+  }
+  const center = [
+    (min[0] + max[0]) / 2,
+    (min[1] + max[1]) / 2,
+    (min[2] + max[2]) / 2,
+  ];
+  let radius = 0;
+  for (const sample of samples) {
+    radius = Math.max(radius, Math.hypot(
+      sample[0] - center[0], sample[1] - center[1], sample[2] - center[2]));
+  }
+  return { center, radius: Math.max(radius, 1) };
+}

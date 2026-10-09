@@ -727,6 +727,13 @@ class Kernel:
     #: nos noms -> l'énumération JointType du module natif. Les quatre
     #: derniers sont les contraintes mécaniques (vues dans le spike).
     _JOINT_TYPES = {
+        # Contraintes standard d'un modeleur de bureau, traduites en
+        # liaisons natives : coïncidente et tangente = distance nulle entre
+        # les éléments, concentrique = cylindrique (même axe).
+        "coincidente": "Distance", "tangente": "Distance",
+        "concentrique": "Cylindrical", "parallele": "Parallel",
+        "perpendiculaire": "Perpendicular", "angle": "Angle",
+        "verrouillage": "Fixed",
         "fixe": "Fixed", "fixed": "Fixed",
         "pivot": "Revolute",
         "cylindrique": "Cylindrical",
@@ -739,10 +746,14 @@ class Kernel:
         "courroie": "Belt",
     }
 
+    #: Contraintes à distance nulle par construction.
+    _ZERO_DISTANCE_MATES = frozenset({"coincidente", "tangente"})
+
     def add_joint(self, component1, component2, type="fixe",
                   sub1=None, sub2=None, distance=None, distance2=None,
                   angle_min=None, angle_max=None,
-                  length_min=None, length_max=None):
+                  length_min=None, length_max=None, angle=None,
+                  flip=False):
         """Contrainte d'assemblage entre deux composants, résolue par le
         solveur natif (MbD). ``sub1``/``sub2`` : sous-élément visé
         (« Face3 », « Edge5 ») — la face cliquée dans la zone graphique.
@@ -815,8 +826,19 @@ class Kernel:
                 if not assigned:
                     doc.removeObject(joint.Name)
                     raise KernelError(_explain(last_error))
+        if str(type).lower() in self._ZERO_DISTANCE_MATES:
+            distance = 0.0
         if distance is not None and hasattr(joint, "Distance"):
             joint.Distance = float(distance)
+        if angle is not None and hasattr(joint, "Angle"):
+            joint.Angle = float(angle)
+        if flip:
+            # Aligné / opposé : retourne un des deux repères de liaison.
+            try:
+                joint.Proxy.flipOnePart(joint)
+            except Exception as exc:  # noqa: BLE001
+                doc.removeObject(joint.Name)
+                raise KernelError(_explain(exc))
         if distance2 is not None and hasattr(joint, "Distance2"):
             joint.Distance2 = float(distance2)
         # Limites de mouvement (SolidWorks : contraintes avancées).
@@ -828,13 +850,19 @@ class Kernel:
             if value is not None and hasattr(joint, prop):
                 setattr(joint, enable, True)
                 setattr(joint, prop, float(value))
+        mate_labels = {"coincidente": "Coïncidente", "tangente": "Tangente",
+                       "concentrique": "Concentrique",
+                       "parallele": "Parallèle",
+                       "perpendiculaire": "Perpendiculaire",
+                       "angle": "Angle", "verrouillage": "Verrouillage"}
         labels = {"Fixed": "Fixe", "Revolute": "Pivot",
                   "Cylindrical": "Cylindrique", "Slider": "Glissière",
                   "Ball": "Rotule", "Distance": "Distance",
                   "Gears": "Engrenages", "RackPinion": "Crémaillère",
                   "Screw": "Vis", "Belt": "Courroie"}
         joint.Label = self._t("{} — {} / {}").format(
-            labels.get(target, target),
+            self._t(mate_labels.get(str(type).lower(),
+                                    labels.get(target, target))),
             links[component1].Label, links[component2].Label)
         doc.recompute()
         try:

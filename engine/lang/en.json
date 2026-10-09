@@ -275,5 +275,22 @@
  "jusqu'à la face : cliquez la face d'arrivée": "up to face: click the target face",
  "plan milieu et deuxième direction s'excluent": "mid plane and second direction are mutually exclusive",
  "deuxième direction : FreeCAD {} requis": "second direction: FreeCAD {} required",
- "jusqu'à la face : la pièce n'a pas encore de face": "up to face: the part has no face yet"
+ "jusqu'à la face : la pièce n'a pas encore de face": "up to face: the part has no face yet",
+ "Coïncidente": "Coincident",
+ "Tangente": "Tangent",
+ "Concentrique": "Concentric",
+ "Parallèle": "Parallel",
+ "Perpendiculaire": "Perpendicular",
+ "Angle": "Angle",
+ "Verrouillage": "Lock",
+ "Fixe": "Fixed",
+ "Pivot": "Revolute",
+ "Cylindrique": "Cylindrical",
+ "Glissière": "Slider",
+ "Rotule": "Ball",
+ "Distance": "Distance",
+ "Engrenages": "Gears",
+ "Crémaillère": "Rack and pinion",
+ "Vis": "Screw",
+ "Courroie": "Belt"
 }

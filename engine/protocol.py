@@ -90,7 +90,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "assembly_tree": (),
     "tessellate_assembly": (),         # optional: deviation
     # Phase C3 — contraintes d'assemblage (joints natifs + solveur MbD).
-    "add_joint": _Req(("component1", str), ("component2", str)),
+    "add_joint": _Req(("component1", str), ("component2", str),
+                      optional={"angle": float, "flip": bool}),
                                        # optional: type (fixe|pivot|
                                        # cylindrique|glissiere|rotule|
                                        # distance), sub1, sub2, distance

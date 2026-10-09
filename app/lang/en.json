@@ -637,5 +637,12 @@
  "Cliquez une arête droite": "Click a straight edge",
  "Pas entre occurrences": "Spacing between instances",
  "Angle total": "Total angle",
- "Afficher ou replier l'arbre": "Show or fold the tree"
+ "Afficher ou replier l'arbre": "Show or fold the tree",
+ "Coïncidente": "Coincident",
+ "Concentrique": "Concentric",
+ "Parallèle": "Parallel",
+ "Perpendiculaire": "Perpendicular",
+ "Tangente": "Tangent",
+ "Verrouillage": "Lock",
+ "Opposé (retourner l'alignement)": "Opposed (flip alignment)"
 }

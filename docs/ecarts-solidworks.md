@@ -65,7 +65,7 @@ connaissance du logiciel et de l'aide officielle, reformulées.
 | 22 | Répétitions : choix des fonctions et de la direction | P2 | fait : fonctions choisies dans l'arbre (plusieurs), direction par axe d'origine ou arête droite, pas ou longueur totale, inversion ; idem pour la symétrie (fonctions) |
 | 23 | Ouvrir / Enregistrer : dialogue de fichiers | P2 | confié à Cursor (T23) |
 | 24 | Accueil et Nouveau (Ctrl+N) | P2 | confié à Cursor (T24) |
-| 25 | Assemblage : contraintes standard | P1 | reste |
+| 25 | Assemblage : contraintes standard | P1 | fait : coïncidente, concentrique, parallèle, perpendiculaire, tangente, distance, angle, verrouillage, option « opposé » ; traduites en liaisons natives (distance nulle, cylindrique…) |
 | 26 | Assemblage : insertion guidée, fixe/flottant, déplacement à la souris | P2 | reste |
 | 27 | Interface anglaise sans texte français (demande du 2026-10-09) | P1 | fait : textes interpolés passés par t(), libellés de panneaux, noms moteur (pièce, corps, plans, combiner) |
 

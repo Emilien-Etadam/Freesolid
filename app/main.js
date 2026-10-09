@@ -4928,6 +4928,12 @@ document.getElementById("btn-joint").addEventListener("click", () => {
       sub1: `Face${v.a.face + 1}`, sub2: `Face${v.b.face + 1}`,
       type: v.type,
     };
+    if (v.flip) params.flip = true;
+    if (v.type === "angle") {
+      const a = num(v.angle);
+      if (a === null) return null;
+      params.angle = a;
+    }
     if (v.type === "distance" || MECHANICAL.includes(v.type)) {
       const d = num(v.distance);
       if (d === null || d < 0) return null;
@@ -4957,14 +4963,29 @@ document.getElementById("btn-joint").addEventListener("click", () => {
     groups: [
       { label: t("Type de contrainte"),
         rows: [
-          { type: "select", key: "type", value: "fixe",
-            options: [["fixe", "Fixe"], ["pivot", "Pivot"],
+          // Standard d'abord (les gestes courants), puis les liaisons
+          // cinématiques et mécaniques.
+          { type: "select", key: "type", value: "coincidente",
+            options: [["coincidente", "Coïncidente"],
+                      ["concentrique", "Concentrique"],
+                      ["parallele", "Parallèle"],
+                      ["perpendiculaire", "Perpendiculaire"],
+                      ["tangente", "Tangente"],
+                      ["distance", "Distance"], ["angle", "Angle"],
+                      ["verrouillage", "Verrouillage"],
+                      ["pivot", "Pivot"],
                       ["cylindrique", "Cylindrique"],
                       ["glissiere", "Glissière"], ["rotule", "Rotule"],
-                      ["distance", "Distance"],
                       ["engrenages", "Engrenages"],
                       ["cremaillere", "Crémaillère-pignon"],
                       ["vis", "Vis"], ["courroie", "Courroie"]] },
+          { type: "number", key: "angle", label: t("Angle"), value: 90,
+            unit: "°", showIf: (v) => v.type === "angle" },
+          { type: "check", key: "flip", label: t("Opposé (retourner l'alignement)"),
+            value: false,
+            showIf: (v) => ["coincidente", "concentrique", "parallele",
+              "distance", "tangente", "pivot", "cylindrique",
+              "glissiere"].includes(v.type) },
           { type: "number", key: "distance",
             label: t("Distance / rayon 1 / pas"), value: 10,
             unit: "mm", min: 0,

@@ -48,11 +48,19 @@ export function createSketchMode(deps) {
   // depthTest off + high renderOrder: the sketch reads through the solid,
   // SolidWorks-style — a sketch drawn on a face was invisible behind the
   // mesh (user report).
-  const lineMaterial = new THREE.LineBasicMaterial(
-    { color: 0xe8edf2, depthTest: false });
-  // Construction geometry: dashed and dimmed, as in every CAD since ever.
-  const constructionMaterial = new THREE.LineDashedMaterial(
-    { color: 0x8b939d, dashSize: 2.5, gapSize: 1.8, depthTest: false });
+  // Couleur = état de définition de l'entité (moteur : entity.status) :
+  // bleu = encore libre, clair = entièrement définie, rouge = en trop.
+  const STATUS_COLORS = { under: 0x5aa9ff, full: 0xe8edf2, over: 0xff5c5c };
+  const lineMaterials = {};
+  const constructionMaterials = {};
+  for (const [status, color] of Object.entries(STATUS_COLORS)) {
+    lineMaterials[status] = new THREE.LineBasicMaterial(
+      { color, depthTest: false });
+    // Construction : en tirets et estompée, comme partout.
+    constructionMaterials[status] = new THREE.LineDashedMaterial({
+      color, dashSize: 2.5, gapSize: 1.8, depthTest: false,
+      transparent: true, opacity: 0.6 });
+  }
   const previewMaterial = new THREE.LineBasicMaterial(
     { color: 0x4f8fdb, depthTest: false });
   const selectedMaterial = new THREE.LineBasicMaterial(
@@ -377,8 +385,10 @@ export function createSketchMode(deps) {
     const points = [];
     for (const entity of mode.state.entities) {
       const isSelected = mode.selection.some((s) => s.geo === entity.id);
+      const status = STATUS_COLORS[entity.status] ? entity.status : "under";
       const material = isSelected ? selectedMaterial
-        : entity.construction ? constructionMaterial : lineMaterial;
+        : entity.construction ? constructionMaterials[status]
+          : lineMaterials[status];
       if (entity.type === "arc") {
         const { a1, a2 } = arcAngles(entity);
         const segments = [];
@@ -447,11 +457,15 @@ export function createSketchMode(deps) {
     }
 
     const dof = mode.state.dof;
-    say(mode.state.fullyConstrained
-      ? "Esquisse : totalement contrainte"
-      : dof !== null
-        ? `Esquisse : sous-contrainte (${dof} DDL)`
-        : "Esquisse : en édition");
+    const definition = mode.state.definition
+      ?? (mode.state.fullyConstrained ? "full" : "under");
+    say(definition === "over"
+      ? t("Esquisse : sur-contrainte — une relation ou une cote est en trop")
+      : definition === "full"
+        ? t("Esquisse : totalement contrainte")
+        : dof !== null
+          ? t("Esquisse : sous-contrainte ({n} DDL)", { n: dof })
+          : t("Esquisse : en édition"));
   }
 
   function applyState(state, { keepSelection = false } = {}) {

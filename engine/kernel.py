@@ -4308,10 +4308,24 @@ class Kernel:
                 "id": cid, "type": c.Type, "geos": geos, "pos": pos,
                 "value": float(c.Value),
                 "driving": bool(getattr(c, "Driving", True))})
+        solver_code = 0
         try:
-            sk.solve()
+            solver_code = int(sk.solve())
         except Exception:
             pass
+        # Bleu / blanc / rouge côté client : entité libre, définie, en trop.
+        from engine.sketchstatus import entity_status, sketch_definition
+        try:
+            dependent = list(sk.getGeometryWithDependentParameters())
+        except Exception:
+            dependent = []
+        status = entity_status(
+            len(entities), dependent,
+            [c["geos"] for c in constraints],
+            list(getattr(sk, "ConflictingConstraints", []) or []),
+            list(getattr(sk, "RedundantConstraints", []) or []))
+        for entity, state in zip(entities, status):
+            entity["status"] = state
         dof = None
         try:
             dof = int(sk.getLastDoF())
@@ -4333,6 +4347,7 @@ class Kernel:
             "constraints": constraints,
             "dof": dof,
             "fullyConstrained": bool(getattr(sk, "FullyConstrained", False)),
+            "definition": sketch_definition(status, solver_code),
             "placement": [float(v) for v in matrix],
         }
 

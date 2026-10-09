@@ -847,3 +847,11 @@ def test_list_plugins_is_core_and_paramless():
     assert protocol.OPS["list_plugins"] == ()
     assert "list_plugins" in protocol.CORE_OP_NAMES
     protocol.validate_request({"op": "list_plugins"})
+
+def test_pack_edges_carries_exact_length():
+    packed = protocol.pack_edges([
+        (0, [(0, 0, 0), (3, 0, 0), (3, 4, 0)], 7.0),
+        (1, [(0, 0, 0), (1, 0, 0)]),
+    ])
+    assert packed["groups"][0]["length"] == 7.0
+    assert "length" not in packed["groups"][1]

@@ -795,7 +795,9 @@ def pack_edges(edge_lines) -> dict:
 
     Args:
         edge_lines: iterable of ``(edge_id, points)`` where ``points`` is
-            the discretized polyline of that BREP edge, as ``(x, y, z)``.
+            the discretized polyline of that BREP edge, as ``(x, y, z)`` ;
+            un troisième élément facultatif, la longueur exacte de l'arête,
+            est recopié dans son groupe (``length``, barre d'état).
 
     Returns:
         ``positions``, ``indices`` (pairs — LineSegments) and ``groups``
@@ -807,7 +809,7 @@ def pack_edges(edge_lines) -> dict:
     indices: list[int] = []
     groups: list[dict] = []
     vertex_base = 0
-    for edge_id, points in edge_lines:
+    for edge_id, points, *extra in edge_lines:
         if len(points) < 2:
             continue
         start = len(indices)
@@ -815,10 +817,13 @@ def pack_edges(edge_lines) -> dict:
             positions.extend((float(x), float(y), float(z)))
         for i in range(len(points) - 1):
             indices.extend((vertex_base + i, vertex_base + i + 1))
-        groups.append({
+        group = {
             "edgeId": edge_id,
             "start": start,
             "count": len(indices) - start,
-        })
+        }
+        if extra:
+            group["length"] = round(float(extra[0]), 6)
+        groups.append(group)
         vertex_base += len(points)
     return {"positions": positions, "indices": indices, "groups": groups}

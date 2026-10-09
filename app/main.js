@@ -25,6 +25,9 @@ import { arcAngles } from "./geom2d.js";
 import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
 import { contextToolbarKeys, viewMenuItems, viewMenuLabel } from "./viewmenu.js";
 import { currentPaneIndex, layoutPanes, paneRect } from "./layouts.js";
+import {
+  coordsText, editModeText, measureText, sketchEntityLength,
+} from "./statusbar.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, ISSUES_URL, readLang } from "./settings.js";
 import { installMenuBar, menuBarModel } from "./menubar.js";
@@ -94,6 +97,9 @@ const RIBBONS = installCoreRibbons(document, RIBBON_LAYOUT);
 
 const statusEl = document.getElementById("status");
 const pickEl = document.getElementById("pick");
+const measureEl = document.getElementById("measure");
+const coordsEl = document.getElementById("coords");
+const editModeEl = document.getElementById("edit-mode");
 const treeEl = document.getElementById("tree");
 
 // ---------- api ----------
@@ -1313,7 +1319,10 @@ renderer.domElement.addEventListener("pointermove", (event) => {
     renderer.domElement.style.cursor = id ? "pointer" : "";
     return;
   }
-  if (!partMesh && !sketchLineMeshes.length && !surfaceMeshes.length) return;
+  if (!partMesh && !sketchLineMeshes.length && !surfaceMeshes.length) {
+    coordsEl.textContent = "";
+    return;
+  }
   raycaster.setFromCamera(pointer, camera);
 
   // L'esquisse libre gagne sur la face (et l'arête) derrière elle :
@@ -1344,14 +1353,18 @@ renderer.domElement.addEventListener("pointermove", (event) => {
         (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
     }
     const surfHit = pickHoveredSurfaceHit();
+    let pointHit = edgeGroupIndex >= 0 ? edgeHit : faceHit;
     if (surfHit) {
       const solidHit = edgeGroupIndex >= 0 ? edgeHit : faceHit;
       if (!solidHit || surfHit.distance < solidHit.distance) {
         surfaceHit = surfHit.object.userData.surface;
         groupIndex = -1;
         edgeGroupIndex = -1;
+        pointHit = surfHit;
       }
     }
+    // Barre d'état : coordonnées du point visé sur la pièce.
+    coordsEl.textContent = coordsText(pointHit?.point ?? null);
   }
   const surfaceName = surfaceHit?.name ?? null;
   if (groupIndex !== hoveredGroup || edgeGroupIndex !== hoveredEdgeGroup
@@ -1396,6 +1409,8 @@ function repaintGroups() {
     parts.push(t("sél. {s}", { s: selectedSurface.label }));
   }
   pickEl.textContent = parts.join(" · ");
+  measureEl.textContent = measureText([...selectedEdges].map((id) =>
+    edgeGroups.find((g) => g.edgeId === id)?.length));
 }
 
 // Click selects the hovered face (sticky); click in the void deselects.
@@ -3017,6 +3032,7 @@ function renderTree(tree) {
   clearAssemblyView(); // un arbre de pièce = le mode assemblage s'efface
   dropRolledBackSelection(tree);
   lastTree = tree;
+  updateEditMode();
   treeHoverPlane = null;
   treeEl.innerHTML = "";
 
@@ -3830,8 +3846,33 @@ document.addEventListener("freesolid:sketch-enter", () => {
 // À chaque calcul de l'esquisse ouverte, son préfixe (-)/(+) suit.
 document.addEventListener("freesolid:sketch-state", () => {
   if (lastTree) renderTree(lastTree);
+  updateEditMode();
 });
+document.addEventListener("freesolid:sketch-pointer", (event) => {
+  coordsEl.textContent = coordsText(event.detail);
+});
+document.addEventListener("freesolid:sketch-selection", (event) => {
+  measureEl.textContent = measureText(event.detail.map(sketchEntityLength));
+});
+
+/** Barre d'état : ce qu'on édite (esquisse, assemblage ou pièce). */
+function updateEditMode() {
+  const editing = sketchMode.editing;
+  const label = (name) => {
+    const items = (lastTree?.features ?? []).flatMap(
+      (f) => [f, ...(f.children ?? [])]);
+    return items.find((f) => f.name === name)?.label ?? name;
+  };
+  editModeEl.textContent = editModeText({
+    sketch: editing ? label(editing) : null,
+    assembly: !!assemblyState,
+    part: lastTree?.body ?? null,
+  });
+}
 document.addEventListener("freesolid:sketch-exit", () => {
+  coordsEl.textContent = "";
+  measureEl.textContent = "";
+  queueMicrotask(updateEditMode);
   updateConfirmCorner();
   inSketchMode = false;
   applyVolumeVisibility();
@@ -5604,8 +5645,8 @@ function selectComponent(name) {
   }
   if (assemblyState) renderAssemblyTree(assemblyState);
   pickEl.textContent = name
-    ? `sél. ${assemblyState?.components.find(
-        (c) => c.name === name)?.label ?? name}`
+    ? t("sél. {s}", { s: assemblyState?.components.find(
+        (c) => c.name === name)?.label ?? name })
     : "";
 }
 
@@ -5665,6 +5706,7 @@ async function refreshAny(treePromise) {
 function renderAssemblyTree(tree) {
   welcomeApi?.hideWelcome();
   lastTree = null; // le mode pièce est inactif
+  queueMicrotask(updateEditMode); // assemblyState est posé par l'appelant
   closeGraph();
   treeEl.innerHTML = "";
   const head = document.createElement("li");

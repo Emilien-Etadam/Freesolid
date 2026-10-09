@@ -488,7 +488,12 @@ def _assert_in_jail(resolved, *, allow_root=False):
             break
     if matched_root is None:
         raise ProtocolError("chemin hors du dossier autorisé")
-    relative = os.path.relpath(resolved, matched_root)
+    try:
+        relative = os.path.relpath(resolved, matched_root)
+    except ValueError:
+        # Windows : un nom réservé (« nul », « con »…) se résout en
+        # périphérique, sur un autre « lecteur » que la prison.
+        raise ProtocolError("chemin hors du dossier autorisé") from None
     if relative == ".." or relative.startswith(".." + os.sep):
         raise ProtocolError("chemin hors du dossier autorisé")
     if relative == os.curdir:

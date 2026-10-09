@@ -142,6 +142,24 @@ def test_list_dir_dirs_first_and_skips_hidden_and_unknown(tmp_path, monkeypatch)
     assert listed["entries"][0]["kind"] == "dir"
 
 
+def test_list_dir_skips_entry_on_another_mount(tmp_path, monkeypatch):
+    # Windows : un fichier « nul » se résout en périphérique, et relpath
+    # lève ValueError (autre « lecteur ») — l'entrée est omise, la liste reste.
+    _jail_only(monkeypatch, tmp_path)
+    (tmp_path / "a.FCStd").write_text("x", encoding="utf-8")
+    (tmp_path / "nul.FCStd").write_text("x", encoding="utf-8")
+    original = os.path.relpath
+
+    def relpath(path, start=None):
+        if os.path.basename(path).startswith("nul"):
+            raise ValueError("path is on another mount")
+        return original(path, start)
+
+    monkeypatch.setattr(os.path, "relpath", relpath)
+    listed = protocol.list_user_dir(None)
+    assert [entry["name"] for entry in listed["entries"]] == ["a.FCStd"]
+
+
 def test_list_dir_parent_stays_in_jail(tmp_path, monkeypatch):
     _jail_only(monkeypatch, tmp_path)
     sub = tmp_path / "pieces"

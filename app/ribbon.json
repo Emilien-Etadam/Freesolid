@@ -70,7 +70,7 @@
               "titre": "Dépouille de la face cliquée (plan neutre : Plan de dessus)",
               "icon": "icons/PartDesign_Draft.svg", "libelle": "Dépouille" },
             { "id": "btn-shell",
-              "titre": "Coque — la face cliquée devient l'ouverture",
+              "titre": "Coque — les faces cliquées deviennent des ouvertures",
               "icon": "icons/PartDesign_Thickness.svg", "libelle": "Coque" }
           ]
         },

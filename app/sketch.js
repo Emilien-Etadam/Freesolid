@@ -8,7 +8,8 @@ import * as THREE from "three";
 import { t } from "./i18n.js";
 import { createLocalSolver } from "./solver.js";
 import {
-  arcAngles, chainClickAction, distanceToEntity, relationGlyphs,
+  applicableRelations, arcAngles, chainClickAction, distanceToEntity,
+  relationGlyphs,
   entityKindTitle, entityPropertyLines,
   isDrivingConstraint, sketchPreviewPoints,
 } from "./geom2d.js";
@@ -515,6 +516,7 @@ export function createSketchMode(deps) {
   }
 
   function redraw() {
+    updateRelationButtons();
     if (previewLine) group.remove(previewLine);
     const imageMesh = imageLayer?.mesh;
     if (imageMesh) group.remove(imageMesh);
@@ -1739,6 +1741,20 @@ export function createSketchMode(deps) {
   for (const kind of Object.keys(CONSTRAINT_NEEDS)) {
     document.getElementById("sk-c-" + kind)
       .addEventListener("click", () => applyConstraint(kind));
+  }
+
+  /** Avec une sélection, seules les relations qu'elle permet restent
+   *  actives (et sont mises en avant) ; sans sélection, toutes. */
+  function updateRelationButtons() {
+    const selection = mode.active ? mode.selection : [];
+    const possible = selection.length
+      ? applicableRelations(selection, mode.state?.entities) : null;
+    for (const kind of Object.keys(CONSTRAINT_NEEDS)) {
+      const button = document.getElementById("sk-c-" + kind);
+      if (!button) continue;
+      button.disabled = !!possible && !possible.includes(kind);
+      button.classList.toggle("suggest", !!possible?.includes(kind));
+    }
   }
 
   // ---------- panneau Relations (voir et supprimer) ----------

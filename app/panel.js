@@ -166,7 +166,10 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     const multiRow = rows.find((r) => r.multiple);
     if (multiRow) {
       const current = active.values[multiRow.key] ?? { kind, items: [] };
-      const at = current.items.findIndex((i) => i.name === value.name);
+      // Une face n'a pas de nom : son numéro l'identifie.
+      const same = (i) => (value.face != null
+        ? i.face === value.face : i.name === value.name);
+      const at = current.items.findIndex(same);
       if (at >= 0) current.items.splice(at, 1);
       else current.items.push(value);
       active.values[multiRow.key] = { ...current };
@@ -326,7 +329,11 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
           t(row.hint ?? "Cliquez une face dans la zone graphique");
         return box;
       }
-      if (value.items) {
+      if (value.items && value.items.every((i) => i.face != null)) {
+        box.textContent = value.items.length <= 4
+          ? value.items.map((i) => t("Face {n}", { n: i.face })).join(", ")
+          : t("{n} faces", { n: value.items.length });
+      } else if (value.items) {
         box.textContent = value.items.length <= 2
           ? value.items.map((i) => i.label).join(" → ")
           : t("{n} profils : ", { n: value.items.length })

@@ -76,6 +76,16 @@ export function dressup({ button, icon, title, selectionLabel, group, rows, buil
   };
 }
 
+/** Coque : faces à ouvrir (une ou plusieurs), épaisseur, sens. */
+export function shellBuild(v) {
+  const faces = (v.faces?.items ?? []).map((item) => item.face)
+    .filter((face) => face != null);
+  const thickness = num(v.thickness);
+  if (!faces.length || !(thickness > 0)) return null;
+  return { op: "add_thickness",
+           params: { faces, thickness, outward: !!v.outward } };
+}
+
 /** Fonctions à profil d'esquisse : ligne « Profil : … », params.sketch
  *  si présélection, garde si aucune esquisse disponible. */
 function withSketchProfile(entry) {
@@ -874,21 +884,33 @@ export const FEATURES = [
       return chamferProblem(v);
     },
   }),
-  dressup({
+  {
     button: "btn-shell",
     icon: "PartDesign_Thickness.svg", title: "Coque",
-    selectionLabel: "Faces à supprimer",
-    group: "Paramètres",
-    rows: [{ type: "number", key: "thickness", label: "Épaisseur", value: 2,
-             unit: "mm", min: 0.01 }],
-    build: (v) => {
-      const thickness = num(v.thickness);
-      return thickness > 0
-        ? { op: "add_thickness",
-            params: { face: v.sel.face, thickness } }
-        : null;
+    dressup: true,
+    groups: (ctx) => {
+      const first = ctx.selection(["face"]);
+      return [
+        { label: "Faces à supprimer",
+          rows: [{ type: "selection", key: "faces", accepts: ["face"],
+                   multiple: true,
+                   hint: "Cliquez les faces à ouvrir — un second clic retire",
+                   value: { kind: "face",
+                            items: first?.face != null ? [first] : [] } }] },
+        { label: "Paramètres",
+          rows: [
+            { type: "number", key: "thickness", label: "Épaisseur",
+              value: 2, unit: "mm", min: 0.01 },
+            { type: "check", key: "outward", label: "Coque vers l'extérieur",
+              value: false },
+          ] },
+      ];
     },
-  }),
+    build: (v) => shellBuild(v),
+    invalid: (v) => ((v.faces?.items ?? []).length
+      ? "Épaisseur invalide" : "Coque : cliquez au moins une face à ouvrir"),
+    refresh: "part",
+  },
   dressup({
     button: "btn-draft",
     icon: "PartDesign_Draft.svg", title: "Dépouille",

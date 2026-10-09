@@ -319,5 +319,7 @@
  "extrémités fermées : réservées à l'extrusion": "capped ends: extrude only",
  "épaisseur des extrémités invalide": "invalid end thickness",
  "Cavité de paroi mince": "Thin wall cavity",
- "dossier introuvable": "folder not found"
+ "dossier introuvable": "folder not found",
+ "coque : cliquez au moins une face à ouvrir": "shell: click at least one face to open",
+ "coque : épaisseur invalide": "shell: invalid thickness"
 }

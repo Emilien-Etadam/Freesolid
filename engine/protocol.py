@@ -179,7 +179,10 @@ OPS: dict[str, tuple[str, ...]] = {
                                         "edge": int, "angle": float,
                                         "reversed": bool}),
                                        # optional: angle (°), axis, features
-    "add_thickness": _Req(("face", int), ("thickness", float)),
+    # face (une) ou faces (plusieurs) ; outward : coque vers l'extérieur.
+    "add_thickness": _Req(("thickness", float),
+                          optional={"face": int, "faces": list,
+                                    "outward": bool}),
     "add_draft": _Req(("face", int), ("angle", float)),
                                        # optional: neutral (XY|XZ|YZ)
     # Phase B — références et ossature.

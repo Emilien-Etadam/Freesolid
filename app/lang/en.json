@@ -95,7 +95,7 @@
  "Converti : {n} entité(s)": "Converted: {n} entity(ies)",
  "Projeter les arêtes — le contour de la face porteuse devient de la géométrie bloquée": "Project edges — the outline of the host face becomes fixed geometry",
  "Coque": "Shell",
- "Coque — la face cliquée devient l'ouverture": "Shell — the clicked face becomes the opening",
+ "Coque — les faces cliquées deviennent des ouvertures": "Shell — the clicked faces become openings",
  "Corps": "Body",
  "Corps de la pièce — clic : déplier": "Bodies of the part — click: expand",
  "Corps outil": "Tool body",
@@ -736,5 +736,10 @@
  "Longueur totale : {v} mm ({n} entités)": "Total length: {v} mm ({n} entities)",
  "Édition : esquisse « {name} »": "Editing sketch “{name}”",
  "Édition : assemblage": "Editing assembly",
- "Édition : pièce « {name} »": "Editing part “{name}”"
+ "Édition : pièce « {name} »": "Editing part “{name}”",
+ "Cliquez les faces à ouvrir — un second clic retire": "Click the faces to open — a second click removes",
+ "Coque vers l'extérieur": "Shell outward",
+ "Coque : cliquez au moins une face à ouvrir": "Shell: click at least one face to open",
+ "{n} faces": "{n} faces",
+ "Épaisseur invalide": "Invalid thickness"
 }

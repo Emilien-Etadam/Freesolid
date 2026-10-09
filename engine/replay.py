@@ -589,8 +589,9 @@ def _replay_feature(kernel, feat, sketch_map, substitutions):
         if not feat["faces"]:
             raise KernelError("coque sans face : {}".format(feat["name"]))
         kernel.add_thickness(
-            face=feat["faces"][0],
-            thickness=_substituted(feat, substitutions, "Value"))
+            faces=feat["faces"],
+            thickness=_substituted(feat, substitutions, "Value"),
+            outward=not feat["reversed"])
         return
     if type_id == "PartDesign::Hole":
         # add_hole consomme _latest_sketch — le profil a été cloné juste avant.

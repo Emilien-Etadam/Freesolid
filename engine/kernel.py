@@ -3780,11 +3780,35 @@ class Kernel:
         return self._transform("PartDesign::PolarPattern", configure,
                                features=features)
 
-    def add_thickness(self, face, thickness):
-        """Coque : évide la pièce, la face cliquée devient l'ouverture."""
-        return self._dressup("PartDesign::Thickness",
-                             label_for_type("PartDesign::Thickness", self.lang),
-                             "Value", thickness, face=face)
+    def add_thickness(self, face=None, thickness=None, faces=None,
+                      outward=False):
+        """Coque : évide la pièce, les faces choisies deviennent des
+        ouvertures. Vers l'intérieur par défaut ; ``outward`` ajoute
+        l'épaisseur à l'extérieur (la pièce d'origine devient le vide)."""
+        picked = [int(f) for f in (faces or [])]
+        if not picked and face is not None:
+            picked = [int(face)]
+        if not picked:
+            raise KernelError(
+                "coque : cliquez au moins une face à ouvrir")
+        if thickness is None or float(thickness) <= 0:
+            raise KernelError("coque : épaisseur invalide")
+        body = self._require_body()
+        doc = self._require_doc()
+        tip = getattr(body, "Tip", None)
+        if tip is None:
+            raise KernelError("pas de solide à habiller")
+        feature = body.newObject("PartDesign::Thickness", "Thickness")
+        feature.Base = (tip, ["Face{}".format(f + 1) for f in picked])
+        feature.Value = float(thickness)
+        feature.Reversed = not outward   # FreeCAD : Reversed = vers l'intérieur
+        feature.Label = label_for_type("PartDesign::Thickness", self.lang)
+        try:
+            self._recompute()
+        except KernelError:
+            doc.removeObject(feature.Name)
+            raise
+        return self.get_tree()
 
     def _tip_face_parallel_to(self, tip, plane, exclude_face=None):
         """Face de ``tip`` parallèle à XY/XZ/YZ, hors ``exclude_face``.
@@ -8483,6 +8507,31 @@ class Kernel:
                 report["p19_paroi_mince_refus"] = (
                     len([o for o in self._require_body().Group
                          if self._is_thin_helper(o)]) == 1)
+
+            mark("p38: coque sur plusieurs faces, vers l'extérieur")
+            self.new_part("Pièce coque")
+            self.add_rect_sketch(40, 20)
+            self.add_pad(10)
+            body = self._require_body()
+            faces = body.Shape.Faces
+            top = next(i for i, f in enumerate(faces)
+                       if abs(f.CenterOfMass.z - 10) < 1e-6)
+            side = next(i for i, f in enumerate(faces)
+                        if abs(f.CenterOfMass.x - 20) < 1e-6)
+            tree = self.add_thickness(faces=[top, side], thickness=1)
+            inward = body.Shape.Volume
+            self.delete_feature(tree["features"][-1]["name"])
+            self.add_thickness(faces=[top, side], thickness=1, outward=True)
+            bb = body.Shape.BoundBox
+            report["p38_coque_multi"] = (
+                abs(inward - (8000 - 39 * 18 * 9)) < 1e-3
+                and abs(bb.XMin + 21) < 1e-6 and abs(bb.XMax - 20) < 1e-6
+                and abs(bb.ZMax - 10) < 1e-6)
+            try:
+                self.add_thickness(faces=[], thickness=1)
+                report["p38_coque_refus"] = False
+            except KernelError:
+                report["p38_coque_refus"] = True
 
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")

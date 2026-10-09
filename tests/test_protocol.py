@@ -156,7 +156,7 @@ def test_p2_ops_declare_their_required_params():
     assert protocol.OPS["add_mirror"] == ()          # plane, features en option
     assert protocol.OPS["add_linear_pattern"] == ("length", "count")
     assert protocol.OPS["add_polar_pattern"] == ("count",)
-    assert protocol.OPS["add_thickness"] == ("face", "thickness")
+    assert protocol.OPS["add_thickness"] == ("thickness",)  # face(s) en option
     assert protocol.OPS["add_draft"] == ("face", "angle")
 
 

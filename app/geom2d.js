@@ -356,3 +356,37 @@ export function entityPropertyLines(entity) {
   }
   return [];
 }
+
+/**
+ * Relations possibles pour la sélection d'esquisse (``[{geo, point?}]``,
+ * dans l'ordre des clics) : seules celles que le moteur sait poser sur
+ * ces éléments. Un point est une extrémité ou un centre cliqué.
+ */
+export function applicableRelations(selection, entities) {
+  const kinds = (selection ?? []).map((item) => {
+    if (item.point != null) return "point";
+    const entity = (entities ?? []).find((e) => e.id === item.geo);
+    if (entity?.type === "line") return "line";
+    if (entity?.type === "circle" || entity?.type === "arc") return "round";
+    return "other";
+  });
+  const count = (kind) => kinds.filter((k) => k === kind).length;
+  const out = [];
+  if (kinds.length === 1) {
+    if (kinds[0] === "line") out.push("horizontal", "vertical");
+    out.push("fixed");
+  } else if (kinds.length === 2) {
+    if (count("point") === 2) out.push("coincident");
+    if (count("line") === 2) {
+      out.push("parallel", "perpendicular", "equal", "collinear");
+    }
+    if (count("round") === 2) out.push("equal", "concentric", "tangent");
+    if (count("line") === 1 && count("round") === 1) out.push("tangent");
+    if (count("point") === 1 && count("line") === 1) out.push("midpoint");
+  } else if (kinds.length === 3 && kinds[0] === "point"
+             && kinds[1] === "point" && kinds[2] === "line") {
+    out.push("symmetric");
+  }
+  return out;
+}
+

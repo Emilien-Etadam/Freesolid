@@ -46,7 +46,6 @@
  "Axe X": "X axis",
  "Axe Y": "Y axis",
  "Axe Z": "Z axis",
- "Axe de révolution : l'axe vertical de l'esquisse": "Axis of revolution: the sketch's vertical axis",
  "Balayage": "Sweep",
  "Borgne": "Blind",
  "Bossage extrudé": "Extruded Boss",
@@ -594,7 +593,6 @@
  "pierres": "stones",
  "les sièges se frôlent ou se chevauchent. Cette opération peut demander plusieurs Go de mémoire et ne pas aboutir. Enregistrez avant de continuer. Reculez la barre de reprise et combinez par lots plus petits, en plusieurs fonctions : sur une bague serrée, c'est la voie normale. Continuer ?": "the seats touch or overlap. This operation can take several GB of memory and may not finish. Save before continuing. Move the rollback bar back and combine in smaller batches, in several features: on a tight ring, that is the normal way. Continue?",
  "environ {s} secondes, d'après la dernière combinaison sur cette machine. Continuer ?": "about {s} seconds, based on the last combine on this machine. Continue?",
- "Angle invalide": "Invalid angle",
  "Profondeur invalide": "Invalid depth",
  "Valeurs du perçage invalides": "Invalid hole values",
  "Lissage : au moins deux profils": "Loft: at least two profiles",
@@ -633,5 +631,14 @@
  "Distance de chanfrein invalide": "Invalid chamfer distance",
  "Seconde distance de chanfrein invalide": "Invalid second chamfer distance",
  "Angle de chanfrein invalide": "Invalid chamfer angle",
- "Valeurs du chanfrein invalides": "Invalid chamfer values"
+ "Valeurs du chanfrein invalides": "Invalid chamfer values",
+ "Axe vertical de l'esquisse": "Sketch vertical axis",
+ "Axe horizontal de l'esquisse": "Sketch horizontal axis",
+ "Axe X de l'origine": "Origin X axis",
+ "Axe Y de l'origine": "Origin Y axis",
+ "Axe Z de l'origine": "Origin Z axis",
+ "Ligne de construction {n} ({x1}, {y1}) → ({x2}, {y2})": "Construction line {n} ({x1}, {y1}) → ({x2}, {y2})",
+ "Ligne {n} ({x1}, {y1}) → ({x2}, {y2})": "Line {n} ({x1}, {y1}) → ({x2}, {y2})",
+ "Une direction": "One direction",
+ "Angle de révolution invalide": "Invalid revolution angle"
 }

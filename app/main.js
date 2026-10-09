@@ -11,6 +11,7 @@ import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
 import {
   FEATURES, chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
+  revolutionGroups, revolutionEditValues, revolutionProblem,
 } from "./features.js";
 import {
   formatProgressStatus,
@@ -2552,6 +2553,48 @@ async function editSurface(surface) {
   });
 }
 
+function findSketch(tree, name) {
+  const stack = [...(tree?.features ?? [])];
+  while (stack.length) {
+    const item = stack.pop();
+    if (!item) continue;
+    if (item.name === name) return item;
+    if (item.children) stack.push(...item.children);
+  }
+  return null;
+}
+
+function editRevolved(feature) {
+  const spec = feature.revolution;
+  const sketch = findSketch(lastTree, spec.profile);
+  panel.open({
+    icon: TREE_ICONS[feature.type] ?? "PartDesign_Revolution.svg",
+    title: feature.label,
+    groups: revolutionGroups(sketch, {
+      angle: chamferFieldValue(feature.params, "Angle", spec.angle),
+      axis: spec.axis,
+      reversed: spec.reversed,
+      midplane: spec.midplane,
+    }),
+    onChange: (v) => {
+      const values = revolutionEditValues(v, spec, feature.params);
+      schedulePreview(values && Object.keys(values).length
+        ? { op: "set_params",
+            params: { feature: feature.name, values } }
+        : null);
+    },
+    onApply: (v) => {
+      const values = revolutionEditValues(v, spec, feature.params);
+      if (values === null) {
+        say(revolutionProblem(), true);
+        return;
+      }
+      if (!Object.keys(values).length) return;
+      refresh(call("set_params", { feature: feature.name, values }));
+    },
+  });
+}
+
 function editChamfer(feature) {
   const spec = feature.chamfer;
   panel.open({
@@ -2629,6 +2672,11 @@ async function editFeature(feature) {
   }
   if (feature.type === "PartDesign::Chamfer" && feature.chamfer) {
     editChamfer(feature);
+    return;
+  }
+  if ((feature.type === "PartDesign::Revolution"
+       || feature.type === "PartDesign::Groove") && feature.revolution) {
+    editRevolved(feature);
     return;
   }
   try {

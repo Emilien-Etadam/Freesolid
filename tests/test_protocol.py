@@ -233,6 +233,27 @@ def test_chamfer_optional_types():
             "params": {"size": 2, "size2": "large"}})
 
 
+def test_revolution_axis_types():
+    assert protocol.OPS["add_revolution"] == ()
+    assert protocol.OPS["add_groove"] == ()
+    protocol.validate_request(
+        {"op": "add_revolution", "params": {"angle": 360, "sketch": "Sketch"}})
+    op, params = protocol.validate_request({
+        "op": "add_revolution",
+        "params": {"angle": 180, "axis": "line:2", "midplane": True,
+                   "sketch": "Sketch"}})
+    assert params["axis"] == "line:2" and params["midplane"] is True
+    protocol.validate_request({
+        "op": "add_groove",
+        "params": {"angle": 90, "axis": "X", "reversed": True}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request({
+            "op": "add_revolution", "params": {"axis": 1}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request({
+            "op": "add_groove", "params": {"reversed": "yes"}})
+
+
 def test_hole_rename_and_atomic_edit_ops():
     assert protocol.OPS["add_hole"] == ("diameter",)
     assert protocol.OPS["rename"] == ("feature", "label")

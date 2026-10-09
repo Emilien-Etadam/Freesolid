@@ -275,5 +275,9 @@
  "distance de chanfrein invalide": "invalid chamfer distance",
  "seconde distance de chanfrein invalide": "invalid second chamfer distance",
  "angle de chanfrein invalide — entre 0 et 90 degrés, exclus": "invalid chamfer angle — between 0 and 90 degrees, exclusive",
- "inverser le chanfrein : booléen attendu": "chamfer flip: boolean expected"
+ "inverser le chanfrein : booléen attendu": "chamfer flip: boolean expected",
+ "axe de révolution inconnu « {} »": "unknown revolution axis \"{}\"",
+ "l'axe de révolution doit être une ligne": "the revolution axis must be a line",
+ "angle de révolution invalide": "invalid revolution angle",
+ "sens de révolution : booléen attendu": "revolution direction: boolean expected"
 }

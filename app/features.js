@@ -83,6 +83,19 @@ export function dressup({ button, icon, title, selectionLabel, group, rows, buil
   };
 }
 
+/** Perçage : les centres cliqués (sélection « point ») → { face, points }
+ *  pour le moteur, null s'il n'y en a pas (la dernière esquisse sert),
+ *  { error } s'ils ne sont pas sur une même face. */
+export function holePositions(sel) {
+  const items = sel?.items ?? [];
+  if (!items.length) return null;
+  const face = items[0].face;
+  if (items.some((i) => i.face !== face)) {
+    return { error: "Perçage : les positions doivent être sur une même face" };
+  }
+  return { face, points: items.map((i) => [i.x, i.y, i.z]) };
+}
+
 /** Coque : faces à ouvrir (une ou plusieurs), épaisseur, sens. */
 export function shellBuild(v) {
   const faces = (v.faces?.items ?? []).map((item) => item.face)
@@ -670,6 +683,10 @@ export const FEATURES = [
     icon: "hole",
     title: "Perçage",
     groups: () => [
+      { label: "Positions",
+        rows: [{ type: "selection", key: "pos", accepts: ["point"],
+                 multiple: true,
+                 hint: "Cliquez les centres des trous sur une face" }] },
       {
         label: "Type de perçage",
         rows: [
@@ -699,12 +716,15 @@ export const FEATURES = [
         ],
       },
     ],
-    note: "Position : la dernière esquisse (un cercle par perçage). " +
-          "Le diamètre saisi remplace celui des cercles.",
+    note: "Sans position cliquée, la dernière esquisse sert (un cercle " +
+          "par perçage). Le diamètre saisi remplace celui des cercles.",
     build: (v) => {
       const diameter = num(v.diameter);
       if (!(diameter > 0)) return null;
       const params = { diameter, cut: v.cut };
+      const positions = holePositions(v.pos);
+      if (positions?.error) return null;
+      if (positions) Object.assign(params, positions);
       if (v.cond === "borgne") {
         const depth = num(v.depth);
         if (!(depth > 0)) return null;
@@ -727,7 +747,8 @@ export const FEATURES = [
       }
       return { op: "add_hole", params };
     },
-    invalid: "Valeurs du perçage invalides",
+    invalid: (v) => (holePositions(v.pos)?.error
+      ?? "Valeurs du perçage invalides"),
     refresh: "part",
   },
   {

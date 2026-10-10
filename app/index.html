@@ -944,6 +944,10 @@
     font-size: var(--text-s); color: var(--ink-2);
     position: relative; overflow: hidden;
   }
+  /* Une seule ligne : un texte trop long s'abrège (… ), en entier au survol. */
+  footer > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  footer #status { flex: 0 1 auto; min-width: 0; }
+  footer > span:not(#status) { flex: none; }
   footer .err { color: var(--error); }
   footer .err.sticky { cursor: pointer; }
   footer .push { margin-left: auto; }

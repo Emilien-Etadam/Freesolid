@@ -2360,6 +2360,23 @@ class SelftestMixin:
                 and {c.FirstPos for c in rooted} == {1, 3}
                 and state["dof"] == 3)  # deux longueurs, un rayon
 
+            mark("p41: perçage par centres cliqués sur une face")
+            self.new_part("Pièce perçage")
+            self.add_rect_sketch(60, 40)
+            self.add_pad(8)
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if abs(f.CenterOfMass.z - 8) < 1e-6)
+            before = body.Shape.Volume
+            tree = self.add_hole(6, through=True, face=top,
+                                 points=[[-15, 0, 8], [15, 5, 8]])
+            import math
+            removed = before - body.Shape.Volume
+            report["p41_percage_points"] = (
+                abs(removed - 2 * math.pi * 9 * 8) < 1e-2
+                and tree["features"][-1]["type"] == "PartDesign::Hole"
+                and len(tree["features"]) == 2)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

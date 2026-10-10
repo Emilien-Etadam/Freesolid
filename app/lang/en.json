@@ -302,7 +302,6 @@
  "Polygone — nombre de côtés :": "Polygon — number of sides:",
  "Polygone — nombre de côtés, centre, sommet": "Polygon — number of sides, center, vertex",
  "Position": "Position",
- "Position : la dernière esquisse (un cercle par perçage). Le diamètre saisi remplace celui des cercles.": "Position: the last sketch (one circle per hole). The entered diameter replaces the circles' one.",
  "Prof. lamage": "Counterbore depth",
  "Profil": "Profile",
  "Profils": "Profiles",
@@ -749,5 +748,10 @@
  "Sombre": "Dark",
  "Clair": "Light",
  "Selon le système": "Follow the system",
- "Le document en cours a des modifications non enregistrées. Les abandonner ?": "The current document has unsaved changes. Discard them?"
+ "Le document en cours a des modifications non enregistrées. Les abandonner ?": "The current document has unsaved changes. Discard them?",
+ "Positions": "Positions",
+ "Cliquez les centres des trous sur une face": "Click the hole centers on a face",
+ "{n} position(s)": "{n} position(s)",
+ "Perçage : les positions doivent être sur une même face": "Hole: the positions must be on a single face",
+ "Sans position cliquée, la dernière esquisse sert (un cercle par perçage). Le diamètre saisi remplace celui des cercles.": "Without clicked positions, the latest sketch is used (one circle per hole). The diameter entered replaces the circles'."
 }

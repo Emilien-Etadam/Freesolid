@@ -398,8 +398,14 @@ export function installPicking(ctx) {
           normal: normal ? [normal.x, normal.y, normal.z] : null,
         };
       }
-      // A command panel with a selection box absorbs the pick.
-      panel.notifyPick("face", { kind: "face", face: ctx.selectedFaceId });
+      // A command panel with a selection box absorbs the pick : d'abord
+      // une zone de positions (le point cliqué), sinon une zone de faces.
+      const hit = ctx.lastFaceHit;
+      const tookPoint = hit && panel.notifyPick("point", {
+        kind: "point", face: ctx.selectedFaceId, x: hit.x, y: hit.y, z: hit.z });
+      if (!tookPoint) {
+        panel.notifyPick("face", { kind: "face", face: ctx.selectedFaceId });
+      }
       if (event.button === 0) ctx.showContextToolbar(event);
     } else {
       ctx.lastFaceHit = null;

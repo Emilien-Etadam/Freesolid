@@ -134,7 +134,13 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     onToggle?.();
     document.addEventListener("keydown", onKey, true);
     if (spec.autoFocus !== false) {
-      panelEl.querySelector("input, select")?.focus();
+      // La première valeur à taper (pas une liste ni une case), sélectionnée :
+      // la frappe la remplace au lieu de s'y ajouter.
+      const field = panelEl.querySelector(
+        'input:not([type="checkbox"]):not([type="radio"])')
+        ?? panelEl.querySelector("select");
+      field?.focus();
+      if (field?.select) field.select();
     }
     changed(); // premier aperçu avec les valeurs par défaut
   }
@@ -198,8 +204,8 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     if (multiRow) {
       const current = active.values[multiRow.key] ?? { kind, items: [] };
       // Une face n'a pas de nom : son numéro l'identifie.
-      const same = (i) => (value.face != null
-        ? i.face === value.face : i.name === value.name);
+      const same = (i) => (value.kind === "point" ? false
+        : value.face != null ? i.face === value.face : i.name === value.name);
       const at = current.items.findIndex(same);
       if (at >= 0) current.items.splice(at, 1);
       else current.items.push(value);
@@ -360,7 +366,9 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
           t(row.hint ?? "Cliquez une face dans la zone graphique");
         return box;
       }
-      if (value.items && value.items.every((i) => i.face != null)) {
+      if (value.items && value.items.every((i) => i.kind === "point")) {
+        box.textContent = t("{n} position(s)", { n: value.items.length });
+      } else if (value.items && value.items.every((i) => i.face != null)) {
         box.textContent = value.items.length <= 4
           ? value.items.map((i) => t("Face {n}", { n: i.face })).join(", ")
           : t("{n} faces", { n: value.items.length });
@@ -450,6 +458,13 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     apply: () => { if (active && !active.spec.noApply) close(true); },
     notifyPick,
     invalidateSelections,
+    /** Remet des valeurs dans le panneau ouvert (après un refus du moteur). */
+    restore(values) {
+      if (!active) return;
+      active.values = { ...active.values, ...values };
+      render();
+      changed();
+    },
     get active() { return active !== null; },
     /** Un panneau de commande (avec OK) est ouvert. */
     get applicable() { return active !== null && !active.spec.noApply; },

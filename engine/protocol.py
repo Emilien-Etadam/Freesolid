@@ -199,9 +199,11 @@ OPS: dict[str, tuple[str, ...]] = {
     "set_variable": _Req(("name", str), "value"),
     "delete_variable": _Req(("name", str)),
     "rename": _Req(("feature", str), ("label", str)),
-    "add_hole": _Req(("diameter", float)),  # optional: depth | through, cut
+    "add_hole": _Req(("diameter", float), optional={"face": int, "points": list}),
+                                       # optional: depth | through, cut
                                        # (none|lamage|fraisage), cut_diameter,
-                                       # cut_depth, cut_angle
+                                       # cut_depth, cut_angle ; face + points :
+                                       # les centres cliqués sur la face
     "get_params": _Req(("feature", str)),  # editable numeric properties
     "set_tip": (),                     # optional: feature — nom d'une
                                        # ligne d'historique (fonction,

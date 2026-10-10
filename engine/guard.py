@@ -2,7 +2,8 @@
 
 ``friendly_error`` reconnaît un fragment du message brut.
 ``failure_message`` construit la ligne montrée à l'utilisateur : la phrase
-utile, et le texte brut entre parenthèses quand il aide au diagnostic.
+utile, et le texte brut entre parenthèses quand il aide au diagnostic —
+jamais le générique « command not done », qui n'apprend rien.
 
 Purs : aucun import du modeleur, testés sans lui.
 """
@@ -98,7 +99,7 @@ def failure_message(label: str, text: str, kind: str = "") -> str | None:
     template = _OPAQUE_BY_KIND.get(kind or "")
     if template is None or not _opaque(kind, raw, lowered):
         return None
-    if raw:
+    if raw and "command not done" not in lowered:
         return _fill(template, (label, raw))
     return _fill(_without_raw(template), (label,))
 

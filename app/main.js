@@ -154,7 +154,8 @@ function say(text, isError = false) {
   statusEl.textContent = t(text);
   statusEl.className = isError ? "err" : "";
   if (statusSticky) statusEl.classList.add("sticky");
-  statusEl.title = statusSticky ? t("Cliquer pour fermer") : "";
+  // Le texte entier en infobulle : la barre l'abrège s'il est trop long.
+  statusEl.title = statusSticky ? t("Cliquer pour fermer") : statusEl.textContent;
 }
 
 /** Erreur qui reste jusqu'à ce que l'utilisateur clique la barre d'état. */
@@ -183,6 +184,8 @@ const panel = createPropertyPanel({
   onToggle: () => {
     updateConfirmCorner();
     updateTreeFlyout();
+    // La barre d'icônes du clic précédent n'a plus lieu d'être.
+    ctx.hideContextToolbar?.();
   },
 });
 
@@ -841,7 +844,9 @@ function pickFilletRadiusBubble(event) {
 // Chaque frappe dans le panneau relance l'aperçu, débouncé — le serveur
 // exécute la fonction dans une transaction puis l'annule (op "preview").
 // previewGen s'incrémente à chaque appel (y compris built == null) : une
-// réponse obsolète ne montre ni n'efface le fantôme.
+// réponse obsolète ne montre ni n'efface le fantôme. Un aperçu réussi
+// efface le message d'un aperçu raté précédent.
+let previewFailed = false;
 function schedulePreview(built) {
   const gen = ++previewGen;
   clearTimeout(previewTimer);
@@ -853,11 +858,14 @@ function schedulePreview(built) {
       if (gen !== previewGen) return;
       if (!panel.active) return;
       showGhost(mesh, { bothSides: built.op === "add_fillet" });
+      if (previewFailed) say("");
+      previewFailed = false;
     } catch (error) {
       if (gen !== previewGen) return;
       if (!panel.active) return;
       clearGhost();
       say("Aperçu — " + error.message);
+      previewFailed = true;
     }
   }, 250);
 }
@@ -1527,6 +1535,9 @@ async function refresh(treePromise) {
   try {
     const tree = await treePromise;
     if (gen !== viewGen) return;
+    // L'opération a réussi : l'erreur d'avant (gardée jusqu'au clic) n'a
+    // plus lieu d'être.
+    statusSticky = false;
     renderTree(tree);
     await updateViewport(gen);
     if (gen !== viewGen) return;
@@ -1732,6 +1743,13 @@ function openFeaturePanel(entry, sketchOverride) {
           rememberCombineFinished(stoneCount, (Date.now() - started) / 1000);
         }
         return tree;
+      });
+      // Refus du moteur : le panneau revient avec les valeurs saisies, au
+      // lieu de les perdre (le message reste dans la barre d'état).
+      promise.catch(() => {
+        if (panel.active) return;
+        openFeaturePanel(entry, sketchOverride);
+        panel.restore(v);
       });
       if (entry.openGraphEditor) {
         run(promise.then((tree) => {

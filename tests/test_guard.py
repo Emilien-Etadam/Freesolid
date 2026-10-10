@@ -55,8 +55,14 @@ def test_opaque_failure_follows_the_feature(kind, needle):
     raw = "BRep_API: command not done"
     message = failure_message("Pièce", raw, kind)
     assert needle in message
-    assert raw in message
+    # Le générique du modeleur n'apprend rien : il n'est pas recopié.
+    assert "command not done" not in message
     assert message.startswith("Pièce : ")
+
+
+def test_specific_raw_text_stays_in_parentheses():
+    message = failure_message("Pièce", "Profile is empty", "PartDesign::Pad")
+    assert message.endswith("(Profile is empty)")
 
 
 def test_empty_status_omits_the_raw_complement():
@@ -101,7 +107,7 @@ def test_messages_translate_to_english():
         "Congé", "BRep_API: command not done", "PartDesign::Fillet")
     assert translate(fillet, "en") == (
         "Fillet: The radius is too large for the selected edges — "
-        "reduce the radius. (BRep_API: command not done)")
+        "reduce the radius.")
     assert translate(shell_too_thick_message(), "en") == (
         "The shell is impossible: the thickness is too large for this "
         "part — reduce the thickness.")

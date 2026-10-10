@@ -83,6 +83,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     process.exit(1);
   }
   await step("chargement");
+  // Sans document, l'accueil s'ouvre au démarrage et couvre l'interface :
+  // on y choisit « Nouvelle pièce », comme le ferait l'utilisateur.
+  if (await page.isVisible("#welcome")) {
+    await page.click("#welcome [data-welcome='part']");
+    await page.waitForSelector("#welcome", { state: "hidden", timeout: 10000 });
+    await sleep(1000);
+  }
   const isOrtho = await page.evaluate(
     () => window.__freesolidDebug?.isOrthographic === true);
   if (!isOrtho) errors.push("caméra : projection orthographique absente");

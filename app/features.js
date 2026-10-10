@@ -1557,6 +1557,50 @@ export const FEATURES = [
     invalid: "Composite : cliquez des courbes bout à bout",
   }),
   surface({
+    button: "btn-surf-flatten",
+    icon: "surface_flatten",
+    title: "Aplatir la surface",
+    groups: (ctx) => [{ label: "Face",
+      rows: [{ type: "selection", key: "target",
+               accepts: ["surfface", "surface"],
+               hint: "Cliquez la face de surface à aplatir",
+               value: ctx.selection(["surface"]) }] }],
+    note: "Le patron à plat se pose sur le plan de dessus, à droite de la "
+      + "pièce. Exact pour une face développable (cylindre, cône), "
+      + "approché sinon.",
+    build: (v) => (v.target ? { op: "surface_flatten", params: {
+      surface: v.target.name, face: v.target.face ?? 0 } } : null),
+    invalid: "Aplatir : cliquez une face de surface",
+  }),
+  surface({
+    button: "btn-surf-freeform",
+    icon: "surface_freeform",
+    title: "Forme libre",
+    groups: [
+      { label: "Point à pousser",
+        rows: [{ type: "selection", key: "at", accepts: ["surfpoint"],
+                 hint: "Cliquez l'endroit à pousser, sur une surface" }] },
+      { label: "Paramètres",
+        rows: [
+          { type: "number", key: "height", label: "Hauteur", value: 5,
+            unit: "mm" },
+          { type: "number", key: "radius", label: "Rayon d'influence",
+            value: 15, unit: "mm", min: 0.01 },
+        ] },
+    ],
+    note: "La surface se bombe au point cliqué, selon sa normale ; "
+      + "hauteur négative : un creux.",
+    build: (v) => {
+      const height = num(v.height);
+      const radius = num(v.radius);
+      if (!v.at || !height || !(radius > 0)) return null;
+      return { op: "surface_freeform", params: {
+        surface: v.at.name, face: v.at.face ?? 0,
+        point: [v.at.x, v.at.y, v.at.z], height, radius } };
+    },
+    invalid: "Forme libre : un point sur une surface, une hauteur, un rayon",
+  }),
+  surface({
     button: "btn-surf-extend",
     icon: "surface_extend",
     title: "Prolonger la surface",

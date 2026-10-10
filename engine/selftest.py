@@ -2988,6 +2988,40 @@ class SelftestMixin:
             report["p50_surface_mediane"] = (
                 first_ok and abs(mid.Shape.BoundBox.ZMin - 5) < 1e-6)
 
+            mark("p50: aplatir une surface, forme libre")
+            import math
+            self.new_part("Pièce aplatir")
+            state = self.sketch_start(plane="XY")
+            arc_sk = state["sketch"]
+            self.sketch_add_arc(arc_sk, 0, 0, 10, 0, math.pi)
+            self.sketch_finish(arc_sk)
+            half = self._require_doc().getObject(
+                self.surface_extrude(30, sketch=arc_sk)["surfaces"][-1]["name"])
+            tree = self.surface_flatten(half.Name)
+            flat = self._require_doc().getObject(tree["surfaces"][-1]["name"])
+            report["p50_aplatir"] = (
+                abs(flat.Shape.Area - math.pi * 10 * 30) < 2
+                and abs(flat.Shape.BoundBox.ZMax) < 1e-6
+                and (tree["surfaces"][-1].get("surface") or {}).get("kind")
+                == "flatten")
+            state = self.sketch_start(plane="XY")
+            plate_sk = state["sketch"]
+            self.sketch_add_rectangle(plate_sk, 0, 0, 40, 40)
+            self.sketch_finish(plate_sk)
+            plate = self._require_doc().getObject(
+                self.surface_planar(sketch=plate_sk)["surfaces"][-1]["name"])
+            tree = self.surface_freeform(plate.Name, [20, 20, 0], 5, 15)
+            bump = self._require_doc().getObject(tree["surfaces"][-1]["name"])
+            top = bump.Shape.BoundBox.ZMax
+            self.edit_surface_freeform(bump.Name, 8, 15)
+            report["p50_forme_libre"] = (
+                3 < abs(top) < 5.5
+                and 5 < abs(bump.Shape.BoundBox.ZMax) < 8.5
+                and abs(bump.Shape.BoundBox.XLength - 40) < 1e-3
+                and plate.Name not in {s["name"] for s
+                                       in self.tessellate().get("surfaces")
+                                       or []})
+
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")
             self.add_rect_sketch(60, 40)

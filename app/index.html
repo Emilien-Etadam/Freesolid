@@ -236,6 +236,11 @@
   }
   .ribbon-group-btns button:not(:has(> img)) { padding: 0 var(--space-2); }
   .ribbon-group-btns button:has(> img):not(:has(> :not(img))) { justify-content: center; }
+  .ribbon-group-btns.rows-3 { grid-template-rows: repeat(3, 19px); gap: 1px; }
+  .ribbon-group-btns.rows-3 button { height: 19px; }
+  .ribbon-group-btns.rows-3 button img { width: 15px; height: 15px; }
+  .ribbon-group-btns.rows-3 button.large { grid-row: span 3; height: 59px; }
+  .ribbon-group-btns.rows-3 button.large img { width: 24px; height: 24px; }
   .ribbon-group-btns button:hover {
     background: var(--panel); border-color: var(--line);
   }

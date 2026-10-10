@@ -916,5 +916,17 @@
  "Paroi": "Wall",
  "Cliquez les deux faces en vis-à-vis de la paroi": "Click the two facing faces of the wall",
  "Faces planes parallèles ou cylindres concentriques : la peau passe à mi-épaisseur et suit les cotes de la pièce.": "Parallel planar faces or concentric cylinders: the skin runs at mid-thickness and follows the part's dimensions.",
- "Médiane : les deux faces d'une paroi": "Mid: the two faces of a wall"
+ "Médiane : les deux faces d'une paroi": "Mid: the two faces of a wall",
+ "Aplatir la surface": "Flatten Surface",
+ "Cliquez la face de surface à aplatir": "Click the surface face to flatten",
+ "Le patron à plat se pose sur le plan de dessus, à droite de la pièce. Exact pour une face développable (cylindre, cône), approché sinon.": "The flat pattern lands on the top plane, right of the part. Exact for a developable face (cylinder, cone), approximate otherwise.",
+ "Aplatir : cliquez une face de surface": "Flatten: click a surface face",
+ "Forme libre": "Freeform",
+ "Point à pousser": "Point to push",
+ "Cliquez l'endroit à pousser, sur une surface": "Click the spot to push, on a surface",
+ "Rayon d'influence": "Influence radius",
+ "La surface se bombe au point cliqué, selon sa normale ; hauteur négative : un creux.": "The surface bulges at the clicked point, along its normal; negative height: a dent.",
+ "Forme libre : un point sur une surface, une hauteur, un rayon": "Freeform: a point on a surface, a height, a radius",
+ "Forme libre — bomber ou creuser une surface au point cliqué": "Freeform — bulge or dent a surface at the clicked point",
+ "Aplatir — le patron à plat d'une face de surface": "Flatten — the flat pattern of a surface face"
 }

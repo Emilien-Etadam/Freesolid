@@ -429,5 +429,12 @@
  "cliquez les deux faces en vis-à-vis de la paroi": "click the two facing faces of the wall",
  "Surface médiane": "Mid-Surface",
  "les deux faces se touchent — choisissez les deux côtés d'une paroi": "the two faces touch — choose both sides of a wall",
- "surface médiane : faces planes parallèles ou cylindres concentriques": "mid-surface: parallel planar faces or concentric cylinders"
+ "surface médiane : faces planes parallèles ou cylindres concentriques": "mid-surface: parallel planar faces or concentric cylinders",
+ "Surface aplatie": "Flattened Surface",
+ "Forme libre": "Freeform",
+ "forme libre inconnue : {}": "unknown freeform: {}",
+ "aplatir : le modeleur ne sait pas dérouler cette face": "flatten: the modeler cannot unroll this face",
+ "le rayon d'influence doit être positif": "the influence radius must be positive",
+ "forme libre : aucun point de contrôle dans le rayon — agrandissez-le": "freeform: no control point within the radius — enlarge it",
+ "forme libre : la surface poussée est invalide — réduisez la hauteur": "freeform: the pushed surface is invalid — reduce the height"
 }

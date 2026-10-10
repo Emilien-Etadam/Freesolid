@@ -431,8 +431,11 @@ export function installPicking(ctx) {
       if (panel.accepts("surfpoint") && !panel.needs("surface")) {
         raycaster.setFromCamera(pointer, camera);
         const hit = pickHoveredSurfaceHit();
+        const groups = hit?.object.userData.groups ?? [];
+        const at = hit ? hit.faceIndex * 3 : -1;
+        const group = groups.find((g) => at >= g.start && at < g.start + g.count);
         if (hit && panel.notifyPick("surfpoint", {
-          kind: "surfpoint", ...ctx.hoveredSurface,
+          kind: "surfpoint", ...ctx.hoveredSurface, face: group?.faceId ?? 0,
           x: hit.point.x, y: hit.point.y, z: hit.point.z })) return;
       }
       ctx.onSurfaceClick(ctx.hoveredSurface);

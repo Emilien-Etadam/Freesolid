@@ -878,6 +878,12 @@ class SurfaceMixin:
                     "source": base.Base.Name if base is not None else None,
                     "tool": (base.Tools[0].Name
                              if base is not None and base.Tools else None)}
+        if getattr(obj, "FreeSolidFreesource", ""):
+            return {"kind": "freeform",
+                    "height": float(obj.FreeSolidFreeheight),
+                    "radius": float(obj.FreeSolidFreeradius)}
+        if getattr(obj, "FreeSolidFlatsource", ""):
+            return {"kind": "flatten"}
         if obj.TypeId == "Part::Offset" and not getattr(obj, "Fill", True):
             value = getattr(obj, "Value", 0.0)
             return {"kind": "offset",
@@ -1220,12 +1226,181 @@ class SurfaceMixin:
                               "cylindres concentriques")
         return result
 
+    def surface_flatten(self, surface, face=0):
+        """Aplatir une face de surface : son patron à plat (déroulé par
+        moindres carrés conformes), posé sur le plan de dessus à côté de la
+        pièce — gabarit de découpe, développé de tôle mince."""
+        src = self._get_surface(surface)
+        stamps = {"flatsource": src.Name, "flatface": int(face)}
+        shape = self._flat_shape(src.Shape, int(face))
+        return self._add_frozen_surface(shape, "Surface aplatie", stamps)
+
+    def surface_freeform(self, surface, point, height, radius, face=0):
+        """Forme libre : la surface est poussée au point cliqué, de
+        ``height`` mm selon sa normale, l'effet s'éteignant en douceur à
+        ``radius`` mm. Rééditable, et suit la surface d'origine."""
+        src = self._get_surface(surface)
+        stamps = {"freesource": src.Name, "freeface": int(face),
+                  "freepoint": ";".join("%.9g" % float(v) for v in point),
+                  "freeheight": float(height), "freeradius": float(radius)}
+        shape = self._free_shape(src.Shape, stamps)
+        return self._add_frozen_surface(shape, "Forme libre", stamps)
+
+    def edit_surface_freeform(self, surface, height, radius):
+        """Rééditer une forme libre : hauteur et rayon d'influence."""
+        from engine.kernel import KernelError
+        obj = self._require_doc().getObject(str(surface))
+        if obj is None or not getattr(obj, "FreeSolidFreesource", ""):
+            raise KernelError("forme libre inconnue : {}".format(surface))
+        stamps = self._frozen_stamps(obj)
+        stamps["freeheight"] = float(height)
+        stamps["freeradius"] = float(radius)
+        src = self._get_surface(stamps["freesource"])
+        obj.Shape = self._free_shape(src.Shape, stamps)
+        self._stamp(obj, freeheight=float(height), freeradius=float(radius))
+        self._recompute()
+        return self.get_tree()
+
+    def _add_frozen_surface(self, shape, label, stamps):
+        doc = self._require_doc()
+        feature = doc.addObject("Part::Feature", "Surface")
+        feature.Label = self._t(label)
+        feature.Shape = shape
+        self._stamp(feature, **stamps)
+        doc.recompute()
+        return self.get_tree()
+
+    @staticmethod
+    def _frozen_stamps(obj):
+        prefix = "FreeSolid"
+        return {name[len(prefix):].lower(): getattr(obj, name)
+                for name in obj.PropertiesList
+                if name.startswith(prefix + "Free")
+                or name.startswith(prefix + "Flat")}
+
+    @staticmethod
+    def _source_face(shape, face):
+        from engine.kernel import KernelError
+        if face < 0 or face >= len(shape.Faces):
+            raise KernelError("face inconnue : {}".format(face))
+        return shape.Faces[face]
+
+    def _flat_shape(self, shape, face_index):
+        from engine.kernel import KernelError
+        import FreeCAD as App
+        import Part
+        face = self._source_face(shape, face_index).copy()
+        try:
+            import flatmesh
+            face.tessellate(0.05)
+            unwrapper = flatmesh.FaceUnwrapper(face)
+            unwrapper.findFlatNodes(5, 0.95)
+            loops = unwrapper.getFlatBoundaryNodes()
+            wires = []
+            for loop in loops:
+                points = []
+                for node in loop:
+                    vec = App.Vector(float(node[0]), float(node[1]), 0)
+                    if not points or (vec - points[-1]).Length > 1e-7:
+                        points.append(vec)
+                if (points[0] - points[-1]).Length > 1e-7:
+                    points.append(points[0])
+                wires.append(Part.makePolygon(points))
+            wires.sort(key=lambda w: Part.Face(w).Area, reverse=True)
+            flat = Part.Face(wires)
+        except Exception:  # noqa: BLE001
+            raise KernelError("aplatir : le modeleur ne sait pas dérouler "
+                              "cette face")
+        if flat.isNull() or not flat.isValid():
+            raise KernelError("aplatir : le modeleur ne sait pas dérouler "
+                              "cette face")
+        # Posé à droite de la pièce, sur le plan de dessus.
+        box = shape.BoundBox
+        flat.translate(App.Vector(box.XMax + 10 - flat.BoundBox.XMin,
+                                  box.YMin - flat.BoundBox.YMin,
+                                  -flat.BoundBox.ZMin))
+        return flat
+
+    def _free_shape(self, shape, stamps):
+        """Pôles de la surface déplacés selon la normale, avec une cloche
+        qui s'éteint au rayon d'influence (mesuré sur la surface)."""
+        from engine.kernel import KernelError
+        import math
+        import FreeCAD as App
+        face = self._source_face(shape, int(stamps["freeface"]))
+        height = float(stamps["freeheight"])
+        radius = float(stamps["freeradius"])
+        if radius <= 0:
+            raise KernelError("le rayon d'influence doit être positif")
+        x, y, z = (float(v) for v in str(stamps["freepoint"]).split(";"))
+        u0, u1, v0, v1 = face.ParameterRange
+        surface = face.toNurbs().Faces[0].Surface
+        nu0, nu1, nv0, nv1 = surface.bounds()
+        # De la finesse pour que la bosse soit ronde : des nœuds en plus.
+        for _ in range(3):
+            if surface.NbUPoles >= 16:
+                break
+            for k in range(1, 4):
+                surface.insertUKnot(nu0 + (nu1 - nu0) * k / 4.0, 1, 1e-9)
+        for _ in range(3):
+            if surface.NbVPoles >= 16:
+                break
+            for k in range(1, 4):
+                surface.insertVKnot(nv0 + (nv1 - nv0) * k / 4.0, 1, 1e-9)
+        center = App.Vector(x, y, z)
+        cu, cv = surface.parameter(center)
+        normal = surface.normal(cu, cv)
+        moved = False
+        for i in range(1, surface.NbUPoles + 1):
+            for j in range(1, surface.NbVPoles + 1):
+                pole = surface.getPole(i, j)
+                gap = (pole - center).Length
+                if gap >= radius:
+                    continue
+                weight = 0.5 * (1 + math.cos(math.pi * gap / radius))
+                surface.setPole(i, j, pole + normal * (height * weight))
+                moved = True
+        if not moved:
+            raise KernelError("forme libre : aucun point de contrôle dans le "
+                              "rayon — agrandissez-le")
+        # Bornes de la face d'origine, sinon celles de la surface entière.
+        try:
+            result = surface.toShape(u0, u1, v0, v1)
+        except Exception:  # noqa: BLE001
+            result = surface.toShape(nu0, nu1, nv0, nv1)
+        if result.isNull() or not result.isValid():
+            raise KernelError("forme libre : la surface poussée est invalide "
+                              "— réduisez la hauteur")
+        return result
+
     def _refresh_frozen_shapes(self):
         """Recalcule les formes figées qui dépendent d'une fonction du
         corps (supprimer, remplacer une face) ; vrai si l'une a changé."""
         doc = self._require_doc()
         changed = False
         for obj in doc.Objects:
+            free_src = (getattr(obj, "FreeSolidFlatsource", "")
+                        or getattr(obj, "FreeSolidFreesource", ""))
+            if free_src:
+                src = doc.getObject(free_src)
+                if src is None or not getattr(src, "Shape", None):
+                    continue
+                try:
+                    if getattr(obj, "FreeSolidFlatsource", ""):
+                        result = self._flat_shape(src.Shape,
+                                                  int(obj.FreeSolidFlatface))
+                    else:
+                        result = self._free_shape(src.Shape,
+                                                  self._frozen_stamps(obj))
+                except Exception:  # noqa: BLE001
+                    continue
+                old = obj.Shape
+                if (old.isNull() or abs(old.Area - result.Area) > 1e-6
+                        or (old.BoundBox.Center - result.BoundBox.Center)
+                        .Length > 1e-6):
+                    obj.Shape = result
+                    changed = True
+                continue
             mid_base = getattr(obj, "FreeSolidMidbase", "")
             if mid_base:
                 base = doc.getObject(mid_base)
@@ -1331,6 +1506,9 @@ class SurfaceMixin:
                 base = getattr(obj, "Base", None)
                 if base is not None:
                     consumed.add(base.Name)
+            pushed = getattr(obj, "FreeSolidFreesource", "")
+            if pushed:
+                consumed.add(pushed)
             replacing = getattr(obj, "FreeSolidReplacesurface", "")
             if replacing:
                 # Surface d'un remplacement de face : la pièce la porte.

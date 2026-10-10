@@ -566,6 +566,8 @@ export function installTree(ctx) {
     if (surface.surface?.kind === "untrim") return "surface_untrim";
     if (surface.surface?.kind === "deleteface") return "surface_delete_face";
     if (surface.surface?.kind === "split") return "surface_split";
+    if (surface.surface?.kind === "flatten") return "surface_flatten";
+    if (surface.surface?.kind === "freeform") return "surface_freeform";
     return SURFACE_ICONS[surface.type] ?? "surface_body";
   }
 
@@ -1163,6 +1165,10 @@ export function installTree(ctx) {
       editSurfaceFillet(surface);
       return;
     }
+    if (surface.surface?.kind === "freeform") {
+      editFreeform(surface);
+      return;
+    }
     if (surface.static || surface.type === "Part::Feature") {
       say("Surface figée — non éditable");
       return;
@@ -1217,6 +1223,31 @@ export function installTree(ctx) {
         if (!!v.flip === spec.flip) return;
         refresh(call("edit_surface_cut",
           { feature: feature.name, flip: !!v.flip }));
+      },
+    });
+  }
+
+  // Forme libre : hauteur et rayon d'influence.
+  function editFreeform(surface) {
+    const spec = surface.surface;
+    panel.open({
+      icon: "surface_freeform",
+      title: surface.label,
+      groups: [{
+        label: t("Paramètres"),
+        rows: [
+          { type: "number", key: "height", label: t("Hauteur"),
+            value: spec.height, unit: "mm" },
+          { type: "number", key: "radius", label: t("Rayon d'influence"),
+            value: spec.radius, unit: "mm", min: 0.01 },
+        ],
+      }],
+      onApply: (v) => {
+        const height = num(v.height);
+        const radius = num(v.radius);
+        if (!height || !(radius > 0)) return;
+        refresh(call("edit_surface_freeform",
+          { surface: surface.name, height, radius }));
       },
     });
   }

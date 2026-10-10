@@ -47,7 +47,8 @@ simulation FEM. Verdicts :
 | Surface radiée | ✅ **fait** | `Part::Offset2D` rempli sur un contour plan (arêtes du solide, d'une surface, esquisse), coins vifs |
 | Ajustement mutuel | ✅ **fait** | option d'« Ajuster » : l'outil est aussi coupé par la surface, la partie cliquée sur chacune est gardée |
 | Surface médiane | ✅ **fait** (paires simples) | deux faces en vis-à-vis, planes parallèles ou cylindres concentriques : décalage de la moitié de l'écart, recalculé à chaque reconstruction ; pas de médiane automatique d'une pièce entière |
-| Forme libre (déformation par points de contrôle), aplatir une surface | ❌ | pas de moteur FreeCAD / OCCT exposé pour ces gestes |
+| Forme libre | ✅ **fait** (geste simple) | la surface est convertie en B-spline affinée, ses pôles poussés selon la normale au point cliqué avec une cloche qui s'éteint au rayon d'influence ; hauteur et rayon rééditables, suit la surface d'origine ; pas de grille de points de contrôle à tirer un par un |
+| Aplatir une surface | ✅ **fait** | `flatmesh` (déroulé conforme par moindres carrés) : patron à plat posé à côté de la surface, exact pour une face développable ; suit la surface d'origine |
 | Remplacer la face | ✅ **fait** | la face est prolongée en prisme puis la surface coupe ce qui la dépasse ; forme recalculée à chaque reconstruction ; un booléen d'ajout, d'intersection, ou les deux quand la matière croît et décroît ; clic à travers les surfaces pour viser la face recouverte |
 | Couper avec une surface | ✅ **fait** | la surface balaie un demi-espace (extrusion paramétrique) combiné en soustraction dans l'historique ; aperçu, « inverser le côté » en réédition ; refus clair si la surface ne traverse pas le solide |
 | Surface plane, balayée, décalée | ✅ **fait** | `Part::Face`, `Part::Sweep` (profil ouvert, trajectoire esquisse ou spline 3D), `Part::Offset` sans remplissage — paramétriques |

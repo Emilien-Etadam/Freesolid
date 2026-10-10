@@ -59,6 +59,7 @@
       "groupes": [
         {
           "libelle": "Courbes",
+          "lignes": 3,
           "boutons": [
             {"id": "btn-curve3d", "titre": "Spline 3D — cliquez des points sur la pièce ou dans l'espace : trajectoire de balayage, bord de surface", "taille": "large", "icon": "spline3d", "libelle": "Spline 3D"},
             {"id": "btn-curve-helix", "titre": "Hélice ou spirale — une courbe autour d'un axe d'origine", "icon": "nodes_helix", "libelle": "Hélice"},
@@ -69,6 +70,7 @@
         },
         {
           "libelle": "Surfaces",
+          "lignes": 3,
           "boutons": [
             {"id": "btn-surf-extrude", "titre": "Surface extrudée — le profil peut être ouvert", "icon": "surface_extrude", "libelle": "Surface extrudée"},
             {"id": "btn-surf-revolve", "titre": "Surface de révolution — autour de l'axe vertical de l'esquisse", "icon": "surface_revolve", "libelle": "Surface de révolution"},
@@ -84,6 +86,7 @@
         },
         {
           "libelle": "Opérations",
+          "lignes": 3,
           "boutons": [
             {"id": "btn-surf-offset", "titre": "Surface décalée — la peau recopiée à distance", "icon": "surface_offset", "libelle": "Décaler"},
             {"id": "btn-surf-extend", "titre": "Prolonger une surface au-delà d'un bord", "icon": "surface_extend", "libelle": "Prolonger"},
@@ -95,6 +98,8 @@
             {"id": "btn-replace-face", "titre": "Remplacer une face du solide par une surface — la matière va jusqu'à elle", "icon": "replace_face", "libelle": "Remplacer face"},
             {"id": "btn-surf-split", "titre": "Ligne de séparation — une courbe posée sur la surface scinde ses faces", "icon": "surface_split", "libelle": "Scinder"},
             {"id": "btn-surf-delete-face", "titre": "Supprimer des faces — du solide (le trou se referme) ou d'une surface", "icon": "surface_delete_face", "libelle": "Supprimer face"},
+            {"id": "btn-surf-freeform", "titre": "Forme libre — bomber ou creuser une surface au point cliqué", "icon": "surface_freeform", "libelle": "Forme libre"},
+            {"id": "btn-surf-flatten", "titre": "Aplatir — le patron à plat d'une face de surface", "icon": "surface_flatten", "libelle": "Aplatir"},
             {"id": "btn-surf-untrim", "titre": "Désajuster — la face retrouve ses bords naturels, trous bouchés", "icon": "surface_untrim", "libelle": "Désajuster"}
           ]
         }

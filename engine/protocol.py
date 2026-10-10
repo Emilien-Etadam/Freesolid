@@ -131,6 +131,12 @@ OPS: dict[str, tuple[str, ...]] = {
     "curve_composite": _Req(("boundary", list)),
     "surface_radiate": _Req(("boundary", list), ("distance", float)),
     "surface_mid": _Req(("faces", list)),  # deux faces du solide, base 0
+    "surface_flatten": _Req(("surface", str)),  # optional: face
+    "surface_freeform": _Req(("surface", str), ("point", list),
+                             ("height", float), ("radius", float)),
+                                       # optional: face
+    "edit_surface_freeform": _Req(("surface", str), ("height", float),
+                                  ("radius", float)),
     "curve_helix": _Req(("pitch", float), ("height", float),
                         ("radius", float)),
                                        # optional: angle, left, axis (X|Y|Z)

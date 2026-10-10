@@ -907,5 +907,7 @@
  "Cliquez les arêtes d'un contour plan : solide, surface ou esquisse": "Click the edges of a planar boundary: solid, surface or sketch",
  "Vers l'intérieur": "Inward",
  "Une bande plane part du contour, dans son plan (une collerette).": "A flat band runs out from the boundary, in its plane (a flange).",
- "Radiée : un contour plan et une distance": "Radiated: a planar boundary and a distance"
+ "Radiée : un contour plan et une distance": "Radiated: a planar boundary and a distance",
+ "Ajustement mutuel": "Mutual trim",
+ "Et la partie de l'outil à garder": "And the part of the tool to keep"
 }

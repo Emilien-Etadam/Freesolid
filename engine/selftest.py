@@ -2604,6 +2604,29 @@ class SelftestMixin:
             self.edit_surface_trim(trimmed["name"])
             report["p46_ajuster_change_de_cote"] = near_ok and abs(
                 trim_obj.Shape.Area - 1200) < 1e-3
+            # Ajustement mutuel : un carré neuf et la paroi se coupent l'un
+            # l'autre, une partie de chacun gardée.
+            state = self.sketch_start(plane="XY")
+            square2 = state["sketch"]
+            self.sketch_add_rectangle(square2, 0, 0, 40, 40)
+            self.sketch_finish(square2)
+            plate2 = self.surface_planar(sketch=square2)["surfaces"][-1]["name"]
+            state = self.sketch_start(plane="XY")
+            wall2 = state["sketch"]
+            self.sketch_add_line(wall2, 10, 0, 10, 40)
+            self.sketch_finish(wall2)
+            self._require_doc().getObject(wall2).AttachmentOffset = (
+                App.Placement(App.Vector(0, 0, -10), App.Rotation()))
+            self._recompute()
+            cutter2 = self.surface_extrude(30, sketch=wall2)["surfaces"][-1]
+            tree = self.surface_trim(plate2, cutter2["name"],
+                                     point=[30, 20, 0],
+                                     tool_point=[10, 20, 15])
+            pair = [self._require_doc().getObject(s["name"])
+                    for s in tree["surfaces"][-2:]]
+            report["p46_ajustement_mutuel"] = (
+                abs(pair[0].Shape.Area - 1200) < 1e-3
+                and abs(pair[1].Shape.Area - 40 * 20) < 1e-3)
             path = os.path.join(tempfile.gettempdir(),
                                 "freesolid-selftest-surfaces.FCStd")
             self.save_part(path)

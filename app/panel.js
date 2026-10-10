@@ -224,8 +224,10 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     const rows = [];
     for (const group of active.spec.groups) {
       for (const row of group.rows ?? []) {
+        // Une zone masquée (showIf) n'absorbe pas les clics.
         if (row.type === "selection"
-            && (row.accepts ?? ["face"]).includes(kind)) {
+            && (row.accepts ?? ["face"]).includes(kind)
+            && (!row.showIf || row.showIf(active.values))) {
           rows.push(row);
         }
       }
@@ -275,7 +277,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     for (const group of active?.spec.groups ?? []) {
       for (const row of group.rows ?? []) {
         if (row.type === "selection"
-            && (row.accepts ?? ["face"]).includes(kind)) rows.push(row);
+            && (row.accepts ?? ["face"]).includes(kind)
+            && (!row.showIf || row.showIf(active.values))) rows.push(row);
       }
     }
     return rows;

@@ -138,7 +138,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "edit_surface_extend": _Req(("surface", str), ("distance", float)),
                                        # optional: edge
     "surface_trim": _Req(("surface", str), ("tool", str)),
-                                       # optional: point — partie gardée
+                                       # optional: point — partie gardée,
+                                       # tool_point — ajustement mutuel
     "add_surface_cut": _Req(("surface", str)),  # optional: flip
     "add_delete_face": _Req(("faces", list)),  # faces du solide, base 0
     "add_replace_face": _Req(("face", int), ("surface", str)),

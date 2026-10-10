@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { clickPlane, curveProblem, nextPlane, rayPlane } from "../../app/curve3d.js";
 import { boundaryText, samePick } from "../../app/panel.js";
 import { boundaryParam, deleteFacesBuild, deleteFacesParams, extendParams,
-  surfaceFilletParams }
+  surfaceFilletParams, trimParams }
   from "../../app/features.js";
 
 describe("spline 3D : plan de clic", () => {
@@ -107,6 +107,24 @@ describe("faces et arêtes d'une même surface", () => {
     assert.equal(surfaceFilletParams([edge("S", 4)], 0), null);
     assert.equal(surfaceFilletParams([{ ...edge("C", 0), curve: true }], 3),
       null);
+  });
+});
+
+describe("ajuster", () => {
+  const pick = (name, x) => ({ kind: "surfpoint", name, label: name,
+                               x, y: 0, z: 0 });
+  it("simple : outil et partie gardée d'une autre surface", () => {
+    assert.deepEqual(trimParams({ tool: { name: "T" }, keep: pick("S", 1) }),
+      { op: "surface_trim",
+        params: { surface: "S", tool: "T", point: [1, 0, 0] } });
+    assert.equal(trimParams({ tool: { name: "S" }, keep: pick("S", 1) }), null);
+  });
+  it("mutuel : la seconde partie se clique sur l'outil", () => {
+    const v = { tool: { name: "T" }, keep: pick("S", 1), mutual: true };
+    assert.equal(trimParams(v), null);
+    assert.equal(trimParams({ ...v, toolKeep: pick("S", 2) }), null);
+    assert.deepEqual(trimParams({ ...v, toolKeep: pick("T", 2) }).params
+      .tool_point, [2, 0, 0]);
   });
 });
 

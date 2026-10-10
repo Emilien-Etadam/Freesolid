@@ -756,15 +756,15 @@ class SurfaceMixin:
         return self._add_part_surface(
             "Surface::Extend", "Surface prolongée", configure)
 
-    def surface_trim(self, surface, tool, point=None):
+    def surface_trim(self, surface, tool, point=None, tool_point=None):
         """Ajuster une surface par une autre : la découpe garde la partie
-        la plus proche du point cliqué (la plus grande sans point)."""
+        la plus proche du point cliqué (la plus grande sans point).
+        ``tool_point`` : ajustement mutuel — l'outil est aussi coupé par la
+        surface, la partie la plus proche de ce point est gardée."""
         from engine.kernel import (
             KernelError,
             _explain,
         )
-        import BOPTools.SplitFeatures as split_features
-        import CompoundTools.CompoundFilter as compound_filter
         doc = self._require_doc()
         src = self._get_surface(surface)
         cutter = self._get_surface(tool)
@@ -772,25 +772,24 @@ class SurfaceMixin:
             raise KernelError("la surface et l'outil doivent être différents")
         if not src.Shape.Faces or not cutter.Shape.Faces:
             raise KernelError("ajuster demande deux surfaces")
-        pieces = self._trim_pieces(src.Shape, cutter.Shape)
-        if len(pieces) < 2:
-            raise KernelError("l'outil ne coupe pas la surface")
-        keep = self._nearest_piece(pieces, point)
-        slicer = split_features.makeSlice("Decoupe")
-        slicer.Base = src
-        slicer.Tools = [cutter]
-        slicer.Mode = "Split"
-        self._mark_internal(slicer)
+        jobs = [(src, cutter, point)]
+        if tool_point is not None:
+            jobs.append((cutter, src, tool_point))
+        plans = []
+        for base, knife, at in jobs:
+            pieces = self._trim_pieces(base.Shape, knife.Shape)
+            if len(pieces) < 2:
+                raise KernelError("l'outil ne coupe pas la surface"
+                                  if base is src else
+                                  "la surface ne coupe pas l'outil")
+            plans.append((base, knife, self._nearest_piece(pieces, at)))
+        created = []
         try:
-            kept = compound_filter.makeCompoundFilter("Surface")
-            kept.Base = slicer
-            kept.FilterType = "specific items"
-            kept.items = str(keep)
-            kept.Label = self._t("Surface ajustée")
-            self._stamp(kept, kind="trim")
+            for base, knife, keep in plans:
+                created += self._trim_objects(base, knife, keep)
             self._recompute()
         except Exception as exc:  # noqa: BLE001
-            for obj in [o for o in (locals().get("kept"), slicer) if o]:
+            for obj in reversed(created):
                 try:
                     doc.removeObject(obj.Name)
                 except Exception:
@@ -799,6 +798,23 @@ class SurfaceMixin:
                 raise
             raise KernelError(_explain(exc))
         return self.get_tree()
+
+    def _trim_objects(self, base, knife, keep):
+        """Découpe (interne) + partie gardée, sans recalcul."""
+        import BOPTools.SplitFeatures as split_features
+        import CompoundTools.CompoundFilter as compound_filter
+        slicer = split_features.makeSlice("Decoupe")
+        slicer.Base = base
+        slicer.Tools = [knife]
+        slicer.Mode = "Split"
+        self._mark_internal(slicer)
+        kept = compound_filter.makeCompoundFilter("Surface")
+        kept.Base = slicer
+        kept.FilterType = "specific items"
+        kept.items = str(keep)
+        kept.Label = self._t("Surface ajustée")
+        self._stamp(kept, kind="trim")
+        return [slicer, kept]
 
     @staticmethod
     def _trim_pieces(shape, tool_shape):

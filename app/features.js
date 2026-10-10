@@ -291,6 +291,17 @@ export function surfaceFilletParams(items, radius) {
   return { surface: name, edges: edges.map((i) => i.edge), radius };
 }
 
+/** Ajuster (et ajustement mutuel) → paramètres, ou null. */
+export function trimParams(v) {
+  if (!v.tool || !v.keep || v.keep.name === v.tool.name) return null;
+  const params = { surface: v.keep.name, tool: v.tool.name,
+                   point: [v.keep.x, v.keep.y, v.keep.z] };
+  if (!v.mutual) return { op: "surface_trim", params };
+  if (v.toolKeep?.name !== v.tool.name) return null;
+  params.tool_point = [v.toolKeep.x, v.toolKeep.y, v.toolKeep.z];
+  return { op: "surface_trim", params };
+}
+
 /** Paramètres de surface_extend, ou null (bord de courbe, de solide). */
 export function extendParams(target, distance) {
   if (!target || !(distance > 0)) return null;
@@ -1555,16 +1566,18 @@ export const FEATURES = [
                  hint: "Cliquez la surface qui coupe",
                  value: ctx.selection(["surface"]) }] },
       { label: "Partie à garder",
-        rows: [{ type: "selection", key: "keep", accepts: ["surfpoint"],
-                 hint: "Puis cliquez, sur la surface à ajuster, la partie "
-                   + "à garder" }] },
+        rows: [
+          { type: "selection", key: "keep", accepts: ["surfpoint"],
+            hint: "Puis cliquez, sur la surface à ajuster, la partie "
+              + "à garder" },
+          { type: "check", key: "mutual", label: "Ajustement mutuel",
+            value: false },
+          { type: "selection", key: "toolKeep", accepts: ["surfpoint"],
+            hint: "Et la partie de l'outil à garder",
+            showIf: (v) => !!v.mutual },
+        ] },
     ],
-    build: (v) => {
-      if (!v.tool || !v.keep || v.keep.name === v.tool.name) return null;
-      return { op: "surface_trim", params: {
-        surface: v.keep.name, tool: v.tool.name,
-        point: [v.keep.x, v.keep.y, v.keep.z] } };
-    },
+    build: (v) => trimParams(v),
     invalid: "Ajuster : l'outil, puis la partie à garder d'une autre surface",
   }),
   {

@@ -48,6 +48,19 @@ export const TREE_ICONS = {
   "App::Link": "insert",
 };
 
+// Icônes des surfaces dans l'arbre, par type d'objet.
+const SURFACE_ICONS = {
+  "Part::Extrusion": "surface_extrude",
+  "Part::Revolution": "surface_revolve",
+  "Part::Loft": "surface_loft",
+  "Part::Sweep": "surface_sweep",
+  "Part::Face": "surface_planar",
+  "Part::Offset": "surface_offset",
+  "Surface::Filling": "surface_fill",
+  "Surface::Extend": "surface_extend",
+  "Part::FeaturePython": "surface_trim",
+};
+
 export const PROP_LABELS = {
   Length: ["Profondeur", "mm"],
   LengthFwd: ["Longueur", "mm"],
@@ -537,6 +550,12 @@ export function installTree(ctx) {
     treeEl.appendChild(bodyItem);
   }
 
+  function surfaceIcon(surface) {
+    if (isGraphFeature(surface)) return "graph_feature";
+    if (surface.curve) return "spline3d";
+    return SURFACE_ICONS[surface.type] ?? "surface_body";
+  }
+
   function appendSurfaceRow(surface, { inFolder = true, rolledBack = false } = {}) {
     const item = document.createElement("li");
     item.className = "surface" + (inFolder ? " in-folder" : "")
@@ -560,9 +579,13 @@ export function installTree(ctx) {
       });
     }
     item.appendChild(arrow);
-    item.appendChild(treeIcon(
-      isGraphFeature(surface) ? "graph_feature" : "surface_body"));
+    item.appendChild(treeIcon(surfaceIcon(surface)));
     item.appendChild(document.createTextNode(surface.label));
+    if (surface.consumed) {
+      // Remplacée par une autre (ajustée, prolongée, épaissie, cousue) :
+      // gardée dans l'historique, plus affichée.
+      item.classList.add("consumed");
+    }
     item.title = t("Surface / courbe — clic : sélectionner pour une " +
       "commande · double-clic : modifier · clic droit : modifier, " +
       "renommer, supprimer");
@@ -1104,6 +1127,22 @@ export function installTree(ctx) {
       enterGraphFeature(surface);
       return;
     }
+    if (surface.curve) {
+      ctx.openCurve3d(surface);
+      return;
+    }
+    if (surface.surface?.kind === "extend") {
+      editExtend(surface);
+      return;
+    }
+    if (surface.surface?.kind === "trim") {
+      editTrim(surface);
+      return;
+    }
+    if (surface.surface?.kind === "offset") {
+      editOffset(surface);
+      return;
+    }
     if (surface.static || surface.type === "Part::Feature") {
       say("Surface figée — non éditable");
       return;
@@ -1112,6 +1151,71 @@ export function installTree(ctx) {
       name: surface.name,
       label: surface.label,
       type: surface.type,
+    });
+  }
+
+  // Prolongement : la distance (et le bord d'origine) se rééditent.
+  function editExtend(surface) {
+    const spec = surface.surface;
+    panel.open({
+      icon: "surface_extend",
+      title: surface.label,
+      groups: [{
+        label: t("Paramètres"),
+        rows: [
+          { type: "number", key: "distance", label: t("Distance"),
+            value: spec.distance, unit: "mm", min: 0.01 },
+          { type: "check", key: "all", label: t("Tous les bords"),
+            value: spec.edge == null },
+        ],
+      }],
+      onApply: (v) => {
+        const distance = num(v.distance);
+        if (!(distance > 0)) {
+          say(t("Prolonger : une distance positive"), true);
+          return;
+        }
+        const params = { surface: surface.name, distance };
+        if (!v.all && spec.edge != null) params.edge = spec.edge;
+        refresh(call("edit_surface_extend", params));
+      },
+    });
+  }
+
+  // Surface décalée : sa distance (négative = de l'autre côté).
+  function editOffset(surface) {
+    panel.open({
+      icon: "surface_offset",
+      title: surface.label,
+      groups: [{
+        label: t("Paramètres"),
+        rows: [{ type: "number", key: "distance", label: t("Distance"),
+                 value: surface.surface.distance, unit: "mm" }],
+      }],
+      onApply: (v) => {
+        const distance = num(v.distance);
+        if (distance === null) return;
+        refresh(call("set_params", {
+          feature: surface.name, values: { Value: distance } }));
+      },
+    });
+  }
+
+  // Ajustement : garder l'autre partie (la partie écartée n'est plus
+  // visible, on ne peut pas la cliquer).
+  function editTrim(surface) {
+    panel.open({
+      icon: "surface_trim",
+      title: surface.label,
+      groups: [{
+        label: t("Partie à garder"),
+        rows: [{ type: "check", key: "other",
+                 label: t("Garder l'autre partie"), value: true }],
+      }],
+      onApply: (v) => {
+        if (!v.other) return;
+        refresh(call("edit_surface_trim", { surface: surface.name }));
+      },
     });
   }
 

@@ -245,13 +245,41 @@ function revolved({ button, op, icon, title }) {
   });
 }
 
+/** Rangée « esquisse » préremplie : la sélection, sinon (``latest``) la
+ *  dernière esquisse libre. */
+function sketchRow(ctx, key, hint, { latest = true } = {}) {
+  const sketch = latest ? resolveProfileSketch(ctx) : ctx.selectedSketch;
+  return { type: "selection", key, accepts: ["sketch"], hint,
+           value: sketch ? { kind: "sketch", name: sketch.name,
+                             label: sketch.label } : null };
+}
+
+/** Un choix de la zone « Contour » → paramètre de surface_fill. */
+export function boundaryParam(item) {
+  if (item.kind !== "boundary") return { name: item.name };
+  return item.body ? { body: true, edge: item.edge }
+    : { name: item.name, edge: item.edge };
+}
+
+/** Paramètres de surface_extend, ou null (bord de courbe, de solide). */
+export function extendParams(target, distance) {
+  if (!target || !(distance > 0)) return null;
+  if (target.kind === "boundary") {
+    if (target.curve || target.body) return null;
+    return { surface: target.name, distance, edge: target.edge };
+  }
+  return { surface: target.name, distance };
+}
+
 function surface({ button, icon, title, groups, note, build, invalid }) {
   return {
     button, icon, title,
     groups: typeof groups === "function" ? groups : () => groups,
     note,
     build,
-    invalid: invalid ?? "Valeurs invalides",
+    // Une consigne, pas une erreur : tant qu'une case de sélection est
+    // vide, elle dit déjà quoi cliquer et le bandeau s'efface.
+    invalid: () => ({ text: invalid ?? "Valeurs invalides", tone: "guide" }),
     // Les ops surfaciques ne sont pas dans _PREVIEWABLE : pas d'aperçu
     // aujourd'hui, donc pas d'onChange (zéro changement de comportement).
     preview: false,
@@ -792,8 +820,9 @@ export const FEATURES = [
         rows: [{ type: "selection", key: "profile", accepts: ["sketch"],
                  hint: "Cliquez l'esquisse du profil dans l'arbre" }] },
       { label: "Trajectoire",
-        rows: [{ type: "selection", key: "spine", accepts: ["sketch"],
-                 hint: "Puis l'esquisse de la trajectoire" }] },
+        rows: [{ type: "selection", key: "spine",
+                 accepts: ["sketch", "surface"],
+                 hint: "Puis la trajectoire : une esquisse ou une spline 3D" }] },
       { label: "Options",
         rows: [{ type: "check", key: "subtractive",
                  label: "Enlever de la matière", value: false }] },
@@ -1109,6 +1138,126 @@ export const FEATURES = [
                params: { surface: v.surface.name, thickness } };
     },
     invalid: "Épaissir : une surface et une épaisseur non nulle",
+  }),
+  surface({
+    button: "btn-surf-planar",
+    icon: "surface_planar",
+    title: "Surface plane",
+    groups: (ctx) => [{ label: "Contour", rows: [sketchRow(ctx, "profile",
+      "Cliquez l'esquisse du contour fermé")] }],
+    note: "Le contour doit être fermé et plan.",
+    build: (v) => (v.profile
+      ? { op: "surface_planar", params: { sketch: v.profile.name } } : null),
+    invalid: "Surface plane : une esquisse au contour fermé",
+  }),
+  surface({
+    button: "btn-surf-sweep",
+    icon: "surface_sweep",
+    title: "Surface balayée",
+    groups: (ctx) => [
+      // Pas de « dernière esquisse » d'office : elle pourrait être la
+      // trajectoire, et le clic suivant tomberait dans la mauvaise case.
+      { label: "Profil", rows: [sketchRow(ctx, "profile",
+        "Cliquez l'esquisse du profil — ouvert ou fermé",
+        { latest: false })] },
+      { label: "Trajectoire",
+        rows: [{ type: "selection", key: "spine",
+                 accepts: ["sketch", "surface"],
+                 hint: "Puis la trajectoire : une esquisse ou une spline 3D" }] },
+    ],
+    build: (v) => {
+      if (!v.profile || !v.spine || v.profile.name === v.spine.name) return null;
+      return { op: "surface_sweep",
+               params: { profile: v.profile.name, spine: v.spine.name } };
+    },
+    invalid: "Surface balayée : un profil puis une trajectoire (différents)",
+  }),
+  surface({
+    button: "btn-surf-offset",
+    icon: "surface_offset",
+    title: "Surface décalée",
+    groups: (ctx) => [
+      { label: "Surface",
+        rows: [{ type: "selection", key: "surface", accepts: ["surface"],
+                 hint: "Cliquez la surface à décaler",
+                 value: ctx.selection(["surface"]) }] },
+      { label: "Paramètres",
+        rows: [
+          { type: "number", key: "distance", label: "Distance", value: 5,
+            unit: "mm" },
+          { type: "check", key: "flip", label: "Inverser le côté",
+            value: false },
+        ] },
+    ],
+    note: "Distance 0 : une copie de la surface.",
+    build: (v) => {
+      const distance = num(v.distance);
+      if (!v.surface || distance === null) return null;
+      return { op: "surface_offset", params: {
+        surface: v.surface.name, distance: v.flip ? -distance : distance } };
+    },
+    invalid: "Surface décalée : une surface et une distance",
+  }),
+  surface({
+    button: "btn-surf-fill",
+    icon: "surface_fill",
+    title: "Surface de remplissage",
+    groups: [{ label: "Contour",
+      rows: [{ type: "selection", key: "boundary",
+               accepts: ["boundary", "sketch"], multiple: true,
+               hint: "Cliquez les arêtes d'un contour fermé : bords de "
+                 + "surface, courbes 3D, arêtes du solide ou esquisse" }] }],
+    note: "La surface se tend sur le contour, sans tangence imposée.",
+    build: (v) => {
+      const items = v.boundary?.items ?? [];
+      if (!items.length) return null;
+      return { op: "surface_fill",
+               params: { boundary: items.map(boundaryParam) } };
+    },
+    invalid: "Remplissage : sélectionnez un contour fermé",
+  }),
+  surface({
+    button: "btn-surf-extend",
+    icon: "surface_extend",
+    title: "Prolonger la surface",
+    groups: (ctx) => [
+      { label: "Bord à prolonger",
+        rows: [{ type: "selection", key: "target",
+                 accepts: ["boundary", "surface"],
+                 hint: "Cliquez un bord de la surface — ou la surface "
+                   + "entière pour tous ses bords",
+                 value: ctx.selection(["surface"]) }] },
+      { label: "Paramètres",
+        rows: [{ type: "number", key: "distance", label: "Distance",
+                 value: 10, unit: "mm", min: 0.01 }] },
+    ],
+    build: (v) => {
+      const params = extendParams(v.target, num(v.distance));
+      return params ? { op: "surface_extend", params } : null;
+    },
+    invalid: "Prolonger : un bord de surface et une distance positive",
+  }),
+  surface({
+    button: "btn-surf-trim",
+    icon: "surface_trim",
+    title: "Ajuster la surface",
+    groups: (ctx) => [
+      { label: "Outil de coupe",
+        rows: [{ type: "selection", key: "tool", accepts: ["surface"],
+                 hint: "Cliquez la surface qui coupe",
+                 value: ctx.selection(["surface"]) }] },
+      { label: "Partie à garder",
+        rows: [{ type: "selection", key: "keep", accepts: ["surfpoint"],
+                 hint: "Puis cliquez, sur la surface à ajuster, la partie "
+                   + "à garder" }] },
+    ],
+    build: (v) => {
+      if (!v.tool || !v.keep || v.keep.name === v.tool.name) return null;
+      return { op: "surface_trim", params: {
+        surface: v.keep.name, tool: v.tool.name,
+        point: [v.keep.x, v.keep.y, v.keep.z] } };
+    },
+    invalid: "Ajuster : l'outil, puis la partie à garder d'une autre surface",
   }),
   {
     button: "btn-graph-feature",

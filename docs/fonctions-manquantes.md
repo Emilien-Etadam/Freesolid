@@ -39,10 +39,12 @@ simulation FEM. Verdicts :
 
 | Fonction SW | Verdict | Comment / pourquoi |
 |---|---|---|
-| Remplir (surface de remplissage) | ✅ | `Surface::Filling` marche headless |
+| Remplir (surface de remplissage) | ✅ **fait** | `Surface::Filling` sur des bords cliqués (surfaces, courbes, arêtes du solide, esquisses) ; sans tangence imposée — la continuité G1 sur un contour plan donne une forme invalide (sonde 2026-10-10) |
 | Surface frontière | 🟧 | `Surface::GeomFillSurface` / sections — moins riche que SW |
+| Surface plane, balayée, décalée | ✅ **fait** | `Part::Face`, `Part::Sweep` (profil ouvert, trajectoire esquisse ou spline 3D), `Part::Offset` sans remplissage — paramétriques |
+| Esquisse 3D | 🟧 **spline 3D faite** | points cliqués sur la pièce (sommets et centres aimantés) ou sur un plan de clic passant par le dernier point (Tab), coordonnées corrigeables, réédition, aperçu exact du moteur ; pas de lignes ni de relations 3D |
 | Supprimer la face (defeaturing) | 🟧 | `Part.defeaturing` existe selon compilation OCCT |
-| Prolonger / ajuster la surface | 🟧 | API OCCT présente, gestes à construire |
+| Prolonger / ajuster la surface | ✅ **fait** | prolonger : `Surface::Extend` au-delà du bord cliqué (distance en mm → fractions de l'isocourbe) ; ajuster : découpe `BOPTools` + pièce gardée `CompoundTools`, choisie au clic, « garder l'autre partie » en réédition. La surface remplacée sort de la vue, reste dans l'arbre |
 
 ## Assemblages
 

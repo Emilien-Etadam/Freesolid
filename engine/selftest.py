@@ -2503,6 +2503,130 @@ class SelftestMixin:
                 len(matrix) == 16 and abs(matrix[11] - 50) < 1e-6
                 and len(self._require_doc().Objects) == before)
 
+            mark("p46: spline 3D rééditable, balayage qui suit")
+            import math
+            import os
+            import tempfile
+            self.new_part("Pièce surfaces avancées")
+            tree = self.add_curve3d([[0, 0, 0], [0, 20, 20], [0, 40, 20]])
+            curve = tree["surfaces"][-1]
+            spec = curve.get("curve") or {}
+            report["p46_spline_points"] = (
+                spec.get("spline") is True and spec.get("closed") is False
+                and spec.get("points") == [[0, 0, 0], [0, 20, 20], [0, 40, 20]])
+            state = self.sketch_start(plane="XZ")
+            prof = state["sketch"]
+            self.sketch_add_line(prof, -5, 0, 5, 0)
+            self.sketch_finish(prof)
+            tree = self.surface_sweep(prof, curve["name"])
+            swept = self._require_doc().getObject(tree["surfaces"][-1]["name"])
+            area_before = swept.Shape.Area
+            self.edit_curve3d(curve["name"],
+                              [[0, 0, 0], [0, 20, 20], [0, 60, 20]])
+            report["p46_balayage_suit_spline"] = (
+                swept.TypeId == "Part::Sweep" and not swept.Shape.Solids
+                and swept.Shape.Area > area_before + 50)
+            closed = self.add_curve3d(
+                [[0, 0, 0], [30, 0, 5], [30, 30, 0], [0, 30, 5]],
+                spline=False, closed=True)["surfaces"][-1]
+            report["p46_polyligne_fermee"] = (
+                self._require_doc().getObject(closed["name"]).Shape.isClosed())
+            mesh = self.tessellate()
+            curves = mesh.get("curves") or []
+            report["p46_courbes_cliquables"] = (
+                {c["name"] for c in curves} >= {curve["name"], closed["name"]}
+                and all(c["edges"]["groups"] for c in curves))
+
+            mark("p46: remplissage, plane, décalée, prolongée, ajustée")
+            tree = self.surface_fill([{"name": closed["name"]}])
+            filled = self._require_doc().getObject(tree["surfaces"][-1]["name"])
+            report["p46_remplissage_courbe"] = (
+                filled.TypeId == "Surface::Filling"
+                and filled.Shape.Area > 800)
+            state = self.sketch_start(plane="XY")
+            square = state["sketch"]
+            self.sketch_add_rectangle(square, 0, 0, 40, 40)
+            self.sketch_finish(square)
+            tree = self.surface_planar(sketch=square)
+            plane = tree["surfaces"][-1]
+            report["p46_surface_plane"] = abs(
+                self._require_doc().getObject(plane["name"]).Shape.Area
+                - 1600) < 1e-6
+            tree = self.surface_offset(plane["name"], 10)
+            offset = self._require_doc().getObject(tree["surfaces"][-1]["name"])
+            report["p46_surface_decalee"] = (
+                not offset.Shape.Solids
+                and abs(abs(offset.Shape.BoundBox.ZMin) - 10) < 1e-6)
+            # Prolonger le carré de 10 mm au-delà d'un seul bord.
+            edges = next(s for s in self.tessellate().get("surfaces") or []
+                         if s["name"] == plane["name"])["edges"]["groups"]
+            edge = edges[0]["edgeId"]
+            tree = self.surface_extend(plane["name"], 10, edge=edge)
+            extended = tree["surfaces"][-1]
+            ext_obj = self._require_doc().getObject(extended["name"])
+            spec = extended.get("surface") or {}
+            report["p46_prolonger_un_bord"] = (
+                abs(ext_obj.Shape.Area - 2000) < 1
+                and spec.get("kind") == "extend"
+                and spec.get("distance") == 10 and spec.get("edge") == edge)
+            self.edit_surface_extend(extended["name"], 5)
+            report["p46_prolonger_tous_bords"] = abs(
+                ext_obj.Shape.Area - 2500) < 1
+            # Ajuster le carré par une surface verticale en x = 10.
+            state = self.sketch_start(plane="XY")
+            wall = state["sketch"]
+            self.sketch_add_line(wall, 10, -10, 10, 50)
+            self.sketch_finish(wall)
+            App = self._app()
+            self._require_doc().getObject(wall).AttachmentOffset = (
+                App.Placement(App.Vector(0, 0, -10), App.Rotation()))
+            self._recompute()
+            tree = self.surface_extrude(30, sketch=wall)
+            cutter = tree["surfaces"][-1]["name"]
+            names_before = {s["name"] for s in tree["surfaces"]}
+            tree = self.surface_trim(plane["name"], cutter, point=[30, 20, 0])
+            trimmed = tree["surfaces"][-1]
+            trim_obj = self._require_doc().getObject(trimmed["name"])
+            hidden = [s["name"] for s in tree["surfaces"]
+                      if s["name"] not in names_before
+                      and s["name"] != trimmed["name"]]
+            shown = {s["name"] for s in self.tessellate().get("surfaces") or []}
+            source_entry = next(s for s in tree["surfaces"]
+                                if s["name"] == plane["name"])
+            report["p46_ajuster_garde_le_cote"] = (
+                abs(trim_obj.Shape.Area - 1200) < 1e-3
+                and (trimmed.get("surface") or {}).get("kind") == "trim"
+                and not hidden
+                and plane["name"] not in shown and cutter in shown
+                and source_entry.get("consumed") is True)
+            self.edit_surface_trim(trimmed["name"], [5, 20, 0])
+            near_ok = abs(trim_obj.Shape.Area - 400) < 1e-3
+            self.edit_surface_trim(trimmed["name"])
+            report["p46_ajuster_change_de_cote"] = near_ok and abs(
+                trim_obj.Shape.Area - 1200) < 1e-3
+            path = os.path.join(tempfile.gettempdir(),
+                                "freesolid-selftest-surfaces.FCStd")
+            self.save_part(path)
+            reopened = self.open_part(path)
+            kinds = [(s.get("surface") or {}).get("kind")
+                     for s in reopened["surfaces"]]
+            report["p46_reouverture"] = (
+                "trim" in kinds and "extend" in kinds
+                and any(s.get("curve") for s in reopened["surfaces"])
+                and not any("Invalid" in (o.State or ())
+                            for o in self._require_doc().Objects))
+            # Remplir le dessus d'un bloc par ses arêtes.
+            self.new_part("Pièce remplissage")
+            self.add_rect_sketch(20, 20)
+            self.add_pad(5)
+            body = self._require_body()
+            top = [i for i, e in enumerate(body.Shape.Edges)
+                   if abs(e.CenterOfMass.z - 5) < 1e-6]
+            tree = self.surface_fill([{"body": True, "edge": i} for i in top])
+            report["p46_remplissage_aretes_solide"] = abs(
+                self._require_doc().getObject(
+                    tree["surfaces"][-1]["name"]).Shape.Area - 400) < 1e-3
+
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")
             self.add_rect_sketch(60, 40)

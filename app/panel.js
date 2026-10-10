@@ -15,7 +15,8 @@
 //     noApply?: boolean,   // panneau info : pas de bouton OK
 //     autoFocus?: boolean, // false : ne pas voler le focus clavier
 //     actions?: [{ label, title?, className?, onClick(values) }],
-//     onApply(values), onCancel?(), onChange?(values)
+//     onApply(values), onCancel?(), onChange?(values),
+//     onClose?() — à chaque fermeture (OK, annuler, panneau remplacé)
 //   }
 // Rows: { type: "number", key, label, value, unit?, min?, step?, showIf? }
 //       { type: "select", key, options: [[value, label]…], value, label? }
@@ -24,6 +25,8 @@
 //       { type: "text", key, label, value?, placeholder?, unit? }
 //       { type: "list", items: [{ label, onDelete?, onEdit?, editable? }], empty? }
 //       { type: "note", text, readonly?, onClick? }
+//       { type: "points", key, value: [[x, y, z]…] } — liste éditable,
+//         alimentée aussi par les clics « point3d » de la vue
 //
 // invalidateSelections() : vide les rows `selection` (ids périmés au rebuild).
 
@@ -74,7 +77,27 @@ export function panelNotice(notice, { selectionGuides = false } = {}) {
   return { text, tone };
 }
 
-export function createPropertyPanel({ say, onClose, onToggle }) {
+/** Deux choix d'une zone multiple désignent-ils la même chose ? Une
+ *  face par son numéro, un bord par objet + arête, le reste par nom. */
+export function samePick(a, b) {
+  if (b.kind === "point") return false;
+  if (b.face != null) return a.face === b.face;
+  if (b.kind === "boundary") {
+    return a.kind === "boundary" && a.name === b.name && a.edge === b.edge;
+  }
+  return a.name === b.name;
+}
+
+/** Texte d'une zone remplie de bords (arêtes de surface, de courbe, du
+ *  solide) ou d'esquisses entières. */
+export function boundaryText(items, tr = (s, v) => s.replace(/\{(\w+)\}/g,
+  (_, k) => v?.[k] ?? "")) {
+  if (items.length > 3) return tr("{n} bords", { n: items.length });
+  return items.map((i) => (i.kind !== "boundary" || i.curve ? i.label
+    : `${i.label} · ${tr("Arête {n}", { n: i.edge })}`)).join(", ");
+}
+
+export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
   const aside = document.querySelector("aside");
   const panelEl = document.getElementById("panel");
 
@@ -156,6 +179,8 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     document.removeEventListener("keydown", onKey, true);
     panelEl.innerHTML = "";
     onClose?.(); // efface l'aperçu avant d'appliquer ou d'abandonner
+    onPicks?.([]);
+    spec.onClose?.(); // l'outil range ses écouteurs, quoi qu'il arrive
     onToggle?.();
     if (apply) spec.onApply?.({ ...values });
     else if (!silent) spec.onCancel?.();
@@ -202,14 +227,20 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
         }
       }
     }
+    const pointsRow = kind === "point3d" && findPointsRow();
+    if (pointsRow) {
+      const list = [...(active.values[pointsRow.key] ?? [])];
+      list.push([value.x, value.y, value.z]);
+      active.values[pointsRow.key] = list;
+      render();
+      changed();
+      return true;
+    }
     if (!rows.length) return false;
     const multiRow = rows.find((r) => r.multiple);
     if (multiRow) {
       const current = active.values[multiRow.key] ?? { kind, items: [] };
-      // Une face n'a pas de nom : son numéro l'identifie.
-      const same = (i) => (value.kind === "point" ? false
-        : value.face != null ? i.face === value.face : i.name === value.name);
-      const at = current.items.findIndex(same);
+      const at = current.items.findIndex((i) => samePick(i, value));
       if (at >= 0) current.items.splice(at, 1);
       else current.items.push(value);
       active.values[multiRow.key] = { ...current };
@@ -223,7 +254,43 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     }
     render();
     changed();
+    reportPicks();
     return true;
+  }
+
+  function findPointsRow() {
+    for (const group of active.spec.groups) {
+      for (const row of group.rows ?? []) {
+        if (row.type === "points") return row;
+      }
+    }
+    return null;
+  }
+
+  function selectionRows(kind) {
+    const rows = [];
+    for (const group of active?.spec.groups ?? []) {
+      for (const row of group.rows ?? []) {
+        if (row.type === "selection"
+            && (row.accepts ?? ["face"]).includes(kind)) rows.push(row);
+      }
+    }
+    return rows;
+  }
+
+  /** Tous les choix des zones de sélection — la vue les surligne. */
+  function reportPicks() {
+    if (!onPicks) return;
+    const items = [];
+    for (const group of active?.spec.groups ?? []) {
+      for (const row of group.rows ?? []) {
+        if (row.type !== "selection") continue;
+        const value = active.values[row.key];
+        if (value?.items) items.push(...value.items);
+        else if (value) items.push(value);
+      }
+    }
+    onPicks(items);
   }
 
   // Les ids de faces/arêtes meurent à chaque rebuild. Le viewport vide
@@ -361,6 +428,8 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
       return wrap;
     }
 
+    if (row.type === "points") return renderPoints(row);
+
     if (row.type === "selection") {
       const box = el("div", "pselect-box");
       const value = values[row.key];
@@ -375,6 +444,12 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
         box.textContent = value.items.length <= 4
           ? value.items.map((i) => t("Face {n}", { n: i.face })).join(", ")
           : t("{n} faces", { n: value.items.length });
+      } else if (value.items && value.items.some((i) => i.kind === "boundary")) {
+        box.textContent = boundaryText(value.items, t);
+      } else if (value.kind === "boundary") {
+        box.textContent = boundaryText([value], t);
+      } else if (value.kind === "surfpoint") {
+        box.textContent = t("{s} — partie cliquée", { s: value.label });
       } else if (value.items && value.items.every((i) => i.kind === "feature")) {
         // Fonctions à répéter : une liste, pas un ordre de profils.
         const labels = value.items.map((i) => i.label).join(", ");
@@ -459,9 +534,63 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     return rowEl;
   }
 
+  // Liste de points x, y, z : chaque coordonnée se corrige au clavier,
+  // ✕ retire le point. Les clics de la vue en ajoutent (« point3d »).
+  function renderPoints(row) {
+    const wrap = el("div", "plist ppoints");
+    const list = active.values[row.key] ?? [];
+    if (!list.length) {
+      wrap.append(el("div", "pnote",
+        row.empty ?? "Cliquez des points dans la zone graphique"));
+    }
+    list.forEach((point, index) => {
+      const line = el("div", "plist-item ppoint");
+      line.append(el("span", "ppoint-name", `P${index + 1}`));
+      point.forEach((coord, axis) => {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.inputMode = "decimal";
+        input.className = "ppoint-coord";
+        input.value = String(Math.round(coord * 1000) / 1000);
+        input.title = ["X", "Y", "Z"][axis];
+        input.addEventListener("change", () => {
+          const parsed = Number(input.value.replace(",", "."));
+          if (!Number.isFinite(parsed)) {
+            input.value = String(point[axis]);
+            return;
+          }
+          const next = (active.values[row.key] ?? []).map((p) => [...p]);
+          next[index][axis] = parsed;
+          active.values[row.key] = next;
+          changed();
+        });
+        line.append(input);
+      });
+      const remove = el("button", "pdel", "✕");
+      remove.title = t("Retirer le point");
+      remove.addEventListener("click", () => {
+        const next = [...(active.values[row.key] ?? [])];
+        next.splice(index, 1);
+        active.values[row.key] = next;
+        render();
+        changed();
+      });
+      line.append(remove);
+      wrap.append(line);
+    });
+    return wrap;
+  }
+
   return {
     open,
     close: (opts) => close(false, opts),
+    /** Une zone de sélection accepte ce genre de choix. */
+    accepts: (kind) => active !== null
+      && (selectionRows(kind).length > 0
+          || (kind === "point3d" && findPointsRow() !== null)),
+    /** Une zone de sélection VIDE attend ce genre de choix. */
+    needs: (kind) => selectionRows(kind).some(
+      (row) => !selectionFilled(active.values[row.key])),
     /** OK, comme le bouton ✓ — sans effet sur un panneau d'information. */
     apply: () => { if (active && !active.spec.noApply) close(true); },
     notifyPick,

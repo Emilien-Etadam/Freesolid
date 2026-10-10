@@ -63,6 +63,7 @@ import {
   latestGraphOrRepeat,
 } from "./graph.js";
 import { edgeSnapPoints } from "./pointsnap.js";
+import { installCurve3d } from "./curve3d.js";
 
 const sceneTheme = readScene();
 
@@ -182,6 +183,7 @@ const panel = createPropertyPanel({
     clearFilletRadiusBubble();
     sketchInfoOpen = false;
   },
+  onPicks: (items) => setSelectedBoundaries(items),
   onToggle: () => {
     updateConfirmCorner();
     updateTreeFlyout();
@@ -380,7 +382,12 @@ surfaceSelectedMaterial.side = THREE.DoubleSide;
 const curvesMaterial = new THREE.LineBasicMaterial({ color: sceneTheme.curve });
 const sketchesMaterial = new THREE.LineBasicMaterial({ color: sceneTheme.sketch });
 let surfaceMeshes = []; // un mesh par surface, sélectionnable
-let curvesLines = null;
+// Bords : arêtes des surfaces et courbes 3D, une LineSegments par objet,
+// un groupe par arête — remplissage, prolongement, trajectoire.
+let boundaryLines = [];
+let boundarySnaps = []; // sommets et centres des bords (spline 3D)
+let hoveredBoundary = null; // { name, label, edge, curve } | null
+let selectedBoundaries = new Set(); // clés « nom:arête »
 let sketchLineMeshes = []; // esquisses libres, un LineSegments chacune
 let hoveredSketch = null;  // { name, label } | null
 let hoveredSurface = null; // { name, label } | null
@@ -470,11 +477,14 @@ function showMesh(mesh) {
   }
   detachSurfaceMeshes();
   hoveredSurface = null;
-  if (curvesLines) {
-    scene.remove(curvesLines);
-    curvesLines.geometry.dispose();
-    curvesLines = null;
+  for (const lines of boundaryLines) {
+    lines.removeFromParent();
+    lines.geometry.dispose();
   }
+  boundaryLines = [];
+  boundarySnaps = [];
+  hoveredBoundary = null;
+  selectedBoundaries = new Set();
   for (const lines of sketchLineMeshes) detachMesh(lines);
   sketchLineMeshes = [];
   hoveredSketch = null;
@@ -507,14 +517,10 @@ function showMesh(mesh) {
     surfMesh.userData.baseMaterial = material;
     volumesGroup.add(surfMesh);
     surfaceMeshes.push(surfMesh);
+    addBoundaryLines(surface, false);
   }
-  if (mesh.curves?.indices.length) {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position",
-      new THREE.Float32BufferAttribute(mesh.curves.positions, 3));
-    geometry.setIndex(mesh.curves.indices);
-    curvesLines = new THREE.LineSegments(geometry, curvesMaterial);
-    scene.add(curvesLines);
+  for (const curve of Array.isArray(mesh.curves) ? mesh.curves : []) {
+    addBoundaryLines(curve, true);
   }
   for (const sketch of mesh.sketches ?? []) {
     if (!sketch.indices?.length) continue;
@@ -590,6 +596,57 @@ function showEdgeLines(data) {
     [edgeBaseMaterial, edgeHoverMaterial, edgeSelectedMaterial]);
   volumesGroup.add(partEdges);
   applyVolumeVisibility();
+}
+
+function addBoundaryLines(item, curve) {
+  const edges = item.edges;
+  if (!edges?.indices?.length) return;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position",
+    new THREE.Float32BufferAttribute(edges.positions, 3));
+  geometry.setIndex(edges.indices);
+  for (const g of edges.groups) geometry.addGroup(g.start, g.count, 0);
+  const lines = new THREE.LineSegments(geometry, [
+    curve ? curvesMaterial : edgeBaseMaterial,
+    edgeHoverMaterial, edgeSelectedMaterial]);
+  lines.userData.boundary = {
+    name: item.name, label: item.label, curve, groups: edges.groups };
+  // Une courbe reste visible même volumes masqués, comme une esquisse.
+  (curve ? scene : volumesGroup).add(lines);
+  boundaryLines.push(lines);
+  boundarySnaps.push(...edgeSnapPoints(edges));
+}
+
+function boundaryKey(name, edge) { return `${name}:${edge}`; }
+
+let boundaryOwnsEdges = false; // selectedEdges vient des bords du panneau
+
+function repaintBoundaries() {
+  for (const lines of boundaryLines) {
+    const { name, groups } = lines.userData.boundary;
+    lines.geometry.groups.forEach((g, i) => {
+      const edge = groups[i].edgeId;
+      g.materialIndex = selectedBoundaries.has(boundaryKey(name, edge)) ? 2
+        : (hoveredBoundary?.name === name && hoveredBoundary.edge === edge
+          ? 1 : 0);
+    });
+  }
+}
+
+/** Bords retenus par le panneau : surlignés dans la vue. */
+function setSelectedBoundaries(items) {
+  const bounds = (items ?? []).filter((i) => i.kind === "boundary");
+  selectedBoundaries = new Set(bounds.filter((i) => !i.body)
+    .map((i) => boundaryKey(i.name, i.edge)));
+  repaintBoundaries();
+  // Arêtes du solide prises comme bords : surlignées comme une sélection,
+  // effacées quand le panneau se ferme.
+  const bodyEdges = bounds.filter((i) => i.body).map((i) => i.edge);
+  if (bodyEdges.length || boundaryOwnsEdges) {
+    selectedEdges = new Set(bodyEdges);
+    boundaryOwnsEdges = bodyEdges.length > 0;
+    repaintEdges();
+  }
 }
 
 function repaintEdges() {
@@ -942,6 +999,10 @@ expose("lastFaceMatch", () => lastFaceMatch);
 expose("hoverPlane", () => hoverPlane, (v) => { hoverPlane = v; });
 expose("sketchLineMeshes", () => sketchLineMeshes);
 expose("surfaceMeshes", () => surfaceMeshes);
+expose("boundaryLines", () => boundaryLines);
+expose("boundarySnaps", () => boundarySnaps);
+expose("hoveredBoundary", () => hoveredBoundary,
+  (v) => { hoveredBoundary = v; });
 expose("planeMeshes", () => planeMeshes, (v) => { planeMeshes = v; });
 expose("othersMeshes", () => othersMeshes);
 Object.assign(ctx, {
@@ -949,6 +1010,7 @@ Object.assign(ctx, {
   say, call, panel, pickEl, measureEl, coordsEl, refresh, selectComponent,
   boxOverlay, featureDimsGroup, createDimSprite,
   surfaceHoverMaterial, surfaceSelectedMaterial,
+  repaintBoundaries, setSelectedBoundaries,
   focusPanelField, pickFilletRadiusBubble,
   updatePlaneVisibility, repaintEdges, pickPlane,
 });
@@ -1464,21 +1526,12 @@ deleteFeatureWithConfirmImpl = graphApi.deleteFeatureWithConfirm;
 graphHandleEscapeImpl = graphApi.graphHandleEscape;
 graphHandleDeleteImpl = graphApi.graphHandleDelete;
 
+// Spline 3D : clics dans la vue, points corrigeables dans le panneau.
+const curveTool = installCurve3d(ctx);
+ctx.curveTool = curveTool;
+ctx.openCurve3d = (curve) => curveTool.open(curve);
 document.getElementById("btn-curve3d").addEventListener("click", () =>
-  featureCommand(() => {
-    const raw = prompt(
-      "Courbe 3D — points x,y,z séparés par « ; »\n" +
-      "ex. : 0,0,0 ; 0,0,30 ; 20,0,50", "0,0,0 ; 0,0,30 ; 20,0,50");
-    if (!raw) return;
-    const points = raw.split(";").map((p) =>
-      p.split(",").map((v) => num(v.trim())));
-    if (points.length < 2
-        || points.some((p) => p.length !== 3 || p.some((n) => n === null))) {
-      say("Courbe 3D : au moins deux points x,y,z valides", true);
-      return;
-    }
-    refresh(call("add_curve3d", { points, spline: points.length >= 3 }));
-  }));
+  featureCommand(() => curveTool.open()));
 
 document.getElementById("btn-drawing").addEventListener("click", () => {
   panel.open({
@@ -1752,6 +1805,11 @@ function currentSelection(accepts) {
   }
   if (accepts.includes("face") && selectedFaceId !== null) {
     return { kind: "face", face: selectedFaceId };
+  }
+  // Surface cliquée avant la commande (décaler, prolonger, ajuster).
+  if (accepts.includes("surface") && selectedSurface) {
+    return { kind: "surface", name: selectedSurface.name,
+             label: selectedSurface.label };
   }
   // Fonction cliquée dans l'arbre avant la commande (répétitions,
   // symétrie) : elle remplit d'emblée la case, comme une face présélectionnée.

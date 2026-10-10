@@ -44,7 +44,8 @@ class GraphMixin:
                     or getattr(obj, "FreeSolidGraphTool", False)
                     or getattr(obj, "FreeSolidRepeatTool", False)
                     or getattr(obj, "FreeSolidGemTool", False)
-                    or getattr(obj, "FreeSolidGemBooleanTool", False))
+                    or getattr(obj, "FreeSolidGemBooleanTool", False)
+                    or getattr(obj, "FreeSolidSurfaceTool", False))
 
     def _current_variables(self):
         return {item["name"]: item["value"]

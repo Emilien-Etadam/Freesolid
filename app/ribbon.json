@@ -60,7 +60,7 @@
         {
           "libelle": "Courbes",
           "boutons": [
-            {"id": "btn-curve3d", "titre": "Courbe 3D par points — trajectoire de balayage (le repli esquisse 3D)", "taille": "large", "icon": "nodes_polyline", "libelle": "Courbe 3D"}
+            {"id": "btn-curve3d", "titre": "Spline 3D — cliquez des points sur la pièce ou dans l'espace : trajectoire de balayage, bord de surface", "taille": "large", "icon": "spline3d", "libelle": "Spline 3D"}
           ]
         },
         {
@@ -68,12 +68,18 @@
           "boutons": [
             {"id": "btn-surf-extrude", "titre": "Surface extrudée — le profil peut être ouvert", "icon": "surface_extrude", "libelle": "Surface extrudée"},
             {"id": "btn-surf-revolve", "titre": "Surface de révolution — autour de l'axe vertical de l'esquisse", "icon": "surface_revolve", "libelle": "Surface de révolution"},
-            {"id": "btn-surf-loft", "titre": "Surface lissée entre plusieurs profils", "icon": "surface_loft", "libelle": "Surface lissée"}
+            {"id": "btn-surf-loft", "titre": "Surface lissée entre plusieurs profils", "icon": "surface_loft", "libelle": "Surface lissée"},
+            {"id": "btn-surf-sweep", "titre": "Surface balayée — un profil suit une trajectoire (esquisse ou spline 3D)", "icon": "surface_sweep", "libelle": "Surface balayée"},
+            {"id": "btn-surf-planar", "titre": "Surface plane — bornée par un contour fermé d'esquisse", "icon": "surface_planar", "libelle": "Surface plane"},
+            {"id": "btn-surf-fill", "titre": "Surface de remplissage — tendue sur un contour fermé d'arêtes", "icon": "surface_fill", "libelle": "Remplissage"}
           ]
         },
         {
           "libelle": "Opérations",
           "boutons": [
+            {"id": "btn-surf-offset", "titre": "Surface décalée — la peau recopiée à distance", "icon": "surface_offset", "libelle": "Décaler"},
+            {"id": "btn-surf-extend", "titre": "Prolonger une surface au-delà d'un bord", "icon": "surface_extend", "libelle": "Prolonger"},
+            {"id": "btn-surf-trim", "titre": "Ajuster une surface par une autre — cliquez la partie à garder", "icon": "surface_trim", "libelle": "Ajuster"},
             {"id": "btn-surf-sew", "titre": "Coudre des surfaces — solidifie si la peau est fermée", "icon": "sew", "libelle": "Coudre"},
             {"id": "btn-surf-thicken", "titre": "Épaissir une surface en solide", "icon": "thicken", "libelle": "Épaissir"}
           ]

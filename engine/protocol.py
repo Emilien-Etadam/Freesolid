@@ -106,7 +106,25 @@ OPS: dict[str, tuple[str, ...]] = {
     "surface_loft": _Req(("sketches", list)),
     "surface_sew": _Req(("surfaces", list)),  # coudre ; solidifie si fermé
     "surface_thicken": _Req(("surface", str), ("thickness", float)),
-    "add_curve3d": _Req(("points", list)),  # optional: spline — trajectoire 3D
+    "add_curve3d": _Req(("points", list)),  # optional: spline, closed
+    "curve3d_preview": _Req(("points", list)),
+                                       # optional: spline, closed — lecture seule
+    "edit_curve3d": _Req(("curve", str), ("points", list)),
+                                       # optional: spline, closed
+    "surface_planar": (),              # optional: sketch — contour fermé
+    "surface_sweep": _Req(("profile", str), ("spine", str)),
+    "surface_offset": _Req(("surface", str), ("distance", float)),
+    "surface_fill": _Req(("boundary", list)),
+                                       # [{name, edge?} | {body: true, edge}]
+    "surface_extend": _Req(("surface", str), ("distance", float)),
+                                       # optional: edge (bord prolongé)
+    "edit_surface_extend": _Req(("surface", str), ("distance", float)),
+                                       # optional: edge
+    "surface_trim": _Req(("surface", str), ("tool", str)),
+                                       # optional: point — partie gardée
+    "edit_surface_trim": _Req(("surface", str)),
+                                       # optional: point — sans point,
+                                       # la partie suivante
     # Phase E — évaluer + mise en plan.
     "mass_properties": (),             # optional: density (g/cm³)
     "measure": _Req(("a_kind", str), ("a_id", int),

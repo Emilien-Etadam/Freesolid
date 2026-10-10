@@ -652,7 +652,9 @@ class TreeMixin:
                 "color": getattr(obj, "FreeSolidColor", "") or None,
                 "has_solid": self._body_has_solid(obj),
             })
-        surfaces = [self._surface_tree_entry(o, order_of, known_names)
+        consumed = self._consumed_surfaces()
+        surfaces = [self._surface_tree_entry(o, order_of, known_names,
+                                             consumed)
                     for o in self._doc.Objects
                     if o.TypeId in self._SURFACE_TYPE_IDS
                     and not self._is_internal_tool(o)]
@@ -757,17 +759,22 @@ class TreeMixin:
             mesh["others"] = {"positions": positions, "indices": indices}
         # Surfaces (Part::*) : un maillage par objet, comme les esquisses
         # libres — le client les rend opaques et sélectionnables. Les
-        # courbes 3D (pas de Faces) restent un buffer combiné.
+        # courbes 3D (pas de Faces) : un jeu d'arêtes par objet.
         surfaces_out = []
-        surface_lines = []
+        curve_objects = []
+        consumed = self._consumed_surfaces()
         for obj in self._doc.Objects:
             if obj.TypeId not in self._SURFACE_TYPE_IDS:
                 continue
-            if self._is_rolled_back(obj) or self._is_internal_tool(obj):
+            if (self._is_rolled_back(obj) or self._is_internal_tool(obj)
+                    or obj.Name in consumed):
                 continue
             shape = getattr(obj, "Shape", None)
             if shape is None:
                 continue
+            # Arêtes numérotées comme « EdgeN » : bords de remplissage,
+            # bord à prolonger, trajectoire — choisis dans la vue.
+            edges = protocol.pack_edges(self._object_edge_lines(shape))
             if shape.Faces:
                 surface_faces = []
                 for face in shape.Faces:
@@ -781,26 +788,31 @@ class TreeMixin:
                         "label": obj.Label,
                         "positions": packed["positions"],
                         "indices": packed["indices"],
+                        "edges": edges,
                     })
-            else:
-                for i, edge in enumerate(shape.Edges):
-                    try:
-                        points = edge.discretize(Deviation=0.1)
-                    except Exception:
-                        continue
-                    surface_lines.append(
-                        (i, [(p.x, p.y, p.z) for p in points]))
+            elif edges["indices"]:
+                curve_objects.append({
+                    "name": obj.Name,
+                    "label": obj.Label,
+                    "edges": edges,
+                })
         if surfaces_out:
             mesh["surfaces"] = surfaces_out
-        if surface_lines:
-            packed = protocol.pack_edges(surface_lines)
-            mesh["curves"] = {"positions": packed["positions"],
-                              "indices": packed["indices"]}
+        if curve_objects:
+            mesh["curves"] = curve_objects
         # Esquisses libres : polylignes 3D pour le viewport. Le Shape
         # d'un SketchObject est déjà posé dans l'espace et n'inclut pas
         # la géométrie de construction (Construction / getConstruction).
         sketches_out = []
+        # Une esquisse absorbée par une surface ne se dessine plus : ses
+        # traits masqueraient les bords de la surface au clic.
+        absorbed = {sk.Name for obj in self._doc.Objects
+                    if obj.TypeId in self._SURFACE_TYPE_IDS
+                    and not self._is_rolled_back(obj)
+                    for sk in self._surface_sketch_objects(obj)}
         for sk in self._free_sketches():
+            if sk.Name in absorbed:
+                continue
             shape = getattr(sk, "Shape", None)
             if shape is None or not shape.Edges:
                 continue
@@ -860,6 +872,25 @@ class TreeMixin:
             lines.append((i, [(p.x, p.y, p.z) for p in points],
                           float(edge.Length), self._circle_center(edge)))
         return protocol.pack_edges(lines)
+
+    def _object_edge_lines(self, shape):
+        """Polylignes des arêtes d'une surface ou d'une courbe, en base 0
+        comme les arêtes du corps (« EdgeN+1 ») ; les coutures sont omises."""
+        seams = self._seam_edge_ids(shape) if shape.Faces else set()
+        lines = []
+        for i, edge in enumerate(shape.Edges):
+            if i in seams:
+                continue
+            try:
+                points = edge.discretize(Deflection=0.05)
+            except Exception:
+                try:
+                    points = edge.discretize(Number=48)
+                except Exception:
+                    continue  # arête dégénérée : les ids restent justes
+            lines.append((i, [(p.x, p.y, p.z) for p in points],
+                          edge.Length, self._circle_center(edge)))
+        return lines
 
     @staticmethod
     def _circle_center(edge):

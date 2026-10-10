@@ -1090,8 +1090,8 @@ export function installGraphView(ctx) {
       : (ctx.selectedSketch?.name
         ? { name: ctx.selectedSketch.name, label: ctx.selectedSketch.label }
         : null);
-    const ctx = graphPlacementCtx(graphPaletteProfile);
-    const items = graphPaletteItems(FEATURES, ctx);
+    const placement = graphPlacementCtx(graphPaletteProfile);
+    const items = graphPaletteItems(FEATURES, placement);
 
     const heading = document.createElement("div");
     heading.className = "menu-label";

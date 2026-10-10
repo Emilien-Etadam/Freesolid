@@ -153,7 +153,7 @@ La boîte est petite et sobre, sans aperçu des fichiers récents.
 
 | # | Chantier | Prio | Qui |
 |---|---|---|---|
-| Q1 | Messages d'erreur : textes clean-room, traduction anglaise, erreurs du noyau (congé ou chanfrein trop grand…) en phrases claires | P1 | Cursor |
+| Q1 | Messages d'erreur : textes clean-room, traduction anglaise, erreurs du noyau (congé ou chanfrein trop grand…) en phrases claires | P1 | fait |
 | Q2 | Petites bavures : `console.log`, exports et icônes inutilisés, `--warn`, aides en double (mm, projection, nombres) | P2 | Cursor |
 | Q3 | Jetons de style : couleurs, espacements, rayons, tailles de texte, côté CSS et côté scène 3D | P2 | Cursor |
 | Q4 | Découpage de `main.js` en modules, à comportement identique | P2 | Claude |
@@ -162,7 +162,7 @@ La boîte est petite et sobre, sans aperçu des fichiers récents.
 | Q7 | Jeu d'icônes original | P1 | Claude dessine un échantillon à valider, Cursor décline le reste |
 | Q8 | Rendu 3D | P2 | Claude |
 | Q9 | Panneaux, volet d'arbre, menu contextuel, face d'esquisse | P2 | Claude et Cursor |
-| Q10 | Bugs : premier trait en esquisse sur face, clic droit sans survol, coque trop épaisse | P2 | Claude |
+| Q10 | Bugs : premier trait en esquisse sur face, clic droit sans survol (coque trop épaisse : fait en Q1) | P2 | Claude |
 | Q11 | Thème clair | P3 | plus tard |
 
 Q1 à Q3 n'engagent aucune décision de design : Cursor peut les prendre tout

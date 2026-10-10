@@ -8,12 +8,15 @@ export function sketchTreeLabel(label, definition) {
   return label;
 }
 
-function isFreeSketchType(type) {
-  return type === "Sketcher::SketchObject";
-}
+// Esquisses libres et géométrie de référence (plans, axes, points) :
+// elles ne font pas le solide, la barre ne les recule que sur demande.
+const REFERENCE_TYPES = new Set([
+  "Sketcher::SketchObject", "PartDesign::Plane", "PartDesign::Line",
+  "PartDesign::Point",
+]);
 
 function isVolumeRow(row) {
-  return !row.surface && !isFreeSketchType(row.item.type);
+  return !row.surface && !REFERENCE_TYPES.has(row.item.type);
 }
 
 /** Lignes top-niveau (fonctions + esquisses libres + surfaces),
@@ -39,7 +42,8 @@ export function chronologicalHistory(features, surfaces) {
 
 /** Sépare l'historique en `before` / `after` la barre de retour.
  *
- *  Une surface ou esquisse libre est *après* ssi `rolled_back` est vrai.
+ *  Une surface, une esquisse libre ou une référence (plan, axe, point)
+ *  est *après* ssi `rolled_back` est vrai.
  *  Une fonction volumique est après le tip (tip absent + fonctions
  *  présentes = toutes après). Barre `"none"` si aucune ligne. */
 export function splitHistoryAroundBar(features, surfaces, tip) {

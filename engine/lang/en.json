@@ -342,5 +342,8 @@
  "Congé": "Fillet",
  "Coque": "Shell",
  "Dépouille": "Draft",
- "{} : une ligne, ou deux points": "{}: a line, or two points"
+ "{} : une ligne, ou deux points": "{}: a line, or two points",
+ "plan de référence introuvable": "reference plane not found",
+ "{} : Le modeleur n'a pas pu creuser cette pièce. Cela arrive quand une arête passe d'un angle vif à une tangence (lissage d'un carré vers un rond) ou quand l'épaisseur dépasse un rayon. Essayez une épaisseur plus faible ou la coque vers l'extérieur — ou creusez par un enlèvement : lissage ou extrusion des profils décalés de l'épaisseur.": "{}: The modeler could not hollow this part. This happens when an edge goes from a sharp corner to a tangency (loft from a square to a circle) or when the thickness exceeds a radius. Try a smaller thickness or an outward shell — or hollow it with a cut: a loft or an extrusion of the profiles offset by the thickness.",
+ "Le modeleur n'a pas pu creuser cette pièce. Cela arrive quand une arête passe d'un angle vif à une tangence (lissage d'un carré vers un rond) ou quand l'épaisseur dépasse un rayon. Essayez une épaisseur plus faible ou la coque vers l'extérieur — ou creusez par un enlèvement : lissage ou extrusion des profils décalés de l'épaisseur.": "The modeler could not hollow this part. This happens when an edge goes from a sharp corner to a tangency (loft from a square to a circle) or when the thickness exceeds a radius. Try a smaller thickness or an outward shell — or hollow it with a cut: a loft or an extrusion of the profiles offset by the thickness."
 }

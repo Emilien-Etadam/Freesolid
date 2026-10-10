@@ -784,7 +784,7 @@ export function createSketchMode(deps) {
     if (mode.tool === "line" && mode.chain) {
       const from = mode.chain;
       mode.chain = point.onPoint ? null : { x: point.x, y: point.y };
-      safe(call("sketch_add_line", { sketch: name,
+      await safe(call("sketch_add_line", { sketch: name,
         x1: from.x, y1: from.y, x2: point.x, y2: point.y }));
     } else if (mode.tool === "rect" && mode.pendingRect) {
       const a = mode.pendingRect;
@@ -809,7 +809,7 @@ export function createSketchMode(deps) {
       const c = mode.pendingCircle;
       mode.pendingCircle = null;
       const r = Math.hypot(point.x - c.x, point.y - c.y);
-      if (r > 0) safe(call("sketch_add_circle",
+      if (r > 0) await safe(call("sketch_add_circle",
         { sketch: name, cx: c.x, cy: c.y, r }));
     }
   }
@@ -873,7 +873,10 @@ export function createSketchMode(deps) {
       }
       if (mode.tool !== tool) return;
       clearInference();
+      if (previewLine) previewLine.visible = false;
+      const before = new Set((mode.state?.entities ?? []).map((e) => e.id));
       await placeDrawPoint({ ...target, onPoint: false });
+      await dimTyped(tool, before, a, b);
     };
     box.addEventListener("keydown", (event) => {
       event.stopPropagation();
@@ -887,6 +890,31 @@ export function createSketchMode(deps) {
     });
     inputs[0].focus();
     inputs[0].setSelectionRange(firstKey.length, firstKey.length);
+  }
+
+  /** Les valeurs tapées deviennent des cotes de l'entité tracée : on a
+   *  donné la dimension exacte, l'esquisse la garde. */
+  async function dimTyped(tool, before, a, b) {
+    if (!mode.state) return;
+    const fresh = mode.state.entities.filter((e) => !before.has(e.id));
+    const sketch = mode.state.sketch;
+    const dims = [];
+    if (tool === "circle") {
+      const circle = fresh.find((e) => e.type === "circle");
+      if (circle && a > 0) dims.push({ geo: circle.id, radius: true, value: a });
+    } else if (tool === "line") {
+      const line = fresh.find((e) => e.type === "line");
+      if (line && a > 0) dims.push({ geo: line.id, value: a });
+    } else if (tool === "rect" || tool === "rectc") {
+      const lines = fresh.filter((e) => e.type === "line");
+      const flat = lines.find((e) => Math.abs(e.p1[1] - e.p2[1]) < 1e-9);
+      const upright = lines.find((e) => Math.abs(e.p1[0] - e.p2[0]) < 1e-9);
+      if (flat && a > 0) dims.push({ geo: flat.id, value: a });
+      if (upright && b > 0) dims.push({ geo: upright.id, value: b });
+    }
+    for (const dim of dims) {
+      await safe(call("sketch_dim", { sketch, ...dim }));
+    }
   }
 
   async function onClick(event) {
@@ -2191,6 +2219,10 @@ export function createSketchMode(deps) {
       return;
     }
     const geos = entityPicks().map((s) => s.geo);
+    // Arêtes projetées (bloquées) : on veut la copie seule dans le profil.
+    const blocked = new Set((mode.state.constraints ?? [])
+      .filter((c) => c.type === "Block").map((c) => c.geos[0]));
+    const projected = geos.every((geo) => blocked.has(geo));
     abandonEntityPanel();
     panel.open({
       icon: "offset",
@@ -2202,6 +2234,8 @@ export function createSketchMode(deps) {
             unit: "mm", min: 0.01 },
           { type: "check", key: "reversed", label: t("Inverser le côté"),
             value: false },
+          { type: "check", key: "construction",
+            label: t("Originaux en construction"), value: projected },
         ],
       }],
       note: t("Les copies restent libres — le décalage paramétrique " +
@@ -2209,7 +2243,7 @@ export function createSketchMode(deps) {
       onApply: (v) => safe(call("sketch_offset", {
         sketch: mode.state.sketch, geos,
         distance: num(v.distance) ?? 5,
-        reversed: !!v.reversed })),
+        reversed: !!v.reversed, construction: !!v.construction })),
     });
   });
 

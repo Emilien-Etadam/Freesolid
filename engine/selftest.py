@@ -1063,7 +1063,12 @@ class SelftestMixin:
             state = self.sketch_add_circle(offset_sk, 80, 0, 10)
             circ = next(e for e in state["entities"] if e["type"] == "circle")
             known = {e["id"] for e in state["entities"]}
-            state = self.sketch_offset(offset_sk, [circ["id"]], 5.0)
+            state = self.sketch_offset(offset_sk, [circ["id"]], 5.0,
+                                       construction=True)
+            original = next(e for e in state["entities"]
+                            if e["id"] == circ["id"])
+            report["p17_offset_originaux_construction"] = bool(
+                original["construction"])
             report["p17_offset_circle_ok"] = any(
                 e["type"] == "circle" and e["id"] not in known
                 and (abs(e["r"] - 15.0) < 1e-4 or abs(e["r"] - 5.0) < 1e-4)
@@ -2463,6 +2468,16 @@ class SelftestMixin:
                 and all(d["value"] > 0 for d in dims)
                 and abs(line["p1"][0] - 20) < 1e-6
                 and abs(line["p1"][1] - 12) < 1e-6)
+
+            mark("p45: aperçu du plan de référence, sans le créer")
+            self.new_part("Pièce plan")
+            before = len(self._require_doc().Objects)
+            shown = self.preview("add_datum_plane",
+                                 {"base": "XY", "offset": 50})
+            matrix = shown.get("plane") or []
+            report["p45_apercu_plan"] = (
+                len(matrix) == 16 and abs(matrix[11] - 50) < 1e-6
+                and len(self._require_doc().Objects) == before)
 
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")

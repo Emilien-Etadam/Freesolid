@@ -254,7 +254,7 @@ OPS: dict[str, tuple[str, ...]] = {
         ("cols", int), ("rows", int)),
     "sketch_offset": _Req(
         ("sketch", str), ("geos", list), ("distance", float)),
-                                       # optional: reversed
+                                       # optional: reversed, construction
     "sketch_add_slot": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float), ("width", float)),

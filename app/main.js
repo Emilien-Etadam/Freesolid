@@ -763,6 +763,7 @@ let previewGen = 0;
 function clearGhost() {
   clearTimeout(previewTimer);
   previewTimer = null;
+  clearPlaneGhost();
   if (ghostMesh) {
     ghostMesh.removeFromParent();
     ghostMesh.geometry.dispose();
@@ -771,6 +772,33 @@ function clearGhost() {
   baseMaterial.opacity = 1;
   if (partBaseMaterial) partBaseMaterial.opacity = 1;
   hoverMaterial.opacity = selectedMaterial.opacity = 1;
+}
+
+// Aperçu d'un plan de référence : un carré translucide là où le moteur
+// le pose (matrice 4 × 4 par lignes), à l'échelle de la pièce.
+let planeGhost = null;
+
+function clearPlaneGhost() {
+  if (!planeGhost) return;
+  planeGhost.removeFromParent();
+  planeGhost.traverse((obj) => obj.geometry?.dispose());
+  planeGhost = null;
+}
+
+function showPlaneGhost(matrix) {
+  clearPlaneGhost();
+  const size = partMesh ? Math.max(partCenterRadius().radius * 2.4, 40) : 100;
+  const fill = new THREE.Mesh(new THREE.PlaneGeometry(size, size),
+    new THREE.MeshBasicMaterial({ color: sceneTheme.accent, transparent: true,
+      opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }));
+  const border = new THREE.LineSegments(new THREE.EdgesGeometry(fill.geometry),
+    new THREE.LineBasicMaterial({ color: sceneTheme.accent }));
+  planeGhost = new THREE.Group();
+  planeGhost.add(fill, border);
+  planeGhost.matrixAutoUpdate = false;
+  planeGhost.matrix.set(...matrix);
+  planeGhost.renderOrder = 15;
+  scene.add(planeGhost);
 }
 
 function showGhost(mesh, { bothSides = false } = {}) {
@@ -887,7 +915,8 @@ function schedulePreview(built) {
         { op: built.op, params: built.params });
       if (gen !== previewGen) return;
       if (!panel.active) return;
-      showGhost(mesh, { bothSides: built.op === "add_fillet" });
+      if (mesh.plane) showPlaneGhost(mesh.plane);
+      else showGhost(mesh, { bothSides: built.op === "add_fillet" });
       if (previewFailed) say("");
       previewFailed = false;
     } catch (error) {
@@ -1865,16 +1894,24 @@ document.getElementById("btn-datum").addEventListener("click", () =>
         ],
       },
     ],
+    // Aperçu : le plan se dessine là où il se posera.
+    onChange: (v) => schedulePreview(datumBuild(v)),
+    onPreview: (on, v) => schedulePreview(on ? datumBuild(v) : null),
     onApply: (v) => {
-      const params = {
-        offset: num(v.offset) ?? 0,
-        angle: num(v.angle) ?? 0,
-      };
-      if (v.sel && v.sel.face != null) params.face = v.sel.face;
-      else params.base = v.base;
-      refresh(call("add_datum_plane", params));
+      clearGhost();
+      refresh(call("add_datum_plane", datumBuild(v).params));
     },
   })));
+
+function datumBuild(v) {
+  const params = {
+    offset: num(v.offset) ?? 0,
+    angle: num(v.angle) ?? 0,
+  };
+  if (v.sel && v.sel.face != null) params.face = v.sel.face;
+  else params.base = v.base;
+  return { op: "add_datum_plane", params };
+}
 
 const pickFile = installFileDialog(document, {
   listDir: (path) => call("list_dir", path ? { path } : {}),

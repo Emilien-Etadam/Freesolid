@@ -587,11 +587,14 @@ class SketchMixin:
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
-    def sketch_offset(self, sketch, geos, distance, reversed=False):
+    def sketch_offset(self, sketch, geos, distance, reversed=False,
+                      construction=False):
         """Décalage d'entités : offset 2D non contraint (makeOffset2D).
 
         Le décalage paramétrique des modeleurs courants (contraintes d'égalité
         de distance) viendra plus tard — les copies restent libres.
+        ``construction`` : les originaux passent en construction — le profil
+        ne garde que la copie (arêtes projetées puis décalées).
         """
         from engine.kernel import (
             KernelError,
@@ -655,6 +658,10 @@ class SketchMixin:
                  for edge in offset_edges]
         for geom in geoms:
             sk.addGeometry(geom, False)
+        if construction:
+            for gid in ids:
+                if not self._is_construction(sk, gid, sk.Geometry[gid]):
+                    sk.toggleConstruction(gid)
         return self.sketch_state(sketch)
 
     @staticmethod

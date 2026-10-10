@@ -743,6 +743,7 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
         "add_mirror", "add_linear_pattern", "add_polar_pattern",
         "add_hole", "set_params",
         "add_loft", "add_sweep", "add_helix", "add_boolean", "add_text",
+        "add_datum_plane",
     })
 
     def preview(self, op, params):
@@ -760,8 +761,18 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
             raise KernelError("params doit être un objet JSON")
         doc.openTransaction("freesolid-preview")
         self._previewing = True
+        planes = {o.Name for o in doc.Objects
+                  if o.TypeId == "PartDesign::Plane"}
         try:
             getattr(self, op)(**params)
+            if op == "add_datum_plane":
+                # Un plan ne change pas le solide : on renvoie où il se pose.
+                made = [o for o in doc.Objects
+                        if o.TypeId == "PartDesign::Plane"
+                        and o.Name not in planes]
+                if not made:
+                    raise KernelError("plan de référence introuvable")
+                return {"plane": list(made[-1].Placement.Matrix.A)}
             return self.tessellate()
         finally:
             self._previewing = False

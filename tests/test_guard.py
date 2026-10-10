@@ -15,6 +15,7 @@ _FORBIDDEN = (
     ("RESULT HAS MULTIPLE SOLIDS", "second corps"),
     ("Links go out of the allowed scope", "pièce active"),
     ("Wire is not closed", "fermé"),
+    ("Failed to make thick solid", "profils décalés"),
 ])
 def test_known_errors_get_an_explanation(raw, needle):
     explanation = friendly_error(raw)

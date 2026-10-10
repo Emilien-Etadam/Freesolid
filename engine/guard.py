@@ -20,6 +20,13 @@ _TRANSLATIONS: tuple[tuple[str, str], ...] = (
      "{} : L'esquisse utilise une géométrie qui n'appartient pas à la "
      "pièce active. Importez d'abord cette géométrie dans la pièce, "
      "puis cotez sur cette copie."),
+    ("failed to make thick solid",
+     "{} : Le modeleur n'a pas pu creuser cette pièce. Cela arrive "
+     "quand une arête passe d'un angle vif à une tangence (lissage "
+     "d'un carré vers un rond) ou quand l'épaisseur dépasse un rayon. "
+     "Essayez une épaisseur plus faible ou la coque vers l'extérieur —"
+     " ou creusez par un enlèvement : lissage ou extrusion des profils"
+     " décalés de l'épaisseur."),
     ("wire is not closed",
      "{} : Le contour de l'esquisse n'est pas fermé. Le profil doit "
      "former une boucle fermée pour produire un solide. Fermez le "

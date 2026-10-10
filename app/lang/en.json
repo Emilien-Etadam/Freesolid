@@ -758,5 +758,6 @@
  "Position sur le sommet.": "Position on the vertex.",
  "Cotation : cliquez l'entité à coter depuis l'origine": "Dimension: click the entity to dimension from the origin",
  "Cotation : cliquez où poser la cote — à côté : verticale, dessus ou dessous : horizontale, entre : alignée": "Dimension: click where to place it — beside: vertical, above or below: horizontal, between: aligned",
- "{n} fonctions : ": "{n} features: "
+ "{n} fonctions : ": "{n} features: ",
+ "Originaux en construction": "Originals as construction"
 }

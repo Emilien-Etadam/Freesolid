@@ -569,6 +569,7 @@ class TreeMixin:
                 # Le client dessine le plan de référence dans le viewport.
                 item["placement"] = [
                     float(v) for v in obj.Placement.Matrix.A]
+                item["rolled_back"] = self._is_rolled_back(obj)
             if obj.TypeId == "Sketcher::SketchObject":
                 item["rolled_back"] = self._is_rolled_back(obj)
                 item["definition"] = self._sketch_definition(obj)

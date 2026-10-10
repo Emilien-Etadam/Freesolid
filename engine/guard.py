@@ -27,6 +27,8 @@ _TRANSLATIONS: tuple[tuple[str, str], ...] = (
      "Essayez une épaisseur plus faible ou la coque vers l'extérieur —"
      " ou creusez par un enlèvement : lissage ou extrusion des profils"
      " décalés de l'épaisseur."),
+    ("failed to create a face from constraints",
+     "{} : Le remplissage n'a pas pu tendre une surface sur ce contour. Vérifiez qu'il est fermé ; sans tangence, la surface passe plus facilement — la tangence échoue quand les faces voisines sont perpendiculaires à la surface cherchée (bout de tube)."),
     ("wire is not closed",
      "{} : Le contour de l'esquisse n'est pas fermé. Le profil doit "
      "former une boucle fermée pour produire un solide. Fermez le "

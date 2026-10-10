@@ -1233,21 +1233,24 @@ export function installTree(ctx) {
     panel.open({
       icon: "surface_freeform",
       title: surface.label,
-      groups: [{
-        label: t("Paramètres"),
-        rows: [
-          { type: "number", key: "height", label: t("Hauteur"),
-            value: spec.height, unit: "mm" },
-          { type: "number", key: "radius", label: t("Rayon d'influence"),
-            value: spec.radius, unit: "mm", min: 0.01 },
-        ],
-      }],
+      groups: [
+        { label: t("Points à pousser"),
+          rows: [{ type: "points", key: "pushes", value: spec.pushes,
+                   extra: { label: "Hauteur", value: 5 } }] },
+        { label: t("Paramètres"),
+          rows: [
+            { type: "number", key: "radius", label: t("Rayon d'influence"),
+              value: spec.radius, unit: "mm", min: 0.01 },
+            { type: "check", key: "keepEdges", label: t("Bords fixes"),
+              value: spec.keep_edges },
+          ] },
+      ],
       onApply: (v) => {
-        const height = num(v.height);
         const radius = num(v.radius);
-        if (!height || !(radius > 0)) return;
-        refresh(call("edit_surface_freeform",
-          { surface: surface.name, height, radius }));
+        const pushes = (v.pushes ?? []).filter((p) => p.length === 4);
+        if (!(radius > 0) || !pushes.length) return;
+        refresh(call("edit_surface_freeform", { surface: surface.name,
+          radius, pushes, keep_edges: !!v.keepEdges }));
       },
     });
   }

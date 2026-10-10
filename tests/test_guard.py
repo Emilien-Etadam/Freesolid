@@ -16,6 +16,7 @@ _FORBIDDEN = (
     ("Links go out of the allowed scope", "pièce active"),
     ("Wire is not closed", "fermé"),
     ("Failed to make thick solid", "profils décalés"),
+    ("Failed to create a face from constraints", "sans tangence"),
 ])
 def test_known_errors_get_an_explanation(raw, needle):
     explanation = friendly_error(raw)

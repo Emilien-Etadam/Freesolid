@@ -429,12 +429,20 @@
  "cliquez les deux faces en vis-à-vis de la paroi": "click the two facing faces of the wall",
  "Surface médiane": "Mid-Surface",
  "les deux faces se touchent — choisissez les deux côtés d'une paroi": "the two faces touch — choose both sides of a wall",
- "surface médiane : faces planes parallèles ou cylindres concentriques": "mid-surface: parallel planar faces or concentric cylinders",
  "Surface aplatie": "Flattened Surface",
  "Forme libre": "Freeform",
  "forme libre inconnue : {}": "unknown freeform: {}",
  "aplatir : le modeleur ne sait pas dérouler cette face": "flatten: the modeler cannot unroll this face",
  "le rayon d'influence doit être positif": "the influence radius must be positive",
  "forme libre : aucun point de contrôle dans le rayon — agrandissez-le": "freeform: no control point within the radius — enlarge it",
- "forme libre : la surface poussée est invalide — réduisez la hauteur": "freeform: the pushed surface is invalid — reduce the height"
+ "forme libre : la surface poussée est invalide — réduisez la hauteur": "freeform: the pushed surface is invalid — reduce the height",
+ "{} : Le remplissage n'a pas pu tendre une surface sur ce contour. Vérifiez qu'il est fermé ; sans tangence, la surface passe plus facilement — la tangence échoue quand les faces voisines sont perpendiculaires à la surface cherchée (bout de tube).": "{}: The fill could not stretch a surface over this boundary. Check that it is closed; without tangency the surface goes through more easily — tangency fails when the neighbouring faces are perpendicular to the surface sought (tube end).",
+ "Le remplissage n'a pas pu tendre une surface sur ce contour. Vérifiez qu'il est fermé ; sans tangence, la surface passe plus facilement — la tangence échoue quand les faces voisines sont perpendiculaires à la surface cherchée (bout de tube).": "The fill could not stretch a surface over this boundary. Check that it is closed; without tangency the surface goes through more easily — tangency fails when the neighbouring faces are perpendicular to the surface sought (tube end).",
+ "indiquez l'épaisseur de paroi maximale": "give the maximum wall thickness",
+ "aucune paire de faces en vis-à-vis plus proche que l'épaisseur indiquée": "no pair of facing faces closer than the given thickness",
+ "surface médiane : le modeleur ne sait pas suivre ces deux faces": "mid-surface: the modeler cannot follow these two faces",
+ "cliquez au moins un point à pousser": "click at least one point to push",
+ "point à pousser invalide : {}": "invalid push point: {}",
+ "une longueur de segment doit être positive": "a segment length must be positive",
+ "segment sans direction : déplacez un de ses points": "segment without direction: move one of its points"
 }

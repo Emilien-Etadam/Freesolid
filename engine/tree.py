@@ -309,13 +309,18 @@ class TreeMixin:
         # corps vide légitime).
         parent_body = obj.getParentGeoFeatureGroup()
         thin_helpers = self._thin_helpers(obj)
-        if parent_body is not None and getattr(parent_body, "Tip", None) in (
-                [obj] + thin_helpers):
-            parent_body.Tip = getattr(obj, "BaseFeature", None)
-        # Paroi mince : la cavité (après la fonction) part avant elle, les
-        # profils décalés (avant) après.
         order = {o.Name: i for i, o in enumerate(
             getattr(parent_body, "Group", None) or [])}
+        if parent_body is not None and getattr(parent_body, "Tip", None) in (
+                [obj] + thin_helpers):
+            # Le solide d'avant la première fonction de la chaîne (un
+            # auxiliaire peut précéder la fonction).
+            chain = [o for o in [obj] + thin_helpers
+                     if o.isDerivedFrom("PartDesign::Feature")]
+            first = min(chain, key=lambda o: order.get(o.Name, -1))
+            parent_body.Tip = getattr(first, "BaseFeature", None)
+        # Paroi mince : la cavité (après la fonction) part avant elle, les
+        # profils décalés (avant) après.
         rank = order.get(obj.Name, -1)
         later = [o for o in thin_helpers if order.get(o.Name, -1) > rank]
         earlier = [o.Name for o in thin_helpers if o not in later]

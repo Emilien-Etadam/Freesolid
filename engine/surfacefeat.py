@@ -316,6 +316,10 @@ class SurfaceMixin:
         links = self._boundary_links(boundary)
         faces = [self._adjacent_face(obj, sub) if tangent else ""
                  for obj, sub in links]
+        # Une arête fermée seule (bout de tube) : le noyau ne sait pas la
+        # remplir. Un objet auxiliaire la coupe en deux moitiés (et garde
+        # la face voisine pour la tangence), recalculé avec sa source.
+        links, faces = self._split_closed_links(links, faces)
 
         def configure(obj):
             obj.BoundaryEdges = links
@@ -325,6 +329,37 @@ class SurfaceMixin:
 
         return self._add_part_surface(
             "Surface::Filling", "Surface de remplissage", configure)
+
+    def _split_closed_links(self, links, faces):
+        doc = self._require_doc()
+        out_links, out_faces = [], []
+        for (obj, sub), face in zip(links, faces):
+            edge = obj.Shape.Edges[int(sub[4:]) - 1]
+            if not edge.isClosed():
+                out_links.append((obj, sub))
+                out_faces.append(face)
+                continue
+            helper = doc.addObject("Part::Feature", "ClosedEdgeHalves")
+            self._mark_internal(helper)
+            self._stamp(helper, halvessource=obj.Name, halvesedge=sub,
+                        halvesface=face)
+            helper.Shape = self._halves_shape(obj.Shape, sub, face)
+            out_links += [(helper, "Edge1"), (helper, "Edge2")]
+            out_faces += ["Face1" if face else "", "Face1" if face else ""]
+        return out_links, out_faces
+
+    @staticmethod
+    def _halves_shape(shape, sub, face):
+        """Les deux moitiés d'une arête fermée, puis la face voisine."""
+        import Part
+        edge = shape.Edges[int(sub[4:]) - 1]
+        first, last = edge.FirstParameter, edge.LastParameter
+        middle = (first + last) / 2
+        parts = [Part.Edge(edge.Curve, first, middle),
+                 Part.Edge(edge.Curve, middle, last)]
+        if face:
+            parts.append(shape.Faces[int(face[4:]) - 1])
+        return Part.Compound(parts)
 
     @staticmethod
     def _adjacent_face(obj, sub):
@@ -879,9 +914,11 @@ class SurfaceMixin:
                     "tool": (base.Tools[0].Name
                              if base is not None and base.Tools else None)}
         if getattr(obj, "FreeSolidFreesource", ""):
-            return {"kind": "freeform",
-                    "height": float(obj.FreeSolidFreeheight),
-                    "radius": float(obj.FreeSolidFreeradius)}
+            pushes = self._free_pushes(self._frozen_stamps(obj))
+            return {"kind": "freeform", "pushes": pushes,
+                    "height": pushes[0][3],
+                    "radius": float(obj.FreeSolidFreeradius),
+                    "keep_edges": bool(getattr(obj, "FreeSolidFreeedges", 0))}
         if getattr(obj, "FreeSolidFlatsource", ""):
             return {"kind": "flatten"}
         if obj.TypeId == "Part::Offset" and not getattr(obj, "Fill", True):
@@ -1166,24 +1203,41 @@ class SurfaceMixin:
             self._recompute()
             raise KernelError("le modeleur n'a pas pu ranger cette forme dans "
                               "l'historique")
-        for i, feature in enumerate(features):
-            last = i == len(features) - 1
-            feature.Label = self._t(label if last else label + " — ajout")
-            self._stamp(feature, **feature_stamps)
+        owner = features[-1]
+        owner.Label = self._t(label)
+        self._stamp(owner, **feature_stamps)
+        for helper in features[:-1]:
+            # L'ajout d'un cas mixte : auxiliaire caché de la fonction,
+            # une seule ligne dans l'arbre.
+            helper.Label = self._t(label + " — ajout")
+            helper.addProperty("App::PropertyBool", self._THIN_HELPER,
+                               "FreeSolid", "Objet auxiliaire")
+            setattr(helper, self._THIN_HELPER, True)
+            helper.addProperty("App::PropertyString", "FreeSolidThinOwner",
+                               "FreeSolid", "Fonction propriétaire")
+            helper.FreeSolidThinOwner = owner.Name
         return self.get_tree()
 
-    def surface_mid(self, faces):
-        """Surface médiane d'une paroi : deux faces en vis-à-vis (planes
-        parallèles ou cylindres concentriques) ; la peau passe à mi-chemin
-        et suit les fonctions d'avant (recalcul à chaque reconstruction)."""
+    def surface_mid(self, faces=None, thickness=None):
+        """Surface médiane d'une paroi. Deux faces cliquées en vis-à-vis :
+        planes parallèles et cylindres concentriques exacts, faces
+        quelconques par une surface interpolée sur les points milieux.
+        Sans faces : toutes les paires de la pièce plus proches que
+        ``thickness`` (paroi mince). Recalculée à chaque reconstruction."""
         from engine.kernel import KernelError
         tip = self._solid_tip("une surface médiane demande un solide")
         pair = [int(f) for f in faces or ()]
-        if len(pair) != 2 or pair[0] == pair[1]:
-            raise KernelError("cliquez les deux faces en vis-à-vis de la "
-                              "paroi")
-        stamps = {"midbase": tip.Name, "midfaces": "%d;%d" % tuple(pair)}
-        shape = self._mid_shape(tip.Shape, pair)
+        if pair:
+            if len(pair) != 2 or pair[0] == pair[1]:
+                raise KernelError("cliquez les deux faces en vis-à-vis de "
+                                  "la paroi")
+            spec = "%d;%d" % tuple(pair)
+        else:
+            if thickness is None or float(thickness) <= 0:
+                raise KernelError("indiquez l'épaisseur de paroi maximale")
+            spec = "auto:%.9g" % float(thickness)
+        stamps = {"midbase": tip.Name, "midfaces": spec}
+        shape = self._mid_from_spec(tip.Shape, spec)
         doc = self._require_doc()
         feature = doc.addObject("Part::Feature", "Surface")
         feature.Label = self._t("Surface médiane")
@@ -1192,10 +1246,65 @@ class SurfaceMixin:
         doc.recompute()
         return self.get_tree()
 
+    def _mid_from_spec(self, base_shape, spec):
+        from engine.kernel import KernelError
+        import Part
+        spec = str(spec)
+        if not spec.startswith("auto:"):
+            return self._mid_shape(base_shape,
+                                   [int(f) for f in spec.split(";")])
+        limit = float(spec[5:])
+        pairs = self._mid_pairs(base_shape, limit)
+        if not pairs:
+            raise KernelError("aucune paire de faces en vis-à-vis plus "
+                              "proche que l'épaisseur indiquée")
+        return Part.Compound([self._mid_shape(base_shape, list(p))
+                              for p in pairs])
+
     @staticmethod
-    def _mid_shape(base_shape, pair):
-        """La première face décalée de la moitié de son écart à la
-        seconde, vers elle."""
+    def _mid_pairs(base_shape, limit):
+        """Paires de faces d'une paroi mince : plans antiparallèles qui se
+        recouvrent, cylindres coaxiaux — écart au plus ``limit``."""
+        faces = base_shape.Faces
+        pairs = []
+        used = set()
+        for i, a in enumerate(faces):
+            for j in range(i + 1, len(faces)):
+                if i in used or j in used:
+                    continue
+                b = faces[j]
+                ta, tb = a.Surface.TypeId, b.Surface.TypeId
+                if ta != tb or ta not in ("Part::GeomPlane",
+                                          "Part::GeomCylinder"):
+                    continue
+                gap = a.distToShape(b)[0]
+                if gap < 1e-6 or gap > limit + 1e-9:
+                    continue
+                if ta == "Part::GeomPlane":
+                    na = a.normalAt(*a.Surface.parameter(a.CenterOfMass))
+                    nb = b.normalAt(*b.Surface.parameter(b.CenterOfMass))
+                    if na.dot(nb) > -0.999:
+                        continue
+                    # L'écart des plans égale l'écart des faces : elles se
+                    # font face (pas seulement voisines par un coin).
+                    plane_gap = abs((b.CenterOfMass - a.CenterOfMass).dot(na))
+                    if abs(plane_gap - gap) > 1e-6:
+                        continue
+                else:
+                    ca, cb = a.Surface, b.Surface
+                    if (abs(abs(ca.Axis.dot(cb.Axis)) - 1) > 1e-6
+                            or (cb.Center - ca.Center).cross(ca.Axis).Length
+                            > 1e-6):
+                        continue
+                pairs.append((i, j))
+                used.update((i, j))
+        return pairs
+
+    @classmethod
+    def _mid_shape(cls, base_shape, pair):
+        """Peau à mi-chemin de deux faces : décalage exact pour des plans
+        parallèles ou des cylindres concentriques, sinon surface interpolée
+        sur les milieux d'une grille de points."""
         from engine.kernel import KernelError
         for f in pair:
             if f < 0 or f >= len(base_shape.Faces):
@@ -1205,25 +1314,61 @@ class SurfaceMixin:
         if gap < 1e-6:
             raise KernelError("les deux faces se touchent — choisissez les "
                               "deux côtés d'une paroi")
-        kinds = {first.Surface.TypeId, second.Surface.TypeId}
-        if not kinds <= {"Part::GeomPlane", "Part::GeomCylinder"}:
-            raise KernelError("surface médiane : faces planes parallèles ou "
-                              "cylindres concentriques")
-        result = None
-        for value in (-gap / 2, gap / 2):
-            try:
-                candidate = first.makeOffsetShape(value, 1e-6)
-            except Exception:  # noqa: BLE001
-                continue
-            if not candidate.Faces:
-                continue
-            here = candidate.distToShape(second)[0]
-            if abs(here - gap / 2) < 1e-3 * max(gap, 1.0):
-                result = candidate
-                break
-        if result is None:
-            raise KernelError("surface médiane : faces planes parallèles ou "
-                              "cylindres concentriques")
+        if cls._offset_pair(first, second):
+            for value in (-gap / 2, gap / 2):
+                try:
+                    candidate = first.makeOffsetShape(value, 1e-6)
+                except Exception:  # noqa: BLE001
+                    continue
+                if (candidate.Faces and abs(candidate.distToShape(second)[0]
+                                            - gap / 2)
+                        < 1e-3 * max(gap, 1.0)):
+                    return candidate
+        return cls._mid_general(first, second)
+
+    @staticmethod
+    def _offset_pair(first, second):
+        """Vrai si une face est un décalé de l'autre : plans parallèles,
+        cylindres coaxiaux."""
+        ta, tb = first.Surface.TypeId, second.Surface.TypeId
+        if ta != tb:
+            return False
+        if ta == "Part::GeomPlane":
+            return abs(abs(first.Surface.Axis.dot(second.Surface.Axis))
+                       - 1) < 1e-9
+        if ta == "Part::GeomCylinder":
+            ca, cb = first.Surface, second.Surface
+            return (abs(abs(ca.Axis.dot(cb.Axis)) - 1) < 1e-9
+                    and (cb.Center - ca.Center).cross(ca.Axis).Length < 1e-6)
+        return False
+
+    @staticmethod
+    def _mid_general(first, second, count=9):
+        """Milieux de la grille de la première face et de leurs projetés
+        sur la seconde, interpolés en B-spline."""
+        from engine.kernel import KernelError
+        import Part
+        u0, u1, v0, v1 = first.ParameterRange
+        grid = []
+        try:
+            for i in range(count):
+                row = []
+                for j in range(count):
+                    u = u0 + (u1 - u0) * i / (count - 1)
+                    v = v0 + (v1 - v0) * j / (count - 1)
+                    point = first.valueAt(u, v)
+                    vertex = Part.Vertex(point)
+                    other = vertex.distToShape(second)[1][0][1]
+                    row.append((point + other) * 0.5)
+                grid.append(row)
+            surface = Part.BSplineSurface()
+            surface.interpolate(grid)
+            result = surface.toShape()
+        except Exception:  # noqa: BLE001
+            result = None
+        if result is None or result.isNull() or not result.isValid():
+            raise KernelError("surface médiane : le modeleur ne sait pas "
+                              "suivre ces deux faces")
         return result
 
     def surface_flatten(self, surface, face=0):
@@ -1235,31 +1380,74 @@ class SurfaceMixin:
         shape = self._flat_shape(src.Shape, int(face))
         return self._add_frozen_surface(shape, "Surface aplatie", stamps)
 
-    def surface_freeform(self, surface, point, height, radius, face=0):
-        """Forme libre : la surface est poussée au point cliqué, de
-        ``height`` mm selon sa normale, l'effet s'éteignant en douceur à
-        ``radius`` mm. Rééditable, et suit la surface d'origine."""
+    def surface_freeform(self, surface, radius, pushes=None, point=None,
+                         height=None, face=0, keep_edges=False):
+        """Forme libre : la surface est poussée en un ou plusieurs points
+        ``pushes`` = [[x, y, z, hauteur], …] (ou ``point`` + ``height``),
+        selon sa normale, chaque effet s'éteignant en douceur à
+        ``radius`` mm ; ``keep_edges`` garde les bords en place.
+        Rééditable, et suit la surface d'origine."""
+        from engine.kernel import KernelError
         src = self._get_surface(surface)
+        if not pushes:
+            if point is None or height is None:
+                raise KernelError("cliquez au moins un point à pousser")
+            pushes = [list(point) + [height]]
         stamps = {"freesource": src.Name, "freeface": int(face),
-                  "freepoint": ";".join("%.9g" % float(v) for v in point),
-                  "freeheight": float(height), "freeradius": float(radius)}
+                  "freepushes": self._pushes_text(pushes),
+                  "freeradius": float(radius),
+                  "freeedges": int(bool(keep_edges))}
         shape = self._free_shape(src.Shape, stamps)
         return self._add_frozen_surface(shape, "Forme libre", stamps)
 
-    def edit_surface_freeform(self, surface, height, radius):
-        """Rééditer une forme libre : hauteur et rayon d'influence."""
+    def edit_surface_freeform(self, surface, radius, pushes=None,
+                              height=None, keep_edges=None):
+        """Rééditer une forme libre : points poussés et leurs hauteurs (ou
+        une hauteur commune), rayon d'influence, bords fixes."""
         from engine.kernel import KernelError
         obj = self._require_doc().getObject(str(surface))
         if obj is None or not getattr(obj, "FreeSolidFreesource", ""):
             raise KernelError("forme libre inconnue : {}".format(surface))
         stamps = self._frozen_stamps(obj)
-        stamps["freeheight"] = float(height)
+        current = self._free_pushes(stamps)
+        if pushes is None:
+            pushes = [p[:3] + [float(height) if height is not None else p[3]]
+                      for p in current]
+        stamps["freepushes"] = self._pushes_text(pushes)
         stamps["freeradius"] = float(radius)
+        if keep_edges is not None:
+            stamps["freeedges"] = int(bool(keep_edges))
         src = self._get_surface(stamps["freesource"])
         obj.Shape = self._free_shape(src.Shape, stamps)
-        self._stamp(obj, freeheight=float(height), freeradius=float(radius))
+        self._stamp(obj, freepushes=stamps["freepushes"],
+                    freeradius=float(radius),
+                    freeedges=int(stamps.get("freeedges", 0)))
         self._recompute()
         return self.get_tree()
+
+    @staticmethod
+    def _pushes_text(pushes):
+        from engine.kernel import KernelError
+        rows = []
+        for push in pushes:
+            try:
+                x, y, z, h = (float(v) for v in push)
+            except Exception:
+                raise KernelError("point à pousser invalide : {}".format(push))
+            rows.append("%.9g,%.9g,%.9g,%.9g" % (x, y, z, h))
+        if not rows:
+            raise KernelError("cliquez au moins un point à pousser")
+        return ";".join(rows)
+
+    @staticmethod
+    def _free_pushes(stamps):
+        """[[x, y, z, h], …] — format multi-points, ou l'ancien point seul."""
+        text = str(stamps.get("freepushes", "") or "")
+        if text:
+            return [[float(v) for v in row.split(",")]
+                    for row in text.split(";") if row]
+        x, y, z = (float(v) for v in str(stamps["freepoint"]).split(";"))
+        return [[x, y, z, float(stamps["freeheight"])]]
 
     def _add_frozen_surface(self, shape, label, stamps):
         doc = self._require_doc()
@@ -1314,12 +1502,38 @@ class SurfaceMixin:
         if flat.isNull() or not flat.isValid():
             raise KernelError("aplatir : le modeleur ne sait pas dérouler "
                               "cette face")
-        # Posé à droite de la pièce, sur le plan de dessus.
-        box = shape.BoundBox
+        # Posé à droite de toute la scène (pièce et surfaces), sur le plan
+        # de dessus : il ne chevauche rien.
+        box = self._scene_box(shape)
         flat.translate(App.Vector(box.XMax + 10 - flat.BoundBox.XMin,
                                   box.YMin - flat.BoundBox.YMin,
                                   -flat.BoundBox.ZMin))
         return flat
+
+    def _scene_box(self, fallback):
+        """Encombrement du corps actif et des surfaces affichées, hors
+        patrons à plat."""
+        box = fallback.BoundBox
+        shapes = []
+        body = self._body
+        shape = getattr(body, "Shape", None) if body is not None else None
+        if shape is not None and not shape.isNull():
+            shapes.append(shape)
+        consumed = self._consumed_surfaces()
+        for obj in self._require_doc().Objects:
+            if (not self._is_surface_obj(obj) or obj.Name in consumed
+                    or self._is_internal_tool(obj)
+                    or getattr(obj, "FreeSolidFlatsource", "")):
+                continue
+            shape = getattr(obj, "Shape", None)
+            if shape is not None and not shape.isNull():
+                shapes.append(shape)
+        for shape in shapes:
+            try:
+                box.add(shape.BoundBox)
+            except Exception:  # noqa: BLE001
+                pass
+        return box
 
     def _free_shape(self, shape, stamps):
         """Pôles de la surface déplacés selon la normale, avec une cloche
@@ -1328,11 +1542,11 @@ class SurfaceMixin:
         import math
         import FreeCAD as App
         face = self._source_face(shape, int(stamps["freeface"]))
-        height = float(stamps["freeheight"])
+        pushes = self._free_pushes(stamps)
+        keep_edges = bool(int(stamps.get("freeedges", 0) or 0))
         radius = float(stamps["freeradius"])
         if radius <= 0:
             raise KernelError("le rayon d'influence doit être positif")
-        x, y, z = (float(v) for v in str(stamps["freepoint"]).split(";"))
         u0, u1, v0, v1 = face.ParameterRange
         surface = face.toNurbs().Faces[0].Surface
         nu0, nu1, nv0, nv1 = surface.bounds()
@@ -1347,18 +1561,28 @@ class SurfaceMixin:
                 break
             for k in range(1, 4):
                 surface.insertVKnot(nv0 + (nv1 - nv0) * k / 4.0, 1, 1e-9)
-        center = App.Vector(x, y, z)
-        cu, cv = surface.parameter(center)
-        normal = surface.normal(cu, cv)
+        centers = []
+        for x, y, z, height in pushes:
+            center = App.Vector(x, y, z)
+            cu, cv = surface.parameter(center)
+            centers.append((center, surface.normal(cu, cv), height))
+        poles = {(i, j): surface.getPole(i, j)
+                 for i in range(1, surface.NbUPoles + 1)
+                 for j in range(1, surface.NbVPoles + 1)}
         moved = False
-        for i in range(1, surface.NbUPoles + 1):
-            for j in range(1, surface.NbVPoles + 1):
-                pole = surface.getPole(i, j)
+        for (i, j), pole in poles.items():
+            if keep_edges and (i in (1, surface.NbUPoles)
+                               or j in (1, surface.NbVPoles)):
+                continue
+            shift = App.Vector(0, 0, 0)
+            for center, normal, height in centers:
                 gap = (pole - center).Length
                 if gap >= radius:
                     continue
                 weight = 0.5 * (1 + math.cos(math.pi * gap / radius))
-                surface.setPole(i, j, pole + normal * (height * weight))
+                shift = shift + normal * (height * weight)
+            if shift.Length > 0:
+                surface.setPole(i, j, pole + shift)
                 moved = True
         if not moved:
             raise KernelError("forme libre : aucun point de contrôle dans le "
@@ -1379,6 +1603,24 @@ class SurfaceMixin:
         doc = self._require_doc()
         changed = False
         for obj in doc.Objects:
+            halves = getattr(obj, "FreeSolidHalvessource", "")
+            if halves:
+                src = doc.getObject(halves)
+                if src is None or not getattr(src, "Shape", None):
+                    continue
+                try:
+                    result = self._halves_shape(src.Shape,
+                                                obj.FreeSolidHalvesedge,
+                                                obj.FreeSolidHalvesface)
+                except Exception:  # noqa: BLE001
+                    continue
+                old = obj.Shape
+                if (old.isNull() or abs(old.Length - result.Length) > 1e-9
+                        or (old.BoundBox.Center - result.BoundBox.Center)
+                        .Length > 1e-9):
+                    obj.Shape = result
+                    changed = True
+                continue
             free_src = (getattr(obj, "FreeSolidFlatsource", "")
                         or getattr(obj, "FreeSolidFreesource", ""))
             if free_src:
@@ -1406,9 +1648,9 @@ class SurfaceMixin:
                 base = doc.getObject(mid_base)
                 if base is None or not getattr(base, "Shape", None):
                     continue
-                pair = [int(f) for f in str(obj.FreeSolidMidfaces).split(";")]
                 try:
-                    result = self._mid_shape(base.Shape, pair)
+                    result = self._mid_from_spec(base.Shape,
+                                                 obj.FreeSolidMidfaces)
                 except Exception:  # noqa: BLE001
                     continue
                 old = obj.Shape
@@ -1571,38 +1813,47 @@ class SurfaceMixin:
         return self._add_part_surface(
             "Part::Offset", "Épaississement", configure)
 
-    def add_curve3d(self, points, spline=True, closed=False):
+    def add_curve3d(self, points, spline=True, closed=False, rules=None):
         """Spline 3D par points — l'esquisse 3D de FreeSolid : une
         trajectoire de balayage ou un bord de surface (B-spline qui passe
         par les points, ou polyligne). Les points restent rangés sur
-        l'objet : la courbe se réédite (``edit_curve3d``)."""
+        l'objet : la courbe se réédite (``edit_curve3d``). ``rules`` :
+        une règle par segment, ``{"axis": "X"|"Y"|"Z"|"", "length": mm}``
+        — appliquées en chaîne, elles restent attachées à la courbe."""
+        points = self.solve_curve_rules(points, rules)
         vectors, shape = self._curve_shape(points, spline, closed)
         doc = self._require_doc()
         feature = doc.addObject("Part::Feature", "Surface")
         feature.Label = self._t("Spline 3D" if spline else "Polyligne 3D")
-        self._store_curve(feature, vectors, spline, closed)
+        self._store_curve(feature, vectors, spline, closed, rules)
         feature.Shape = shape
         doc.recompute()
         return self.get_tree()
 
-    def edit_curve3d(self, curve, points, spline=True, closed=False):
+    def edit_curve3d(self, curve, points, spline=True, closed=False,
+                     rules=None):
         """Rééditer une spline 3D : nouveaux points, les surfaces et
         balayages qui l'utilisent suivent."""
         from engine.kernel import KernelError
         obj = self._require_doc().getObject(str(curve))
         if obj is None or self._curve_spec(obj) is None:
             raise KernelError("courbe 3D inconnue : {}".format(curve))
+        if rules is None:
+            rules = self._curve_spec(obj).get("rules")
+        points = self.solve_curve_rules(points, rules)
         vectors, shape = self._curve_shape(points, spline, closed)
-        self._store_curve(obj, vectors, spline, closed)
+        self._store_curve(obj, vectors, spline, closed, rules)
         obj.Shape = shape
         for dependent in obj.InList:
             dependent.touch()
         self._recompute()
         return self.get_tree()
 
-    def curve3d_preview(self, points, spline=True, closed=False):
+    def curve3d_preview(self, points, spline=True, closed=False,
+                        rules=None):
         """Aperçu exact d'une spline 3D : la polyligne de la courbe que
         ``add_curve3d`` créerait, sans rien ajouter au document."""
+        points = self.solve_curve_rules(points, rules)
         _, shape = self._curve_shape(points, spline, closed)
         out = []
         for edge in shape.Edges:
@@ -1647,7 +1898,43 @@ class SurfaceMixin:
             raise KernelError(_explain(exc))
         return vectors, shape
 
-    def _store_curve(self, obj, vectors, spline, closed):
+    @staticmethod
+    def solve_curve_rules(points, rules):
+        """Applique les règles segment par segment : le segment i garde sa
+        direction (ramenée sur l'axe imposé) et prend sa longueur cotée ;
+        la suite de la courbe suit en bloc. Points en listes [x, y, z]."""
+        from engine.kernel import KernelError
+        import math
+        pts = [[float(v) for v in p] for p in points or ()]
+        for i, rule in enumerate(rules or ()):
+            if i + 1 >= len(pts) or not isinstance(rule, dict):
+                continue
+            axis = str(rule.get("axis") or "")
+            length = rule.get("length")
+            a, b = pts[i], pts[i + 1]
+            d = [b[k] - a[k] for k in range(3)]
+            if axis in ("X", "Y", "Z"):
+                k = "XYZ".index(axis)
+                d = [d[k] if n == k else 0.0 for n in range(3)]
+                if abs(d[k]) < 1e-9:
+                    d[k] = 1.0
+            if length not in (None, ""):
+                length = float(length)
+                if length <= 0:
+                    raise KernelError("une longueur de segment doit être "
+                                      "positive")
+                size = math.sqrt(sum(c * c for c in d))
+                if size < 1e-9:
+                    raise KernelError("segment sans direction : déplacez un "
+                                      "de ses points")
+                d = [c * length / size for c in d]
+            target = [a[k] + d[k] for k in range(3)]
+            shift = [target[k] - b[k] for k in range(3)]
+            for j in range(i + 1, len(pts)):
+                pts[j] = [pts[j][k] + shift[k] for k in range(3)]
+        return pts
+
+    def _store_curve(self, obj, vectors, spline, closed, rules=None):
         if self._CURVE_POINTS not in obj.PropertiesList:
             obj.addProperty("App::PropertyVectorList", self._CURVE_POINTS,
                             "FreeSolid")
@@ -1658,6 +1945,12 @@ class SurfaceMixin:
         setattr(obj, self._CURVE_POINTS, vectors)
         obj.FreeSolidSpline = bool(spline)
         obj.FreeSolidClosed = bool(closed)
+        if rules is not None:
+            import json
+            clean = [{"axis": str((r or {}).get("axis") or ""),
+                      "length": (r or {}).get("length")}
+                     for r in rules]
+            self._stamp(obj, rules=json.dumps(clean))
 
     def _curve_spec(self, obj):
         """Points d'une spline 3D FreeSolid, ou None."""
@@ -1668,7 +1961,17 @@ class SurfaceMixin:
                        for v in getattr(obj, self._CURVE_POINTS)],
             "spline": bool(obj.FreeSolidSpline),
             "closed": bool(obj.FreeSolidClosed),
+            "rules": self._curve_rules(obj),
         }
+
+    @staticmethod
+    def _curve_rules(obj):
+        import json
+        try:
+            rules = json.loads(getattr(obj, "FreeSolidRules", "") or "[]")
+        except ValueError:
+            return []
+        return rules if isinstance(rules, list) else []
 
     def _wire_through_points(self, vectors, *, spline=True, closed=False):
         """Fil 3D par des points — interpolation B-spline, ou polyligne.

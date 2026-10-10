@@ -106,7 +106,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "surface_loft": _Req(("sketches", list)),
     "surface_sew": _Req(("surfaces", list)),  # coudre ; solidifie si fermé
     "surface_thicken": _Req(("surface", str), ("thickness", float)),
-    "add_curve3d": _Req(("points", list)),  # optional: spline, closed
+    "add_curve3d": _Req(("points", list)),  # optional: spline, closed,
+                                       # rules [{axis, length}] par segment
     "curve3d_preview": _Req(("points", list)),
                                        # optional: spline, closed — lecture seule
     "edit_curve3d": _Req(("curve", str), ("points", list)),
@@ -130,13 +131,15 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # optional: face
     "curve_composite": _Req(("boundary", list)),
     "surface_radiate": _Req(("boundary", list), ("distance", float)),
-    "surface_mid": _Req(("faces", list)),  # deux faces du solide, base 0
+    "surface_mid": (),                 # optional: faces (deux, base 0) |
+                                       # thickness (paires automatiques)
     "surface_flatten": _Req(("surface", str)),  # optional: face
-    "surface_freeform": _Req(("surface", str), ("point", list),
-                             ("height", float), ("radius", float)),
-                                       # optional: face
-    "edit_surface_freeform": _Req(("surface", str), ("height", float),
-                                  ("radius", float)),
+    "surface_freeform": _Req(("surface", str), ("radius", float)),
+                                       # optional: pushes [[x,y,z,h]…] |
+                                       # point + height ; face, keep_edges
+    "edit_surface_freeform": _Req(("surface", str), ("radius", float)),
+                                       # optional: pushes, height,
+                                       # keep_edges
     "curve_helix": _Req(("pitch", float), ("height", float),
                         ("radius", float)),
                                        # optional: angle, left, axis (X|Y|Z)

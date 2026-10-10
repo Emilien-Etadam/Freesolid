@@ -2526,6 +2526,24 @@ class SelftestMixin:
             report["p46_balayage_suit_spline"] = (
                 swept.TypeId == "Part::Sweep" and not swept.Shape.Solids
                 and swept.Shape.Area > area_before + 50)
+            # Règles d'esquisse 3D : segment 1 sur Z, coté 30 ; segment 2
+            # sur X, coté 15. Le solveur en chaîne recale les points et les
+            # règles restent attachées à la courbe.
+            ruled_tree = self.add_curve3d(
+                [[0, 0, 0], [1, 2, 25], [9, 1, 26]], spline=False,
+                rules=[{"axis": "Z", "length": 30},
+                       {"axis": "X", "length": 15}])
+            ruled_spec = ruled_tree["surfaces"][-1].get("curve") or {}
+            moved = self.edit_curve3d(
+                ruled_tree["surfaces"][-1]["name"],
+                [[5, 5, 5], [6, 6, 6], [7, 7, 7]], spline=False)
+            moved_spec = moved["surfaces"][-1].get("curve") or {}
+            report["p46_esquisse3d_regles"] = (
+                ruled_spec.get("points") == [[0, 0, 0], [0, 0, 30],
+                                             [15, 0, 30]]
+                and len(ruled_spec.get("rules") or []) == 2
+                and moved_spec.get("points") == [[5, 5, 5], [5, 5, 35],
+                                                 [20, 5, 35]])
             closed = self.add_curve3d(
                 [[0, 0, 0], [30, 0, 5], [30, 30, 0], [0, 30, 5]],
                 spline=False, closed=True)["surfaces"][-1]
@@ -2788,6 +2806,15 @@ class SelftestMixin:
                 and list(smooth.BoundaryOrder) == [1] * len(inner)
                 and gap(smooth) < 0.3 and gap(smooth) < gap(flat))
 
+            # Bout de tube : une seule arête fermée se remplit aussi.
+            tube_end = [i for i, e in enumerate(tube.Shape.Edges)
+                        if e.isClosed() and e.BoundBox.ZMin > 19]
+            cap = obj_of(self.surface_fill(
+                [{"name": tube.Name, "edge": tube_end[0]}]))
+            cap_ok = abs(cap.Shape.Area - math.pi * 25) < 0.5
+            report["p48_remplir_arete_fermee"] = (
+                len(tube_end) == 1 and cap_ok)
+
             mark("p48: supprimer des faces, désajuster, congé de surface")
             state = self.sketch_start(plane="XY")
             corner = state["sketch"]
@@ -2922,11 +2949,18 @@ class SelftestMixin:
             top = next(i for i, f in enumerate(body.Shape.Faces)
                        if abs(f.CenterOfMass.z - 10) < 1e-6)
             tree = self.add_replace_face(top, tree["surfaces"][-1]["name"])
+            labels = [f["label"] for f in tree["features"]]
+            mixed_ok = (abs(body.Shape.Volume - 1600 * 10) < 1
+                        and abs(body.Shape.BoundBox.ZMax - 13) < 1e-6
+                        and labels[-1] == "Remplacer la face"
+                        and "Remplacer la face — ajout" not in labels)
+            # Une seule ligne : la supprimer retire aussi l'ajout caché.
+            tree = self.delete_feature(tree["features"][-1]["name"])
             report["p49_remplacer_mixte"] = (
-                abs(body.Shape.Volume - 1600 * 10) < 1
-                and abs(body.Shape.BoundBox.ZMax - 13) < 1e-6
-                and [f["label"] for f in tree["features"]][-2:]
-                == ["Remplacer la face — ajout", "Remplacer la face"])
+                mixed_ok and abs(body.Shape.Volume - 1600 * 10) < 1
+                and abs(body.Shape.BoundBox.ZMax - 10) < 1e-6
+                and not any(o.TypeId == "PartDesign::Boolean"
+                            for o in body.Group))
 
             mark("p50: courbe hélice, balayage d'un ressort en surface")
             import math
@@ -2985,8 +3019,45 @@ class SelftestMixin:
             first_ok = (abs(mid.Shape.BoundBox.ZMin - 3) < 1e-6
                         and abs(mid.Shape.Area - 1200) < 1e-6)
             self.set_params(pad, {"Length": 10.0})
+            follow_ok = abs(mid.Shape.BoundBox.ZMin - 5) < 1e-6
+            # Coque mince : les paires se trouvent seules (parois de 2 mm).
+            self.new_part("Pièce médiane auto")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(20)
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if abs(f.CenterOfMass.z - 20) < 1e-6)
+            self.add_thickness(thickness=2, faces=[top])
+            tree = self.surface_mid(thickness=3)
+            auto = self._require_doc().getObject(
+                tree["surfaces"][-1]["name"])
+            auto_faces = len(auto.Shape.Faces)
+            # Faces inclinées (dépouille) : la médiane générale passe au
+            # milieu.
+            self.new_part("Pièce médiane inclinée")
+            state = self.sketch_start(plane="XZ")
+            wedge = state["sketch"]
+            self.sketch_add_line(wedge, 0, 0, 30, 0)
+            self.sketch_add_line(wedge, 30, 0, 30, 2)
+            self.sketch_add_line(wedge, 30, 2, 0, 6)
+            self.sketch_add_line(wedge, 0, 6, 0, 0)
+            self.sketch_finish(wedge)
+            self.add_pad(20)
+            body = self._require_body()
+            bottom = next(i for i, f in enumerate(body.Shape.Faces)
+                          if abs(f.CenterOfMass.z) < 1e-6
+                          and f.Area > 100)
+            slope = max(range(len(body.Shape.Faces)),
+                        key=lambda i: body.Shape.Faces[i].CenterOfMass.z)
+            tree = self.surface_mid([bottom, slope])
+            tilted = self._require_doc().getObject(
+                tree["surfaces"][-1]["name"])
+            bb = tilted.Shape.BoundBox
             report["p50_surface_mediane"] = (
-                first_ok and abs(mid.Shape.BoundBox.ZMin - 5) < 1e-6)
+                first_ok and follow_ok
+                and auto_faces == 5
+                # Milieux au point le plus proche : ~2,95 au bord épais.
+                and abs(bb.ZMax - 3) < 0.1 and abs(bb.ZMin - 1) < 0.05)
 
             mark("p50: aplatir une surface, forme libre")
             import math
@@ -3001,6 +3072,7 @@ class SelftestMixin:
             flat = self._require_doc().getObject(tree["surfaces"][-1]["name"])
             report["p50_aplatir"] = (
                 abs(flat.Shape.Area - math.pi * 10 * 30) < 2
+                and flat.Shape.BoundBox.XMin >= half.Shape.BoundBox.XMax
                 and abs(flat.Shape.BoundBox.ZMax) < 1e-6
                 and (tree["surfaces"][-1].get("surface") or {}).get("kind")
                 == "flatten")
@@ -3010,11 +3082,25 @@ class SelftestMixin:
             self.sketch_finish(plate_sk)
             plate = self._require_doc().getObject(
                 self.surface_planar(sketch=plate_sk)["surfaces"][-1]["name"])
-            tree = self.surface_freeform(plate.Name, [20, 20, 0], 5, 15)
+            tree = self.surface_freeform(plate.Name, 15, point=[20, 20, 0],
+                                         height=5)
             bump = self._require_doc().getObject(tree["surfaces"][-1]["name"])
             top = bump.Shape.BoundBox.ZMax
-            self.edit_surface_freeform(bump.Name, 8, 15)
-            report["p50_forme_libre"] = (
+            self.edit_surface_freeform(bump.Name, 15, height=8)
+            # Deux poussées opposées, bords fixes : une bosse et un creux,
+            # le contour de la plaque ne bouge pas.
+            tree = self.surface_freeform(
+                bump.Name, 15, pushes=[[10, 10, 0, 6], [30, 30, 0, -6]],
+                keep_edges=True)
+            wave = self._require_doc().getObject(tree["surfaces"][-1]["name"])
+            wb = wave.Shape.BoundBox
+            edges_still = all(abs(p.z) < 1e-6 for e in wave.Shape.Edges
+                              for p in e.discretize(20))
+            spec = (tree["surfaces"][-1].get("surface") or {})
+            multi_ok = (wb.ZMax > 3 and wb.ZMin < -3 and edges_still
+                        and len(spec.get("pushes") or []) == 2
+                        and spec.get("keep_edges") is True)
+            report["p50_forme_libre"] = multi_ok and (
                 3 < abs(top) < 5.5
                 and 5 < abs(bump.Shape.BoundBox.ZMax) < 8.5
                 and abs(bump.Shape.BoundBox.XLength - 40) < 1e-3

@@ -359,9 +359,15 @@ class SolidsMixin:
 
     def _tip_with_helpers(self, obj):
         """Barre de retour sur une fonction : après sa cavité éventuelle."""
-        features = [h for h in self._thin_helpers(obj)
+        features = [h for h in self._thin_helpers(obj) + [obj]
                     if h.isDerivedFrom("PartDesign::Feature")]
-        return features[-1] if features else obj
+        if not features:
+            return obj
+        # La dernière dans le corps — un auxiliaire peut précéder sa
+        # fonction (ajout d'un remplacement de face mixte).
+        order = {o.Name: i for i, o in enumerate(
+            getattr(obj.getParentGeoFeatureGroup(), "Group", None) or [])}
+        return max(features, key=lambda o: order.get(o.Name, -1))
 
     def _sync_thin(self, obj):
         """Recopie les épaisseurs de la fonction dans ses liants."""

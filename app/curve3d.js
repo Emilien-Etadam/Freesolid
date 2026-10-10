@@ -40,6 +40,38 @@ export function alongAxis(last, point) {
            axis: "XYZ"[axis] };
 }
 
+/** Applique les règles des segments (axe imposé, longueur cotée) en
+ *  chaîne : le segment i garde sa direction, ramenée sur son axe, prend
+ *  sa longueur, et la suite de la courbe suit en bloc. Même calcul que le
+ *  moteur (solve_curve_rules). */
+export function solveRules(points, rules) {
+  const pts = (points ?? []).map((p) => p.slice(0, 3).map(Number));
+  (rules ?? []).forEach((rule, i) => {
+    if (!rule || i + 1 >= pts.length) return;
+    const [a, b] = [pts[i], pts[i + 1]];
+    let d = b.map((v, k) => v - a[k]);
+    const k = "XYZ".indexOf(rule.axis ?? "");
+    if (rule.axis && k >= 0) {
+      d = d.map((v, n) => (n === k ? v : 0));
+      if (Math.abs(d[k]) < 1e-9) d[k] = 1;
+    }
+    if (rule.length != null && rule.length > 0) {
+      const size = Math.hypot(...d);
+      if (size > 1e-9) d = d.map((v) => (v * rule.length) / size);
+    }
+    const shift = a.map((v, n) => v + d[n] - b[n]);
+    for (let j = i + 1; j < pts.length; j++) {
+      pts[j] = pts[j].map((v, n) => v + shift[n]);
+    }
+  });
+  return pts;
+}
+
+function samePoints(a, b) {
+  return a.length === b.length && a.every((p, i) =>
+    p.every((v, k) => Math.abs(v - b[i][k]) < 1e-9));
+}
+
 /** Plan suivant (Tab). */
 export function nextPlane(key) {
   const i = CLICK_PLANES.indexOf(key);
@@ -220,6 +252,13 @@ export function installCurve3d(ctx) {
     const [x, y, z] = aimed.point.map(round);
     panel.notifyPick("point3d", { kind: "point3d", x, y, z });
     if (axis) {
+      // Maj : l'axe devient une règle du segment, gardée à la réédition.
+      const rules = [...(tool.values.rules ?? [])];
+      while (rules.length < list.length) rules.push({ axis: "", length: null });
+      rules[list.length - 1] = { ...rules[list.length - 1], axis };
+      panel.restore({ rules });
+    }
+    if (axis) {
       say(t("Point le long de l'axe {a}.", { a: axis }));
       return;
     }
@@ -270,7 +309,7 @@ export function installCurve3d(ctx) {
     stop();
     const spec = curve?.curve;
     tool = { curve, values: {
-      points: spec?.points ?? [], plane: "XY",
+      points: spec?.points ?? [], plane: "XY", rules: spec?.rules ?? [],
       spline: spec?.spline ?? true, closed: spec?.closed ?? false } };
     scene.add(preview);
     renderer.domElement.addEventListener("pointerdown", onDown);
@@ -284,6 +323,9 @@ export function installCurve3d(ctx) {
       groups: [
         { label: t("Points"),
           rows: [{ type: "points", key: "points", value: tool.values.points }] },
+        { label: t("Segments"),
+          rows: [{ type: "segments", key: "rules", pointsKey: "points",
+                   value: tool.values.rules }] },
         { label: t("Options"),
           rows: [
             { type: "select", key: "plane", label: t("Plan de clic"),
@@ -306,6 +348,12 @@ export function installCurve3d(ctx) {
       },
       onChange: (v) => {
         if (!tool) return;
+        // Les règles recalent les points : la liste montre le résultat.
+        const solved = solveRules(v.points ?? [], v.rules);
+        if (!samePoints(solved, v.points ?? [])) {
+          panel.restore({ points: solved });
+          return;
+        }
         tool.values = v;
         drawPreview();
         requestExact();
@@ -320,7 +368,8 @@ export function installCurve3d(ctx) {
           say(t(problem), true);
           return;
         }
-        const params = { points: v.points, spline: !!v.spline,
+        const params = { points: solveRules(v.points, v.rules),
+                         rules: v.rules ?? [], spline: !!v.spline,
                          closed: !!v.closed };
         refresh(curve
           ? call("edit_curve3d", { curve: curve.name, ...params })

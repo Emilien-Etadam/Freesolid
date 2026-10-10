@@ -426,6 +426,16 @@ export function installPicking(ctx) {
           kind: "surfface", ...ctx.hoveredSurface,
           face: group?.faceId ?? 0 })) return;
       }
+      // Forme libre : une fois la surface choisie, chaque clic ajoute un
+      // point à pousser.
+      if (panel.accepts("point3d") && !panel.needs("surface")) {
+        raycaster.setFromCamera(pointer, camera);
+        const hit = pickHoveredSurfaceHit();
+        const round = (v) => Math.round(v * 1000) / 1000;
+        if (hit && panel.notifyPick("point3d", { kind: "point3d",
+          x: round(hit.point.x), y: round(hit.point.y),
+          z: round(hit.point.z) })) return;
+      }
       // Ajuster : une fois l'outil choisi, le clic désigne la partie
       // gardée — la surface ET l'endroit cliqué.
       if (panel.accepts("surfpoint") && !panel.needs("surface")) {

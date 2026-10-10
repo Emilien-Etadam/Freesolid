@@ -291,6 +291,27 @@ export function surfaceFilletParams(items, radius) {
   return { surface: name, edges: edges.map((i) => i.edge), radius };
 }
 
+/** Surface médiane : deux faces cliquées, ou toutes les parois. */
+export function midParams(v) {
+  if (v.auto) {
+    const thickness = num(v.thickness);
+    return thickness > 0
+      ? { op: "surface_mid", params: { thickness } } : null;
+  }
+  const items = v.faces?.items ?? [];
+  if (items.length !== 2) return null;
+  return { op: "surface_mid", params: { faces: items.map((i) => i.face) } };
+}
+
+/** Forme libre : surface, points poussés [x, y, z, h], rayon. */
+export function freeformParams(v) {
+  const radius = num(v.radius);
+  const pushes = (v.pushes ?? []).filter((p) => p.length === 4 && p[3]);
+  if (!v.surface || !pushes.length || !(radius > 0)) return null;
+  return { op: "surface_freeform", params: {
+    surface: v.surface.name, radius, pushes, keep_edges: !!v.keepEdges } };
+}
+
 /** Ajuster (et ajustement mutuel) → paramètres, ou null. */
 export function trimParams(v) {
   if (!v.tool || !v.keep || v.keep.name === v.tool.name) return null;
@@ -1334,19 +1355,21 @@ export const FEATURES = [
     title: "Surface médiane",
     preview: false,
     groups: () => [{ label: "Paroi",
-      rows: [{ type: "selection", key: "faces", accepts: ["face"],
-               multiple: true,
-               hint: "Cliquez les deux faces en vis-à-vis de la paroi" }] }],
-    note: "Faces planes parallèles ou cylindres concentriques : la peau "
-      + "passe à mi-épaisseur et suit les cotes de la pièce.",
-    build: (v) => {
-      const items = v.faces?.items ?? [];
-      if (items.length !== 2) return null;
-      return { op: "surface_mid",
-               params: { faces: items.map((i) => i.face) } };
-    },
-    invalid: () => ({ text: "Médiane : les deux faces d'une paroi",
-                      tone: "guide" }),
+      rows: [
+        { type: "check", key: "auto", label: "Toutes les parois de la pièce",
+          value: false },
+        { type: "selection", key: "faces", accepts: ["face"],
+          multiple: true, showIf: (v) => !v.auto,
+          hint: "Cliquez les deux faces en vis-à-vis de la paroi" },
+        { type: "number", key: "thickness", label: "Épaisseur maximale",
+          value: 3, unit: "mm", min: 0.01, showIf: (v) => !!v.auto },
+      ] }],
+    note: "La peau passe à mi-épaisseur et suit les cotes de la pièce. "
+      + "Plans parallèles et cylindres concentriques : exact ; faces "
+      + "inclinées ou courbes : surface passant par les milieux.",
+    build: (v) => midParams(v),
+    invalid: () => ({ text: "Médiane : les deux faces d'une paroi, ou "
+      + "toutes les parois et une épaisseur", tone: "guide" }),
     refresh: "part",
   },
   surface({
@@ -1576,29 +1599,28 @@ export const FEATURES = [
     button: "btn-surf-freeform",
     icon: "surface_freeform",
     title: "Forme libre",
-    groups: [
-      { label: "Point à pousser",
-        rows: [{ type: "selection", key: "at", accepts: ["surfpoint"],
-                 hint: "Cliquez l'endroit à pousser, sur une surface" }] },
+    groups: (ctx) => [
+      { label: "Surface",
+        rows: [{ type: "selection", key: "surface", accepts: ["surface"],
+                 hint: "Cliquez la surface à déformer",
+                 value: ctx.selection(["surface"]) }] },
+      { label: "Points à pousser",
+        rows: [{ type: "points", key: "pushes", value: [],
+                 extra: { label: "Hauteur", value: 5 },
+                 empty: "Puis cliquez les points à pousser, sur la "
+                   + "surface" }] },
       { label: "Paramètres",
         rows: [
-          { type: "number", key: "height", label: "Hauteur", value: 5,
-            unit: "mm" },
           { type: "number", key: "radius", label: "Rayon d'influence",
             value: 15, unit: "mm", min: 0.01 },
+          { type: "check", key: "keepEdges", label: "Bords fixes",
+            value: false },
         ] },
     ],
-    note: "La surface se bombe au point cliqué, selon sa normale ; "
-      + "hauteur négative : un creux.",
-    build: (v) => {
-      const height = num(v.height);
-      const radius = num(v.radius);
-      if (!v.at || !height || !(radius > 0)) return null;
-      return { op: "surface_freeform", params: {
-        surface: v.at.name, face: v.at.face ?? 0,
-        point: [v.at.x, v.at.y, v.at.z], height, radius } };
-    },
-    invalid: "Forme libre : un point sur une surface, une hauteur, un rayon",
+    note: "Chaque point bombe la surface selon sa normale, de sa hauteur "
+      + "(4e colonne ; négative : un creux).",
+    build: (v) => freeformParams(v),
+    invalid: "Forme libre : une surface, des points à pousser, un rayon",
   }),
   surface({
     button: "btn-surf-extend",

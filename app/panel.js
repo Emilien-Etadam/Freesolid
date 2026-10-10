@@ -25,8 +25,11 @@
 //       { type: "text", key, label, value?, placeholder?, unit? }
 //       { type: "list", items: [{ label, onDelete?, onEdit?, editable? }], empty? }
 //       { type: "note", text, readonly?, onClick? }
-//       { type: "points", key, value: [[x, y, z]…] } — liste éditable,
-//         alimentée aussi par les clics « point3d » de la vue
+//       { type: "points", key, value: [[x, y, z]…], extra? } — liste
+//         éditable, alimentée aussi par les clics « point3d » de la vue ;
+//         extra: { label, value } ajoute une 4e colonne (hauteur…)
+//       { type: "segments", key, pointsKey } — une règle par segment entre
+//         points consécutifs : axe imposé (X/Y/Z) et longueur cotée
 //
 // invalidateSelections() : vide les rows `selection` (ids périmés au rebuild).
 
@@ -235,7 +238,9 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     const pointsRow = kind === "point3d" && findPointsRow();
     if (pointsRow) {
       const list = [...(active.values[pointsRow.key] ?? [])];
-      list.push([value.x, value.y, value.z]);
+      const point = [value.x, value.y, value.z];
+      if (pointsRow.extra) point.push(pointsRow.extra.value ?? 0);
+      list.push(point);
       active.values[pointsRow.key] = list;
       render();
       changed();
@@ -435,6 +440,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     }
 
     if (row.type === "points") return renderPoints(row);
+    if (row.type === "segments") return renderSegments(row);
 
     if (row.type === "selection") {
       const box = el("div", "pselect-box");
@@ -566,7 +572,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
         input.inputMode = "decimal";
         input.className = "ppoint-coord";
         input.value = String(Math.round(coord * 1000) / 1000);
-        input.title = ["X", "Y", "Z"][axis];
+        input.title = axis < 3 ? ["X", "Y", "Z"][axis]
+          : t(row.extra?.label ?? "");
         input.addEventListener("change", () => {
           const parsed = Number(input.value.replace(",", "."));
           if (!Number.isFinite(parsed)) {
@@ -592,6 +599,63 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       line.append(remove);
       wrap.append(line);
     });
+    return wrap;
+  }
+
+  // Règles des segments d'une esquisse 3D : axe et longueur. Une
+  // longueur vide laisse le segment libre (sa longueur actuelle en gris).
+  function renderSegments(row) {
+    const wrap = el("div", "plist psegments");
+    const pts = active.values[row.pointsKey] ?? [];
+    const rules = active.values[row.key] ?? [];
+    if (pts.length < 2) {
+      wrap.append(el("div", "pnote", "Au moins deux points"));
+      return wrap;
+    }
+    const update = (index, patchRule) => {
+      const next = [...(active.values[row.key] ?? [])];
+      while (next.length < pts.length - 1) next.push({ axis: "", length: null });
+      next[index] = { ...next[index], ...patchRule };
+      active.values[row.key] = next;
+      changed();
+    };
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const rule = rules[i] ?? { axis: "", length: null };
+      const [a, b] = [pts[i], pts[i + 1]];
+      const length = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      const line = el("div", "plist-item ppoint");
+      line.append(el("span", "ppoint-name", `S${i + 1}`));
+      const axis = document.createElement("select");
+      axis.className = "ppoint-coord";
+      axis.title = t("Axe imposé");
+      for (const [value, label] of [["", "—"], ["X", "X"], ["Y", "Y"],
+        ["Z", "Z"]]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        axis.append(option);
+      }
+      axis.value = rule.axis ?? "";
+      axis.addEventListener("change", () => update(i, { axis: axis.value }));
+      const size = document.createElement("input");
+      size.type = "text";
+      size.inputMode = "decimal";
+      size.className = "ppoint-coord";
+      size.title = t("Longueur cotée (vide : libre)");
+      size.placeholder = String(Math.round(length * 100) / 100);
+      size.value = rule.length == null ? "" : String(rule.length);
+      size.addEventListener("change", () => {
+        const text = size.value.trim().replace(",", ".");
+        const parsed = Number(text);
+        if (text !== "" && !(Number.isFinite(parsed) && parsed > 0)) {
+          size.value = rule.length == null ? "" : String(rule.length);
+          return;
+        }
+        update(i, { length: text === "" ? null : parsed });
+      });
+      line.append(axis, size, el("span", "punit", "mm"));
+      wrap.append(line);
+    }
     return wrap;
   }
 

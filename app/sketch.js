@@ -70,7 +70,7 @@ function createGlyphSprite(text) {
 
 export function createSketchMode(deps) {
   const { scene, camera, renderer, controls, call, say, refresh, panel,
-    boxOverlay } = deps;
+    boxOverlay, hideContextToolbar } = deps;
 
   const group = new THREE.Group();
   scene.add(group);
@@ -1993,6 +1993,9 @@ export function createSketchMode(deps) {
     try {
       const state = await statePromise;
       mode.active = true;
+      // La barre d'icônes de la face cliquée resterait au milieu du dessin
+      // et prendrait les clics destinés à l'esquisse.
+      hideContextToolbar?.();
       applyState(state);
       // Le WASM se charge en fond ; dès qu'il est prêt, l'esquisse
       // courante y est (re)chargée.

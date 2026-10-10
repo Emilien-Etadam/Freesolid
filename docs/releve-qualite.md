@@ -190,7 +190,7 @@ de suite. Q6 et Q7 attendent une maquette et un échantillon validés.
 | Q3 | fait (Cursor) |
 | Q4 | confié à Cursor, après Q9a |
 | Q5 | après Q4 |
-| Q6 | maquette validée, en cours (Claude) |
+| Q6 | fait : en-tête de 130 px en 1366 × 768 (zone 3D : 611 px de haut au lieu de 377) ; icônes actuelles en attendant Q7 |
 | Q7 | icônes de l'utilisateur, à recevoir |
 | Q8 | fait : lumières liées à la vue, fond en dégradé, grille estompée |
 | Q9 | part simple (Q9a) confiée à Cursor ; volet d'arbre et menu : Claude |

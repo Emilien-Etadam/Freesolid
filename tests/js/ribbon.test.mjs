@@ -142,11 +142,10 @@ describe("ribbon.json", () => {
   });
 });
 
-// -- l'organisation transposée de FreeCAD-Ribbon ------------------------
-// La référence est le PartDesign d'APEbbers (docs/ruban.md) : additifs,
-// séparateur, soustractifs, séparateur, booléen — un seul panneau
-// Modélisation ; l'outil de profil en tête d'onglet ; l'habillage et les
-// transformations dans l'ordre des barres FreeCAD.
+// -- l'organisation du ruban compact ------------------------------------
+// La référence est la maquette validée (docs/maquettes/entete.html) : les
+// commandes de tête en grand (deux lignes du ruban), les autres empilées
+// deux par deux à leur suite ; l'outil de profil en tête d'onglet.
 
 function groupe(ongletId, libelle) {
   const onglet = LAYOUT.onglets.find((o) => o.id === ongletId);
@@ -158,14 +157,11 @@ function sequence(g) {
 }
 
 describe("l'organisation transposée", () => {
-  it("ordonne Modélisation : additifs | soustractifs | booléen", () => {
+  it("ordonne Modélisation : volumes de base en grand, puis le reste", () => {
     assert.deepEqual(sequence(groupe("features", "Modélisation")), [
-      "btn-pad", "btn-revolution", "btn-loft", "btn-sweep", "btn-helix",
-      "btn-text", "btn-graph-feature",
-      "|",
-      "btn-pocket", "btn-hole", "btn-groove",
-      "|",
-      "btn-boolean",
+      "btn-pad", "btn-revolution", "btn-pocket", "btn-groove", "btn-hole",
+      "btn-loft", "btn-sweep", "btn-helix", "btn-text",
+      "btn-graph-feature", "btn-boolean",
     ]);
   });
 
@@ -174,19 +170,20 @@ describe("l'organisation transposée", () => {
       ["btn-sketch", "btn-body", "btn-datum"]);
   });
 
-  it("ordonne l'habillage et les transformations comme FreeCAD", () => {
+  it("ordonne l'habillage et les transformations", () => {
     assert.deepEqual(sequence(groupe("features", "Habillage")),
-      ["btn-fillet", "btn-chamfer", "btn-draft", "btn-shell"]);
+      ["btn-fillet", "btn-chamfer", "btn-shell", "btn-draft"]);
     assert.deepEqual(sequence(groupe("features", "Transformations")),
       ["btn-linpattern", "btn-polpattern", "btn-mirror",
         "btn-repeat-variable"]);
   });
 
-  it("met en avant les commandes de tête d'APEbbers (taille large)", () => {
+  it("met en avant les commandes de tête (taille large)", () => {
     const larges = layoutButtons().filter((b) => b.taille).map((b) => b.id);
     assert.deepEqual(larges, [
-      "btn-sketch", "btn-pad", "btn-pocket", "btn-fillet", "btn-chamfer",
-      "btn-linpattern", "btn-curve3d", "btn-newasm",
+      "btn-sketch", "btn-pad", "btn-revolution", "btn-pocket", "btn-groove",
+      "btn-hole", "btn-fillet", "btn-chamfer", "btn-shell",
+      "btn-linpattern", "btn-curve3d", "ribbon-mass", "btn-newasm",
     ]);
     for (const bouton of layoutButtons()) {
       if (bouton.taille !== undefined) assert.equal(bouton.taille, "large");
@@ -210,11 +207,12 @@ describe("l'organisation transposée", () => {
       ["btn-move", "btn-joint"]);
   });
 
-  it("regroupe mesurer, la masse, les équations et les interférences", () => {
+  it("regroupe mesurer, la masse, les équations, la mise en plan et les interférences", () => {
     const onglet = LAYOUT.onglets.find((o) => o.id === "evaluate");
     assert.equal(onglet.libelle, "Évaluer");
     assert.deepEqual(sequence(groupe("evaluate", "Évaluer")), [
-      "ribbon-measure", "ribbon-mass", "ribbon-equations", "btn-interf",
+      "ribbon-measure", "ribbon-mass", "ribbon-equations", "ribbon-drawing",
+      "btn-interf",
     ]);
     const byId = Object.fromEntries(
       groupe("evaluate", "Évaluer").boutons.map((button) => [button.id, button]));
@@ -224,6 +222,7 @@ describe("l'organisation transposée", () => {
     assert.equal(byId["ribbon-mass"].libelle, "Évaluer");
     assert.equal(byId["ribbon-equations"].relais, "btn-equations");
     assert.equal(byId["ribbon-equations"].libelle, "Équations");
+    assert.equal(byId["ribbon-drawing"].relais, "btn-drawing");
     assert.equal(byId["btn-interf"].libelle, "Interférences");
     assert.equal(byId["btn-interf"].relais, undefined);
   });

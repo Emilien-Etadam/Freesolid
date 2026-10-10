@@ -76,24 +76,47 @@
     overflow: hidden;
   }
 
+  /* En-tête compact (docs/maquettes/entete.html) : 32 + 28 + 70 px.
+     Ligne 1 : marque, menus, accès rapide, recherche. Ligne 2 : onglets.
+     Ligne 3 : le ruban de l'onglet actif, sur une seule rangée. */
   header {
     grid-area: top;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
   }
+  #titlebar {
+    height: 32px; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-2);
+    padding: 0 var(--space-2);
+    border-bottom: 1px solid var(--line);
+  }
+  #titlebar .grow { flex: 1; }
+  #quickbar { display: flex; align-items: center; gap: 2px; }
+  #quickbar button, #btn-settings {
+    width: 28px; height: 26px; padding: 0; justify-content: center;
+    background: none; border-color: transparent; border-radius: var(--radius-s);
+  }
+  #quickbar button:hover, #btn-settings:hover {
+    background: var(--panel-2); border-color: var(--line);
+  }
+  #quickbar .sep { height: 16px; margin: 0 var(--space-1); }
   #topbar {
-    display: flex; align-items: center; gap: 6px;
-    flex-wrap: wrap; row-gap: var(--space-1);
-    padding: var(--space-1) var(--space-3) 0;
+    height: 28px; display: flex; align-items: flex-end; gap: 2px;
+    padding: 0 var(--space-2);
   }
   #topbar .push { margin-left: auto; }
-  #command-search { position: relative; }
+  #command-search { position: relative; display: flex; align-items: center; }
   #command-query {
-    width: 180px; box-sizing: border-box;
+    width: 210px; height: 24px; box-sizing: border-box;
     background: var(--bg); color: var(--ink);
     border: 1px solid var(--line); border-radius: var(--radius-s);
-    padding: var(--space-1) var(--space-2); font: inherit; font-size: var(--text-s);
+    padding: 0 3.6em 0 var(--space-2); font: inherit; font-size: var(--text-s);
   }
+  #command-search kbd {
+    position: absolute; right: 6px; pointer-events: none;
+    font: inherit; font-size: 10px; color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 3px; padding: 0 var(--space-1);
+  }
+  #command-query:focus + kbd { display: none; }
   #command-results {
     position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
     width: 260px; max-height: 280px; overflow: auto;
@@ -110,71 +133,79 @@
   #command-results button:hover:not(:disabled) { background: var(--hover); }
   #command-results .cmd-tab { color: var(--ink-2); font-size: var(--text-xs); }
   header .tab {
-    background: none; border: none; border-radius: 0;
-    border-bottom: 2px solid transparent;
-    padding: var(--space-2) var(--space-3) var(--space-1);
+    background: none; border: none;
+    border-radius: var(--radius-s) var(--radius-s) 0 0;
+    padding: 5px var(--space-3);
     color: var(--ink-2); font-weight: 600; font-size: var(--text-s);
   }
   header .tab:hover { color: var(--ink); }
-  header .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  header .tab.active {
+    color: var(--ink); background: var(--panel-2);
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+  /* Le ruban : une rangée de groupes, deux lignes de 28 px. Les commandes
+     de tête (taille "large" dans ribbon.json) occupent les deux lignes,
+     icône au-dessus du libellé ; les autres s'empilent deux par deux. */
   .ribbon {
-    display: none; align-items: stretch; flex-wrap: wrap;
-    gap: 0; row-gap: var(--space-1);
-    padding: var(--space-1) var(--space-2) 2px;
-    border-top: 1px solid var(--line);
+    display: none; align-items: stretch;
+    height: 69px; box-sizing: border-box;
+    padding: var(--space-1) var(--space-1);
+    background: var(--panel-2);
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
   }
   .ribbon.active { display: flex; }
   .ribbon-group {
-    display: flex; flex-direction: column;
-    /* shrink autorisé : un groupe seul plus large que l'écran replie ses
-       boutons (flex-wrap ci-dessous) au lieu d'être coupé à droite. */
-    flex: 0 1 auto;
-    padding: 2px 10px 2px;
+    display: flex; flex: 0 0 auto;
+    padding: 0 var(--space-1);
     border-right: 1px solid var(--line);
-    min-width: min-content;
   }
   .ribbon-group:last-child { border-right: none; }
   .ribbon-group-btns {
-    display: flex; align-items: center; justify-content: center;
-    flex-wrap: wrap;
-    gap: var(--space-1); flex: 1;
+    display: grid; grid-auto-flow: column;
+    grid-template-rows: repeat(2, 28px);
+    align-content: center; align-items: center;
+    gap: 2px;
   }
+  /* Le nom du groupe reste dans le DOM (recherche, lecteurs d'écran) ;
+     les séparateurs suffisent à l'œil. */
   .ribbon-group-label {
-    text-align: center; white-space: nowrap;
-    font-size: var(--text-xs); color: var(--ink-2);
-    padding-top: var(--space-1); line-height: 1.2;
-    user-select: none;
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
   }
-  /* Hiérarchie visuelle transposée de FreeCAD-Ribbon : les commandes
-     de tête (taille "large" dans ribbon.json) en colonne, grosse icône,
-     libellé dessous — les autres restent en ligne. */
+  .ribbon-group-btns button {
+    height: 28px; padding: 0 var(--space-2) 0 var(--space-1);
+    background: none; border-color: transparent; border-radius: var(--radius-s);
+    font-size: var(--text-xs); white-space: nowrap;
+  }
+  .ribbon-group-btns button:not(:has(> img)) { padding: 0 var(--space-2); }
+  .ribbon-group-btns button:has(> img):not(:has(> :not(img))) { justify-content: center; }
+  .ribbon-group-btns button:hover {
+    background: var(--panel); border-color: var(--line);
+  }
   .ribbon button.large {
-    flex-direction: column;
-    gap: var(--space-1);
-    padding: var(--space-1) var(--space-2);
-    max-width: 6.5em;
-    white-space: normal;
-    text-align: center;
-    line-height: 1.15;
+    grid-row: span 2; height: 58px; width: 60px;
+    flex-direction: column; justify-content: center;
+    gap: 3px; padding: 2px;
+    white-space: normal; text-align: center; line-height: 1.15;
+    border-radius: var(--radius-m);
   }
   .ribbon button.large img { width: 24px; height: 24px; }
-  /* Dans une rangée qui contient des boutons large, le séparateur de
-     bloc suit la hauteur de la rangée au lieu de rester à 22 px. */
-  .ribbon-group-btns .sep { align-self: stretch; height: auto; margin: var(--space-1) 0; }
-  body.ribbon-icons-only .ribbon button:has(> img) {
-    font-size: 0; gap: 0; padding: 6px;
+  .ribbon-group-btns .sep {
+    grid-row: span 2; align-self: stretch; width: 1px; height: auto;
+    margin: var(--space-1) var(--space-1);
   }
-  /* font-size 0 rend le max-width en em des boutons large nul : le bouton
-     ferait 14 px sous une icône de 24 px. Sans libellé, plus de plafond. */
-  body.ribbon-icons-only .ribbon button.large { max-width: none; }
+  body.ribbon-icons-only .ribbon button:has(> img) {
+    font-size: 0; gap: 0; padding: 0 6px;
+  }
+  body.ribbon-icons-only .ribbon button.large { width: 40px; }
   header .sep { width: 1px; height: 22px; background: var(--line); }
-  header .logo { font-weight: 600; letter-spacing: 0.02em; margin-right: var(--space-3); }
+  header .logo { font-weight: 700; letter-spacing: 0.02em; margin-right: var(--space-1); }
   header .logo span { color: var(--accent); }
-  #menubar { display: flex; align-items: stretch; gap: 2px; padding: 2px var(--space-2) 0; }
+  #menubar { display: flex; align-items: center; gap: 0; }
   #menubar .menu-top {
     position: relative;
     background: transparent; border: 1px solid transparent;
-    border-radius: var(--radius-s) var(--radius-s) 0 0; padding: var(--space-1) 10px; color: var(--ink);
+    border-radius: var(--radius-s); padding: 3px var(--space-2); color: var(--ink);
   }
   #menubar .menu-top.open,
   #menubar .menu-top:hover { background: var(--panel-2); border-color: var(--line); }
@@ -1002,33 +1033,44 @@
 </head>
 <body>
   <header>
-    <nav id="menubar"></nav>
-    <div id="topbar">
+    <!-- Ligne 1 : marque, menus, accès rapide, recherche, paramètres. -->
+    <div id="titlebar">
       <div class="logo">Free<span>Solid</span></div>
-      <!-- Les onglets du ruban viennent de ribbon.json (main.js les insère
-           avant .push ; les plugins ajoutent les leurs à la suite). -->
-      <span class="push"></span>
-      <button id="btn-settings" title="Paramètres — version, mises à jour, réglages"><img src="icons/FreeSolid_Settings.svg" alt=""></button>
-      <button id="btn-home" title="Accueil">Accueil</button>
-      <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt=""></button>
-      <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/edit-undo.svg" alt=""></button>
-      <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img src="icons/edit-redo.svg" alt=""></button>
-      <button id="btn-rebuild" title="Reconstruire — recalcul forcé de tout l'arbre"><img src="icons/Std_Refresh.svg" alt="">Reconstruire</button>
-      <button id="btn-equations" title="Équations — variables globales pour piloter cotes et fonctions"><img src="icons/VarSet.svg" alt=""></button>
-      <button id="btn-evaluate" title="Évaluer — volume, masse (densité), centre de gravité"><img src="icons/view-measurement.svg" alt=""></button>
-      <button id="btn-measure" title="Mesurer — distance entre deux faces ou arêtes">Mesurer</button>
-      <div class="sep"></div>
-      <button id="btn-open" title="Ouvrir un .FCStd"><img src="icons/document-open.svg" alt=""></button>
-      <button id="btn-save" title="Enregistrer (.FCStd)"><img src="icons/document-save.svg" alt=""></button>
-      <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img src="icons/document-save-as.svg" alt=""></button>
-      <button id="btn-drawing" title="Mise en plan — Face / Dessus / Iso, cotes d'encombrement, coupe, export DXF"><img src="icons/TechDraw_PageDefault.svg" alt=""></button>
-      <button id="btn-selftest" hidden>Autotest</button>
+      <nav id="menubar"></nav>
+      <span class="grow"></span>
+      <div id="quickbar">
+        <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt=""></button>
+        <button id="btn-open" title="Ouvrir un .FCStd"><img src="icons/document-open.svg" alt=""></button>
+        <button id="btn-save" title="Enregistrer (.FCStd)"><img src="icons/document-save.svg" alt=""></button>
+        <div class="sep"></div>
+        <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/edit-undo.svg" alt=""></button>
+        <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img src="icons/edit-redo.svg" alt=""></button>
+        <button id="btn-rebuild" title="Reconstruire — recalcul forcé de tout l'arbre"><img src="icons/Std_Refresh.svg" alt=""></button>
+      </div>
       <div id="command-search">
         <input id="command-query" type="search" autocomplete="off"
           placeholder="Rechercher une commande"
           aria-label="Rechercher une commande">
+        <kbd>Ctrl+F</kbd>
         <div id="command-results" hidden role="listbox"></div>
       </div>
+      <button id="btn-settings" title="Paramètres — version, mises à jour, réglages"><img src="icons/FreeSolid_Settings.svg" alt=""></button>
+    </div>
+    <!-- Ligne 2 : les onglets du ruban, tirés de ribbon.json (insérés avant
+         .push ; les plugins ajoutent les leurs à la suite). -->
+    <div id="topbar">
+      <span class="push"></span>
+    </div>
+    <!-- Commandes sans place dans l'en-tête compact : les menus, le ruban
+         (relais) et l'accueil les déclenchent par leur id. -->
+    <div id="commands" hidden>
+      <button id="btn-home" title="Accueil">Accueil</button>
+      <button id="btn-equations" title="Équations — variables globales pour piloter cotes et fonctions"><img src="icons/VarSet.svg" alt=""></button>
+      <button id="btn-evaluate" title="Évaluer — volume, masse (densité), centre de gravité"><img src="icons/view-measurement.svg" alt=""></button>
+      <button id="btn-measure" title="Mesurer — distance entre deux faces ou arêtes">Mesurer</button>
+      <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img src="icons/document-save-as.svg" alt=""></button>
+      <button id="btn-drawing" title="Mise en plan — Face / Dessus / Iso, cotes d'encombrement, coupe, export DXF"><img src="icons/TechDraw_PageDefault.svg" alt=""></button>
+      <button id="btn-selftest">Autotest</button>
     </div>
     <!-- Les bandeaux features/surfaces/assembly sont rendus depuis
          ribbon.json et insérés ici, avant #sketchbar (voir ribbon.js). -->

@@ -1914,7 +1914,8 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
 // ---------- sketch mode ----------
 
 const sketchMode = createSketchMode(
-  { scene, camera, renderer, controls, call, say, refresh, panel, boxOverlay });
+  { scene, camera, renderer, controls, call, say, refresh, panel, boxOverlay,
+    hideContextToolbar: () => ctx.hideContextToolbar?.() });
 
 installShortcutBar(document, {
   ribbon: RIBBON_LAYOUT,

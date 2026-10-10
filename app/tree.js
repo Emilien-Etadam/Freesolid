@@ -68,7 +68,7 @@ export function installTree(ctx) {
     THREE, scene, treeEl, panel,
     say, call, refresh, refreshAny,
     disposeSubtree, hexColor, partCenterRadius,
-    repaintEdges, repaintGroups, repaintSurfaces,
+    repaintEdges, repaintGroups, repaintSurfaces, sketchHighlightMaterial,
     updatePlaneVisibility, pickPlane, schedulePreview,
     findFeatureInTree, updateEditMode, toggleOrigin, openEquationsPanel,
     clearAssemblyView, closeGraph, enterGraphFeature, syncGraphFromTree,

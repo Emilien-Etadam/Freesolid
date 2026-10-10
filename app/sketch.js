@@ -15,6 +15,7 @@ import {
 } from "./geom2d.js";
 import { fmtMm, num } from "./num.js";
 import { eventToNdc, ndcToScreen } from "./screen.js";
+import { cssHex, cssRgba, readScene } from "./theme.js";
 import {
   boxMode, isDrag, normalizeRect, pickInBox, sketchLocalPoints,
 } from "./navigation.js";
@@ -22,11 +23,13 @@ import {
   arrowSegments, dimEditPayload, dimGeometry, dimLabel, openDimEditor,
 } from "./dims.js";
 
-export function createDimSprite(text, x, y, z = 0.01, color = "#7fc4ff") {
+const sceneTheme = readScene();
+
+export function createDimSprite(text, x, y, z = 0.01, color = cssHex(sceneTheme.dim)) {
   const canvas = document.createElement("canvas");
   canvas.width = 256; canvas.height = 40;
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "rgba(23,25,28,0.85)";
+  ctx.fillStyle = cssRgba(sceneTheme.bg, 0.85);
   ctx.fillRect(0, 0, 256, 40);
   ctx.font = "22px system-ui";
   ctx.fillStyle = color;
@@ -47,15 +50,15 @@ function createGlyphSprite(text) {
   const canvas = document.createElement("canvas");
   canvas.width = 48; canvas.height = 48;
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "rgba(23,25,28,0.85)";
+  ctx.fillStyle = cssRgba(sceneTheme.bg, 0.85);
   ctx.beginPath();
   ctx.arc(24, 24, 22, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = "#6fcf97";
+  ctx.strokeStyle = cssHex(sceneTheme.successSoft);
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.font = "bold 26px system-ui";
-  ctx.fillStyle = "#6fcf97";
+  ctx.fillStyle = cssHex(sceneTheme.successSoft);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, 24, 26);
@@ -77,7 +80,7 @@ export function createSketchMode(deps) {
   // mesh (user report).
   // Couleur = état de définition de l'entité (moteur : entity.status) :
   // bleu = encore libre, clair = entièrement définie, rouge = en trop.
-  const STATUS_COLORS = { under: 0x5aa9ff, full: 0xe8edf2, over: 0xff5c5c };
+  const STATUS_COLORS = { under: sceneTheme.under, full: sceneTheme.defined, over: sceneTheme.danger };
   const lineMaterials = {};
   const constructionMaterials = {};
   for (const [status, color] of Object.entries(STATUS_COLORS)) {
@@ -89,17 +92,17 @@ export function createSketchMode(deps) {
       transparent: true, opacity: 0.6 });
   }
   const previewMaterial = new THREE.LineBasicMaterial(
-    { color: 0x4f8fdb, depthTest: false });
+    { color: sceneTheme.accent, depthTest: false });
   const selectedMaterial = new THREE.LineBasicMaterial(
-    { color: 0xd9924a, depthTest: false });
+    { color: sceneTheme.selection, depthTest: false });
   // Cotes : lignes d'attache, ligne de cote et flèches. Pilotante en bleu
   // clair, de référence (pilotée) en gris.
   const dimLineMaterial = new THREE.LineBasicMaterial(
-    { color: 0x7fc4ff, depthTest: false });
+    { color: sceneTheme.dim, depthTest: false });
   const drivenDimLineMaterial = new THREE.LineBasicMaterial(
-    { color: 0x8b939d, depthTest: false });
+    { color: sceneTheme.ink2, depthTest: false });
   const pointMaterial = new THREE.PointsMaterial({
-    color: 0x4f8fdb, size: 7, sizeAttenuation: false, depthTest: false });
+    color: sceneTheme.accent, size: 7, sizeAttenuation: false, depthTest: false });
   group.renderOrder = 20;
 
   const mode = {
@@ -247,10 +250,10 @@ export function createSketchMode(deps) {
   const DRAW_TOOLS = new Set(["line", "rect", "rectc", "circle", "arc",
     "arc3", "slot", "polygon", "spline", "ellipse"]);
   const guideMaterial = new THREE.LineDashedMaterial({
-    color: 0x5aa9ff, dashSize: 1.5, gapSize: 1.2, depthTest: false,
+    color: sceneTheme.under, dashSize: 1.5, gapSize: 1.2, depthTest: false,
     transparent: true, opacity: 0.8 });
   const snapMaterial = new THREE.PointsMaterial({
-    color: 0xd9924a, size: 11, sizeAttenuation: false, depthTest: false });
+    color: sceneTheme.selection, size: 11, sizeAttenuation: false, depthTest: false });
   let inferLines = null;
   let snapPoint = null;
   let readoutEl = null;
@@ -583,7 +586,7 @@ export function createSketchMode(deps) {
     for (const [dx, dy] of [[1, 0], [0, 1]]) {
       const arrow = new THREE.ArrowHelper(
         new THREE.Vector3(dx, dy, 0), new THREE.Vector3(0, 0, 0),
-        size, 0xe06666, size * 0.3, size * 0.18);
+        size, sceneTheme.axisX, size * 0.3, size * 0.18);
       arrow.traverse((obj) => {
         if (obj.material) {
           obj.material.transparent = true;

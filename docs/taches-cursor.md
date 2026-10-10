@@ -389,4 +389,10 @@ variables.
   variables CSS (`getComputedStyle`) avec une valeur de repli — pour qu'un
   futur thème clair change aussi la scène.
 - Test JS : `theme.js` rend une couleur de repli sans DOM.
+- **Depuis le commit eddf3b7 (Q8)** : l'éclairage, le fond en dégradé et la
+  grille vivent dans `app/scenelook.js` (`BACKGROUND_TOP/BOTTOM`, couleurs
+  de la grille, lumières). Faire `git merge qualite` avant de commencer ;
+  y brancher `theme.js` sans changer les valeurs. `main.js` n'a plus de
+  `GridHelper` ni de `scene.background`, et le masque des lignes cachées
+  n'a plus de couleur (`colorWrite: false`).
 

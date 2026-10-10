@@ -1130,13 +1130,13 @@
       <nav id="menubar"></nav>
       <span class="grow"></span>
       <div id="quickbar">
-        <button id="btn-new" title="Nouvelle pièce"><img src="icons/fs_new.svg" alt=""></button>
-        <button id="btn-open" title="Ouvrir un .FCStd"><img src="icons/fs_open.svg" alt=""></button>
-        <button id="btn-save" title="Enregistrer (.FCStd)"><img src="icons/fs_save.svg" alt=""></button>
+        <button id="btn-new" title="Nouvelle pièce"><img data-icon="new" alt=""></button>
+        <button id="btn-open" title="Ouvrir un .FCStd"><img data-icon="open" alt=""></button>
+        <button id="btn-save" title="Enregistrer (.FCStd)"><img data-icon="save" alt=""></button>
         <div class="sep"></div>
-        <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/fs_undo.svg" alt=""></button>
-        <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img src="icons/fs_redo.svg" alt=""></button>
-        <button id="btn-rebuild" title="Reconstruire — recalcul forcé de tout l'arbre"><img src="icons/fs_rebuild.svg" alt=""></button>
+        <button id="btn-undo" title="Annuler (Ctrl+Z)"><img data-icon="undo" alt=""></button>
+        <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img data-icon="redo" alt=""></button>
+        <button id="btn-rebuild" title="Reconstruire — recalcul forcé de tout l'arbre"><img data-icon="rebuild" alt=""></button>
       </div>
       <div id="command-search">
         <input id="command-query" type="search" autocomplete="off"
@@ -1145,7 +1145,7 @@
         <kbd>Ctrl+F</kbd>
         <div id="command-results" hidden role="listbox"></div>
       </div>
-      <button id="btn-settings" title="Paramètres — version, mises à jour, réglages"><img src="icons/fs_settings.svg" alt=""></button>
+      <button id="btn-settings" title="Paramètres — version, mises à jour, réglages"><img data-icon="settings" alt=""></button>
     </div>
     <!-- Ligne 2 : les onglets du ruban, tirés de ribbon.json (insérés avant
          .push ; les plugins ajoutent les leurs à la suite). -->
@@ -1156,11 +1156,11 @@
          (relais) et l'accueil les déclenchent par leur id. -->
     <div id="commands" hidden>
       <button id="btn-home" title="Accueil">Accueil</button>
-      <button id="btn-equations" title="Équations — variables globales pour piloter cotes et fonctions"><img src="icons/VarSet.svg" alt=""></button>
-      <button id="btn-evaluate" title="Évaluer — volume, masse (densité), centre de gravité"><img src="icons/view-measurement.svg" alt=""></button>
+      <button id="btn-equations" title="Équations — variables globales pour piloter cotes et fonctions"><img data-icon="VarSet" alt=""></button>
+      <button id="btn-evaluate" title="Évaluer — volume, masse (densité), centre de gravité"><img data-icon="view-measurement" alt=""></button>
       <button id="btn-measure" title="Mesurer — distance entre deux faces ou arêtes">Mesurer</button>
-      <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img src="icons/document-save-as.svg" alt=""></button>
-      <button id="btn-drawing" title="Mise en plan — Face / Dessus / Iso, cotes d'encombrement, coupe, export DXF"><img src="icons/TechDraw_PageDefault.svg" alt=""></button>
+      <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img data-icon="document-save-as" alt=""></button>
+      <button id="btn-drawing" title="Mise en plan — Face / Dessus / Iso, cotes d'encombrement, coupe, export DXF"><img data-icon="TechDraw_PageDefault" alt=""></button>
       <button id="btn-selftest">Autotest</button>
     </div>
     <!-- Les bandeaux features/surfaces/assembly sont rendus depuis
@@ -1168,56 +1168,56 @@
     <div id="sketchbar" class="ribbon">
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button data-tool="select" data-label="Sélectionner" title="Sélectionner — glisser un point, cliquer des entités"><img src="icons/fs_select.svg" alt="">Sélectionner</button>
-          <button data-tool="line" data-label="Ligne" title="Ligne (L)"><img src="icons/nodes_line.svg" alt=""></button>
-          <button data-tool="rect" data-label="Rectangle par sommet" title="Rectangle par sommet (R)"><img src="icons/fs_rect.svg" alt=""></button>
-          <button data-tool="rectc" data-label="Rectangle par le centre" title="Rectangle par le centre"><img src="icons/fs_rect_center.svg" alt=""></button>
-          <button data-tool="circle" data-label="Cercle" title="Cercle (C)"><img src="icons/nodes_circle.svg" alt=""></button>
-          <button data-tool="spline" data-label="Spline" title="Spline — points cliqués, Entrée pour terminer"><img src="icons/nodes_bspline.svg" alt=""></button>
-          <button data-tool="ellipse" data-label="Ellipse" title="Ellipse (E) — centre, grand axe, petit rayon"><img src="icons/fs_ellipse.svg" alt=""></button>
-          <button data-tool="arc" data-label="Arc par centre" title="Arc par centre — centre, départ, arrivée"><img src="icons/nodes_arc.svg" alt=""></button>
-          <button data-tool="arc3" data-label="Arc 3 points" title="Arc 3 points (A) — départ, arrivée, passage"><img src="icons/nodes_arc_3_pt.svg" alt=""></button>
-          <button data-tool="slot" data-label="Rainure droite" title="Rainure droite — deux centres puis largeur"><img src="icons/fs_slot.svg" alt=""></button>
-          <button data-tool="polygon" data-label="Polygone" title="Polygone — nombre de côtés, centre, sommet"><img src="icons/fs_polygon.svg" alt=""></button>
+          <button data-tool="select" data-label="Sélectionner" title="Sélectionner — glisser un point, cliquer des entités"><img data-icon="select" alt="">Sélectionner</button>
+          <button data-tool="line" data-label="Ligne" title="Ligne (L)"><img data-icon="nodes_line" alt=""></button>
+          <button data-tool="rect" data-label="Rectangle par sommet" title="Rectangle par sommet (R)"><img data-icon="rect" alt=""></button>
+          <button data-tool="rectc" data-label="Rectangle par le centre" title="Rectangle par le centre"><img data-icon="rect_center" alt=""></button>
+          <button data-tool="circle" data-label="Cercle" title="Cercle (C)"><img data-icon="nodes_circle" alt=""></button>
+          <button data-tool="spline" data-label="Spline" title="Spline — points cliqués, Entrée pour terminer"><img data-icon="nodes_bspline" alt=""></button>
+          <button data-tool="ellipse" data-label="Ellipse" title="Ellipse (E) — centre, grand axe, petit rayon"><img data-icon="ellipse" alt=""></button>
+          <button data-tool="arc" data-label="Arc par centre" title="Arc par centre — centre, départ, arrivée"><img data-icon="nodes_arc" alt=""></button>
+          <button data-tool="arc3" data-label="Arc 3 points" title="Arc 3 points (A) — départ, arrivée, passage"><img data-icon="nodes_arc_3_pt" alt=""></button>
+          <button data-tool="slot" data-label="Rainure droite" title="Rainure droite — deux centres puis largeur"><img data-icon="slot" alt=""></button>
+          <button data-tool="polygon" data-label="Polygone" title="Polygone — nombre de côtés, centre, sommet"><img data-icon="polygon" alt=""></button>
         </div>
         <div class="ribbon-group-label">Contours</div>
       </div>
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button data-tool="skfillet" title="Congé d'esquisse — cliquez deux lignes près du coin"><img src="icons/fs_sketch_fillet.svg" alt=""></button>
-          <button data-tool="trim" title="Ajuster (T) — cliquez le tronçon à supprimer"><img src="icons/fs_trim.svg" alt=""></button>
-          <button data-tool="construction" title="Géométrie de construction (G) — cliquez une entité"><img src="icons/fs_construction.svg" alt=""></button>
-          <button id="sk-convert" title="Projeter les arêtes — le contour de la face porteuse devient de la géométrie bloquée"><img src="icons/fs_project.svg" alt=""></button>
-          <button data-tool="dim" data-label="Cotation" title="Cotation (D) — 1 ou 2 entités, cote pilotante"><img src="icons/fs_dimension.svg" alt=""></button>
+          <button data-tool="skfillet" title="Congé d'esquisse — cliquez deux lignes près du coin"><img data-icon="sketch_fillet" alt=""></button>
+          <button data-tool="trim" title="Ajuster (T) — cliquez le tronçon à supprimer"><img data-icon="trim" alt=""></button>
+          <button data-tool="construction" title="Géométrie de construction (G) — cliquez une entité"><img data-icon="construction" alt=""></button>
+          <button id="sk-convert" title="Projeter les arêtes — le contour de la face porteuse devient de la géométrie bloquée"><img data-icon="project" alt=""></button>
+          <button data-tool="dim" data-label="Cotation" title="Cotation (D) — 1 ou 2 entités, cote pilotante"><img data-icon="dimension" alt=""></button>
         </div>
         <div class="ribbon-group-label">Outils</div>
       </div>
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button id="sk-c-horizontal" title="Relation horizontale"><img src="icons/fs_rel_horizontal.svg" alt=""></button>
-          <button id="sk-c-vertical" title="Relation verticale"><img src="icons/fs_rel_vertical.svg" alt=""></button>
-          <button id="sk-c-coincident" title="Relation coïncidente — deux points"><img src="icons/fs_rel_coincident.svg" alt=""></button>
-          <button id="sk-c-parallel" title="Relation parallèle"><img src="icons/fs_rel_parallel.svg" alt=""></button>
-          <button id="sk-c-perpendicular" title="Relation perpendiculaire"><img src="icons/fs_rel_perpendicular.svg" alt=""></button>
-          <button id="sk-c-tangent" title="Relation tangente"><img src="icons/fs_rel_tangent.svg" alt=""></button>
-          <button id="sk-c-equal" title="Relation égale"><img src="icons/fs_rel_equal.svg" alt=""></button>
-          <button id="sk-c-concentric" title="Relation concentrique — deux cercles ou arcs"><img src="icons/fs_rel_concentric.svg" alt=""></button>
-          <button id="sk-c-collinear" title="Relation colinéaire — deux lignes"><img src="icons/fs_rel_collinear.svg" alt=""></button>
-          <button id="sk-c-midpoint" title="Relation milieu — un point et une ligne"><img src="icons/fs_rel_midpoint.svg" alt=""></button>
-          <button id="sk-c-symmetric" title="Relation symétrique — deux points puis la ligne d'axe"><img src="icons/fs_rel_symmetric.svg" alt=""></button>
-          <button id="sk-c-fixed" title="Relation fixe — bloque l'entité"><img src="icons/fs_rel_fixed.svg" alt=""></button>
-          <button id="sk-mirror" title="Symétrie — sélectionnez les entités puis la ligne d'axe en dernier"><img src="icons/fs_sketch_mirror.svg" alt=""></button>
-          <button id="sk-array" title="Réseau d'esquisse — grille au pas choisi"><img src="icons/fs_sketch_array.svg" alt=""></button>
-          <button id="sk-offset" title="Décaler — sélectionnez une chaîne, puis la distance"><img src="icons/fs_offset.svg" alt="">Décaler</button>
-          <button id="sk-image" title="Image d'esquisse — calque de fond pour redessiner un scan ou un logo"><img src="icons/fs_sketch_image.svg" alt="">Image</button>
-          <button id="sk-relations" title="Relations de l'entité sélectionnée — voir et supprimer"><img src="icons/fs_relations.svg" alt=""></button>
+          <button id="sk-c-horizontal" title="Relation horizontale"><img data-icon="rel_horizontal" alt=""></button>
+          <button id="sk-c-vertical" title="Relation verticale"><img data-icon="rel_vertical" alt=""></button>
+          <button id="sk-c-coincident" title="Relation coïncidente — deux points"><img data-icon="rel_coincident" alt=""></button>
+          <button id="sk-c-parallel" title="Relation parallèle"><img data-icon="rel_parallel" alt=""></button>
+          <button id="sk-c-perpendicular" title="Relation perpendiculaire"><img data-icon="rel_perpendicular" alt=""></button>
+          <button id="sk-c-tangent" title="Relation tangente"><img data-icon="rel_tangent" alt=""></button>
+          <button id="sk-c-equal" title="Relation égale"><img data-icon="rel_equal" alt=""></button>
+          <button id="sk-c-concentric" title="Relation concentrique — deux cercles ou arcs"><img data-icon="rel_concentric" alt=""></button>
+          <button id="sk-c-collinear" title="Relation colinéaire — deux lignes"><img data-icon="rel_collinear" alt=""></button>
+          <button id="sk-c-midpoint" title="Relation milieu — un point et une ligne"><img data-icon="rel_midpoint" alt=""></button>
+          <button id="sk-c-symmetric" title="Relation symétrique — deux points puis la ligne d'axe"><img data-icon="rel_symmetric" alt=""></button>
+          <button id="sk-c-fixed" title="Relation fixe — bloque l'entité"><img data-icon="rel_fixed" alt=""></button>
+          <button id="sk-mirror" title="Symétrie — sélectionnez les entités puis la ligne d'axe en dernier"><img data-icon="sketch_mirror" alt=""></button>
+          <button id="sk-array" title="Réseau d'esquisse — grille au pas choisi"><img data-icon="sketch_array" alt=""></button>
+          <button id="sk-offset" title="Décaler — sélectionnez une chaîne, puis la distance"><img data-icon="offset" alt="">Décaler</button>
+          <button id="sk-image" title="Image d'esquisse — calque de fond pour redessiner un scan ou un logo"><img data-icon="sketch_image" alt="">Image</button>
+          <button id="sk-relations" title="Relations de l'entité sélectionnée — voir et supprimer"><img data-icon="relations" alt=""></button>
         </div>
         <div class="ribbon-group-label">Contraintes</div>
       </div>
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire"><img src="icons/fs_sketch_ok.svg" alt="">Terminer</button>
-          <button id="sk-cancel" class="no" title="Quitter"><img src="icons/fs_sketch_cancel.svg" alt="">Quitter</button>
+          <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire"><img data-icon="sketch_ok" alt="">Terminer</button>
+          <button id="sk-cancel" class="no" title="Quitter"><img data-icon="sketch_cancel" alt="">Quitter</button>
         </div>
         <div class="ribbon-group-label">Esquisse</div>
       </div>
@@ -1268,7 +1268,7 @@
     </div>
     <div id="viewbar">
       <div class="view-drop">
-        <button type="button" id="btn-style" title="Style d'affichage"><img src="icons/FreeSolid_DisplayStyle.svg" alt=""></button>
+        <button type="button" id="btn-style" title="Style d'affichage"><img data-icon="FreeSolid_DisplayStyle" alt=""></button>
         <div id="style-menu" class="view-menu" hidden>
           <button type="button" data-style="shaded-edges">Ombré + arêtes</button>
           <button type="button" data-style="shaded">Ombré seul</button>
@@ -1279,7 +1279,7 @@
         </div>
       </div>
       <div class="view-drop">
-        <button type="button" id="btn-visibility" title="Masquer / afficher"><img src="icons/FreeSolid_Visibility.svg" alt=""></button>
+        <button type="button" id="btn-visibility" title="Masquer / afficher"><img data-icon="FreeSolid_Visibility" alt=""></button>
         <div id="visibility-menu" class="view-menu" hidden>
           <label><input type="checkbox" data-vis="planes"> Plans de référence</label>
           <label><input type="checkbox" data-vis="origin"> Origine</label>
@@ -1287,13 +1287,13 @@
           <label><input type="checkbox" data-vis="edges"> Aperçu des arêtes</label>
         </div>
       </div>
-      <button id="view-iso" title="Vue isométrique (Ctrl+7)"><img src="icons/view-isometric.svg" alt=""></button>
-      <button id="view-front" title="Vue de face (Ctrl+1)"><img src="icons/view-front.svg" alt=""></button>
-      <button id="view-top" title="Vue de dessus (Ctrl+5)"><img src="icons/view-top.svg" alt=""></button>
-      <button id="view-right" title="Vue de droite (Ctrl+4)"><img src="icons/view-right.svg" alt=""></button>
-      <button id="view-fit" title="Zoom au mieux (F)"><img src="icons/zoom-fit-best.svg" alt=""></button>
-      <button id="btn-clip" title="Plan de coupe visuel — voir l'intérieur sans couper la pièce"><img src="icons/Std_ToggleClipPlane.svg" alt=""></button>
-      <button id="btn-graph" title="Vue en graphe — dépendances des fonctions"><img src="icons/Geoassembly.svg" alt=""></button>
+      <button id="view-iso" title="Vue isométrique (Ctrl+7)"><img data-icon="view-isometric" alt=""></button>
+      <button id="view-front" title="Vue de face (Ctrl+1)"><img data-icon="view-front" alt=""></button>
+      <button id="view-top" title="Vue de dessus (Ctrl+5)"><img data-icon="view-top" alt=""></button>
+      <button id="view-right" title="Vue de droite (Ctrl+4)"><img data-icon="view-right" alt=""></button>
+      <button id="view-fit" title="Zoom au mieux (F)"><img data-icon="zoom-fit-best" alt=""></button>
+      <button id="btn-clip" title="Plan de coupe visuel — voir l'intérieur sans couper la pièce"><img data-icon="Std_ToggleClipPlane" alt=""></button>
+      <button id="btn-graph" title="Vue en graphe — dépendances des fonctions"><img data-icon="Geoassembly" alt=""></button>
     </div>
     <div id="graph-view">
       <div id="graph-bar">

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { existsSync } from "node:fs";
 
+import { iconSrc } from "../../app/icons.js";
 import {
   contextToolbarKeys, menuIcon, placeViewMenu, viewMenuItems, viewMenuLabel,
 } from "../../app/viewmenu.js";
@@ -57,9 +58,9 @@ describe("viewMenuItems", () => {
       for (const key of [...keys(items), ...bar(items)]) all.add(key);
     }
     for (const key of all) {
-      const file = menuIcon(key);
-      assert.ok(file, key);
-      assert.ok(existsSync(new URL("../../app/icons/" + file, import.meta.url)), file);
+      const src = iconSrc(menuIcon(key));
+      assert.ok(src, key);
+      assert.ok(existsSync(new URL("../../app/" + src, import.meta.url)), src);
     }
   });
 

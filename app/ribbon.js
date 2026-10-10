@@ -4,6 +4,7 @@
 // fonctions prennent `doc` en paramètre pour tourner au banc Node.
 
 import { t } from "./i18n.js";
+import { iconSrc } from "./icons.js";
 
 /** Id d'onglet : minuscules, chiffres, underscore — jamais de balisage. */
 export function isPluginId(id) {
@@ -15,14 +16,9 @@ export function isButtonId(id) {
   return typeof id === "string" && /^[A-Za-z][A-Za-z0-9_-]*$/.test(id);
 }
 
-/** Chemin d'icône jailé : pas de remontée, pas d'antislash, pas de schéma. */
+/** URL d'un rôle du ruban, ou "" si le rôle n'est pas dans la table. */
 export function safeIconSrc(icon) {
-  if (typeof icon !== "string" || !icon) return "";
-  if (icon.includes("..") || icon.includes("\\") || icon.includes(":")) {
-    return "";
-  }
-  if (!/^[A-Za-z0-9_./-]+$/.test(icon)) return "";
-  return icon;
+  return iconSrc(icon);
 }
 
 /** Un onglet de l'en-tête (le bouton seul, sans écouteur). */

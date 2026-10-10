@@ -33,7 +33,7 @@ export function installMeasure(ctx) {
     }
     const fixed = (v, n = 1) => v.toFixed(n);
     panel.open({
-      icon: "view-measurement.svg",
+      icon: "view-measurement",
       title: t("Évaluer"),
       groups: [
         { label: t("Propriétés de masse"),

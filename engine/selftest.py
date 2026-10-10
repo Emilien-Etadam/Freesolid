@@ -2848,6 +2848,63 @@ class SelftestMixin:
             report["p49_suit_les_fonctions"] = abs(
                 body.Shape.Volume - 32000) < 1e-3
 
+            mark("p49: remplacer la face d'un solide par une surface")
+            self.new_part("Pièce remplacer face")
+            self.add_rect_sketch(40, 40)
+            tree = self.add_pad(10)
+            pad = next(f["name"] for f in tree["features"]
+                       if f["type"] == "PartDesign::Pad")
+            body = self._require_body()
+            state = self.sketch_start(plane="XZ")
+            roof = state["sketch"]
+            self.sketch_add_line(roof, -40, 6, 0, 16)
+            self.sketch_add_line(roof, 0, 16, 40, 6)
+            self.sketch_finish(roof)
+            doc = self._require_doc()
+            App = self._app()
+            doc.getObject(roof).AttachmentOffset = App.Placement(
+                App.Vector(0, 0, -40), App.Rotation())
+            self._recompute()
+            tree = self.surface_extrude(80, sketch=roof)
+            roof_surface = tree["surfaces"][-1]["name"]
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if abs(f.CenterOfMass.z - 10) < 1e-6)
+            tree = self.add_replace_face(top, roof_surface)
+            volume = body.Shape.Volume
+            # Toit 6 → 16 → 6 sur x ∈ [-40, 40] : sur le bloc (±20),
+            # hauteur moyenne 16 - 5 = 11 → 40 × 40 × 13,5 / ... calcul :
+            # z(x) = 16 - |x|/4 ; moyenne sur [0, 20] = 16 - 2,5 = 13,5.
+            report["p49_remplacer_face"] = (
+                abs(volume - 1600 * 13.5) < 1
+                and not any(s["name"] == roof_surface for s
+                            in self.tessellate().get("surfaces") or [])
+                and tree["features"][-1].get("replace_face", {}).get(
+                    "surface") == roof_surface)
+            self.set_params(pad, {"Length": 4.0})
+            report["p49_remplacer_suit"] = abs(
+                body.Shape.Volume - 1600 * 13.5) < 1
+            # Toit qui coupe le bloc : ajout ET retrait, deux booléens.
+            self.new_part("Pièce remplacer mixte")
+            self.add_rect_sketch(40, 40)
+            self.add_pad(10)
+            body = self._require_body()
+            state = self.sketch_start(plane="XZ")
+            slope = state["sketch"]
+            self.sketch_add_line(slope, -40, 4, 40, 16)
+            self.sketch_finish(slope)
+            self._require_doc().getObject(slope).AttachmentOffset = (
+                App.Placement(App.Vector(0, 0, -40), App.Rotation()))
+            self._recompute()
+            tree = self.surface_extrude(80, sketch=slope)
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if abs(f.CenterOfMass.z - 10) < 1e-6)
+            tree = self.add_replace_face(top, tree["surfaces"][-1]["name"])
+            report["p49_remplacer_mixte"] = (
+                abs(body.Shape.Volume - 1600 * 10) < 1
+                and abs(body.Shape.BoundBox.ZMax - 13) < 1e-6
+                and [f["label"] for f in tree["features"]][-2:]
+                == ["Remplacer la face — ajout", "Remplacer la face"])
+
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")
             self.add_rect_sketch(60, 40)

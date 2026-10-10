@@ -946,72 +946,160 @@ class SurfaceMixin:
         voisines (perçage, congé, bossage retirés). La forme suit les
         fonctions d'avant : elle est recalculée à chaque reconstruction."""
         from engine.kernel import KernelError
-        body = self._require_body()
-        doc = self._require_doc()
-        tip = body.Tip
-        shape = getattr(body, "Shape", None)
-        if tip is None or shape is None or not shape.Solids:
-            raise KernelError("supprimer une face demande un solide")
+        tip = self._solid_tip("supprimer une face demande un solide")
         indices = sorted({int(f) for f in faces or ()})
         if not indices:
             raise KernelError("cliquez les faces à supprimer")
-        result = self._defeatured(tip.Shape, indices)
-        before = tip.Shape.Volume
-        grows = result.Volume >= before
-        frozen = doc.addObject("Part::Feature", "DeleteFaceShape")
-        self._mark_internal(frozen)
-        frozen.Shape = result
-        self._stamp(frozen, defeatbase=tip.Name,
-                    defeatfaces=";".join(str(i) for i in indices))
-        tool_body = doc.addObject("PartDesign::Body", "DeleteFaceBody")
-        self._mark_internal(tool_body)
-        tool_body.BaseFeature = frozen
+        stamps = {"defeatbase": tip.Name,
+                  "defeatfaces": ";".join(str(i) for i in indices)}
+        result = self._frozen_result(stamps, tip.Shape)
+        return self._commit_frozen(
+            tip, result, stamps, "Supprimer la face",
+            {"deletefaces": stamps["defeatfaces"]})
+
+    def add_replace_face(self, face, surface):
+        """Remplacer une face du solide par une surface : la matière
+        s'étend ou se retire jusqu'à la surface, qui doit couvrir la face."""
+        tip = self._solid_tip("remplacer une face demande un solide")
+        src = self._get_surface(surface)
+        stamps = {"replacebase": tip.Name, "replaceface": int(face),
+                  "replacesurface": src.Name}
+        result = self._frozen_result(stamps, tip.Shape)
+        return self._commit_frozen(
+            tip, result, stamps, "Remplacer la face",
+            {"replacedface": int(face) + 1, "replacedby": src.Name})
+
+    def _solid_tip(self, message):
+        from engine.kernel import KernelError
+        body = self._require_body()
+        tip = body.Tip
+        shape = getattr(body, "Shape", None)
+        if tip is None or shape is None or not shape.Solids:
+            raise KernelError(message)
+        return tip
+
+    def _frozen_result(self, stamps, base_shape):
+        """Forme calculée d'une suppression ou d'un remplacement de face."""
+        from engine.kernel import KernelError
+        if "defeatfaces" in stamps:
+            faces = [int(f) for f in str(stamps["defeatfaces"]).split(";")
+                     if f != ""]
+            return self._defeatured(base_shape, faces)
+        face = int(stamps["replaceface"])
+        if face < 0 or face >= len(base_shape.Faces):
+            raise KernelError("face inconnue : {}".format(face))
+        src = self._require_doc().getObject(str(stamps["replacesurface"]))
+        if src is None or not src.Shape.Faces:
+            raise KernelError("surface inconnue : {}".format(
+                stamps["replacesurface"]))
+        return self._replaced(base_shape, face, src.Shape)
+
+    @staticmethod
+    def _replaced(base_shape, face_index, surface_shape):
+        """Le solide dont la face part jusqu'à la surface : la face est
+        prolongée en prisme le long de sa normale, puis la surface coupe ce
+        qui la dépasse."""
+        from engine.kernel import KernelError
+        face = base_shape.Faces[face_index]
+        u0, u1, v0, v1 = face.ParameterRange
+        normal = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
+        reach = max(1000.0, 4 * (base_shape.BoundBox.DiagonalLength
+                                 + surface_shape.BoundBox.DiagonalLength))
+        try:
+            grown = base_shape.fuse(face.extrude(normal * reach))
+            half = surface_shape.extrude(normal * reach)
+            result = grown.cut(half).removeSplitter()
+        except Exception:  # noqa: BLE001
+            result = None
+        if (result is None or result.isNull() or not result.Solids
+                or not result.isValid()):
+            raise KernelError("la surface ne remplace pas cette face — elle "
+                              "doit couvrir toute la face")
+        if len(result.Solids) > 1:
+            result = max(result.Solids, key=lambda solid: solid.Volume)
+        return result
+
+    def _commit_frozen(self, tip, result, stamps, label, feature_stamps):
+        """Range une forme calculée dans l'historique : un booléen d'ajout
+        (la matière ne fait que croître), d'intersection (elle ne fait que
+        diminuer) — ou les deux à la suite, quand elle fait les deux."""
+        from engine.kernel import KernelError
+        body = self._require_body()
+        doc = self._require_doc()
+        before = tip.Shape
+        tolerance = 1e-6 * max(before.Volume, 1.0)
+        if before.cut(result).Volume < tolerance:
+            steps = ["fuse"]
+        elif result.cut(before).Volume < tolerance:
+            steps = ["common"]
+        else:
+            steps = ["fuse", "common"]
+        created = []
+        features = []
 
         def discard():
-            names = [o.Name for o in (getattr(tool_body, "Group", None)
-                                      or [])]
-            for name in names + [tool_body.Name, frozen.Name]:
+            for feature in reversed(features):
                 try:
-                    doc.removeObject(name)
+                    self._drop_failed_feature(body, doc, feature,
+                                              feature.BaseFeature)
                 except Exception:
                     pass
+            for obj in reversed(created):
+                names = [o.Name for o in (getattr(obj, "Group", None) or [])]
+                for name in names + [obj.Name]:
+                    try:
+                        doc.removeObject(name)
+                    except Exception:
+                        pass
 
         try:
-            doc.recompute()
-            # Plus de matière (perçage, congé creux) : ajouter ; moins
-            # (bossage) : garder l'intersection.
-            self.add_boolean(tool=tool_body.Name,
-                             type="fuse" if grows else "common")
+            for step in steps:
+                frozen = doc.addObject("Part::Feature", "FrozenShape")
+                self._mark_internal(frozen)
+                frozen.Shape = result
+                self._stamp(frozen, **stamps)
+                tool_body = doc.addObject("PartDesign::Body", "FrozenBody")
+                self._mark_internal(tool_body)
+                tool_body.BaseFeature = frozen
+                created += [frozen, tool_body]
+                doc.recompute()
+                self.add_boolean(tool=tool_body.Name, type=step)
+                features.append(body.Tip)
         except KernelError:
             discard()
+            self._recompute()
             raise
-        feature = body.Tip
-        if abs(body.Shape.Volume - result.Volume) > 1e-6 * max(before, 1.0):
-            self._drop_failed_feature(body, doc, feature, tip)
+        if abs(body.Shape.Volume - result.Volume) > tolerance:
             discard()
             self._recompute()
-            raise KernelError("ces faces ajoutent et retirent de la matière "
-                              "à la fois — supprimez-les en deux fois")
-        feature.Label = self._t("Supprimer la face")
-        self._stamp(feature, deletefaces=";".join(str(i) for i in indices))
+            raise KernelError("le modeleur n'a pas pu ranger cette forme dans "
+                              "l'historique")
+        for i, feature in enumerate(features):
+            last = i == len(features) - 1
+            feature.Label = self._t(label if last else label + " — ajout")
+            self._stamp(feature, **feature_stamps)
         return self.get_tree()
 
     def _refresh_frozen_shapes(self):
         """Recalcule les formes figées qui dépendent d'une fonction du
-        corps (suppression de face) ; vrai si l'une a changé."""
+        corps (supprimer, remplacer une face) ; vrai si l'une a changé."""
         doc = self._require_doc()
         changed = False
         for obj in doc.Objects:
-            base_name = getattr(obj, "FreeSolidDefeatbase", "")
+            base_name = (getattr(obj, "FreeSolidDefeatbase", "")
+                         or getattr(obj, "FreeSolidReplacebase", ""))
             if not base_name:
                 continue
             base = doc.getObject(base_name)
             if base is None or not getattr(base, "Shape", None):
                 continue
-            faces = [int(f) for f in str(obj.FreeSolidDefeatfaces).split(";")
-                     if f != ""]
+            if getattr(obj, "FreeSolidDefeatbase", ""):
+                stamps = {"defeatfaces": obj.FreeSolidDefeatfaces}
+            else:
+                stamps = {"replaceface": obj.FreeSolidReplaceface,
+                          "replacesurface": obj.FreeSolidReplacesurface}
             try:
-                result = self._defeatured(base.Shape, faces)
+                result = self._frozen_result(stamps, base.Shape)
             except Exception:  # noqa: BLE001
                 continue  # l'ancienne forme reste ; l'erreur se verra
             old = obj.Shape
@@ -1086,6 +1174,10 @@ class SurfaceMixin:
                 base = getattr(obj, "Base", None)
                 if base is not None:
                     consumed.add(base.Name)
+            replacing = getattr(obj, "FreeSolidReplacesurface", "")
+            if replacing:
+                # Surface d'un remplacement de face : la pièce la porte.
+                consumed.add(replacing)
             for name in str(getattr(obj, "FreeSolidSources", "")).split(";"):
                 if name:
                     consumed.add(name)

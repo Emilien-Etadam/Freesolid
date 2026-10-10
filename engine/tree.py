@@ -596,6 +596,11 @@ class TreeMixin:
             if deleted:
                 item["delete_face"] = {"faces": [
                     int(f) for f in str(deleted).split(";") if f != ""]}
+            replaced = getattr(obj, "FreeSolidReplacedby", "")
+            if replaced:
+                item["replace_face"] = {
+                    "face": int(obj.FreeSolidReplacedface) - 1,
+                    "surface": replaced}
             cut = self._surface_cut_spec(obj)
             if cut is not None:
                 item["surface_cut"] = cut

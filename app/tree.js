@@ -1049,6 +1049,7 @@ export function installTree(ctx) {
         ? "linear_pattern"
         : feature.surface_cut ? "surface_cut"
           : feature.delete_face ? "surface_delete_face"
+            : feature.replace_face ? "replace_face"
             : TREE_ICONS[feature.type];
     if (icon) row.appendChild(treeIcon(icon));
     row.appendChild(document.createTextNode(

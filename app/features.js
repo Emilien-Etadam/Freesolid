@@ -1329,6 +1329,27 @@ export const FEATURES = [
     invalid: "Scinder : une surface puis une courbe posée dessus",
   }),
   {
+    button: "btn-replace-face",
+    icon: "replace_face",
+    title: "Remplacer la face",
+    groups: (ctx) => [
+      { label: "Face du solide",
+        rows: [{ type: "selection", key: "face", accepts: ["face"],
+                 hint: "Cliquez la face à remplacer",
+                 value: ctx.selection(["face"]) }] },
+      { label: "Surface de remplacement",
+        rows: [{ type: "selection", key: "surface", accepts: ["surface"],
+                 hint: "Puis la surface, qui doit couvrir toute la face" }] },
+    ],
+    note: "La matière s'étend ou se retire jusqu'à la surface ; l'aperçu "
+      + "montre le résultat.",
+    build: (v) => (v.face && v.surface ? { op: "add_replace_face",
+      params: { face: v.face.face, surface: v.surface.name } } : null),
+    invalid: () => ({ text: "Remplacer : une face du solide, puis une "
+      + "surface", tone: "guide" }),
+    refresh: "part",
+  },
+  {
     button: "btn-surf-delete-face",
     icon: "surface_delete_face",
     title: "Supprimer des faces",

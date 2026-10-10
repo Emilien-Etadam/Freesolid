@@ -750,6 +750,7 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
         "add_hole", "set_params",
         "add_loft", "add_sweep", "add_helix", "add_boolean", "add_text",
         "add_datum_plane", "add_surface_cut", "add_delete_face",
+        "add_replace_face",
         "surface_delete_faces",
     })
 
@@ -818,7 +819,7 @@ _TRANSACTIONAL = frozenset({
     "surface_sweep", "surface_offset", "surface_fill", "surface_extend",
     "edit_surface_extend", "surface_trim", "edit_surface_trim",
     "add_surface_cut", "edit_surface_cut", "surface_boundary",
-    "add_delete_face",
+    "add_delete_face", "add_replace_face",
     "surface_ruled", "surface_delete_faces", "surface_untrim",
     "surface_fillet", "curve_intersection", "curve_project",
     "curve_composite", "edit_surface_fillet", "surface_split",

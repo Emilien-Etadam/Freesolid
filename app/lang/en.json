@@ -885,5 +885,14 @@
  "Supprimer des faces — du solide (le trou se referme) ou d'une surface": "Delete faces — of the solid (the hole closes) or of a surface",
  "Cliquez les faces à supprimer : sur le solide, ou sur une même surface": "Click the faces to delete: on the solid, or on one surface",
  "Sur le solide, les faces voisines referment le trou (perçage, congé, bossage retirés). Sur une surface, le trou reste ouvert : il se bouche ensuite par un remplissage.": "On the solid, the neighbouring faces close the hole (hole, fillet, boss removed). On a surface, the hole stays open: fill it afterwards.",
- "Supprimer : des faces du solide, ou d'une même surface": "Delete: faces of the solid, or of one surface"
+ "Supprimer : des faces du solide, ou d'une même surface": "Delete: faces of the solid, or of one surface",
+ "Remplacer une face du solide par une surface — la matière va jusqu'à elle": "Replace a solid face with a surface — material goes up to it",
+ "Remplacer face": "Replace Face",
+ "Remplacer la face": "Replace Face",
+ "Face du solide": "Solid face",
+ "Cliquez la face à remplacer": "Click the face to replace",
+ "Surface de remplacement": "Replacement surface",
+ "Puis la surface, qui doit couvrir toute la face": "Then the surface, which must cover the whole face",
+ "La matière s'étend ou se retire jusqu'à la surface ; l'aperçu montre le résultat.": "Material extends or retracts up to the surface; the preview shows the result.",
+ "Remplacer : une face du solide, puis une surface": "Replace: a solid face, then a surface"
 }

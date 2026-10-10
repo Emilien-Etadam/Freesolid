@@ -179,7 +179,10 @@ export function installPicking(ctx) {
         groupIndex = ctx.meshGroups.findIndex(
           (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
       }
-      const surfHit = pickHoveredSurfaceHit();
+      // Un panneau qui attend une face du solide voit à travers les
+      // surfaces (remplacer une face recouverte par sa surface).
+      const throughSurfaces = panel.needs("face") && (faceHit || edgeHit);
+      const surfHit = throughSurfaces ? null : pickHoveredSurfaceHit();
       let pointHit = edgeGroupIndex >= 0 ? edgeHit : faceHit;
       if (surfHit) {
         const solidHit = edgeGroupIndex >= 0 ? edgeHit : faceHit;
@@ -192,7 +195,7 @@ export function installPicking(ctx) {
       }
       // Un bord (arête de surface, courbe 3D) gagne sur ce qu'il borde,
       // à la même tolérance qu'une arête du solide.
-      const bound = pickBoundaryHit();
+      const bound = throughSurfaces ? null : pickBoundaryHit();
       if (bound) {
         const { radius } = ctx.partMesh ? ctx.partCenterRadius()
           : { radius: 50 };

@@ -141,6 +141,7 @@ export const ICONS = {
   rel_tangent: "fs_rel_tangent.svg",
   rel_vertical: "fs_rel_vertical.svg",
   relations: "fs_relations.svg",
+  replace_face: "fs_replace_face.svg",
   revolve: "fs_revolve.svg",
   rollback: "fs_rollback.svg",
   save: "fs_save.svg",

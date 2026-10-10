@@ -522,6 +522,7 @@ def test_ops_snapshot_keys():
         "add_polar_pattern",
         "add_rect_sketch",
         "add_repeat_feature",
+        "add_replace_face",
         "add_revolution",
         "add_surface_cut",
         "add_sweep",

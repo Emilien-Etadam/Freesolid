@@ -45,6 +45,7 @@ simulation FEM. Verdicts :
 | Supprimer des faces, ligne de séparation, désajuster | ✅ **fait** | lieur de forme qui garde les autres faces ; découpe `BOPTools` (mode standard) par une courbe posée sur la surface ; `Surface::Extend` à 0 (bords naturels, trous bouchés) |
 | Courbes : composite, projetée, intersection | ✅ **fait** | lieur de forme d'arêtes bout à bout ; `Part::ProjectOnSurface` selon la normale de l'esquisse ; `Part::Section` (deux surfaces, ou surface et solide) |
 | Surface radiée, surface médiane, forme libre, aplatir | ❌ | pas de moteur FreeCAD / OCCT exposé pour ces gestes |
+| Remplacer la face | ✅ **fait** | la face est prolongée en prisme puis la surface coupe ce qui la dépasse ; forme recalculée à chaque reconstruction ; un booléen d'ajout, d'intersection, ou les deux quand la matière croît et décroît ; clic à travers les surfaces pour viser la face recouverte |
 | Couper avec une surface | ✅ **fait** | la surface balaie un demi-espace (extrusion paramétrique) combiné en soustraction dans l'historique ; aperçu, « inverser le côté » en réédition ; refus clair si la surface ne traverse pas le solide |
 | Surface plane, balayée, décalée | ✅ **fait** | `Part::Face`, `Part::Sweep` (profil ouvert, trajectoire esquisse ou spline 3D), `Part::Offset` sans remplissage — paramétriques |
 | Esquisse 3D | 🟧 **spline 3D faite** | points cliqués sur la pièce (sommets et centres aimantés) ou sur un plan de clic passant par le dernier point (Tab), coordonnées corrigeables, réédition, aperçu exact du moteur ; pas de lignes ni de relations 3D |

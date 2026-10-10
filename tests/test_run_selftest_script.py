@@ -75,7 +75,10 @@ def _run(rapport, plugins, exige=None, tmp_path=None):
         env["FREESOLID_SELFTEST_PLUGINS"] = exige
     return subprocess.run(
         [sys.executable, "-c", _lanceur(rapport, plugins)],
-        capture_output=True, text=True, env=env, timeout=60)
+        # Le lanceur écrit en UTF-8 (PYTHONIOENCODING) : on lit pareil,
+        # pas dans l'encodage local (cp1252 sous Windows).
+        capture_output=True, text=True, encoding="utf-8", env=env,
+        timeout=60)
 
 
 _VERT = {"steps": ["m0"], "noyau_ok": True, "freecad": "1.1.3",
@@ -123,6 +126,7 @@ def test_les_notes_du_registre_sont_imprimees(tmp_path):
         "registre.notes.append('plugin « x » non chargé : boum')")
     res = subprocess.run(
         [sys.executable, "-c", lanceur], capture_output=True, text=True,
+        encoding="utf-8",
         env={"PATH": "/usr/bin:/bin", "PYTHONIOENCODING": "utf-8",
              "FREESOLID_SELFTEST_FAILURES": str(tmp_path / "echecs.txt")},
         timeout=60)

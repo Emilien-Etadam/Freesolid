@@ -93,7 +93,10 @@ def test_resolve_must_exist_missing_file(tmp_path, monkeypatch):
 def test_resolve_symlink_escaping_jail_refused(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     link = tmp_path / "escape.FCStd"
-    link.symlink_to("/etc/passwd")
+    try:
+        link.symlink_to("/etc/passwd")
+    except OSError:
+        pytest.skip("symlink non autorisé sur ce système")
     with pytest.raises(protocol.ProtocolError) as excinfo:
         protocol.resolve_user_path(
             str(link), (".FCStd",), must_exist=True)

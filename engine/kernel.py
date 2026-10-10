@@ -2,8 +2,9 @@
 
 One ``Kernel`` instance owns one document. FreeCAD is imported inside
 methods (the module stays importable in CI), and every error surfaces
-through ``engine.guard.friendly_error`` when a translation exists — the
-web UI gets designer-facing explanations for known OCCT failures.
+through ``engine.guard.failure_message`` when a translation exists — the
+web UI gets a designer-facing explanation, with the raw text kept
+in parentheses when it still helps diagnosis.
 
 Untested-against-FreeCAD code is assumed guilty until the ``selftest`` op
 has run on a real install.
@@ -20,7 +21,9 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from engine import fonts                          # noqa: E402
-from engine.guard import friendly_error          # noqa: E402
+from engine.guard import (                       # noqa: E402
+    failure_message, friendly_error, shell_too_thick_message,
+)
 from engine.nodegraph import (  # noqa: E402
     GraphError, classify_shape_instructions, evaluate_instances,
     graph_surface_kind, mixed_output_message, migrate_graph, output_nature,
@@ -326,16 +329,38 @@ class Kernel:
                   and not self._is_internal_tool(o)
                   and not self._plugins.run_tolerates_invalid(self, o)]
         if broken:
-            messages = []
-            for obj in broken:
-                text = ""
-                try:
-                    text = obj.getStatusString() or ""
-                except Exception:
-                    pass
-                messages.append("{} : {}".format(
-                    obj.Label, friendly_error(text) or text or "en erreur"))
-            raise KernelError(" ; ".join(messages))
+            raise KernelError(" ; ".join(
+                self._broken_message(obj) for obj in broken))
+
+    def _drop_failed_feature(self, body, doc, feature, previous_tip):
+        """Retire une fonction refusée et rend la pointe au solide d'avant.
+
+        ``newObject`` a déjà fait de la fonction la pointe. La supprimer
+        sans la rendre laisse le corps sans solide.
+        """
+        if getattr(body, "Tip", None) is feature or body.Tip is None:
+            body.Tip = previous_tip
+        doc.removeObject(feature.Name)
+
+    def _broken_message(self, obj) -> str:
+        """Ligne d'erreur d'une fonction invalide.
+
+        Phrase utile selon la fonction quand on la connaît, texte brut
+        entre parenthèses. Sinon le texte brut, ou « en erreur ».
+        """
+        text = ""
+        try:
+            text = obj.getStatusString() or ""
+        except Exception:
+            pass
+        explained = failure_message(
+            getattr(obj, "Label", "") or "",
+            text,
+            getattr(obj, "TypeId", "") or "",
+        )
+        if explained:
+            return explained
+        return "{} : {}".format(obj.Label, text or "en erreur")
 
     def _force_recompute(self):
         """Recalcul complet, drapeaux « à jour » ignorés."""
@@ -371,15 +396,7 @@ class Kernel:
                   if "Invalid" in (o.State or ())
                   and not self._is_internal_tool(o)
                   and not self._plugins.run_tolerates_invalid(self, o)]
-        messages = []
-        for obj in broken:
-            text = ""
-            try:
-                text = obj.getStatusString() or ""
-            except Exception:
-                pass
-            messages.append("{} : {}".format(
-                obj.Label, friendly_error(text) or text or "en erreur"))
+        messages = [self._broken_message(obj) for obj in broken]
         if messages:
             raise KernelError(" ; ".join(messages))
         return self.get_tree()
@@ -3798,6 +3815,8 @@ class Kernel:
         tip = getattr(body, "Tip", None)
         if tip is None:
             raise KernelError("pas de solide à habiller")
+        previous_tip = tip
+        volume_before = float(body.Shape.Volume)
         feature = body.newObject("PartDesign::Thickness", "Thickness")
         feature.Base = (tip, ["Face{}".format(f + 1) for f in picked])
         feature.Value = float(thickness)
@@ -3806,8 +3825,16 @@ class Kernel:
         try:
             self._recompute()
         except KernelError:
-            doc.removeObject(feature.Name)
+            self._drop_failed_feature(body, doc, feature, previous_tip)
             raise
+        # Une épaisseur supérieure à la pièce est parfois acceptée sans
+        # rien évider (le volume ne baisse pas). On refuse, comme un échec.
+        if (not outward
+                and float(body.Shape.Volume) >= volume_before - 1e-3):
+            if not getattr(self, "_previewing", False):
+                self._drop_failed_feature(body, doc, feature, previous_tip)
+                self._recompute()
+            raise KernelError(shell_too_thick_message())
         return self.get_tree()
 
     def _tip_face_parallel_to(self, tip, plane, exclude_face=None):
@@ -3908,7 +3935,7 @@ class Kernel:
         try:
             self._recompute()
         except KernelError:
-            doc.removeObject(feature.Name)
+            self._drop_failed_feature(body, doc, feature, tip)
             raise
         return self.get_tree()
 
@@ -4020,7 +4047,7 @@ class Kernel:
         try:
             self._recompute()
         except KernelError:
-            doc.removeObject(feature.Name)
+            self._drop_failed_feature(body, doc, feature, tip)
             raise
         return self.get_tree()
 
@@ -6669,6 +6696,38 @@ class Kernel:
             report["p5_edge_fillet_ok"] = (
                 not any(f["error"] for f in tree["features"])
                 and len(self.tessellate()["groups"]) > faces_before)
+
+            mark("q1: congé trop grand et coque trop épaisse")
+            self.new_part("Pièce refus")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(12)
+            edge = next(
+                i for i, item in enumerate(self._require_body().Shape.Edges)
+                if abs(item.CenterOfMass.z - 12) < 1e-6)
+            try:
+                self.add_fillet(100, edges=[edge])
+                report["q1_conge_trop_grand"] = False
+            except KernelError as exc:
+                text = str(exc)
+                tree = self.get_tree()
+                report["q1_conge_trop_grand"] = (
+                    "réduisez le rayon" in text
+                    and "BRep_API: command not done" in text
+                    and "SolidWorks" not in text
+                    and not any(f.get("error") for f in tree["features"]))
+            try:
+                self.add_thickness(self._top_face_id(), 30)
+                report["q1_coque_trop_epaisse"] = False
+            except KernelError as exc:
+                text = str(exc)
+                tree = self.get_tree()
+                report["q1_coque_trop_epaisse"] = (
+                    "épaisseur est trop forte" in text
+                    and not any(f.get("error") for f in tree["features"]))
+            tree = self.add_thickness(self._top_face_id(), 2)
+            report["q1_coque_valide_apres_refus"] = (
+                not any(f.get("error") for f in tree["features"])
+                and abs(float(self._require_body().Shape.Volume) - 5040) < 1e-2)
 
             mark("p6: assistant de perçage (2 trous lamés)")
             self.new_part("Pièce perçages")

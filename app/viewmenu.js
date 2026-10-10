@@ -64,6 +64,43 @@ export function viewMenuLabel(key, ctx = {}) {
   return key;
 }
 
+/** Place le menu sous le pointeur. S'il est plus haut que la place
+ *  en dessous, il s'ouvre au-dessus. S'il ne tient nulle part,
+ *  `maxHeight` le borne sous le ruban (`topLimit`) : le menu défile
+ *  au lieu de le recouvrir. Pixels, origine en haut à gauche. */
+export function placeViewMenu({
+  x, y, width, height,
+  viewportWidth, viewportHeight,
+  topLimit = 0,
+  margin = 4,
+}) {
+  const bottom = viewportHeight - margin;
+  const ceiling = topLimit + margin;
+  const spaceBelow = bottom - y;
+  const spaceAbove = y - ceiling;
+  let top;
+  let maxHeight;
+  if (height <= spaceBelow) {
+    top = y;
+    maxHeight = spaceBelow;
+  } else if (height <= spaceAbove) {
+    top = y - height;
+    maxHeight = spaceAbove;
+  } else if (spaceAbove > spaceBelow) {
+    maxHeight = Math.max(0, spaceAbove);
+    top = y - maxHeight;
+  } else {
+    maxHeight = Math.max(0, spaceBelow);
+    top = y;
+  }
+  if (top < ceiling) top = ceiling;
+  if (top + maxHeight > bottom) maxHeight = Math.max(0, bottom - top);
+  const minLeft = margin;
+  const maxLeft = Math.max(minLeft, viewportWidth - width - margin);
+  const left = Math.min(Math.max(x, minLeft), maxLeft);
+  return { left, top, maxHeight };
+}
+
 export function viewMenuItems(ctx = {}) {
   if (ctx.mode === "sketch") {
     return [

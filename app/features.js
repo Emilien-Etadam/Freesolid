@@ -47,6 +47,14 @@ export function hasSelection(sel) {
     ? sel.edges.length > 0 : sel.face != null);
 }
 
+/** Consigne : rien n'est encore choisi. Ce n'est pas une erreur. */
+function clickFirst(title) {
+  return {
+    text: t("{f} : cliquez d'abord dans la zone graphique", { f: t(title) }),
+    tone: "guide",
+  };
+}
+
 function dressupParams(sel) {
   return sel.kind === "edges"
     ? { edges: sel.edges } : { face: sel.face };
@@ -67,10 +75,9 @@ export function dressup({ button, icon, title, selectionLabel, group, rows, buil
     ],
     build: (v, ctx) => hasSelection(v.sel) ? build(v, ctx) : null,
     invalid: (v, ctx) => {
+      if (!hasSelection(v.sel)) return clickFirst(title);
       if (typeof invalid === "function") return invalid(v, ctx);
-      return hasSelection(v.sel)
-        ? (invalid ?? "Valeur invalide")
-        : t("{f} : cliquez d'abord dans la zone graphique", { f: t(title) });
+      return invalid ?? "Valeur invalide";
     },
     refresh: "part",
   };
@@ -867,13 +874,7 @@ export const FEATURES = [
             params: { ...dressupParams(v.sel), ...params } }
         : null;
     },
-    invalid: (v) => {
-      if (!hasSelection(v.sel)) {
-        return t("{f} : cliquez d'abord dans la zone graphique",
-          { f: t("Chanfrein") });
-      }
-      return chamferProblem(v);
-    },
+    invalid: (v) => chamferProblem(v),
   }),
   {
     button: "btn-shell",
@@ -899,7 +900,8 @@ export const FEATURES = [
     },
     build: (v) => shellBuild(v),
     invalid: (v) => ((v.faces?.items ?? []).length
-      ? "Épaisseur invalide" : "Coque : cliquez au moins une face à ouvrir"),
+      ? "Épaisseur invalide"
+      : { text: t("Coque : cliquez au moins une face à ouvrir"), tone: "guide" }),
     refresh: "part",
   },
   dressup({

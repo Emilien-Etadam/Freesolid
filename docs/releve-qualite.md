@@ -96,6 +96,13 @@ des couleurs cohérentes avec les jetons.
 - En esquisse sur une face, cette face reste surlignée en orange (la couleur
   de sélection). La barre d'état garde aussi « Face 5 · sél. Face 5 ».
 
+Revu le 2026-10-10 (Q9a) : la consigne de sélection est en texte secondaire
+et n'est plus répétée quand la ligne de sélection dit déjà quoi choisir ;
+les erreurs restent en rouge. En esquisse, la face porteuse reprend la
+couleur de la pièce et la sélection n'est pas restaurée à la sortie. Le
+menu de la vue s'ouvre au-dessus du pointeur ou défile, sans recouvrir le
+ruban. Le volet d'arbre et le contenu du menu restent à faire.
+
 ### 1.6 Accueil — P3
 
 La boîte est petite et sobre, sans aperçu des fichiers récents.
@@ -193,6 +200,6 @@ de suite. Q6 et Q7 attendent une maquette et un échantillon validés.
 | Q6 | fait : en-tête de 130 px en 1366 × 768 (zone 3D : 611 px de haut au lieu de 377) ; icônes actuelles en attendant Q7 |
 | Q7 | icônes de l'utilisateur, à recevoir |
 | Q8 | fait : lumières liées à la vue, fond en dégradé, grille estompée |
-| Q9 | part simple (Q9a) confiée à Cursor ; volet d'arbre et menu : Claude |
+| Q9 | Q9a fait (Cursor) : consigne neutre, face d'esquisse, menu sans recouvrir le ruban ; volet d'arbre et menu : Claude |
 | Q10 | fait (voir § 2) |
 | Q11 | plus tard |

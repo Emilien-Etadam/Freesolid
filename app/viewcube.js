@@ -154,6 +154,7 @@ export function installViewCube(ctx) {
 
   function openOrientBox() {
     if (!orientBox) return;
+    ctx.hideContextToolbar?.(); // elle passerait par-dessus la boîte
     const host = container.getBoundingClientRect();
     const at = lastViewportPointer ?? {
       x: host.left + host.width / 2, y: host.top + host.height / 2 };

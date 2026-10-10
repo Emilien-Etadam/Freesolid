@@ -143,6 +143,9 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
       if (field?.select) field.select();
     }
     changed(); // premier aperçu avec les valeurs par défaut
+    // Rien n'a encore été tapé : la première Entrée valide (OK), elle
+    // n'a pas de valeur à prendre.
+    editedInput = null;
   }
 
   function close(apply, { silent = false } = {}) {

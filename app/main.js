@@ -320,12 +320,16 @@ const baseMaterial = new THREE.MeshStandardMaterial({
   transparent: true, opacity: 1, // l'aperçu jaune estompe la pièce
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
+// Transparents comme la pièce : pendant un aperçu, la face choisie
+// s'estompe aussi au lieu de cacher le résultat (une ouverture de coque).
 const hoverMaterial = new THREE.MeshStandardMaterial({
   color: sceneTheme.accent, metalness: 0.08, roughness: 0.45,
+  transparent: true, opacity: 1,
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 const selectedMaterial = new THREE.MeshStandardMaterial({
   color: sceneTheme.selection, metalness: 0.08, roughness: 0.45,
+  transparent: true, opacity: 1,
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 
@@ -552,6 +556,8 @@ function showEdgeLines(data) {
   edgeGroups = data.groups;
   hoveredEdgeGroup = -1;
   selectedEdges = new Set(); // ids shift after every rebuild, like faces
+  // La barre d'état citait encore les arêtes d'avant la reconstruction.
+  repaintGroups();
   if (!data.indices.length) return;
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position",
@@ -742,6 +748,7 @@ function clearGhost() {
   }
   baseMaterial.opacity = 1;
   if (partBaseMaterial) partBaseMaterial.opacity = 1;
+  hoverMaterial.opacity = selectedMaterial.opacity = 1;
 }
 
 function showGhost(mesh, { bothSides = false } = {}) {
@@ -763,6 +770,7 @@ function showGhost(mesh, { bothSides = false } = {}) {
   applyVolumeVisibility();
   baseMaterial.opacity = 0.15; // la pièce s'efface derrière le résultat
   if (partBaseMaterial) partBaseMaterial.opacity = 0.15;
+  hoverMaterial.opacity = selectedMaterial.opacity = 0.3;
 }
 
 // Bulle « R = … » pendant le congé, près de l'arête choisie.

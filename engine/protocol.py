@@ -231,6 +231,11 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_add_line": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float)),
+    "sketch_add_rectangle": _Req(
+        ("sketch", str), ("x1", float), ("y1", float),
+        ("x2", float), ("y2", float), optional={"center": bool}),
+                                       # coins opposés ; center : tenu par
+                                       # son centre s'il est sur l'origine
     "sketch_add_circle": _Req(
         ("sketch", str), ("cx", float), ("cy", float), ("r", float)),
     # Palier 3 — outils d'esquisse avancés. Angles en radians, sens trigo.

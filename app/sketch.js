@@ -734,7 +734,7 @@ export function createSketchMode(deps) {
       building = true;
       try {
         await addRectangle(name,
-          { x: 2 * c.x - point.x, y: 2 * c.y - point.y }, point);
+          { x: 2 * c.x - point.x, y: 2 * c.y - point.y }, point, true);
       } finally {
         building = false;
       }
@@ -1055,23 +1055,17 @@ export function createSketchMode(deps) {
     }
   }
 
-  async function addRectangle(name, a, b) {
-    // Four chained lines: the server's auto-constraints close the loop
-    // (coincidents) and square it (horizontal/vertical) — exactly what
-    // drawing them by hand would earn.
+  async function addRectangle(name, a, b, center = false) {
+    // Une seule opération (un seul Ctrl+Z) : le moteur enchaîne les quatre
+    // côtés comme tracés à la main (coïncidences, horizontal/vertical) ;
+    // par le centre, les coins restent symétriques autour de lui.
     if (a.x === b.x || a.y === b.y) {
       say("Rectangle : les sommets doivent être en diagonale", true);
       return;
     }
     try {
-      const corners = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }, a];
-      let state = null;
-      for (let i = 0; i < 4; i++) {
-        state = await call("sketch_add_line", { sketch: name,
-          x1: corners[i].x, y1: corners[i].y,
-          x2: corners[i + 1].x, y2: corners[i + 1].y });
-      }
-      applyState(state);
+      applyState(await call("sketch_add_rectangle", { sketch: name,
+        x1: a.x, y1: a.y, x2: b.x, y2: b.y, center }));
     } catch (error) {
       say(error.message, true);
     }

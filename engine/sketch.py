@@ -421,6 +421,36 @@ class SketchMixin:
         self._auto_constrain(sk, gid)
         return self.sketch_state(sketch)
 
+    def sketch_add_rectangle(self, sketch, x1, y1, x2, y2, center=False):
+        """Rectangle par deux coins opposés, en une opération (un seul
+        Ctrl+Z). Les côtés s'enchaînent comme tracés à la main
+        (coïncidences, horizontal/vertical, origine). ``center`` avec le
+        milieu sur l'origine : les deux coins restent symétriques autour
+        d'elle (ailleurs, le centre est libre de toute façon)."""
+        from engine.kernel import KernelError
+        import Part
+        import Sketcher
+        x1, y1, x2, y2 = (float(v) for v in (x1, y1, x2, y2))
+        if self._coincident_2d(x1, 0, x2, 0) or self._coincident_2d(0, y1, 0, y2):
+            raise KernelError(
+                "rectangle : les deux coins doivent être en diagonale")
+        sk = self._get_sketch(sketch)
+        V = self._app().Vector
+        corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+        first = None
+        for i in range(4):
+            (ax, ay), (bx, by) = corners[i], corners[(i + 1) % 4]
+            gid = sk.addGeometry(Part.LineSegment(
+                V(ax, ay, 0), V(bx, by, 0)), False)
+            first = gid if first is None else first
+            self._auto_constrain(sk, gid)
+        if center and self._coincident_2d((x1 + x2) / 2, (y1 + y2) / 2, 0, 0):
+            # Coin (x1, y1) = départ du 1er côté ; (x2, y2) = départ du 3e ;
+            # (-1, 1) = le point racine, l'origine.
+            sk.addConstraint(Sketcher.Constraint(
+                "Symmetric", first, 1, first + 2, 1, -1, 1))
+        return self.sketch_state(sketch)
+
     def sketch_add_arc(self, sketch, cx, cy, r, a1, a2):
         """Arc de cercle — angles en radians, sens trigonométrique."""
         from engine.kernel import KernelError

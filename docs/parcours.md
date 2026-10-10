@@ -25,3 +25,21 @@ Profil en L sur le Plan de face (60 × 40, épaisseur 8), extrusion de
 | — | Deux onglets sur le même serveur partagent le même document. | Voulu (un document par processus) ; à afficher un jour. |
 | — | Les symboles de relations (H, V) se chevauchent sur deux segments proches. | À reprendre (finition). |
 | — | Entrée applique la valeur puis une seconde Entrée valide. | Voulu : on voit l'aperçu avant de valider. |
+
+## 2. Boîtier
+
+Rectangle par le centre 100 × 60 sur le Plan de dessus, coté ; extrusion
+de 40 mm ; congés de 8 mm sur les quatre arêtes verticales ; coque de
+2 mm ouverte sur le dessus ; chanfrein de 1 mm sur le bord extérieur.
+
+| # | Accroc | Suite |
+|---|---|---|
+| 12 | Le rectangle par le centre n'est pas tenu par son centre (4 degrés de liberté au lieu de 2), et il coûte quatre Ctrl+Z (un par côté). | **Corrigé** : `sketch_add_rectangle`, une seule opération ; centré sur l'origine, ses coins y restent symétriques (selftest p42). |
+| 13 | La barre d'icônes contextuelle passe par-dessus la boîte d'orientation. | **Corrigé**. |
+| 14 | Après une reconstruction, la barre d'état cite encore « sél. 4 arête(s) ». | **Corrigé**. |
+| 15 | Pendant l'aperçu de la coque, la face choisie reste orange et cache l'ouverture. | **Corrigé** : la face choisie s'estompe avec la pièce. |
+| 16 | Juste après l'ouverture d'un panneau, Entrée ne valide pas : le premier aperçu marquait le champ comme modifié (tous les panneaux). | **Corrigé**. |
+| — | La cote verticale recouvre le symbole « V » du côté coté. | À reprendre (finition, avec le chevauchement des symboles). |
+| — | Les flèches gauche/droite tournent autour de l'axe vertical de l'écran : douze appuis montrent la pièce par-dessous. Une rotation autour de l'axe Z de la pièce serait plus naturelle. | À discuter. |
+| — | Sélectionner une arête cachée oblige à tourner la vue (pas de vue isométrique arrière dans la boîte d'orientation). | À discuter : vues isométriques des quatre coins. |
+| ✓ | Le chanfrein d'une arête suit toute la chaîne tangente (côtés et arrondis). | Bon comportement. |

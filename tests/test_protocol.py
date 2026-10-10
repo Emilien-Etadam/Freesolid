@@ -574,6 +574,7 @@ def test_ops_snapshot_keys():
         "sketch_add_ellipse",
         "sketch_add_line",
         "sketch_add_polygon",
+        "sketch_add_rectangle",
         "sketch_add_slot",
         "sketch_add_spline",
         "sketch_array",

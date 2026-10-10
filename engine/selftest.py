@@ -467,7 +467,7 @@ class SelftestMixin:
                 tree = self.get_tree()
                 report["q1_conge_trop_grand"] = (
                     "réduisez le rayon" in text
-                    and "BRep_API: command not done" in text
+                    and "command not done" not in text
                     and "SolidWorks" not in text
                     and not any(f.get("error") for f in tree["features"]))
             try:
@@ -2359,6 +2359,17 @@ class SelftestMixin:
                 len(rooted) == 2
                 and {c.FirstPos for c in rooted} == {1, 3}
                 and state["dof"] == 3)  # deux longueurs, un rayon
+
+            mark("p42: rectangle en une opération, tenu par son centre")
+            self.new_part("Pièce rectangle")
+            name = self.sketch_start()["sketch"]
+            state = self.sketch_add_rectangle(name, -50, -30, 50, 30,
+                                              center=True)
+            cons = self._get_sketch(name).Constraints
+            report["p42_rectangle_centre"] = (
+                len(state["entities"]) == 4
+                and state["dof"] == 2  # largeur et hauteur seulement
+                and any(c.Type == "Symmetric" and c.Third == -1 for c in cons))
 
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")

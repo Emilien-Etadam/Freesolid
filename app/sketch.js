@@ -2016,6 +2016,10 @@ export function createSketchMode(deps) {
       camera.position.copy(origin.clone().add(normal.multiplyScalar(220)));
       controls.target.copy(origin);
       controls.enableRotate = false;
+      // Matrices à jour tout de suite : un clic arrivé avant l'image
+      // suivante se projette déjà dans la vue de l'esquisse.
+      controls.update();
+      camera.updateMatrixWorld();
 
       for (const [type, handler] of listeners) {
         renderer.domElement.addEventListener(type, handler);

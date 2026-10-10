@@ -113,6 +113,19 @@ La boîte est petite et sobre, sans aperçu des fichiers récents.
 | Un clic droit sans mouvement de souris préalable ouvre le menu de la vue au lieu de celui de la face : le menu lit l'état de survol, pas le point cliqué. | P3 |
 | Une fonction refusée consomme quand même un numéro (« Congé001 »). | P3 |
 
+Revus le 2026-10-10 :
+- congé, chanfrein, coque trop épaisse : messages clairs en français et en
+  anglais (Q1) ;
+- premier trait sur une face : **non reproduit** — en enchaînant face,
+  « Esquisse sur cette face » puis deux clics, le trait se pose sous le
+  curseur. Seule fragilité trouvée : la caméra de l'esquisse n'était
+  recalculée qu'à l'image suivante ; elle l'est désormais tout de suite ;
+- clic sans survol : **corrigé**. Le défaut touchait aussi le clic gauche
+  (rien n'était sélectionné). L'appui recalcule le survol au point cliqué ;
+- numéro consommé : **faux constat**. Le libellé cité dans le message
+  (« Congé001 ») est celui qu'aurait reçu la fonction ; la suivante le
+  reprend.
+
 ---
 
 ## 3. Code
@@ -172,7 +185,13 @@ de suite. Q6 et Q7 attendent une maquette et un échantillon validés.
 
 | # | État |
 |---|---|
-| Q1 | confié à Cursor |
+| Q1 | fait (Cursor) |
 | Q2 | confié à Cursor |
 | Q3 | confié à Cursor |
-| Q4 à Q11 | en attente de validation |
+| Q4 | après Q2 et Q3 |
+| Q5 | après Q4 |
+| Q6, Q7 | maquette en attente de validation ; icônes de l'utilisateur à reprendre |
+| Q8 | fait : lumières liées à la vue, fond en dégradé, grille estompée |
+| Q9 | à faire |
+| Q10 | fait (voir § 2) |
+| Q11 | plus tard |

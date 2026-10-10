@@ -1353,6 +1353,18 @@ renderer.domElement.addEventListener("pointermove", (event) => {
       && pluginRuntime?.dispatchPointer("move", event, pointerCtx())) {
     return;
   }
+  updateHover(event);
+});
+
+// Dernière position où le survol a été calculé : un appui ailleurs (le
+// pointeur arrivé sans mouvement, après un menu ou une fenêtre) le
+// recalcule d'abord, sinon le clic viserait l'ancien survol.
+let hoverAt = null;
+
+/** Face, arête, esquisse, surface ou plan sous le pointeur. */
+function updateHover(event) {
+  hoverAt = { x: event.clientX, y: event.clientY };
+  setPointerFromEvent(event);
   if (planePicking) {
     raycaster.setFromCamera(pointer, camera);
     const hit = raycaster.intersectObjects(Object.values(planeMeshes))[0];
@@ -1426,7 +1438,7 @@ renderer.domElement.addEventListener("pointermove", (event) => {
     repaintEdges();
     repaintSurfaces();
   }
-});
+}
 
 function repaintGroups() {
   if (partMesh) {
@@ -1497,6 +1509,10 @@ function selectEdgesInBox(start, end, additive) {
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (sketchMode.active) return;
   pressPosition = { x: event.clientX, y: event.clientY };
+  if (!assemblyState
+      && (hoverAt?.x !== event.clientX || hoverAt?.y !== event.clientY)) {
+    updateHover(event);
+  }
   const nothingHovered = hoveredGroup < 0 && hoveredEdgeGroup < 0
     && !hoveredSketch && !hoveredSurface;
   boxStart = event.button === 0 && nothingHovered && !assemblyState

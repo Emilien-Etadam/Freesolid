@@ -29,7 +29,10 @@
 //         éditable, alimentée aussi par les clics « point3d » de la vue ;
 //         extra: { label, value } ajoute une 4e colonne (hauteur…)
 //       { type: "segments", key, pointsKey } — une règle par segment entre
-//         points consécutifs : axe imposé (X/Y/Z) et longueur cotée
+//         points consécutifs : axe imposé (X/Y/Z), angle avec le segment
+//         d'avant, longueur cotée
+//       points : linksKey? — liste parallèle ; un point lié porte ⛓ et se
+//         délie dès qu'on retape une de ses coordonnées
 //
 // invalidateSelections() : vide les rows `selection` (ids périmés au rebuild).
 
@@ -565,7 +568,11 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     }
     list.forEach((point, index) => {
       const line = el("div", "plist-item ppoint");
-      line.append(el("span", "ppoint-name", `P${index + 1}`));
+      const linked = row.linksKey && (active.values[row.linksKey] ?? [])[index];
+      const name = el("span", "ppoint-name",
+        linked ? `P${index + 1}⛓` : `P${index + 1}`);
+      if (linked) name.title = t("Lié à la géométrie — suit la pièce");
+      line.append(name);
       point.forEach((coord, axis) => {
         const input = document.createElement("input");
         input.type = "text";
@@ -583,6 +590,12 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
           const next = (active.values[row.key] ?? []).map((p) => [...p]);
           next[index][axis] = parsed;
           active.values[row.key] = next;
+          if (linked && axis < 3) {
+            // Une coordonnée retapée : le point quitte la géométrie.
+            const links = [...(active.values[row.linksKey] ?? [])];
+            links[index] = null;
+            active.values[row.linksKey] = links;
+          }
           changed();
         });
         line.append(input);
@@ -593,6 +606,11 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
         const next = [...(active.values[row.key] ?? [])];
         next.splice(index, 1);
         active.values[row.key] = next;
+        if (row.linksKey) {
+          const links = [...(active.values[row.linksKey] ?? [])];
+          links.splice(index, 1);
+          active.values[row.linksKey] = links;
+        }
         render();
         changed();
       });
@@ -653,7 +671,25 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
         }
         update(i, { length: text === "" ? null : parsed });
       });
-      line.append(axis, size, el("span", "punit", "mm"));
+      const turn = document.createElement("input");
+      turn.type = "text";
+      turn.inputMode = "decimal";
+      turn.className = "ppoint-coord";
+      turn.title = t("Angle avec le segment d'avant (vide : libre)");
+      turn.placeholder = "°";
+      turn.disabled = i === 0;
+      turn.value = rule.angle == null ? "" : String(rule.angle);
+      turn.addEventListener("change", () => {
+        const text = turn.value.trim().replace(",", ".");
+        const parsed = Number(text);
+        if (text !== "" && !(Number.isFinite(parsed) && parsed >= 0
+                             && parsed <= 180)) {
+          turn.value = rule.angle == null ? "" : String(rule.angle);
+          return;
+        }
+        update(i, { angle: text === "" ? null : parsed });
+      });
+      line.append(axis, turn, size, el("span", "punit", "mm"));
       wrap.append(line);
     }
     return wrap;
@@ -666,6 +702,20 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     accepts: (kind) => active !== null
       && (selectionRows(kind).length > 0
           || (kind === "point3d" && findPointsRow() !== null)),
+    /** Parmi `kinds`, celui qu'attend la première zone vide (dans
+     *  l'ordre du panneau), ou null. */
+    firstNeeded: (kinds) => {
+      for (const group of active?.spec.groups ?? []) {
+        for (const row of group.rows ?? []) {
+          if (row.type !== "selection") continue;
+          if (row.showIf && !row.showIf(active.values)) continue;
+          if (selectionFilled(active.values[row.key])) continue;
+          const kind = kinds.find((k) => (row.accepts ?? ["face"]).includes(k));
+          if (kind) return kind;
+        }
+      }
+      return null;
+    },
     /** Une zone de sélection VIDE attend ce genre de choix. */
     needs: (kind) => selectionRows(kind).some(
       (row) => !selectionFilled(active.values[row.key])),

@@ -937,5 +937,8 @@
  "Segments": "Segments",
  "Au moins deux points": "At least two points",
  "Axe imposé": "Imposed axis",
- "Longueur cotée (vide : libre)": "Dimensioned length (empty: free)"
+ "Longueur cotée (vide : libre)": "Dimensioned length (empty: free)",
+ "Lié à la géométrie — suit la pièce": "Linked to geometry — follows the part",
+ "Angle avec le segment d'avant (vide : libre)": "Angle with the previous segment (empty: free)",
+ "⛓ : point lié à un sommet ou un centre de la pièce": "⛓: point linked to a vertex or centre of the part"
 }

@@ -37,6 +37,13 @@ describe("spline 3D : plan de clic", () => {
     const pts = solveRules([[0, 0, 0], [1, 2, 25], [9, 1, 26]],
       [{ axis: "Z", length: 30 }, { axis: "X", length: 15 }]);
     assert.deepEqual(pts, [[0, 0, 0], [0, 0, 30], [15, 0, 30]]);
+    // Angle de 90° avec le segment d'avant, longueur 10.
+    assert.deepEqual(solveRules([[10, 10, 10], [10, 10, 30], [20, 10, 40]],
+      [{}, { angle: 90, length: 10 }]).map((p) => p.map((v) =>
+      Math.round(v * 1e6) / 1e6)), [[10, 10, 10], [10, 10, 30], [20, 10, 30]]);
+    // Un point lié ne bouge pas : la règle qui voudrait le déplacer cède.
+    assert.deepEqual(solveRules([[0, 0, 0], [3, 4, 0]], [{ length: 10 }], [1]),
+      [[0, 0, 0], [3, 4, 0]]);
     // Segment libre : rien ne bouge.
     assert.deepEqual(solveRules([[0, 0, 0], [3, 4, 0]], [{ axis: "" }]),
       [[0, 0, 0], [3, 4, 0]]);

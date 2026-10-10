@@ -312,10 +312,13 @@ class SurfaceMixin:
         d'arêtes (bords de surfaces, courbes, esquisses, arêtes du solide).
         ``tangent`` : la peau prolonge en tangence la face que borde chaque
         arête (bord libre d'une surface ou arête du solide)."""
+        from engine.kernel import KernelError
         import Surface  # noqa: F401 — enregistre Surface::Filling
         links = self._boundary_links(boundary)
         faces = [self._adjacent_face(obj, sub) if tangent else ""
                  for obj, sub in links]
+        triples = [(obj.Name, sub, face)
+                   for (obj, sub), face in zip(links, faces)]
         # Une arête fermée seule (bout de tube) : le noyau ne sait pas la
         # remplir. Un objet auxiliaire la coupe en deux moitiés (et garde
         # la face voisine pour la tangence), recalculé avec sa source.
@@ -327,8 +330,89 @@ class SurfaceMixin:
                 obj.BoundaryFaces = faces
                 obj.BoundaryOrder = [1 if face else 0 for face in faces]
 
-        return self._add_part_surface(
-            "Surface::Filling", "Surface de remplissage", configure)
+        try:
+            return self._add_part_surface(
+                "Surface::Filling", "Surface de remplissage", configure)
+        except KernelError:
+            if not tangent or not all(face for _, _, face in triples):
+                raise
+        # Le solveur ne tient pas la tangence (faces voisines
+        # perpendiculaires : bout de tube) : bouchon B-spline construit,
+        # tangent par sa deuxième rangée de pôles, recalculé avec ses
+        # sources.
+        stamps = {"capedges": ";".join(":".join(t) for t in triples)}
+        shape = self._cap_shape(stamps["capedges"])
+        return self._add_frozen_surface(shape, "Surface de remplissage",
+                                        stamps)
+
+    def _cap_shape(self, spec):
+        """Bouchon tangent sur un contour fermé : B-spline périodique dont
+        la première rangée de pôles suit le contour et la deuxième part
+        dans le prolongement de la face voisine (tangence exacte) ; elle se
+        referme sur un sommet."""
+        from engine.kernel import KernelError
+        import FreeCAD as App
+        import Part
+        doc = self._require_doc()
+        pairs = []
+        for item in str(spec).split(";"):
+            name, edge_name, face_name = item.split(":")
+            obj = doc.getObject(name)
+            if obj is None:
+                raise KernelError("objet inconnu : {}".format(name))
+            shape = obj.Shape
+            pairs.append((shape.Edges[int(edge_name[4:]) - 1],
+                          shape.Faces[int(face_name[4:]) - 1]))
+        edges = [e for e, _ in pairs]
+        try:
+            wire = Part.Wire(Part.__sortEdges__(edges))
+        except Exception:  # noqa: BLE001
+            wire = None
+        if wire is None or not wire.isClosed():
+            raise KernelError("le contour doit être fermé")
+        count = max(48, 16 * len(edges))
+        points = wire.discretize(Number=count + 1)[:-1]
+        curve = Part.BSplineCurve()
+        curve.interpolate(points, PeriodicFlag=True)
+        poles = curve.getPoles()
+
+        def cross_dir(point):
+            edge, face = min(pairs, key=lambda ef: ef[0].distToShape(
+                Part.Vertex(point))[0])
+            u, v = face.Surface.parameter(point)
+            normal = face.normalAt(u, v)
+            tangent = edge.tangentAt(edge.Curve.parameter(point))
+            d = normal.cross(tangent)
+            if d.Length < 1e-9:
+                raise KernelError("bouchon tangent : arête dégénérée")
+            d.normalize()
+            # Vers l'extérieur de la face : un pas en arrière y reste.
+            if face.distToShape(Part.Vertex(point - d * 0.01))[0] > 1e-4:
+                d = d * -1
+            return d
+
+        feet = [curve.value(curve.parameter(q)) for q in poles]
+        dirs = [cross_dir(p) for p in feet]
+        center = sum(poles, App.Vector()) * (1.0 / len(poles))
+        radius = max((q - center).Length for q in poles)
+        axis = sum(dirs, App.Vector())
+        if axis.Length < 1e-6:
+            raise KernelError("bouchon tangent : le contour ne donne pas de "
+                              "sens au bouchon")
+        axis.normalize()
+        row1 = [q + d * (0.35 * radius) for q, d in zip(poles, dirs)]
+        row2 = [center + (q - center) * 0.55 + axis * (0.95 * radius)
+                for q in poles]
+        apex = center + axis * radius
+        grid = [[poles[k], row1[k], row2[k], apex] for k in range(len(poles))]
+        surface = Part.BSplineSurface()
+        surface.buildFromPolesMultsKnots(
+            grid, curve.getMultiplicities(), [4, 4], curve.getKnots(),
+            [0.0, 1.0], True, False, curve.Degree, 3)
+        cap = surface.toShape()
+        if cap.isNull() or not cap.isValid():
+            raise KernelError("bouchon tangent : surface invalide")
+        return cap
 
     def _split_closed_links(self, links, faces):
         doc = self._require_doc()
@@ -709,9 +793,8 @@ class SurfaceMixin:
             edges = binder.Shape.Edges
             if not edges:
                 raise KernelError("aucune arête retenue")
-            try:
-                Part.Wire(Part.__sortEdges__(edges))
-            except Exception:  # noqa: BLE001
+            # Une seule chaîne connexe, sinon ce n'est pas une trajectoire.
+            if len(Part.sortEdges(list(edges))) != 1:
                 raise KernelError("les arêtes ne se suivent pas bout à "
                                   "bout")
         except Exception as exc:  # noqa: BLE001
@@ -913,6 +996,8 @@ class SurfaceMixin:
                     "source": base.Base.Name if base is not None else None,
                     "tool": (base.Tools[0].Name
                              if base is not None and base.Tools else None)}
+        if getattr(obj, "FreeSolidCapedges", ""):
+            return {"kind": "fill", "cap": True}
         if getattr(obj, "FreeSolidFreesource", ""):
             pushes = self._free_pushes(self._frozen_stamps(obj))
             return {"kind": "freeform", "pushes": pushes,
@@ -1603,6 +1688,39 @@ class SurfaceMixin:
         doc = self._require_doc()
         changed = False
         for obj in doc.Objects:
+            curve = self._curve_spec(obj)
+            if curve is not None and any(curve.get("links") or ()):
+                try:
+                    points, links = self._resolve_links(curve["points"],
+                                                        curve["links"])
+                    points = self.solve_curve_rules(
+                        points, curve.get("rules"),
+                        [i for i, l in enumerate(links) if l])
+                except Exception:  # noqa: BLE001
+                    continue
+                if any(abs(a - b) > 1e-9 for p, q in zip(points,
+                                                           curve["points"])
+                       for a, b in zip(p, q)):
+                    vectors, shape = self._curve_shape(
+                        points, curve["spline"], curve["closed"])
+                    self._store_curve(obj, vectors, curve["spline"],
+                                      curve["closed"])
+                    obj.Shape = shape
+                    changed = True
+                continue
+            cap_spec = getattr(obj, "FreeSolidCapedges", "")
+            if cap_spec:
+                try:
+                    result = self._cap_shape(cap_spec)
+                except Exception:  # noqa: BLE001
+                    continue
+                old = obj.Shape
+                if (old.isNull() or abs(old.Area - result.Area) > 1e-9
+                        or (old.BoundBox.Center - result.BoundBox.Center)
+                        .Length > 1e-9):
+                    obj.Shape = result
+                    changed = True
+                continue
             halves = getattr(obj, "FreeSolidHalvessource", "")
             if halves:
                 src = doc.getObject(halves)
@@ -1813,36 +1931,44 @@ class SurfaceMixin:
         return self._add_part_surface(
             "Part::Offset", "Épaississement", configure)
 
-    def add_curve3d(self, points, spline=True, closed=False, rules=None):
+    def add_curve3d(self, points, spline=True, closed=False, rules=None,
+                    links=None):
         """Spline 3D par points — l'esquisse 3D de FreeSolid : une
         trajectoire de balayage ou un bord de surface (B-spline qui passe
         par les points, ou polyligne). Les points restent rangés sur
         l'objet : la courbe se réédite (``edit_curve3d``). ``rules`` :
         une règle par segment, ``{"axis": "X"|"Y"|"Z"|"", "length": mm}``
         — appliquées en chaîne, elles restent attachées à la courbe."""
-        points = self.solve_curve_rules(points, rules)
+        points, links = self._resolve_links(points, links)
+        points = self.solve_curve_rules(
+            points, rules, [i for i, l in enumerate(links) if l])
         vectors, shape = self._curve_shape(points, spline, closed)
         doc = self._require_doc()
         feature = doc.addObject("Part::Feature", "Surface")
         feature.Label = self._t("Spline 3D" if spline else "Polyligne 3D")
-        self._store_curve(feature, vectors, spline, closed, rules)
+        self._store_curve(feature, vectors, spline, closed, rules, links)
         feature.Shape = shape
         doc.recompute()
         return self.get_tree()
 
     def edit_curve3d(self, curve, points, spline=True, closed=False,
-                     rules=None):
+                     rules=None, links=None):
         """Rééditer une spline 3D : nouveaux points, les surfaces et
         balayages qui l'utilisent suivent."""
         from engine.kernel import KernelError
         obj = self._require_doc().getObject(str(curve))
         if obj is None or self._curve_spec(obj) is None:
             raise KernelError("courbe 3D inconnue : {}".format(curve))
+        spec = self._curve_spec(obj)
         if rules is None:
-            rules = self._curve_spec(obj).get("rules")
-        points = self.solve_curve_rules(points, rules)
+            rules = spec.get("rules")
+        if links is None:
+            links = spec.get("links")
+        points, links = self._resolve_links(points, links)
+        points = self.solve_curve_rules(
+            points, rules, [i for i, l in enumerate(links) if l])
         vectors, shape = self._curve_shape(points, spline, closed)
-        self._store_curve(obj, vectors, spline, closed, rules)
+        self._store_curve(obj, vectors, spline, closed, rules, links)
         obj.Shape = shape
         for dependent in obj.InList:
             dependent.touch()
@@ -1850,10 +1976,12 @@ class SurfaceMixin:
         return self.get_tree()
 
     def curve3d_preview(self, points, spline=True, closed=False,
-                        rules=None):
+                        rules=None, links=None):
         """Aperçu exact d'une spline 3D : la polyligne de la courbe que
         ``add_curve3d`` créerait, sans rien ajouter au document."""
-        points = self.solve_curve_rules(points, rules)
+        points, links = self._resolve_links(points, links)
+        points = self.solve_curve_rules(
+            points, rules, [i for i, l in enumerate(links) if l])
         _, shape = self._curve_shape(points, spline, closed)
         out = []
         for edge in shape.Edges:
@@ -1899,18 +2027,25 @@ class SurfaceMixin:
         return vectors, shape
 
     @staticmethod
-    def solve_curve_rules(points, rules):
+    def solve_curve_rules(points, rules, fixed=()):
         """Applique les règles segment par segment : le segment i garde sa
-        direction (ramenée sur l'axe imposé) et prend sa longueur cotée ;
-        la suite de la courbe suit en bloc. Points en listes [x, y, z]."""
+        direction (ramenée sur l'axe imposé, ou tournée pour faire
+        l'angle voulu avec le segment d'avant) et prend sa longueur
+        cotée ; la suite de la courbe suit en bloc, jusqu'au prochain
+        point lié (``fixed`` : indices des points liés, qui ne bougent
+        pas — une règle qui voudrait les déplacer est ignorée)."""
         from engine.kernel import KernelError
         import math
         pts = [[float(v) for v in p] for p in points or ()]
+        fixed = set(fixed or ())
         for i, rule in enumerate(rules or ()):
             if i + 1 >= len(pts) or not isinstance(rule, dict):
                 continue
+            if i + 1 in fixed:
+                continue
             axis = str(rule.get("axis") or "")
             length = rule.get("length")
+            angle = rule.get("angle")
             a, b = pts[i], pts[i + 1]
             d = [b[k] - a[k] for k in range(3)]
             if axis in ("X", "Y", "Z"):
@@ -1918,6 +2053,9 @@ class SurfaceMixin:
                 d = [d[k] if n == k else 0.0 for n in range(3)]
                 if abs(d[k]) < 1e-9:
                     d[k] = 1.0
+            elif angle not in (None, "") and i >= 1:
+                prev = [a[k] - pts[i - 1][k] for k in range(3)]
+                d = SurfaceMixin._turn_to_angle(prev, d, float(angle))
             if length not in (None, ""):
                 length = float(length)
                 if length <= 0:
@@ -1931,10 +2069,103 @@ class SurfaceMixin:
             target = [a[k] + d[k] for k in range(3)]
             shift = [target[k] - b[k] for k in range(3)]
             for j in range(i + 1, len(pts)):
+                if j in fixed:
+                    break
                 pts[j] = [pts[j][k] + shift[k] for k in range(3)]
         return pts
 
-    def _store_curve(self, obj, vectors, spline, closed, rules=None):
+    @staticmethod
+    def _turn_to_angle(prev, d, degrees):
+        """``d`` tourné dans le plan (prev, d) pour faire ``degrees`` avec
+        ``prev`` — sa longueur est gardée."""
+        import math
+
+        def norm(v):
+            return math.sqrt(sum(c * c for c in v))
+
+        size, base = norm(d), norm(prev)
+        if size < 1e-9 or base < 1e-9:
+            return d
+        e1 = [c / base for c in prev]
+        # Le plan : d ôté de sa composante sur prev ; s'ils sont alignés,
+        # un axe quelconque perpendiculaire.
+        side = [d[k] - sum(d[n] * e1[n] for n in range(3)) * e1[k]
+                for k in range(3)]
+        if norm(side) < 1e-9:
+            helper = [0.0, 0.0, 1.0] if abs(e1[2]) < 0.9 else [1.0, 0.0, 0.0]
+            side = [helper[k] - sum(helper[n] * e1[n] for n in range(3))
+                    * e1[k] for k in range(3)]
+        e2 = [c / norm(side) for c in side]
+        t = math.radians(degrees)
+        return [size * (math.cos(t) * e1[k] + math.sin(t) * e2[k])
+                for k in range(3)]
+
+    def _resolve_links(self, points, links):
+        """Points liés : chaque lien ``{"object", "kind", "index"}`` donne
+        la position du sommet ou du centre de cercle ; un lien ``True``
+        (nouveau) se cherche au point cliqué. Rend (points, liens)."""
+        pts = [list(p) for p in points]
+        resolved = []
+        for i, link in enumerate(list(links or ()) + [None] * len(pts)):
+            if i >= len(pts):
+                break
+            if link is True:
+                link = self._find_anchor(pts[i])
+            if isinstance(link, dict):
+                where = self._anchor_point(link)
+                if where is None:
+                    link = None
+                else:
+                    pts[i] = where
+            resolved.append(link if isinstance(link, dict) else None)
+        return pts, resolved
+
+    def _anchor_shapes(self):
+        """(nom, forme) des objets auxquels un point peut se lier : le
+        corps actif et les surfaces et courbes affichées."""
+        out = []
+        body = self._body
+        shape = getattr(body, "Shape", None) if body is not None else None
+        if shape is not None and not shape.isNull():
+            out.append((body.Name, shape))
+        for obj in self._require_doc().Objects:
+            if (self._is_surface_obj(obj) and not self._is_internal_tool(obj)
+                    and self._curve_spec(obj) is None):
+                shape = getattr(obj, "Shape", None)
+                if shape is not None and not shape.isNull():
+                    out.append((obj.Name, shape))
+        return out
+
+    def _find_anchor(self, point, tolerance=1e-3):
+        import FreeCAD as App
+        target = App.Vector(*point)
+        for name, shape in self._anchor_shapes():
+            for i, vertex in enumerate(shape.Vertexes):
+                if (vertex.Point - target).Length < tolerance:
+                    return {"object": name, "kind": "vertex", "index": i}
+            for i, edge in enumerate(shape.Edges):
+                center = self._circle_center(edge)
+                if center is not None and (App.Vector(*center) - target
+                                           ).Length < tolerance:
+                    return {"object": name, "kind": "center", "index": i}
+        return None
+
+    def _anchor_point(self, link):
+        obj = self._require_doc().getObject(str(link.get("object", "")))
+        if obj is None or getattr(obj, "Shape", None) is None:
+            return None
+        shape, index = obj.Shape, int(link.get("index", -1))
+        try:
+            if link.get("kind") == "vertex":
+                p = shape.Vertexes[index].Point
+                return [p.x, p.y, p.z]
+            center = self._circle_center(shape.Edges[index])
+            return list(center) if center is not None else None
+        except IndexError:
+            return None
+
+    def _store_curve(self, obj, vectors, spline, closed, rules=None,
+                     links=None):
         if self._CURVE_POINTS not in obj.PropertiesList:
             obj.addProperty("App::PropertyVectorList", self._CURVE_POINTS,
                             "FreeSolid")
@@ -1948,9 +2179,14 @@ class SurfaceMixin:
         if rules is not None:
             import json
             clean = [{"axis": str((r or {}).get("axis") or ""),
-                      "length": (r or {}).get("length")}
+                      "length": (r or {}).get("length"),
+                      "angle": (r or {}).get("angle")}
                      for r in rules]
             self._stamp(obj, rules=json.dumps(clean))
+        if links is not None:
+            import json
+            self._stamp(obj, links=json.dumps(
+                [l if isinstance(l, dict) else None for l in links]))
 
     def _curve_spec(self, obj):
         """Points d'une spline 3D FreeSolid, ou None."""
@@ -1962,7 +2198,17 @@ class SurfaceMixin:
             "spline": bool(obj.FreeSolidSpline),
             "closed": bool(obj.FreeSolidClosed),
             "rules": self._curve_rules(obj),
+            "links": self._curve_links(obj),
         }
+
+    @staticmethod
+    def _curve_links(obj):
+        import json
+        try:
+            links = json.loads(getattr(obj, "FreeSolidLinks", "") or "[]")
+        except ValueError:
+            return []
+        return links if isinstance(links, list) else []
 
     @staticmethod
     def _curve_rules(obj):

@@ -44,16 +44,19 @@ export function alongAxis(last, point) {
  *  chaîne : le segment i garde sa direction, ramenée sur son axe, prend
  *  sa longueur, et la suite de la courbe suit en bloc. Même calcul que le
  *  moteur (solve_curve_rules). */
-export function solveRules(points, rules) {
+export function solveRules(points, rules, fixed = []) {
   const pts = (points ?? []).map((p) => p.slice(0, 3).map(Number));
+  const locked = new Set(fixed);
   (rules ?? []).forEach((rule, i) => {
-    if (!rule || i + 1 >= pts.length) return;
+    if (!rule || i + 1 >= pts.length || locked.has(i + 1)) return;
     const [a, b] = [pts[i], pts[i + 1]];
     let d = b.map((v, k) => v - a[k]);
     const k = "XYZ".indexOf(rule.axis ?? "");
     if (rule.axis && k >= 0) {
       d = d.map((v, n) => (n === k ? v : 0));
       if (Math.abs(d[k]) < 1e-9) d[k] = 1;
+    } else if (rule.angle != null && i >= 1) {
+      d = turnToAngle(a.map((v, n) => v - pts[i - 1][n]), d, rule.angle);
     }
     if (rule.length != null && rule.length > 0) {
       const size = Math.hypot(...d);
@@ -61,10 +64,36 @@ export function solveRules(points, rules) {
     }
     const shift = a.map((v, n) => v + d[n] - b[n]);
     for (let j = i + 1; j < pts.length; j++) {
+      if (locked.has(j)) break; // un point lié arrête la propagation
       pts[j] = pts[j].map((v, n) => v + shift[n]);
     }
   });
   return pts;
+}
+
+/** `d` tourné dans le plan (prev, d) pour faire `degrees` avec `prev`,
+ *  longueur gardée — même calcul que le moteur. */
+export function turnToAngle(prev, d, degrees) {
+  const norm = (v) => Math.hypot(...v);
+  const size = norm(d);
+  const base = norm(prev);
+  if (size < 1e-9 || base < 1e-9) return d;
+  const e1 = prev.map((c) => c / base);
+  const dot = (u, v) => u.reduce((s, c, k) => s + c * v[k], 0);
+  let side = d.map((c, k) => c - dot(d, e1) * e1[k]);
+  if (norm(side) < 1e-9) {
+    const helper = Math.abs(e1[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+    side = helper.map((c, k) => c - dot(helper, e1) * e1[k]);
+  }
+  const e2 = side.map((c) => c / norm(side));
+  const theta = (degrees * Math.PI) / 180;
+  return e1.map((c, k) =>
+    size * (Math.cos(theta) * c + Math.sin(theta) * e2[k]));
+}
+
+/** Indices des points liés (pour le solveur). */
+function linkedIndices(links) {
+  return (links ?? []).flatMap((l, i) => (l ? [i] : []));
 }
 
 function samePoints(a, b) {
@@ -251,6 +280,14 @@ export function installCurve3d(ctx) {
     const round = (v) => Math.round(v * 1000) / 1000;
     const [x, y, z] = aimed.point.map(round);
     panel.notifyPick("point3d", { kind: "point3d", x, y, z });
+    if (aimed.onGeometry && aimed.snapped && !axis) {
+      // Clic aimanté sur un sommet ou un centre : le point s'y lie et
+      // suivra la pièce (le moteur retrouve l'élément).
+      const links = [...(tool.values.links ?? [])];
+      while (links.length < list.length) links.push(null);
+      links[list.length] = true;
+      panel.restore({ links });
+    }
     if (axis) {
       // Maj : l'axe devient une règle du segment, gardée à la réédition.
       const rules = [...(tool.values.rules ?? [])];
@@ -310,6 +347,7 @@ export function installCurve3d(ctx) {
     const spec = curve?.curve;
     tool = { curve, values: {
       points: spec?.points ?? [], plane: "XY", rules: spec?.rules ?? [],
+      links: spec?.links ?? [],
       spline: spec?.spline ?? true, closed: spec?.closed ?? false } };
     scene.add(preview);
     renderer.domElement.addEventListener("pointerdown", onDown);
@@ -322,7 +360,15 @@ export function installCurve3d(ctx) {
       autoFocus: false,
       groups: [
         { label: t("Points"),
-          rows: [{ type: "points", key: "points", value: tool.values.points }] },
+          rows: [
+            { type: "points", key: "points", linksKey: "links",
+              value: tool.values.points },
+            // La note porte aussi la valeur « links » (liste parallèle aux
+            // points) : le panneau la garde et la rend à l'OK.
+            { type: "note", readonly: true, key: "links",
+              value: tool.values.links,
+              text: t("⛓ : point lié à un sommet ou un centre de la pièce") },
+          ] },
         { label: t("Segments"),
           rows: [{ type: "segments", key: "rules", pointsKey: "points",
                    value: tool.values.rules }] },
@@ -349,7 +395,8 @@ export function installCurve3d(ctx) {
       onChange: (v) => {
         if (!tool) return;
         // Les règles recalent les points : la liste montre le résultat.
-        const solved = solveRules(v.points ?? [], v.rules);
+        const solved = solveRules(v.points ?? [], v.rules,
+          linkedIndices(v.links));
         if (!samePoints(solved, v.points ?? [])) {
           panel.restore({ points: solved });
           return;
@@ -368,9 +415,10 @@ export function installCurve3d(ctx) {
           say(t(problem), true);
           return;
         }
-        const params = { points: solveRules(v.points, v.rules),
-                         rules: v.rules ?? [], spline: !!v.spline,
-                         closed: !!v.closed };
+        const params = { points: solveRules(v.points, v.rules,
+                                            linkedIndices(v.links)),
+                         rules: v.rules ?? [], links: v.links ?? [],
+                         spline: !!v.spline, closed: !!v.closed };
         refresh(curve
           ? call("edit_curve3d", { curve: curve.name, ...params })
           : call("add_curve3d", params));

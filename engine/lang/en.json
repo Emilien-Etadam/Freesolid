@@ -444,5 +444,9 @@
  "cliquez au moins un point à pousser": "click at least one point to push",
  "point à pousser invalide : {}": "invalid push point: {}",
  "une longueur de segment doit être positive": "a segment length must be positive",
- "segment sans direction : déplacez un de ses points": "segment without direction: move one of its points"
+ "segment sans direction : déplacez un de ses points": "segment without direction: move one of its points",
+ "le contour doit être fermé": "the boundary must be closed",
+ "bouchon tangent : arête dégénérée": "tangent cap: degenerate edge",
+ "bouchon tangent : le contour ne donne pas de sens au bouchon": "tangent cap: the boundary gives the cap no direction",
+ "bouchon tangent : surface invalide": "tangent cap: invalid surface"
 }

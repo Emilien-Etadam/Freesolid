@@ -402,7 +402,13 @@ export function installPicking(ctx) {
       repaintGroups();
       repaintEdges();
       // Un panneau qui attend des bords les prend ; sinon le clic choisit
-      // l'objet entier (la courbe, la surface), comme dans l'arbre.
+      // l'objet entier (la courbe, la surface), comme dans l'arbre. Si la
+      // première case vide attend une surface, l'arête la désigne.
+      const wanted = panel.firstNeeded(["boundary", "surface"]);
+      if (wanted === "surface") {
+        ctx.onSurfaceClick({ name: b.name, label: b.label });
+        return;
+      }
       if (panel.notifyPick("boundary", { kind: "boundary", ...b })) return;
       ctx.onSurfaceClick({ name: b.name, label: b.label });
       return;

@@ -2544,6 +2544,26 @@ class SelftestMixin:
                 and len(ruled_spec.get("rules") or []) == 2
                 and moved_spec.get("points") == [[5, 5, 5], [5, 5, 35],
                                                  [20, 5, 35]])
+            # Angle entre segments, point lié à un sommet du solide qui
+            # suit quand le solide change.
+            self.add_rect_sketch(20, 20)
+            pad_tree = self.add_pad(10)
+            pad_name = next(f["name"] for f in pad_tree["features"]
+                            if f["type"] == "PartDesign::Pad")
+            angle_tree = self.add_curve3d(
+                [[10, 10, 10], [10, 10, 30], [20, 10, 40]], spline=False,
+                rules=[{}, {"angle": 90, "length": 10}],
+                links=[True, None, None])
+            spec_a = angle_tree["surfaces"][-1].get("curve") or {}
+            angle_obj = self._require_doc().getObject(
+                angle_tree["surfaces"][-1]["name"])
+            anchored = (spec_a.get("links") or [None])[0]
+            self.set_params(pad_name, {"Length": 15.0})
+            first = angle_obj.FreeSolidPoints[0]
+            report["p46_esquisse3d_angle_lien"] = (
+                spec_a.get("points")[2] == [20, 10, 30]
+                and isinstance(anchored, dict)
+                and abs(first.z - 15) < 1e-6)
             closed = self.add_curve3d(
                 [[0, 0, 0], [30, 0, 5], [30, 30, 0], [0, 30, 5]],
                 spline=False, closed=True)["surfaces"][-1]
@@ -2758,7 +2778,13 @@ class SelftestMixin:
             self.sketch_add_line(prof, -3, 0, 3, 0)
             self.sketch_finish(prof)
             swept = obj_of(self.surface_sweep(prof, composite.Name))
-            report["p48_courbe_composite"] = (
+            try:
+                self.curve_composite([{"name": curves[0]},
+                                      {"name": curves[2]}])
+                apart_refused = False
+            except KernelError as exc:
+                apart_refused = "bout à bout" in str(exc)
+            report["p48_courbe_composite"] = apart_refused and (
                 len(composite.Shape.Edges) == 3
                 and composite.Name in {s["name"] for s
                                        in self.get_tree()["surfaces"]}
@@ -2812,8 +2838,23 @@ class SelftestMixin:
             cap = obj_of(self.surface_fill(
                 [{"name": tube.Name, "edge": tube_end[0]}]))
             cap_ok = abs(cap.Shape.Area - math.pi * 25) < 0.5
+            # Bouchon tangent au tube (faces voisines perpendiculaires :
+            # le solveur échoue, le bouchon B-spline prend le relais).
+            dome = obj_of(self.surface_fill(
+                [{"name": tube.Name, "edge": tube_end[0]}], tangent=True))
+            side = next(f for f in tube.Shape.Faces)
+            worst = 0.0
+            for edge in [tube.Shape.Edges[tube_end[0]]]:
+                for point in edge.discretize(12):
+                    u, v = dome.Shape.Faces[0].Surface.parameter(point)
+                    n1 = dome.Shape.Faces[0].normalAt(u, v)
+                    su, sv = side.Surface.parameter(point)
+                    n2 = side.normalAt(su, sv)
+                    worst = max(worst, math.degrees(
+                        math.acos(min(1.0, abs(n1.dot(n2))))))
             report["p48_remplir_arete_fermee"] = (
-                len(tube_end) == 1 and cap_ok)
+                len(tube_end) == 1 and cap_ok
+                and dome.Shape.BoundBox.ZMax > 21 and worst < 0.5)
 
             mark("p48: supprimer des faces, désajuster, congé de surface")
             state = self.sketch_start(plane="XY")

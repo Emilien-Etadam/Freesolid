@@ -249,8 +249,26 @@ function sketchScreenPoint() {
 function surfaceScreenPoint() {
   const mesh = surfaceMeshes[0];
   if (!mesh) return null;
-  mesh.geometry.computeBoundingSphere();
-  const center = mesh.geometry.boundingSphere?.center;
+  // Le triangle le plus éloigné de la pièce : le centre de la surface peut
+  // tomber sur une arête du solide, que le clic choisirait alors.
+  const pos = mesh.geometry.getAttribute("position");
+  const index = mesh.geometry.getIndex();
+  if (!pos) return null;
+  const solid = partMesh
+    ? new THREE.Box3().setFromObject(partMesh) : null;
+  const vertex = (i) => new THREE.Vector3().fromBufferAttribute(
+    pos, index ? index.getX(i) : i);
+  const count = index ? index.count : pos.count;
+  let center = null;
+  let farthest = -1;
+  for (let i = 0; i + 2 < count; i += 3) {
+    const c = vertex(i).add(vertex(i + 1)).add(vertex(i + 2))
+      .multiplyScalar(1 / 3);
+    const ndc = c.clone().project(camera);
+    if (Math.abs(ndc.x) > 0.95 || Math.abs(ndc.y) > 0.95) continue;
+    const d = solid ? solid.distanceToPoint(c) : 0;
+    if (d > farthest) { farthest = d; center = c; }
+  }
   if (!center) return null;
   const projected = center.clone().project(camera);
   const rect = renderer.domElement.getBoundingClientRect();

@@ -2384,6 +2384,47 @@ class SelftestMixin:
                 len(shape.Edges) == 3 and len(drawn) == 2
                 and all(shape.Edges[i].Curve.__class__.__name__ == "Circle"
                         for i in drawn))
+            # Leurs centres partent avec elles : un clic de position s'y
+            # aimante (perçage au centre d'un moyeu).
+            centers = sorted(round(g["center"][2], 6)
+                             for g in self.tessellate_edges()["groups"]
+                             if "center" in g)
+            report["p43_centres"] = centers == [0.0, 20.0]
+
+            mark("p44: trou placé par cote depuis l'origine et verticale")
+            self.new_part("Pièce cercle de perçage")
+            name = self.sketch_start()["sketch"]
+            self.sketch_add_circle(name, 2, -28, 4)
+            # Cercle + origine : la distance de son centre à l'origine.
+            self.sketch_dim(name, 0, value=30, geo2=-1, point2=1)
+            state = self.sketch_constrain(name, "vertical", 0, point1=3,
+                                          geo2=-1, point2=1)
+            circle = state["entities"][0]
+            report["p44_cote_origine"] = (
+                abs(circle["c"][0]) < 1e-6 and abs(circle["c"][1] + 30) < 1e-6
+                and state["dof"] == 1)  # reste le rayon
+            # Cotes horizontale / verticale d'un point depuis l'origine :
+            # un sommet de nervure posé en (20, 12), valeurs positives même
+            # tracé de l'autre côté.
+            name = self.sketch_start()["sketch"]
+            self.sketch_add_line(name, 18, 10, 36, 10)
+            self.sketch_dim(name, -1, geo2=0, point=1, point2=1, axis="x")
+            state = self.sketch_dim(name, 0, geo2=-1, point=1, point2=1,
+                                    axis="y")
+            dims = state["dims"]
+            for dim, target in zip(dims, (20, 12)):
+                self.sketch_set_dim(name, dim["id"], value=target)
+            line = self.sketch_state(name)["entities"][0]
+            # Posée sous le segment : la cote garde ce décalage (sauvé).
+            placed = self.sketch_dim(name, 0, at=[27, 3])["dims"][-1]
+            report["p44_cote_posee"] = (
+                placed["offset"] is not None
+                and abs(placed["offset"] + 9) < 1e-6)
+            report["p44_cotes_hv"] = (
+                [d["type"] for d in dims] == ["DistanceX", "DistanceY"]
+                and all(d["value"] > 0 for d in dims)
+                and abs(line["p1"][0] - 20) < 1e-6
+                and abs(line["p1"][1] - 12) < 1e-6)
 
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")

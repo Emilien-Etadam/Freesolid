@@ -857,3 +857,12 @@ def test_pack_edges_carries_exact_length():
     ])
     assert packed["groups"][0]["length"] == 7.0
     assert "length" not in packed["groups"][1]
+
+
+def test_pack_edges_carries_circle_center():
+    packed = protocol.pack_edges([
+        (0, [(1, 0, 0), (0, 1, 0), (-1, 0, 0)], 3.14159, (0, 0, 2)),
+        (1, [(0, 0, 0), (1, 0, 0)], 1.0, None),
+    ])
+    assert packed["groups"][0]["center"] == [0.0, 0.0, 2.0]
+    assert "center" not in packed["groups"][1]

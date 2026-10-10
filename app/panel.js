@@ -375,6 +375,11 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
         box.textContent = value.items.length <= 4
           ? value.items.map((i) => t("Face {n}", { n: i.face })).join(", ")
           : t("{n} faces", { n: value.items.length });
+      } else if (value.items && value.items.every((i) => i.kind === "feature")) {
+        // Fonctions à répéter : une liste, pas un ordre de profils.
+        const labels = value.items.map((i) => i.label).join(", ");
+        box.textContent = value.items.length <= 2 ? labels
+          : t("{n} fonctions : ", { n: value.items.length }) + labels;
       } else if (value.items) {
         box.textContent = value.items.length <= 2
           ? value.items.map((i) => i.label).join(" → ")

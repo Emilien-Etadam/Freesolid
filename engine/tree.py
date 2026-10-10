@@ -857,8 +857,20 @@ class TreeMixin:
                 except Exception:
                     continue  # arête dégénérée : les ids restent justes
             lines.append((i, [(p.x, p.y, p.z) for p in points],
-                          float(edge.Length)))
+                          float(edge.Length), self._circle_center(edge)))
         return protocol.pack_edges(lines)
+
+    @staticmethod
+    def _circle_center(edge):
+        """Centre d'une arête circulaire (cercle ou arc), sinon None."""
+        try:
+            curve = edge.Curve
+            if curve.TypeId != "Part::GeomCircle":
+                return None
+            c = curve.Center
+            return (c.x, c.y, c.z)
+        except Exception:
+            return None
 
     @staticmethod
     def _seam_edge_ids(shape):

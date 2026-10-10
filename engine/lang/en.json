@@ -341,5 +341,6 @@
  "{} : Le profil ne produit aucun volume.": "{}: The profile produces no volume.",
  "Congé": "Fillet",
  "Coque": "Shell",
- "Dépouille": "Draft"
+ "Dépouille": "Draft",
+ "{} : une ligne, ou deux points": "{}: a line, or two points"
 }

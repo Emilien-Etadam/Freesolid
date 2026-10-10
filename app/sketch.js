@@ -21,6 +21,7 @@ import {
 } from "./navigation.js";
 import {
   arrowSegments, dimEditPayload, dimGeometry, dimLabel, openDimEditor,
+  pointPairDimKind, pointPairDimPath,
 } from "./dims.js";
 
 const sceneTheme = readScene();
@@ -67,6 +68,9 @@ function createGlyphSprite(text) {
   material.userData.own = true;
   return new THREE.Sprite(material);
 }
+
+/** Le point racine du moteur : l'origine de l'esquisse (point 1). */
+const ORIGIN_GEO = -1;
 
 export function createSketchMode(deps) {
   const { scene, camera, renderer, controls, call, say, refresh, panel,
@@ -125,6 +129,7 @@ export function createSketchMode(deps) {
     pendingPoly: null,    // { sides, c? } — centre puis sommet
     pendingFillet: null,  // { geo, x, y } — première ligne cliquée
     pendingDim: null,     // { geo, point? } — première entité cotée
+    pendingDimPair: null, // deux points choisis, la cote attend sa place
     selection: [],        // [{ geo, point? }] — outil Sélectionner
     justDragged: false,   // un drag qui finit ne doit pas sélectionner
     drag: null,           // { geo, point } while dragging
@@ -211,7 +216,7 @@ export function createSketchMode(deps) {
   // coïncidence). L'origine ne se glisse pas : overEndpoint ne la voit pas.
   function* snapPoints() {
     yield* endpoints();
-    yield { geo: -1, point: 1, x: 0, y: 0 };
+    yield { geo: ORIGIN_GEO, point: 1, x: 0, y: 0 };
   }
 
   function snap(local, event) {
@@ -595,10 +600,12 @@ export function createSketchMode(deps) {
     // Origine de l'esquisse : deux flèches courtes, à taille d'écran.
     const span = (camera.top - camera.bottom) / (camera.zoom || 1);
     const size = span * 0.035;
+    const originSelected = mode.selection.some((s) => s.geo === ORIGIN_GEO);
     for (const [dx, dy] of [[1, 0], [0, 1]]) {
       const arrow = new THREE.ArrowHelper(
         new THREE.Vector3(dx, dy, 0), new THREE.Vector3(0, 0, 0),
-        size, sceneTheme.axisX, size * 0.3, size * 0.18);
+        size, originSelected ? sceneTheme.accent : sceneTheme.axisX,
+        size * 0.3, size * 0.18);
       arrow.traverse((obj) => {
         if (obj.material) {
           obj.material.transparent = true;
@@ -676,8 +683,10 @@ export function createSketchMode(deps) {
     // Geometry ids may have shifted (trim, delete): stale picks lie,
     // unless the appelant garantit que les ids tiennent (move, cote…).
     const ids = new Set((state.entities ?? []).map((e) => e.id));
-    mode.selection = prevSelection.filter((s) => ids.has(s.geo));
+    mode.selection = prevSelection.filter(
+      (s) => ids.has(s.geo) || s.geo === ORIGIN_GEO);
     mode.pendingDim = null;
+    mode.pendingDimPair = null;
     mode.pendingFillet = null;
     mode.matrix.set(...state.placement);
     mode.inverse.copy(mode.matrix).invert();
@@ -835,7 +844,7 @@ export function createSketchMode(deps) {
 
     if (mode.tool === "select") {
       if (mode.justDragged) { mode.justDragged = false; return; }
-      const endpoint = overEndpoint(event);
+      const endpoint = overPoint(event);
       const picked = endpoint
         ? { geo: endpoint.geo, point: endpoint.point }
         : (() => { const n = nearestEntity(event);
@@ -1022,7 +1031,20 @@ export function createSketchMode(deps) {
           { sketch: name, geo: target }));
       }
     } else if (mode.tool === "dim") {
-      const endpoint = overEndpoint(event);
+      if (mode.pendingDimPair) {
+        // 3e clic : l'endroit choisi décide horizontale, verticale ou alignée.
+        const { first, second, a, b } = mode.pendingDimPair;
+        mode.pendingDimPair = null;
+        if (previewLine) previewLine.visible = false;
+        const kind = pointPairDimKind(a, b, local);
+        const params = { sketch: name, geo: first.geo, geo2: second.geo,
+                         point: first.point, point2: second.point };
+        if (kind === "DistanceX") params.axis = "x";
+        if (kind === "DistanceY") params.axis = "y";
+        await addDim(params, event);
+        return;
+      }
+      const endpoint = overPoint(event);
       const nearest = nearestEntity(event);
       const target = endpoint
         ? { geo: endpoint.geo, point: endpoint.point }
@@ -1038,25 +1060,64 @@ export function createSketchMode(deps) {
         let params;
         if (!target
             || (target.geo === first.geo && target.point === first.point)) {
+          if (first.geo === ORIGIN_GEO) {
+            // L'origine seule n'a rien à coter : il lui faut un vis-à-vis.
+            mode.pendingDim = first;
+            say(t("Cotation : cliquez l'entité à coter depuis l'origine"));
+            return;
+          }
           params = { sketch: name, geo: first.geo };
         } else {
+          // Deux points (un cercle compte par son centre) : la cote se
+          // pose d'un 3e clic, qui choisit son sens.
+          const pair = [first, target].map((pick) => (pick.point == null
+            && isRound(pick.geo) ? { geo: pick.geo, point: 3 } : pick));
+          const ends = pair.map(pickPoint);
+          if (ends.every(Boolean)) {
+            mode.pendingDimPair = { first: pair[0], second: pair[1],
+                                    a: ends[0], b: ends[1] };
+            say(t("Cotation : cliquez où poser la cote — à côté : verticale, "
+              + "dessus ou dessous : horizontale, entre : alignée"));
+            return;
+          }
           params = { sketch: name, geo: first.geo, geo2: target.geo };
           if (first.point != null) params.point = first.point;
           if (target.point != null) params.point2 = target.point;
         }
-        // La cote est posée à la valeur mesurée, puis on saisit la vraie.
-        const before = new Set((mode.state.dims ?? []).map((d) => d.id));
-        const at = { x: event.clientX, y: event.clientY };
-        try {
-          applyState(await call("sketch_dim", params));
-          const created = (mode.state.dims ?? [])
-            .find((d) => !before.has(d.id));
-          if (created) openModifyBox(created, at);
-        } catch (error) {
-          say(error.message, true);
-        }
+        await addDim(params, event);
       }
     }
+  }
+
+  /** Pose la cote à la valeur mesurée, puis ouvre la saisie de la vraie. */
+  async function addDim(params, event) {
+    const before = new Set((mode.state.dims ?? []).map((d) => d.id));
+    const at = { x: event.clientX, y: event.clientY };
+    // Là où on a cliqué pour la poser : la cote y reste.
+    const local = toLocal(event);
+    const placed = local ? { ...params, at: [local.x, local.y] } : params;
+    try {
+      applyState(await call("sketch_dim", placed));
+      const created = (mode.state.dims ?? [])
+        .find((d) => !before.has(d.id));
+      if (created) openModifyBox(created, at);
+    } catch (error) {
+      say(error.message, true);
+    }
+  }
+
+  function isRound(geo) {
+    const entity = mode.state?.entities.find((e) => e.id === geo);
+    return entity?.type === "circle" || entity?.type === "arc";
+  }
+
+  /** Coordonnées locales d'un point choisi (extrémité, centre, origine). */
+  function pickPoint(pick) {
+    if (pick.geo === ORIGIN_GEO) return { x: 0, y: 0 };
+    const entity = mode.state?.entities.find((e) => e.id === pick.geo);
+    const p = pick.point === 1 ? entity?.p1 : pick.point === 2 ? entity?.p2
+      : pick.point === 3 ? entity?.c : null;
+    return p ? { x: p[0], y: p[1] } : null;
   }
 
   async function addRectangle(name, a, b, center = false) {
@@ -1162,6 +1223,18 @@ export function createSketchMode(deps) {
     if (b.points) {
       entity.points = b.points.map((p) => [p[0] + dx, p[1] + dy]);
     }
+  }
+
+  /** Extrémité, centre ou origine sous le curseur — ce qu'on clique pour
+   *  sélectionner ou coter ; l'origine, elle, ne se glisse pas. */
+  function overPoint(event) {
+    for (const p of snapPoints()) {
+      const s = toScreen(p.x, p.y);
+      if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < SNAP_PX) {
+        return p;
+      }
+    }
+    return null;
   }
 
   function overEndpoint(event) {
@@ -1310,6 +1383,14 @@ export function createSketchMode(deps) {
         redraw();
       }
       enqueueSketchMove(target.x, target.y);
+    } else if (mode.tool === "dim" && mode.pendingDimPair && previewLine) {
+      const local = toLocal(event);
+      if (!local) return;
+      const { a, b } = mode.pendingDimPair;
+      const path = pointPairDimPath(a, b, pointPairDimKind(a, b, local), local);
+      previewLine.geometry.setFromPoints(
+        path.map((p) => new THREE.Vector3(p.x, p.y, 0)));
+      previewLine.visible = true;
     } else if (mode.tool === "line" && mode.chain && previewLine) {
       const local = toLocal(event);
       if (!local) return;
@@ -1613,6 +1694,7 @@ export function createSketchMode(deps) {
     mode.pendingSlot = null;
     mode.pendingFillet = null;
     mode.pendingDim = null;
+    mode.pendingDimPair = null;
     mode.pendingSpline = null;
     mode.pendingEllipse = null;
     mode.selection = [];
@@ -1657,6 +1739,11 @@ export function createSketchMode(deps) {
     const tool = event.target.dataset?.tool;
     if (tool) setTool(tool);
   });
+
+  /** La sélection sans l'origine : ce qu'on peut symétriser, répéter… */
+  function entityPicks() {
+    return mode.selection.filter((pick) => pick.geo !== ORIGIN_GEO);
+  }
 
   function uniqueSelectionGeos() {
     const seen = [];
@@ -1821,7 +1908,13 @@ export function createSketchMode(deps) {
 
   function applyConstraint(kind) {
     if (!mode.state) return;
-    const needed = CONSTRAINT_NEEDS[kind];
+    let needed = CONSTRAINT_NEEDS[kind];
+    // Horizontale / verticale : une ligne, ou deux points alignés.
+    const lastTwo = mode.selection.slice(-2);
+    if ((kind === "horizontal" || kind === "vertical") && lastTwo.length === 2
+        && lastTwo.every((pick) => pick.point != null)) {
+      needed = 2;
+    }
     if (mode.selection.length < needed) {
       say(t("Relation : sélectionnez d'abord {n} entité(s) avec l'outil Sélectionner",
         { n: needed }), true);
@@ -1877,24 +1970,25 @@ export function createSketchMode(deps) {
   // la dernière entité sélectionnée est l'axe.
   document.getElementById("sk-mirror").addEventListener("click", () => {
     if (!mode.state) return;
-    if (mode.selection.length < 2) {
+    const picks = entityPicks();
+    if (picks.length < 2) {
       say("Symétrie : sélectionnez les entités PUIS la ligne d'axe " +
           "en dernier", true);
       return;
     }
-    const geos = mode.selection.slice(0, -1).map((s) => s.geo);
-    const axis = mode.selection[mode.selection.length - 1].geo;
+    const geos = picks.slice(0, -1).map((s) => s.geo);
+    const axis = picks[picks.length - 1]?.geo;
     safe(call("sketch_mirror",
       { sketch: mode.state.sketch, geos, axis }));
   });
 
   document.getElementById("sk-array").addEventListener("click", () => {
     if (!mode.state) return;
-    if (!mode.selection.length) {
+    if (!entityPicks().length) {
       say("Répétition : sélectionnez d'abord des entités", true);
       return;
     }
-    const geos = mode.selection.map((s) => s.geo);
+    const geos = entityPicks().map((s) => s.geo);
     abandonEntityPanel();
     panel.open({
       icon: "sketch_array",
@@ -1924,11 +2018,11 @@ export function createSketchMode(deps) {
 
   document.getElementById("sk-offset").addEventListener("click", () => {
     if (!mode.state) return;
-    if (!mode.selection.length) {
+    if (!entityPicks().length) {
       say("Décaler : sélectionnez d'abord une chaîne d'entités", true);
       return;
     }
-    const geos = mode.selection.map((s) => s.geo);
+    const geos = entityPicks().map((s) => s.geo);
     abandonEntityPanel();
     panel.open({
       icon: "offset",

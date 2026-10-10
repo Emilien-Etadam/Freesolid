@@ -4,6 +4,10 @@ Mixin de ``Kernel``. Pas d'import FreeCAD au niveau du module :
 les méthodes importent le noyau à l'appel, pour éviter un cycle.
 """
 
+#: Le point racine de Sketcher : l'origine de l'esquisse (point 1).
+ROOT_GEO = -1
+
+
 class SketchMixin:
     # -- esquisse ---------------------------------------------------------
 
@@ -233,8 +237,19 @@ class SketchMixin:
         for cid, constraint in enumerate(sk.Constraints):
             if constraint.Type in ("Distance", "DistanceX", "DistanceY",
                                    "Radius", "Diameter", "Angle"):
+                value = float(constraint.Value)
+                if constraint.Type in ("DistanceX", "DistanceY"):
+                    value = abs(value)  # le signe ne dit que le sens
+                entry_offset = None
+                label = (round(float(getattr(constraint, "LabelDistance",
+                                             10.0)), 9),
+                         round(float(getattr(constraint, "LabelPosition",
+                                             0.0)), 9))
+                if label != self._DEFAULT_LABEL:
+                    entry_offset = label[0]
                 dims.append({"id": cid, "type": constraint.Type,
-                             "value": float(constraint.Value),
+                             "offset": entry_offset,
+                             "value": value,
                              "name": constraint.Name or "",
                              "expr": exprs.get(cid, ""),
                              "geo": constraint.First})
@@ -796,6 +811,13 @@ class SketchMixin:
         round_types = ("Part::GeomCircle", "Part::GeomArcOfCircle")
         g1 = int(geo1)
         if kind in ("horizontal", "vertical"):
+            if geo2 is not None:
+                # Deux points (extrémités, centres ou l'origine) alignés.
+                if point1 is None or point2 is None:
+                    raise KernelError(
+                        "{} : une ligne, ou deux points".format(kind))
+                return C(kind.capitalize(), g1, int(point1),
+                         int(geo2), int(point2))
             return C(kind.capitalize(), g1)
         if kind == "fixed":
             return C("Block", g1)
@@ -919,7 +941,11 @@ class SketchMixin:
 
     @staticmethod
     def _point_of(geo, pos):
-        """Sketcher point convention: 1 start, 2 end, 3 center."""
+        """Sketcher point convention: 1 start, 2 end, 3 center.
+        ``geo`` None : le point racine (l'origine de l'esquisse)."""
+        if geo is None:
+            import FreeCAD
+            return FreeCAD.Vector(0, 0, 0)
         if pos == 3:
             return geo.Center
         if pos == 2:
@@ -935,7 +961,7 @@ class SketchMixin:
             return 0.0
         return abs(abx * (p.y - a.y) - aby * (p.x - a.x)) / denominator
 
-    def _dim_two(self, sk, g1, g2, point, point2, value):
+    def _dim_two(self, sk, g1, g2, point, point2, value, axis=None):
         """Smart dimension between two entities — the pair decides the
         constraint, as under the cursor: two points → distance,
         point + line → distance, parallel lines → distance, otherwise angle
@@ -944,25 +970,50 @@ class SketchMixin:
         import math
         import Sketcher
         C = Sketcher.Constraint
+        line = "Part::GeomLineSegment"
+        round_types = ("Part::GeomCircle", "Part::GeomArcOfCircle")
+        if g1 == ROOT_GEO:
+            # L'origine en premier : on la met en second, la cote est la même.
+            g1, g2, point, point2 = g2, g1, point2, point
+        if g2 == ROOT_GEO:
+            point2 = 1
+        # Un cercle ou un arc coté contre un point se prend par son centre.
+        if (point is None and point2 is not None
+                and sk.Geometry[g1].TypeId in round_types):
+            point = 3
+        if (point2 is None and point is not None and g2 != ROOT_GEO
+                and sk.Geometry[g2].TypeId in round_types):
+            point2 = 3
         if point is None and point2 is not None:
             # Normalize "line then point" to "point then line".
             g1, g2 = g2, g1
             point, point2 = point2, None
-        e1, e2 = sk.Geometry[g1], sk.Geometry[g2]
-        line = "Part::GeomLineSegment"
+        e1 = sk.Geometry[g1]
+        e2 = None if g2 == ROOT_GEO else sk.Geometry[g2]
         if point is not None and point2 is not None:
             v1 = self._point_of(e1, int(point))
             v2 = self._point_of(e2, int(point2))
+            if axis in ("x", "y"):
+                # Cote horizontale / verticale : de la plus petite coordonnée
+                # à la plus grande, la valeur reste positive.
+                along = (lambda v: v.x) if axis == "x" else (lambda v: v.y)
+                if along(v2) < along(v1):
+                    g1, g2, point, point2 = g2, g1, point2, point
+                    v1, v2 = v2, v1
+                distance = (abs(value) if value is not None
+                            else along(v2) - along(v1))
+                return C("DistanceX" if axis == "x" else "DistanceY",
+                         g1, int(point), g2, int(point2), float(distance))
             distance = value if value is not None else v1.distanceToPoint(v2)
             return C("Distance", g1, int(point), g2, int(point2),
                      float(distance))
-        if point is not None and e2.TypeId == line:
+        if point is not None and e2 is not None and e2.TypeId == line:
             v1 = self._point_of(e1, int(point))
             distance = (value if value is not None else
                         self._distance_point_line(
                             v1, e2.StartPoint, e2.EndPoint))
             return C("Distance", g1, int(point), g2, float(distance))
-        if e1.TypeId == line and e2.TypeId == line:
+        if e2 is not None and e1.TypeId == line and e2.TypeId == line:
             d1x = e1.EndPoint.x - e1.StartPoint.x
             d1y = e1.EndPoint.y - e1.StartPoint.y
             d2x = e2.EndPoint.x - e2.StartPoint.x
@@ -980,12 +1031,62 @@ class SketchMixin:
                           "deux points, un point et une ligne, ou deux "
                           "lignes")
 
+    #: Position de cote par défaut de Sketcher : « jamais posée ».
+    _DEFAULT_LABEL = (10.0, 0.0)
+
+    def _place_dim(self, sk, index, at):
+        """Retient où la cote a été posée : le décalage (signé, en mm) de
+        sa ligne par rapport à son premier point — au-dessus pour une
+        horizontale, à droite pour une verticale, sur la normale A→B pour
+        une alignée. Stocké dans ``LabelDistance``, sauvé avec la pièce."""
+        if at is None:
+            return
+        try:
+            x, y = float(at[0]), float(at[1])
+            c = sk.Constraints[index]
+            a, b = self._dim_ends(sk, c)
+            if a is None:
+                return
+            if c.Type == "DistanceX":
+                offset = y - a.y
+            elif c.Type == "DistanceY":
+                offset = x - a.x
+            else:
+                import math
+                dx, dy = b.x - a.x, b.y - a.y
+                length = math.hypot(dx, dy)
+                if length < 1e-12:
+                    return
+                offset = ((x - a.x) * -dy + (y - a.y) * dx) / length
+            if (round(offset, 9), 0.0) == self._DEFAULT_LABEL:
+                offset += 1e-6  # 10 tout rond voudrait dire « jamais posée »
+            sk.setLabelDistance(index, float(offset))
+        except Exception:
+            pass  # la cote reste, à sa place par défaut
+
+    def _dim_ends(self, sk, c):
+        """Les deux points mesurés d'une cote de distance (A, B)."""
+        undefined = -2000
+        first, second = c.First, c.Second
+        pos1 = int(getattr(c.FirstPos, "value", c.FirstPos) or 0)
+        pos2 = int(getattr(c.SecondPos, "value", c.SecondPos) or 0)
+        geo1 = None if first == ROOT_GEO else sk.Geometry[first]
+        if second is None or second <= undefined:
+            if geo1 is None or geo1.TypeId != "Part::GeomLineSegment":
+                return None, None
+            return geo1.StartPoint, geo1.EndPoint
+        if not pos1 or not pos2:
+            return None, None
+        geo2 = None if second == ROOT_GEO else sk.Geometry[second]
+        return self._point_of(geo1, pos1), self._point_of(geo2, pos2)
+
     def sketch_dim(self, sketch, geo, value=None,
-                   geo2=None, point=None, point2=None):
+                   geo2=None, point=None, point2=None, axis=None, at=None):
         """Smart dimension: length on a line, diameter on a circle,
         radius on an arc, distance/angle between two entities.
 
-        Driving: dimension it and the geometry obeys.
+        Driving: dimension it and the geometry obeys. ``at`` : le point
+        (x, y de l'esquisse) où la cote a été posée ; sa ligne y passe.
         """
         from engine.kernel import (
             KernelError,
@@ -994,23 +1095,29 @@ class SketchMixin:
         import Sketcher
         sk = self._get_sketch(sketch)
         gid = int(geo)
-        if gid < 0 or gid >= len(sk.Geometry):
+        # L'origine (point racine) ne se cote que contre une autre entité.
+        if ((gid < 0 and not (gid == ROOT_GEO and geo2 is not None))
+                or gid >= len(sk.Geometry)):
             raise KernelError("géométrie inconnue : {}".format(geo))
         try:
             if geo2 is not None:
                 g2 = int(geo2)
-                if g2 < 0 or g2 >= len(sk.Geometry):
+                if ((g2 < 0 and g2 != ROOT_GEO) or g2 >= len(sk.Geometry)
+                        or g2 == gid):
                     raise KernelError("géométrie inconnue : {}".format(geo2))
-                sk.addConstraint(
-                    self._dim_two(sk, gid, g2, point, point2, value))
+                index = sk.addConstraint(self._dim_two(
+                    sk, gid, g2, point, point2, value,
+                    axis=str(axis).lower() if axis else None))
+                self._place_dim(sk, index, at)
                 return self.sketch_state(sketch)
             target = sk.Geometry[gid]
             if target.TypeId == "Part::GeomLineSegment":
                 length = (value if value is not None
                           else target.StartPoint.distanceToPoint(
                               target.EndPoint))
-                sk.addConstraint(Sketcher.Constraint(
+                index = sk.addConstraint(Sketcher.Constraint(
                     "Distance", gid, float(length)))
+                self._place_dim(sk, index, at)
             elif target.TypeId == "Part::GeomCircle":
                 # Un cercle se cote au diamètre, un arc au rayon.
                 diameter = (value if value is not None
@@ -1061,7 +1168,12 @@ class SketchMixin:
                     sk.setExpression(path, None)
                 except Exception:
                     pass
-                sk.setDatum(idx, float(value))
+                target = float(value)
+                if (sk.Constraints[idx].Type in ("DistanceX", "DistanceY")
+                        and sk.Constraints[idx].Value < 0):
+                    # Cote affichée sans signe : le sens reste celui tracé.
+                    target = -abs(target)
+                sk.setDatum(idx, target)
         except KernelError:
             raise
         except Exception as exc:  # noqa: BLE001

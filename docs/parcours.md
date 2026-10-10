@@ -58,3 +58,23 @@ de 2 × 1,5 mm et un enlèvement par révolution ; chanfrein de 1 mm au bout.
 | — | Sur une petite entité, les symboles H/V recouvrent tout le tracé. | À reprendre, avec les autres chevauchements de symboles. |
 | — | Après la première fonction, la vue n'est pas recadrée sur la pièce (F le fait). | À discuter : cadrer automatiquement après la première fonction. |
 | — | Positionner exactement un profil (la gorge) demande de le coter ; pas de cote entre un point et l'origine testée ici. | À vérifier au prochain parcours. |
+
+## 4. Bride
+
+Disque Ø80 × 12 sur le Plan de dessus, moyeu Ø40 jusqu'à 32 mm, alésage
+Ø20 débouchant, un trou Ø8 sur un cercle de perçage de 60 répété six fois
+autour de l'axe Z, puis une nervure triangulaire (16 × 16, épaisseur 6,
+plan milieu) sur le Plan de face et sa symétrique par le Plan de droite.
+
+| # | Accroc | Suite |
+|---|---|---|
+| 20 | Perçage : un clic au centre du moyeu pose le trou à 2 mm du centre ; rien n'aimante la position. | **Corrigé** : le moteur envoie le centre exact des arêtes circulaires ; un clic de position s'y aimante (et aux sommets) à moins de 12 px, dans le plan de la face (selftest p43). |
+| 21 | L'outil Cotation ignore l'origine : cercle puis origine donne un Ø, pas la distance. | **Corrigé** : l'origine se sélectionne et se cote ; un cercle coté contre un point se prend par son centre. |
+| 22 | Pas de relation horizontale / verticale entre deux points (centre de trou et origine). | **Corrigé** : proposée dès que deux points sont sélectionnés, origine comprise. |
+| 23 | Seules les cotes alignées existent : impossible de placer un sommet à 20 mm en X et 12 mm en Y de l'origine. | **Corrigé** : entre deux points, un 3e clic pose la cote, avec aperçu ; à côté : verticale, dessus ou dessous : horizontale, entre : alignée (selftest p44). |
+| 24 | Les cotes s'empilent au même endroit et cachent la pièce ; elles ne restent pas où on les pose. | **Corrigé** : le clic de pose devient le décalage de la ligne de cote, gardé par la pièce et sauvé avec elle. |
+| 25 | Répétition ou symétrie après avoir cliqué une fonction dans l'arbre : la case « Fonctions à répéter » reste vide. | **Corrigé** : la fonction présélectionnée remplit la case (répétitions, symétrie, réseau variable) ; à 3 fonctions et plus, la case dit « fonctions », plus « profils ». |
+| — | La barre d'icônes de la face restait au milieu d'une esquisse ouverte et prenait les clics. | **Corrigé** sur `qualite` (smoke de la PR #90). |
+| — | L'esquisse d'un perçage reste « sous-contrainte » : son rayon, piloté par le diamètre du perçage, n'est pas coté. | À reprendre. |
+| — | Une cote déjà posée ne se déplace pas encore à la souris. | À faire. |
+| — | Traits d'esquisse définis (clairs) peu contrastés sur une face claire. | À reprendre (thème). |

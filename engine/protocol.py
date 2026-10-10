@@ -273,7 +273,9 @@ OPS: dict[str, tuple[str, ...]] = {
         ("sketch", str), ("geo", int), ("point", int),
         ("x", float), ("y", float)),
     "sketch_dim": _Req(("sketch", str), ("geo", int)),
-                                       # optional: value, geo2, point, point2
+                                       # optional: value, geo2, point, point2,
+                                       # axis (x | y : cote horizontale / verticale),
+                                       # at ([x, y] : où la cote a été posée)
     "sketch_set_dim": _Req(("sketch", str), ("dim", int)),
                                        # optional: value | expr, name
     "sketch_constraints": _Req(("sketch", str)),
@@ -808,7 +810,9 @@ def pack_edges(edge_lines) -> dict:
         edge_lines: iterable of ``(edge_id, points)`` where ``points`` is
             the discretized polyline of that BREP edge, as ``(x, y, z)`` ;
             un troisième élément facultatif, la longueur exacte de l'arête,
-            est recopié dans son groupe (``length``, barre d'état).
+            est recopié dans son groupe (``length``, barre d'état) ; un
+            quatrième, le centre d'un cercle ou d'un arc (``center``, où
+            s'aimante un clic de position).
 
     Returns:
         ``positions``, ``indices`` (pairs — LineSegments) and ``groups``
@@ -835,6 +839,8 @@ def pack_edges(edge_lines) -> dict:
         }
         if extra:
             group["length"] = round(float(extra[0]), 6)
+        if len(extra) > 1 and extra[1] is not None:
+            group["center"] = [round(float(v), 6) for v in extra[1]]
         groups.append(group)
         vertex_base += len(points)
     return {"positions": positions, "indices": indices, "groups": groups}

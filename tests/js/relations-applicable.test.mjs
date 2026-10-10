@@ -24,9 +24,14 @@ describe("relations proposées selon la sélection", () => {
       ["tangent"]);
   });
 
-  it("points : coïncidence, milieu, symétrie", () => {
+  it("points : coïncidence, alignement, milieu, symétrie", () => {
     assert.deepEqual(applicableRelations(
-      [{ geo: 0, point: 2 }, { geo: 1, point: 1 }], entities), ["coincident"]);
+      [{ geo: 0, point: 2 }, { geo: 1, point: 1 }], entities),
+      ["coincident", "horizontal", "vertical"]);
+    // L'origine (-1, point 1) compte comme un point.
+    assert.deepEqual(applicableRelations(
+      [{ geo: 2, point: 3 }, { geo: -1, point: 1 }], entities),
+      ["coincident", "horizontal", "vertical"]);
     assert.deepEqual(applicableRelations(
       [{ geo: 2, point: 3 }, { geo: 0 }], entities), ["midpoint"]);
     assert.deepEqual(applicableRelations(

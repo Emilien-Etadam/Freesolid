@@ -62,6 +62,7 @@ import {
   isRepeatFeature,
   latestGraphOrRepeat,
 } from "./graph.js";
+import { edgeSnapPoints } from "./pointsnap.js";
 
 const sceneTheme = readScene();
 
@@ -345,6 +346,7 @@ let othersMeshes = []; // corps non actifs, un mesh chacun
 let partBaseMaterial = null; // clone possédé — couleur du corps actif
 let meshGroups = [];
 let edgeGroups = [];
+let edgeSnaps = []; // centres de cercles et sommets (clics de position)
 let hoveredEdgeGroup = -1;
 let hoveredGroup = -1;
 
@@ -555,6 +557,7 @@ function showEdgeLines(data) {
   }
   partEdges = null;
   edgeGroups = data.groups;
+  edgeSnaps = edgeSnapPoints(data);
   hoveredEdgeGroup = -1;
   selectedEdges = new Set(); // ids shift after every rebuild, like faces
   // La barre d'état citait encore les arêtes d'avant la reconstruction.
@@ -912,6 +915,7 @@ ctx.raycaster = raycaster;
 
 expose("partMesh", () => partMesh);
 expose("partEdges", () => partEdges);
+expose("edgeSnaps", () => edgeSnaps);
 expose("selectedFaceId", () => selectedFaceId, (v) => { selectedFaceId = v; });
 expose("lastFaceHit", () => lastFaceHit, (v) => { lastFaceHit = v; });
 expose("selectedPlane", () => selectedPlane);
@@ -1699,6 +1703,14 @@ function currentSelection(accepts) {
   }
   if (accepts.includes("face") && selectedFaceId !== null) {
     return { kind: "face", face: selectedFaceId };
+  }
+  // Fonction cliquée dans l'arbre avant la commande (répétitions,
+  // symétrie) : elle remplit d'emblée la case, comme une face présélectionnée.
+  const feature = accepts.includes("feature")
+    && findFeatureInTree(lastTree, selectedFeatureName);
+  if (feature && feature.type !== "Sketcher::SketchObject") {
+    return { kind: "feature", items: [
+      { kind: "feature", name: feature.name, label: feature.label }] };
   }
   return null;
 }

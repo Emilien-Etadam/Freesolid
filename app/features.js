@@ -455,11 +455,11 @@ export function extrudeInvalid(v) {
 // retire) ; vide = la dernière fonction. Direction : un axe d'origine ou
 // une arête droite cliquée dans la zone graphique.
 
-export function patternFeaturesGroup() {
+export function patternFeaturesGroup(ctx) {
   return {
     label: "Fonctions à répéter",
     rows: [{ type: "selection", key: "features", accepts: ["feature"],
-             multiple: true,
+             multiple: true, value: ctx?.selection?.(["feature"]) ?? null,
              hint: "Cliquez les fonctions dans l'arbre — vide : la dernière" }],
   };
 }
@@ -949,8 +949,8 @@ export const FEATURES = [
     button: "btn-linpattern",
     icon: "linear_pattern",
     title: "Réseau linéaire",
-    groups: () => [
-      patternFeaturesGroup(),
+    groups: (ctx) => [
+      patternFeaturesGroup(ctx),
       {
         label: "Direction 1",
         rows: [
@@ -982,8 +982,8 @@ export const FEATURES = [
     button: "btn-polpattern",
     icon: "polar_pattern",
     title: "Réseau circulaire",
-    groups: () => [
-      patternFeaturesGroup(),
+    groups: (ctx) => [
+      patternFeaturesGroup(ctx),
       {
         label: "Axe",
         rows: [
@@ -1011,8 +1011,8 @@ export const FEATURES = [
     button: "btn-mirror",
     icon: "mirror",
     title: "Symétrie",
-    groups: () => [
-      patternFeaturesGroup(),
+    groups: (ctx) => [
+      patternFeaturesGroup(ctx),
       {
         label: "Plan de symétrie",
         rows: [
@@ -1150,10 +1150,10 @@ export const FEATURES = [
     icon: "variable_pattern",
     title: "Réseau variable",
     preview: false,
-    groups: () => [
+    groups: (ctx) => [
       { label: "Fonctions",
         rows: [{ type: "selection", key: "features", accepts: ["feature"],
-                 multiple: true,
+                 multiple: true, value: ctx?.selection?.(["feature"]) ?? null,
                  hint: "Cliquez les fonctions dans l'arbre, dans "
                        + "l'ordre du groupe" }] },
       { label: "Opération",

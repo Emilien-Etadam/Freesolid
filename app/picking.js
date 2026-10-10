@@ -4,6 +4,7 @@
 
 import { t } from "./i18n.js";
 import { eventToNdc, ndcToScreen } from "./screen.js";
+import { snapFacePoint } from "./pointsnap.js";
 import { coordsText, measureText } from "./statusbar.js";
 import { boxMode, isDrag, normalizeRect, pickInBox } from "./navigation.js";
 import {
@@ -69,6 +70,11 @@ export function installPicking(ctx) {
   // Face hover: triangle index -> group -> engine faceId. By construction.
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
+  function worldToScreen(point) {
+    const ndc = new THREE.Vector3(point.x, point.y, point.z).project(camera);
+    return ndcToScreen(ndc.x, ndc.y, renderer.domElement.getBoundingClientRect());
+  }
+
   function setPointerFromEvent(event) {
     const rect = renderer.domElement.getBoundingClientRect();
     const ndc = eventToNdc(event.clientX, event.clientY, rect);
@@ -400,9 +406,17 @@ export function installPicking(ctx) {
       }
       // A command panel with a selection box absorbs the pick : d'abord
       // une zone de positions (le point cliqué), sinon une zone de faces.
-      const hit = ctx.lastFaceHit;
+      // La position s'aimante au centre d'un cercle ou à un sommet tout
+      // proche : un perçage au centre d'un moyeu tombe juste.
+      const hit = ctx.lastFaceHit
+        && snapFacePoint(ctx.lastFaceHit, ctx.lastFaceHit.normal,
+          ctx.edgeSnaps, worldToScreen);
       const tookPoint = hit && panel.notifyPick("point", {
         kind: "point", face: ctx.selectedFaceId, x: hit.x, y: hit.y, z: hit.z });
+      if (tookPoint && hit.snapped) {
+        say(hit.snapped === "center"
+          ? t("Position au centre du cercle.") : t("Position sur le sommet."));
+      }
       if (!tookPoint) {
         panel.notifyPick("face", { kind: "face", face: ctx.selectedFaceId });
       }

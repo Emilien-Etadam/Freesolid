@@ -753,5 +753,10 @@
  "Cliquez les centres des trous sur une face": "Click the hole centers on a face",
  "{n} position(s)": "{n} position(s)",
  "Perçage : les positions doivent être sur une même face": "Hole: the positions must be on a single face",
- "Sans position cliquée, la dernière esquisse sert (un cercle par perçage). Le diamètre saisi remplace celui des cercles.": "Without clicked positions, the latest sketch is used (one circle per hole). The diameter entered replaces the circles'."
+ "Sans position cliquée, la dernière esquisse sert (un cercle par perçage). Le diamètre saisi remplace celui des cercles.": "Without clicked positions, the latest sketch is used (one circle per hole). The diameter entered replaces the circles'.",
+ "Position au centre du cercle.": "Position at the circle centre.",
+ "Position sur le sommet.": "Position on the vertex.",
+ "Cotation : cliquez l'entité à coter depuis l'origine": "Dimension: click the entity to dimension from the origin",
+ "Cotation : cliquez où poser la cote — à côté : verticale, dessus ou dessous : horizontale, entre : alignée": "Dimension: click where to place it — beside: vertical, above or below: horizontal, between: aligned",
+ "{n} fonctions : ": "{n} features: "
 }

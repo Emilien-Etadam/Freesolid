@@ -31,6 +31,8 @@ export function filletRadiusLabel(raw) {
 // de l'écran. Résultat : { label, segments, arrows } — une flèche est
 // { x, y, dx, dy } : pointe en (x, y), dirigée selon (dx, dy) unitaire.
 
+const ORIGIN = { id: -1, type: "point", p1: [0, 0] };
+
 function pointOf(entity, pos) {
   if (!entity) return null;
   if (pos === 1 && entity.p1) return { x: entity.p1[0], y: entity.p1[1] };
@@ -54,15 +56,22 @@ function centroid(entities) {
   return n ? { x: sx / n, y: sy / n } : { x: 0, y: 0 };
 }
 
-/** Cote alignée entre A et B, décalée vers l'extérieur de l'esquisse. */
-function alignedDim(a, b, entities, size) {
+/** Cote alignée entre A et B : à l'endroit où elle a été posée
+ *  (`offset`, signé, sur la normale A→B), sinon décalée vers l'extérieur
+ *  de l'esquisse. */
+function alignedDim(a, b, entities, size, offset = null) {
   const d = unit(b.x - a.x, b.y - a.y);
   if (!d) return null;
   let n = { x: -d.y, y: d.x };
-  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  const c = centroid(entities);
-  if ((mid.x - c.x) * n.x + (mid.y - c.y) * n.y < 0) n = { x: -n.x, y: -n.y };
-  const off = size * 2;
+  let off = size * 2;
+  if (offset != null) {
+    if (offset < 0) n = { x: -n.x, y: -n.y };
+    off = Math.abs(offset);
+  } else {
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const c = centroid(entities);
+    if ((mid.x - c.x) * n.x + (mid.y - c.y) * n.y < 0) n = { x: -n.x, y: -n.y };
+  }
   const ext = size * 0.6;
   const a2 = { x: a.x + n.x * off, y: a.y + n.y * off };
   const b2 = { x: b.x + n.x * off, y: b.y + n.y * off };
@@ -78,6 +87,67 @@ function alignedDim(a, b, entities, size) {
       { x: b2.x, y: b2.y, dx: d.x, dy: d.y },
     ],
   };
+}
+
+/** Cote horizontale ("DistanceX") ou verticale ("DistanceY") entre A et
+ *  B : ligne de cote parallèle à l'axe, là où elle a été posée (`offset`
+ *  depuis A), sinon au-dessus / à droite. */
+function axisDim(a, b, kind, size, offset = null) {
+  const off = size * 2;
+  const ext = size * 0.6;
+  if (kind === "DistanceX") {
+    const y = offset != null ? a.y + offset : Math.max(a.y, b.y) + off;
+    const dir = Math.sign(b.x - a.x) || 1;
+    const side = y >= Math.max(a.y, b.y) ? 1 : -1;
+    return {
+      label: { x: (a.x + b.x) / 2, y: y + size * side },
+      segments: [[a.x, a.y, a.x, y + ext * side], [b.x, b.y, b.x, y + ext * side],
+                 [a.x, y, b.x, y]],
+      arrows: [{ x: a.x, y, dx: -dir, dy: 0 }, { x: b.x, y, dx: dir, dy: 0 }],
+    };
+  }
+  const x = offset != null ? a.x + offset : Math.max(a.x, b.x) + off;
+  const dir = Math.sign(b.y - a.y) || 1;
+  const side = x >= Math.max(a.x, b.x) ? 1 : -1;
+  return {
+    label: { x: x + size * side, y: (a.y + b.y) / 2 },
+    segments: [[a.x, a.y, x + ext * side, a.y], [b.x, b.y, x + ext * side, b.y],
+               [x, a.y, x, b.y]],
+    arrows: [{ x, y: a.y, dx: 0, dy: -dir }, { x, y: b.y, dx: 0, dy: dir }],
+  };
+}
+
+/**
+ * Cote entre deux points, selon l'endroit où le curseur la pose : à côté
+ * des deux points → verticale, au-dessus ou au-dessous → horizontale,
+ * entre eux ou en biais → alignée. Coordonnées locales de l'esquisse.
+ */
+export function pointPairDimKind(a, b, cursor) {
+  const tolerance = 1e-9;
+  const besideX = cursor.x < Math.min(a.x, b.x) - tolerance
+    || cursor.x > Math.max(a.x, b.x) + tolerance;
+  const besideY = cursor.y < Math.min(a.y, b.y) - tolerance
+    || cursor.y > Math.max(a.y, b.y) + tolerance;
+  if (besideY && !besideX) return "DistanceX";
+  if (besideX && !besideY) return "DistanceY";
+  return "Distance";
+}
+
+/** Aperçu de cette cote : la polyligne A → attache → attache → B, la
+ *  ligne de cote passant par le curseur. */
+export function pointPairDimPath(a, b, kind, cursor) {
+  if (kind === "DistanceX") {
+    return [a, { x: a.x, y: cursor.y }, { x: b.x, y: cursor.y }, b];
+  }
+  if (kind === "DistanceY") {
+    return [a, { x: cursor.x, y: a.y }, { x: cursor.x, y: b.y }, b];
+  }
+  const d = unit(b.x - a.x, b.y - a.y);
+  if (!d) return [a, b];
+  const n = { x: -d.y, y: d.x };
+  const off = (cursor.x - a.x) * n.x + (cursor.y - a.y) * n.y;
+  return [a, { x: a.x + n.x * off, y: a.y + n.y * off },
+          { x: b.x + n.x * off, y: b.y + n.y * off }, b];
 }
 
 /** Cote directe de A à B (point → ligne, lignes parallèles). */
@@ -170,7 +240,9 @@ function angleDim(l1, l2, size) {
  * prévu, seul le libellé est placé (ancrage historique).
  */
 export function dimGeometry(dim, constraint, entities, size = 2) {
-  const byId = (id) => (entities ?? []).find((e) => e.id === id) ?? null;
+  // -1 : l'origine de l'esquisse, un point (cote depuis l'origine).
+  const byId = (id) => (id === -1 ? ORIGIN
+    : (entities ?? []).find((e) => e.id === id) ?? null);
   const fallback = () => {
     const anchor = sketchDimAnchor(dim, entities);
     return anchor ? { label: anchor, segments: [], arrows: [] } : null;
@@ -178,18 +250,23 @@ export function dimGeometry(dim, constraint, entities, size = 2) {
   const [g1, g2] = constraint?.geos ?? [dim.geo, null];
   const [p1, p2] = constraint?.pos ?? [0, 0];
   const e1 = byId(g1);
-  const e2 = g2 != null && g2 >= 0 ? byId(g2) : null;
+  const e2 = g2 != null && g2 >= -1 ? byId(g2) : null;
   let out = null;
   if (dim.type === "Distance" && e1) {
     if (!e2 && e1.type === "line" && !p1) {
-      out = alignedDim(pointOf(e1, 1), pointOf(e1, 2), entities, size);
+      out = alignedDim(pointOf(e1, 1), pointOf(e1, 2), entities, size,
+        dim.offset);
     } else if (e2 && p1 && p2) {
       const a = pointOf(e1, p1), b = pointOf(e2, p2);
-      if (a && b) out = alignedDim(a, b, entities, size);
+      if (a && b) out = alignedDim(a, b, entities, size, dim.offset);
     } else if (e2 && p1 && e2.type === "line") {
       const a = pointOf(e1, p1);
       if (a) out = directDim(a, projectOnLine(a, e2), size);
     }
+  } else if ((dim.type === "DistanceX" || dim.type === "DistanceY")
+             && e1 && e2 && p1 && p2) {
+    const a = pointOf(e1, p1), b = pointOf(e2, p2);
+    if (a && b) out = axisDim(a, b, dim.type, size, dim.offset);
   } else if ((dim.type === "Radius" || dim.type === "Diameter")
              && e1?.c && e1.r != null) {
     const dir = radialDirection(e1);

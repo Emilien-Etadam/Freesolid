@@ -2685,6 +2685,142 @@ class SelftestMixin:
                     ("ne coupe pas" in str(exc) or "enlève tout" in str(exc))
                     and len(self.get_tree()["features"]) == count)
 
+            mark("p48: frontière, réglée, composite, projetée, intersection")
+            import math
+            self.new_part("Pièce surfacique complète")
+            doc = self._require_doc()
+            App = self._app()
+            obj_of = lambda tree: doc.getObject(  # noqa: E731
+                tree["surfaces"][-1]["name"])
+            curves = []
+            for pts in ([[0, 0, 0], [15, 0, 5], [30, 0, 0]],
+                        [[30, 0, 0], [32, 15, 4], [30, 30, 0]],
+                        [[30, 30, 0], [15, 30, 6], [0, 30, 0]],
+                        [[0, 30, 0], [-2, 15, 3], [0, 0, 0]]):
+                curves.append(self.add_curve3d(pts)["surfaces"][-1]["name"])
+            bump = obj_of(self.surface_boundary(
+                [{"name": c} for c in curves]))
+            two = obj_of(self.surface_boundary(
+                [{"name": curves[0]}, {"name": curves[2]}]))
+            report["p48_surface_frontiere"] = (
+                bump.TypeId == "Surface::GeomFillSurface"
+                and bump.Shape.Area > 900 and two.Shape.Area > 600)
+            ruled = obj_of(self.surface_ruled(
+                [{"name": curves[0], "edge": 0}, {"name": curves[2]}]))
+            report["p48_surface_reglee"] = (
+                ruled.TypeId == "Part::RuledSurface"
+                and ruled.Shape.Area > 900)
+            composite = obj_of(self.curve_composite(
+                [{"name": c} for c in curves[:3]]))
+            state = self.sketch_start(plane="YZ")
+            prof = state["sketch"]
+            self.sketch_add_line(prof, -3, 0, 3, 0)
+            self.sketch_finish(prof)
+            swept = obj_of(self.surface_sweep(prof, composite.Name))
+            report["p48_courbe_composite"] = (
+                len(composite.Shape.Edges) == 3
+                and composite.Name in {s["name"] for s
+                                       in self.get_tree()["surfaces"]}
+                and bool(swept.Shape.Faces))
+            state = self.sketch_start(plane="XY")
+            proj_sk = state["sketch"]
+            self.sketch_add_circle(proj_sk, 15, 15, 5)
+            self.sketch_finish(proj_sk)
+            doc.getObject(proj_sk).AttachmentOffset = App.Placement(
+                App.Vector(0, 0, 30), App.Rotation())
+            self._recompute()
+            projected = obj_of(self.curve_project(proj_sk, bump.Name))
+            report["p48_courbe_projetee"] = (
+                bool(projected.Shape.Edges)
+                and projected.Shape.distToShape(bump.Shape)[0] < 1e-3)
+            # Trou dans la bosse : un tube ajuste la surface.
+            state = self.sketch_start(plane="XY")
+            tube_sk = state["sketch"]
+            self.sketch_add_circle(tube_sk, 15, 15, 5)
+            self.sketch_finish(tube_sk)
+            doc.getObject(tube_sk).AttachmentOffset = App.Placement(
+                App.Vector(0, 0, -10), App.Rotation())
+            self._recompute()
+            tube = obj_of(self.surface_extrude(30, sketch=tube_sk))
+            section = obj_of(self.curve_intersection(bump.Name, tube.Name))
+            report["p48_courbe_intersection"] = (
+                section.TypeId == "Part::Section"
+                and abs(section.Shape.Length - 2 * math.pi * 5) < 1.0)
+            holed = obj_of(self.surface_trim(bump.Name, tube.Name,
+                                             point=[2, 15, 1]))
+            inner = [i for i, e in enumerate(holed.Shape.Edges)
+                     if math.hypot(e.CenterOfMass.x - 15,
+                                   e.CenterOfMass.y - 15) < 6]
+            edges = [{"name": holed.Name, "edge": i} for i in inner]
+            flat = obj_of(self.surface_fill(edges))
+            smooth = obj_of(self.surface_fill(edges, tangent=True))
+            # Tangent : la pièce épouse la bosse qu'elle rebouche (son
+            # centre retombe sur la surface d'origine), mieux que le contact.
+            def gap(patch):
+                center = patch.Shape.Faces[0].CenterOfMass
+                import Part
+                return Part.Vertex(center).distToShape(bump.Shape)[0]
+            report["p48_remplissage_tangent"] = (
+                bool(inner) and "Invalid" not in smooth.State
+                and list(smooth.BoundaryOrder) == [1] * len(inner)
+                and gap(smooth) < 0.3 and gap(smooth) < gap(flat))
+
+            mark("p48: supprimer des faces, désajuster, congé de surface")
+            state = self.sketch_start(plane="XY")
+            corner = state["sketch"]
+            self.sketch_add_line(corner, 0, 0, 20, 0)
+            self.sketch_add_line(corner, 20, 0, 20, 20)
+            self.sketch_finish(corner)
+            angle = obj_of(self.surface_extrude(10, sketch=corner))
+            import Part
+            shared = [i for i, e in enumerate(angle.Shape.Edges)
+                      if len(angle.Shape.ancestorsOfType(e, Part.Face)) == 2]
+            rounded = obj_of(self.surface_fillet(angle.Name, shared, 3))
+            report["p48_conge_surface"] = (
+                len(shared) == 1 and len(rounded.Shape.Faces) == 3
+                and rounded.Shape.Area < angle.Shape.Area)
+            area3 = rounded.Shape.Area
+            self.edit_surface_fillet(rounded.Name, 6)
+            report["p48_conge_surface"] = (report["p48_conge_surface"]
+                                           and rounded.Shape.Area < area3)
+            tree = self.surface_delete_faces(angle.Name, [0])
+            pruned = obj_of(tree)
+            entry = next(s for s in tree["surfaces"]
+                         if s["name"] == angle.Name)
+            # Une forme composée (le congé) se prête aussi à la suppression.
+            pruned_fillet = obj_of(self.surface_delete_faces(rounded.Name,
+                                                             [0]))
+            report["p48_supprimer_faces"] = (
+                len(pruned.Shape.Faces) == 1
+                and entry.get("consumed") is True
+                and len(pruned_fillet.Shape.Faces) == 2)
+            state = self.sketch_start(plane="XY")
+            plate = state["sketch"]
+            self.sketch_add_rectangle(plate, 0, 0, 40, 40)
+            self.sketch_add_circle(plate, 20, 20, 5)
+            self.sketch_finish(plate)
+            holed_plate = obj_of(self.surface_planar(sketch=plate))
+            mesh = self.tessellate()
+            plate_mesh = next(s for s in mesh.get("surfaces") or []
+                              if s["name"] == holed_plate.Name)
+            untrimmed = obj_of(self.surface_untrim(holed_plate.Name))
+            report["p48_desajuster"] = (
+                abs(holed_plate.Shape.Area - (1600 - math.pi * 25)) < 0.1
+                and abs(untrimmed.Shape.Area - 1600) < 0.1
+                and len(plate_mesh.get("groups") or []) == 1)
+
+            # Ligne de séparation puis suppression d'un morceau.
+            cut_line = self.add_curve3d([[10, -5, 0], [10, 45, 0]],
+                                        spline=False)["surfaces"][-1]["name"]
+            plain = obj_of(self.surface_untrim(holed_plate.Name))
+            split = obj_of(self.surface_split(plain.Name, cut_line))
+            areas = sorted(round(f.Area) for f in split.Shape.Faces)
+            small = next(i for i, f in enumerate(split.Shape.Faces)
+                         if round(f.Area) == 400)
+            rest = obj_of(self.surface_delete_faces(split.Name, [small]))
+            report["p48_ligne_separation"] = (
+                areas == [400, 1200] and abs(rest.Shape.Area - 1200) < 0.1)
+
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")
             self.add_rect_sketch(60, 40)

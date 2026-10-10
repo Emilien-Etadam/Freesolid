@@ -116,6 +116,19 @@ OPS: dict[str, tuple[str, ...]] = {
     "surface_offset": _Req(("surface", str), ("distance", float)),
     "surface_fill": _Req(("boundary", list)),
                                        # [{name, edge?} | {body: true, edge}]
+                                       # optional: tangent
+    "surface_boundary": _Req(("boundary", list)),   # 2 à 4 courbes
+    "surface_ruled": _Req(("boundary", list)),      # exactement 2 courbes
+    "surface_delete_faces": _Req(("surface", str), ("faces", list)),
+    "surface_untrim": _Req(("surface", str)),       # optional: face
+    "surface_split": _Req(("surface", str), ("tool", str)),
+    "surface_fillet": _Req(("surface", str), ("edges", list),
+                           ("radius", float)),
+    "edit_surface_fillet": _Req(("surface", str), ("radius", float)),
+    "curve_intersection": _Req(("first", str)),     # optional: second, body
+    "curve_project": _Req(("sketch", str), ("surface", str)),
+                                       # optional: face
+    "curve_composite": _Req(("boundary", list)),
     "surface_extend": _Req(("surface", str), ("distance", float)),
                                        # optional: edge (bord prolongé)
     "edit_surface_extend": _Req(("surface", str), ("distance", float)),

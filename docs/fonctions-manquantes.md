@@ -39,8 +39,12 @@ simulation FEM. Verdicts :
 
 | Fonction SW | Verdict | Comment / pourquoi |
 |---|---|---|
-| Remplir (surface de remplissage) | ✅ **fait** | `Surface::Filling` sur des bords cliqués (surfaces, courbes, arêtes du solide, esquisses) ; sans tangence imposée — la continuité G1 sur un contour plan donne une forme invalide (sonde 2026-10-10) |
-| Surface frontière | 🟧 | `Surface::GeomFillSurface` / sections — moins riche que SW |
+| Remplir (surface de remplissage) | ✅ **fait** | `Surface::Filling` sur des bords cliqués (surfaces, courbes, arêtes du solide, esquisses), option « tangent aux faces voisines » (G1 sur la face que borde chaque arête). Limite OCCT : un contour fait d'une seule arête fermée (bout de tube) échoue même sans tangence |
+| Surface frontière, surface réglée | ✅ **fait** | `Surface::GeomFillSurface` sur 2 à 4 courbes ; `Part::RuledSurface` entre deux courbes — paramétriques |
+| Congé de surface | ✅ **fait** | `Part::Fillet` sur une peau cousue (arêtes entre deux faces), rayon rééditable |
+| Supprimer des faces, ligne de séparation, désajuster | ✅ **fait** | lieur de forme qui garde les autres faces ; découpe `BOPTools` (mode standard) par une courbe posée sur la surface ; `Surface::Extend` à 0 (bords naturels, trous bouchés) |
+| Courbes : composite, projetée, intersection | ✅ **fait** | lieur de forme d'arêtes bout à bout ; `Part::ProjectOnSurface` selon la normale de l'esquisse ; `Part::Section` (deux surfaces, ou surface et solide) |
+| Surface radiée, surface médiane, forme libre, aplatir | ❌ | pas de moteur FreeCAD / OCCT exposé pour ces gestes |
 | Couper avec une surface | ✅ **fait** | la surface balaie un demi-espace (extrusion paramétrique) combiné en soustraction dans l'historique ; aperçu, « inverser le côté » en réédition ; refus clair si la surface ne traverse pas le solide |
 | Surface plane, balayée, décalée | ✅ **fait** | `Part::Face`, `Part::Sweep` (profil ouvert, trajectoire esquisse ou spline 3D), `Part::Offset` sans remplissage — paramétriques |
 | Esquisse 3D | 🟧 **spline 3D faite** | points cliqués sur la pièce (sommets et centres aimantés) ou sur un plan de clic passant par le dernier point (Tab), coordonnées corrigeables, réédition, aperçu exact du moteur ; pas de lignes ni de relations 3D |

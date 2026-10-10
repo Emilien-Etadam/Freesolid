@@ -412,6 +412,17 @@ export function installPicking(ctx) {
       ctx.clearSketchSelection({ quiet: true });
       repaintGroups();
       repaintEdges();
+      // Une face précise de la surface (supprimer, projeter, désajuster).
+      if (panel.accepts("surfface")) {
+        raycaster.setFromCamera(pointer, camera);
+        const hit = pickHoveredSurfaceHit();
+        const groups = hit?.object.userData.groups ?? [];
+        const at = hit ? hit.faceIndex * 3 : -1;
+        const group = groups.find((g) => at >= g.start && at < g.start + g.count);
+        if (hit && panel.notifyPick("surfface", {
+          kind: "surfface", ...ctx.hoveredSurface,
+          face: group?.faceId ?? 0 })) return;
+      }
       // Ajuster : une fois l'outil choisi, le clic désigne la partie
       // gardée — la surface ET l'endroit cliqué.
       if (panel.accepts("surfpoint") && !panel.needs("surface")) {

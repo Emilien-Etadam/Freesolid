@@ -261,6 +261,24 @@ export function boundaryParam(item) {
     : { name: item.name, edge: item.edge };
 }
 
+/** Faces cliquées d'une même surface → paramètres, ou null. */
+export function deleteFacesParams(items) {
+  if (!items?.length) return null;
+  const name = items[0].name;
+  if (items.some((i) => i.name !== name)) return null;
+  return { surface: name, faces: items.map((i) => i.face) };
+}
+
+/** Arêtes cliquées d'une même surface → paramètres du congé, ou null. */
+export function surfaceFilletParams(items, radius) {
+  const edges = (items ?? []).filter((i) => i.kind === "boundary"
+    && !i.body && !i.curve);
+  if (!edges.length || !(radius > 0)) return null;
+  const name = edges[0].name;
+  if (edges.some((i) => i.name !== name)) return null;
+  return { surface: name, edges: edges.map((i) => i.edge), radius };
+}
+
 /** Paramètres de surface_extend, ou null (bord de courbe, de solide). */
 export function extendParams(target, distance) {
   if (!target || !(distance > 0)) return null;
@@ -1225,17 +1243,194 @@ export const FEATURES = [
     title: "Surface de remplissage",
     groups: [{ label: "Contour",
       rows: [{ type: "selection", key: "boundary",
-               accepts: ["boundary", "sketch"], multiple: true,
+               accepts: ["boundary", "sketch", "surface"], multiple: true,
                hint: "Cliquez les arêtes d'un contour fermé : bords de "
-                 + "surface, courbes 3D, arêtes du solide ou esquisse" }] }],
-    note: "La surface se tend sur le contour, sans tangence imposée.",
+                 + "surface, courbes 3D, arêtes du solide ou esquisse" }] },
+      { label: "Options",
+        rows: [{ type: "check", key: "tangent",
+                 label: "Tangent aux faces voisines", value: false }] }],
+    note: "Sans tangence, la surface touche seulement le contour. Avec, "
+      + "elle prolonge en douceur les faces que bordent les arêtes.",
     build: (v) => {
       const items = v.boundary?.items ?? [];
       if (!items.length) return null;
-      return { op: "surface_fill",
-               params: { boundary: items.map(boundaryParam) } };
+      return { op: "surface_fill", params: {
+        boundary: items.map(boundaryParam), tangent: !!v.tangent } };
     },
     invalid: "Remplissage : sélectionnez un contour fermé",
+  }),
+  surface({
+    button: "btn-surf-boundary",
+    icon: "surface_boundary",
+    title: "Surface frontière",
+    groups: [{ label: "Courbes",
+      rows: [{ type: "selection", key: "boundary",
+               accepts: ["boundary", "sketch", "surface"], multiple: true,
+               hint: "Cliquez deux à quatre courbes : bout à bout pour un "
+                 + "contour, ou deux courbes opposées" }] }],
+    build: (v) => {
+      const items = v.boundary?.items ?? [];
+      if (items.length < 2 || items.length > 4) return null;
+      return { op: "surface_boundary",
+               params: { boundary: items.map(boundaryParam) } };
+    },
+    invalid: "Surface frontière : deux à quatre courbes",
+  }),
+  surface({
+    button: "btn-surf-ruled",
+    icon: "surface_ruled",
+    title: "Surface réglée",
+    groups: [{ label: "Courbes",
+      rows: [{ type: "selection", key: "boundary",
+               accepts: ["boundary", "sketch", "surface"], multiple: true,
+               hint: "Cliquez les deux courbes à relier" }] }],
+    note: "Des segments droits relient les deux courbes.",
+    build: (v) => {
+      const items = v.boundary?.items ?? [];
+      if (items.length !== 2) return null;
+      return { op: "surface_ruled",
+               params: { boundary: items.map(boundaryParam) } };
+    },
+    invalid: "Surface réglée : exactement deux courbes",
+  }),
+  surface({
+    button: "btn-surf-split",
+    icon: "surface_split",
+    title: "Ligne de séparation",
+    groups: (ctx) => [
+      { label: "Surface à scinder",
+        rows: [{ type: "selection", key: "surface", accepts: ["surface"],
+                 hint: "Cliquez la surface",
+                 value: ctx.selection(["surface"]) }] },
+      { label: "Courbe",
+        rows: [{ type: "selection", key: "tool",
+                 accepts: ["boundary", "surface", "sketch"],
+                 hint: "Puis la courbe posée dessus (projetée, "
+                   + "d'intersection, spline 3D)" }] },
+    ],
+    note: "Chaque morceau se supprime ou se remplit ensuite à part.",
+    build: (v) => {
+      if (!v.surface || !v.tool || v.tool.name === v.surface.name) return null;
+      return { op: "surface_split",
+               params: { surface: v.surface.name, tool: v.tool.name } };
+    },
+    invalid: "Scinder : une surface puis une courbe posée dessus",
+  }),
+  surface({
+    button: "btn-surf-delete-face",
+    icon: "surface_delete_face",
+    title: "Supprimer des faces",
+    groups: [{ label: "Faces",
+      rows: [{ type: "selection", key: "faces", accepts: ["surfface"],
+               multiple: true,
+               hint: "Cliquez les faces à supprimer, sur une même surface" }] }],
+    note: "Le trou laissé se bouche ensuite par un remplissage.",
+    build: (v) => {
+      const params = deleteFacesParams(v.faces?.items);
+      return params ? { op: "surface_delete_faces", params } : null;
+    },
+    invalid: "Supprimer : des faces d'une même surface",
+  }),
+  surface({
+    button: "btn-surf-untrim",
+    icon: "surface_untrim",
+    title: "Désajuster la surface",
+    groups: (ctx) => [{ label: "Face",
+      rows: [{ type: "selection", key: "target",
+               accepts: ["surfface", "surface"],
+               hint: "Cliquez la face à rendre entière",
+               value: ctx.selection(["surface"]) }] }],
+    note: "La face retrouve les bords naturels de sa surface : trous "
+      + "bouchés, contour d'origine.",
+    build: (v) => (v.target ? { op: "surface_untrim", params: {
+      surface: v.target.name, face: v.target.face ?? 0 } } : null),
+    invalid: "Désajuster : cliquez une face de surface",
+  }),
+  surface({
+    button: "btn-surf-fillet",
+    icon: "surface_fillet",
+    title: "Congé de surface",
+    groups: [
+      { label: "Arêtes",
+        rows: [{ type: "selection", key: "edges", accepts: ["boundary"],
+                 multiple: true,
+                 hint: "Cliquez les arêtes entre deux faces d'une surface" }] },
+      { label: "Paramètres",
+        rows: [{ type: "number", key: "radius", label: "Rayon", value: 3,
+                 unit: "mm", min: 0.01 }] },
+    ],
+    note: "Deux surfaces séparées se cousent d'abord (Coudre).",
+    build: (v) => {
+      const params = surfaceFilletParams(v.edges?.items, num(v.radius));
+      return params ? { op: "surface_fillet", params } : null;
+    },
+    invalid: "Congé : des arêtes d'une même surface et un rayon",
+  }),
+  surface({
+    button: "btn-curve-intersection",
+    icon: "curve_intersection",
+    title: "Courbe d'intersection",
+    groups: (ctx) => [
+      { label: "Surfaces",
+        rows: [
+          { type: "selection", key: "first", accepts: ["surface"],
+            hint: "Cliquez une surface", value: ctx.selection(["surface"]) },
+          { type: "selection", key: "second", accepts: ["surface"],
+            hint: "Puis la seconde surface",
+            showIf: (v) => !v.body },
+        ] },
+      { label: "Options",
+        rows: [{ type: "check", key: "body", label: "Avec le solide",
+                 value: false }] },
+    ],
+    build: (v) => {
+      if (!v.first) return null;
+      if (v.body) {
+        return { op: "curve_intersection",
+                 params: { first: v.first.name, body: true } };
+      }
+      if (!v.second || v.second.name === v.first.name) return null;
+      return { op: "curve_intersection",
+               params: { first: v.first.name, second: v.second.name } };
+    },
+    invalid: "Intersection : deux surfaces, ou une surface et le solide",
+  }),
+  surface({
+    button: "btn-curve-project",
+    icon: "curve_project",
+    title: "Courbe projetée",
+    groups: (ctx) => [
+      { label: "Esquisse", rows: [sketchRow(ctx, "sketch",
+        "Cliquez l'esquisse à projeter", { latest: false })] },
+      { label: "Face cible",
+        rows: [{ type: "selection", key: "target",
+                 accepts: ["surfface", "surface"],
+                 hint: "Puis la face de surface où projeter" }] },
+    ],
+    note: "Les traits se projettent selon la normale de l'esquisse.",
+    build: (v) => {
+      if (!v.sketch || !v.target) return null;
+      return { op: "curve_project", params: { sketch: v.sketch.name,
+        surface: v.target.name, face: v.target.face ?? 0 } };
+    },
+    invalid: "Projeter : une esquisse puis une face de surface",
+  }),
+  surface({
+    button: "btn-curve-composite",
+    icon: "curve_composite",
+    title: "Courbe composite",
+    groups: [{ label: "Courbes et arêtes",
+      rows: [{ type: "selection", key: "boundary",
+               accepts: ["boundary", "sketch", "surface"], multiple: true,
+               hint: "Cliquez les courbes et arêtes, bout à bout" }] }],
+    note: "Une seule trajectoire, pour un balayage par exemple.",
+    build: (v) => {
+      const items = v.boundary?.items ?? [];
+      if (!items.length) return null;
+      return { op: "curve_composite",
+               params: { boundary: items.map(boundaryParam) } };
+    },
+    invalid: "Composite : cliquez des courbes bout à bout",
   }),
   surface({
     button: "btn-surf-extend",

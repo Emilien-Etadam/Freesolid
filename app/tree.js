@@ -59,6 +59,12 @@ const SURFACE_ICONS = {
   "Surface::Filling": "surface_fill",
   "Surface::Extend": "surface_extend",
   "Part::FeaturePython": "surface_trim",
+  "Surface::GeomFillSurface": "surface_boundary",
+  "Part::RuledSurface": "surface_ruled",
+  "Part::Fillet": "surface_fillet",
+  "Part::Section": "curve_intersection",
+  "Part::ProjectOnSurface": "curve_project",
+  "PartDesign::SubShapeBinder": "curve_composite",
 };
 
 export const PROP_LABELS = {
@@ -553,6 +559,9 @@ export function installTree(ctx) {
   function surfaceIcon(surface) {
     if (isGraphFeature(surface)) return "graph_feature";
     if (surface.curve) return "spline3d";
+    if (surface.surface?.kind === "untrim") return "surface_untrim";
+    if (surface.surface?.kind === "deleteface") return "surface_delete_face";
+    if (surface.surface?.kind === "split") return "surface_split";
     return SURFACE_ICONS[surface.type] ?? "surface_body";
   }
 
@@ -1143,6 +1152,10 @@ export function installTree(ctx) {
       editOffset(surface);
       return;
     }
+    if (surface.surface?.kind === "fillet") {
+      editSurfaceFillet(surface);
+      return;
+    }
     if (surface.static || surface.type === "Part::Feature") {
       say("Surface figée — non éditable");
       return;
@@ -1197,6 +1210,25 @@ export function installTree(ctx) {
         if (!!v.flip === spec.flip) return;
         refresh(call("edit_surface_cut",
           { feature: feature.name, flip: !!v.flip }));
+      },
+    });
+  }
+
+  // Congé de surface : son rayon.
+  function editSurfaceFillet(surface) {
+    panel.open({
+      icon: "surface_fillet",
+      title: surface.label,
+      groups: [{
+        label: t("Paramètres"),
+        rows: [{ type: "number", key: "radius", label: t("Rayon"),
+                 value: surface.surface.radius, unit: "mm", min: 0.01 }],
+      }],
+      onApply: (v) => {
+        const radius = num(v.radius);
+        if (!(radius > 0)) return;
+        refresh(call("edit_surface_fillet",
+          { surface: surface.name, radius }));
       },
     });
   }

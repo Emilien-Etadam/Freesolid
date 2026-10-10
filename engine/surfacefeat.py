@@ -18,11 +18,24 @@ class SurfaceMixin:
     _SURFACE_TYPE_IDS = frozenset({
         "Part::Feature", "Part::Extrusion", "Part::Revolution",
         "Part::Loft", "Part::Offset", "Part::Face", "Part::Sweep",
-        "Surface::Filling", "Surface::Extend",
+        "Surface::Filling", "Surface::Extend", "Surface::GeomFillSurface",
+        "Part::RuledSurface", "Part::Fillet", "Part::Section",
+        "Part::ProjectOnSurface",
         # Ajuster : la découpe (BOPTools) puis la pièce gardée
         # (CompoundTools) — fonctions Python livrées avec FreeCAD.
         "Part::FeaturePython",
     })
+
+    def _is_surface_obj(self, obj):
+        """Surface ou courbe FreeSolid (section Surfaces de l'arbre). Un
+        lieur de forme n'en est une que s'il est une courbe composite ou
+        une suppression de faces —
+        ceux des balayages vivent dans le corps."""
+        type_id = getattr(obj, "TypeId", "")
+        if type_id == "PartDesign::SubShapeBinder":
+            return bool(getattr(obj, "FreeSolidComposite", False)
+                        or getattr(obj, "FreeSolidKind", "") == "deleteface")
+        return type_id in self._SURFACE_TYPE_IDS
 
     #: Propriétés FreeSolid d'une spline 3D (points, interpolée, fermée).
     _CURVE_POINTS = "FreeSolidPoints"
@@ -92,6 +105,13 @@ class SurfaceMixin:
             if (spine is not None
                     and spine.TypeId == "Sketcher::SketchObject"):
                 sketches.append(spine)
+        elif obj.TypeId == "Part::ProjectOnSurface":
+            for source in getattr(obj, "Projection", None) or []:
+                if isinstance(source, tuple):  # lien (objet, éléments)
+                    source = source[0]
+                if (source is not None
+                        and source.TypeId == "Sketcher::SketchObject"):
+                    sketches.append(source)
         elif obj.TypeId == "Part::Face":
             for source in getattr(obj, "Sources", None) or []:
                 if (source is not None
@@ -287,17 +307,317 @@ class SurfaceMixin:
             raise KernelError("sélectionnez les arêtes du contour")
         return links
 
-    def surface_fill(self, boundary):
+    def surface_fill(self, boundary, tangent=False):
         """Surface de remplissage : une peau tendue sur un contour fermé
-        d'arêtes (bords de surfaces, courbes, esquisses, arêtes du solide)."""
+        d'arêtes (bords de surfaces, courbes, esquisses, arêtes du solide).
+        ``tangent`` : la peau prolonge en tangence la face que borde chaque
+        arête (bord libre d'une surface ou arête du solide)."""
         import Surface  # noqa: F401 — enregistre Surface::Filling
         links = self._boundary_links(boundary)
+        faces = [self._adjacent_face(obj, sub) if tangent else ""
+                 for obj, sub in links]
 
         def configure(obj):
             obj.BoundaryEdges = links
+            if any(faces):
+                obj.BoundaryFaces = faces
+                obj.BoundaryOrder = [1 if face else 0 for face in faces]
 
         return self._add_part_surface(
             "Surface::Filling", "Surface de remplissage", configure)
+
+    @staticmethod
+    def _adjacent_face(obj, sub):
+        """« FaceN » qui borde l'arête ``sub`` de ``obj`` (une seule face,
+        sinon le contact n'est pas défini) — ou chaîne vide."""
+        import Part
+        shape = obj.Shape
+        if not shape.Faces:
+            return ""
+        edge = shape.Edges[int(sub[4:]) - 1]
+        owners = shape.ancestorsOfType(edge, Part.Face)
+        if len(owners) < 1:
+            return ""
+        for i, face in enumerate(shape.Faces):
+            if face.isSame(owners[0]):
+                return "Face%d" % (i + 1)
+        return ""
+
+    def surface_boundary(self, boundary):
+        """Surface frontière : deux à quatre courbes qui se touchent bout à
+        bout (ou deux courbes opposées) — la peau passe par elles."""
+        from engine.kernel import KernelError
+        import Surface  # noqa: F401 — enregistre Surface::GeomFillSurface
+        links = self._boundary_links(boundary)
+        if not 2 <= len(links) <= 4:
+            raise KernelError("une surface frontière demande deux à quatre "
+                              "courbes")
+
+        def configure(obj):
+            obj.BoundaryList = links
+
+        return self._add_part_surface(
+            "Surface::GeomFillSurface", "Surface frontière", configure)
+
+    def surface_ruled(self, boundary):
+        """Surface réglée : des segments droits relient deux courbes."""
+        from engine.kernel import KernelError
+        links = self._boundary_links(boundary)
+        if len(links) != 2:
+            raise KernelError("une surface réglée relie exactement deux "
+                              "courbes")
+
+        def configure(obj):
+            obj.Curve1 = (links[0][0], [links[0][1]])
+            obj.Curve2 = (links[1][0], [links[1][1]])
+
+        return self._add_part_surface(
+            "Part::RuledSurface", "Surface réglée", configure)
+
+    def surface_delete_faces(self, surface, faces):
+        """Supprimer des faces d'une surface : un lieur de forme garde les
+        autres (paramétrique) ; le trou se bouche ensuite par un
+        remplissage si besoin."""
+        from engine.kernel import (
+            KernelError,
+            _explain,
+        )
+        import PartDesign  # noqa: F401 — enregistre le lieur de forme
+        doc = self._require_doc()
+        src = self._get_surface(surface)
+        count = len(src.Shape.Faces)
+        drop = {int(f) for f in faces or ()}
+        if not drop:
+            raise KernelError("cliquez les faces à supprimer")
+        if any(f < 0 or f >= count for f in drop):
+            raise KernelError("face inconnue : {}".format(sorted(drop)))
+        keep = ["Face%d" % (i + 1) for i in range(count) if i not in drop]
+        if not keep:
+            raise KernelError("toutes les faces seraient supprimées")
+        kept = doc.addObject("PartDesign::SubShapeBinder", "Surface")
+        try:
+            self._stamp(kept, kind="deleteface")
+            kept.Support = [(src, tuple(keep))]
+            kept.Label = self._t("Faces supprimées")
+            self._recompute()
+        except Exception as exc:  # noqa: BLE001
+            try:
+                doc.removeObject(kept.Name)
+            except Exception:
+                pass
+            if isinstance(exc, KernelError):
+                raise
+            raise KernelError(_explain(exc))
+        return self.get_tree()
+
+    def surface_split(self, surface, tool):
+        """Ligne de séparation : une courbe posée sur la surface (projetée,
+        d'intersection, spline) scinde ses faces — chaque morceau se
+        supprime ou se remplit ensuite à part."""
+        from engine.kernel import (
+            KernelError,
+            _explain,
+        )
+        import BOPTools.SplitFeatures as split_features
+        doc = self._require_doc()
+        src = self._get_surface(surface)
+        cutter = doc.getObject(str(tool))
+        if cutter is None or not getattr(cutter, "Shape", None):
+            raise KernelError("objet inconnu : {}".format(tool))
+        if cutter.Name == src.Name:
+            raise KernelError("la surface et l'outil doivent être différents")
+        before = len(src.Shape.Faces)
+        if not before:
+            raise KernelError("scinder demande une surface, pas une courbe")
+        split = split_features.makeSlice("Surface")
+        try:
+            split.Base = src
+            split.Tools = [cutter]
+            split.Mode = "Standard"
+            split.Label = self._t("Surface scindée")
+            self._stamp(split, kind="split")
+            self._recompute()
+            if len(split.Shape.Faces) <= before:
+                raise KernelError("la courbe ne scinde pas la surface — "
+                                  "elle doit être posée dessus, d'un bord à "
+                                  "l'autre ou fermée")
+        except Exception as exc:  # noqa: BLE001
+            try:
+                doc.removeObject(split.Name)
+            except Exception:
+                pass
+            if isinstance(exc, KernelError):
+                raise
+            raise KernelError(_explain(exc))
+        return self.get_tree()
+
+    def surface_untrim(self, surface, face=0):
+        """Désajuster : la face retrouve les bords naturels de sa surface
+        porteuse — trous bouchés, contour d'origine."""
+        from engine.kernel import KernelError
+        import Surface  # noqa: F401 — enregistre Surface::Extend
+        src = self._get_surface(surface)
+        faces = src.Shape.Faces
+        if not faces:
+            raise KernelError("désajuster demande une surface, pas une "
+                              "courbe")
+        face = int(face)
+        if face < 0 or face >= len(faces):
+            raise KernelError("face inconnue : {}".format(face))
+
+        def configure(obj):
+            obj.Face = (src, ["Face%d" % (face + 1)])
+            obj.ExtendUSymetric = False
+            obj.ExtendVSymetric = False
+            for side in ("UNeg", "UPos", "VNeg", "VPos"):
+                setattr(obj, "Extend" + side, 0.0)
+            self._stamp(obj, untrim=1)
+
+        return self._add_part_surface(
+            "Surface::Extend", "Surface désajustée", configure)
+
+    def surface_fillet(self, surface, edges, radius):
+        """Congé entre faces d'une surface : sur les arêtes partagées par
+        deux faces (cousez d'abord deux surfaces séparées)."""
+        from engine.kernel import KernelError
+        import Part
+        src = self._get_surface(surface)
+        shape = src.Shape
+        radius = float(radius)
+        if radius <= 0:
+            raise KernelError("le rayon doit être positif")
+        picked = []
+        for edge in edges or ():
+            edge = int(edge)
+            if edge < 0 or edge >= len(shape.Edges):
+                raise KernelError("arête inconnue : {}".format(edge))
+            if len(shape.ancestorsOfType(shape.Edges[edge], Part.Face)) != 2:
+                raise KernelError("le congé se pose sur une arête entre deux "
+                                  "faces — cousez d'abord les surfaces")
+            picked.append(edge)
+        if not picked:
+            raise KernelError("cliquez les arêtes à arrondir")
+
+        def configure(obj):
+            obj.Base = src
+            obj.Edges = [(e + 1, radius, radius) for e in picked]
+
+        return self._add_part_surface(
+            "Part::Fillet", "Congé de surface", configure)
+
+    def edit_surface_fillet(self, surface, radius):
+        """Rééditer le rayon d'un congé de surface."""
+        from engine.kernel import KernelError
+        obj = self._require_doc().getObject(str(surface))
+        if obj is None or obj.TypeId != "Part::Fillet":
+            raise KernelError("congé de surface inconnu : {}".format(surface))
+        radius = float(radius)
+        if radius <= 0:
+            raise KernelError("le rayon doit être positif")
+        obj.Edges = [(edge[0], radius, radius) for edge in obj.Edges]
+        self._recompute()
+        return self.get_tree()
+
+    def curve_intersection(self, first, second=None, body=False):
+        """Courbe d'intersection de deux surfaces — ou d'une surface et du
+        solide (``body``)."""
+        from engine.kernel import KernelError
+        doc = self._require_doc()
+        base = self._get_surface(first)
+        if body:
+            tool = self._require_body()
+            if not getattr(tool, "Shape", None) or not tool.Shape.Solids:
+                raise KernelError("le corps n'a pas encore de solide")
+        else:
+            if second is None:
+                raise KernelError("choisissez une seconde surface")
+            tool = self._get_surface(second)
+            if tool.Name == base.Name:
+                raise KernelError("choisissez deux surfaces différentes")
+
+        def configure(obj):
+            obj.Base = base
+            obj.Tool = tool
+            obj.Approximation = False
+            doc.recompute()
+            if not obj.Shape.Edges:
+                raise KernelError("les deux formes ne se coupent pas")
+
+        return self._add_part_surface(
+            "Part::Section", "Courbe d'intersection", configure)
+
+    def curve_project(self, sketch, surface, face=0):
+        """Courbe projetée : les traits d'une esquisse projetés sur une
+        face de surface, selon la normale de l'esquisse."""
+        from engine.kernel import KernelError
+        sk = self._get_sketch(str(sketch))
+        src = self._get_surface(surface)
+        faces = src.Shape.Faces
+        face = int(face)
+        if not faces:
+            raise KernelError("projeter demande une surface, pas une courbe")
+        if face < 0 or face >= len(faces):
+            raise KernelError("face inconnue : {}".format(face))
+        App = self._app()
+        normal = sk.Placement.Rotation.multVec(App.Vector(0, 0, 1))
+
+        def configure(obj):
+            obj.SupportFace = (src, ["Face%d" % (face + 1)])
+            obj.Projection = [sk]
+            obj.Mode = "Edges"
+            obj.Direction = normal * -1
+            self._recompute()
+            if not obj.Shape.Edges:
+                raise KernelError("la projection ne touche pas la face")
+
+        return self._add_part_surface(
+            "Part::ProjectOnSurface", "Courbe projetée", configure)
+
+    def curve_composite(self, boundary):
+        """Courbe composite : des arêtes et courbes bout à bout réunies en
+        une seule trajectoire (lieur de forme paramétrique)."""
+        from engine.kernel import (
+            KernelError,
+            _explain,
+        )
+        import Part
+        import PartDesign  # noqa: F401 — enregistre le lieur de forme
+        doc = self._require_doc()
+        links = self._boundary_links(boundary)
+        groups = {}
+        order = []
+        for obj, sub in links:
+            if obj.Name not in groups:
+                groups[obj.Name] = (obj, [])
+                order.append(obj.Name)
+            groups[obj.Name][1].append(sub)
+        binder = doc.addObject("PartDesign::SubShapeBinder", "Surface")
+        try:
+            binder.addProperty("App::PropertyBool", "FreeSolidComposite",
+                               "FreeSolid")
+            binder.setEditorMode("FreeSolidComposite", 2)
+            binder.FreeSolidComposite = True
+            binder.Support = [(groups[n][0], tuple(groups[n][1]))
+                              for n in order]
+            binder.Label = self._t("Courbe composite")
+            self._recompute()
+            edges = binder.Shape.Edges
+            if not edges:
+                raise KernelError("aucune arête retenue")
+            try:
+                Part.Wire(Part.__sortEdges__(edges))
+            except Exception:  # noqa: BLE001
+                raise KernelError("les arêtes ne se suivent pas bout à "
+                                  "bout")
+        except Exception as exc:  # noqa: BLE001
+            try:
+                doc.removeObject(binder.Name)
+            except Exception:
+                pass
+            if isinstance(exc, KernelError):
+                raise
+            raise KernelError(_explain(exc))
+        return self.get_tree()
 
     @staticmethod
     def _extend_sides(face, edge_shape):
@@ -450,6 +770,13 @@ class SurfaceMixin:
 
     def _surface_spec(self, obj):
         """Paramètres rééditables des surfaces FreeSolid à panneau dédié."""
+        if obj.TypeId == "Surface::Extend" and getattr(
+                obj, "FreeSolidUntrim", 0):
+            return {"kind": "untrim"}
+        if obj.TypeId == "Part::Fillet":
+            edges = list(getattr(obj, "Edges", ()) or ())
+            return {"kind": "fillet",
+                    "radius": float(edges[0][1]) if edges else 0.0}
         if obj.TypeId == "Surface::Extend":
             face = getattr(obj, "Face", None)
             return {"kind": "extend",
@@ -457,6 +784,8 @@ class SurfaceMixin:
                     "distance": float(getattr(obj, "FreeSolidDistance", 0)),
                     "edge": (int(getattr(obj, "FreeSolidEdge", 0)) - 1
                              if getattr(obj, "FreeSolidEdge", 0) else None)}
+        if getattr(obj, "FreeSolidKind", "") in ("deleteface", "split"):
+            return {"kind": obj.FreeSolidKind}
         if getattr(obj, "FreeSolidKind", "") == "trim":
             base = getattr(obj, "Base", None)
             return {"kind": "trim",
@@ -630,10 +959,21 @@ class SurfaceMixin:
                 face = getattr(obj, "Face", None)
                 if face:
                     consumed.add(face[0].Name)
+            elif obj.TypeId == "Part::Fillet":
+                base = getattr(obj, "Base", None)
+                if base is not None:
+                    consumed.add(base.Name)
+            elif getattr(obj, "FreeSolidKind", "") == "deleteface":
+                for link in getattr(obj, "Support", None) or []:
+                    consumed.add(link[0].Name)
             elif getattr(obj, "FreeSolidKind", "") == "trim":
                 base = getattr(obj, "Base", None)
                 if base is not None and getattr(base, "Base", None):
                     consumed.add(base.Base.Name)
+            elif getattr(obj, "FreeSolidKind", "") == "split":
+                base = getattr(obj, "Base", None)
+                if base is not None:
+                    consumed.add(base.Name)
             elif obj.TypeId == "Part::Offset" and getattr(obj, "Fill", False):
                 source = getattr(obj, "Source", None)
                 if source is not None:
@@ -652,7 +992,7 @@ class SurfaceMixin:
     def _get_surface(self, name):
         from engine.kernel import KernelError
         obj = self._require_doc().getObject(str(name))
-        if obj is None or obj.TypeId not in self._SURFACE_TYPE_IDS:
+        if obj is None or not self._is_surface_obj(obj):
             raise KernelError("surface inconnue : {}".format(name))
         return obj
 

@@ -81,6 +81,9 @@ export function panelNotice(notice, { selectionGuides = false } = {}) {
  *  face par son numéro, un bord par objet + arête, le reste par nom. */
 export function samePick(a, b) {
   if (b.kind === "point") return false;
+  if (b.kind === "surfface") {
+    return a.kind === "surfface" && a.name === b.name && a.face === b.face;
+  }
   if (b.face != null) return a.face === b.face;
   if (b.kind === "boundary") {
     return a.kind === "boundary" && a.name === b.name && a.edge === b.edge;
@@ -92,7 +95,7 @@ export function samePick(a, b) {
  *  solide) ou d'esquisses entières. */
 export function boundaryText(items, tr = (s, v) => s.replace(/\{(\w+)\}/g,
   (_, k) => v?.[k] ?? "")) {
-  if (items.length > 3) return tr("{n} bords", { n: items.length });
+  if (items.length > 3) return tr("{n} éléments", { n: items.length });
   return items.map((i) => (i.kind !== "boundary" || i.curve ? i.label
     : `${i.label} · ${tr("Arête {n}", { n: i.edge })}`)).join(", ");
 }
@@ -440,11 +443,19 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       }
       if (value.items && value.items.every((i) => i.kind === "point")) {
         box.textContent = t("{n} position(s)", { n: value.items.length });
+      } else if (value.items && value.items.every((i) => i.kind === "surfface")) {
+        box.textContent = value.items.length <= 3
+          ? value.items.map((i) => `${i.label} · ${t("Face {n}", { n: i.face })}`)
+            .join(", ")
+          : t("{n} faces", { n: value.items.length });
+      } else if (value.kind === "surfface") {
+        box.textContent = `${value.label} · ${t("Face {n}", { n: value.face })}`;
       } else if (value.items && value.items.every((i) => i.face != null)) {
         box.textContent = value.items.length <= 4
           ? value.items.map((i) => t("Face {n}", { n: i.face })).join(", ")
           : t("{n} faces", { n: value.items.length });
-      } else if (value.items && value.items.some((i) => i.kind === "boundary")) {
+      } else if (value.items && (value.items.some((i) => i.kind === "boundary")
+                 || (row.accepts ?? []).includes("boundary"))) {
         box.textContent = boundaryText(value.items, t);
       } else if (value.kind === "boundary") {
         box.textContent = boundaryText([value], t);

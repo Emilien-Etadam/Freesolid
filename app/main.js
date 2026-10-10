@@ -514,6 +514,7 @@ function showMesh(mesh) {
     material.opacity = 1;
     const surfMesh = new THREE.Mesh(geometry, material);
     surfMesh.userData.surface = { name: surface.name, label: surface.label };
+    surfMesh.userData.groups = surface.groups ?? [];
     surfMesh.userData.baseMaterial = material;
     volumesGroup.add(surfMesh);
     surfaceMeshes.push(surfMesh);

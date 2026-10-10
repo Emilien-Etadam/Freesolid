@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 
 import { clickPlane, curveProblem, nextPlane, rayPlane } from "../../app/curve3d.js";
 import { boundaryText, samePick } from "../../app/panel.js";
-import { boundaryParam, extendParams } from "../../app/features.js";
+import { boundaryParam, deleteFacesParams, extendParams, surfaceFilletParams }
+  from "../../app/features.js";
 
 describe("spline 3D : plan de clic", () => {
   it("le plan passe par le dernier point, normale selon le plan choisi", () => {
@@ -53,7 +54,7 @@ describe("bords de surfaces et de courbes", () => {
     assert.equal(boundaryText([{ ...edge("Spline", 0), curve: true }], tr),
       "Spline");
     assert.equal(boundaryText([1, 2, 3, 4].map((n) => edge("S", n)), tr),
-      "4 bords");
+      "4 éléments");
   });
 
   it("remplissage : arête de surface, du solide, ou esquisse entière", () => {
@@ -71,5 +72,31 @@ describe("bords de surfaces et de courbes", () => {
       { surface: "S", distance: 5 });
     assert.equal(extendParams({ ...edge("C", 0), curve: true }, 5), null);
     assert.equal(extendParams(edge("S", 2), 0), null);
+  });
+});
+
+describe("faces et arêtes d'une même surface", () => {
+  const face = (name, n) => ({ kind: "surfface", name, label: name, face: n });
+  const edge = (name, n) => ({ kind: "boundary", name, label: name, edge: n });
+
+  it("une face de surface : objet ET numéro", () => {
+    assert.equal(samePick(face("S", 1), face("S", 1)), true);
+    assert.equal(samePick(face("S", 1), face("T", 1)), false);
+  });
+
+  it("supprimer : les faces d'une seule surface", () => {
+    assert.deepEqual(deleteFacesParams([face("S", 0), face("S", 2)]),
+      { surface: "S", faces: [0, 2] });
+    assert.equal(deleteFacesParams([face("S", 0), face("T", 1)]), null);
+    assert.equal(deleteFacesParams([]), null);
+  });
+
+  it("congé : arêtes d'une seule surface, rayon positif", () => {
+    assert.deepEqual(surfaceFilletParams([edge("S", 4)], 3),
+      { surface: "S", edges: [4], radius: 3 });
+    assert.equal(surfaceFilletParams([edge("S", 4), edge("T", 1)], 3), null);
+    assert.equal(surfaceFilletParams([edge("S", 4)], 0), null);
+    assert.equal(surfaceFilletParams([{ ...edge("C", 0), curve: true }], 3),
+      null);
   });
 });

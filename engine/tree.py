@@ -98,7 +98,7 @@ class TreeMixin:
             if linked is not None:
                 consumed[linked.Name] = obj.Name
         for obj in self._doc.Objects:
-            if obj.TypeId not in self._SURFACE_TYPE_IDS:
+            if not self._is_surface_obj(obj):
                 continue
             for sk in self._surface_sketch_objects(obj):
                 consumed.setdefault(sk.Name, obj.Name)
@@ -123,7 +123,7 @@ class TreeMixin:
         """``feature`` / ``sketch`` / ``surface``, ou None si hors historique."""
         if self._is_thin_helper(obj):
             return None
-        if obj.TypeId in self._SURFACE_TYPE_IDS:
+        if self._is_surface_obj(obj):
             return "surface"
         if obj.TypeId == "Sketcher::SketchObject":
             return None if obj.Name in consumed else "sketch"
@@ -142,7 +142,7 @@ class TreeMixin:
             if kind in ("feature", "sketch"):
                 lines.append(obj)
         for obj in doc.Objects:
-            if (obj.TypeId in self._SURFACE_TYPE_IDS
+            if (self._is_surface_obj(obj)
                     and not self._is_internal_tool(obj)):
                 lines.append(obj)
         order_of = {o.Name: i for i, o in enumerate(doc.Objects)}
@@ -174,7 +174,7 @@ class TreeMixin:
             if obj is None:
                 continue
             self._set_rolled_back(obj, rolled)
-            if obj.TypeId in self._SURFACE_TYPE_IDS:
+            if self._is_surface_obj(obj):
                 for sk in self._surface_sketch_objects(obj):
                     self._set_rolled_back(sk, rolled)
 
@@ -373,7 +373,7 @@ class TreeMixin:
         for obj in self._doc.Objects:
             if obj.TypeId == "PartDesign::Body" and not self._is_internal_tool(obj):
                 names.add(obj.Name)
-            if (obj.TypeId in self._SURFACE_TYPE_IDS
+            if (self._is_surface_obj(obj)
                     and not self._is_internal_tool(obj)):
                 names.add(obj.Name)
                 for sketch in self._surface_sketch_objects(obj):
@@ -659,7 +659,7 @@ class TreeMixin:
         surfaces = [self._surface_tree_entry(o, order_of, known_names,
                                              consumed)
                     for o in self._doc.Objects
-                    if o.TypeId in self._SURFACE_TYPE_IDS
+                    if self._is_surface_obj(o)
                     and not self._is_internal_tool(o)]
         tip = (self._thin_owner(body.Tip).Name
                if getattr(body, "Tip", None) else None)
@@ -767,7 +767,7 @@ class TreeMixin:
         curve_objects = []
         consumed = self._consumed_surfaces()
         for obj in self._doc.Objects:
-            if obj.TypeId not in self._SURFACE_TYPE_IDS:
+            if not self._is_surface_obj(obj):
                 continue
             if (self._is_rolled_back(obj) or self._is_internal_tool(obj)
                     or obj.Name in consumed):
@@ -780,10 +780,10 @@ class TreeMixin:
             edges = protocol.pack_edges(self._object_edge_lines(shape))
             if shape.Faces:
                 surface_faces = []
-                for face in shape.Faces:
+                for i, face in enumerate(shape.Faces):
                     vertices, triangles = face.tessellate(float(deviation))
                     surface_faces.append(
-                        (0, [(v.x, v.y, v.z) for v in vertices], triangles))
+                        (i, [(v.x, v.y, v.z) for v in vertices], triangles))
                 packed = protocol.pack_mesh(surface_faces)
                 if packed["positions"]:
                     surfaces_out.append({
@@ -791,6 +791,9 @@ class TreeMixin:
                         "label": obj.Label,
                         "positions": packed["positions"],
                         "indices": packed["indices"],
+                        # Une face de surface se clique (supprimer,
+                        # projeter, désajuster) : groupes par face.
+                        "groups": packed["groups"],
                         "edges": edges,
                     })
             elif edges["indices"]:
@@ -810,7 +813,7 @@ class TreeMixin:
         # Une esquisse absorbée par une surface ne se dessine plus : ses
         # traits masqueraient les bords de la surface au clic.
         absorbed = {sk.Name for obj in self._doc.Objects
-                    if obj.TypeId in self._SURFACE_TYPE_IDS
+                    if self._is_surface_obj(obj)
                     and not self._is_rolled_back(obj)
                     for sk in self._surface_sketch_objects(obj)}
         for sk in self._free_sketches():

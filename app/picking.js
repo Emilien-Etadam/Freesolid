@@ -570,9 +570,9 @@ export function installPicking(ctx) {
   }
 
   function refreshFeatureDimEdit(treePromise) {
-    const ctx = featureDimContext;
+    const dims = featureDimContext;
     refresh(treePromise).then(() => {
-      if (ctx) return showFeatureDims(ctx.feature, ctx.hit);
+      if (dims) return showFeatureDims(dims.feature, dims.hit);
     });
   }
 

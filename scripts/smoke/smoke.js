@@ -201,27 +201,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     document.body.classList.contains("ribbon-icons-only")
     && localStorage.getItem("freesolid.ribbonLabels") === "icons-only");
   if (!iconsOnly) errors.push("Icônes seules : classe ou localStorage absent");
-  const labelBoxes = await page.$$eval(
-    "#ribbon-features .ribbon-group",
-    (groups) => groups.map((g) => {
-      const label = g.querySelector(".ribbon-group-label");
-      const gr = g.getBoundingClientRect();
-      const lr = label.getBoundingClientRect();
-      return {
-        name: label.textContent,
-        w: Math.round(lr.width),
-        h: Math.round(lr.height),
-        overflow: lr.left < gr.left - 1 || lr.right > gr.right + 1,
-      };
-    }),
-  );
-  for (const box of labelBoxes) {
-    if (box.w < 8 || box.h < 8) {
-      errors.push("libellé invisible en icônes seules : " + box.name);
-    }
-    if (box.overflow) {
-      errors.push("libellé hors groupe en icônes seules : " + box.name);
-    }
+  // En-tête compact : les noms de groupe sont masqués à l'œil (les
+  // séparateurs suffisent) mais restent dans le DOM, pour la recherche et
+  // les lecteurs d'écran ; le ruban garde sa hauteur sur une rangée.
+  const groupNames = await page.$$eval(
+    "#ribbon-features .ribbon-group-label", (els) => els.map((e) => e.textContent));
+  if (groupNames.some((name) => !name)) {
+    errors.push("nom de groupe vide en icônes seules : " + groupNames.join(", "));
+  }
+  const ribbonHeight = await page.$eval("#ribbon-features",
+    (el) => Math.round(el.getBoundingClientRect().height));
+  if (ribbonHeight > 70) {
+    errors.push("ruban sur plus d'une rangée en icônes seules : " + ribbonHeight + " px");
   }
   // Chaque bouton du ruban doit englober son icône : en icônes seules,
   // font-size 0 rendait le max-width (em) des boutons large nul et l'icône
@@ -523,7 +514,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.screenshot({ path: path.join(SHOTS, "4-bossage.png") });
 
   // N003 — variable avant d'ouvrir le graphe, pour tirer un fil.
-  await page.click("#btn-equations");
+  // Équations : onglet Évaluer (le bouton de l'ancienne barre du haut est
+  // caché depuis l'en-tête compact, les menus et le ruban le relaient).
+  await page.click('[data-tab="evaluate"]');
+  await page.click("#ribbon-equations");
   await page.waitForFunction(
     () => document.querySelector("#panel .ptitle")?.textContent === "Équations",
     null,

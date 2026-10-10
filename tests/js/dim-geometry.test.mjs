@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  arrowSegments, dimGeometry, dimLabel, dimOffsetAt, pointPairDimKind,
+  arrowTriangle, dimGeometry, dimLabel, dimOffsetAt, pointPairDimKind,
   pointPairDimPath,
 } from "../../app/dims.js";
 
@@ -92,13 +92,12 @@ describe("dimGeometry", () => {
     assert.deepEqual(g, { label: { x: 5, y: 4 }, segments: [], arrows: [] });
   });
 
-  it("une pointe de flèche fait deux traits de la bonne longueur", () => {
-    const segs = arrowSegments({ x: 0, y: 0, dx: 1, dy: 0 }, 2);
-    assert.equal(segs.length, 2);
-    for (const [x1, y1, x2, y2] of segs) {
-      assert.ok(close(Math.hypot(x2 - x1, y2 - y1), 2));
-      assert.ok(x2 < 0);   // les traits partent en arrière de la pointe
-    }
+  it("une pointe de flèche est un triangle plein, en arrière de la pointe", () => {
+    const [x1, y1, x2, y2, x3, y3] = arrowTriangle(
+      { x: 0, y: 0, dx: 1, dy: 0 }, 9, 1.5);
+    assert.deepEqual([x1, y1], [0, 0]);
+    assert.ok(close(x2, -9) && close(x3, -9));
+    assert.ok(close(Math.abs(y2 - y3), 3));
   });
 });
 

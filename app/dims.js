@@ -77,6 +77,8 @@ function alignedDim(a, b, entities, size, offset = null) {
   const b2 = { x: b.x + n.x * off, y: b.y + n.y * off };
   return {
     label: { x: (a2.x + b2.x) / 2 + n.x * size, y: (a2.y + b2.y) / 2 + n.y * size },
+    along: { x: (a2.x + b2.x) / 2, y: (a2.y + b2.y) / 2 },
+    normal: n,
     segments: [
       [a.x, a.y, a.x + n.x * (off + ext), a.y + n.y * (off + ext)],
       [b.x, b.y, b.x + n.x * (off + ext), b.y + n.y * (off + ext)],
@@ -101,6 +103,8 @@ function axisDim(a, b, kind, size, offset = null) {
     const side = y >= Math.max(a.y, b.y) ? 1 : -1;
     return {
       label: { x: (a.x + b.x) / 2, y: y + size * side },
+      along: { x: (a.x + b.x) / 2, y },
+      normal: { x: 0, y: side },
       segments: [[a.x, a.y, a.x, y + ext * side], [b.x, b.y, b.x, y + ext * side],
                  [a.x, y, b.x, y]],
       arrows: [{ x: a.x, y, dx: -dir, dy: 0 }, { x: b.x, y, dx: dir, dy: 0 }],
@@ -111,6 +115,8 @@ function axisDim(a, b, kind, size, offset = null) {
   const side = x >= Math.max(a.x, b.x) ? 1 : -1;
   return {
     label: { x: x + size * side, y: (a.y + b.y) / 2 },
+    along: { x, y: (a.y + b.y) / 2 },
+    normal: { x: side, y: 0 },
     segments: [[a.x, a.y, x + ext * side, a.y], [b.x, b.y, x + ext * side, b.y],
                [x, a.y, x, b.y]],
     arrows: [{ x, y: a.y, dx: 0, dy: -dir }, { x, y: b.y, dx: 0, dy: dir }],
@@ -328,17 +334,14 @@ export function dimOffsetAt(dim, constraint, entities, at) {
   return ((at.x - a.x) * -(b.y - a.y) + (at.y - a.y) * (b.x - a.x)) / length;
 }
 
-/** Les deux traits d'une pointe de flèche, en segments. */
-export function arrowSegments(arrow, length) {
-  const segs = [];
-  for (const sign of [1, -1]) {
-    const a = Math.PI * (1 - sign * 0.14);
-    const cos = Math.cos(a), sin = Math.sin(a);
-    const bx = arrow.dx * cos - arrow.dy * sin;
-    const by = arrow.dx * sin + arrow.dy * cos;
-    segs.push([arrow.x, arrow.y, arrow.x + bx * length, arrow.y + by * length]);
-  }
-  return segs;
+/** Pointe de flèche pleine : triangle (x, y) × 3, la pointe d'abord.
+ *  `length` le long de la flèche, `halfWidth` de part et d'autre. */
+export function arrowTriangle(arrow, length, halfWidth) {
+  const bx = arrow.x - arrow.dx * length;
+  const by = arrow.y - arrow.dy * length;
+  return [arrow.x, arrow.y,
+          bx - arrow.dy * halfWidth, by + arrow.dx * halfWidth,
+          bx + arrow.dy * halfWidth, by - arrow.dx * halfWidth];
 }
 
 /** Position 2D d'une cote d'esquisse, dans le plan de l'esquisse. */

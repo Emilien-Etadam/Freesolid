@@ -20,29 +20,50 @@ import {
   boxMode, isDrag, normalizeRect, pickInBox, sketchLocalPoints,
 } from "./navigation.js";
 import {
-  arrowSegments, dimEditPayload, dimGeometry, dimLabel, dimOffsetAt,
+  arrowTriangle, dimEditPayload, dimGeometry, dimLabel, dimOffsetAt,
   openDimEditor, pointPairDimKind, pointPairDimPath,
 } from "./dims.js";
 
 const sceneTheme = readScene();
 
+/** Hauteur du texte d'une cote à l'écran, en pixels CSS. */
+export const DIM_TEXT_PX = 12;
+// Le canevas est dessiné 4 fois plus grand : texte net une fois réduit.
+const DIM_TEXT_OVERSAMPLE = 4;
+/** Hauteur de l'étiquette (texte + marge) rapportée à celle du texte. */
+const DIM_LABEL_RATIO = 1.4;
+
+/** Étiquette de cote : le texte seul, à sa longueur, cerné d'un halo de la
+ *  couleur du fond pour rester lisible sur un trait ou une face — pas de
+ *  pavé. `userData.aspect` : largeur / hauteur, pour la mise à l'échelle. */
 export function createDimSprite(text, x, y, z = 0.01, color = cssHex(sceneTheme.dim)) {
+  const k = DIM_TEXT_OVERSAMPLE;
+  const font = `500 ${DIM_TEXT_PX * k}px system-ui, sans-serif`;
   const canvas = document.createElement("canvas");
-  canvas.width = 256; canvas.height = 40;
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = cssRgba(sceneTheme.bg, 0.85);
-  ctx.fillRect(0, 0, 256, 40);
-  ctx.font = "22px system-ui";
-  ctx.fillStyle = color;
+  ctx.font = font;
+  const pad = 4 * k;
+  canvas.width = Math.ceil(ctx.measureText(text).width) + pad * 2;
+  canvas.height = Math.round(DIM_TEXT_PX * DIM_LABEL_RATIO * k);
+  ctx.font = font; // un canevas redimensionné oublie sa police
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(text, 128, 21);
-  const material = new THREE.SpriteMaterial({
-    map: new THREE.CanvasTexture(canvas), depthTest: false });
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 3 * k;
+  ctx.strokeStyle = cssRgba(sceneTheme.bg, 0.75);
+  ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
+  ctx.fillStyle = color;
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  const material = new THREE.SpriteMaterial({ map: texture, depthTest: false });
   material.userData.own = true;
   const sprite = new THREE.Sprite(material);
+  sprite.userData.aspect = canvas.width / canvas.height;
   sprite.position.set(x, y, z);
-  sprite.scale.set(26, 4.1, 1);
+  // Cotes de fonction en 3D : hauteur en unités du modèle.
+  sprite.scale.set(3.2 * sprite.userData.aspect, 3.2, 1);
   return sprite;
 }
 
@@ -109,6 +130,10 @@ export function createSketchMode(deps) {
     { color: sceneTheme.dim, ...ON_TOP });
   const drivenDimLineMaterial = new THREE.LineBasicMaterial(
     { color: sceneTheme.ink2, ...ON_TOP });
+  const dimTipMaterial = new THREE.MeshBasicMaterial(
+    { color: sceneTheme.dim, side: THREE.DoubleSide, ...ON_TOP });
+  const drivenDimTipMaterial = new THREE.MeshBasicMaterial(
+    { color: sceneTheme.ink2, side: THREE.DoubleSide, ...ON_TOP });
   const pointMaterial = new THREE.PointsMaterial({
     color: sceneTheme.accent, size: 7, sizeAttenuation: false, ...ON_TOP });
   group.renderOrder = 20;
@@ -643,15 +668,27 @@ export function createSketchMode(deps) {
 
     // L'unité de tracé suit le zoom : la cote garde sa taille à l'écran.
     const dimSize = dimDrawSize();
+    // Un pixel d'écran, en unités de l'esquisse.
+    const px = span / Math.max(renderer.domElement.clientHeight, 1);
     for (const dim of mode.state.dims) {
       const constraint = (mode.state.constraints ?? [])
         .find((c) => c.id === dim.id);
       const shape = dimGeometry(dim, constraint, mode.state.entities, dimSize);
       if (!shape) continue;
-      const segments = [
-        ...shape.segments,
-        ...shape.arrows.flatMap((a) => arrowSegments(a, dimSize * 0.9)),
-      ];
+      const segments = shape.segments;
+      if (shape.arrows.length) {
+        // Pointes pleines et fines, à taille d'écran (9 × 3 px).
+        const tips = new Float32Array(shape.arrows.flatMap((a) => {
+          const [x1, y1, x2, y2, x3, y3] = arrowTriangle(a, px * 9, px * 1.6);
+          return [x1, y1, 0, x2, y2, 0, x3, y3, 0];
+        }));
+        const tipGeometry = new THREE.BufferGeometry();
+        tipGeometry.setAttribute("position", new THREE.BufferAttribute(tips, 3));
+        const arrows = new THREE.Mesh(tipGeometry,
+          constraint?.driving === false ? drivenDimTipMaterial : dimTipMaterial);
+        arrows.renderOrder = 21;
+        group.add(arrows);
+      }
       if (segments.length) {
         const flat = new Float32Array(segments.flatMap(
           ([x1, y1, x2, y2]) => [x1, y1, 0, x2, y2, 0]));
@@ -664,8 +701,19 @@ export function createSketchMode(deps) {
         group.add(lines);
       }
       const sprite = createDimSprite(dimLabel(dim), shape.label.x, shape.label.y);
-      // Étiquette à taille d'écran constante (le canevas fait 256 × 40).
-      sprite.scale.set(span * 0.16, span * 0.16 * 40 / 256, 1);
+      // Étiquette à taille d'écran constante.
+      const labelHeight = px * DIM_TEXT_PX * DIM_LABEL_RATIO;
+      const labelWidth = labelHeight * sprite.userData.aspect;
+      sprite.scale.set(labelWidth, labelHeight, 1);
+      if (shape.along && shape.normal) {
+        // Juste à côté de sa ligne, sans la chevaucher : le texte est plus
+        // large que haut, une cote verticale l'écarte de sa demi-largeur.
+        const n = shape.normal;
+        const reach = Math.abs(n.x) * labelWidth / 2
+          + Math.abs(n.y) * labelHeight / 2 + px * 2;
+        sprite.position.set(shape.along.x + n.x * reach,
+                            shape.along.y + n.y * reach, 0.01);
+      }
       sprite.userData.dim = dim;
       sprite.renderOrder = 22;
       group.add(sprite);

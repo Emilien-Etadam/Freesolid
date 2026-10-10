@@ -1040,13 +1040,13 @@
       <nav id="menubar"></nav>
       <span class="grow"></span>
       <div id="quickbar">
-        <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt=""></button>
-        <button id="btn-open" title="Ouvrir un .FCStd"><img src="icons/document-open.svg" alt=""></button>
-        <button id="btn-save" title="Enregistrer (.FCStd)"><img src="icons/document-save.svg" alt=""></button>
+        <button id="btn-new" title="Nouvelle pièce"><img src="icons/fs_new.svg" alt=""></button>
+        <button id="btn-open" title="Ouvrir un .FCStd"><img src="icons/fs_open.svg" alt=""></button>
+        <button id="btn-save" title="Enregistrer (.FCStd)"><img src="icons/fs_save.svg" alt=""></button>
         <div class="sep"></div>
-        <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/edit-undo.svg" alt=""></button>
-        <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img src="icons/edit-redo.svg" alt=""></button>
-        <button id="btn-rebuild" title="Reconstruire — recalcul forcé de tout l'arbre"><img src="icons/Std_Refresh.svg" alt=""></button>
+        <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/fs_undo.svg" alt=""></button>
+        <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img src="icons/fs_redo.svg" alt=""></button>
+        <button id="btn-rebuild" title="Reconstruire — recalcul forcé de tout l'arbre"><img src="icons/fs_rebuild.svg" alt=""></button>
       </div>
       <div id="command-search">
         <input id="command-query" type="search" autocomplete="off"
@@ -1055,7 +1055,7 @@
         <kbd>Ctrl+F</kbd>
         <div id="command-results" hidden role="listbox"></div>
       </div>
-      <button id="btn-settings" title="Paramètres — version, mises à jour, réglages"><img src="icons/FreeSolid_Settings.svg" alt=""></button>
+      <button id="btn-settings" title="Paramètres — version, mises à jour, réglages"><img src="icons/fs_settings.svg" alt=""></button>
     </div>
     <!-- Ligne 2 : les onglets du ruban, tirés de ribbon.json (insérés avant
          .push ; les plugins ajoutent les leurs à la suite). -->
@@ -1078,56 +1078,56 @@
     <div id="sketchbar" class="ribbon">
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button data-tool="select" data-label="Sélectionner" title="Sélectionner — glisser un point, cliquer des entités">Sélectionner</button>
+          <button data-tool="select" data-label="Sélectionner" title="Sélectionner — glisser un point, cliquer des entités"><img src="icons/fs_select.svg" alt="">Sélectionner</button>
           <button data-tool="line" data-label="Ligne" title="Ligne (L)"><img src="icons/nodes_line.svg" alt=""></button>
-          <button data-tool="rect" data-label="Rectangle par sommet" title="Rectangle par sommet (R)"><img src="icons/Sketcher_CreateRectangle.svg" alt=""></button>
-          <button data-tool="rectc" data-label="Rectangle par le centre" title="Rectangle par le centre"><img src="icons/Sketcher_CreateRectangle_Center.svg" alt=""></button>
+          <button data-tool="rect" data-label="Rectangle par sommet" title="Rectangle par sommet (R)"><img src="icons/fs_rect.svg" alt=""></button>
+          <button data-tool="rectc" data-label="Rectangle par le centre" title="Rectangle par le centre"><img src="icons/fs_rect_center.svg" alt=""></button>
           <button data-tool="circle" data-label="Cercle" title="Cercle (C)"><img src="icons/nodes_circle.svg" alt=""></button>
           <button data-tool="spline" data-label="Spline" title="Spline — points cliqués, Entrée pour terminer"><img src="icons/nodes_bspline.svg" alt=""></button>
-          <button data-tool="ellipse" data-label="Ellipse" title="Ellipse (E) — centre, grand axe, petit rayon"><img src="icons/Sketcher_CreateEllipseByCenter.svg" alt=""></button>
+          <button data-tool="ellipse" data-label="Ellipse" title="Ellipse (E) — centre, grand axe, petit rayon"><img src="icons/fs_ellipse.svg" alt=""></button>
           <button data-tool="arc" data-label="Arc par centre" title="Arc par centre — centre, départ, arrivée"><img src="icons/nodes_arc.svg" alt=""></button>
           <button data-tool="arc3" data-label="Arc 3 points" title="Arc 3 points (A) — départ, arrivée, passage"><img src="icons/nodes_arc_3_pt.svg" alt=""></button>
-          <button data-tool="slot" data-label="Rainure droite" title="Rainure droite — deux centres puis largeur"><img src="icons/Sketcher_CreateSlot.svg" alt=""></button>
-          <button data-tool="polygon" data-label="Polygone" title="Polygone — nombre de côtés, centre, sommet"><img src="icons/Sketcher_CreateRegularPolygon.svg" alt=""></button>
+          <button data-tool="slot" data-label="Rainure droite" title="Rainure droite — deux centres puis largeur"><img src="icons/fs_slot.svg" alt=""></button>
+          <button data-tool="polygon" data-label="Polygone" title="Polygone — nombre de côtés, centre, sommet"><img src="icons/fs_polygon.svg" alt=""></button>
         </div>
         <div class="ribbon-group-label">Contours</div>
       </div>
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button data-tool="skfillet" title="Congé d'esquisse — cliquez deux lignes près du coin"><img src="icons/Sketcher_CreateFillet.svg" alt=""></button>
-          <button data-tool="trim" title="Ajuster (T) — cliquez le tronçon à supprimer"><img src="icons/Sketcher_Trimming.svg" alt=""></button>
-          <button data-tool="construction" title="Géométrie de construction (G) — cliquez une entité"><img src="icons/Sketcher_ToggleConstruction.svg" alt=""></button>
-          <button id="sk-convert" title="Projeter les arêtes — le contour de la face porteuse devient de la géométrie bloquée"><img src="icons/Sketcher_Projection.svg" alt=""></button>
-          <button data-tool="dim" data-label="Cotation" title="Cotation (D) — 1 ou 2 entités, cote pilotante"><img src="icons/Constraint_Dimension.svg" alt=""></button>
+          <button data-tool="skfillet" title="Congé d'esquisse — cliquez deux lignes près du coin"><img src="icons/fs_sketch_fillet.svg" alt=""></button>
+          <button data-tool="trim" title="Ajuster (T) — cliquez le tronçon à supprimer"><img src="icons/fs_trim.svg" alt=""></button>
+          <button data-tool="construction" title="Géométrie de construction (G) — cliquez une entité"><img src="icons/fs_construction.svg" alt=""></button>
+          <button id="sk-convert" title="Projeter les arêtes — le contour de la face porteuse devient de la géométrie bloquée"><img src="icons/fs_project.svg" alt=""></button>
+          <button data-tool="dim" data-label="Cotation" title="Cotation (D) — 1 ou 2 entités, cote pilotante"><img src="icons/fs_dimension.svg" alt=""></button>
         </div>
         <div class="ribbon-group-label">Outils</div>
       </div>
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button id="sk-c-horizontal" title="Relation horizontale"><img src="icons/Constraint_Horizontal.svg" alt=""></button>
-          <button id="sk-c-vertical" title="Relation verticale"><img src="icons/Constraint_Vertical.svg" alt=""></button>
-          <button id="sk-c-coincident" title="Relation coïncidente — deux points"><img src="icons/Constraint_Coincident.svg" alt=""></button>
-          <button id="sk-c-parallel" title="Relation parallèle"><img src="icons/Constraint_Parallel.svg" alt=""></button>
-          <button id="sk-c-perpendicular" title="Relation perpendiculaire"><img src="icons/Constraint_Perpendicular.svg" alt=""></button>
-          <button id="sk-c-tangent" title="Relation tangente"><img src="icons/Constraint_Tangent.svg" alt=""></button>
-          <button id="sk-c-equal" title="Relation égale"><img src="icons/Constraint_EqualLength.svg" alt=""></button>
-          <button id="sk-c-concentric" title="Relation concentrique — deux cercles ou arcs"><img src="icons/Constraint_Concentric.svg" alt=""></button>
-          <button id="sk-c-collinear" title="Relation colinéaire — deux lignes"><img src="icons/FreeSolid_Collinear.svg" alt=""></button>
-          <button id="sk-c-midpoint" title="Relation milieu — un point et une ligne"><img src="icons/Constraint_PointOnMidPoint.svg" alt=""></button>
-          <button id="sk-c-symmetric" title="Relation symétrique — deux points puis la ligne d'axe"><img src="icons/Constraint_Symmetric.svg" alt=""></button>
-          <button id="sk-c-fixed" title="Relation fixe — bloque l'entité"><img src="icons/Constraint_Block.svg" alt=""></button>
-          <button id="sk-mirror" title="Symétrie — sélectionnez les entités puis la ligne d'axe en dernier"><img src="icons/Sketcher_Symmetry.svg" alt=""></button>
-          <button id="sk-array" title="Réseau d'esquisse — grille au pas choisi"><img src="icons/Sketcher_RectangularArray.svg" alt=""></button>
-          <button id="sk-offset" title="Décaler — sélectionnez une chaîne, puis la distance">Décaler</button>
-          <button id="sk-image" title="Image d'esquisse — calque de fond pour redessiner un scan ou un logo">Image</button>
-          <button id="sk-relations" title="Relations de l'entité sélectionnée — voir et supprimer"><img src="icons/Sketcher_ToggleConstraint.svg" alt=""></button>
+          <button id="sk-c-horizontal" title="Relation horizontale"><img src="icons/fs_rel_horizontal.svg" alt=""></button>
+          <button id="sk-c-vertical" title="Relation verticale"><img src="icons/fs_rel_vertical.svg" alt=""></button>
+          <button id="sk-c-coincident" title="Relation coïncidente — deux points"><img src="icons/fs_rel_coincident.svg" alt=""></button>
+          <button id="sk-c-parallel" title="Relation parallèle"><img src="icons/fs_rel_parallel.svg" alt=""></button>
+          <button id="sk-c-perpendicular" title="Relation perpendiculaire"><img src="icons/fs_rel_perpendicular.svg" alt=""></button>
+          <button id="sk-c-tangent" title="Relation tangente"><img src="icons/fs_rel_tangent.svg" alt=""></button>
+          <button id="sk-c-equal" title="Relation égale"><img src="icons/fs_rel_equal.svg" alt=""></button>
+          <button id="sk-c-concentric" title="Relation concentrique — deux cercles ou arcs"><img src="icons/fs_rel_concentric.svg" alt=""></button>
+          <button id="sk-c-collinear" title="Relation colinéaire — deux lignes"><img src="icons/fs_rel_collinear.svg" alt=""></button>
+          <button id="sk-c-midpoint" title="Relation milieu — un point et une ligne"><img src="icons/fs_rel_midpoint.svg" alt=""></button>
+          <button id="sk-c-symmetric" title="Relation symétrique — deux points puis la ligne d'axe"><img src="icons/fs_rel_symmetric.svg" alt=""></button>
+          <button id="sk-c-fixed" title="Relation fixe — bloque l'entité"><img src="icons/fs_rel_fixed.svg" alt=""></button>
+          <button id="sk-mirror" title="Symétrie — sélectionnez les entités puis la ligne d'axe en dernier"><img src="icons/fs_sketch_mirror.svg" alt=""></button>
+          <button id="sk-array" title="Réseau d'esquisse — grille au pas choisi"><img src="icons/fs_sketch_array.svg" alt=""></button>
+          <button id="sk-offset" title="Décaler — sélectionnez une chaîne, puis la distance"><img src="icons/fs_offset.svg" alt="">Décaler</button>
+          <button id="sk-image" title="Image d'esquisse — calque de fond pour redessiner un scan ou un logo"><img src="icons/fs_sketch_image.svg" alt="">Image</button>
+          <button id="sk-relations" title="Relations de l'entité sélectionnée — voir et supprimer"><img src="icons/fs_relations.svg" alt=""></button>
         </div>
         <div class="ribbon-group-label">Contraintes</div>
       </div>
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire"><img src="icons/Sketcher_LeaveSketch.svg" alt="">Terminer</button>
-          <button id="sk-cancel" class="no" title="Quitter"><img src="icons/Sketcher_CancelSketch.svg" alt="">Quitter</button>
+          <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire"><img src="icons/fs_sketch_ok.svg" alt="">Terminer</button>
+          <button id="sk-cancel" class="no" title="Quitter"><img src="icons/fs_sketch_cancel.svg" alt="">Quitter</button>
         </div>
         <div class="ribbon-group-label">Esquisse</div>
       </div>

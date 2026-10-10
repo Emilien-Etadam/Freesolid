@@ -278,9 +278,9 @@ describe("installCoreRibbons", () => {
     const img = pad.children.find((c) => c.tagName === "img");
     assert.equal(img.src, "icons/nodes_extrude.svg");
 
-    // Un bouton sans icône reste un bouton texte (btn-solve, assemblage).
+    // Icône et libellé : l'icône d'abord, le texte ensuite.
     const solve = doc.getElementById("btn-solve");
-    assert.ok(!solve.children.some((c) => c.tagName === "img"));
+    assert.equal(solve.children[0].tagName, "img");
     assert.equal(buttonText(solve), "Résoudre");
   });
 

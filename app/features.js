@@ -249,7 +249,7 @@ function surface({ button, icon, title, groups, note, build, invalid }) {
 /** Combiner : même panneau sous `btn-boolean` (groupe Corps) et
  *  `btn-gem-combine` (onglet Bijouterie). Un seul objet, deux ids. */
 const COMBINE_FEATURE = {
-  icon: "PartDesign_Boolean.svg",
+  icon: "fs_boolean.svg",
   title: "Combiner",
   guard: (ctx) => {
     const options = booleanToolOptions(ctx);
@@ -646,7 +646,7 @@ export const FEATURES = [
   }),
   withSketchProfile({
     button: "btn-pocket",
-    icon: "PartDesign_Pocket.svg",
+    icon: "fs_pocket.svg",
     title: "Enlèvement extrudé",
     groups: () => extrudeGroups("pocket"),
     build: (v) => extrudeBuild("add_pocket", v),
@@ -656,18 +656,18 @@ export const FEATURES = [
   revolved({
     button: "btn-revolution",
     op: "add_revolution",
-    icon: "PartDesign_Revolution.svg",
+    icon: "fs_revolve.svg",
     title: "Révolution",
   }),
   revolved({
     button: "btn-groove",
     op: "add_groove",
-    icon: "PartDesign_Groove.svg",
+    icon: "fs_groove.svg",
     title: "Enlèvement par révolution",
   }),
   {
     button: "btn-hole",
-    icon: "PartDesign_Hole.svg",
+    icon: "fs_hole.svg",
     title: "Perçage",
     groups: () => [
       {
@@ -732,7 +732,7 @@ export const FEATURES = [
   },
   {
     button: "btn-loft",
-    icon: "PartDesign_AdditiveLoft.svg",
+    icon: "fs_loft.svg",
     title: "Lissage",
     groups: () => [
       { label: "Profils",
@@ -764,7 +764,7 @@ export const FEATURES = [
   },
   {
     button: "btn-sweep",
-    icon: "PartDesign_AdditivePipe.svg",
+    icon: "fs_sweep.svg",
     title: "Balayage",
     groups: () => [
       { label: "Profil",
@@ -844,7 +844,7 @@ export const FEATURES = [
   }),
   dressup({
     button: "btn-fillet",
-    icon: "PartDesign_Fillet.svg", title: "Congé",
+    icon: "fs_fillet.svg", title: "Congé",
     selectionLabel: "Éléments à arrondir",
     accepts: ["edges", "face"],
     hint: "Cliquez des arêtes (Ctrl = ajouter) ou une face",
@@ -861,7 +861,7 @@ export const FEATURES = [
   }),
   dressup({
     button: "btn-chamfer",
-    icon: "PartDesign_Chamfer.svg", title: "Chanfrein",
+    icon: "fs_chamfer.svg", title: "Chanfrein",
     selectionLabel: "Éléments à chanfreiner",
     accepts: ["edges", "face"],
     hint: "Cliquez des arêtes (Ctrl = ajouter) ou une face",
@@ -878,7 +878,7 @@ export const FEATURES = [
   }),
   {
     button: "btn-shell",
-    icon: "PartDesign_Thickness.svg", title: "Coque",
+    icon: "fs_shell.svg", title: "Coque",
     dressup: true,
     groups: (ctx) => {
       const first = ctx.selection(["face"]);
@@ -906,7 +906,7 @@ export const FEATURES = [
   },
   dressup({
     button: "btn-draft",
-    icon: "PartDesign_Draft.svg", title: "Dépouille",
+    icon: "fs_draft.svg", title: "Dépouille",
     selectionLabel: "Faces à dépouiller",
     group: "Angle de dépouille",
     rows: [
@@ -926,7 +926,7 @@ export const FEATURES = [
   }),
   {
     button: "btn-linpattern",
-    icon: "PartDesign_LinearPattern.svg",
+    icon: "fs_linear_pattern.svg",
     title: "Réseau linéaire",
     groups: () => [
       patternFeaturesGroup(),
@@ -959,7 +959,7 @@ export const FEATURES = [
   },
   {
     button: "btn-polpattern",
-    icon: "PartDesign_PolarPattern.svg",
+    icon: "fs_polar_pattern.svg",
     title: "Réseau circulaire",
     groups: () => [
       patternFeaturesGroup(),
@@ -988,7 +988,7 @@ export const FEATURES = [
   },
   {
     button: "btn-mirror",
-    icon: "PartDesign_Mirrored.svg",
+    icon: "fs_mirror.svg",
     title: "Symétrie",
     groups: () => [
       patternFeaturesGroup(),
@@ -1012,7 +1012,7 @@ export const FEATURES = [
   },
   surface({
     button: "btn-surf-extrude",
-    icon: "Surface_Filling.svg", title: "Surface extrudée",
+    icon: "fs_surface_extrude.svg", title: "Surface extrudée",
     groups: [{ label: "Paramètres", rows: [
       { type: "number", key: "length", label: "Longueur", value: 20,
         unit: "mm" },
@@ -1025,7 +1025,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-revolve",
-    icon: "PartDesign_Revolution.svg", title: "Surface de révolution",
+    icon: "fs_surface_revolve.svg", title: "Surface de révolution",
     groups: [{ label: "Paramètres", rows: [
       { type: "number", key: "angle", label: "Angle", value: 360,
         unit: "°", min: 0.01 },
@@ -1038,7 +1038,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-loft",
-    icon: "PartDesign_AdditiveLoft.svg",
+    icon: "fs_surface_loft.svg",
     title: "Surface lissée",
     groups: [{ label: "Profils",
       rows: [{ type: "selection", key: "profiles", accepts: ["sketch"],
@@ -1054,7 +1054,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-sew",
-    icon: "Part_3D_object.svg",
+    icon: "fs_sew.svg",
     title: "Coudre",
     groups: [{ label: "Surfaces",
       rows: [{ type: "selection", key: "surfaces", accepts: ["surface"],
@@ -1071,7 +1071,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-thicken",
-    icon: "PartDesign_Thickness.svg",
+    icon: "fs_thicken.svg",
     title: "Épaissir",
     groups: [
       { label: "Surface",
@@ -1091,7 +1091,7 @@ export const FEATURES = [
   }),
   {
     button: "btn-graph-feature",
-    icon: "nodes_wb_icon.svg",
+    icon: "fs_graph_feature.svg",
     title: "Fonction graphe",
     preview: false,
     groups: () => [{
@@ -1126,7 +1126,7 @@ export const FEATURES = [
   },
   {
     button: "btn-repeat-variable",
-    icon: "PartDesign_LinearPattern.svg",
+    icon: "fs_variable_pattern.svg",
     title: "Réseau variable",
     preview: false,
     groups: () => [

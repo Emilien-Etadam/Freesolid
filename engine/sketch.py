@@ -1035,6 +1035,11 @@ class SketchMixin:
                             self._distance_point_line(
                                 e1.StartPoint, e2.StartPoint, e2.EndPoint))
                 return C("Distance", g1, 1, g2, float(distance))
+            # Sketcher compte l'angle de la 1re ligne vers la 2e, dans le
+            # sens trigonométrique : on les ordonne ainsi, sinon la cote
+            # ferait pivoter les lignes pour inverser l'angle.
+            if cross < 0:
+                g1, g2 = g2, g1
             angle = (value if value is not None else
                      abs(math.atan2(cross, d1x * d2x + d1y * d2y)))
             return C("Angle", g1, g2, float(angle))
@@ -1055,6 +1060,13 @@ class SketchMixin:
         try:
             x, y = float(at[0]), float(at[1])
             c = sk.Constraints[index]
+            if c.Type == "Angle":
+                corner = self._angle_corner(sk, c)
+                if corner is not None:
+                    import math
+                    self._set_dim_offset(
+                        sk, index, math.hypot(x - corner.x, y - corner.y))
+                return
             a, b = self._dim_ends(sk, c)
             if a is None:
                 return
@@ -1077,6 +1089,21 @@ class SketchMixin:
         if (round(offset, 9), 0.0) == self._DEFAULT_LABEL:
             offset += 1e-6  # 10 tout rond voudrait dire « jamais posée »
         sk.setLabelDistance(index, float(offset))
+
+    @staticmethod
+    def _angle_corner(sk, c):
+        """Point de rencontre des deux lignes d'une cote d'angle."""
+        try:
+            l1, l2 = sk.Geometry[c.First], sk.Geometry[c.Second]
+            p, r = l1.StartPoint, l1.EndPoint - l1.StartPoint
+            q, s = l2.StartPoint, l2.EndPoint - l2.StartPoint
+            den = r.x * s.y - r.y * s.x
+            if abs(den) < 1e-12:
+                return None
+            t = ((q.x - p.x) * s.y - (q.y - p.y) * s.x) / den
+            return p + r * t
+        except Exception:
+            return None
 
     def _dim_ends(self, sk, c):
         """Les deux points mesurés d'une cote de distance (A, B)."""

@@ -2439,7 +2439,23 @@ class SelftestMixin:
                             "axis": "x"}):
                 last = self.sketch_dim(name, **params)["dims"][-1]
                 kinds.append((last["type"], round(last["value"], 6)))
-            report["p44_cotation_intelligente"] = kinds == [
+            # Angle posé : l'arc passe là où on a cliqué (rayon retenu).
+            self.sketch_add_line(name, 60, 0, 80, 0)                # 4
+            self.sketch_add_line(name, 60, 10, 80, 30)              # 5
+            # Les lignes 5 puis 4 tournent dans le sens horaire : la cote ne
+            # doit pas les faire pivoter.
+            before = [e for e in self.sketch_state(name)["entities"]
+                      if e["id"] in (4, 5)]
+            state = self.sketch_dim(name, 5, geo2=4, at=[50, 50])
+            angle = state["dims"][-1]
+            after = [e for e in state["entities"] if e["id"] in (4, 5)]
+            unmoved = all(abs(u - v) < 1e-6
+                          for e1, e2 in zip(before, after)
+                          for key in ("p1", "p2")
+                          for u, v in zip(e1[key], e2[key]))
+            corner_ok = (angle["type"] == "Angle" and angle["offset"] is not None
+                         and abs(angle["offset"] - 50) < 1e-6)
+            report["p44_cotation_intelligente"] = corner_ok and unmoved and kinds == [
                 ("Radius", 5.0), ("Distance", 20.0), ("Distance", 30.0),
                 ("DistanceX", 10.0)]
             report["p44_cotes_hv"] = (

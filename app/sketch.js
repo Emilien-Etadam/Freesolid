@@ -1495,6 +1495,12 @@ export function createSketchMode(deps) {
                && lineEnds(mode.pendingDim)) {
       const local = toLocal(event);
       if (!local) return;
+      // Sur une autre entité, c'est une cote à deux qui se prépare.
+      const other = overPoint(event) ?? nearestEntity(event);
+      if (other != null && (other.geo ?? other) !== mode.pendingDim.geo) {
+        previewLine.visible = false;
+        return;
+      }
       const [a, b] = lineEnds(mode.pendingDim);
       const path = pointPairDimPath(a, b, pointPairDimKind(a, b, local), local);
       previewLine.geometry.setFromPoints(

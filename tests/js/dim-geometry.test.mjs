@@ -169,3 +169,25 @@ describe("cote glissée : décalage sous le curseur", () => {
       null);
   });
 });
+
+describe("cote d'angle : près des lignes, pas au sommet", () => {
+  // Deux lignes qui ne se touchent pas : leur rencontre est en (0, 0).
+  const lines = [
+    { id: 0, type: "line", p1: [20, 0], p2: [40, 0] },
+    { id: 1, type: "line", p1: [20, 20], p2: [40, 40] },
+  ];
+  const pair = { geos: [0, 1, null], pos: [0, 0, 0] };
+  it("sans pose : l'arc passe au milieu de la plus proche", () => {
+    const g = dimGeometry({ type: "Angle", geo: 0 }, pair, lines, 1);
+    const [x, y] = g.segments[0];
+    assert.ok(close(Math.hypot(x, y), 30));
+  });
+  it("posée : l'arc passe par le clic, attache jusqu'à lui", () => {
+    const g = dimGeometry({ type: "Angle", geo: 0, offset: 60 }, pair, lines, 1);
+    const [x, y] = g.segments[0];
+    assert.ok(close(Math.hypot(x, y), 60));
+    assert.ok(g.segments.length > 24);   // les attaches suivent l'arc
+    assert.ok(close(dimOffsetAt({ type: "Angle", geo: 0 }, pair, lines,
+      { x: 0, y: 50 }), 50));
+  });
+});

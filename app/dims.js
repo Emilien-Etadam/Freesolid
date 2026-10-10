@@ -199,7 +199,8 @@ function lineDirFrom(line, origin) {
     ?? unit(line.p2[0] - line.p1[0], line.p2[1] - line.p1[1]);
 }
 
-function angleDim(l1, l2, size) {
+/** Point de rencontre des deux lignes (prolongées), ou null si parallèles. */
+function lineIntersection(l1, l2) {
   const x1 = l1.p1[0], y1 = l1.p1[1];
   const v1x = l1.p2[0] - x1, v1y = l1.p2[1] - y1;
   const x2 = l2.p1[0], y2 = l2.p1[1];
@@ -207,29 +208,67 @@ function angleDim(l1, l2, size) {
   const den = v1x * v2y - v1y * v2x;
   if (Math.abs(den) < 1e-12) return null;
   const s = ((x2 - x1) * v2y - (y2 - y1) * v2x) / den;
-  const o = { x: x1 + s * v1x, y: y1 + s * v1y };
+  return { x: x1 + s * v1x, y: y1 + s * v1y };
+}
+
+/** Distances, depuis O le long de d, des deux bouts d'une ligne. */
+function reachAlong(line, o, d) {
+  return [line.p1, line.p2].map(
+    (p) => (p[0] - o.x) * d.x + (p[1] - o.y) * d.y);
+}
+
+/**
+ * Cote d'angle entre deux lignes : un arc centré sur leur point de
+ * rencontre, au rayon `radius` (là où la cote a été posée), sinon assez
+ * loin pour passer le long des lignes — pas collé au sommet quand elles
+ * ne se touchent pas. Une attache prolonge une ligne jusqu'à l'arc.
+ */
+function angleDim(l1, l2, size, radius = null) {
+  const o = lineIntersection(l1, l2);
+  if (!o) return null;
   const d1 = lineDirFrom(l1, o);
   const d2 = lineDirFrom(l2, o);
   if (!d1 || !d2) return null;
+  const reach1 = reachAlong(l1, o, d1);
+  const reach2 = reachAlong(l2, o, d2);
+  // Par défaut : au milieu de la plus proche des deux lignes.
+  const middle = (r) => (r[0] + r[1]) / 2;
+  const r = radius != null && radius > 0 ? radius
+    : Math.max(Math.min(middle(reach1), middle(reach2)), size * 4);
   let a1 = Math.atan2(d1.y, d1.x);
   let a2 = Math.atan2(d2.y, d2.x);
   let sweep = a2 - a1;
   while (sweep > Math.PI) sweep -= Math.PI * 2;
   while (sweep < -Math.PI) sweep += Math.PI * 2;
-  const r = size * 4;
   const segments = [];
-  const steps = 16;
+  const steps = 24;
   for (let i = 0; i < steps; i++) {
     const t0 = a1 + sweep * (i / steps);
     const t1 = a1 + sweep * ((i + 1) / steps);
     segments.push([o.x + r * Math.cos(t0), o.y + r * Math.sin(t0),
                    o.x + r * Math.cos(t1), o.y + r * Math.sin(t1)]);
   }
+  // Attaches : la ligne prolongée jusqu'à l'arc s'il passe hors d'elle.
+  const ext = size * 0.6;
+  for (const [d, reach] of [[d1, reach1], [d2, reach2]]) {
+    const near = Math.min(...reach), far = Math.max(...reach);
+    if (r > far) {
+      segments.push([o.x + d.x * far, o.y + d.y * far,
+                     o.x + d.x * (r + ext), o.y + d.y * (r + ext)]);
+    } else if (r < near) {
+      segments.push([o.x + d.x * near, o.y + d.y * near,
+                     o.x + d.x * Math.max(r - ext, 0),
+                     o.y + d.y * Math.max(r - ext, 0)]);
+    }
+  }
   const mid = a1 + sweep / 2;
   const sign = Math.sign(sweep) || 1;
   a2 = a1 + sweep;
+  const radial = { x: Math.cos(mid), y: Math.sin(mid) };
   return {
-    label: { x: o.x + (r + size) * Math.cos(mid), y: o.y + (r + size) * Math.sin(mid) },
+    label: { x: o.x + (r + size) * radial.x, y: o.y + (r + size) * radial.y },
+    along: { x: o.x + r * radial.x, y: o.y + r * radial.y },
+    normal: radial,
     segments,
     arrows: [
       { x: o.x + r * Math.cos(a1), y: o.y + r * Math.sin(a1),
@@ -299,7 +338,7 @@ export function dimGeometry(dim, constraint, entities, size = 2) {
     }
   } else if (dim.type === "Angle" && e1?.type === "line"
              && e2?.type === "line") {
-    out = angleDim(e1, e2, size);
+    out = angleDim(e1, e2, size, dim.offset);
   }
   return out ?? fallback();
 }
@@ -317,6 +356,13 @@ export function dimOffsetAt(dim, constraint, entities, at) {
   const [g1, g2] = constraint?.geos ?? [dim.geo, null];
   const [p1, p2] = constraint?.pos ?? [0, 0];
   const e1 = byId(g1);
+  if (dim.type === "Angle") {
+    // Angle : le rayon de l'arc, depuis le point de rencontre.
+    const e2 = byId(g2);
+    if (e1?.type !== "line" || e2?.type !== "line") return null;
+    const o = lineIntersection(e1, e2);
+    return o ? Math.hypot(at.x - o.x, at.y - o.y) : null;
+  }
   let a = null, b = null;
   if (g2 == null && e1?.type === "line" && !p1) {
     a = pointOf(e1, 1);

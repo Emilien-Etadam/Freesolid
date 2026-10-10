@@ -637,7 +637,7 @@ export function chamferEditValues(v, chamfer, params) {
 export const FEATURES = [
   withSketchProfile({
     button: "btn-pad",
-    icon: "PartDesign_Pad.svg",
+    icon: "nodes_extrude.svg",
     title: "Extrusion",
     groups: () => extrudeGroups("pad"),
     build: (v) => extrudeBuild("add_pad", v),
@@ -790,7 +790,7 @@ export const FEATURES = [
   },
   {
     button: "btn-helix",
-    icon: "PartDesign_AdditiveHelix.svg",
+    icon: "nodes_helix.svg",
     title: "Hélice",
     groups: () => [{
       label: "Paramètres",
@@ -814,7 +814,7 @@ export const FEATURES = [
   },
   dressup({
     button: "btn-text",
-    icon: "Draft_ShapeString.svg", title: "Texte",
+    icon: "nodes_text.svg", title: "Texte",
     selectionLabel: "Face d'appui",
     group: "Texte",
     rows: [
@@ -1091,7 +1091,7 @@ export const FEATURES = [
   }),
   {
     button: "btn-graph-feature",
-    icon: "Geoassembly.svg",
+    icon: "nodes_wb_icon.svg",
     title: "Fonction graphe",
     preview: false,
     groups: () => [{

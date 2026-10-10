@@ -198,7 +198,7 @@ de suite. Q6 et Q7 attendent une maquette et un échantillon validés.
 | Q4 | confié à Cursor, après Q9a |
 | Q5 | après Q4 |
 | Q6 | fait : en-tête de 130 px en 1366 × 768 (zone 3D : 611 px de haut au lieu de 377) ; icônes actuelles en attendant Q7 |
-| Q7 | icônes de l'utilisateur, à recevoir |
+| Q7 | style des icônes de Nodes (utilisateur) ; 11 branchées, 74 à dessiner : `docs/icones-a-dessiner.md` |
 | Q8 | fait : lumières liées à la vue, fond en dégradé, grille estompée |
 | Q9 | Q9a fait (Cursor) : consigne neutre, face d'esquisse, menu sans recouvrir le ruban ; volet d'arbre et menu : Claude |
 | Q10 | fait (voir § 2) |

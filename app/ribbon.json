@@ -15,16 +15,16 @@
         {
           "libelle": "Modélisation",
           "boutons": [
-            {"id": "btn-pad", "titre": "Extrusion", "taille": "large", "icon": "icons/PartDesign_Pad.svg", "libelle": "Extrusion"},
+            {"id": "btn-pad", "titre": "Extrusion", "taille": "large", "icon": "icons/nodes_extrude.svg", "libelle": "Extrusion"},
             {"id": "btn-revolution", "titre": "Révolution — autour de l'axe vertical de l'esquisse", "icon": "icons/PartDesign_Revolution.svg", "libelle": "Révolution", "taille": "large"},
             {"id": "btn-pocket", "titre": "Enlèvement extrudé", "taille": "large", "icon": "icons/PartDesign_Pocket.svg", "libelle": "Enlèvement extrudé"},
             {"id": "btn-groove", "titre": "Enlèvement par révolution", "icon": "icons/PartDesign_Groove.svg", "libelle": "Enlèv. révolution", "taille": "large"},
             {"id": "btn-hole", "titre": "Perçage — une esquisse de cercles positionne les trous", "icon": "icons/PartDesign_Hole.svg", "libelle": "Perçage", "taille": "large"},
             {"id": "btn-loft", "titre": "Lissage — plusieurs profils, souvent sur des plans de référence", "icon": "icons/PartDesign_AdditiveLoft.svg", "libelle": "Lissage"},
             {"id": "btn-sweep", "titre": "Balayage — un profil suit une trajectoire", "icon": "icons/PartDesign_AdditivePipe.svg", "libelle": "Balayage"},
-            {"id": "btn-helix", "titre": "Hélice — ressorts, filets réels", "icon": "icons/PartDesign_AdditiveHelix.svg", "libelle": "Hélice"},
-            {"id": "btn-text", "titre": "Gravure / bossage de texte sur une face — marquage de pièces", "icon": "icons/Draft_ShapeString.svg", "libelle": "Texte"},
-            {"id": "btn-graph-feature", "titre": "Fonction graphe — flux de nœuds, boucles et listes, une forme en sortie", "icon": "icons/Geoassembly.svg", "libelle": "Fonction graphe"},
+            {"id": "btn-helix", "titre": "Hélice — ressorts, filets réels", "icon": "icons/nodes_helix.svg", "libelle": "Hélice"},
+            {"id": "btn-text", "titre": "Gravure / bossage de texte sur une face — marquage de pièces", "icon": "icons/nodes_text.svg", "libelle": "Texte"},
+            {"id": "btn-graph-feature", "titre": "Fonction graphe — flux de nœuds, boucles et listes, une forme en sortie", "icon": "icons/nodes_wb_icon.svg", "libelle": "Fonction graphe"},
             {"id": "btn-boolean", "titre": "Combiner deux corps : Soustraire / Ajouter / Intersection", "icon": "icons/PartDesign_Boolean.svg", "libelle": "Combiner"}
           ]
         },
@@ -60,7 +60,7 @@
         {
           "libelle": "Courbes",
           "boutons": [
-            {"id": "btn-curve3d", "titre": "Courbe 3D par points — trajectoire de balayage (le repli esquisse 3D)", "taille": "large", "icon": "icons/Sketcher_Create3PointArc.svg", "libelle": "Courbe 3D"}
+            {"id": "btn-curve3d", "titre": "Courbe 3D par points — trajectoire de balayage (le repli esquisse 3D)", "taille": "large", "icon": "icons/nodes_polyline.svg", "libelle": "Courbe 3D"}
           ]
         },
         {
@@ -113,7 +113,7 @@
         {
           "libelle": "Liaisons",
           "boutons": [
-            {"id": "btn-move", "titre": "Déplacer le composant sélectionné (translation + rotations)", "libelle": "Déplacer"},
+            {"id": "btn-move", "titre": "Déplacer le composant sélectionné (translation + rotations)", "icon": "icons/nodes_translate.svg", "libelle": "Déplacer"},
             {"id": "btn-joint", "titre": "Contrainte d'assemblage — deux faces, le solveur repositionne", "icon": "icons/Geoassembly.svg", "libelle": "Contrainte"}
           ]
         }

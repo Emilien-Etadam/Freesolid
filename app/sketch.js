@@ -139,12 +139,12 @@ export function createSketchMode(deps) {
   let building = false; // construction multi-appels (rectangle) en cours
 
   const ENTITY_ICONS = {
-    Ligne: "Sketcher_CreateLine.svg",
-    Cercle: "Sketcher_CreateCircle.svg",
-    Arc: "Sketcher_CreateArc.svg",
-    Spline: "Sketcher_CreateBSpline.svg",
+    Ligne: "nodes_line.svg",
+    Cercle: "nodes_circle.svg",
+    Arc: "nodes_arc.svg",
+    Spline: "nodes_bspline.svg",
     Ellipse: "Sketcher_CreateEllipseByCenter.svg",
-    Polyligne: "Sketcher_CreateLine.svg",
+    Polyligne: "nodes_line.svg",
     Entité: "Sketcher_Sketch.svg",
   };
 

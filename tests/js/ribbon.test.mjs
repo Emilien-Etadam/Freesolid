@@ -276,12 +276,12 @@ describe("installCoreRibbons", () => {
     assert.equal(pad.title, "Extrusion");
     assert.equal(buttonText(pad), "Extrusion");
     const img = pad.children.find((c) => c.tagName === "img");
-    assert.equal(img.src, "icons/PartDesign_Pad.svg");
+    assert.equal(img.src, "icons/nodes_extrude.svg");
 
-    // Un bouton sans icône reste un bouton texte (btn-move, assemblage).
-    const move = doc.getElementById("btn-move");
-    assert.ok(!move.children.some((c) => c.tagName === "img"));
-    assert.equal(buttonText(move), "Déplacer");
+    // Un bouton sans icône reste un bouton texte (btn-solve, assemblage).
+    const solve = doc.getElementById("btn-solve");
+    assert.ok(!solve.children.some((c) => c.tagName === "img"));
+    assert.equal(buttonText(solve), "Résoudre");
   });
 
   it("mappe l'onglet esquisse sur le bandeau déjà présent", () => {

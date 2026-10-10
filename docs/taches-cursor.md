@@ -463,3 +463,19 @@ Règles :
   `ribbon.js`, `ribbon.json`, `menubar.js`, `shortcutbar.js`. Ses
   retouches à `main.js` resteront minimes ; faire `git merge qualite`
   entre deux modules.
+
+## Q7b — Une seule table d'icônes (après Q4)
+
+Les noms de fichiers d'icônes sont écrits en dur à plusieurs endroits
+(`ribbon.json`, `index.html`, `features.js`, `sketch.js`, l'arbre dans
+`main.js`, l'assemblage…). Les icônes dessinées par l'utilisateur
+(`docs/icones-a-dessiner.md`) vont arriver par lots.
+- Créer `app/icons.js` : une table « rôle → fichier » (`sketch`, `pad`,
+  `fillet`, `rel-horizontal`…) et une fonction `iconSrc(role)`. Tous les
+  endroits ci-dessus la lisent ; `ribbon.json` peut garder un champ
+  `icon` qui devient un rôle (`"icon": "pad"`), rendu par `ribbon.js`.
+- Les rôles reprennent les noms de la colonne « Fichier » du document sans
+  le préfixe `fs_` ni l'extension.
+- Test JS : chaque rôle pointe vers un fichier présent dans `app/icons/` ;
+  aucun fichier d'icône du code ne contourne la table.
+- Aucun changement visible.

@@ -43,3 +43,18 @@ de 40 mm ; congés de 8 mm sur les quatre arêtes verticales ; coque de
 | — | Les flèches gauche/droite tournent autour de l'axe vertical de l'écran : douze appuis montrent la pièce par-dessous. Une rotation autour de l'axe Z de la pièce serait plus naturelle. | À discuter. |
 | — | Sélectionner une arête cachée oblige à tourner la vue (pas de vue isométrique arrière dans la boîte d'orientation). | À discuter : vues isométriques des quatre coins. |
 | ✓ | Le chanfrein d'une arête suit toute la chaîne tangente (côtés et arrondis). | Bon comportement. |
+
+## 3. Arbre étagé
+
+Demi-profil sur le Plan de face (Ø 24 sur 30 mm, Ø 16 sur 40 mm), révolution
+autour de l'axe vertical de l'esquisse ; gorge de circlip par un rectangle
+de 2 × 1,5 mm et un enlèvement par révolution ; chanfrein de 1 mm au bout.
+
+| # | Accroc | Suite |
+|---|---|---|
+| 17 | Esquisse sur un plan qui traverse la pièce : le solide cache les traits (ils étaient « devant », mais la pièce, transparente pour l'aperçu, était dessinée après). | **Corrigé** : les traits, cotes et points d'esquisse passent dans la même passe, devant la pièce. |
+| 18 | Un trait vertical traverse chaque cylindre : la couture interne du noyau, tracée comme une arête. | **Corrigé** : les arêtes de couture ne sont plus tracées (selftest p43) ; les ids des autres restent ceux du noyau. |
+| 19 | Titre de panneau coupé (« Enlèvement par r… »). | **Corrigé** : il passe sur deux lignes. |
+| — | Sur une petite entité, les symboles H/V recouvrent tout le tracé. | À reprendre, avec les autres chevauchements de symboles. |
+| — | Après la première fonction, la vue n'est pas recadrée sur la pièce (F le fait). | À discuter : cadrer automatiquement après la première fonction. |
+| — | Positionner exactement un profil (la gorge) demande de le coter ; pas de cote entre un point et l'origine testée ici. | À vérifier au prochain parcours. |

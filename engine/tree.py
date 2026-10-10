@@ -835,14 +835,20 @@ class TreeMixin:
         Edge-by-edge on purpose — see ``protocol.pack_edges``: a raycast
         hit maps to exactly one OCCT edge, same contract as ``tessellate``
         for faces. Ids are Edge indices, so ``Edge{id+1}`` server-side.
+        Les arêtes de couture (la jointure interne d'un cylindre, d'un
+        cône…) ne sont pas tracées : elles ne bordent rien à l'œil. Les
+        ids des autres restent ceux du noyau.
         """
         from . import protocol
         body = self._require_body()
         shape = getattr(body, "Shape", None)
         if shape is None or not shape.Edges:
             return protocol.pack_edges([])
+        seams = self._seam_edge_ids(shape)
         lines = []
         for i, edge in enumerate(shape.Edges):
+            if i in seams:
+                continue
             try:
                 points = edge.discretize(Deviation=float(deviation))
             except Exception:
@@ -853,3 +859,22 @@ class TreeMixin:
             lines.append((i, [(p.x, p.y, p.z) for p in points],
                           float(edge.Length)))
         return protocol.pack_edges(lines)
+
+    @staticmethod
+    def _seam_edge_ids(shape):
+        """Indices (dans ``shape.Edges``) des arêtes de couture."""
+        index = {}
+        for i, edge in enumerate(shape.Edges):
+            index.setdefault(edge.hashCode(), []).append((i, edge))
+        seams = set()
+        for face in shape.Faces:
+            for edge in face.Edges:
+                try:
+                    if not edge.isSeam(face):
+                        continue
+                except Exception:
+                    continue
+                for i, candidate in index.get(edge.hashCode(), ()):
+                    if candidate.isSame(edge):
+                        seams.add(i)
+        return seams

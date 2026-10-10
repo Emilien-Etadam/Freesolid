@@ -787,9 +787,11 @@
     border-bottom: 1px solid var(--line);
   }
   #panel .phead-main img { width: 18px; height: 18px; }
+  /* Un titre long (« Enlèvement par révolution ») passe sur deux lignes
+     plutôt que d'être coupé. */
   #panel .ptitle {
-    flex: 1; font-weight: 600; font-size: var(--text-s);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1; min-width: 0; font-weight: 600; font-size: var(--text-s);
+    line-height: 1.2; overflow-wrap: anywhere;
   }
   #panel .pok, #panel .pcancel {
     width: 28px; height: 28px; border-radius: 50%;

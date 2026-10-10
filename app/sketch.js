@@ -81,28 +81,32 @@ export function createSketchMode(deps) {
   // Couleur = état de définition de l'entité (moteur : entity.status) :
   // bleu = encore libre, clair = entièrement définie, rouge = en trop.
   const STATUS_COLORS = { under: sceneTheme.under, full: sceneTheme.defined, over: sceneTheme.danger };
+  // « transparent » partout : la pièce l'est (estompage de l'aperçu), donc
+  // dessinée dans la passe transparente — un trait opaque passerait avant
+  // elle et resterait caché par le solide (esquisse sur un plan qui le
+  // traverse). Dans la même passe, l'ordre 20 du groupe le met devant.
+  const ON_TOP = { depthTest: false, transparent: true };
   const lineMaterials = {};
   const constructionMaterials = {};
   for (const [status, color] of Object.entries(STATUS_COLORS)) {
-    lineMaterials[status] = new THREE.LineBasicMaterial(
-      { color, depthTest: false });
+    lineMaterials[status] = new THREE.LineBasicMaterial({ color, ...ON_TOP });
     // Construction : en tirets et estompée, comme partout.
     constructionMaterials[status] = new THREE.LineDashedMaterial({
       color, dashSize: 2.5, gapSize: 1.8, depthTest: false,
       transparent: true, opacity: 0.6 });
   }
   const previewMaterial = new THREE.LineBasicMaterial(
-    { color: sceneTheme.accent, depthTest: false });
+    { color: sceneTheme.accent, ...ON_TOP });
   const selectedMaterial = new THREE.LineBasicMaterial(
-    { color: sceneTheme.selection, depthTest: false });
+    { color: sceneTheme.selection, ...ON_TOP });
   // Cotes : lignes d'attache, ligne de cote et flèches. Pilotante en bleu
   // clair, de référence (pilotée) en gris.
   const dimLineMaterial = new THREE.LineBasicMaterial(
-    { color: sceneTheme.dim, depthTest: false });
+    { color: sceneTheme.dim, ...ON_TOP });
   const drivenDimLineMaterial = new THREE.LineBasicMaterial(
-    { color: sceneTheme.ink2, depthTest: false });
+    { color: sceneTheme.ink2, ...ON_TOP });
   const pointMaterial = new THREE.PointsMaterial({
-    color: sceneTheme.accent, size: 7, sizeAttenuation: false, depthTest: false });
+    color: sceneTheme.accent, size: 7, sizeAttenuation: false, ...ON_TOP });
   group.renderOrder = 20;
 
   const mode = {
@@ -261,7 +265,7 @@ export function createSketchMode(deps) {
     color: sceneTheme.under, dashSize: 1.5, gapSize: 1.2, depthTest: false,
     transparent: true, opacity: 0.8 });
   const snapMaterial = new THREE.PointsMaterial({
-    color: sceneTheme.selection, size: 11, sizeAttenuation: false, depthTest: false });
+    color: sceneTheme.selection, size: 11, sizeAttenuation: false, depthTest: false, transparent: true });
   let inferLines = null;
   let snapPoint = null;
   let readoutEl = null;

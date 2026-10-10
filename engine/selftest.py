@@ -2371,6 +2371,20 @@ class SelftestMixin:
                 and state["dof"] == 2  # largeur et hauteur seulement
                 and any(c.Type == "Symmetric" and c.Third == -1 for c in cons))
 
+            mark("p43: arêtes de couture non tracées")
+            self.new_part("Pièce cylindre")
+            name = self.sketch_start()["sketch"]
+            self.sketch_add_circle(name, 0, 0, 10)
+            self.sketch_finish(name)
+            self.add_pad(20)
+            shape = self._require_body().Shape
+            drawn = {g["edgeId"] for g in self.tessellate_edges()["groups"]}
+            # Un cylindre : deux cercles tracés, la couture (droite) omise.
+            report["p43_coutures"] = (
+                len(shape.Edges) == 3 and len(drawn) == 2
+                and all(shape.Edges[i].Curve.__class__.__name__ == "Circle"
+                        for i in drawn))
+
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")
             self.add_rect_sketch(60, 40)

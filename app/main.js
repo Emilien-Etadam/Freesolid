@@ -26,6 +26,7 @@ import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
 import { contextToolbarKeys, viewMenuItems, viewMenuLabel } from "./viewmenu.js";
 import { currentPaneIndex, layoutPanes, paneRect } from "./layouts.js";
 import { perspectiveFrustum } from "./projection.js";
+import { createSceneLook } from "./scenelook.js";
 import {
   coordsText, editModeText, measureText, sketchEntityLength,
 } from "./statusbar.js";
@@ -256,7 +257,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 container.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x17191c);
+const look = createSceneLook(THREE, scene);
 
 // Hauteur du frustum (unités monde) à zoom = 1. Le zoom OrbitControls
 // et « Zoom au mieux » ajustent camera.zoom, pas la distance.
@@ -581,26 +582,17 @@ window.__freesolidDebug = {
   },
 };
 
-scene.add(new THREE.HemisphereLight(0xdde4ec, 0x30343a, 1.0));
-const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
-keyLight.position.set(1, -0.7, 1.2);
-scene.add(keyLight);
-
-const grid = new THREE.GridHelper(400, 40, 0x3a4048, 0x262b31);
-grid.rotation.x = Math.PI / 2; // into the XY plane, Z-up
-scene.add(grid);
-
 const baseMaterial = new THREE.MeshStandardMaterial({
-  color: 0x9fb2c4, metalness: 0.15, roughness: 0.55,
+  color: 0xaebccb, metalness: 0.08, roughness: 0.5,
   transparent: true, opacity: 1, // l'aperçu jaune estompe la pièce
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 const hoverMaterial = new THREE.MeshStandardMaterial({
-  color: 0x4f8fdb, metalness: 0.15, roughness: 0.45,
+  color: 0x4f8fdb, metalness: 0.08, roughness: 0.45,
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 const selectedMaterial = new THREE.MeshStandardMaterial({
-  color: 0xd9924a, metalness: 0.15, roughness: 0.45,
+  color: 0xd9924a, metalness: 0.08, roughness: 0.45,
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 
@@ -813,7 +805,7 @@ const hiddenEdgeMaterial = new THREE.LineBasicMaterial({
   depthFunc: THREE.GreaterEqualDepth,
 });
 const maskMaterial = new THREE.MeshBasicMaterial({
-  color: 0x17191c,
+  colorWrite: false,
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 let hiddenEdgeLines = null;
@@ -912,7 +904,8 @@ function makePlaneLabel(text) {
 let lastPlanesSize = null;
 
 function rebuildPlanes() {
-  const { radius } = partCenterRadius();
+  const { center, radius } = partCenterRadius();
+  look.fitGrid(center, radius);
   const size = Math.max(radius * 1.7, 80);
   if (lastPlanesSize === size && Object.keys(planeMeshes).length) {
     updatePlaneVisibility();
@@ -2005,6 +1998,7 @@ function renderExtraViews() {
     paneCamera.lookAt(state.target);
     setOrthoFrustum(paneCamera, width, height);
     paneCamera.updateProjectionMatrix();
+    look.follow(paneCamera);
     view.renderer.render(scene, paneCamera);
   }
 }
@@ -2020,6 +2014,7 @@ renderer.setAnimationLoop(() => {
   // En perspective, le recul de l'œil suit la distance au centre de la vue
   // (cadrage, panoramique) : la projection se recalcule à chaque image.
   if (camera.perspective) camera.updateProjectionMatrix();
+  look.follow(camera);
   renderer.render(scene, camera);
   renderExtraViews();
 });

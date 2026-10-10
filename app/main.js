@@ -26,6 +26,7 @@ import {
 import { arcAngles } from "./geom2d.js";
 import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
 import { installContextMenu } from "./contextmenu.js";
+import { installMeasure } from "./measure.js";
 import { currentPaneIndex, layoutPanes, paneRect } from "./layouts.js";
 import { perspectiveFrustum } from "./projection.js";
 import { createSceneLook } from "./scenelook.js";
@@ -1572,30 +1573,7 @@ renderer.domElement.addEventListener("pointerup", (event) => {
     return;
   }
 
-  if (measuring) {
-    const pick = hoveredEdgeGroup >= 0
-      ? { kind: "edge", id: edgeGroups[hoveredEdgeGroup].edgeId }
-      : hoveredGroup >= 0
-        ? { kind: "face", id: meshGroups[hoveredGroup].faceId }
-        : null;
-    if (!pick) return;
-    const label = (p) => (p.kind === "edge"
-      ? t("arête {n}", { n: p.id }) : t("face {n}", { n: p.id }));
-    if (!measureFirst) {
-      measureFirst = pick;
-      say(t("Mesurer : {a} — cliquez le second élément", { a: label(pick) }));
-    } else {
-      const first = measureFirst;
-      measuring = false;
-      measureFirst = null;
-      call("measure", { a_kind: first.kind, a_id: first.id,
-                        b_kind: pick.kind, b_id: pick.id })
-        .then((r) => say(t("Distance {a} ↔ {b} : {d} mm",
-          { a: label(first), b: label(pick), d: r.distance.toFixed(3) })))
-        .catch((error) => say(error.message, true));
-    }
-    return;
-  }
+  if (onMeasurePointerUp()) return;
 
   const clearPlaneChoice = () => {
     if (selectedPlane !== null || selectedDatumFeature !== null) {
@@ -2279,9 +2257,7 @@ document.addEventListener("keydown", (event) => {
   } else if (event.key === "Escape" && planePicking) {
     cancelPlanePick();
   } else if (event.key === "Escape" && measuring) {
-    measuring = false;
-    measureFirst = null;
-    say("Mesure annulée.");
+    cancelMeasure();
   } else if (event.key === "Escape"
       && !document.getElementById("script-trust")?.hidden) {
     event.preventDefault();
@@ -6086,66 +6062,10 @@ document.getElementById("btn-equations")
 
 // ---------- évaluer + mesurer ----------
 
-let lastDensity = 1.24; // PLA — le défaut d'un atelier d'impression 3D
-
-async function openEvaluatePanel() {
-  let props;
-  try {
-    props = await call("mass_properties", { density: lastDensity });
-  } catch (error) {
-    say(error.message, true);
-    return;
-  }
-  const fixed = (v, n = 1) => v.toFixed(n);
-  panel.open({
-    icon: "view-measurement.svg",
-    title: t("Évaluer"),
-    groups: [
-      { label: t("Propriétés de masse"),
-        rows: [{ type: "list", items: [
-          { label: t("Volume : {v} cm³",
-            { v: fixed(props.volume_mm3 / 1000, 2) }) },
-          { label: t("Masse : {m} g (à {d} g/cm³)",
-            { m: fixed(props.mass_g), d: props.density }) },
-          { label: t("Surface : {s} cm²", { s: fixed(props.area_mm2 / 100) }) },
-          { label: t("Centre de gravité : ")
-                   + props.center_of_mass.map((v) => fixed(v)).join(", ") },
-          { label: t("Encombrement : ")
-                   + props.bounding_box.map((v) => fixed(v)).join(" × ")
-                   + " mm" },
-        ] }] },
-      { label: t("Matière"),
-        rows: [{ type: "number", key: "density", label: t("Densité"),
-                 value: lastDensity, unit: "g/cm³", min: 0.001 }] },
-    ],
-    note: t("PLA ≈ 1,24 · PETG ≈ 1,27 · ABS ≈ 1,04 · Alu ≈ 2,70 · " +
-          "Acier ≈ 7,85 — OK recalcule avec la densité saisie"),
-    onApply: (v) => {
-      const density = num(v.density);
-      if (density > 0) {
-        lastDensity = density;
-        openEvaluatePanel();
-      }
-    },
-  });
-}
-
-document.getElementById("btn-evaluate")
-  .addEventListener("click", openEvaluatePanel);
-
 let measuring = false;
-let measureFirst = null;
 
-document.getElementById("btn-measure").addEventListener("click", () => {
-  if (!lastTree) {
-    say("Mesurer : ouvrez d'abord une pièce", true);
-    return;
-  }
-  measuring = true;
-  measureFirst = null;
-  say("Mesurer : cliquez deux éléments (faces ou arêtes) — Échap pour " +
-      "quitter");
-});
+Object.assign(ctx, { call, say, panel });
+const { onMeasurePointerUp, cancelMeasure } = installMeasure(ctx);
 
 document.getElementById("btn-sketch").addEventListener("click", () =>
   featureCommand(async () => {

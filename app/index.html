@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FreeSolid</title>
+<script>
+  // Thème avant le premier rendu et avant que la scène lise ses
+  // couleurs (même calcul que resolveTheme dans settings.js).
+  try {
+    const pref = localStorage.getItem("freesolid.theme");
+    const light = pref === "light" || (pref === "system"
+      && matchMedia("(prefers-color-scheme: light)").matches);
+    if (light) document.documentElement.dataset.theme = "light";
+  } catch { /* stockage indisponible : thème sombre */ }
+</script>
 <style>
   :root {
     --bg: #17191c;
@@ -62,6 +72,53 @@
     --scene-under: #5aa9ff;
     --scene-defined: #e8edf2;
     --scene-dim: #7fc4ff;
+  }
+
+  /* Thème clair (Q11) : mêmes jetons, autres valeurs. Le choix est posé
+     sur <html data-theme> par le script en tête de page. */
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #eceef1;
+    --panel: #f8f9fa;
+    --panel-2: #e6e9ed;
+    --line: #cdd2d8;
+    --ink: #1d2126;
+    --ink-2: #5b636d;
+    --accent: #2f6fc0;
+    --accent-2: #1f5aa6;
+    --accent-wash: #dbe7f6;
+    --error: #c0392b;
+    --error-deep: #e8b4ae;
+    --danger: #d63031;
+    --warn: #b7791f;
+    --warn-ink: #7a4f0e;
+    --caution: #9a7b12;
+    --success: #2e8b57;
+    --success-2: #23744a;
+    --success-deep: #a6d3b8;
+    --success-soft: #2f9e5f;
+    --success-wash: #dff1e6;
+    --ok: #23934f;
+    --selection: #d9822b;
+    --scene-bg-top: #f4f6f8;
+    --scene-bg-bottom: #c9d0d8;
+    --scene-sky: #ffffff;
+    --scene-ground: #8f969f;
+    --scene-light: #ffffff;
+    --scene-grid: #b9c0c9;
+    --scene-grid-major: #a0a8b2;
+    --scene-grid-axis: #7f8894;
+    --scene-part: #9fb1c4;
+    --scene-part-muted: #9aa4af;
+    --scene-curve: #16806f;
+    --scene-sketch: #2f5d9a;
+    --scene-edge: #161a20;
+    --scene-edge-faint: #8a929c;
+    --scene-edge-on-bg: #242a31;
+    --scene-ghost: #d6a100;
+    --scene-under: #1f6fd1;
+    --scene-defined: #1d2126;
+    --scene-dim: #1f6fbf;
   }
   * { margin: 0; box-sizing: border-box; }
   html, body { height: 100%; }

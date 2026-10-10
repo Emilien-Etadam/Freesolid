@@ -744,5 +744,9 @@
  "Saisie numérique : valeur invalide": "Numeric input: invalid value",
  "Rectangle : cliquez le sommet opposé — ou tapez la largeur": "Rectangle: click the opposite corner — or type the width",
  "Rectangle par le centre : cliquez un sommet — ou tapez la largeur": "Center rectangle: click a corner — or type the width",
- "Cercle : cliquez pour donner le rayon — ou tapez-le": "Circle: click to set the radius — or type it"
+ "Cercle : cliquez pour donner le rayon — ou tapez-le": "Circle: click to set the radius — or type it",
+ "Thème": "Theme",
+ "Sombre": "Dark",
+ "Clair": "Light",
+ "Selon le système": "Follow the system"
 }

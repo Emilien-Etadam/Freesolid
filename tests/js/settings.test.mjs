@@ -6,6 +6,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  THEME_KEY,
+  readTheme,
+  resolveTheme,
+  writeTheme,
   LANG_KEY,
   REPO_URL,
   desktopBridge,
@@ -120,3 +124,39 @@ describe("textes", () => {
     assert.match(py, new RegExp(`REPO_URL = "${REPO_URL}"`));
   });
 });
+
+describe("thème", () => {
+  const store = (init = {}) => {
+    const data = { ...init };
+    return { getItem: (k) => data[k] ?? null, setItem: (k, v) => { data[k] = v; }, data };
+  };
+
+  it("sombre par défaut, valeur inconnue ignorée", () => {
+    assert.equal(readTheme(store()), "dark");
+    assert.equal(readTheme(store({ [THEME_KEY]: "violet" })), "dark");
+    assert.equal(readTheme(null), "dark");
+  });
+
+  it("enregistre un thème connu seulement", () => {
+    const s = store();
+    assert.equal(writeTheme(s, "light"), true);
+    assert.equal(readTheme(s), "light");
+    assert.equal(writeTheme(s, "violet"), false);
+    assert.equal(readTheme(s), "light");
+  });
+
+  it("« système » suit la préférence du système", () => {
+    assert.equal(resolveTheme("system", true), "light");
+    assert.equal(resolveTheme("system", false), "dark");
+    assert.equal(resolveTheme("light", false), "light");
+    assert.equal(resolveTheme("dark", true), "dark");
+  });
+
+  it("le script de tête d'index.html lit la même clé", () => {
+    const html = readFileSync(new URL("../../app/index.html", import.meta.url), "utf8");
+    const head = html.slice(0, html.indexOf("<style>"));
+    assert.ok(head.includes(`localStorage.getItem("${THEME_KEY}")`));
+    assert.ok(html.includes(':root[data-theme="light"]'));
+  });
+});
+

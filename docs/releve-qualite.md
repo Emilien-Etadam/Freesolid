@@ -200,6 +200,6 @@ de suite. Q6 et Q7 attendent une maquette et un échantillon validés.
 | Q6 | fait : en-tête de 130 px en 1366 × 768 (zone 3D : 611 px de haut au lieu de 377) ; icônes actuelles en attendant Q7 |
 | Q7 | style des icônes de Nodes (utilisateur) ; 11 branchées, 74 à dessiner : `docs/icones-a-dessiner.md` |
 | Q8 | fait : lumières liées à la vue, fond en dégradé, grille estompée |
-| Q9 | Q9a fait (Cursor) : consigne neutre, face d'esquisse, menu sans recouvrir le ruban ; volet d'arbre et menu : Claude |
+| Q9 | fait : consigne neutre, face d'esquisse, menu placé sans recouvrir le ruban (Cursor) ; menu contextuel en rangée d'icônes + fonction + vue, 10 lignes au lieu de 19 sur une face ; volet d'arbre transparent, compact, clics qui traversent ses vides (Claude) |
 | Q10 | fait (voir § 2) |
-| Q11 | plus tard |
+| Q11 | fait : thème clair (Paramètres → Thème : sombre, clair, selon le système), mêmes jetons ; la page se recharge au changement |

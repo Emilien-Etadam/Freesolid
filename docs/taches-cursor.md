@@ -479,3 +479,10 @@ Les noms de fichiers d'icônes sont écrits en dur à plusieurs endroits
 - Test JS : chaque rôle pointe vers un fichier présent dans `app/icons/` ;
   aucun fichier d'icône du code ne contourne la table.
 - Aucun changement visible.
+- **Depuis 52d13c7** : `app/icons/fs_*.svg` (brouillons de Claude) couvrent
+  le ruban, l'esquisse et les panneaux. Dans la table, l'arbre et
+  l'assemblage de `main.js` passent eux aussi aux icônes `fs_` (même rôle
+  que la commande qui crée l'élément ; esquisse → `fs_sketch`, plans →
+  `fs_origin_plane`, origine → `fs_origin`, équations → `fs_equations`,
+  corps surfaciques → `fs_surface_body`). Les icônes reprises de FreeCAD
+  qui ne servent plus sont alors supprimées.

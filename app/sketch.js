@@ -143,9 +143,9 @@ export function createSketchMode(deps) {
     Cercle: "nodes_circle.svg",
     Arc: "nodes_arc.svg",
     Spline: "nodes_bspline.svg",
-    Ellipse: "Sketcher_CreateEllipseByCenter.svg",
+    Ellipse: "fs_ellipse.svg",
     Polyligne: "nodes_line.svg",
-    Entité: "Sketcher_Sketch.svg",
+    Entité: "fs_sketch.svg",
   };
 
   let entityPanelOpen = false;
@@ -386,7 +386,7 @@ export function createSketchMode(deps) {
     };
     abandonEntityPanel();
     panel.open({
-      icon: "Sketcher_Sketch.svg",
+      icon: "fs_sketch.svg",
       title: t("Image d'esquisse"),
       groups: [
         {
@@ -1891,7 +1891,7 @@ export function createSketchMode(deps) {
     const geos = mode.selection.map((s) => s.geo);
     abandonEntityPanel();
     panel.open({
-      icon: "Sketcher_RectangularArray.svg",
+      icon: "fs_sketch_array.svg",
       title: t("Réseau d'esquisse"),
       groups: [{
         label: t("Paramètres"),
@@ -1925,7 +1925,7 @@ export function createSketchMode(deps) {
     const geos = mode.selection.map((s) => s.geo);
     abandonEntityPanel();
     panel.open({
-      icon: "Sketcher_Copy.svg",
+      icon: "fs_offset.svg",
       title: t("Décaler"),
       groups: [{
         label: t("Paramètres"),

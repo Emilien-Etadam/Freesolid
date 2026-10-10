@@ -592,6 +592,10 @@ class TreeMixin:
                     "x": float(obj.FreeSolidTextX),
                     "y": float(obj.FreeSolidTextY),
                 }
+            deleted = getattr(obj, "FreeSolidDeletefaces", "")
+            if deleted:
+                item["delete_face"] = {"faces": [
+                    int(f) for f in str(deleted).split(";") if f != ""]}
             cut = self._surface_cut_spec(obj)
             if cut is not None:
                 item["surface_cut"] = cut

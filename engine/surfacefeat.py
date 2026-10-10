@@ -920,6 +920,108 @@ class SurfaceMixin:
         self._stamp(tip, cutsurface=src.Name, cutflip=int(bool(flip)))
         return self.get_tree()
 
+    @staticmethod
+    def _defeatured(base_shape, faces):
+        """Le solide sans ses faces ``faces`` (indices base 0) — les faces
+        voisines se prolongent pour refermer la matière."""
+        from engine.kernel import KernelError
+        picked = []
+        for face in faces:
+            if face < 0 or face >= len(base_shape.Faces):
+                raise KernelError("face inconnue : {}".format(face))
+            picked.append(base_shape.Faces[face])
+        try:
+            result = base_shape.defeaturing(picked)
+        except Exception:  # noqa: BLE001
+            result = None
+        if (result is None or result.isNull() or not result.Solids
+                or not result.isValid()):
+            raise KernelError("le modeleur ne sait pas retirer ces faces "
+                              "— essayez-les une par une, ou une face qui "
+                              "touche moins de voisines")
+        return result
+
+    def add_delete_face(self, faces):
+        """Supprimer des faces du solide : le trou se referme par les faces
+        voisines (perçage, congé, bossage retirés). La forme suit les
+        fonctions d'avant : elle est recalculée à chaque reconstruction."""
+        from engine.kernel import KernelError
+        body = self._require_body()
+        doc = self._require_doc()
+        tip = body.Tip
+        shape = getattr(body, "Shape", None)
+        if tip is None or shape is None or not shape.Solids:
+            raise KernelError("supprimer une face demande un solide")
+        indices = sorted({int(f) for f in faces or ()})
+        if not indices:
+            raise KernelError("cliquez les faces à supprimer")
+        result = self._defeatured(tip.Shape, indices)
+        before = tip.Shape.Volume
+        grows = result.Volume >= before
+        frozen = doc.addObject("Part::Feature", "DeleteFaceShape")
+        self._mark_internal(frozen)
+        frozen.Shape = result
+        self._stamp(frozen, defeatbase=tip.Name,
+                    defeatfaces=";".join(str(i) for i in indices))
+        tool_body = doc.addObject("PartDesign::Body", "DeleteFaceBody")
+        self._mark_internal(tool_body)
+        tool_body.BaseFeature = frozen
+
+        def discard():
+            names = [o.Name for o in (getattr(tool_body, "Group", None)
+                                      or [])]
+            for name in names + [tool_body.Name, frozen.Name]:
+                try:
+                    doc.removeObject(name)
+                except Exception:
+                    pass
+
+        try:
+            doc.recompute()
+            # Plus de matière (perçage, congé creux) : ajouter ; moins
+            # (bossage) : garder l'intersection.
+            self.add_boolean(tool=tool_body.Name,
+                             type="fuse" if grows else "common")
+        except KernelError:
+            discard()
+            raise
+        feature = body.Tip
+        if abs(body.Shape.Volume - result.Volume) > 1e-6 * max(before, 1.0):
+            self._drop_failed_feature(body, doc, feature, tip)
+            discard()
+            self._recompute()
+            raise KernelError("ces faces ajoutent et retirent de la matière "
+                              "à la fois — supprimez-les en deux fois")
+        feature.Label = self._t("Supprimer la face")
+        self._stamp(feature, deletefaces=";".join(str(i) for i in indices))
+        return self.get_tree()
+
+    def _refresh_frozen_shapes(self):
+        """Recalcule les formes figées qui dépendent d'une fonction du
+        corps (suppression de face) ; vrai si l'une a changé."""
+        doc = self._require_doc()
+        changed = False
+        for obj in doc.Objects:
+            base_name = getattr(obj, "FreeSolidDefeatbase", "")
+            if not base_name:
+                continue
+            base = doc.getObject(base_name)
+            if base is None or not getattr(base, "Shape", None):
+                continue
+            faces = [int(f) for f in str(obj.FreeSolidDefeatfaces).split(";")
+                     if f != ""]
+            try:
+                result = self._defeatured(base.Shape, faces)
+            except Exception:  # noqa: BLE001
+                continue  # l'ancienne forme reste ; l'erreur se verra
+            old = obj.Shape
+            if (old.isNull() or len(old.Faces) != len(result.Faces)
+                    or abs(old.Volume - result.Volume) > 1e-9
+                    or abs(old.Area - result.Area) > 1e-9):
+                obj.Shape = result
+                changed = True
+        return changed
+
     def edit_surface_cut(self, feature, flip):
         """Rééditer une coupe par surface : garder l'autre côté."""
         from engine.kernel import KernelError

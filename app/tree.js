@@ -1047,7 +1047,9 @@ export function installTree(ctx) {
       ? "graph_feature"
       : isRepeatFeature(feature)
         ? "linear_pattern"
-        : TREE_ICONS[feature.type];
+        : feature.surface_cut ? "surface_cut"
+          : feature.delete_face ? "surface_delete_face"
+            : TREE_ICONS[feature.type];
     if (icon) row.appendChild(treeIcon(icon));
     row.appendChild(document.createTextNode(
       feature.type === "Sketcher::SketchObject"

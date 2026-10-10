@@ -90,7 +90,7 @@
             {"id": "btn-surf-cut", "titre": "Couper le solide avec une surface — enlève ce qui est d'un côté", "icon": "surface_cut", "libelle": "Couper"},
             {"id": "btn-surf-fillet", "titre": "Congé entre deux faces d'une surface", "icon": "surface_fillet", "libelle": "Congé"},
             {"id": "btn-surf-split", "titre": "Ligne de séparation — une courbe posée sur la surface scinde ses faces", "icon": "surface_split", "libelle": "Scinder"},
-            {"id": "btn-surf-delete-face", "titre": "Supprimer des faces d'une surface", "icon": "surface_delete_face", "libelle": "Supprimer face"},
+            {"id": "btn-surf-delete-face", "titre": "Supprimer des faces — du solide (le trou se referme) ou d'une surface", "icon": "surface_delete_face", "libelle": "Supprimer face"},
             {"id": "btn-surf-untrim", "titre": "Désajuster — la face retrouve ses bords naturels, trous bouchés", "icon": "surface_untrim", "libelle": "Désajuster"}
           ]
         }

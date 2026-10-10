@@ -2821,6 +2821,33 @@ class SelftestMixin:
             report["p48_ligne_separation"] = (
                 areas == [400, 1200] and abs(rest.Shape.Area - 1200) < 0.1)
 
+            mark("p49: supprimer la face d'un solide")
+            self.new_part("Pièce défeaturing")
+            self.add_rect_sketch(40, 40)
+            tree = self.add_pad(10)
+            pad = next(f["name"] for f in tree["features"]
+                       if f["type"] == "PartDesign::Pad")
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if abs(f.CenterOfMass.z - 10) < 1e-6)
+            self.add_hole(6, through=True, face=top, points=[[0, 0, 10]])
+            holed = body.Shape.Volume
+            cyl = [i for i, f in enumerate(body.Shape.Faces)
+                   if f.Surface.TypeId == "Part::GeomCylinder"]
+            shown = self.preview("add_delete_face", {"faces": cyl})
+            tree = self.add_delete_face(cyl)
+            last = tree["features"][-1]
+            report["p49_supprimer_face_solide"] = (
+                bool(shown.get("positions"))
+                and holed < 16000 - 1
+                and abs(body.Shape.Volume - 16000) < 1e-3
+                and last.get("delete_face") == {"faces": cyl}
+                and len(tree["bodies"]) == 1)
+            # Le bloc s'épaissit : la face supprimée suit.
+            self.set_params(pad, {"Length": 20.0})
+            report["p49_suit_les_fonctions"] = abs(
+                body.Shape.Volume - 32000) < 1e-3
+
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")
             self.add_rect_sketch(60, 40)

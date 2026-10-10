@@ -834,7 +834,6 @@
  "Surface réglée — des segments droits entre deux courbes": "Ruled Surface — straight segments between two curves",
  "Réglée": "Ruled",
  "Congé entre deux faces d'une surface": "Fillet between two faces of a surface",
- "Supprimer des faces d'une surface": "Delete faces of a surface",
  "Supprimer face": "Delete Face",
  "Désajuster — la face retrouve ses bords naturels, trous bouchés": "Untrim — the face gets its natural edges back, holes filled",
  "Désajuster": "Untrim",
@@ -849,9 +848,6 @@
  "Surface réglée : exactement deux courbes": "Ruled surface: exactly two curves",
  "Supprimer des faces": "Delete Faces",
  "Faces": "Faces",
- "Cliquez les faces à supprimer, sur une même surface": "Click the faces to delete, on one surface",
- "Le trou laissé se bouche ensuite par un remplissage.": "The hole left can then be closed with a fill.",
- "Supprimer : des faces d'une même surface": "Delete: faces of one surface",
  "Désajuster la surface": "Untrim Surface",
  "Cliquez la face à rendre entière": "Click the face to make whole",
  "La face retrouve les bords naturels de sa surface : trous bouchés, contour d'origine.": "The face gets the natural edges of its surface back: holes filled, original outline.",
@@ -885,5 +881,9 @@
  "Cliquez la surface": "Click the surface",
  "Puis la courbe posée dessus (projetée, d'intersection, spline 3D)": "Then the curve lying on it (projected, intersection, 3D spline)",
  "Chaque morceau se supprime ou se remplit ensuite à part.": "Each piece can then be deleted or filled on its own.",
- "Scinder : une surface puis une courbe posée dessus": "Split: a surface then a curve lying on it"
+ "Scinder : une surface puis une courbe posée dessus": "Split: a surface then a curve lying on it",
+ "Supprimer des faces — du solide (le trou se referme) ou d'une surface": "Delete faces — of the solid (the hole closes) or of a surface",
+ "Cliquez les faces à supprimer : sur le solide, ou sur une même surface": "Click the faces to delete: on the solid, or on one surface",
+ "Sur le solide, les faces voisines referment le trou (perçage, congé, bossage retirés). Sur une surface, le trou reste ouvert : il se bouche ensuite par un remplissage.": "On the solid, the neighbouring faces close the hole (hole, fillet, boss removed). On a surface, the hole stays open: fill it afterwards.",
+ "Supprimer : des faces du solide, ou d'une même surface": "Delete: faces of the solid, or of one surface"
 }

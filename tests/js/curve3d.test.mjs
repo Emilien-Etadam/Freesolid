@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 
 import { clickPlane, curveProblem, nextPlane, rayPlane } from "../../app/curve3d.js";
 import { boundaryText, samePick } from "../../app/panel.js";
-import { boundaryParam, deleteFacesParams, extendParams, surfaceFilletParams }
+import { boundaryParam, deleteFacesBuild, deleteFacesParams, extendParams,
+  surfaceFilletParams }
   from "../../app/features.js";
 
 describe("spline 3D : plan de clic", () => {
@@ -91,6 +92,14 @@ describe("faces et arêtes d'une même surface", () => {
     assert.equal(deleteFacesParams([]), null);
   });
 
+  it("supprimer : faces du solide ou d'une surface, pas les deux", () => {
+    assert.deepEqual(deleteFacesBuild([{ kind: "face", face: 3 }]),
+      { op: "add_delete_face", params: { faces: [3] } });
+    assert.equal(deleteFacesBuild([face("S", 1)]).op, "surface_delete_faces");
+    assert.equal(deleteFacesBuild([{ kind: "face", face: 3 }, face("S", 1)]),
+      null);
+  });
+
   it("congé : arêtes d'une seule surface, rayon positif", () => {
     assert.deepEqual(surfaceFilletParams([edge("S", 4)], 3),
       { surface: "S", edges: [4], radius: 3 });
@@ -98,5 +107,13 @@ describe("faces et arêtes d'une même surface", () => {
     assert.equal(surfaceFilletParams([edge("S", 4)], 0), null);
     assert.equal(surfaceFilletParams([{ ...edge("C", 0), curve: true }], 3),
       null);
+  });
+});
+
+describe("panneaux de fonctions", () => {
+  it("chaque fonction décrit ses groupes par une fonction du contexte", async () => {
+    const { FEATURES } = await import("../../app/features.js");
+    assert.deepEqual(FEATURES.filter((e) => typeof e.groups !== "function")
+      .map((e) => e.button), []);
   });
 });

@@ -410,5 +410,9 @@
  "congé de surface inconnu : {}": "unknown surface fillet: {}",
  "Surface scindée": "Split Surface",
  "scinder demande une surface, pas une courbe": "splitting needs a surface, not a curve",
- "la courbe ne scinde pas la surface — elle doit être posée dessus, d'un bord à l'autre ou fermée": "the curve does not split the surface — it must lie on it, edge to edge or closed"
+ "la courbe ne scinde pas la surface — elle doit être posée dessus, d'un bord à l'autre ou fermée": "the curve does not split the surface — it must lie on it, edge to edge or closed",
+ "le modeleur ne sait pas retirer ces faces — essayez-les une par une, ou une face qui touche moins de voisines": "the modeler cannot remove these faces — try them one at a time, or a face with fewer neighbours",
+ "supprimer une face demande un solide": "deleting a face needs a solid",
+ "ces faces ajoutent et retirent de la matière à la fois — supprimez-les en deux fois": "these faces both add and remove material — delete them in two steps",
+ "Supprimer la face": "Delete Face"
 }

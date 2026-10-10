@@ -336,6 +336,12 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
         doc = self._require_doc()
         self._sync_revolution_axes()
         doc.recompute()
+        # Formes figées (suppression de face) : elles suivent les
+        # fonctions d'avant, une passe par niveau d'imbrication.
+        for _ in range(8):
+            if not self._refresh_frozen_shapes():
+                break
+            doc.recompute()
         if not self._assembly:
             self._report_progress("Reconstruction de l'arbre")
             self._plugins.run_after_recompute(self)
@@ -743,7 +749,8 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
         "add_mirror", "add_linear_pattern", "add_polar_pattern",
         "add_hole", "set_params",
         "add_loft", "add_sweep", "add_helix", "add_boolean", "add_text",
-        "add_datum_plane", "add_surface_cut",
+        "add_datum_plane", "add_surface_cut", "add_delete_face",
+        "surface_delete_faces",
     })
 
     def preview(self, op, params):
@@ -811,6 +818,7 @@ _TRANSACTIONAL = frozenset({
     "surface_sweep", "surface_offset", "surface_fill", "surface_extend",
     "edit_surface_extend", "surface_trim", "edit_surface_trim",
     "add_surface_cut", "edit_surface_cut", "surface_boundary",
+    "add_delete_face",
     "surface_ruled", "surface_delete_faces", "surface_untrim",
     "surface_fillet", "curve_intersection", "curve_project",
     "curve_composite", "edit_surface_fillet", "surface_split",

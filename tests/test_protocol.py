@@ -506,6 +506,7 @@ def test_ops_snapshot_keys():
         "add_chamfer",
         "add_curve3d",
         "add_datum_plane",
+        "add_delete_face",
         "add_draft",
         "add_fillet",
         "add_graph_feature",

@@ -269,6 +269,18 @@ export function deleteFacesParams(items) {
   return { surface: name, faces: items.map((i) => i.face) };
 }
 
+/** Faces cliquées : du solide (add_delete_face) ou d'une surface. */
+export function deleteFacesBuild(items) {
+  if (!items?.length) return null;
+  if (items.every((i) => i.kind === "face")) {
+    return { op: "add_delete_face",
+             params: { faces: items.map((i) => i.face) } };
+  }
+  if (items.some((i) => i.kind !== "surfface")) return null;
+  const params = deleteFacesParams(items);
+  return params ? { op: "surface_delete_faces", params } : null;
+}
+
 /** Arêtes cliquées d'une même surface → paramètres du congé, ou null. */
 export function surfaceFilletParams(items, radius) {
   const edges = (items ?? []).filter((i) => i.kind === "boundary"
@@ -1316,21 +1328,23 @@ export const FEATURES = [
     },
     invalid: "Scinder : une surface puis une courbe posée dessus",
   }),
-  surface({
+  {
     button: "btn-surf-delete-face",
     icon: "surface_delete_face",
     title: "Supprimer des faces",
-    groups: [{ label: "Faces",
-      rows: [{ type: "selection", key: "faces", accepts: ["surfface"],
-               multiple: true,
-               hint: "Cliquez les faces à supprimer, sur une même surface" }] }],
-    note: "Le trou laissé se bouche ensuite par un remplissage.",
-    build: (v) => {
-      const params = deleteFacesParams(v.faces?.items);
-      return params ? { op: "surface_delete_faces", params } : null;
-    },
-    invalid: "Supprimer : des faces d'une même surface",
-  }),
+    groups: () => [{ label: "Faces",
+      rows: [{ type: "selection", key: "faces",
+               accepts: ["face", "surfface"], multiple: true,
+               hint: "Cliquez les faces à supprimer : sur le solide, ou "
+                 + "sur une même surface" }] }],
+    note: "Sur le solide, les faces voisines referment le trou (perçage, "
+      + "congé, bossage retirés). Sur une surface, le trou reste ouvert : "
+      + "il se bouche ensuite par un remplissage.",
+    build: (v) => deleteFacesBuild(v.faces?.items),
+    invalid: () => ({ text: "Supprimer : des faces du solide, ou d'une "
+      + "même surface", tone: "guide" }),
+    refresh: "part",
+  },
   surface({
     button: "btn-surf-untrim",
     icon: "surface_untrim",

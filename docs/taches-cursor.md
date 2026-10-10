@@ -314,3 +314,79 @@ pour la rotation) :
 En esquisse, seules Ctrl+flèches (panoramique) restent actives. Les pas
 sont calculés dans un module pur testé (`app/navigation.js` existe déjà).
 
+---
+
+# Lot « qualité » (relevé : `docs/releve-qualite.md`)
+
+**Nouvelle branche.** Le lot `clone-sw` est en relecture (PR #89). Dans
+`D:\Dev\Freesolid-cursor` : `git fetch` n'est pas nécessaire (même dépôt
+local), faire `git checkout -b cursor/qualite qualite` une fois, puis **avant
+chaque tâche `git merge qualite`**. Un commit par tâche ; Claude fusionne
+`cursor/qualite` dans `qualite`. Mêmes règles communes (deux langues, LF,
+clean-room, vérifications). Ces tâches ne changent **pas** l'apparence
+générale : la refonte de l'en-tête et des icônes est faite ailleurs.
+
+## Q1 — Messages d'erreur clairs, neutres et traduits
+
+**Constat.** `engine/guard.py` (`_TRANSLATIONS`) explique trois erreurs
+FreeCAD, mais ses textes citent SolidWorks (interdit dans tout texte
+visible) et n'ont pas d'entrée dans `engine/lang/en.json`. Un congé ou un
+chanfrein trop grand, une coque impossible renvoient l'erreur brute
+« BRep_API: command not done ».
+
+**Comportement visé.**
+- Les trois textes de `guard.py` reformulés sans aucun nom de logiciel tiers,
+  et traduits (vérifier comment le message atteint le client et passer par
+  le mécanisme de traduction du moteur existant).
+- Les erreurs du noyau les plus courantes du flux pièce deviennent des
+  phrases utiles, **selon la fonction** qui échoue : congé / chanfrein trop
+  grand pour les arêtes choisies (« réduisez le rayon / la distance »), coque
+  impossible (épaisseur trop forte pour la pièce), dépouille impossible,
+  extrusion vide (« le profil ne produit aucun volume »). Repérer les points
+  d'échec dans `engine/kernel.py` (`_dressup`, `add_chamfer`,
+  `add_thickness`, `add_draft`, `_recompute`) ; garder le message brut en
+  complément discret si utile au diagnostic.
+- Une coque plus épaisse que la pièce est refusée avec un message (aujourd'hui
+  30 mm sur une plaque de 12 mm passe).
+- Tests Python (pur, sans FreeCAD) sur la table de correspondance ; une étape
+  de selftest qui provoque un congé trop grand et vérifie le message.
+
+## Q2 — Petites bavures
+
+- Retirer le `console.log("selftest", report)` de `app/main.js`.
+- Exports que personne n'importe (ni code ni test) : les rendre internes ou
+  les supprimer s'ils sont morts — entre autres `latestAvailableSketch`,
+  `booleanToolOptions`, `dressupParams` (features.js), `functionNodeSize`,
+  `functionPortLayout` (graph.js), `distancePointSegment`, `arcPoints`
+  (geom2d.js), `FILE_DIR_KEY`, `FILE_MODES`, `readFileDir` (filedialog.js),
+  `RELEASES_URL`, `LICENSE_URL`, `LANGS` (settings.js), `PART_SHORTCUTS`,
+  `SKETCH_TOOLS` (shortcutbar.js), `RECENT_KEY`, `MAX_RECENT`, `readRecent`
+  (welcome.js). Vérifier chaque cas avant de toucher.
+- Icônes jamais référencées dans `app/icons/` : `bound-expression`,
+  `nodes_bez_curve`, `nodes_cview`, `nodes_mview`, `nodes_timer` — les
+  retirer (et de `app/icons/README.md`).
+- Une seule aide de formatage en mm (aujourd'hui `fmtMm` dans geom2d.js,
+  `fmt` dans sketch.js, `mm` dans statusbar.js) et une seule lecture de
+  nombre (`num.js` ; `dims.js` et `features.js` refont la leur).
+- Une seule aide « point 3D → pixel écran » (copiée 5 fois : main.js et
+  sketch.js) et une seule « événement → coordonnées normalisées » (3 fois),
+  dans un petit module pur testé.
+- Comportement inchangé : tests et selftest verts, vérification à l'écran.
+
+## Q3 — Jetons de style
+
+**Comportement visé.** Aucun changement visible voulu ; tout passe par des
+variables.
+- Dans `app/index.html`, compléter `:root` : couleurs (fond, panneaux,
+  lignes, texte, texte secondaire, accent, erreur, `--warn` qui est utilisé
+  sans être défini, succès pour le vert `#6fbf8f` répété 13 fois, survol,
+  sélection), espacements `--space-1..4` (4/8/12/16 px), rayons
+  `--radius-s/m/l` (4/6/8 px), tailles `--text-xs/s/m/l` (11/12/13/16 px).
+  Remplacer les valeurs en dur par ces jetons (les écarts minimes sont
+  ramenés au jeton le plus proche).
+- Côté scène 3D (`app/main.js`, `app/sketch.js` : ~40 couleurs `0x…`),
+  réunir les couleurs dans un module `app/theme.js` qui les lit depuis les
+  variables CSS (`getComputedStyle`) avec une valeur de repli — pour qu'un
+  futur thème clair change aussi la scène.
+- Test JS : `theme.js` rend une couleur de repli sans DOM.
+

@@ -11,7 +11,8 @@ import { t } from "./i18n.js";
 import { eventToNdc } from "./screen.js";
 import { VIEWS } from "./viewcube.js";
 import {
-  middleAction, readReverseWheel, writeReverseWheel, zoomSpeedFor,
+  boxMode, middleAction, normalizeRect, readReverseWheel, writeReverseWheel,
+  zoomSpeedFor,
 } from "./navigation.js";
 
 export function installViewport(ctx) {
@@ -539,5 +540,7 @@ export function installViewport(ctx) {
     setReverseWheel, setLayout, rebuildPlanes, rebuildOrigin,
     toggleOrigin, setOriginShown, updatePlaneVisibility,
     startPlanePick, cancelPlanePick, pickPlane,
+    /** Centre de rotation posé au clic milieu, ou null. */
+    rotationPivot: () => rotationPivot,
   };
 }

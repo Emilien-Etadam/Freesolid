@@ -4,6 +4,7 @@
 
 import { t } from "./i18n.js";
 import { iconSrc } from "./icons.js";
+import { FEATURES } from "./features.js";
 import {
   buildGraph,
   cloneGraphDraft,
@@ -128,6 +129,7 @@ export function installGraphView(ctx) {
   const graphCap = document.getElementById("graph-cap");
   const graphBtn = document.getElementById("btn-graph");
   const graphAddBtn = document.getElementById("btn-graph-add");
+  const menuEl = document.getElementById("ctxmenu"); // menu de l'arbre, refermé ici
   const graphPalette = document.getElementById("graph-palette");
   const paramPickEl = document.getElementById("param-pick");
   const graphEdgeMenu = document.getElementById("graph-edge-menu");

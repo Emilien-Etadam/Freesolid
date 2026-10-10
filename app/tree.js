@@ -12,6 +12,9 @@ import {
   revolutionGroups, revolutionEditValues, revolutionProblem,
 } from "./features.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
+import { readScene } from "./theme.js";
+
+const sceneTheme = readScene();
 
 // Rôles de la table icons.js : même rôle que la commande qui crée
 // l'élément. Le graphe garde, lui, les fichiers d'avant.

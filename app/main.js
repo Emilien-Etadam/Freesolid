@@ -196,7 +196,7 @@ const {
   ORTHO_HEIGHT, viewSize, boxOverlay, localStore, originGroup,
   setReverseWheel, setLayout, rebuildPlanes, rebuildOrigin,
   toggleOrigin, setOriginShown, updatePlaneVisibility,
-  startPlanePick, cancelPlanePick, pickPlane,
+  startPlanePick, cancelPlanePick, pickPlane, rotationPivot,
 } = installViewport(ctx);
 
 
@@ -295,9 +295,10 @@ window.__freesolidDebug = {
   get featureDimCount() { return featureDimSprites.length; },
   /** Centre de rotation projeté à l'écran, ou null. */
   get rotationPivotScreen() {
-    if (!rotationPivot) return null;
+    const pivot = rotationPivot();
+    if (!pivot) return null;
     camera.updateMatrixWorld();
-    const p = rotationPivot.clone().project(camera);
+    const p = pivot.clone().project(camera);
     const rect = renderer.domElement.getBoundingClientRect();
     return ndcToScreen(p.x, p.y, rect);
   },

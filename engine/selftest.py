@@ -2417,9 +2417,13 @@ class SelftestMixin:
             line = self.sketch_state(name)["entities"][0]
             # Posée sous le segment : la cote garde ce décalage (sauvé).
             placed = self.sketch_dim(name, 0, at=[27, 3])["dims"][-1]
+            moved = self.sketch_place_dim(name, placed["id"], 5)
+            moved = next(d for d in moved["dims"] if d["id"] == placed["id"])
             report["p44_cote_posee"] = (
                 placed["offset"] is not None
-                and abs(placed["offset"] + 9) < 1e-6)
+                and abs(placed["offset"] + 9) < 1e-6
+                and abs(moved["offset"] - 5) < 1e-6
+                and abs(moved["value"] - placed["value"]) < 1e-9)
             report["p44_cotes_hv"] = (
                 [d["type"] for d in dims] == ["DistanceX", "DistanceY"]
                 and all(d["value"] > 0 for d in dims)

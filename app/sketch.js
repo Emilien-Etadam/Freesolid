@@ -20,8 +20,8 @@ import {
   boxMode, isDrag, normalizeRect, pickInBox, sketchLocalPoints,
 } from "./navigation.js";
 import {
-  arrowSegments, dimEditPayload, dimGeometry, dimLabel, openDimEditor,
-  pointPairDimKind, pointPairDimPath,
+  arrowSegments, dimEditPayload, dimGeometry, dimLabel, dimOffsetAt,
+  openDimEditor, pointPairDimKind, pointPairDimPath,
 } from "./dims.js";
 
 const sceneTheme = readScene();
@@ -130,6 +130,7 @@ export function createSketchMode(deps) {
     pendingFillet: null,  // { geo, x, y } — première ligne cliquée
     pendingDim: null,     // { geo, point? } — première entité cotée
     pendingDimPair: null, // deux points choisis, la cote attend sa place
+    dimDrag: null,        // cote saisie par son étiquette, en déplacement
     selection: [],        // [{ geo, point? }] — outil Sélectionner
     justDragged: false,   // un drag qui finit ne doit pas sélectionner
     drag: null,           // { geo, point } while dragging
@@ -197,6 +198,11 @@ export function createSketchMode(deps) {
     const projected = world.project(camera);
     const rect = renderer.domElement.getBoundingClientRect();
     return ndcToScreen(projected.x, projected.y, rect);
+  }
+
+  /** Unité de tracé des cotes : suit le zoom, taille constante à l'écran. */
+  function dimDrawSize() {
+    return (camera.top - camera.bottom) / (camera.zoom || 1) * 0.02;
   }
 
   function* endpoints() {
@@ -636,7 +642,7 @@ export function createSketchMode(deps) {
     }
 
     // L'unité de tracé suit le zoom : la cote garde sa taille à l'écran.
-    const dimSize = span * 0.02;
+    const dimSize = dimDrawSize();
     for (const dim of mode.state.dims) {
       const constraint = (mode.state.constraints ?? [])
         .find((c) => c.id === dim.id);
@@ -1165,6 +1171,16 @@ export function createSketchMode(deps) {
 
   function onPointerDown(event) {
     if (event.button !== 0 || mode.tool !== "select" || !mode.state) return;
+    // Étiquette de cote : on la glisse pour déplacer la cote.
+    const dim = dimLabelAt(event);
+    const grab = dim && grabDelta(dim, event);
+    if (grab != null) {
+      mode.dimDrag = { dim, grab, screen: { x: event.clientX, y: event.clientY },
+                       moved: false, offset: null };
+      controls.enabled = false;
+      setCursor("grabbing");
+      return;
+    }
     const p = overEndpoint(event);
     if (p) {
       mode.drag = { geo: p.geo, point: p.point };
@@ -1339,8 +1355,27 @@ export function createSketchMode(deps) {
       if (isDrag(mode.box, here)) boxOverlay?.show(mode.box, here);
       return;
     }
+    if (mode.dimDrag) {
+      const drag = mode.dimDrag;
+      if (Math.hypot(event.clientX - drag.screen.x,
+                     event.clientY - drag.screen.y) > DRAG_CLICK_PX) {
+        drag.moved = true;
+      }
+      const under = dragOffset(drag.dim, event);
+      if (drag.moved && under != null) {
+        // Aperçu local : la cote suit, le moteur la retient au lâcher.
+        // L'étiquette garde sa prise : elle reste sous le curseur.
+        const offset = under - drag.grab;
+        drag.offset = offset;
+        const live = mode.state.dims.find((d) => d.id === drag.dim.id);
+        if (live) live.offset = offset;
+        redraw();
+      }
+      return;
+    }
     if (mode.tool === "select" && !mode.drag) {
-      const hot = overEndpoint(event) || overEntity(event);
+      const hot = overEndpoint(event) || overEntity(event)
+        || dimLabelAt(event);
       setCursor(hot ? "grab" : "default");
     }
     if (mode.drag) {
@@ -1449,6 +1484,19 @@ export function createSketchMode(deps) {
   }
 
   function onPointerUp(event) {
+    if (mode.dimDrag) {
+      const { dim, moved, offset } = mode.dimDrag;
+      mode.dimDrag = null;
+      controls.enabled = true;
+      setCursor("grab");
+      mode.justDragged = moved; // le click qui suit ne sélectionne rien
+      if (moved && offset != null && mode.state) {
+        safe(call("sketch_place_dim",
+          { sketch: mode.state.sketch, dim: dim.id, offset }),
+          { keepSelection: true });
+      }
+      return;
+    }
     if (mode.box) {
       const start = mode.box;
       mode.box = null;
@@ -1538,15 +1586,47 @@ export function createSketchMode(deps) {
 
   function onDoubleClick(event) {
     if (!mode.state) return;
+    const dim = dimLabelAt(event);
+    if (dim) openModifyBox(dim, { x: event.clientX, y: event.clientY });
+  }
+
+  /** La cote dont l'étiquette est sous le curseur, ou null. */
+  function dimLabelAt(event) {
     for (const child of group.children) {
       const dim = child.userData?.dim;
       if (!dim) continue;
       const s = toScreen(child.position.x, child.position.y);
       if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < 22) {
-        openModifyBox(dim, { x: s.x, y: s.y });
-        return;
+        return dim;
       }
     }
+    return null;
+  }
+
+  /** Écart, en décalage, entre le curseur qui saisit l'étiquette et la
+   *  ligne de cote actuelle — gardé pendant le glisser. null : cote qui
+   *  ne se déplace pas (diamètre, rayon, angle). */
+  function grabDelta(dim, event) {
+    const under = dragOffset(dim, event);
+    if (under == null) return null;
+    const constraint = (mode.state.constraints ?? [])
+      .find((c) => c.id === dim.id);
+    const shape = dimGeometry(dim, constraint, mode.state.entities,
+      dimDrawSize());
+    const line = shape?.segments?.[2];
+    if (!line) return null;
+    const current = dimOffsetAt(dim, constraint, mode.state.entities,
+      { x: line[0], y: line[1] });
+    return current == null ? null : under - current;
+  }
+
+  /** Décalage de la cote si sa ligne passait sous le curseur. */
+  function dragOffset(dim, event) {
+    const local = toLocal(event);
+    if (!local || !mode.state) return null;
+    const constraint = (mode.state.constraints ?? [])
+      .find((c) => c.id === dim.id);
+    return dimOffsetAt(dim, constraint, mode.state.entities, local);
   }
 
   // ---------- boîte de saisie d'une cote ----------

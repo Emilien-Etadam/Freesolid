@@ -277,6 +277,8 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # axis (x | y : cote horizontale / verticale),
                                        # at ([x, y] : où la cote a été posée)
     "sketch_set_dim": _Req(("sketch", str), ("dim", int)),
+    "sketch_place_dim": _Req(("sketch", str), ("dim", int),
+                             ("offset", float)),
                                        # optional: value | expr, name
     "sketch_constraints": _Req(("sketch", str)),
                                        # optional: geo — relations d'une entité

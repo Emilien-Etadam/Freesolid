@@ -2,7 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  arrowSegments, dimGeometry, dimLabel, pointPairDimKind, pointPairDimPath,
+  arrowSegments, dimGeometry, dimLabel, dimOffsetAt, pointPairDimKind,
+  pointPairDimPath,
 } from "../../app/dims.js";
 
 const close = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
@@ -144,5 +145,28 @@ describe("cote posée : elle reste où on l'a cliquée", () => {
       { geos: [0, 0, null], pos: [1, 2, 0] }, pts, 1);
     assert.deepEqual(g.segments[2], [0, -5, 20, -5]);
     assert.ok(g.label.y < -5);
+  });
+});
+
+describe("cote glissée : décalage sous le curseur", () => {
+  const line = [{ id: 0, type: "line", p1: [0, 0], p2: [10, 0] }];
+  const own = { geos: [0, null, null], pos: [0, 0, 0] };
+  it("longueur d'une ligne : distance signée à la ligne", () => {
+    assert.equal(dimOffsetAt({ type: "Distance", geo: 0 }, own, line,
+      { x: 3, y: -6 }), -6);
+  });
+  it("horizontale / verticale depuis l'origine : depuis le 1er point", () => {
+    const pt = [{ id: 0, type: "line", p1: [20, 12], p2: [36, 12] }];
+    const pair = { geos: [-1, 0, null], pos: [1, 1, 0] };
+    assert.equal(dimOffsetAt({ type: "DistanceX", geo: -1 }, pair, pt,
+      { x: 5, y: 30 }), 30);
+    assert.equal(dimOffsetAt({ type: "DistanceY", geo: -1 }, pair, pt,
+      { x: -8, y: 5 }), -8);
+  });
+  it("diamètre : ne se glisse pas ainsi", () => {
+    const circle = [{ id: 0, type: "circle", c: [0, 0], r: 5 }];
+    assert.equal(dimOffsetAt({ type: "Diameter", geo: 0 },
+      { geos: [0, null, null], pos: [0, 0, 0] }, circle, { x: 1, y: 1 }),
+      null);
   });
 });

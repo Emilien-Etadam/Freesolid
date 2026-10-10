@@ -1058,11 +1058,14 @@ class SketchMixin:
                 if length < 1e-12:
                     return
                 offset = ((x - a.x) * -dy + (y - a.y) * dx) / length
-            if (round(offset, 9), 0.0) == self._DEFAULT_LABEL:
-                offset += 1e-6  # 10 tout rond voudrait dire « jamais posée »
-            sk.setLabelDistance(index, float(offset))
+            self._set_dim_offset(sk, index, offset)
         except Exception:
             pass  # la cote reste, à sa place par défaut
+
+    def _set_dim_offset(self, sk, index, offset):
+        if (round(offset, 9), 0.0) == self._DEFAULT_LABEL:
+            offset += 1e-6  # 10 tout rond voudrait dire « jamais posée »
+        sk.setLabelDistance(index, float(offset))
 
     def _dim_ends(self, sk, c):
         """Les deux points mesurés d'une cote de distance (A, B)."""
@@ -1134,6 +1137,18 @@ class SketchMixin:
             raise
         except Exception as exc:  # noqa: BLE001 - over-constrained, mostly
             raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_place_dim(self, sketch, dim, offset):
+        """Déplace une cote posée : nouveau décalage de sa ligne (même
+        convention que la pose, voir ``_place_dim``). La valeur ne change
+        pas."""
+        from engine.kernel import KernelError
+        sk = self._get_sketch(sketch)
+        idx = int(dim)
+        if idx < 0 or idx >= len(sk.Constraints):
+            raise KernelError("cote inconnue : {}".format(dim))
+        self._set_dim_offset(sk, idx, float(offset))
         return self.sketch_state(sketch)
 
     def sketch_set_dim(self, sketch, dim, value=None, name=None, expr=None):

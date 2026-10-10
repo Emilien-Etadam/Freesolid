@@ -298,6 +298,36 @@ export function dimGeometry(dim, constraint, entities, size = 2) {
   return out ?? fallback();
 }
 
+/**
+ * Décalage qu'aurait la cote si sa ligne passait par `at` (coordonnées de
+ * l'esquisse) — le même calcul que le moteur à la pose : depuis le premier
+ * point, au-dessus pour une horizontale, à droite pour une verticale, sur
+ * la normale A→B pour une alignée. null : cote qui ne se déplace pas ainsi
+ * (diamètre, rayon, angle, point → ligne).
+ */
+export function dimOffsetAt(dim, constraint, entities, at) {
+  const byId = (id) => (id === -1 ? ORIGIN
+    : (entities ?? []).find((e) => e.id === id) ?? null);
+  const [g1, g2] = constraint?.geos ?? [dim.geo, null];
+  const [p1, p2] = constraint?.pos ?? [0, 0];
+  const e1 = byId(g1);
+  let a = null, b = null;
+  if (g2 == null && e1?.type === "line" && !p1) {
+    a = pointOf(e1, 1);
+    b = pointOf(e1, 2);
+  } else if (g2 != null && p1 && p2) {
+    a = pointOf(e1, p1);
+    b = pointOf(byId(g2), p2);
+  }
+  if (!a || !b) return null;
+  if (dim.type === "DistanceX") return at.y - a.y;
+  if (dim.type === "DistanceY") return at.x - a.x;
+  if (dim.type !== "Distance") return null;
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  if (length < 1e-12) return null;
+  return ((at.x - a.x) * -(b.y - a.y) + (at.y - a.y) * (b.x - a.x)) / length;
+}
+
 /** Les deux traits d'une pointe de flèche, en segments. */
 export function arrowSegments(arrow, length) {
   const segs = [];

@@ -76,5 +76,5 @@ plan milieu) sur le Plan de face et sa symétrique par le Plan de droite.
 | 25 | Répétition ou symétrie après avoir cliqué une fonction dans l'arbre : la case « Fonctions à répéter » reste vide. | **Corrigé** : la fonction présélectionnée remplit la case (répétitions, symétrie, réseau variable) ; à 3 fonctions et plus, la case dit « fonctions », plus « profils ». |
 | — | La barre d'icônes de la face restait au milieu d'une esquisse ouverte et prenait les clics. | **Corrigé** sur `qualite` (smoke de la PR #90). |
 | — | L'esquisse d'un perçage reste « sous-contrainte » : son rayon, piloté par le diamètre du perçage, n'est pas coté. | À reprendre. |
-| — | Une cote déjà posée ne se déplace pas encore à la souris. | À faire. |
+| 26 | Une cote déjà posée ne se déplace pas à la souris. | **Corrigé** : avec l'outil Sélectionner, on glisse son étiquette ; elle reste sous le curseur, la valeur ne change pas, Ctrl+Z annule (`sketch_place_dim`). |
 | — | Traits d'esquisse définis (clairs) peu contrastés sur une face claire. | À reprendre (thème). |

@@ -76,7 +76,7 @@ export function createSketchMode(deps) {
   scene.add(group);
 
   // depthTest off + high renderOrder: the sketch reads through the solid,
-  // SolidWorks-style — a sketch drawn on a face was invisible behind the
+  // as in common modelers — a sketch drawn on a face was invisible behind the
   // mesh (user report).
   // Couleur = état de définition de l'entité (moteur : entity.status) :
   // bleu = encore libre, clair = entièrement définie, rouge = en trop.
@@ -1961,7 +1961,7 @@ export function createSketchMode(deps) {
   });
 
   // Convertir les entités : le contour de la face porteuse arrive en
-  // géométrie réelle bloquée — le point de départ SolidWorks classique.
+  // géométrie réelle bloquée — le point de départ classique.
   document.getElementById("sk-convert").addEventListener("click", () => {
     if (!mode.active || !mode.state) return;
     call("sketch_convert", { sketch: mode.state.sketch })

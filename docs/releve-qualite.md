@@ -195,8 +195,8 @@ de suite. Q6 et Q7 attendent une maquette et un échantillon validés.
 | Q1 | fait (Cursor) |
 | Q2 | fait (Cursor) |
 | Q3 | fait (Cursor) |
-| Q4 | confié à Cursor, après Q9a |
-| Q5 | après Q4 |
+| Q4 | fait (Cursor) : `main.js` de 6727 à 1978 lignes, 8 modules |
+| Q5 | confié à Cursor, avec le nettoyage clean-room du moteur |
 | Q6 | fait : en-tête de 130 px en 1366 × 768 (zone 3D : 611 px de haut au lieu de 377) ; icônes actuelles en attendant Q7 |
 | Q7 | style des icônes de Nodes (utilisateur) ; 11 branchées, 74 à dessiner : `docs/icones-a-dessiner.md` |
 | Q8 | fait : lumières liées à la vue, fond en dégradé, grille estompée |

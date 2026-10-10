@@ -1,4 +1,4 @@
-// Le ruban (CommandManager) : la disposition vit dans ribbon.json, le
+// Le ruban : la disposition vit dans ribbon.json, le
 // rendu vit ici. Un seul constructeur pour les onglets du noyau et ceux
 // des plugins — mêmes classes CSS, mêmes règles de validation. Les
 // fonctions prennent `doc` en paramètre pour tourner au banc Node.

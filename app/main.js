@@ -1,4 +1,4 @@
-// FreeSolid app — M0. One part, one mesh, a SolidWorks-shaped tree,
+// FreeSolid app — M0. One part, one mesh, a feature tree,
 // face picking by construction (each engine face is an index group).
 
 import * as THREE from "three";
@@ -170,8 +170,8 @@ statusEl.addEventListener("click", () => {
   statusEl.title = "";
 });
 
-// PropertyManager-style side panel — feature options live there, not in
-// prompt() dialogs. See panel.js for the SolidWorks anatomy. Closing the
+// Side property panel — feature options live there, not in
+// prompt() dialogs. See panel.js for its anatomy. Closing the
 // panel (OK or cancel) always clears the yellow ghost preview.
 const panel = createPropertyPanel({
   say,
@@ -719,7 +719,7 @@ function setDisplay(patch) {
 }
 
 
-// ---------- aperçu jaune (le ghost du PropertyManager) ----------
+// ---------- aperçu jaune (le fantôme du panneau de propriétés) ----------
 
 const ghostMaterial = new THREE.MeshStandardMaterial({
   color: sceneTheme.ghost, metalness: 0.1, roughness: 0.5,
@@ -1097,7 +1097,7 @@ ctx.openMenu = openMenu;
 ctx.showContextToolbar = showContextToolbar;
 ctx.hideContextToolbar = hideContextToolbar;
 
-// ---------- ruban à onglets (CommandManager) ----------
+// ---------- ruban à onglets ----------
 
 function showTab(name) {
   for (const tab of document.querySelectorAll("header .tab")) {
@@ -1277,7 +1277,7 @@ document.getElementById("btn-settings").addEventListener("click", () => {
 });
 
 // Cliquer une fonction pendant une esquisse la termine d'abord — le
-// réflexe SolidWorks : on dessine, puis on clique Bossage, sans passer
+// réflexe de modeleur : on dessine, puis on clique Extrusion, sans passer
 // par un bouton « quitter l'esquisse ».
 async function featureCommand(openPanel) {
   if (assemblyState) {
@@ -1650,14 +1650,14 @@ document.getElementById("btn-sketch").addEventListener("click", () =>
       pickPlane(selectedPlane);
     } else {
       // Rien de choisi : les trois plans s'affichent avec leur nom,
-      // à vous de cliquer — le geste SolidWorks exact.
+      // à vous de cliquer — le geste attendu.
       startPlanePick();
     }
   }));
 
 // Habillages : la zone de sélection du panneau absorbe les clics de la
 // zone graphique (arêtes ou face selon la commande) — on peut ouvrir la
-// commande d'abord et cliquer ensuite, comme dans SolidWorks.
+// commande d'abord et cliquer ensuite, comme dans les modeleurs courants.
 function currentSelection(accepts) {
   if (accepts.includes("edges") && selectedEdges.size) {
     return { kind: "edges", edges: [...selectedEdges] };

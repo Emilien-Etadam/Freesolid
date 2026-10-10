@@ -1,5 +1,5 @@
-// FreeSolid — PropertyManager-style side panel, SolidWorks anatomy:
-// it replaces the FeatureManager while a command runs, carries the feature
+// FreeSolid — side property panel:
+// it replaces the feature tree while a command runs, carries the feature
 // icon + name, OK (green check) / Cancel (red cross), collapsible group
 // boxes, selection boxes fed by viewport picks, Enter/Escape.
 //
@@ -118,7 +118,7 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
 
   function open(spec) {
     // Remplacer un panneau ouvert : silencieux (la présélection d'arbre
-    // doit survivre, ex. esquisse → Bossage). Fermer/Échap passent par
+    // doit survivre, ex. esquisse → Extrusion). Fermer/Échap passent par
     // close(false) qui appelle onCancel.
     if (active) close(false, { silent: true });
     active = { spec, values: {} };
@@ -218,7 +218,7 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
   }
 
   // Les ids de faces/arêtes meurent à chaque rebuild. Le viewport vide
-  // ses picks ; le PropertyManager doit faire de même — un Congé ouvert
+  // ses picks ; le panneau de propriétés doit faire de même — un Congé ouvert
   // ne doit pas appliquer des ids périmés après un Ctrl+Z.
   function invalidateSelections() {
     if (!active) return 0;

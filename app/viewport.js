@@ -236,7 +236,7 @@ export function installViewport(ctx) {
   };
   container.appendChild(boxEl);
   // ---------- plans de base (Face / Dessus / Droite) ----------
-  // Toujours là, comme dans SolidWorks : visibles dans l'arbre, cliquables
+  // Toujours là : visibles dans l'arbre, cliquables
   // dans la zone graphique quand la commande Esquisse attend un plan.
 
   const PLANE_ROTATIONS = {

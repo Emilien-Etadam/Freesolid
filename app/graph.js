@@ -1,4 +1,4 @@
-// Graphe de dépendances du FeatureManager — module pur.
+// Graphe de dépendances de l'arbre de création — module pur.
 // Pas de DOM, pas de window, pas de réseau. Entrée : l'arbre `get_tree`.
 //
 // Disposition : couches par plus long chemin (Sugiyama, étape 1), puis

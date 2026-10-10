@@ -486,3 +486,37 @@ Les noms de fichiers d'icônes sont écrits en dur à plusieurs endroits
   `fs_origin_plane`, origine → `fs_origin`, équations → `fs_equations`,
   corps surfaciques → `fs_surface_body`). Les icônes reprises de FreeCAD
   qui ne servent plus sont alors supprimées.
+
+## Q5 — Découpage de `engine/kernel.py` et nettoyage clean-room du moteur
+
+**Comportement visé : aucun changement.** `engine/kernel.py` (~8700 lignes,
+une classe de ~250 méthodes, ~2400 lignes de selftest) devient un paquet
+de modules par thème, réunis dans la classe (mixins ou fonctions
+appelées par des méthodes minces) :
+- assemblage ; surfaces et courbes ; mise en plan ; texte ;
+  fonctions graphe et répétitions ;
+- fonctions volumiques (extrusion, révolution, enlèvements, habillages,
+  répétitions) ; paramètres et équations ; fichiers (ouvrir, enregistrer,
+  exporter) ;
+- tessellation et arbre ; esquisse ;
+- le selftest dans son propre module (`engine/selftest.py`), hors du code
+  de production.
+
+Règles :
+- Les imports FreeCAD restent dans les corps de fonctions (les modules
+  purs doivent rester importables sans FreeCAD, cf. AGENTS.md).
+- Un commit par module, diff lisible comme un déplacement, bannières de
+  section remises en accord avec leur contenu.
+- Vérifier à chaque commit : `python -m pytest -q`, selftest headless
+  (même nombre d'étapes et d'indicateurs verts), `node --test`.
+
+**Nettoyage clean-room (même lot).** Les docstrings et commentaires
+du moteur citent encore SolidWorks et ses termes maison (~35 endroits :
+`grep -rni "solidworks\|featuremanager\|propertymanager" engine/`).
+Les reformuler sans nom de produit (« comme dans les modeleurs
+courants », « l'arbre de création », « le panneau de propriétés »…).
+Exceptions légitimes : les listes de mots interdits des tests
+(`tests/test_guard.py`, le contrôle du selftest qui vérifie qu'un texte
+ne contient pas « SolidWorks »). Puis ajouter `tests/test_cleanroom.py`,
+pendant de `tests/js/cleanroom.test.mjs` : aucun de ces noms dans
+`engine/*.py` ni `engine/lang/en.json`, hors exceptions listées.

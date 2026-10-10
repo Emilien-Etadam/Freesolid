@@ -320,7 +320,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("rectangle");
   await page.screenshot({ path: path.join(SHOTS, "1-esquisse.png") });
 
-  // 2-p025. Propriétés d'une ligne dans le PropertyManager.
+  // 2-p025. Propriétés d'une ligne dans le panneau de propriétés.
   await page.click('[data-tool="select"]');
   await sleep(200);
   await page.mouse.click(cx, cy - 70);
@@ -345,7 +345,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const panelOpenAfterLine = await page.evaluate(
     () => document.querySelector("aside")?.classList.contains("panel-open"));
   if (!panelOpenAfterLine) {
-    errors.push("P025 : le PropertyManager devrait être ouvert sur la ligne");
+    errors.push("P025 : le panneau de propriétés devrait être ouvert sur la ligne");
   }
   await page.screenshot({ path: path.join(SHOTS, "1a-entite-ligne.png") });
   await page.mouse.click(cx + 90, cy);
@@ -718,12 +718,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await step("vue graphe");
 
-  // 4b. FeatureManager — dossiers en tête + barre de reprise glissée.
+  // 4b. Arbre de création — dossiers en tête + barre de reprise glissée.
   const folderTexts = await page.locator("#tree li.folder").allTextContents();
   const folderJoined = folderTexts.join(" | ");
   for (const name of ["Corps volumiques", "Corps surfaciques", "Équations"]) {
     if (!folderTexts.some((t) => t.includes(name))) {
-      errors.push("dossier FeatureManager manquant : " + name
+      errors.push("dossier de l'arbre manquant : " + name
         + " (vu : " + folderJoined + ")");
     }
   }

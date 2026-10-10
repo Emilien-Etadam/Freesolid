@@ -888,7 +888,7 @@ export function installTree(ctx) {
     rememberFolderCount("surfaces", surfaces.length);
     rememberFolderCount("equations", variables.length);
 
-    // Ordre SolidWorks : dossiers en tête, puis plans, puis fonctions.
+    // Ordre de l'arbre : dossiers en tête, puis plans, puis fonctions.
     const bodiesOpen = appendFolder(
       "bodies", t("Corps volumiques"), solidCount, "body",
       bodiesDefaultOpen,
@@ -933,7 +933,7 @@ export function installTree(ctx) {
   }
 
   function renderActiveBodyContents(tree) {
-    // Les trois plans de base, toujours là — comme dans SolidWorks.
+    // Les trois plans de base, toujours là.
     for (const plane of tree.planes ?? []) {
       const item = document.createElement("li");
       item.className = "plane" + (ctx.selectedPlane === plane.id ? " sel" : "");
@@ -1060,7 +1060,7 @@ export function installTree(ctx) {
     }
     treeEl.appendChild(row);
 
-    // L'esquisse consommée vit sous sa fonction, à la SolidWorks.
+    // L'esquisse consommée vit sous sa fonction.
     if (hasChildren && expandedFeatures.has(feature.name)) {
       for (const child of feature.children) {
         const childRow = document.createElement("li");

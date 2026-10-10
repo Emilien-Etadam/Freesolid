@@ -1262,6 +1262,8 @@ document.addEventListener("freesolid:sketch-enter", () => {
   inSketchMode = true;
   applyVolumeVisibility();
   showTab("sketch");
+  // Esquisse rééditée : tout son contenu à l'écran, pas seulement la pièce.
+  if (sketchMode.framePoints().length) frameSketch();
   // L'esquisse ouverte apparaît dans l'arbre dès sa création.
   call("get_tree").then((tree) => renderTree(tree)).catch(() => {});
 });

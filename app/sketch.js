@@ -156,6 +156,8 @@ export function createSketchMode(deps) {
     pendingDim: null,     // { geo, point? } — première entité cotée
     pendingDimPair: null, // deux points choisis, la cote attend sa place
     dimDrag: null,        // cote saisie par son étiquette, en déplacement
+    filletRadius: 3,      // rayon du congé d'esquisse (panneau de l'outil)
+    polygonSides: 6,      // côtés du polygone (panneau de l'outil)
     selection: [],        // [{ geo, point? }] — outil Sélectionner
     justDragged: false,   // un drag qui finit ne doit pas sélectionner
     drag: null,           // { geo, point } while dragging
@@ -232,6 +234,9 @@ export function createSketchMode(deps) {
 
   function* endpoints() {
     for (const entity of mode.state?.entities ?? []) {
+      if (entity.type === "point") {
+        yield { geo: entity.id, point: 1, x: entity.p1[0], y: entity.p1[1] };
+      }
       if (entity.type === "line" || entity.type === "arc") {
         yield { geo: entity.id, point: 1, x: entity.p1[0], y: entity.p1[1] };
         yield { geo: entity.id, point: 2, x: entity.p2[0], y: entity.p2[1] };
@@ -617,6 +622,8 @@ export function createSketchMode(deps) {
         circle.renderOrder = 20;
         group.add(circle);
         points.push(entity.c);
+      } else if (entity.type === "point") {
+        points.push(entity.p1);
       } else if (entity.type === "poly" && entity.points?.length > 1) {
         // Splines, ellipses, coniques : le serveur envoie la polyligne.
         const pts = entity.points.map(
@@ -1059,10 +1066,14 @@ export function createSketchMode(deps) {
       } else if (mode.pendingFillet.geo !== target) {
         const first = mode.pendingFillet;
         mode.pendingFillet = null;
-        const radius = num(
-          window.prompt(t("Rayon du congé d'esquisse (mm) :"), "3") ?? "");
-        if (!radius) return;
-        safe(call("sketch_fillet", { sketch: name,
+        // Le rayon vient du panneau de l'outil, réglé avant les clics.
+        const radius = mode.filletRadius;
+        if (!(radius > 0)) {
+          say(t("Congé d'esquisse : rayon invalide"), true);
+          return;
+        }
+        say(t("Congé d'esquisse : cliquez deux lignes près du coin"));
+        await safe(call("sketch_fillet", { sketch: name,
           geo1: first.geo, geo2: target,
           x1: first.x, y1: first.y, x2: local.x, y2: local.y, radius }));
       }
@@ -1225,6 +1236,50 @@ export function createSketchMode(deps) {
     const p = pick.point === 1 ? entity?.p1 : pick.point === 2 ? entity?.p2
       : pick.point === 3 ? entity?.c : null;
     return p ? { x: p[0], y: p[1] } : null;
+  }
+
+  // Panneau d'outil : la valeur de l'outil (rayon du congé, nombre de
+  // côtés) se règle à gauche, l'outil reste actif pour plusieurs clics.
+  let toolPanelOpen = null;
+
+  function openToolPanel(tool) {
+    abandonEntityPanel();
+    toolPanelOpen = tool;
+    const fillet = tool === "skfillet";
+    panel.open({
+      icon: fillet ? "sketch_fillet" : "polygon",
+      title: fillet ? t("Congé d'esquisse") : t("Polygone"),
+      groups: [{
+        label: t("Paramètres"),
+        rows: [fillet
+          ? { type: "number", key: "value", label: t("Rayon"),
+              value: mode.filletRadius, unit: "mm", min: 0.01 }
+          : { type: "number", key: "value", label: t("Nombre de côtés"),
+              value: mode.polygonSides, min: 3, step: 1 }],
+      }],
+      note: fillet ? t("Cliquez deux lignes près du coin à arrondir.")
+        : t("Cliquez le centre, puis un sommet."),
+      onChange: (v) => {
+        if (fillet) {
+          const radius = num(v.value);
+          if (radius > 0) mode.filletRadius = radius;
+        } else {
+          const sides = parseInt(v.value, 10);
+          if (sides >= 3) {
+            mode.polygonSides = sides;
+            if (mode.pendingPoly) mode.pendingPoly.sides = sides;
+          }
+        }
+      },
+      onApply: () => { toolPanelOpen = null; setTool("select"); },
+      onCancel: () => { toolPanelOpen = null; setTool("select"); },
+    });
+  }
+
+  function closeToolPanel() {
+    if (!toolPanelOpen) return;
+    toolPanelOpen = null;
+    if (panel.active) panel.close({ silent: true });
   }
 
   async function addRectangle(name, a, b, center = false) {
@@ -1895,13 +1950,13 @@ export function createSketchMode(deps) {
     mode.pendingEllipse = null;
     mode.selection = [];
     if (tool === "polygon") {
-      const sides = parseInt(window.prompt(t("Polygone — nombre de côtés :"), "6")
-                             ?? "", 10);
-      mode.pendingPoly = sides >= 3 ? { sides } : null;
-      if (!mode.pendingPoly) { setTool("select"); return; }
+      mode.pendingPoly = { sides: mode.polygonSides };
+      openToolPanel("polygon");
     } else {
       mode.pendingPoly = null;
     }
+    if (tool === "skfillet") openToolPanel("skfillet");
+    else if (tool !== "polygon") closeToolPanel();
     setCursor(CURSORS[tool] ?? "default");
     if (previewLine) previewLine.visible = false;
     for (const button of bar.querySelectorAll("button[data-tool]")) {
@@ -2212,6 +2267,24 @@ export function createSketchMode(deps) {
     });
   });
 
+  let offsetPreviewGen = 0;
+
+  async function previewOffset(geos, v) {
+    const gen = ++offsetPreviewGen;
+    const distance = num(v.distance);
+    if (!previewLine || !mode.state || !(distance > 0)) return;
+    try {
+      const { points } = await call("sketch_offset_preview", {
+        sketch: mode.state.sketch, geos, distance, reversed: !!v.reversed });
+      if (gen !== offsetPreviewGen || !panel.active) return;
+      previewLine.geometry.setFromPoints(
+        points.map(([x, y]) => new THREE.Vector3(x, y, 0)));
+      previewLine.visible = true;
+    } catch {
+      if (gen === offsetPreviewGen) previewLine.visible = false;
+    }
+  }
+
   document.getElementById("sk-offset").addEventListener("click", () => {
     if (!mode.state) return;
     if (!entityPicks().length) {
@@ -2240,10 +2313,14 @@ export function createSketchMode(deps) {
       }],
       note: t("Les copies restent libres — le décalage paramétrique " +
             "viendra plus tard."),
+      // Aperçu : la copie se dessine avant de valider — on voit le côté.
+      onChange: (v) => previewOffset(geos, v),
+      onCancel: () => { if (previewLine) previewLine.visible = false; },
       onApply: (v) => safe(call("sketch_offset", {
         sketch: mode.state.sketch, geos,
         distance: num(v.distance) ?? 5,
-        reversed: !!v.reversed, construction: !!v.construction })),
+        reversed: !!v.reversed, construction: !!v.construction })
+        .finally(() => { if (previewLine) previewLine.visible = false; })),
     });
   });
 
@@ -2370,8 +2447,8 @@ export function createSketchMode(deps) {
           { sketch: mode.state.sketch });
         await refresh(Promise.resolve(tree));
         if (tree.open_profile) {
-          say("Esquisse fermée — contour ouvert : utilisable comme "
-              + "trajectoire ou surface, pas comme profil de bossage.");
+          say("Esquisse terminée — profil non fermé : il servira de "
+              + "trajectoire ou de surface, pas de profil d'extrusion.");
         }
       } catch (error) {
         say(error.message, true);

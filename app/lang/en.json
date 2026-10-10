@@ -165,7 +165,7 @@
  "Esquisse : sous-contrainte ({n} DDL)": "Sketch: under-constrained ({n} DOF)",
  "Esquisse : en édition": "Sketch: editing",
  "Esquisse désélectionnée": "Sketch deselected",
- "Esquisse fermée — contour ouvert : utilisable comme trajectoire ou surface, pas comme profil de bossage.": "Sketch closed — open contour: usable as a path or a surface, not as a boss profile.",
+ "Esquisse terminée — profil non fermé : il servira de trajectoire ou de surface, pas de profil d'extrusion.": "Sketch finished — profile not closed: it will serve as a path or a surface, not as an extrusion profile.",
  "Esquisse quittée sans enregistrer les modifications.": "Sketch closed without keeping the changes.",
  "Exporter en STL (impression 3D) ou STEP": "Export to STL (3D printing) or STEP",
  "Exporté : {path} ({size} Ko)": "Exported: {path} ({size} KB)",
@@ -299,7 +299,6 @@
  "Plan milieu": "Mid plane",
  "Plan neutre": "Neutral plane",
  "Polygone : cliquez un sommet": "Polygon: click a vertex",
- "Polygone — nombre de côtés :": "Polygon — number of sides:",
  "Polygone — nombre de côtés, centre, sommet": "Polygon — number of sides, center, vertex",
  "Position": "Position",
  "Prof. lamage": "Counterbore depth",
@@ -319,7 +318,6 @@
  "Rainure droite — deux centres puis largeur": "Straight Slot — two centers then width",
  "Rayon": "Radius",
  "Rayon 2": "Radius 2",
- "Rayon du congé d'esquisse (mm) :": "Sketch fillet radius (mm):",
  "Reconstruire": "Rebuild",
  "Reconstruire — recalcul forcé de tout l'arbre": "Rebuild — forced recompute of the whole tree",
  "Rectangle : les sommets doivent être en diagonale": "Rectangle: the corners must be diagonal",
@@ -759,5 +757,11 @@
  "Cotation : cliquez l'entité à coter depuis l'origine": "Dimension: click the entity to dimension from the origin",
  "Cotation : cliquez où poser la cote — à côté : verticale, dessus ou dessous : horizontale, entre : alignée": "Dimension: click where to place it — beside: vertical, above or below: horizontal, between: aligned",
  "{n} fonctions : ": "{n} features: ",
- "Originaux en construction": "Originals as construction"
+ "Originaux en construction": "Originals as construction",
+ "Congé d'esquisse : rayon invalide": "Sketch fillet: invalid radius",
+ "Congé d'esquisse : cliquez deux lignes près du coin": "Sketch fillet: click two lines near the corner",
+ "Nombre de côtés": "Number of sides",
+ "Cliquez deux lignes près du coin à arrondir.": "Click two lines near the corner to round.",
+ "Cliquez le centre, puis un sommet.": "Click the centre, then a vertex.",
+ "Congé d'esquisse": "Sketch fillet"
 }

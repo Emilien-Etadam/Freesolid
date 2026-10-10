@@ -81,3 +81,25 @@ plan milieu) sur le Plan de face et sa symétrique par le Plan de droite.
 | — | Traits d'esquisse définis (clairs) peu contrastés sur une face claire. | À reprendre (thème). |
 | 28 | Étiquettes de cote en gros pavés gris, flèches en V épaisses. | **Corrigé** : texte seul de 12 px, net, halo du fond ; pointes pleines et fines ; l'étiquette se place à côté de sa ligne. |
 | 29 | La cote d'angle faisait pivoter les lignes quand on les cliquait dans le sens horaire, et se dessinait au point de rencontre, parfois loin d'elles. | **Corrigé** : lignes ordonnées dans le sens trigonométrique (selftest p44 : rien ne bouge) ; l'arc passe là où on a cliqué la 2e ligne, attaches si besoin, et se glisse comme les autres cotes. |
+
+## 5. Raccord carré → rond, coudé
+
+Carré 60 × 60 sur le Plan de dessus et cercle Ø40 sur un plan de référence
+à 50 mm, lissage ; creux de 2 mm par lissage-enlèvement des profils
+projetés et décalés (la coque échoue, voir 33) ; tube coudé par balayage
+d'un anneau R20/R18 le long d'un chemin en L de 40 × 50 arrondi à R20.
+
+| # | Accroc | Suite |
+|---|---|---|
+| 30 | Saisie au clavier pendant le tracé : l'aperçu reste affiché après la pose, et les valeurs tapées ne deviennent pas des cotes (esquisse sous-contrainte). | **Corrigé** : l'aperçu disparaît ; largeur, hauteur, longueur ou rayon tapés deviennent des cotes. |
+| 31 | Plan de référence : aucun aperçu avant de valider. | **Corrigé** : le moteur pose le plan dans une transaction annulée et renvoie sa position ; le client l'affiche en translucide (selftest p45). |
+| 32 | Sans solide, le plan de référence validé tombe sous la barre de retour, grisé. | **Corrigé** : un plan, un axe ou un point de référence se range comme une esquisse libre. |
+| 33 | Coque sur le lissage carré → rond : échec, message brut du modeleur en anglais. | **Limite du noyau** (arête vive qui devient tangente) ; **message clair** qui donne le contournement : enlèvement par lissage des profils décalés. |
+| 34 | Décaler des arêtes projetées : les originaux restent dans le profil. | **Corrigé** : option « Originaux en construction », cochée d'office pour des arêtes projetées. |
+| 35 | Décaler : le côté dépend de l'ordre des arêtes (cercle vers l'intérieur, carré vers l'extérieur), sans aperçu. | **Corrigé** : contour fermé vers l'extérieur par défaut, « Inverser le côté » vers l'intérieur, aperçu de la copie (selftest p17). |
+| 36 | Congé d'esquisse et polygone : boîte système `prompt()` ; dans le navigateur intégré elle se ferme d'office et le congé est perdu sans message. | **Corrigé** : panneau d'outil (Rayon, Nombre de côtés), l'outil reste actif pour plusieurs coins. |
+| 37 | Congé d'esquisse : les cotes des deux lignes disparaissent. | **Corrigé** : le coin reste en point de construction, les cotes s'y rattachent, le rayon est coté (selftest p17). |
+| 38 | Esquisse rééditée : la vue ne cadre que la pièce, le haut du chemin est hors écran. | **Corrigé** : la vue englobe le contenu de l'esquisse à l'ouverture. |
+| 39 | « Esquisse fermée — contour ouvert » : fermée et ouvert dans la même phrase. | **Corrigé** : « Esquisse terminée — profil non fermé… ». |
+| — | Rayons de deux cercles concentriques : étiquettes superposées. | À reprendre (placement au clic, comme les longueurs). |
+| — | L'anneau du haut (2 mm) est difficile à viser ; pas de vue de dessous dans la barre (Ctrl+6 marche). | À reprendre. |

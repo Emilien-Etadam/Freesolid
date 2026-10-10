@@ -72,7 +72,11 @@ export function createLocalSolver(loadModule) {
     for (const entity of state.entities) {
       const g = entity.id;
       const fixed = blocked.has(g);
-      if (entity.type === "line") {
+      if (entity.type === "point") {
+        kinds[g] = "point";
+        primitives.push({ id: pid(g, 1), type: "point",
+          x: entity.p1[0], y: entity.p1[1], fixed });
+      } else if (entity.type === "line") {
         kinds[g] = "line";
         primitives.push(
           { id: pid(g, 1), type: "point",
@@ -378,7 +382,10 @@ export function createLocalSolver(loadModule) {
     const updates = [];
     for (const entity of model.entities) {
       const g = entity.id;
-      if (entity.type === "line") {
+      if (entity.type === "point") {
+        const a = read(pid(g, 1));
+        entity.p1 = [a.x, a.y];
+      } else if (entity.type === "line") {
         const a = read(pid(g, 1)), b = read(pid(g, 2));
         entity.p1 = [a.x, a.y];
         entity.p2 = [b.x, b.y];

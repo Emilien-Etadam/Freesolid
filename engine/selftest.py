@@ -1069,6 +1069,30 @@ class SelftestMixin:
                             if e["id"] == circ["id"])
             report["p17_offset_originaux_construction"] = bool(
                 original["construction"])
+            # Contour fermé : extérieur par défaut, intérieur si inversé,
+            # et l'aperçu ne touche pas à l'esquisse.
+            count = len(state["entities"])
+            outer = self.sketch_offset_preview(offset_sk, [circ["id"]], 2.0)
+            inner = self.sketch_offset_preview(offset_sk, [circ["id"]], 2.0,
+                                               reversed=True)
+            radius = lambda pts: max(math.hypot(x - 80, y)  # noqa: E731
+                                     for x, y in pts)
+            # Congé d'esquisse : les cotes des lignes restent (coin gardé)
+            # et le rayon est coté.
+            name = self.sketch_start()["sketch"]
+            self.sketch_add_line(name, 0, 50, 0, 90)
+            self.sketch_add_line(name, 0, 90, 50, 90)
+            self.sketch_dim(name, 0, value=40)
+            self.sketch_dim(name, 1, value=50)
+            filleted = self.sketch_fillet(name, 0, 1, 0, 80, 10, 90, 20)
+            kept = sorted(d["type"] for d in filleted["dims"])
+            report["p17_conge_garde_cotes"] = (
+                kept == ["Distance", "Distance", "Radius"]
+                and any(e["type"] == "point" for e in filleted["entities"]))
+            report["p17_offset_sens"] = (
+                abs(radius(outer["points"]) - 12) < 0.1
+                and abs(radius(inner["points"]) - 8) < 0.1
+                and len(self.sketch_state(offset_sk)["entities"]) == count)
             report["p17_offset_circle_ok"] = any(
                 e["type"] == "circle" and e["id"] not in known
                 and (abs(e["r"] - 15.0) < 1e-4 or abs(e["r"] - 5.0) < 1e-4)

@@ -252,6 +252,9 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_array": _Req(
         ("sketch", str), ("geos", list), ("dx", float), ("dy", float),
         ("cols", int), ("rows", int)),
+    "sketch_offset_preview": _Req(
+        ("sketch", str), ("geos", list), ("distance", float)),
+                                       # optional: reversed — lecture seule
     "sketch_offset": _Req(
         ("sketch", str), ("geos", list), ("distance", float)),
                                        # optional: reversed, construction

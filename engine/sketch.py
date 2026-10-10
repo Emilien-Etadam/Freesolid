@@ -190,7 +190,11 @@ class SketchMixin:
         sk = self._get_sketch(sketch)
         entities = []
         for gid, geo in enumerate(sk.Geometry):
-            if geo.TypeId == "Part::GeomLineSegment":
+            if geo.TypeId == "Part::GeomPoint":
+                # Point d'esquisse (coin gardé d'un congé…) : point 1.
+                entity = {"id": gid, "type": "point",
+                          "p1": [geo.X, geo.Y]}
+            elif geo.TypeId == "Part::GeomLineSegment":
                 entity = {
                     "id": gid, "type": "line",
                     "p1": [geo.StartPoint.x, geo.StartPoint.y],
@@ -619,6 +623,52 @@ class SketchMixin:
             ids.append(gid)
         if not ids:
             raise KernelError("sélectionnez les entités à décaler")
+        offset_edges = self._offset_edges(sk, ids, distance, reversed)
+
+        # Tout ou rien : convertir d'abord, n'injecter qu'ensuite.
+        geoms = [self._geom_from_offset_edge(edge, Part, App)
+                 for edge in offset_edges]
+        for geom in geoms:
+            sk.addGeometry(geom, False)
+        if construction:
+            for gid in ids:
+                if not self._is_construction(sk, gid, sk.Geometry[gid]):
+                    sk.toggleConstruction(gid)
+        return self.sketch_state(sketch)
+
+    def sketch_offset_preview(self, sketch, geos, distance, reversed=False):
+        """Aperçu du décalage : la polyligne de la copie, sans rien
+        ajouter à l'esquisse."""
+        sk = self._get_sketch(sketch)
+        ids = [int(g) for g in geos or ()]
+        edges = self._offset_edges(sk, ids, distance, reversed)
+        points = []
+        for edge in edges:
+            try:
+                samples = edge.discretize(Deviation=0.05)
+            except Exception:
+                samples = edge.discretize(Number=48)
+            pts = [[p.x, p.y] for p in samples]
+            if points and pts and abs(points[-1][0] - pts[0][0]) < 1e-6 \
+                    and abs(points[-1][1] - pts[0][1]) < 1e-6:
+                pts = pts[1:]
+            points.extend(pts)
+        return {"points": points}
+
+    def _offset_edges(self, sk, ids, distance, reversed):
+        """Arêtes de la copie décalée. Un contour fermé part vers
+        l'extérieur, ``reversed`` vers l'intérieur — quel que soit le sens
+        de parcours de ses arêtes."""
+        from engine.kernel import (
+            KernelError,
+            _explain,
+        )
+        import Part
+        for gid in ids:
+            if gid < 0 or gid >= len(sk.Geometry):
+                raise KernelError("entité inconnue : {}".format(gid))
+        if not ids:
+            raise KernelError("sélectionnez les entités à décaler")
         dist = float(distance)
         if dist <= 0:
             raise KernelError("la distance doit être positive")
@@ -646,23 +696,19 @@ class SketchMixin:
         try:
             wire = Part.Wire(chains[0])
             offset_shape = wire.makeOffset2D(signed)
+            if wire.isClosed():
+                # Le signe suit le sens de parcours : on vérifie à l'aire.
+                grows = (Part.Face(Part.Wire(offset_shape.Edges)).Area
+                         > Part.Face(wire).Area)
+                if grows == bool(reversed):
+                    offset_shape = wire.makeOffset2D(-signed)
         except Exception as exc:  # noqa: BLE001
             raise KernelError("décalage impossible : {}".format(_explain(exc)))
 
         offset_edges = list(offset_shape.Edges)
         if not offset_edges:
             raise KernelError("décalage impossible : aucun contour produit")
-
-        # Tout ou rien : convertir d'abord, n'injecter qu'ensuite.
-        geoms = [self._geom_from_offset_edge(edge, Part, App)
-                 for edge in offset_edges]
-        for geom in geoms:
-            sk.addGeometry(geom, False)
-        if construction:
-            for gid in ids:
-                if not self._is_construction(sk, gid, sk.Geometry[gid]):
-                    sk.toggleConstruction(gid)
-        return self.sketch_state(sketch)
+        return offset_edges
 
     @staticmethod
     def _geom_from_offset_edge(edge, Part, App):
@@ -772,7 +818,11 @@ class SketchMixin:
         return self.sketch_state(sketch)
 
     def sketch_fillet(self, sketch, geo1, geo2, x1, y1, x2, y2, radius):
-        """Congé d'esquisse entre deux lignes, aux points cliqués."""
+        """Congé d'esquisse entre deux lignes, aux points cliqués.
+
+        Le coin disparu reste comme point de construction : les cotes des
+        deux lignes s'y rattachent au lieu d'être perdues, et le rayon est
+        coté — l'esquisse reste aussi définie qu'avant."""
         from engine.kernel import (
             KernelError,
             _explain,
@@ -781,10 +831,17 @@ class SketchMixin:
         if float(radius) <= 0:
             raise KernelError("le rayon doit être positif")
         V = self._app().Vector
+        import Sketcher
+        before = len(sk.Geometry)
         try:
             sk.fillet(int(geo1), int(geo2),
                       V(float(x1), float(y1), 0), V(float(x2), float(y2), 0),
-                      float(radius))
+                      float(radius), True, True)
+            arcs = [gid for gid in range(before, len(sk.Geometry))
+                    if sk.Geometry[gid].TypeId == "Part::GeomArcOfCircle"]
+            if arcs:
+                sk.addConstraint(Sketcher.Constraint(
+                    "Radius", arcs[0], float(radius)))
         except Exception as exc:  # noqa: BLE001
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)

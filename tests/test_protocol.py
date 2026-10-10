@@ -591,6 +591,7 @@ def test_ops_snapshot_keys():
         "sketch_mirror",
         "sketch_move",
         "sketch_offset",
+        "sketch_offset_preview",
         "sketch_place_dim",
         "sketch_set_dim",
         "sketch_start",

@@ -30,6 +30,16 @@ export function rayPlane(origin, direction, plane) {
           origin[2] + tt * direction[2]];
 }
 
+/** Le point ramené sur l'axe X, Y ou Z qui passe par `last` — celui où
+ *  le segment avance le plus (Maj : segment parallèle à un axe). */
+export function alongAxis(last, point) {
+  const delta = point.map((v, i) => v - last[i]);
+  const axis = delta.reduce((best, v, i, all) =>
+    (Math.abs(v) > Math.abs(all[best]) ? i : best), 0);
+  return { point: last.map((v, i) => (i === axis ? point[i] : v)),
+           axis: "XYZ"[axis] };
+}
+
 /** Plan suivant (Tab). */
 export function nextPlane(key) {
   const i = CLICK_PLANES.indexOf(key);
@@ -198,9 +208,21 @@ export function installCurve3d(ctx) {
       say(t("Spline 3D : le plan de clic est vu par la tranche — Tab pour en changer"), true);
       return;
     }
+    const list = points();
+    let axis = null;
+    if (event.shiftKey && list.length) {
+      // Maj : le segment suit l'axe X, Y ou Z où il avance le plus.
+      const locked = alongAxis(list[list.length - 1], aimed.point);
+      aimed.point = locked.point;
+      axis = locked.axis;
+    }
     const round = (v) => Math.round(v * 1000) / 1000;
     const [x, y, z] = aimed.point.map(round);
     panel.notifyPick("point3d", { kind: "point3d", x, y, z });
+    if (axis) {
+      say(t("Point le long de l'axe {a}.", { a: axis }));
+      return;
+    }
     say(aimed.snapped === "center" ? t("Point au centre du cercle.")
       : aimed.snapped === "vertex" ? t("Point sur le sommet.")
         : aimed.onGeometry ? t("Point sur la géométrie.")
@@ -210,6 +232,10 @@ export function installCurve3d(ctx) {
   function onMove(event) {
     if (!tool || !points().length) return;
     rubber = aimedPoint(event)?.point ?? null;
+    if (rubber && event.shiftKey) {
+      const list = points();
+      rubber = alongAxis(list[list.length - 1], rubber).point;
+    }
     drawPreview();
   }
 
@@ -271,7 +297,9 @@ export function installCurve3d(ctx) {
       ],
       note: t("Cliquez sur la pièce, une surface ou une courbe — sommets et "
         + "centres aimantent — ou dans le vide : le point se pose sur le "
-        + "plan de clic, qui passe par le dernier point. Tab change de plan."),
+        + "plan de clic, qui passe par le dernier point. Tab change de plan, "
+        + "Maj garde le segment parallèle à un axe. Décochez « Courbe lisse » "
+        + "pour des segments droits."),
       hint: (v) => {
         const problem = curveProblem(v.points, v.closed);
         return problem ? { text: problem, tone: "guide" } : null;

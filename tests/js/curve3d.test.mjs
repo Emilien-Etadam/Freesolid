@@ -2,7 +2,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { clickPlane, curveProblem, nextPlane, rayPlane } from "../../app/curve3d.js";
+import { alongAxis, clickPlane, curveProblem, nextPlane, rayPlane }
+  from "../../app/curve3d.js";
 import { boundaryText, samePick } from "../../app/panel.js";
 import { boundaryParam, deleteFacesBuild, deleteFacesParams, extendParams,
   surfaceFilletParams, trimParams }
@@ -23,6 +24,13 @@ describe("spline 3D : plan de clic", () => {
   it("rayon parallèle ou plan derrière la caméra : pas de point", () => {
     assert.equal(rayPlane([0, 0, 10], [1, 0, 0], clickPlane("XY")), null);
     assert.equal(rayPlane([0, 0, 10], [0, 0, 1], clickPlane("XY")), null);
+  });
+
+  it("Maj : le segment suit l'axe où il avance le plus", () => {
+    assert.deepEqual(alongAxis([0, 0, 0], [2, 9, 1]),
+      { point: [0, 9, 0], axis: "Y" });
+    assert.deepEqual(alongAxis([5, 5, 5], [5, 4, -20]),
+      { point: [5, 5, -20], axis: "Z" });
   });
 
   it("Tab fait le tour des trois plans", () => {

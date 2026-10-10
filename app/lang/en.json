@@ -808,7 +808,6 @@
  "Courbe lisse (spline)": "Smooth curve (spline)",
  "Fermée": "Closed",
  "Points": "Points",
- "Cliquez sur la pièce, une surface ou une courbe — sommets et centres aimantent — ou dans le vide : le point se pose sur le plan de clic, qui passe par le dernier point. Tab change de plan.": "Click on the part, a surface or a curve — vertices and centres snap — or in empty space: the point lands on the click plane, through the last point. Tab changes the plane.",
  "Spline 3D : le plan de clic est vu par la tranche — Tab pour en changer": "3D spline: the click plane is seen edge-on — Tab to change it",
  "Point au centre du cercle.": "Point at the circle centre.",
  "Point sur le sommet.": "Point on the vertex.",
@@ -928,5 +927,7 @@
  "La surface se bombe au point cliqué, selon sa normale ; hauteur négative : un creux.": "The surface bulges at the clicked point, along its normal; negative height: a dent.",
  "Forme libre : un point sur une surface, une hauteur, un rayon": "Freeform: a point on a surface, a height, a radius",
  "Forme libre — bomber ou creuser une surface au point cliqué": "Freeform — bulge or dent a surface at the clicked point",
- "Aplatir — le patron à plat d'une face de surface": "Flatten — the flat pattern of a surface face"
+ "Aplatir — le patron à plat d'une face de surface": "Flatten — the flat pattern of a surface face",
+ "Cliquez sur la pièce, une surface ou une courbe — sommets et centres aimantent — ou dans le vide : le point se pose sur le plan de clic, qui passe par le dernier point. Tab change de plan, Maj garde le segment parallèle à un axe. Décochez « Courbe lisse » pour des segments droits.": "Click on the part, a surface or a curve — vertices and centres snap — or in empty space: the point lands on the click plane, through the last point. Tab changes the plane, Shift keeps the segment parallel to an axis. Untick \"Smooth curve\" for straight segments.",
+ "Point le long de l'axe {a}.": "Point along the {a} axis."
 }

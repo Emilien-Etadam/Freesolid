@@ -77,6 +77,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      # Aucun nom utilisé sans être déclaré ni importé (ESLint no-undef).
+      - name: Noms définis (ESLint)
+        run: |
+          npm ci --prefix scripts/lint --no-audit --no-fund
+          npx --prefix scripts/lint eslint -c scripts/lint/eslint.config.mjs app
       - name: Syntax check
         run: |
           node --check app/main.js

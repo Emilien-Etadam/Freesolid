@@ -188,9 +188,10 @@ de suite. Q6 et Q7 attendent une maquette et un échantillon validés.
 | Q1 | fait (Cursor) |
 | Q2 | fait (Cursor) |
 | Q3 | fait (Cursor) |
-| Q4 | à faire (Q2 et Q3 faits) |
+| Q4 | confié à Cursor, après Q9a |
 | Q5 | après Q4 |
-| Q6, Q7 | maquette en attente de validation ; icônes de l'utilisateur à reprendre |
+| Q6 | maquette validée, en cours (Claude) |
+| Q7 | icônes de l'utilisateur, à recevoir |
 | Q8 | fait : lumières liées à la vue, fond en dégradé, grille estompée |
 | Q9 | part simple (Q9a) confiée à Cursor ; volet d'arbre et menu : Claude |
 | Q10 | fait (voir § 2) |

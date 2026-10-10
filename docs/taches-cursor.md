@@ -425,3 +425,41 @@ Windows.
 - Tests JS pour ce qui est pur (placement du menu : petite fonction dans
   `viewmenu.js`), vérification à l'écran en 1366 × 768, FR et EN.
 - Ne pas toucher à l'en-tête ni aux icônes (Q6/Q7, maquette en attente).
+
+## Q4 — Découpage de `main.js` (après Q9a)
+
+**Comportement visé : aucun changement.** `app/main.js` (~6700 lignes,
+~90 variables globales modifiables) devient un point d'entrée court qui
+assemble des modules. Découpage proposé par le relevé (ordre conseillé,
+un commit par module, tests et écran vérifiés à chaque commit) :
+
+1. `contextmenu.js` (~190 lignes) — menu contextuel de la zone graphique et
+   de l'arbre ;
+2. `measure.js` (~350) — Mesurer, Évaluer ;
+3. `viewcube.js` (~300) — boîte d'orientation, vues standard ;
+4. `assembly.js` (~500) — mode assemblage ;
+5. `graphview.js` (~1600) — éditeur de fonctions graphe ;
+6. `tree.js` (~1350) — arbre de création, volet flottant, renommage ;
+7. `picking.js` (~870) — survol, sélection, cadre de sélection
+   (`updateHover`, `hoverAt` : ajoutés en Q10, à garder tels quels) ;
+8. `viewport.js` (~900) — rendu, caméra `ViewCamera`, fenêtres multiples,
+   plans de base.
+
+Règles :
+- Pas de nouvelle variable globale ni de `window.*` en plus de
+  `__freesolidDebug`. L'état partagé passe par un petit objet de contexte
+  créé dans `main.js` (scène, caméra, contrôles, `call`, `say`, `panel`,
+  `refresh`…) et donné à chaque `install…(ctx)`, ou par des imports
+  explicites de fonctions pures.
+- Les fonctions pures déplacées gardent leur nom et reçoivent un test
+  quand elles n'en ont pas.
+- Pas de renommage ni de « nettoyage » au passage : le diff de chaque
+  commit doit se relire comme un déplacement.
+- Vérifier à chaque commit : `node --test tests/js/*.test.mjs`,
+  `python -m pytest -q`, et à l'écran (1366 × 768) : esquisse sur une face,
+  extrusion, congé, arbre (double-clic pour rééditer), menu contextuel,
+  fenêtres multiples, assemblage simple, éditeur graphe.
+- Pendant Q4, Claude travaille sur l'en-tête (Q6) : `index.html`,
+  `ribbon.js`, `ribbon.json`, `menubar.js`, `shortcutbar.js`. Ses
+  retouches à `main.js` resteront minimes ; faire `git merge qualite`
+  entre deux modules.

@@ -192,6 +192,6 @@ de suite. Q6 et Q7 attendent une maquette et un échantillon validés.
 | Q5 | après Q4 |
 | Q6, Q7 | maquette en attente de validation ; icônes de l'utilisateur à reprendre |
 | Q8 | fait : lumières liées à la vue, fond en dégradé, grille estompée |
-| Q9 | à faire |
+| Q9 | part simple (Q9a) confiée à Cursor ; volet d'arbre et menu : Claude |
 | Q10 | fait (voir § 2) |
 | Q11 | plus tard |

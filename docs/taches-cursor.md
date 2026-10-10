@@ -396,3 +396,32 @@ variables.
   `GridHelper` ni de `scene.background`, et le masque des lignes cachées
   n'a plus de couleur (`colorWrite: false`).
 
+
+## Préalable commun (depuis c87a170)
+
+`qualite` contient un `.gitattributes` qui impose LF. Après
+`git merge qualite`, rafraîchir une fois la copie de travail :
+`git rm -r -q --cached . && git reset -q --hard` (aucun travail non commité
+ne doit traîner). Le test des textes orphelins doit alors passer aussi sous
+Windows.
+
+## Q9a — Panneaux et menu contextuel (part simple)
+
+**Comportement visé.**
+- Le panneau d'une fonction sans sélection (« Congé : cliquez d'abord dans
+  la zone graphique », `app/features.js` lignes ~73 et ~872) ne s'affiche
+  plus comme une erreur : c'est une consigne. La rendre neutre (couleur du
+  texte secondaire, pas `--danger`), et ne pas la répéter si la ligne de
+  sélection du panneau dit déjà quoi choisir. Garder le rouge pour les
+  vraies erreurs (valeur invalide, refus du moteur).
+- En esquisse sur une face, la face porteuse n'est plus peinte avec la
+  couleur de sélection (orange) : elle reprend la couleur normale de la
+  pièce, et la barre d'état n'affiche plus « sél. Face n » pendant
+  l'esquisse. À la sortie de l'esquisse, la sélection n'est pas restaurée.
+- Menu contextuel de la zone graphique (`main.js`, autour de
+  `viewMenuEl`) : s'il est plus haut que la place disponible sous le
+  pointeur, il s'ouvre au-dessus ; s'il ne tient nulle part, il défile
+  (`max-height` + `overflow-y: auto`) au lieu de recouvrir le ruban.
+- Tests JS pour ce qui est pur (placement du menu : petite fonction dans
+  `viewmenu.js`), vérification à l'écran en 1366 × 768, FR et EN.
+- Ne pas toucher à l'en-tête ni aux icônes (Q6/Q7, maquette en attente).

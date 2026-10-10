@@ -28,36 +28,36 @@ const ACTION_LABELS = {
   revolve: "Révolution",
 };
 
-/** Icône de chaque action (fichier de app/icons/). */
+/** Rôle d'icône de chaque action (table de icons.js). */
 const MENU_ICONS = {
-  "sketch-on-face": "fs_sketch.svg",
-  "normal-to": "fs_normal_to.svg",
-  fillet: "fs_fillet.svg",
-  chamfer: "fs_chamfer.svg",
-  shell: "fs_shell.svg",
-  measure: "fs_measure.svg",
-  "edit-feature": "fs_edit.svg",
-  "edit-sketch": "fs_sketch.svg",
-  pad: "nodes_extrude.svg",
-  pocket: "fs_pocket.svg",
-  revolve: "fs_revolve.svg",
-  "edit-surface": "fs_edit.svg",
-  rollback: "fs_rollback.svg",
-  "delete-feature": "fs_delete.svg",
-  "zoom-fit": "fs_zoom_fit.svg",
-  orient: "fs_orient.svg",
-  origin: "fs_origin.svg",
-  "sk-select": "fs_select.svg",
-  "sk-line": "nodes_line.svg",
-  "sk-rect": "fs_rect.svg",
-  "sk-circle": "nodes_circle.svg",
-  "sk-dim": "fs_dimension.svg",
-  "sk-trim": "fs_trim.svg",
-  "sk-finish": "fs_sketch_ok.svg",
-  "sk-cancel": "fs_sketch_cancel.svg",
+  "sketch-on-face": "sketch",
+  "normal-to": "normal_to",
+  fillet: "fillet",
+  chamfer: "chamfer",
+  shell: "shell",
+  measure: "measure",
+  "edit-feature": "edit",
+  "edit-sketch": "sketch",
+  pad: "nodes_extrude",
+  pocket: "pocket",
+  revolve: "revolve",
+  "edit-surface": "edit",
+  rollback: "rollback",
+  "delete-feature": "delete",
+  "zoom-fit": "zoom_fit",
+  orient: "orient",
+  origin: "origin",
+  "sk-select": "select",
+  "sk-line": "nodes_line",
+  "sk-rect": "rect",
+  "sk-circle": "nodes_circle",
+  "sk-dim": "dimension",
+  "sk-trim": "trim",
+  "sk-finish": "sketch_ok",
+  "sk-cancel": "sketch_cancel",
 };
 
-/** Fichier d'icône d'une action du menu, ou "" s'il n'y en a pas. */
+/** Rôle d'icône d'une action du menu, ou "" s'il n'y en a pas. */
 export function menuIcon(key) {
   return MENU_ICONS[key] ?? "";
 }

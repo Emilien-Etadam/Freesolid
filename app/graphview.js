@@ -3,6 +3,7 @@
 // commandes) et sont mis à jour via ctx.
 
 import { t } from "./i18n.js";
+import { iconSrc } from "./icons.js";
 import {
   buildGraph,
   cloneGraphDraft,
@@ -48,7 +49,6 @@ export function graphLabelText(text) {
  *  reste de l'application appelle déjà. */
 export function installGraphView(ctx) {
   const {
-    TREE_ICONS,
     say, call, refresh, refreshAny, confirm, PROP_LABELS,
     featureCommand, openMenu, editFeature, renderTree, updateViewport,
     onSketchRowClick, onDatumRow, onSurfaceClick, onPlaneRow,
@@ -56,30 +56,63 @@ export function installGraphView(ctx) {
     openEquationsPanel, openFeaturePanel, currentSelection,
   } = ctx;
 
+  // Le graphe garde les fichiers d'avant. L'arbre, lui, prend le rôle
+  // de la commande (TREE_ICONS).
+  const GRAPH_TYPE_ICONS = {
+    "Sketcher::SketchObject": "Sketcher_Sketch",
+    "PartDesign::Pad": "PartDesign_Pad",
+    "PartDesign::Pocket": "PartDesign_Pocket",
+    "PartDesign::Fillet": "PartDesign_Fillet",
+    "PartDesign::Chamfer": "PartDesign_Chamfer",
+    "PartDesign::Revolution": "PartDesign_Revolution",
+    "PartDesign::Groove": "PartDesign_Groove",
+    "PartDesign::Mirrored": "PartDesign_Mirrored",
+    "PartDesign::LinearPattern": "PartDesign_LinearPattern",
+    "PartDesign::PolarPattern": "PartDesign_PolarPattern",
+    "PartDesign::Thickness": "PartDesign_Thickness",
+    "PartDesign::Draft": "PartDesign_Draft",
+    "PartDesign::Hole": "PartDesign_Hole",
+    "PartDesign::Plane": "PartDesign_Plane",
+    "PartDesign::AdditiveLoft": "PartDesign_AdditiveLoft",
+    "PartDesign::SubtractiveLoft": "PartDesign_SubtractiveLoft",
+    "PartDesign::AdditivePipe": "PartDesign_AdditivePipe",
+    "PartDesign::SubtractivePipe": "PartDesign_SubtractivePipe",
+    "PartDesign::AdditiveHelix": "PartDesign_AdditiveHelix",
+    "PartDesign::Boolean": "PartDesign_Boolean",
+    "PartDesign::Body": "PartDesign_Body",
+    "Part::Extrusion": "Part_3D_object",
+    "Part::Revolution": "Part_3D_object",
+    "Part::Loft": "Part_3D_object",
+    "Part::Feature": "Part_3D_object",
+    "Part::Offset": "Part_3D_object",
+    "App::Link": "LinkArray",
+  };
+
   function graphIconFile(node) {
     if (node?.icon) return node.icon;
     if (node?.spec?.icon) return node.spec.icon;
     if (node?.role === "compute" || node?.role === "shape") {
-      if (node.type === "cylindre") return "nodes_cylinder.svg";
-      if (node.type === "boite") return "nodes_box.svg";
-      if (node.type === "serie") return "nodes_number_range.svg";
-      if (node.type === "variable") return "VarSet.svg";
-      if (node.type === "vecteur" || node.type === "point") return "nodes_vect.svg";
-      return "nodes_wb_icon.svg";
+      if (node.type === "cylindre") return "nodes_cylinder";
+      if (node.type === "boite") return "nodes_box";
+      if (node.type === "serie") return "nodes_number_range";
+      if (node.type === "variable") return "VarSet";
+      if (node.type === "vecteur" || node.type === "point") return "nodes_vect";
+      return "nodes_wb_icon";
     }
-    if (node?.type && TREE_ICONS[node.type]) return TREE_ICONS[node.type];
-    if (node?.role === "sketch") return TREE_ICONS["Sketcher::SketchObject"];
-    if (node?.role === "datum") return TREE_ICONS["PartDesign::Plane"];
-    if (node?.role === "plane") return "Std_Plane.svg";
-    if (node?.role === "surface") return "Part_3D_object.svg";
-    if (node?.role === "variable") return "VarSet.svg";
-    if (node?.role === "body") return TREE_ICONS["PartDesign::Body"];
-    return TREE_ICONS["PartDesign::Body"];
+    const typed = node?.type ? GRAPH_TYPE_ICONS[node.type] : "";
+    if (typed) return typed;
+    if (node?.role === "sketch") return GRAPH_TYPE_ICONS["Sketcher::SketchObject"];
+    if (node?.role === "datum") return GRAPH_TYPE_ICONS["PartDesign::Plane"];
+    if (node?.role === "plane") return "Std_Plane";
+    if (node?.role === "surface") return "Part_3D_object";
+    if (node?.role === "variable") return "VarSet";
+    if (node?.role === "body") return GRAPH_TYPE_ICONS["PartDesign::Body"];
+    return GRAPH_TYPE_ICONS["PartDesign::Body"];
   }
 
   function svgGraphIcon(file, x, y) {
     return svgEl("image", {
-      href: "icons/" + file,
+      href: iconSrc(file),
       x, y, width: 16, height: 16,
     });
   }
@@ -1009,7 +1042,7 @@ export function installGraphView(ctx) {
           }
           if (item.icon) {
             const img = document.createElement("img");
-            img.src = "icons/" + item.icon;
+            img.src = iconSrc(item.icon);
             img.alt = "";
             row.appendChild(img);
           }
@@ -1082,7 +1115,7 @@ export function installGraphView(ctx) {
         row.title = item.reason;
       }
       const img = document.createElement("img");
-      img.src = "icons/" + item.icon;
+      img.src = iconSrc(item.icon);
       img.alt = "";
       row.appendChild(img);
       const body = document.createElement("span");

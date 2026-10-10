@@ -2,6 +2,7 @@
 // Les sélections (`lastTree`, esquisse, plan, surface) restent dans main.js.
 
 import { t } from "./i18n.js";
+import { iconSrc } from "./icons.js";
 import { num } from "./num.js";
 import { arcAngles } from "./geom2d.js";
 import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
@@ -12,36 +13,36 @@ import {
 } from "./features.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
 
-// FreeCAD's own icons (see app/icons/README.md) — the tree reads like
-// SolidWorks' FeatureManager: icon + label, the kind lives in the tooltip.
+// Rôles de la table icons.js : même rôle que la commande qui crée
+// l'élément. Le graphe garde, lui, les fichiers d'avant.
 export const TREE_ICONS = {
-  "Sketcher::SketchObject": "Sketcher_Sketch.svg",
-  "PartDesign::Pad": "PartDesign_Pad.svg",
-  "PartDesign::Pocket": "PartDesign_Pocket.svg",
-  "PartDesign::Fillet": "PartDesign_Fillet.svg",
-  "PartDesign::Chamfer": "PartDesign_Chamfer.svg",
-  "PartDesign::Revolution": "PartDesign_Revolution.svg",
-  "PartDesign::Groove": "PartDesign_Groove.svg",
-  "PartDesign::Mirrored": "PartDesign_Mirrored.svg",
-  "PartDesign::LinearPattern": "PartDesign_LinearPattern.svg",
-  "PartDesign::PolarPattern": "PartDesign_PolarPattern.svg",
-  "PartDesign::Thickness": "PartDesign_Thickness.svg",
-  "PartDesign::Draft": "PartDesign_Draft.svg",
-  "PartDesign::Hole": "PartDesign_Hole.svg",
-  "PartDesign::Plane": "PartDesign_Plane.svg",
-  "PartDesign::AdditiveLoft": "PartDesign_AdditiveLoft.svg",
-  "PartDesign::SubtractiveLoft": "PartDesign_SubtractiveLoft.svg",
-  "PartDesign::AdditivePipe": "PartDesign_AdditivePipe.svg",
-  "PartDesign::SubtractivePipe": "PartDesign_SubtractivePipe.svg",
-  "PartDesign::AdditiveHelix": "PartDesign_AdditiveHelix.svg",
-  "PartDesign::Boolean": "PartDesign_Boolean.svg",
-  "PartDesign::Body": "PartDesign_Body.svg",
-  "Part::Extrusion": "Part_3D_object.svg",
-  "Part::Revolution": "Part_3D_object.svg",
-  "Part::Loft": "Part_3D_object.svg",
-  "Part::Feature": "Part_3D_object.svg",
-  "Part::Offset": "Part_3D_object.svg",
-  "App::Link": "LinkArray.svg",
+  "Sketcher::SketchObject": "sketch",
+  "PartDesign::Pad": "nodes_extrude",
+  "PartDesign::Pocket": "pocket",
+  "PartDesign::Fillet": "fillet",
+  "PartDesign::Chamfer": "chamfer",
+  "PartDesign::Revolution": "revolve",
+  "PartDesign::Groove": "groove",
+  "PartDesign::Mirrored": "mirror",
+  "PartDesign::LinearPattern": "linear_pattern",
+  "PartDesign::PolarPattern": "polar_pattern",
+  "PartDesign::Thickness": "shell",
+  "PartDesign::Draft": "draft",
+  "PartDesign::Hole": "hole",
+  "PartDesign::Plane": "plane",
+  "PartDesign::AdditiveLoft": "loft",
+  "PartDesign::SubtractiveLoft": "loft",
+  "PartDesign::AdditivePipe": "sweep",
+  "PartDesign::SubtractivePipe": "sweep",
+  "PartDesign::AdditiveHelix": "nodes_helix",
+  "PartDesign::Boolean": "boolean",
+  "PartDesign::Body": "body",
+  "Part::Extrusion": "nodes_extrude",
+  "Part::Revolution": "revolve",
+  "Part::Loft": "loft",
+  "Part::Feature": "body",
+  "Part::Offset": "body",
+  "App::Link": "insert",
 };
 
 export const PROP_LABELS = {
@@ -167,7 +168,7 @@ export function installTree(ctx) {
 
   function treeIcon(file) {
     const img = document.createElement("img");
-    img.src = "icons/" + file;
+    img.src = iconSrc(file);
     img.alt = "";
     return img;
   }
@@ -363,7 +364,7 @@ export function installTree(ctx) {
         : t("état inconnu");
     ctx.sketchInfoOpen = true;
     panel.open({
-      icon: "Sketcher_Sketch.svg",
+      icon: "sketch",
       title: state.label || feature.label,
       noApply: true,
       groups: [{
@@ -506,7 +507,7 @@ export function installTree(ctx) {
     bodyItem.className = "body in-folder"
       + (bodyInfo.active ? " active" : "")
       + (empty ? " empty" : "");
-    bodyItem.appendChild(treeIcon("PartDesign_Body.svg"));
+    bodyItem.appendChild(treeIcon("body"));
     if (hexColor(bodyInfo.color)) {
       const swatch = document.createElement("span");
       swatch.className = "swatch";
@@ -557,7 +558,7 @@ export function installTree(ctx) {
     }
     item.appendChild(arrow);
     item.appendChild(treeIcon(
-      isGraphFeature(surface) ? "Geoassembly.svg" : "Part_3D_object.svg"));
+      isGraphFeature(surface) ? "graph_feature" : "surface_body"));
     item.appendChild(document.createTextNode(surface.label));
     item.title = t("Surface / courbe — clic : sélectionner pour une " +
       "commande · double-clic : modifier · clic droit : modifier, " +
@@ -576,7 +577,7 @@ export function installTree(ctx) {
           + (child.error ? " error" : "")
           + (rolledBack ? " rolled-back" : "");
         row.dataset.feat = child.name;
-        row.appendChild(treeIcon("Sketcher_Sketch.svg"));
+        row.appendChild(treeIcon("sketch"));
         row.appendChild(document.createTextNode(child.label));
         row.title = `${child.kind} — `
           + t("double-clic : modifier l'esquisse · clic droit : modifier");
@@ -889,7 +890,7 @@ export function installTree(ctx) {
 
     // Ordre SolidWorks : dossiers en tête, puis plans, puis fonctions.
     const bodiesOpen = appendFolder(
-      "bodies", t("Corps volumiques"), solidCount, "PartDesign_Body.svg",
+      "bodies", t("Corps volumiques"), solidCount, "body",
       bodiesDefaultOpen,
       { title: t("Corps de la pièce — clic : déplier") });
     if (bodiesOpen) {
@@ -897,7 +898,7 @@ export function installTree(ctx) {
     }
 
     const surfacesOpen = appendFolder(
-      "surfaces", t("Corps surfaciques"), surfaces.length, "Part_3D_object.svg",
+      "surfaces", t("Corps surfaciques"), surfaces.length, "surface_body",
       surfacesDefaultOpen,
       { title: t("Surfaces et courbes — clic : déplier") });
     if (surfacesOpen) {
@@ -905,7 +906,7 @@ export function installTree(ctx) {
     }
 
     const equationsOpen = appendFolder(
-      "equations", t("Équations"), variables.length, "VarSet.svg", false,
+      "equations", t("Équations"), variables.length, "equations", false,
       {
         clickToggles: false,
         title: t("Double-clic : ouvrir les équations"),
@@ -915,7 +916,7 @@ export function installTree(ctx) {
       for (const variable of variables) {
         const row = document.createElement("li");
         row.className = "in-folder";
-        row.appendChild(treeIcon("VarSet.svg"));
+        row.appendChild(treeIcon("equations"));
         row.appendChild(document.createTextNode(
           `${variable.name} = ${variable.value}`));
         row.title = t("Double-clic : ouvrir les équations");
@@ -936,7 +937,7 @@ export function installTree(ctx) {
     for (const plane of tree.planes ?? []) {
       const item = document.createElement("li");
       item.className = "plane" + (ctx.selectedPlane === plane.id ? " sel" : "");
-      item.appendChild(treeIcon("Std_Plane.svg"));
+      item.appendChild(treeIcon("origin_plane"));
       item.appendChild(document.createTextNode(plane.label));
       item.title = t("Clic : choisir ce plan pour la prochaine esquisse");
       item.addEventListener("click", () => onPlaneRow(plane.id));
@@ -953,7 +954,7 @@ export function installTree(ctx) {
     // L'origine ferme le groupe des références, comme d'habitude en CAO.
     const origin = document.createElement("li");
     origin.className = "plane origin" + (ctx.originShown ? " sel" : "");
-    origin.appendChild(treeIcon("FreeSolid_Origin.svg"));
+    origin.appendChild(treeIcon("origin"));
     origin.appendChild(document.createTextNode(t("Origine")));
     origin.title = t("Clic : afficher ou masquer l'origine");
     origin.addEventListener("click", toggleOrigin);
@@ -1008,9 +1009,9 @@ export function installTree(ctx) {
     }
     row.appendChild(arrow);
     const icon = isGraphFeature(feature)
-      ? "Geoassembly.svg"
+      ? "graph_feature"
       : isRepeatFeature(feature)
-        ? "PartDesign_LinearPattern.svg"
+        ? "linear_pattern"
         : TREE_ICONS[feature.type];
     if (icon) row.appendChild(treeIcon(icon));
     row.appendChild(document.createTextNode(
@@ -1067,7 +1068,7 @@ export function installTree(ctx) {
         childRow.dataset.feat = child.name;
         if (rolledBack) childRow.classList.add("rolled-back");
         if (ctx.selectedSketch?.name === child.name) childRow.classList.add("sel");
-        childRow.appendChild(treeIcon("Sketcher_Sketch.svg"));
+        childRow.appendChild(treeIcon("sketch"));
         childRow.appendChild(document.createTextNode(
           sketchTreeLabel(child.label, sketchDefinitionOf(child))));
         if (ctx.sketchMode.editing === child.name) childRow.classList.add("editing");
@@ -1126,7 +1127,7 @@ export function installTree(ctx) {
     const spec = feature.revolution;
     const sketch = findSketch(ctx.lastTree, spec.profile);
     panel.open({
-      icon: TREE_ICONS[feature.type] ?? "PartDesign_Revolution.svg",
+      icon: TREE_ICONS[feature.type] ?? "revolve",
       title: feature.label,
       groups: revolutionGroups(sketch, {
         angle: chamferFieldValue(feature.params, "Angle", spec.angle),
@@ -1156,7 +1157,7 @@ export function installTree(ctx) {
   function editChamfer(feature) {
     const spec = feature.chamfer;
     panel.open({
-      icon: "PartDesign_Chamfer.svg",
+      icon: "chamfer",
       title: feature.label,
       groups: [{
         label: "Paramètres du chanfrein",
@@ -1201,7 +1202,7 @@ export function installTree(ctx) {
       // Gravure rééditable (P032) : panneau dédié -> edit_text.
       const txt = feature.text;
       panel.open({
-        icon: TREE_ICONS[feature.type] ?? "PartDesign_Body.svg",
+        icon: TREE_ICONS[feature.type] ?? "body",
         title: feature.label,
         groups: [{
           label: t("Gravure"),
@@ -1255,7 +1256,7 @@ export function installTree(ctx) {
         return values;
       };
       panel.open({
-        icon: TREE_ICONS[feature.type] ?? "PartDesign_Body.svg",
+        icon: TREE_ICONS[feature.type] ?? "body",
         title: info.label,
         groups: [{
           label: t("Paramètres"),

@@ -139,13 +139,13 @@ export function createSketchMode(deps) {
   let building = false; // construction multi-appels (rectangle) en cours
 
   const ENTITY_ICONS = {
-    Ligne: "nodes_line.svg",
-    Cercle: "nodes_circle.svg",
-    Arc: "nodes_arc.svg",
-    Spline: "nodes_bspline.svg",
-    Ellipse: "fs_ellipse.svg",
-    Polyligne: "nodes_line.svg",
-    Entité: "fs_sketch.svg",
+    Ligne: "nodes_line",
+    Cercle: "nodes_circle",
+    Arc: "nodes_arc",
+    Spline: "nodes_bspline",
+    Ellipse: "ellipse",
+    Polyligne: "nodes_line",
+    Entité: "sketch",
   };
 
   let entityPanelOpen = false;
@@ -386,7 +386,7 @@ export function createSketchMode(deps) {
     };
     abandonEntityPanel();
     panel.open({
-      icon: "fs_sketch.svg",
+      icon: "sketch",
       title: t("Image d'esquisse"),
       groups: [
         {
@@ -1891,7 +1891,7 @@ export function createSketchMode(deps) {
     const geos = mode.selection.map((s) => s.geo);
     abandonEntityPanel();
     panel.open({
-      icon: "fs_sketch_array.svg",
+      icon: "sketch_array",
       title: t("Réseau d'esquisse"),
       groups: [{
         label: t("Paramètres"),
@@ -1925,7 +1925,7 @@ export function createSketchMode(deps) {
     const geos = mode.selection.map((s) => s.geo);
     abandonEntityPanel();
     panel.open({
-      icon: "fs_offset.svg",
+      icon: "offset",
       title: t("Décaler"),
       groups: [{
         label: t("Paramètres"),

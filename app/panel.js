@@ -8,7 +8,7 @@
 //
 // Spec shape:
 //   {
-//     icon: "PartDesign_Pad.svg",
+//     icon: "nodes_extrude",
 //     title: "Extrusion",
 //     groups: [{ label, rows: [row…] }],
 //     note?: string,
@@ -28,6 +28,7 @@
 // invalidateSelections() : vide les rows `selection` (ids périmés au rebuild).
 
 import { t } from "./i18n.js";
+import { iconSrc } from "./icons.js";
 
 /** Que fait Entrée dans le panneau ? Une valeur tout juste tapée dans un
  *  champ est d'abord appliquée (l'aperçu suit, le panneau reste ouvert) ;
@@ -244,7 +245,7 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
 
     const head = el("div", "phead-main");
     const icon = document.createElement("img");
-    icon.src = "icons/" + spec.icon;
+    icon.src = iconSrc(spec.icon);
     icon.alt = "";
     head.append(icon, el("span", "ptitle", spec.title));
     if (spec.onPreview) {

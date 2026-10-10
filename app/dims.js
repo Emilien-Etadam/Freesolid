@@ -262,7 +262,7 @@ export function openDimEditor({ panel, dim, onApply, onCancel }) {
       : String(+Number(dim.value).toFixed(4)));
   const unit = isSketchAngle || dim.unit === "°" ? "°" : (dim.unit || "mm");
   panel.open({
-    icon: "Constraint_Dimension.svg",
+    icon: "Constraint_Dimension",
     title: t("Cote") + (dim.name ? ` — ${dim.name}` : ""),
     groups: [{
       label: t("Cote"),

@@ -4,6 +4,7 @@
 // l'appel, pour suivre les réassignations de main.js.
 
 import { t } from "./i18n.js";
+import { iconSrc } from "./icons.js";
 import { cssHex } from "./theme.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
 import {
@@ -240,7 +241,7 @@ export function installContextMenu(ctx) {
     for (const key of keys) {
       const button = document.createElement("button");
       const icon = document.createElement("img");
-      icon.src = "icons/" + menuIcon(key);
+      icon.src = iconSrc(menuIcon(key));
       icon.alt = "";
       button.appendChild(icon);
       button.title = t(viewMenuLabel(key, menu));
@@ -294,7 +295,7 @@ export function installContextMenu(ctx) {
           button.title = label;
           button.setAttribute("aria-label", label);
           const icon = document.createElement("img");
-          icon.src = "icons/" + menuIcon(key);
+          icon.src = iconSrc(menuIcon(key));
           icon.alt = "";
           button.appendChild(icon);
           button.addEventListener("click", () => {
@@ -306,7 +307,7 @@ export function installContextMenu(ctx) {
       } else {
         const icon = document.createElement("img");
         icon.alt = "";
-        if (menuIcon(item.key)) icon.src = "icons/" + menuIcon(item.key);
+        if (menuIcon(item.key)) icon.src = iconSrc(menuIcon(item.key));
         else icon.className = "blank";
         row.append(icon, t(item.label));
         if (item.danger) row.classList.add("danger");

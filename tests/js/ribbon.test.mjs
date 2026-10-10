@@ -13,6 +13,7 @@ import {
   isButtonId,
   safeIconSrc,
 } from "../../app/ribbon.js";
+import { iconSrc } from "../../app/icons.js";
 import { FEATURES } from "../../app/features.js";
 import LAYOUT from "../../app/ribbon.json" with { type: "json" };
 
@@ -128,8 +129,10 @@ describe("ribbon.json", () => {
   it("ne référence que des icônes présentes dans app/", () => {
     for (const bouton of layoutButtons()) {
       if (!bouton.icon) continue;
-      assert.equal(safeIconSrc(bouton.icon), bouton.icon);
-      const disk = new URL("../../app/" + bouton.icon, import.meta.url);
+      const src = safeIconSrc(bouton.icon);
+      assert.equal(src, iconSrc(bouton.icon));
+      assert.match(src, /^icons\/[A-Za-z0-9_.-]+\.svg$/);
+      const disk = new URL("../../app/" + src, import.meta.url);
       assert.ok(existsSync(disk), `icône absente : ${bouton.icon}`);
     }
   });

@@ -24,7 +24,7 @@ import { installMeasure } from "./measure.js";
 import { VIEW_KEYS, VIEWS, installViewCube } from "./viewcube.js";
 import { installAssembly } from "./assembly.js";
 import { installGraphView } from "./graphview.js";
-import { PROP_LABELS, TREE_ICONS, installTree } from "./tree.js";
+import { PROP_LABELS, installTree } from "./tree.js";
 import { installPicking } from "./picking.js";
 import { installViewport } from "./viewport.js";
 import {
@@ -41,11 +41,13 @@ import {
   pickInBox, readReverseWheel, writeReverseWheel, zoomSpeedFor,
 } from "./navigation.js";
 import { currentLang, setLang, t, translateDom } from "./i18n.js";
+import { applyStaticIcons } from "./icons.js";
 // La langue avant tout rendu : ruban, panneaux et messages passent par t().
 setLang(readLang((() => { try { return window.localStorage; } catch { return null; } })(),
   navigator.language));
 document.documentElement.lang = currentLang();
 translateDom(document.body);
+applyStaticIcons(document);
 
 // prompt()/confirm() natifs, message traduit : les appels gardent le texte
 // source en français, le dictionnaire fait le reste.
@@ -1310,7 +1312,7 @@ function setClip(axis, position, flip) {
 document.getElementById("btn-clip").addEventListener("click", () => {
   const active = renderer.clippingPlanes.length > 0;
   panel.open({
-    icon: "Std_ToggleClipPlane.svg",
+    icon: "Std_ToggleClipPlane",
     title: t("Plan de coupe"),
     groups: [{
       label: t("Coupe visuelle"),
@@ -1378,7 +1380,6 @@ expose("graphFn", () => graphFn, (v) => { graphFn = v; });
 expose("selectedDatumFeature", () => selectedDatumFeature, (v) => { selectedDatumFeature = v; });
 expose("selectedSurface", () => selectedSurface, (v) => { selectedSurface = v; });
 Object.assign(ctx, {
-  TREE_ICONS,
   say, call, refresh, refreshAny, confirm, PROP_LABELS,
   featureCommand, openMenu, editFeature, renderTree, updateViewport,
   onSketchRowClick, onDatumRow, onSurfaceClick, onPlaneRow,
@@ -1411,7 +1412,7 @@ document.getElementById("btn-curve3d").addEventListener("click", () =>
 
 document.getElementById("btn-drawing").addEventListener("click", () => {
   panel.open({
-    icon: "TechDraw_PageDefault.svg",
+    icon: "TechDraw_PageDefault",
     title: t("Mise en plan"),
     groups: [
       {
@@ -1564,7 +1565,7 @@ async function openEquationsPanel() {
     return;
   }
   panel.open({
-    icon: "VarSet.svg",
+    icon: "VarSet",
     title: t("Équations"),
     groups: [
       {
@@ -1768,7 +1769,7 @@ document.getElementById("btn-body").addEventListener("click", () =>
 
 document.getElementById("btn-datum").addEventListener("click", () =>
   featureCommand(() => panel.open({
-    icon: "PartDesign_Plane.svg",
+    icon: "PartDesign_Plane",
     title: t("Plan de référence"),
     groups: [
       {
@@ -1889,7 +1890,7 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
           result: failed ? t("ÉCHEC") : "OK" }), failed);
       if (failed) {
         panel.open({
-          icon: "view-measurement.svg",
+          icon: "view-measurement",
           title: t("Autotest"),
           noApply: true,
           groups: [{

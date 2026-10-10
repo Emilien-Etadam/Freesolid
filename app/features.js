@@ -249,7 +249,7 @@ function surface({ button, icon, title, groups, note, build, invalid }) {
 /** Combiner : même panneau sous `btn-boolean` (groupe Corps) et
  *  `btn-gem-combine` (onglet Bijouterie). Un seul objet, deux ids. */
 const COMBINE_FEATURE = {
-  icon: "fs_boolean.svg",
+  icon: "boolean",
   title: "Combiner",
   guard: (ctx) => {
     const options = booleanToolOptions(ctx);
@@ -637,7 +637,7 @@ export function chamferEditValues(v, chamfer, params) {
 export const FEATURES = [
   withSketchProfile({
     button: "btn-pad",
-    icon: "nodes_extrude.svg",
+    icon: "nodes_extrude",
     title: "Extrusion",
     groups: () => extrudeGroups("pad"),
     build: (v) => extrudeBuild("add_pad", v),
@@ -646,7 +646,7 @@ export const FEATURES = [
   }),
   withSketchProfile({
     button: "btn-pocket",
-    icon: "fs_pocket.svg",
+    icon: "pocket",
     title: "Enlèvement extrudé",
     groups: () => extrudeGroups("pocket"),
     build: (v) => extrudeBuild("add_pocket", v),
@@ -656,18 +656,18 @@ export const FEATURES = [
   revolved({
     button: "btn-revolution",
     op: "add_revolution",
-    icon: "fs_revolve.svg",
+    icon: "revolve",
     title: "Révolution",
   }),
   revolved({
     button: "btn-groove",
     op: "add_groove",
-    icon: "fs_groove.svg",
+    icon: "groove",
     title: "Enlèvement par révolution",
   }),
   {
     button: "btn-hole",
-    icon: "fs_hole.svg",
+    icon: "hole",
     title: "Perçage",
     groups: () => [
       {
@@ -732,7 +732,7 @@ export const FEATURES = [
   },
   {
     button: "btn-loft",
-    icon: "fs_loft.svg",
+    icon: "loft",
     title: "Lissage",
     groups: () => [
       { label: "Profils",
@@ -764,7 +764,7 @@ export const FEATURES = [
   },
   {
     button: "btn-sweep",
-    icon: "fs_sweep.svg",
+    icon: "sweep",
     title: "Balayage",
     groups: () => [
       { label: "Profil",
@@ -790,7 +790,7 @@ export const FEATURES = [
   },
   {
     button: "btn-helix",
-    icon: "nodes_helix.svg",
+    icon: "nodes_helix",
     title: "Hélice",
     groups: () => [{
       label: "Paramètres",
@@ -814,7 +814,7 @@ export const FEATURES = [
   },
   dressup({
     button: "btn-text",
-    icon: "nodes_text.svg", title: "Texte",
+    icon: "nodes_text", title: "Texte",
     selectionLabel: "Face d'appui",
     group: "Texte",
     rows: [
@@ -844,7 +844,7 @@ export const FEATURES = [
   }),
   dressup({
     button: "btn-fillet",
-    icon: "fs_fillet.svg", title: "Congé",
+    icon: "fillet", title: "Congé",
     selectionLabel: "Éléments à arrondir",
     accepts: ["edges", "face"],
     hint: "Cliquez des arêtes (Ctrl = ajouter) ou une face",
@@ -861,7 +861,7 @@ export const FEATURES = [
   }),
   dressup({
     button: "btn-chamfer",
-    icon: "fs_chamfer.svg", title: "Chanfrein",
+    icon: "chamfer", title: "Chanfrein",
     selectionLabel: "Éléments à chanfreiner",
     accepts: ["edges", "face"],
     hint: "Cliquez des arêtes (Ctrl = ajouter) ou une face",
@@ -878,7 +878,7 @@ export const FEATURES = [
   }),
   {
     button: "btn-shell",
-    icon: "fs_shell.svg", title: "Coque",
+    icon: "shell", title: "Coque",
     dressup: true,
     groups: (ctx) => {
       const first = ctx.selection(["face"]);
@@ -906,7 +906,7 @@ export const FEATURES = [
   },
   dressup({
     button: "btn-draft",
-    icon: "fs_draft.svg", title: "Dépouille",
+    icon: "draft", title: "Dépouille",
     selectionLabel: "Faces à dépouiller",
     group: "Angle de dépouille",
     rows: [
@@ -926,7 +926,7 @@ export const FEATURES = [
   }),
   {
     button: "btn-linpattern",
-    icon: "fs_linear_pattern.svg",
+    icon: "linear_pattern",
     title: "Réseau linéaire",
     groups: () => [
       patternFeaturesGroup(),
@@ -959,7 +959,7 @@ export const FEATURES = [
   },
   {
     button: "btn-polpattern",
-    icon: "fs_polar_pattern.svg",
+    icon: "polar_pattern",
     title: "Réseau circulaire",
     groups: () => [
       patternFeaturesGroup(),
@@ -988,7 +988,7 @@ export const FEATURES = [
   },
   {
     button: "btn-mirror",
-    icon: "fs_mirror.svg",
+    icon: "mirror",
     title: "Symétrie",
     groups: () => [
       patternFeaturesGroup(),
@@ -1012,7 +1012,7 @@ export const FEATURES = [
   },
   surface({
     button: "btn-surf-extrude",
-    icon: "fs_surface_extrude.svg", title: "Surface extrudée",
+    icon: "surface_extrude", title: "Surface extrudée",
     groups: [{ label: "Paramètres", rows: [
       { type: "number", key: "length", label: "Longueur", value: 20,
         unit: "mm" },
@@ -1025,7 +1025,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-revolve",
-    icon: "fs_surface_revolve.svg", title: "Surface de révolution",
+    icon: "surface_revolve", title: "Surface de révolution",
     groups: [{ label: "Paramètres", rows: [
       { type: "number", key: "angle", label: "Angle", value: 360,
         unit: "°", min: 0.01 },
@@ -1038,7 +1038,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-loft",
-    icon: "fs_surface_loft.svg",
+    icon: "surface_loft",
     title: "Surface lissée",
     groups: [{ label: "Profils",
       rows: [{ type: "selection", key: "profiles", accepts: ["sketch"],
@@ -1054,7 +1054,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-sew",
-    icon: "fs_sew.svg",
+    icon: "sew",
     title: "Coudre",
     groups: [{ label: "Surfaces",
       rows: [{ type: "selection", key: "surfaces", accepts: ["surface"],
@@ -1071,7 +1071,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-thicken",
-    icon: "fs_thicken.svg",
+    icon: "thicken",
     title: "Épaissir",
     groups: [
       { label: "Surface",
@@ -1091,7 +1091,7 @@ export const FEATURES = [
   }),
   {
     button: "btn-graph-feature",
-    icon: "fs_graph_feature.svg",
+    icon: "graph_feature",
     title: "Fonction graphe",
     preview: false,
     groups: () => [{
@@ -1126,7 +1126,7 @@ export const FEATURES = [
   },
   {
     button: "btn-repeat-variable",
-    icon: "fs_variable_pattern.svg",
+    icon: "variable_pattern",
     title: "Réseau variable",
     preview: false,
     groups: () => [

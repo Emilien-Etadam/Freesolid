@@ -145,13 +145,13 @@ export function installAssembly(ctx) {
     treeEl.innerHTML = "";
     const head = document.createElement("li");
     head.className = "body active";
-    head.appendChild(treeIcon("Geoassembly.svg"));
+    head.appendChild(treeIcon("assembly"));
     head.appendChild(document.createTextNode(t("Assemblage")));
     treeEl.appendChild(head);
     for (const comp of tree.components) {
       const item = document.createElement("li");
       if (comp.name === selectedComponent) item.className = "sel-comp";
-      item.appendChild(treeIcon("Link.svg"));
+      item.appendChild(treeIcon("insert"));
       item.appendChild(document.createTextNode(
         comp.label + (comp.grounded ? " " + t("(fixé)") : "")));
       item.title = t("Clic : sélectionner · double-clic : déplacer · " +
@@ -172,7 +172,7 @@ export function installAssembly(ctx) {
     for (const joint of tree.joints ?? []) {
       const row = document.createElement("li");
       row.className = "child";
-      row.appendChild(treeIcon("Geoassembly.svg"));
+      row.appendChild(treeIcon("mate"));
       row.appendChild(document.createTextNode(joint.label));
       row.title = `${joint.type} — ` + t("clic droit : renommer, supprimer");
       row.addEventListener("contextmenu", (e) => openMenu(e, joint));
@@ -190,7 +190,7 @@ export function installAssembly(ctx) {
     const [x, y, z] = comp.position;
     const [yaw, pitch, roll] = comp.rotation;
     panel.open({
-      icon: "Link.svg",
+      icon: "nodes_translate",
       title: t("Déplacer — {c}", { c: comp.label }),
       groups: [
         { label: t("Translation"),
@@ -346,7 +346,7 @@ export function installAssembly(ctx) {
       return params;
     };
     panel.open({
-      icon: "Geoassembly.svg",
+      icon: "mate",
       title: t("Contrainte d'assemblage"),
       groups: [
         { label: t("Type de contrainte"),
@@ -436,7 +436,7 @@ export function installAssembly(ctx) {
       return;
     }
     panel.open({
-      icon: "Link.svg",
+      icon: "component_array",
       title: t("Répéter — {c}", { c: comp.label }),
       groups: [{
         label: t("Répétition"),
@@ -474,7 +474,7 @@ export function installAssembly(ctx) {
         return;
       }
       panel.open({
-        icon: "Geoassembly.svg",
+        icon: "interference",
         title: t("Interférences"),
         groups: [{
           label: t("{n} interférence(s)", { n: result.interferences.length }),

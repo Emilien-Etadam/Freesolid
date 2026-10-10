@@ -1,6 +1,7 @@
 // Géométrie 2D partagée esquisse / solveur local.
 
 import { t } from "./i18n.js";
+import { fmtMm } from "./num.js";
 
 // Sweep CCW p1 → p2 autour de c, comme le moteur stocke les arcs.
 export function arcAngles(entity) {
@@ -13,7 +14,7 @@ export function arcAngles(entity) {
 }
 
 /** Distance point → segment [a, b] (a, b = [x, y]). */
-export function distancePointSegment(px, py, a, b) {
+function distancePointSegment(px, py, a, b) {
   const abx = b[0] - a[0], aby = b[1] - a[1];
   const len2 = abx * abx + aby * aby;
   if (len2 < 1e-18) return Math.hypot(px - a[0], py - a[1]);
@@ -82,10 +83,6 @@ export function isDrivingConstraint(constraint) {
     && Number.isFinite(constraint.value);
 }
 
-function fmtMm(value) {
-  return Number(value).toFixed(2);
-}
-
 export function circlePoints(cx, cy, r, segments = 48) {
   if (!(r > 0)) return [];
   const pts = [];
@@ -96,7 +93,7 @@ export function circlePoints(cx, cy, r, segments = 48) {
   return pts;
 }
 
-export function arcPoints(cx, cy, r, a1, a2, segments = 32) {
+function arcPoints(cx, cy, r, a1, a2, segments = 32) {
   if (!(r > 0)) return [];
   let sweep = a2 - a1;
   if (sweep <= 0) sweep += Math.PI * 2;

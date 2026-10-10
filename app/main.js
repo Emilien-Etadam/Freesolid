@@ -9,6 +9,7 @@ import {
 } from "./dims.js";
 import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
+import { eventToNdc, ndcToScreen } from "./screen.js";
 import {
   readDisplay, writeDisplay, displayEffects,
 } from "./display.js";
@@ -375,9 +376,8 @@ scene.add(pivotMarker);
 
 function pickPivot(event) {
   const rect = renderer.domElement.getBoundingClientRect();
-  const at = new THREE.Vector2(
-    ((event.clientX - rect.left) / rect.width) * 2 - 1,
-    -((event.clientY - rect.top) / rect.height) * 2 + 1);
+  const ndc = eventToNdc(event.clientX, event.clientY, rect);
+  const at = new THREE.Vector2(ndc.x, ndc.y);
   raycaster.setFromCamera(at, camera);
   const targets = [partMesh, ...othersMeshes, ...surfaceMeshes,
     ...(asmGroup ? asmGroup.children : [])].filter(Boolean);
@@ -504,11 +504,12 @@ function sketchScreenPoint() {
   const mid = a.add(b).multiplyScalar(0.5);
   mid.project(camera);
   const rect = renderer.domElement.getBoundingClientRect();
+  const screen = ndcToScreen(mid.x, mid.y, rect);
   return {
     name: lines.userData.sketch?.name ?? null,
     label: lines.userData.sketch?.label ?? null,
-    x: (mid.x * 0.5 + 0.5) * rect.width + rect.left,
-    y: (-mid.y * 0.5 + 0.5) * rect.height + rect.top,
+    x: screen.x,
+    y: screen.y,
   };
 }
 
@@ -520,11 +521,12 @@ function surfaceScreenPoint() {
   if (!center) return null;
   const projected = center.clone().project(camera);
   const rect = renderer.domElement.getBoundingClientRect();
+  const screen = ndcToScreen(projected.x, projected.y, rect);
   return {
     name: mesh.userData.surface?.name ?? null,
     label: mesh.userData.surface?.label ?? null,
-    x: (projected.x * 0.5 + 0.5) * rect.width + rect.left,
-    y: (-projected.y * 0.5 + 0.5) * rect.height + rect.top,
+    x: screen.x,
+    y: screen.y,
   };
 }
 
@@ -541,10 +543,7 @@ function volumeScreenPoint() {
   if (!center) return null;
   const projected = mesh.localToWorld(center.clone()).project(camera);
   const rect = renderer.domElement.getBoundingClientRect();
-  return {
-    x: (projected.x * 0.5 + 0.5) * rect.width + rect.left,
-    y: (-projected.y * 0.5 + 0.5) * rect.height + rect.top,
-  };
+  return ndcToScreen(projected.x, projected.y, rect);
 }
 
 window.__freesolidDebug = {
@@ -567,8 +566,7 @@ window.__freesolidDebug = {
     camera.updateMatrixWorld();
     const p = rotationPivot.clone().project(camera);
     const rect = renderer.domElement.getBoundingClientRect();
-    return { x: (p.x * 0.5 + 0.5) * rect.width + rect.left,
-             y: (-p.y * 0.5 + 0.5) * rect.height + rect.top };
+    return ndcToScreen(p.x, p.y, rect);
   },
   get selectedFeatureName() { return selectedFeatureName; },
   refresh: () => refresh(call("get_tree")),
@@ -1267,8 +1265,9 @@ function pickFilletRadiusBubble(event) {
   if (!filletRadiusSprite) return false;
   const rect = renderer.domElement.getBoundingClientRect();
   const projected = filletRadiusSprite.position.clone().project(camera);
-  const sx = (projected.x * 0.5 + 0.5) * rect.width + rect.left;
-  const sy = (-projected.y * 0.5 + 0.5) * rect.height + rect.top;
+  const screen = ndcToScreen(projected.x, projected.y, rect);
+  const sx = screen.x;
+  const sy = screen.y;
   return Math.hypot(sx - event.clientX, sy - event.clientY) < 28;
 }
 
@@ -1332,8 +1331,9 @@ let hoveredGroup = -1;
 
 function setPointerFromEvent(event) {
   const rect = renderer.domElement.getBoundingClientRect();
-  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  const ndc = eventToNdc(event.clientX, event.clientY, rect);
+  pointer.x = ndc.x;
+  pointer.y = ndc.y;
 }
 
 function pointerCtx() {
@@ -1482,10 +1482,7 @@ function selectEdgesInBox(start, end, additive) {
     const points = [];
     for (let k = g.start; k < g.start + g.count; k++) {
       v.fromBufferAttribute(pos, index.getX(k)).project(camera);
-      points.push({
-        x: (v.x * 0.5 + 0.5) * host.width + host.left,
-        y: (-v.y * 0.5 + 0.5) * host.height + host.top,
-      });
+      points.push(ndcToScreen(v.x, v.y, host));
     }
     return { id: g.edgeId, points };
   });
@@ -1816,8 +1813,9 @@ function pickFeatureDim(event) {
   const rect = renderer.domElement.getBoundingClientRect();
   for (const sprite of featureDimSprites) {
     const projected = sprite.position.clone().project(camera);
-    const sx = (projected.x * 0.5 + 0.5) * rect.width + rect.left;
-    const sy = (-projected.y * 0.5 + 0.5) * rect.height + rect.top;
+    const screen = ndcToScreen(projected.x, projected.y, rect);
+    const sx = screen.x;
+    const sy = screen.y;
     if (Math.hypot(sx - event.clientX, sy - event.clientY) < 22) {
       editFeatureDim(sprite.userData.dim);
       return true;
@@ -6652,7 +6650,6 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
         { faces: report.mesh_faces, tris: report.mesh_triangles,
           result: report.m0_reparam_ok ? "OK" : t("ÉCHEC") }));
     }
-    console.log("selftest", report);
   } catch (error) {
     if (gen !== viewGen) return;
     say(t("Autotest : ") + error.message, true);

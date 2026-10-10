@@ -4,19 +4,20 @@
 
 import { t } from "./i18n.js";
 import { arcAngles } from "./geom2d.js";
-
-function mm(value) {
-  return (Math.abs(value) < 5e-3 ? 0 : value).toFixed(2);
-}
+import { fmtMm } from "./num.js";
 
 /** Coordonnées sous le curseur : {x, y} (esquisse) ou {x, y, z}. */
 export function coordsText(point) {
   if (!point) return "";
   if (point.z === undefined || point.z === null) {
-    return t("X {x}  Y {y} mm", { x: mm(point.x), y: mm(point.y) });
+    return t("X {x}  Y {y} mm",
+      { x: fmtMm(point.x, { snap: true }), y: fmtMm(point.y, { snap: true }) });
   }
-  return t("X {x}  Y {y}  Z {z} mm",
-    { x: mm(point.x), y: mm(point.y), z: mm(point.z) });
+  return t("X {x}  Y {y}  Z {z} mm", {
+    x: fmtMm(point.x, { snap: true }),
+    y: fmtMm(point.y, { snap: true }),
+    z: fmtMm(point.z, { snap: true }),
+  });
 }
 
 /** Longueur d'une entité d'esquisse (droite, arc, cercle), sinon NaN. */
@@ -38,9 +39,11 @@ export function measureText(lengths) {
   const valid = (lengths ?? []).filter(Number.isFinite);
   if (!valid.length) return "";
   const total = valid.reduce((sum, value) => sum + value, 0);
-  if (valid.length === 1) return t("Longueur : {v} mm", { v: mm(total) });
+  if (valid.length === 1) {
+    return t("Longueur : {v} mm", { v: fmtMm(total, { snap: true }) });
+  }
   return t("Longueur totale : {v} mm ({n} entités)",
-    { v: mm(total), n: valid.length });
+    { v: fmtMm(total, { snap: true }), n: valid.length });
 }
 
 /** Ce qu'on édite : une esquisse, un assemblage ou une pièce. */

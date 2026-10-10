@@ -3,9 +3,9 @@
 
 import { t } from "./i18n.js";
 
-export const FILE_DIR_KEY = "freesolid.filedir";
+const FILE_DIR_KEY = "freesolid.filedir";
 
-export const FILE_MODES = {
+const FILE_MODES = {
   open: {
     title: "Ouvrir",
     accept: "Ouvrir",
@@ -44,7 +44,7 @@ export const FILE_MODES = {
   },
 };
 
-export function readFileDir(storage) {
+function readFileDir(storage) {
   try {
     return storage?.getItem(FILE_DIR_KEY) || "";
   } catch {

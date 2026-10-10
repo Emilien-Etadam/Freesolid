@@ -6,13 +6,13 @@ import { t } from "./i18n.js";
 import { isButtonId } from "./ribbon.js";
 
 /** Hors esquisse, dans l'ordre d'apparition. */
-export const PART_SHORTCUTS = [
+const PART_SHORTCUTS = [
   "btn-sketch", "btn-pad", "btn-pocket", "btn-fillet", "btn-chamfer",
   "btn-linpattern", "btn-polpattern", "btn-repeat-variable",
 ];
 
 /** Outils de tracé et cotation, pas les relations. */
-export const SKETCH_TOOLS = [
+const SKETCH_TOOLS = [
   "select", "line", "rect", "rectc", "circle", "spline", "ellipse",
   "arc", "arc3", "slot", "polygon", "dim",
 ];

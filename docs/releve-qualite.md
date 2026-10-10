@@ -154,7 +154,7 @@ La boîte est petite et sobre, sans aperçu des fichiers récents.
 | # | Chantier | Prio | Qui |
 |---|---|---|---|
 | Q1 | Messages d'erreur : textes clean-room, traduction anglaise, erreurs du noyau (congé ou chanfrein trop grand…) en phrases claires | P1 | fait |
-| Q2 | Petites bavures : `console.log`, exports et icônes inutilisés, `--warn`, aides en double (mm, projection, nombres) | P2 | Cursor |
+| Q2 | Petites bavures : `console.log`, exports et icônes inutilisés, `--warn`, aides en double (mm, projection, nombres) | P2 | fait |
 | Q3 | Jetons de style : couleurs, espacements, rayons, tailles de texte, côté CSS et côté scène 3D | P2 | Cursor |
 | Q4 | Découpage de `main.js` en modules, à comportement identique | P2 | Claude |
 | Q5 | Découpage de `kernel.py`, selftest sorti du code de production | P2 | Cursor, après Q4 |
@@ -173,6 +173,6 @@ de suite. Q6 et Q7 attendent une maquette et un échantillon validés.
 | # | État |
 |---|---|
 | Q1 | confié à Cursor |
-| Q2 | confié à Cursor |
+| Q2 | fait |
 | Q3 | confié à Cursor |
 | Q4 à Q11 | en attente de validation |

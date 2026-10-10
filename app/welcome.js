@@ -3,8 +3,8 @@
 
 import { t } from "./i18n.js";
 
-export const RECENT_KEY = "freesolid.recent";
-export const MAX_RECENT = 8;
+const RECENT_KEY = "freesolid.recent";
+const MAX_RECENT = 8;
 
 export const TIPS = [
   "S ouvre les raccourcis sous le curseur.",
@@ -14,7 +14,7 @@ export const TIPS = [
   "Ctrl+N crée une pièce ou un assemblage.",
 ];
 
-export function readRecent(storage) {
+function readRecent(storage) {
   try {
     const parsed = JSON.parse(storage?.getItem(RECENT_KEY) || "[]");
     if (!Array.isArray(parsed)) return [];

@@ -2,7 +2,7 @@
 // sprite 3D reste dans sketch.js ; le panneau est le même en esquisse
 // et hors esquisse.
 
-import { num } from "./num.js";
+import { simpleDecimal } from "./num.js";
 import { t } from "./i18n.js";
 
 /** Libellé d'une cote : « largeur = 60.00 », préfixe Σ si expression,
@@ -21,11 +21,8 @@ export function dimLabel(dim) {
 export function filletRadiusLabel(raw) {
   const text = String(raw ?? "").trim();
   if (!text) return null;
-  const numeric = Number(text.replace(",", "."));
-  if (Number.isFinite(numeric) && /^-?\d+(?:[.,]\d+)?$/.test(text)) {
-    return `R = ${numeric.toFixed(2)}`;
-  }
-  return `R = ${text}`;
+  const numeric = simpleDecimal(text);
+  return numeric == null ? `R = ${text}` : `R = ${numeric.toFixed(2)}`;
 }
 
 // ---------- tracé d'une cote d'esquisse ----------
@@ -293,8 +290,8 @@ export function dimEditPayload(values, dim, { shown, isSketchAngle }) {
   }
   const raw = String(values.value ?? "").trim();
   if (raw && raw !== shown) {
-    if (/^-?\d+([.,]\d+)?$/.test(raw)) {
-      const parsed = num(raw);
+    const parsed = simpleDecimal(raw);
+    if (parsed != null) {
       payload.value = isSketchAngle ? parsed * Math.PI / 180 : parsed;
     } else {
       payload.expr = raw;

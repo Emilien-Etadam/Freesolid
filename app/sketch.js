@@ -13,7 +13,8 @@ import {
   entityKindTitle, entityPropertyLines,
   isDrivingConstraint, sketchPreviewPoints,
 } from "./geom2d.js";
-import { num } from "./num.js";
+import { fmtMm, num } from "./num.js";
+import { eventToNdc, ndcToScreen } from "./screen.js";
 import {
   boxMode, isDrag, normalizeRect, pickInBox, sketchLocalPoints,
 } from "./navigation.js";
@@ -170,9 +171,8 @@ export function createSketchMode(deps) {
 
   function toLocal(event) {
     const rect = renderer.domElement.getBoundingClientRect();
-    const pointer = new THREE.Vector2(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1);
+    const ndc = eventToNdc(event.clientX, event.clientY, rect);
+    const pointer = new THREE.Vector2(ndc.x, ndc.y);
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(pointer, camera);
     const world = new THREE.Vector3();
@@ -184,10 +184,7 @@ export function createSketchMode(deps) {
     const world = new THREE.Vector3(x, y, 0).applyMatrix4(mode.matrix);
     const projected = world.project(camera);
     const rect = renderer.domElement.getBoundingClientRect();
-    return {
-      x: (projected.x + 1) / 2 * rect.width + rect.left,
-      y: (-projected.y + 1) / 2 * rect.height + rect.top,
-    };
+    return ndcToScreen(projected.x, projected.y, rect);
   }
 
   function* endpoints() {
@@ -267,28 +264,24 @@ export function createSketchMode(deps) {
     if (readoutEl) readoutEl.hidden = true;
   }
 
-  function fmt(value) {
-    return Number(value).toFixed(2);
-  }
-
   function readoutText(s) {
     const parts = [];
     if (s.hv) parts.push(s.hv);
     if (mode.tool === "line" && mode.chain) {
       const dx = s.x - mode.chain.x, dy = s.y - mode.chain.y;
-      parts.push(t("L {v} mm", { v: fmt(Math.hypot(dx, dy)) }),
-        `${fmt(Math.atan2(dy, dx) * 180 / Math.PI)}°`);
+      parts.push(t("L {v} mm", { v: fmtMm(Math.hypot(dx, dy)) }),
+        `${fmtMm(Math.atan2(dy, dx) * 180 / Math.PI)}°`);
     } else if (mode.tool === "rect" && mode.pendingRect) {
-      parts.push(`${fmt(Math.abs(s.x - mode.pendingRect.x))} × `
-        + `${fmt(Math.abs(s.y - mode.pendingRect.y))} mm`);
+      parts.push(`${fmtMm(Math.abs(s.x - mode.pendingRect.x))} × `
+        + `${fmtMm(Math.abs(s.y - mode.pendingRect.y))} mm`);
     } else if (mode.tool === "rectc" && mode.pendingRectC) {
-      parts.push(`${fmt(2 * Math.abs(s.x - mode.pendingRectC.x))} × `
-        + `${fmt(2 * Math.abs(s.y - mode.pendingRectC.y))} mm`);
+      parts.push(`${fmtMm(2 * Math.abs(s.x - mode.pendingRectC.x))} × `
+        + `${fmtMm(2 * Math.abs(s.y - mode.pendingRectC.y))} mm`);
     } else if (mode.tool === "circle" && mode.pendingCircle) {
       const r = Math.hypot(s.x - mode.pendingCircle.x, s.y - mode.pendingCircle.y);
-      parts.push(t("R {v} mm", { v: fmt(r) }));
+      parts.push(t("R {v} mm", { v: fmtMm(r) }));
     } else {
-      parts.push(`${fmt(s.x)}, ${fmt(s.y)}`);
+      parts.push(`${fmtMm(s.x)}, ${fmtMm(s.y)}`);
     }
     return parts.join(" · ");
   }

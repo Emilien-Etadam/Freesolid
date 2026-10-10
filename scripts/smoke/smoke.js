@@ -541,6 +541,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       + JSON.stringify(listedVars) + ")");
   }
   await step("variable largeur");
+  // Retour à l'onglet Fonctions : la suite clique ses boutons.
+  await page.click('[data-tab="features"]');
 
   // N002 — vue en graphe lecture seule, depuis lastTree.
   await page.click("#btn-graph");

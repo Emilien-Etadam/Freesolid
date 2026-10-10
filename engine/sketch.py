@@ -965,7 +965,9 @@ class SketchMixin:
         """Smart dimension between two entities — the pair decides the
         constraint, as under the cursor: two points → distance,
         point + line → distance, parallel lines → distance, otherwise angle
-        (radians on the wire; the client displays degrees)."""
+        (radians on the wire; the client displays degrees). Un cercle ou un
+        arc compte par son centre face à un point, une ligne ou un autre
+        cercle."""
         from engine.kernel import KernelError
         import math
         import Sketcher
@@ -984,6 +986,15 @@ class SketchMixin:
         if (point2 is None and point is not None and g2 != ROOT_GEO
                 and sk.Geometry[g2].TypeId in round_types):
             point2 = 3
+        if point is None and point2 is None and g2 != ROOT_GEO:
+            round1 = sk.Geometry[g1].TypeId in round_types
+            round2 = sk.Geometry[g2].TypeId in round_types
+            if round1 and round2:
+                point = point2 = 3          # deux cercles : entre centres
+            elif round1:
+                point = 3                   # cercle + ligne : centre → ligne
+            elif round2:
+                point2 = 3
         if point is None and point2 is not None:
             # Normalize "line then point" to "point then line".
             g1, g2 = g2, g1
@@ -1084,7 +1095,8 @@ class SketchMixin:
         return self._point_of(geo1, pos1), self._point_of(geo2, pos2)
 
     def sketch_dim(self, sketch, geo, value=None,
-                   geo2=None, point=None, point2=None, axis=None, at=None):
+                   geo2=None, point=None, point2=None, axis=None, at=None,
+                   radius=False):
         """Smart dimension: length on a line, diameter on a circle,
         radius on an arc, distance/angle between two entities.
 
@@ -1105,8 +1117,11 @@ class SketchMixin:
         try:
             if geo2 is not None:
                 g2 = int(geo2)
+                # La même entité deux fois : seulement par deux de ses
+                # points (longueur projetée d'une ligne).
                 if ((g2 < 0 and g2 != ROOT_GEO) or g2 >= len(sk.Geometry)
-                        or g2 == gid):
+                        or (g2 == gid and (point is None or point2 is None
+                                           or point == point2))):
                     raise KernelError("géométrie inconnue : {}".format(geo2))
                 index = sk.addConstraint(self._dim_two(
                     sk, gid, g2, point, point2, value,
@@ -1121,6 +1136,11 @@ class SketchMixin:
                 index = sk.addConstraint(Sketcher.Constraint(
                     "Distance", gid, float(length)))
                 self._place_dim(sk, index, at)
+            elif target.TypeId == "Part::GeomCircle" and radius:
+                # Cercle puis son centre : le rayon.
+                value_r = value if value is not None else target.Radius
+                sk.addConstraint(Sketcher.Constraint(
+                    "Radius", gid, float(value_r)))
             elif target.TypeId == "Part::GeomCircle":
                 # Un cercle se cote au diamètre, un arc au rayon.
                 diameter = (value if value is not None

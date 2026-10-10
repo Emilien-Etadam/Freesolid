@@ -77,4 +77,7 @@ plan milieu) sur le Plan de face et sa symétrique par le Plan de droite.
 | — | La barre d'icônes de la face restait au milieu d'une esquisse ouverte et prenait les clics. | **Corrigé** sur `qualite` (smoke de la PR #90). |
 | — | L'esquisse d'un perçage reste « sous-contrainte » : son rayon, piloté par le diamètre du perçage, n'est pas coté. | À reprendre. |
 | 26 | Une cote déjà posée ne se déplace pas à la souris. | **Corrigé** : avec l'outil Sélectionner, on glisse son étiquette ; elle reste sous le curseur, la valeur ne change pas, Ctrl+Z annule (`sketch_place_dim`). |
+| 27 | Cotation incomplète : pas de rayon d'un cercle, pas de cercle + ligne, et la longueur d'une ligne oblique toujours alignée. | **Corrigé** — l'outil Cotation choisit d'après ce qu'on clique : une ligne → sa longueur (le clic de pose choisit horizontale, verticale ou alignée, avec aperçu) ; un cercle → Ø, un arc → R, un cercle puis son centre → R ; deux points → H/V/alignée ; point + ligne → distance ; deux lignes → distance si parallèles, sinon angle ; cercle + point, ligne ou cercle → depuis son centre (selftest p44). |
 | — | Traits d'esquisse définis (clairs) peu contrastés sur une face claire. | À reprendre (thème). |
+| 28 | Étiquettes de cote en gros pavés gris, flèches en V épaisses. | **Corrigé** : texte seul de 12 px, net, halo du fond ; pointes pleines et fines ; l'étiquette se place à côté de sa ligne. |
+| — | La cote d'angle se dessine au point de rencontre des deux lignes, parfois loin d'elles. | À reprendre (placement au clic). |

@@ -1111,6 +1111,7 @@ export function createSketchMode(deps) {
       } else {
         const first = mode.pendingDim;
         mode.pendingDim = null;
+        if (previewLine) previewLine.visible = false;
         let params;
         if (!target
             || (target.geo === first.geo && target.point === first.point)) {
@@ -1121,6 +1122,21 @@ export function createSketchMode(deps) {
             return;
           }
           params = { sketch: name, geo: first.geo };
+          // Une ligne : ce 2e clic pose sa longueur — à côté : verticale,
+          // dessus ou dessous : horizontale, entre : alignée.
+          const ends = lineEnds(first);
+          if (ends && local) {
+            const kind = pointPairDimKind(ends[0], ends[1], local);
+            if (kind !== "Distance") {
+              Object.assign(params, { geo2: first.geo, point: 1, point2: 2,
+                                      axis: kind === "DistanceX" ? "x" : "y" });
+            }
+          }
+        } else if (target.geo === first.geo && isRound(first.geo)
+                   && [first.point, target.point].includes(3)
+                   && [first.point, target.point].includes(undefined)) {
+          // Un cercle puis son centre (ou l'inverse) : le rayon.
+          params = { sketch: name, geo: first.geo, radius: true };
         } else {
           // Deux points (un cercle compte par son centre) : la cote se
           // pose d'un 3e clic, qui choisit son sens.
@@ -1158,6 +1174,15 @@ export function createSketchMode(deps) {
     } catch (error) {
       say(error.message, true);
     }
+  }
+
+  /** Extrémités d'une ligne choisie entière, ou null. */
+  function lineEnds(pick) {
+    if (pick.point != null) return null;
+    const entity = mode.state?.entities.find((e) => e.id === pick.geo);
+    if (entity?.type !== "line") return null;
+    return [{ x: entity.p1[0], y: entity.p1[1] },
+            { x: entity.p2[0], y: entity.p2[1] }];
   }
 
   function isRound(geo) {
@@ -1466,6 +1491,15 @@ export function createSketchMode(deps) {
         redraw();
       }
       enqueueSketchMove(target.x, target.y);
+    } else if (mode.tool === "dim" && mode.pendingDim && previewLine
+               && lineEnds(mode.pendingDim)) {
+      const local = toLocal(event);
+      if (!local) return;
+      const [a, b] = lineEnds(mode.pendingDim);
+      const path = pointPairDimPath(a, b, pointPairDimKind(a, b, local), local);
+      previewLine.geometry.setFromPoints(
+        path.map((p) => new THREE.Vector3(p.x, p.y, 0)));
+      previewLine.visible = true;
     } else if (mode.tool === "dim" && mode.pendingDimPair && previewLine) {
       const local = toLocal(event);
       if (!local) return;

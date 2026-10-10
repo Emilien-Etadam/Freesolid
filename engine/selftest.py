@@ -2424,6 +2424,24 @@ class SelftestMixin:
                 and abs(placed["offset"] + 9) < 1e-6
                 and abs(moved["offset"] - 5) < 1e-6
                 and abs(moved["value"] - placed["value"]) < 1e-9)
+            # Cotation intelligente : rayon d'un cercle, cercle + ligne,
+            # deux cercles, longueur projetée d'une ligne oblique.
+            name = self.sketch_start()["sketch"]
+            self.sketch_add_circle(name, 0, 0, 5)                   # 0
+            self.sketch_add_line(name, 20, -10, 20, 10)             # 1
+            self.sketch_add_circle(name, 0, 30, 3)                  # 2
+            self.sketch_add_line(name, 40, 0, 50, 6)                # 3
+            kinds = []
+            for params in ({"geo": 0, "radius": True},
+                           {"geo": 0, "geo2": 1},
+                           {"geo": 0, "geo2": 2},
+                           {"geo": 3, "geo2": 3, "point": 1, "point2": 2,
+                            "axis": "x"}):
+                last = self.sketch_dim(name, **params)["dims"][-1]
+                kinds.append((last["type"], round(last["value"], 6)))
+            report["p44_cotation_intelligente"] = kinds == [
+                ("Radius", 5.0), ("Distance", 20.0), ("Distance", 30.0),
+                ("DistanceX", 10.0)]
             report["p44_cotes_hv"] = (
                 [d["type"] for d in dims] == ["DistanceX", "DistanceY"]
                 and all(d["value"] > 0 for d in dims)

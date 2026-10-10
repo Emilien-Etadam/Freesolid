@@ -46,7 +46,8 @@ simulation FEM. Verdicts :
 | Courbes : composite, projetée, intersection, hélice | ✅ **fait** | lieur de forme d'arêtes bout à bout ; `Part::ProjectOnSurface` selon la normale de l'esquisse ; `Part::Section` (deux surfaces, ou surface et solide) ; `Part::Helix` (pas, hauteur, rayon, conicité, sens, axe) — paramétriques |
 | Surface radiée | ✅ **fait** | `Part::Offset2D` rempli sur un contour plan (arêtes du solide, d'une surface, esquisse), coins vifs |
 | Ajustement mutuel | ✅ **fait** | option d'« Ajuster » : l'outil est aussi coupé par la surface, la partie cliquée sur chacune est gardée |
-| Surface médiane, forme libre, aplatir | ❌ | pas de moteur FreeCAD / OCCT exposé pour ces gestes |
+| Surface médiane | ✅ **fait** (paires simples) | deux faces en vis-à-vis, planes parallèles ou cylindres concentriques : décalage de la moitié de l'écart, recalculé à chaque reconstruction ; pas de médiane automatique d'une pièce entière |
+| Forme libre (déformation par points de contrôle), aplatir une surface | ❌ | pas de moteur FreeCAD / OCCT exposé pour ces gestes |
 | Remplacer la face | ✅ **fait** | la face est prolongée en prisme puis la surface coupe ce qui la dépasse ; forme recalculée à chaque reconstruction ; un booléen d'ajout, d'intersection, ou les deux quand la matière croît et décroît ; clic à travers les surfaces pour viser la face recouverte |
 | Couper avec une surface | ✅ **fait** | la surface balaie un demi-espace (extrusion paramétrique) combiné en soustraction dans l'historique ; aperçu, « inverser le côté » en réédition ; refus clair si la surface ne traverse pas le solide |
 | Surface plane, balayée, décalée | ✅ **fait** | `Part::Face`, `Part::Sweep` (profil ouvert, trajectoire esquisse ou spline 3D), `Part::Offset` sans remplissage — paramétriques |

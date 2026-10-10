@@ -2969,6 +2969,25 @@ class SelftestMixin:
                 and abs(band.Shape.BoundBox.ZMax - 10) < 1e-6
                 and len(tree["surfaces"]) == 1)
 
+            mark("p50: surface médiane d'une paroi")
+            self.new_part("Pièce médiane")
+            self.add_rect_sketch(40, 30)
+            tree = self.add_pad(6)
+            pad = next(f["name"] for f in tree["features"]
+                       if f["type"] == "PartDesign::Pad")
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if abs(f.CenterOfMass.z - 6) < 1e-6)
+            bottom = next(i for i, f in enumerate(body.Shape.Faces)
+                          if abs(f.CenterOfMass.z) < 1e-6)
+            tree = self.surface_mid([top, bottom])
+            mid = self._require_doc().getObject(tree["surfaces"][-1]["name"])
+            first_ok = (abs(mid.Shape.BoundBox.ZMin - 3) < 1e-6
+                        and abs(mid.Shape.Area - 1200) < 1e-6)
+            self.set_params(pad, {"Length": 10.0})
+            report["p50_surface_mediane"] = (
+                first_ok and abs(mid.Shape.BoundBox.ZMin - 5) < 1e-6)
+
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")
             self.add_rect_sketch(60, 40)

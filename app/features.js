@@ -1328,6 +1328,27 @@ export const FEATURES = [
     },
     invalid: "Radiée : un contour plan et une distance",
   }),
+  {
+    button: "btn-surf-mid",
+    icon: "surface_mid",
+    title: "Surface médiane",
+    preview: false,
+    groups: () => [{ label: "Paroi",
+      rows: [{ type: "selection", key: "faces", accepts: ["face"],
+               multiple: true,
+               hint: "Cliquez les deux faces en vis-à-vis de la paroi" }] }],
+    note: "Faces planes parallèles ou cylindres concentriques : la peau "
+      + "passe à mi-épaisseur et suit les cotes de la pièce.",
+    build: (v) => {
+      const items = v.faces?.items ?? [];
+      if (items.length !== 2) return null;
+      return { op: "surface_mid",
+               params: { faces: items.map((i) => i.face) } };
+    },
+    invalid: () => ({ text: "Médiane : les deux faces d'une paroi",
+                      tone: "guide" }),
+    refresh: "part",
+  },
   surface({
     button: "btn-surf-ruled",
     icon: "surface_ruled",

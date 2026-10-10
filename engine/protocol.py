@@ -130,6 +130,7 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # optional: face
     "curve_composite": _Req(("boundary", list)),
     "surface_radiate": _Req(("boundary", list), ("distance", float)),
+    "surface_mid": _Req(("faces", list)),  # deux faces du solide, base 0
     "curve_helix": _Req(("pitch", float), ("height", float),
                         ("radius", float)),
                                        # optional: angle, left, axis (X|Y|Z)

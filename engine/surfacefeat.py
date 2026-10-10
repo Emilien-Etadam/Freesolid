@@ -1166,12 +1166,83 @@ class SurfaceMixin:
             self._stamp(feature, **feature_stamps)
         return self.get_tree()
 
+    def surface_mid(self, faces):
+        """Surface médiane d'une paroi : deux faces en vis-à-vis (planes
+        parallèles ou cylindres concentriques) ; la peau passe à mi-chemin
+        et suit les fonctions d'avant (recalcul à chaque reconstruction)."""
+        from engine.kernel import KernelError
+        tip = self._solid_tip("une surface médiane demande un solide")
+        pair = [int(f) for f in faces or ()]
+        if len(pair) != 2 or pair[0] == pair[1]:
+            raise KernelError("cliquez les deux faces en vis-à-vis de la "
+                              "paroi")
+        stamps = {"midbase": tip.Name, "midfaces": "%d;%d" % tuple(pair)}
+        shape = self._mid_shape(tip.Shape, pair)
+        doc = self._require_doc()
+        feature = doc.addObject("Part::Feature", "Surface")
+        feature.Label = self._t("Surface médiane")
+        feature.Shape = shape
+        self._stamp(feature, **stamps)
+        doc.recompute()
+        return self.get_tree()
+
+    @staticmethod
+    def _mid_shape(base_shape, pair):
+        """La première face décalée de la moitié de son écart à la
+        seconde, vers elle."""
+        from engine.kernel import KernelError
+        for f in pair:
+            if f < 0 or f >= len(base_shape.Faces):
+                raise KernelError("face inconnue : {}".format(f))
+        first, second = (base_shape.Faces[f] for f in pair)
+        gap = first.distToShape(second)[0]
+        if gap < 1e-6:
+            raise KernelError("les deux faces se touchent — choisissez les "
+                              "deux côtés d'une paroi")
+        kinds = {first.Surface.TypeId, second.Surface.TypeId}
+        if not kinds <= {"Part::GeomPlane", "Part::GeomCylinder"}:
+            raise KernelError("surface médiane : faces planes parallèles ou "
+                              "cylindres concentriques")
+        result = None
+        for value in (-gap / 2, gap / 2):
+            try:
+                candidate = first.makeOffsetShape(value, 1e-6)
+            except Exception:  # noqa: BLE001
+                continue
+            if not candidate.Faces:
+                continue
+            here = candidate.distToShape(second)[0]
+            if abs(here - gap / 2) < 1e-3 * max(gap, 1.0):
+                result = candidate
+                break
+        if result is None:
+            raise KernelError("surface médiane : faces planes parallèles ou "
+                              "cylindres concentriques")
+        return result
+
     def _refresh_frozen_shapes(self):
         """Recalcule les formes figées qui dépendent d'une fonction du
         corps (supprimer, remplacer une face) ; vrai si l'une a changé."""
         doc = self._require_doc()
         changed = False
         for obj in doc.Objects:
+            mid_base = getattr(obj, "FreeSolidMidbase", "")
+            if mid_base:
+                base = doc.getObject(mid_base)
+                if base is None or not getattr(base, "Shape", None):
+                    continue
+                pair = [int(f) for f in str(obj.FreeSolidMidfaces).split(";")]
+                try:
+                    result = self._mid_shape(base.Shape, pair)
+                except Exception:  # noqa: BLE001
+                    continue
+                old = obj.Shape
+                if (old.isNull() or abs(old.Area - result.Area) > 1e-9
+                        or (old.BoundBox.Center - result.BoundBox.Center)
+                        .Length > 1e-9):
+                    obj.Shape = result
+                    changed = True
+                continue
             base_name = (getattr(obj, "FreeSolidDefeatbase", "")
                          or getattr(obj, "FreeSolidReplacebase", ""))
             if not base_name:

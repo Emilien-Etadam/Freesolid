@@ -424,5 +424,10 @@
  "Surface radiée": "Radiated Surface",
  "la distance ne peut pas être nulle": "the distance cannot be zero",
  "{} — le contour doit être plan": "{} — the boundary must be planar",
- "la surface ne coupe pas l'outil": "the surface does not cut the tool"
+ "la surface ne coupe pas l'outil": "the surface does not cut the tool",
+ "une surface médiane demande un solide": "a mid-surface needs a solid",
+ "cliquez les deux faces en vis-à-vis de la paroi": "click the two facing faces of the wall",
+ "Surface médiane": "Mid-Surface",
+ "les deux faces se touchent — choisissez les deux côtés d'une paroi": "the two faces touch — choose both sides of a wall",
+ "surface médiane : faces planes parallèles ou cylindres concentriques": "mid-surface: parallel planar faces or concentric cylinders"
 }

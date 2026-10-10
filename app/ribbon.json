@@ -78,6 +78,7 @@
             {"id": "btn-surf-fill", "titre": "Surface de remplissage — tendue sur un contour fermé d'arêtes", "icon": "surface_fill", "libelle": "Remplissage"},
             {"id": "btn-surf-boundary", "titre": "Surface frontière — passe par deux à quatre courbes", "icon": "surface_boundary", "libelle": "Frontière"},
             {"id": "btn-surf-radiate", "titre": "Surface radiée — une bande plane qui part d'un contour", "icon": "surface_radiate", "libelle": "Radiée"},
+            {"id": "btn-surf-mid", "titre": "Surface médiane — la peau au milieu d'une paroi mince", "icon": "surface_mid", "libelle": "Médiane"},
             {"id": "btn-surf-ruled", "titre": "Surface réglée — des segments droits entre deux courbes", "icon": "surface_ruled", "libelle": "Réglée"}
           ]
         },

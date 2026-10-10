@@ -909,5 +909,12 @@
  "Une bande plane part du contour, dans son plan (une collerette).": "A flat band runs out from the boundary, in its plane (a flange).",
  "Radiée : un contour plan et une distance": "Radiated: a planar boundary and a distance",
  "Ajustement mutuel": "Mutual trim",
- "Et la partie de l'outil à garder": "And the part of the tool to keep"
+ "Et la partie de l'outil à garder": "And the part of the tool to keep",
+ "Surface médiane — la peau au milieu d'une paroi mince": "Mid-Surface — the skin in the middle of a thin wall",
+ "Médiane": "Mid",
+ "Surface médiane": "Mid-Surface",
+ "Paroi": "Wall",
+ "Cliquez les deux faces en vis-à-vis de la paroi": "Click the two facing faces of the wall",
+ "Faces planes parallèles ou cylindres concentriques : la peau passe à mi-épaisseur et suit les cotes de la pièce.": "Parallel planar faces or concentric cylinders: the skin runs at mid-thickness and follows the part's dimensions.",
+ "Médiane : les deux faces d'une paroi": "Mid: the two faces of a wall"
 }

@@ -620,6 +620,7 @@ def test_ops_snapshot_keys():
         "surface_fill",
         "surface_fillet",
         "surface_loft",
+        "surface_mid",
         "surface_offset",
         "surface_planar",
         "surface_radiate",

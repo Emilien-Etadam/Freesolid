@@ -823,7 +823,7 @@ _TRANSACTIONAL = frozenset({
     "surface_ruled", "surface_delete_faces", "surface_untrim",
     "surface_fillet", "curve_intersection", "curve_project",
     "curve_composite", "edit_surface_fillet", "surface_split",
-    "curve_helix", "surface_radiate",
+    "curve_helix", "surface_radiate", "surface_mid",
     "sketch_convert", "add_text",
     "edit_text", "add_graph_feature", "edit_graph_feature",
     "add_repeat_feature", "edit_repeat_feature", "make_drawing",

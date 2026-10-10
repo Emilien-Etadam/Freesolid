@@ -303,6 +303,22 @@
   #tree-flyout.collapsed #tree-flyout-toggle::before { content: "▸ "; }
   #tree-flyout.collapsed #tree-flyout-body { display: none; }
   #tree-flyout-body { overflow: auto; padding: 0 var(--space-1) var(--space-1); }
+  /* Le volet laisse voir la pièce : pas de fond, des lignes serrées, et
+     les clics dans ses vides passent à la vue (orbite, sélection). */
+  #tree-flyout {
+    background: none; border: none; max-width: 230px; max-height: 55%;
+    pointer-events: none;
+  }
+  #tree-flyout-toggle, #tree-flyout-body li { pointer-events: auto; }
+  #tree-flyout-body { scrollbar-width: thin; }
+  #tree-flyout-body #tree li {
+    padding-top: 1px; padding-bottom: 1px; font-size: var(--text-s);
+    text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg);
+  }
+  #tree-flyout-body #tree li:hover {
+    background: color-mix(in srgb, var(--panel-2) 85%, transparent);
+  }
+  #tree-flyout-body #tree li.folder.empty { display: none; }
 
   /* Boîte d'orientation : vues standard en croix, ouverte sous le curseur. */
   #orient-box {
@@ -924,6 +940,23 @@
     padding: 0; margin: var(--space-1) 6px; height: 1px;
     background: var(--line); cursor: default;
   }
+  /* Une icône devant chaque ligne ; une case vide garde l'alignement. */
+  #view-menu div:not(.head):not(.sep):not(.bar) {
+    display: flex; align-items: center; gap: var(--space-2); padding: 5px 10px 5px 6px;
+  }
+  #view-menu div > img { width: 16px; height: 16px; flex: none; }
+  #view-menu div > img.blank { visibility: hidden; }
+  /* Rangée d'icônes en tête : les actions sur ce qu'on vise. */
+  #view-menu div.bar, #view-menu div.bar:hover {
+    display: flex; gap: 2px; padding: 2px; background: none; cursor: default;
+  }
+  #view-menu div.bar button {
+    width: 32px; height: 30px; padding: 0; justify-content: center;
+    display: inline-flex; align-items: center;
+    background: none; border-color: transparent; border-radius: var(--radius-s);
+  }
+  #view-menu div.bar button:hover { background: var(--panel); border-color: var(--line); }
+  #view-menu div.bar button img { width: 22px; height: 22px; }
   #ctxmenu div.danger:hover, #view-menu div.danger:hover,
   #graph-edge-menu div.danger:hover {
     color: var(--error);

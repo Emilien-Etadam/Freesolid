@@ -7,7 +7,7 @@ import { t } from "./i18n.js";
 import { cssHex } from "./theme.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
 import {
-  contextToolbarKeys, placeViewMenu, viewMenuItems, viewMenuLabel,
+  contextToolbarKeys, menuIcon, placeViewMenu, viewMenuItems, viewMenuLabel,
 } from "./viewmenu.js";
 
 export function isBodyMenuTarget(feature) {
@@ -225,15 +225,6 @@ export function installContextMenu(ctx) {
   let ctxBarAnchor = null;
   let ctxBarHit = null;
 
-  const CTX_BAR_ICONS = {
-    "sketch-on-face": "Sketcher_NewSketch.svg", "normal-to": "view-front.svg",
-    fillet: "PartDesign_Fillet.svg", chamfer: "PartDesign_Chamfer.svg",
-    shell: "PartDesign_Thickness.svg", measure: "view-measurement.svg",
-    "edit-feature": "Sketcher_EditSketch.svg",
-    "edit-sketch": "Sketcher_EditSketch.svg", pad: "PartDesign_Pad.svg",
-    pocket: "PartDesign_Pocket.svg", revolve: "PartDesign_Revolution.svg",
-  };
-
   function hideContextToolbar() {
     ctxBarEl.hidden = true;
     ctxBarAnchor = null;
@@ -249,7 +240,7 @@ export function installContextMenu(ctx) {
     for (const key of keys) {
       const button = document.createElement("button");
       const icon = document.createElement("img");
-      icon.src = "icons/" + CTX_BAR_ICONS[key];
+      icon.src = "icons/" + menuIcon(key);
       icon.alt = "";
       button.appendChild(icon);
       button.title = t(viewMenuLabel(key, menu));
@@ -293,8 +284,31 @@ export function installContextMenu(ctx) {
       } else if (item.header) {
         row.className = "head";
         row.textContent = t(item.header);
+      } else if (item.bar) {
+        // Rangée d'icônes : les actions sur ce qu'on vise.
+        row.className = "bar";
+        for (const key of item.bar) {
+          const button = document.createElement("button");
+          button.type = "button";
+          const label = t(viewMenuLabel(key, menu));
+          button.title = label;
+          button.setAttribute("aria-label", label);
+          const icon = document.createElement("img");
+          icon.src = "icons/" + menuIcon(key);
+          icon.alt = "";
+          button.appendChild(icon);
+          button.addEventListener("click", () => {
+            hideViewMenu();
+            VIEW_MENU_ACTIONS[key]?.(viewMenuHit);
+          });
+          row.appendChild(button);
+        }
       } else {
-        row.textContent = t(item.label);
+        const icon = document.createElement("img");
+        icon.alt = "";
+        if (menuIcon(item.key)) icon.src = "icons/" + menuIcon(item.key);
+        else icon.className = "blank";
+        row.append(icon, t(item.label));
         if (item.danger) row.classList.add("danger");
         row.addEventListener("click", () => {
           hideViewMenu();

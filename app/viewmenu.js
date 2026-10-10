@@ -7,10 +7,60 @@
 // commande existante. Les libellés sont en français (langue source) et
 // passent par t() au rendu.
 //
-// Entrée : { key, label } | { header } | { separator: true },
-// `danger: true` pour une action destructive.
+// Entrée : { key, label } | { header } | { separator: true }
+// | { bar: [clé…] } (rangée d'icônes en tête du menu : les actions sur ce
+// qu'on vise), `danger: true` pour une action destructive.
 
 const SEP = { separator: true };
+
+/** Libellés des actions de la rangée d'icônes (infobulles). */
+const ACTION_LABELS = {
+  "sketch-on-face": "Esquisse sur cette face",
+  "normal-to": "Normal à (Ctrl+8)",
+  fillet: "Congé",
+  chamfer: "Chanfrein",
+  shell: "Coque",
+  measure: "Mesurer",
+  "edit-feature": "Modifier la fonction",
+  "edit-sketch": "Modifier l'esquisse",
+  pad: "Extrusion",
+  pocket: "Enlèvement extrudé",
+  revolve: "Révolution",
+};
+
+/** Icône de chaque action (fichier de app/icons/). */
+const MENU_ICONS = {
+  "sketch-on-face": "fs_sketch.svg",
+  "normal-to": "fs_normal_to.svg",
+  fillet: "fs_fillet.svg",
+  chamfer: "fs_chamfer.svg",
+  shell: "fs_shell.svg",
+  measure: "fs_measure.svg",
+  "edit-feature": "fs_edit.svg",
+  "edit-sketch": "fs_sketch.svg",
+  pad: "nodes_extrude.svg",
+  pocket: "fs_pocket.svg",
+  revolve: "fs_revolve.svg",
+  "edit-surface": "fs_edit.svg",
+  rollback: "fs_rollback.svg",
+  "delete-feature": "fs_delete.svg",
+  "zoom-fit": "fs_zoom_fit.svg",
+  orient: "fs_orient.svg",
+  origin: "fs_origin.svg",
+  "sk-select": "fs_select.svg",
+  "sk-line": "nodes_line.svg",
+  "sk-rect": "fs_rect.svg",
+  "sk-circle": "nodes_circle.svg",
+  "sk-dim": "fs_dimension.svg",
+  "sk-trim": "fs_trim.svg",
+  "sk-finish": "fs_sketch_ok.svg",
+  "sk-cancel": "fs_sketch_cancel.svg",
+};
+
+/** Fichier d'icône d'une action du menu, ou "" s'il n'y en a pas. */
+export function menuIcon(key) {
+  return MENU_ICONS[key] ?? "";
+}
 
 function viewSection(ctx) {
   return [
@@ -18,15 +68,6 @@ function viewSection(ctx) {
     { key: "zoom-fit", label: "Zoom au mieux (F)" },
     { key: "orient", label: "Orientation… (Espace)" },
     { key: "origin", label: ctx.originShown ? "Masquer l'origine" : "Afficher l'origine" },
-  ];
-}
-
-function editSection() {
-  return [
-    SEP,
-    { key: "undo", label: "Annuler (Ctrl+Z)" },
-    { key: "redo", label: "Rétablir (Ctrl+Y)" },
-    { key: "rebuild", label: "Reconstruire" },
   ];
 }
 
@@ -58,6 +99,7 @@ export function contextToolbarKeys(hit) {
 
 /** Libellé d'infobulle d'une clé, repris du menu contextuel. */
 export function viewMenuLabel(key, ctx = {}) {
+  if (ACTION_LABELS[key]) return ACTION_LABELS[key];
   for (const item of viewMenuItems(ctx)) {
     if (item.key === key) return item.label;
   }
@@ -118,33 +160,22 @@ export function viewMenuItems(ctx = {}) {
       { key: "zoom-fit", label: "Zoom au mieux (F)" },
     ];
   }
+  // Ce qu'on vise : une rangée d'icônes (les actions qui portent dessus),
+  // puis la fonction qui l'a produite, puis la vue. Annuler, rétablir et
+  // reconstruire restent dans l'accès rapide et au clavier.
   const hit = ctx.hit ?? null;
   let items = [];
   if (hit?.kind === "face") {
     items = [
-      { header: "Face" },
-      { key: "sketch-on-face", label: "Esquisse sur cette face" },
-      { key: "normal-to", label: "Normal à (Ctrl+8)" },
-      { key: "fillet", label: "Congé" },
-      { key: "chamfer", label: "Chanfrein" },
-      { key: "shell", label: "Coque" },
-      { key: "measure", label: "Mesurer" },
+      { bar: ["sketch-on-face", "normal-to", "fillet", "chamfer", "shell", "measure"] },
       ...featureSection(hit.feature),
     ];
   } else if (hit?.kind === "edge") {
-    items = [
-      { header: "Arête" },
-      { key: "fillet", label: "Congé" },
-      { key: "chamfer", label: "Chanfrein" },
-      { key: "measure", label: "Mesurer" },
-    ];
+    items = [{ bar: ["fillet", "chamfer", "measure"] }];
   } else if (hit?.kind === "sketch") {
     items = [
       { header: hit.label ?? "Esquisse" },
-      { key: "edit-sketch", label: "Modifier l'esquisse" },
-      { key: "pad", label: "Extrusion" },
-      { key: "pocket", label: "Enlèvement extrudé" },
-      { key: "revolve", label: "Révolution" },
+      { bar: ["edit-sketch", "pad", "pocket", "revolve"] },
     ];
   } else if (hit?.kind === "surface") {
     items = [
@@ -153,5 +184,5 @@ export function viewMenuItems(ctx = {}) {
     ];
   }
   if (items.length) items.push(SEP);
-  return [...items, ...viewSection(ctx), ...editSection()];
+  return [...items, ...viewSection(ctx)];
 }

@@ -695,6 +695,56 @@ def _():
             + dot(12, 9, 1.6) + dot(12, 23, 1.6) + dot(20, 16, 1.6))
 
 
+
+# -- Menu contextuel -----------------------------------------------------------
+
+@icon("normal_to")
+def _():
+    return (poly([(6, 6), (26, 6), (26, 26), (6, 26)], "url(#gP)", "#3d5fb8", 1.2)
+            + '<circle cx="16" cy="16" r="5" fill="none" stroke="#f4f7fb" stroke-width="1.6"/>'
+            + dot(16, 16, 2.2))
+
+
+@icon("edit")
+def _():
+    return (box(-7, -7, 0, 14, 14, 8, ox=13, oy=19, k=0.9)
+            + poly([(22, 3), (28, 9), (17, 20), (13, 21), (14, 17)], "url(#gM)", "#4b5058", .8)
+            + poly([(13, 21), (14, 17), (17, 20)], "#e9c46a", "#4b5058", .6))
+
+
+@icon("zoom_fit")
+def _():
+    corners = ""
+    for x, y, dx, dy in ((4, 4, 1, 1), (28, 4, -1, 1), (4, 28, 1, -1), (28, 28, -1, -1)):
+        corners += line([(x, y + 6 * dy), (x, y), (x + 6 * dx, y)], WHITE, 1.8)
+    return corners + box(-5, -5, 0, 10, 10, 7, oy=18, k=0.9)
+
+
+@icon("orient")
+def _():
+    return (box(-7, -7, 0, 14, 14, 14, oy=17, k=0.9)
+            + text(12, 23, "F", 7, "#1f3570", 700) + text(21, 23, "D", 7, "#1f3570", 700))
+
+
+@icon("rollback")
+def _():
+    out = ""
+    for y in (6, 12, 18):
+        out += ('<rect x="5" y="%s" width="5" height="4" rx="1" fill="url(#gL)" stroke="#1f3570" stroke-width=".6"/>' % (y - 2))
+        out += line([(13, y), (27, y)], WHITE, 1.4, False)
+    out += line([(4, 23), (28, 23)], "#4f8fdb", 2.4)
+    out += arrow_head(16, 19, -90, 5, "#4f8fdb")
+    return out + line([(16, 26), (16, 20)], "#4f8fdb", 1.6, False)
+
+
+@icon("delete")
+def _():
+    return (poly([(9, 10), (23, 10), (21, 28), (11, 28)], "url(#gM)", "#4b5058", .9)
+            + poly([(7, 7), (25, 7), (25, 10), (7, 10)], "#c9cdd3", "#4b5058", .8)
+            + '<rect x="13" y="4" width="6" height="3" fill="#c9cdd3" stroke="#4b5058" stroke-width=".7"/>'
+            + line([(13, 13), (13.5, 25)], "#4b5058", 1, False) + line([(16, 13), (16, 25)], "#4b5058", 1, False)
+            + line([(19, 13), (18.5, 25)], "#4b5058", 1, False))
+
 os.makedirs(OUT, exist_ok=True)
 for name, fn in ICONS.items():
     with open(os.path.join(OUT, f"fs_{name}.svg"), "w", encoding="utf-8", newline="\n") as fh:

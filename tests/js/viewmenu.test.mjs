@@ -1,29 +1,34 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
+import { existsSync } from "node:fs";
+
 import {
-  contextToolbarKeys, placeViewMenu, viewMenuItems, viewMenuLabel,
+  contextToolbarKeys, menuIcon, placeViewMenu, viewMenuItems, viewMenuLabel,
 } from "../../app/viewmenu.js";
 
 const keys = (items) => items.filter((i) => i.key).map((i) => i.key);
+const bar = (items) => items.find((i) => i.bar)?.bar ?? [];
 
 describe("viewMenuItems", () => {
-  it("dans le vide : la vue et l'édition seulement", () => {
+  it("dans le vide : la vue seulement (annuler, rétablir : accès rapide)", () => {
     const k = keys(viewMenuItems({}));
-    assert.deepEqual(k, ["zoom-fit", "orient", "origin", "undo", "redo", "rebuild"]);
+    assert.deepEqual(k, ["zoom-fit", "orient", "origin"]);
   });
 
-  it("sur une face : esquisse, normal à, habillages, puis la fonction", () => {
+  it("sur une face : rangée d'icônes, puis la fonction, puis la vue", () => {
     const items = viewMenuItems({
-      hit: { kind: "face", feature: { name: "Pad", label: "Bossage", sketch: "Sketch" } },
+      hit: { kind: "face", feature: { name: "Pad", label: "Extrusion", sketch: "Sketch" } },
     });
-    const k = keys(items);
-    assert.ok(k.indexOf("sketch-on-face") < k.indexOf("edit-feature"));
-    for (const key of ["normal-to", "fillet", "chamfer", "edit-sketch", "delete-feature"]) {
-      assert.ok(k.includes(key), key);
-    }
-    assert.ok(items.some((i) => i.header === "Bossage"));
+    assert.ok(items[0].bar, "la rangée d'icônes vient en tête");
+    assert.deepEqual(bar(items),
+      ["sketch-on-face", "normal-to", "fillet", "chamfer", "shell", "measure"]);
+    assert.deepEqual(keys(items), ["edit-feature", "edit-sketch", "rollback",
+      "delete-feature", "zoom-fit", "orient", "origin"]);
+    assert.ok(items.some((i) => i.header === "Extrusion"));
     assert.ok(items.find((i) => i.key === "delete-feature").danger);
+    // Le menu d'une face tient en une dizaine de lignes (19 avant).
+    assert.ok(items.length <= 11, String(items.length));
   });
 
   it("face d'une fonction sans esquisse : pas de « Modifier l'esquisse »", () => {
@@ -33,13 +38,29 @@ describe("viewMenuItems", () => {
   });
 
   it("sur une arête : congé, chanfrein, mesure", () => {
-    const k = keys(viewMenuItems({ hit: { kind: "edge" } }));
-    assert.deepEqual(k.slice(0, 3), ["fillet", "chamfer", "measure"]);
+    assert.deepEqual(bar(viewMenuItems({ hit: { kind: "edge" } })),
+      ["fillet", "chamfer", "measure"]);
   });
 
   it("sur une esquisse : modifier et les fonctions qui la consomment", () => {
-    const k = keys(viewMenuItems({ hit: { kind: "sketch", label: "Esquisse2" } }));
-    assert.deepEqual(k.slice(0, 4), ["edit-sketch", "pad", "pocket", "revolve"]);
+    const items = viewMenuItems({ hit: { kind: "sketch", label: "Esquisse2" } });
+    assert.equal(items[0].header, "Esquisse2");
+    assert.deepEqual(bar(items), ["edit-sketch", "pad", "pocket", "revolve"]);
+  });
+
+  it("chaque action a une icône présente dans app/icons", () => {
+    const hits = [{ kind: "edge" }, { kind: "sketch" }, { kind: "surface" },
+      { kind: "face", feature: { name: "Pad", label: "P", sketch: "S" } }];
+    const all = new Set();
+    for (const ctx of [...hits.map((hit) => ({ hit })), { mode: "sketch" }]) {
+      const items = viewMenuItems(ctx);
+      for (const key of [...keys(items), ...bar(items)]) all.add(key);
+    }
+    for (const key of all) {
+      const file = menuIcon(key);
+      assert.ok(file, key);
+      assert.ok(existsSync(new URL("../../app/icons/" + file, import.meta.url)), file);
+    }
   });
 
   it("le libellé de l'origine suit son état", () => {

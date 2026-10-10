@@ -20,7 +20,7 @@ class SurfaceMixin:
         "Part::Loft", "Part::Offset", "Part::Face", "Part::Sweep",
         "Surface::Filling", "Surface::Extend", "Surface::GeomFillSurface",
         "Part::RuledSurface", "Part::Fillet", "Part::Section",
-        "Part::ProjectOnSurface",
+        "Part::ProjectOnSurface", "Part::Helix", "Part::Offset2D",
         # Ajuster : la découpe (BOPTools) puis la pièce gardée
         # (CompoundTools) — fonctions Python livrées avec FreeCAD.
         "Part::FeaturePython",
@@ -572,6 +572,76 @@ class SurfaceMixin:
 
         return self._add_part_surface(
             "Part::ProjectOnSurface", "Courbe projetée", configure)
+
+    def surface_radiate(self, boundary, distance):
+        """Surface radiée : une bande plane qui part d'un contour plan (bords
+        du solide, d'une surface, une esquisse), dans son plan."""
+        from engine.kernel import (
+            KernelError,
+            _explain,
+        )
+        import PartDesign  # noqa: F401 — enregistre le lieur de forme
+        doc = self._require_doc()
+        distance = float(distance)
+        if distance == 0:
+            raise KernelError("la distance ne peut pas être nulle")
+        links = self._boundary_links(boundary)
+        groups, order = {}, []
+        for obj, sub in links:
+            if obj.Name not in groups:
+                groups[obj.Name] = (obj, [])
+                order.append(obj.Name)
+            groups[obj.Name][1].append(sub)
+        binder = doc.addObject("PartDesign::SubShapeBinder", "RadiateEdges")
+        self._mark_internal(binder)
+        try:
+            binder.Support = [(groups[n][0], tuple(groups[n][1]))
+                              for n in order]
+
+            def configure(obj):
+                obj.Source = binder
+                obj.Value = distance
+                obj.Join = "Intersection"
+                obj.Fill = True
+
+            return self._add_part_surface(
+                "Part::Offset2D", "Surface radiée", configure)
+        except Exception as exc:  # noqa: BLE001
+            try:
+                doc.removeObject(binder.Name)
+            except Exception:
+                pass
+            if isinstance(exc, KernelError):
+                raise KernelError("{} — le contour doit être plan".format(exc))
+            raise KernelError(_explain(exc))
+
+    _HELIX_AXES = {"Z": ((0, 0, 0), 0), "Y": ((1, 0, 0), -90),
+                   "X": ((0, 1, 0), 90)}
+
+    def curve_helix(self, pitch, height, radius, angle=0.0, left=False,
+                    axis="Z"):
+        """Hélice (ou spirale conique avec ``angle``) autour d'un axe
+        d'origine — trajectoire de balayage, ressort, filet."""
+        from engine.kernel import KernelError
+        App = self._app()
+        pitch, height, radius = float(pitch), float(height), float(radius)
+        if pitch <= 0 or height <= 0 or radius <= 0:
+            raise KernelError("pas, hauteur et rayon doivent être positifs")
+        if str(axis) not in self._HELIX_AXES:
+            raise KernelError("axe inconnu : {}".format(axis))
+        turn_axis, degrees = self._HELIX_AXES[str(axis)]
+
+        def configure(obj):
+            obj.Pitch = pitch
+            obj.Height = height
+            obj.Radius = radius
+            obj.Angle = float(angle)
+            obj.LocalCoord = "Left-handed" if left else "Right-handed"
+            obj.Placement = App.Placement(
+                App.Vector(0, 0, 0),
+                App.Rotation(App.Vector(*turn_axis), degrees))
+
+        return self._add_part_surface("Part::Helix", "Hélice", configure)
 
     def curve_composite(self, boundary):
         """Courbe composite : des arêtes et courbes bout à bout réunies en

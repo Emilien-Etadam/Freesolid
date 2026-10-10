@@ -65,11 +65,15 @@ const SURFACE_ICONS = {
   "Part::Section": "curve_intersection",
   "Part::ProjectOnSurface": "curve_project",
   "PartDesign::SubShapeBinder": "curve_composite",
+  "Part::Helix": "nodes_helix",
+  "Part::Offset2D": "surface_radiate",
 };
 
 export const PROP_LABELS = {
   Length: ["Profondeur", "mm"],
   LengthFwd: ["Longueur", "mm"],
+  Pitch: ["Pas", "mm"],
+  Height: ["Hauteur", "mm"],
   Radius: ["Rayon", "mm"],
   Size: ["Distance", "mm"],
   Angle: ["Angle", "°"],

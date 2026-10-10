@@ -418,5 +418,10 @@
  "Remplacer la face": "Replace Face",
  "Remplacer la face — ajout": "Replace Face — add",
  "la surface ne remplace pas cette face — elle doit couvrir toute la face": "the surface does not replace this face — it must cover the whole face",
- "le modeleur n'a pas pu ranger cette forme dans l'historique": "the modeler could not place this shape in the history"
+ "le modeleur n'a pas pu ranger cette forme dans l'historique": "the modeler could not place this shape in the history",
+ "pas, hauteur et rayon doivent être positifs": "pitch, height and radius must be positive",
+ "axe inconnu : {}": "unknown axis: {}",
+ "Surface radiée": "Radiated Surface",
+ "la distance ne peut pas être nulle": "the distance cannot be zero",
+ "{} — le contour doit être plan": "{} — the boundary must be planar"
 }

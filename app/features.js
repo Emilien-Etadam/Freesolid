@@ -1289,6 +1289,35 @@ export const FEATURES = [
     invalid: "Surface frontière : deux à quatre courbes",
   }),
   surface({
+    button: "btn-surf-radiate",
+    icon: "surface_radiate",
+    title: "Surface radiée",
+    groups: [
+      { label: "Contour plan",
+        rows: [{ type: "selection", key: "boundary",
+                 accepts: ["boundary", "sketch", "surface"], multiple: true,
+                 hint: "Cliquez les arêtes d'un contour plan : solide, "
+                   + "surface ou esquisse" }] },
+      { label: "Paramètres",
+        rows: [
+          { type: "number", key: "distance", label: "Distance", value: 5,
+            unit: "mm" },
+          { type: "check", key: "inside", label: "Vers l'intérieur",
+            value: false },
+        ] },
+    ],
+    note: "Une bande plane part du contour, dans son plan (une collerette).",
+    build: (v) => {
+      const items = v.boundary?.items ?? [];
+      const distance = num(v.distance);
+      if (!items.length || !distance) return null;
+      return { op: "surface_radiate", params: {
+        boundary: items.map(boundaryParam),
+        distance: v.inside ? -Math.abs(distance) : Math.abs(distance) } };
+    },
+    invalid: "Radiée : un contour plan et une distance",
+  }),
+  surface({
     button: "btn-surf-ruled",
     icon: "surface_ruled",
     title: "Surface réglée",
@@ -1449,6 +1478,34 @@ export const FEATURES = [
         surface: v.target.name, face: v.target.face ?? 0 } };
     },
     invalid: "Projeter : une esquisse puis une face de surface",
+  }),
+  surface({
+    button: "btn-curve-helix",
+    icon: "nodes_helix",
+    title: "Hélice",
+    groups: [{ label: "Paramètres", rows: [
+      { type: "number", key: "pitch", label: "Pas", value: 5, unit: "mm",
+        min: 0.01 },
+      { type: "number", key: "height", label: "Hauteur", value: 30,
+        unit: "mm", min: 0.01 },
+      { type: "number", key: "radius", label: "Rayon", value: 10, unit: "mm",
+        min: 0.01 },
+      { type: "number", key: "angle", label: "Conicité", value: 0, unit: "°" },
+      { type: "select", key: "axis", label: "Axe", value: "Z",
+        options: [["Z", "Axe Z"], ["Y", "Axe Y"], ["X", "Axe X"]] },
+      { type: "check", key: "left", label: "Pas à gauche", value: false },
+    ] }],
+    note: "Une courbe : trajectoire d'une surface balayée ou d'un "
+      + "balayage (ressort, filet). Conicité ≠ 0 : spirale conique.",
+    build: (v) => {
+      const pitch = num(v.pitch);
+      const height = num(v.height);
+      const radius = num(v.radius);
+      if (!(pitch > 0 && height > 0 && radius > 0)) return null;
+      return { op: "curve_helix", params: { pitch, height, radius,
+        angle: num(v.angle) ?? 0, axis: v.axis, left: !!v.left } };
+    },
+    invalid: "Hélice : pas, hauteur et rayon positifs",
   }),
   surface({
     button: "btn-curve-composite",

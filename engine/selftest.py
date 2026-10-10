@@ -2905,6 +2905,47 @@ class SelftestMixin:
                 and [f["label"] for f in tree["features"]][-2:]
                 == ["Remplacer la face — ajout", "Remplacer la face"])
 
+            mark("p50: courbe hélice, balayage d'un ressort en surface")
+            import math
+            self.new_part("Pièce hélice")
+            tree = self.curve_helix(5, 20, 10)
+            helix = self._require_doc().getObject(tree["surfaces"][-1]["name"])
+            turns = 20 / 5
+            expected = turns * math.hypot(2 * math.pi * 10, 5)
+            state = self.sketch_start(plane="XZ")
+            wire_sk = state["sketch"]
+            self.sketch_add_line(wire_sk, 9, -1, 11, 1)
+            self.sketch_finish(wire_sk)
+            swept = self._require_doc().getObject(
+                self.surface_sweep(wire_sk, helix.Name)["surfaces"][-1]["name"])
+            length4 = helix.Shape.Length
+            length_ok = abs(length4 - expected) < 0.5
+            self.set_params(helix.Name, {"Pitch": 4.0})
+            report["p50_helice"] = (
+                length_ok
+                and helix.Name in {s["name"] for s
+                                   in self.get_tree()["surfaces"]}
+                and bool(swept.Shape.Faces)
+                and any(c["name"] == helix.Name
+                        for c in self.tessellate().get("curves") or [])
+                and helix.Shape.Length > length4)
+
+            mark("p50: surface radiée depuis les arêtes du solide")
+            self.new_part("Pièce radiée")
+            self.add_rect_sketch(20, 20)
+            self.add_pad(10)
+            body = self._require_body()
+            top = [i for i, e in enumerate(body.Shape.Edges)
+                   if abs(e.CenterOfMass.z - 10) < 1e-6]
+            tree = self.surface_radiate(
+                [{"body": True, "edge": i} for i in top], 5)
+            band = self._require_doc().getObject(tree["surfaces"][-1]["name"])
+            report["p50_surface_radiee"] = (
+                abs(band.Shape.Area - 500) < 1e-3
+                and abs(band.Shape.BoundBox.ZMin - 10) < 1e-6
+                and abs(band.Shape.BoundBox.ZMax - 10) < 1e-6
+                and len(tree["surfaces"]) == 1)
+
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")
             self.add_rect_sketch(60, 40)

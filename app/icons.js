@@ -170,6 +170,7 @@ export const ICONS = {
   surface_loft: "fs_surface_loft.svg",
   surface_offset: "fs_surface_offset.svg",
   surface_planar: "fs_surface_planar.svg",
+  surface_radiate: "fs_surface_radiate.svg",
   surface_revolve: "fs_surface_revolve.svg",
   surface_ruled: "fs_surface_ruled.svg",
   surface_split: "fs_surface_split.svg",

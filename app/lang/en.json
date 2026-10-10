@@ -894,5 +894,18 @@
  "Surface de remplacement": "Replacement surface",
  "Puis la surface, qui doit couvrir toute la face": "Then the surface, which must cover the whole face",
  "La matière s'étend ou se retire jusqu'à la surface ; l'aperçu montre le résultat.": "Material extends or retracts up to the surface; the preview shows the result.",
- "Remplacer : une face du solide, puis une surface": "Replace: a solid face, then a surface"
+ "Remplacer : une face du solide, puis une surface": "Replace: a solid face, then a surface",
+ "Hélice ou spirale — une courbe autour d'un axe d'origine": "Helix or spiral — a curve around an origin axis",
+ "Conicité": "Taper",
+ "Pas à gauche": "Left-handed",
+ "Une courbe : trajectoire d'une surface balayée ou d'un balayage (ressort, filet). Conicité ≠ 0 : spirale conique.": "A curve: path of a swept surface or a sweep (spring, thread). Taper ≠ 0: conical spiral.",
+ "Hélice : pas, hauteur et rayon positifs": "Helix: positive pitch, height and radius",
+ "Surface radiée — une bande plane qui part d'un contour": "Radiated Surface — a flat band running out from a boundary",
+ "Radiée": "Radiated",
+ "Surface radiée": "Radiated Surface",
+ "Contour plan": "Planar boundary",
+ "Cliquez les arêtes d'un contour plan : solide, surface ou esquisse": "Click the edges of a planar boundary: solid, surface or sketch",
+ "Vers l'intérieur": "Inward",
+ "Une bande plane part du contour, dans son plan (une collerette).": "A flat band runs out from the boundary, in its plane (a flange).",
+ "Radiée : un contour plan et une distance": "Radiated: a planar boundary and a distance"
 }

@@ -129,6 +129,10 @@ OPS: dict[str, tuple[str, ...]] = {
     "curve_project": _Req(("sketch", str), ("surface", str)),
                                        # optional: face
     "curve_composite": _Req(("boundary", list)),
+    "surface_radiate": _Req(("boundary", list), ("distance", float)),
+    "curve_helix": _Req(("pitch", float), ("height", float),
+                        ("radius", float)),
+                                       # optional: angle, left, axis (X|Y|Z)
     "surface_extend": _Req(("surface", str), ("distance", float)),
                                        # optional: edge (bord prolongé)
     "edit_surface_extend": _Req(("surface", str), ("distance", float)),

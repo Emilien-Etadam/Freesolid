@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  contextToolbarKeys, viewMenuItems, viewMenuLabel,
+  contextToolbarKeys, placeViewMenu, viewMenuItems, viewMenuLabel,
 } from "../../app/viewmenu.js";
 
 const keys = (items) => items.filter((i) => i.key).map((i) => i.key);
@@ -67,5 +67,52 @@ describe("viewMenuItems", () => {
     const k = keys(viewMenuItems({ mode: "sketch" }));
     assert.ok(k.includes("sk-line") && k.includes("sk-finish") && k.includes("sk-cancel"));
     assert.ok(!k.includes("fillet"));
+  });
+});
+
+const VIEW = {
+  viewportWidth: 1366,
+  viewportHeight: 768,
+  topLimit: 120,
+};
+
+function place(partial) {
+  return placeViewMenu({ width: 220, height: 280, ...VIEW, ...partial });
+}
+
+describe("placeViewMenu", () => {
+  it("s'ouvre sous le pointeur quand il tient", () => {
+    const at = place({ x: 400, y: 200, height: 180 });
+    assert.equal(at.left, 400);
+    assert.equal(at.top, 200);
+    assert.ok(at.maxHeight >= 180);
+    assert.ok(at.top >= VIEW.topLimit);
+  });
+
+  it("s'ouvre au-dessus quand la place manque en dessous", () => {
+    const at = place({ x: 400, y: 700, height: 180 });
+    assert.equal(at.top, 520);
+    assert.ok(at.top >= VIEW.topLimit);
+    assert.ok(at.top + 180 <= 700);
+  });
+
+  it("défile sans recouvrir le ruban s'il ne tient nulle part", () => {
+    const low = place({ x: 80, y: 640, height: 900 });
+    assert.equal(low.top, 124);
+    assert.equal(low.maxHeight, 516);
+    assert.ok(low.top >= VIEW.topLimit);
+    assert.ok(low.maxHeight < 900);
+
+    const high = place({ x: 80, y: 400, height: 900 });
+    assert.equal(high.top, 400);
+    assert.equal(high.maxHeight, 364);
+    assert.ok(high.top >= VIEW.topLimit);
+    assert.ok(high.top + high.maxHeight <= VIEW.viewportHeight);
+  });
+
+  it("reste dans la fenêtre près du bord droit", () => {
+    const at = place({ x: 1300, y: 300, height: 100 });
+    assert.equal(at.left, 1366 - 220 - 4);
+    assert.ok(at.left >= 0);
   });
 });

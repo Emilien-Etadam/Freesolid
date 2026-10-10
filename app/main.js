@@ -7,7 +7,7 @@ import { createSketchMode, createDimSprite } from "./sketch.js";
 import {
   dimEditPayload, dimLabel, filletRadiusLabel, openDimEditor, sketchDimAnchor,
 } from "./dims.js";
-import { createPropertyPanel } from "./panel.js";
+import { createPropertyPanel, panelNotice } from "./panel.js";
 import { num } from "./num.js";
 import { eventToNdc, ndcToScreen } from "./screen.js";
 import { cssHex, readScene } from "./theme.js";
@@ -25,7 +25,9 @@ import {
 } from "./progress.js";
 import { arcAngles } from "./geom2d.js";
 import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
-import { contextToolbarKeys, viewMenuItems, viewMenuLabel } from "./viewmenu.js";
+import {
+  contextToolbarKeys, placeViewMenu, viewMenuItems, viewMenuLabel,
+} from "./viewmenu.js";
 import { currentPaneIndex, layoutPanes, paneRect } from "./layouts.js";
 import { perspectiveFrustum } from "./projection.js";
 import { createSceneLook } from "./scenelook.js";
@@ -3871,10 +3873,21 @@ renderer.domElement.addEventListener("contextmenu", (event) => {
     }
     viewMenuEl.appendChild(row);
   }
+  viewMenuEl.style.maxHeight = "none";
   viewMenuEl.style.display = "block";
-  const { offsetWidth: w, offsetHeight: h } = viewMenuEl;
-  viewMenuEl.style.left = `${Math.min(event.clientX, window.innerWidth - w - 4)}px`;
-  viewMenuEl.style.top = `${Math.min(event.clientY, window.innerHeight - h - 4)}px`;
+  const header = document.querySelector("header");
+  const place = placeViewMenu({
+    x: event.clientX,
+    y: event.clientY,
+    width: viewMenuEl.offsetWidth,
+    height: viewMenuEl.offsetHeight,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    topLimit: header ? header.getBoundingClientRect().bottom : 0,
+  });
+  viewMenuEl.style.left = `${place.left}px`;
+  viewMenuEl.style.top = `${place.top}px`;
+  viewMenuEl.style.maxHeight = `${place.maxHeight}px`;
 });
 document.addEventListener("click", hideViewMenu);
 document.addEventListener("keydown", (event) => {
@@ -3961,7 +3974,19 @@ confirmCancel?.addEventListener("click", () => {
   else if (target === "sketch") sketchMode.cancel();
 });
 
+/** Lâche la face choisie pour l'esquisse. La pièce reprend sa couleur,
+ *  la barre d'état ne dit plus « sél. Face n », et rien n'est restauré
+ *  à la sortie. */
+function releaseFaceSelection() {
+  selectedFaceId = null;
+  hoveredGroup = -1;
+  hoveredEdgeGroup = -1;
+  repaintGroups();
+  repaintEdges();
+}
+
 document.addEventListener("freesolid:sketch-enter", () => {
+  releaseFaceSelection();
   updateConfirmCorner();
   inSketchMode = true;
   applyVolumeVisibility();
@@ -6400,7 +6425,9 @@ document.getElementById("btn-sketch").addEventListener("click", () =>
       }
     }
     if (selectedFaceId !== null) {
-      sketchMode.enter(call("sketch_start", { face: selectedFaceId }));
+      const face = selectedFaceId;
+      releaseFaceSelection();
+      sketchMode.enter(call("sketch_start", { face }));
     } else if (selectedDatumFeature !== null) {
       const name = selectedDatumFeature.name;
       selectedDatumFeature = null;
@@ -6457,10 +6484,11 @@ function openFeaturePanel(entry, sketchOverride) {
     onApply: (v) => {
       const built = entry.build(v, ctx);
       if (!built) {
-        const msg = typeof entry.invalid === "function"
+        const raw = typeof entry.invalid === "function"
           ? entry.invalid(v, ctx)
           : (entry.invalid ?? "Valeurs invalides");
-        say(msg, true);
+        const notice = panelNotice(raw);
+        if (notice) say(notice.text, notice.tone === "error");
         return;
       }
       if (typeof entry.confirm === "function") {

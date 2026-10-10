@@ -704,13 +704,13 @@
   }
   #panel .peye.off svg { stroke: var(--ink-2); opacity: 0.5; }
   #panel .peye:hover { border-color: var(--line); }
-  /* Ce qu'il manque pour valider, sur fond ambré. */
+  /* Consigne (texte secondaire) ou vraie erreur (rouge). */
   #panel .phint {
     margin: var(--space-2) 10px 2px; padding: 6px var(--space-2); border-radius: var(--radius-s);
     font-size: var(--text-xs); line-height: 1.35;
-    background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn-ink);
-    border-left: 3px solid var(--warn);
+    color: var(--ink-2);
   }
+  #panel .phint.error { color: var(--danger); }
   #panel .phint[hidden] { display: none; }
   #panel .pcancel:hover { border-color: var(--error); }
   #panel .paction {
@@ -873,6 +873,7 @@
     box-shadow: 0 10px 28px rgba(0,0,0,0.5);
     min-width: 190px; padding: var(--space-1);
   }
+  #view-menu { overflow-y: auto; }
   #param-pick { min-width: 240px; }
   #ctxmenu div, #view-menu div, #graph-edge-menu div,
   #param-pick .menu-item, #graph-palette .menu-item {

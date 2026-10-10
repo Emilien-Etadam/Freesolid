@@ -39,6 +39,40 @@ export function enterAction({ tag, edited, noApply }) {
   return noApply ? "none" : "apply";
 }
 
+/** Une zone de sélection contient déjà quelque chose. */
+export function selectionFilled(value) {
+  if (!value) return false;
+  if (value.items) return value.items.length > 0;
+  if (value.kind === "edges") return value.edges.length > 0;
+  if (value.kind === "face") return value.face != null;
+  return true;
+}
+
+/** Vrai si une ligne de sélection est vide : elle affiche déjà quoi choisir. */
+export function selectionLineGuides(groups, values) {
+  for (const group of groups ?? []) {
+    for (const row of group.rows ?? []) {
+      if (row.type === "selection" && !selectionFilled(values?.[row.key])) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Bandeau du panneau. Une consigne (`tone: "guide"`) est neutre et
+ *  disparaît si une ligne de sélection la dit déjà. Une chaîne, ou
+ *  `tone: "error"`, reste une erreur (rouge). */
+export function panelNotice(notice, { selectionGuides = false } = {}) {
+  if (notice == null || notice === "") return null;
+  if (typeof notice === "string") return { text: notice, tone: "error" };
+  const text = notice.text;
+  if (typeof text !== "string" || text === "") return null;
+  const tone = notice.tone === "guide" ? "guide" : "error";
+  if (tone === "guide" && selectionGuides) return null;
+  return { text, tone };
+}
+
 export function createPropertyPanel({ say, onClose, onToggle }) {
   const aside = document.querySelector("aside");
   const panelEl = document.getElementById("panel");
@@ -51,9 +85,13 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
   /** Message d'aide : ce qu'il manque pour pouvoir valider. */
   function updateHint() {
     if (!hintEl || !active) return;
-    const text = active.spec.hint?.({ ...active.values });
-    hintEl.hidden = !text;
-    hintEl.textContent = text ? t(text) : "";
+    const notice = panelNotice(active.spec.hint?.({ ...active.values }), {
+      selectionGuides: selectionLineGuides(active.spec.groups, active.values),
+    });
+    hintEl.hidden = !notice;
+    hintEl.textContent = notice ? t(notice.text) : "";
+    hintEl.classList.toggle("guide", notice?.tone === "guide");
+    hintEl.classList.toggle("error", notice?.tone === "error");
   }
 
   // Chaque modification de valeur notifie la commande — c'est ce qui
@@ -143,14 +181,6 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
   // {kind: "edges", edges: […]}, {kind: "sketch", name, label} or, for
   // multiple rows, {kind, items: […]} (a second click on the same item
   // removes it).
-  function hasSelectionValue(value) {
-    if (!value) return false;
-    if (value.items) return value.items.length > 0;
-    if (value.kind === "edges") return value.edges.length > 0;
-    if (value.kind === "face") return value.face != null;
-    return true;
-  }
-
   function notifyPick(kind, value) {
     if (!active) return false;
     const rows = [];
@@ -177,7 +207,7 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
       // Première zone vide, sinon la dernière est remplacée — le
       // balayage remplit Profil puis Trajectoire en deux clics.
       const target = rows.find(
-        (r) => !hasSelectionValue(active.values[r.key]))
+        (r) => !selectionFilled(active.values[r.key]))
         ?? rows[rows.length - 1];
       active.values[target.key] = value;
     }
@@ -195,7 +225,7 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     for (const group of active.spec.groups) {
       for (const row of group.rows ?? []) {
         if (row.type !== "selection") continue;
-        if (!hasSelectionValue(active.values[row.key])) continue;
+        if (!selectionFilled(active.values[row.key])) continue;
         active.values[row.key] = row.multiple ? { items: [] } : null;
         cleared++;
       }
@@ -324,7 +354,7 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     if (row.type === "selection") {
       const box = el("div", "pselect-box");
       const value = values[row.key];
-      if (!hasSelectionValue(value)) {
+      if (!selectionFilled(value)) {
         box.textContent =
           t(row.hint ?? "Cliquez une face dans la zone graphique");
         return box;

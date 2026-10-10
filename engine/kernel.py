@@ -742,7 +742,7 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
 
         The op runs inside its own transaction which is always aborted —
         the document comes back exactly as it was, whatever happened. The
-        client renders the returned mesh as the SolidWorks-style ghost.
+        client renders the returned mesh as the translucent preview ghost.
         """
         doc = self._require_doc()
         if op not in self._PREVIEWABLE:

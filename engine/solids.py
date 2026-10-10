@@ -22,8 +22,8 @@ class SolidsMixin:
     def add_body(self, name=None):
         """Nouveau corps dans la pièce — il devient le corps actif.
 
-        SolidWorks: un corps par fonction séparée; FreeCAD: un Body
-        explicite. Les fonctions suivantes s'empilent dans ce corps.
+        Un corps regroupe ses fonctions, matérialisé ici par un Body.
+        Les fonctions suivantes s'empilent dans ce corps.
         """
         doc = self._require_doc()
         body = doc.addObject("PartDesign::Body", "Body")
@@ -426,10 +426,10 @@ class SolidsMixin:
     def add_pocket(self, length=None, through=False, reversed=False,
                    sketch=None, midplane=False, cond=None, thin=None,
                    **conditions):
-        """Cut with the latest sketch — Extruded Cut, in SolidWorks terms.
+        """Cut with the latest sketch — an extruded cut.
 
-        No length (or ``through``) means « À travers tout » — the option a
-        SolidWorks hand reaches for by default on a cut. ``cond`` and the
+        No length (or ``through``) means « À travers tout » — the option
+        chosen by default on a cut. ``cond`` and the
         other conditions: see ``engine.extrude``.
         """
         from engine.kernel import KernelError
@@ -1145,7 +1145,7 @@ class SolidsMixin:
         The dress-up references the picked face or edges on the Tip
         feature — the shape the viewport tessellated, so the numbering
         matches by construction. A face means every edge of that face;
-        an edge list is the precise SolidWorks gesture.
+        an edge list is the precise edge selection.
         """
         from engine.kernel import KernelError
         body = self._require_body()

@@ -89,7 +89,8 @@ class AssemblyMixin:
         """Insérer une pièce : lien vers le premier corps de son fichier.
 
         La pièce reste un fichier séparé — la modifier puis rouvrir
-        l'assemblage met à jour toutes ses instances, comme SolidWorks.
+        l'assemblage met à jour toutes ses instances, comme dans
+        les modeleurs courants.
         """
         import os
         from engine.kernel import KernelError
@@ -142,7 +143,7 @@ class AssemblyMixin:
         existing = [o for o in doc.Objects
                     if o.TypeId == "App::Link" and o is not link]
         if not existing:
-            # Le premier composant est fixé, comme dans SolidWorks.
+            # Le premier composant est fixé, comme dans les modeleurs courants.
             try:
                 self._ground(link)
             except Exception:
@@ -285,7 +286,7 @@ class AssemblyMixin:
                 raise KernelError(_explain(exc))
         if distance2 is not None and hasattr(joint, "Distance2"):
             joint.Distance2 = float(distance2)
-        # Limites de mouvement (SolidWorks : contraintes avancées).
+        # Limites de mouvement (contraintes avancées).
         for value, prop, enable in (
                 (angle_min, "AngleMin", "EnableAngleMin"),
                 (angle_max, "AngleMax", "EnableAngleMax"),
@@ -337,7 +338,8 @@ class AssemblyMixin:
             App.Rotation(float(yaw), float(pitch), float(roll)))
         doc.recompute()
         # Avec des contraintes posées, le solveur reprend la main — le
-        # déplacement manuel devient une suggestion, comme dans SolidWorks.
+        # déplacement manuel devient une suggestion, comme dans les
+        # modeleurs courants.
         group = next((o for o in doc.Objects
                       if o.TypeId == "Assembly::JointGroup"), None)
         if group is not None and any(hasattr(o, "JointType")

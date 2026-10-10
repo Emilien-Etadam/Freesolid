@@ -35,7 +35,7 @@ class EquationsMixin:
 
         A value may be a number, or a string: a numeric string is a
         number, anything else is an **expression** (``2*Largeur + 5``) —
-        the SolidWorks equation, via FreeCAD's expression engine.
+        an equation, via the expression engine.
         """
         from engine.kernel import (
             KernelError,

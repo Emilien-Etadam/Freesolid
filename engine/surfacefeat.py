@@ -181,7 +181,7 @@ class SurfaceMixin:
     def surface_sew(self, surfaces):
         """Coudre des surfaces ; reste figé (pas d'objet Part paramétrique
         natif pour la couture). Si la peau est fermée, elle devient un
-        solide — le geste « coudre puis solidifier » de SolidWorks."""
+        solide — le geste « coudre puis solidifier »."""
         from engine.kernel import (
             KernelError,
             _explain,

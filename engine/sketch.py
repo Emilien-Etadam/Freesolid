@@ -49,7 +49,7 @@ class SketchMixin:
         """Centered, fully-constrained rectangle.
 
         On the XY plane by default; with ``face`` (a picked face id), mapped
-        flat onto that face — the SolidWorks "click a face, sketch on it"
+        flat onto that face — the usual "click a face, sketch on it"
         gesture. Anchored by symmetry about the sketch origin, driven by
         DistanceX/DistanceY; the interactive part is M2's job.
         """
@@ -315,7 +315,7 @@ class SketchMixin:
             for obj, subs in list(support or ()):
                 if obj is None:
                     continue
-                # Plan d'origine : vocabulaire SolidWorks (« Plan de
+                # Plan d'origine : le nom affiché (« Plan de
                 # face ») via le Name interne ; sinon label utilisateur.
                 name = getattr(obj, "Name", "") or ""
                 label = label_for_origin(name, self.lang)
@@ -371,7 +371,7 @@ class SketchMixin:
         return ()
 
     def _auto_constrain(self, sk, gid):
-        """The SolidWorks reflexes: snap becomes coincident, near-axis
+        """The usual reflexes: snap becomes coincident, near-axis
         becomes horizontal/vertical.
 
         The client decides (it snapped and sent exact coordinates); this
@@ -432,7 +432,7 @@ class SketchMixin:
         return self.sketch_state(sketch)
 
     def sketch_add_spline(self, sketch, points):
-        """Spline interpolée par les points cliqués — la spline SolidWorks."""
+        """Spline interpolée par les points cliqués."""
         from engine.kernel import (
             KernelError,
             _explain,
@@ -540,7 +540,7 @@ class SketchMixin:
     def sketch_offset(self, sketch, geos, distance, reversed=False):
         """Décalage d'entités : offset 2D non contraint (makeOffset2D).
 
-        Le « Décalage » paramétrique SolidWorks (contraintes d'égalité
+        Le décalage paramétrique des modeleurs courants (contraintes d'égalité
         de distance) viendra plus tard — les copies restent libres.
         """
         from engine.kernel import (
@@ -749,7 +749,7 @@ class SketchMixin:
     def _constraint_for(self, sk, kind, geo1, point1, geo2, point2, geo3):
         """Build the Sketcher constraint for one designer-facing kind.
 
-        The SolidWorks relation set maps onto Sketcher with a few
+        The usual relation set maps onto Sketcher with a few
         translations: colinéaire = Tangent between lines, concentrique =
         Coincident of centers, milieu = Symmetric of the line's endpoints
         about the point, fixe = Block.
@@ -898,7 +898,7 @@ class SketchMixin:
 
     def _dim_two(self, sk, g1, g2, point, point2, value):
         """Smart dimension between two entities — the pair decides the
-        constraint, as under the SolidWorks cursor: two points → distance,
+        constraint, as under the cursor: two points → distance,
         point + line → distance, parallel lines → distance, otherwise angle
         (radians on the wire; the client displays degrees)."""
         from engine.kernel import KernelError
@@ -946,7 +946,7 @@ class SketchMixin:
         """Smart dimension: length on a line, diameter on a circle,
         radius on an arc, distance/angle between two entities.
 
-        Driving, SolidWorks-style: dimension it and the geometry obeys.
+        Driving: dimension it and the geometry obeys.
         """
         from engine.kernel import (
             KernelError,
@@ -995,7 +995,7 @@ class SketchMixin:
         value, **name** (``largeur``) and **expression** (``largeur/2``).
 
         An expression takes over the value; setting a plain value clears
-        any expression. Names make the SolidWorks equation workflow:
+        any expression. Names make the equation workflow:
         name a dim, then reference it from any other dim or feature.
         """
         from engine.kernel import (
@@ -1122,7 +1122,7 @@ class SketchMixin:
 
     def sketch_convert(self, sketch, face=None):
         """Convertir les entités : le contour d'une face devient de la
-        géométrie d'esquisse réelle, bloquée (Block) — le geste SolidWorks
+        géométrie d'esquisse réelle, bloquée (Block) — le geste usuel
         « esquisse sur face → convertir → décaler/modifier ».
 
         Sans ``face``, la face porteuse de l'esquisse est utilisée.

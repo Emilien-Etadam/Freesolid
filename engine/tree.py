@@ -183,7 +183,7 @@ class TreeMixin:
 
         Mêmes candidates que ``_latest_sketch`` : une esquisse dont le
         ``Profile`` d'une fonction pointe dessus est repliée, comme
-        SolidWorks la range sous le bossage. Les esquisses reculées par
+        les modeleurs courants la rangent sous le bossage. Les esquisses reculées par
         la barre de retour sont exclues — on ne référence pas ce qui
         est sous la barre.
         """
@@ -205,7 +205,7 @@ class TreeMixin:
         Root cause of the "passage esquisse → extrusion" confusion: reusing
         an already-extruded profile fails downstream with a cryptic error.
         A profile is used once; the next feature takes the next fresh
-        sketch, exactly the SolidWorks mental model.
+        sketch, as in the usual modeller.
         """
         from engine.kernel import KernelError
         sketches = self._free_sketches()
@@ -221,8 +221,8 @@ class TreeMixin:
         jusqu'à cette ligne (fonction, esquisse libre ou surface).
 
         Sans *feature* (ou nom vide), la barre se pose avant la première
-        ligne — tout est reculé, comme un glisser tout en haut du
-        FeatureManager. ``body.Tip`` ne couvre que la chaîne PartDesign ;
+        ligne — tout est reculé, comme un glisser tout en haut de
+        l'arbre de création. ``body.Tip`` ne couvre que la chaîne PartDesign ;
         les surfaces et esquisses libres portent ``FreeSolidRolledBack``.
         """
         from engine.kernel import (
@@ -280,7 +280,7 @@ class TreeMixin:
 
     def delete_feature(self, feature):
         """Remove one feature. Its sketch stays — deleting it too would be
-        a second, separate decision, exactly as in SolidWorks. Deleting a
+        a second, separate decision, as in the usual modeller. Deleting a
         body removes its whole contents; the last body is protected."""
         from engine.kernel import KernelError
         doc = self._require_doc()
@@ -511,9 +511,9 @@ class TreeMixin:
     def get_tree(self):
         """Arbre de fonctions, vocabulaire du concepteur.
 
-        Forme SolidWorks : les trois plans de référence d'abord, et une
-        esquisse consommée par une fonction se range dessous en
-        ``children`` plutôt que de polluer le premier niveau.
+        Comme dans les modeleurs courants : les trois plans de référence
+        d'abord, et une esquisse consommée par une fonction se range
+        dessous en ``children`` plutôt que de polluer le premier niveau.
 
         Chaque entrée — fonction du corps, esquisse imbriquée, surface et
         esquisse de surface — peut porter quatre champs, omis quand ils
@@ -621,7 +621,7 @@ class TreeMixin:
             items.append(item)
 
         from engine.vocab import label_for_origin
-        # L'ordre SolidWorks : Plan de face, Plan de dessus, Plan de droite.
+        # L'ordre d'affichage : Plan de face, Plan de dessus, Plan de droite.
         # ``name`` : le nom d'objet réel, seule adresse par laquelle une
         # arête peut désigner un plan de référence (``id`` ne suffit pas —
         # en multi-corps FreeCAD suffixe le nom, « XZ_Plane001 »).
@@ -657,7 +657,7 @@ class TreeMixin:
                     and not self._is_internal_tool(o)]
         tip = (self._thin_owner(body.Tip).Name
                if getattr(body, "Tip", None) else None)
-        # Variables dans le même appel : le FeatureManager affiche le
+        # Variables dans le même appel : l'arbre de création affiche le
         # dossier Équations sans round-trip list_variables.
         tree = {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,

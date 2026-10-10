@@ -551,7 +551,7 @@ def graph_category_label(category: str, lang: str = "fr") -> str:
 
 
 def label_for_origin(internal_name: str, lang: str = "fr") -> str:
-    """Return the SolidWorks name of an Origin plane or axis.
+    """Nom affiché d'un plan ou d'un axe d'origine.
 
     ``internal_name`` is matched on a suffix basis because FreeCAD appends a
     numeric suffix (``XY_Plane001``) once a document holds several Bodies.

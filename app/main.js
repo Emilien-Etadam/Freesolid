@@ -26,6 +26,7 @@ import { VIEW_KEYS, VIEWS, installViewCube } from "./viewcube.js";
 import { installAssembly } from "./assembly.js";
 import { installGraphView } from "./graphview.js";
 import { PROP_LABELS, TREE_ICONS, installTree } from "./tree.js";
+import { installPicking } from "./picking.js";
 import { currentPaneIndex, layoutPanes, paneRect } from "./layouts.js";
 import { perspectiveFrustum } from "./projection.js";
 import { createSceneLook } from "./scenelook.js";
@@ -543,6 +544,7 @@ let partBaseMaterial = null; // clone possédé — couleur du corps actif
 let meshGroups = [];
 let edgeGroups = [];
 let hoveredEdgeGroup = -1;
+let hoveredGroup = -1;
 
 const othersMaterial = new THREE.MeshStandardMaterial({
   color: sceneTheme.partMuted, metalness: 0.1, roughness: 0.7,
@@ -567,7 +569,6 @@ const featureDimsGroup = new THREE.Group();
 featureDimsGroup.renderOrder = 24;
 scene.add(featureDimsGroup);
 let featureDimSprites = [];
-let featureDimContext = null; // { feature, hit }
 let lastFaceMatch = null; // { matched, faces } du dernier tessellate
 let pluginRuntime = null;
 
@@ -1225,581 +1226,6 @@ function schedulePreview(built) {
   }, 250);
 }
 
-function linePickThreshold() {
-  return ORTHO_HEIGHT / (camera.zoom * Math.max(viewSize().height, 1)) * 8;
-}
-
-function pickHoveredSketch() {
-  if (!sketchLineMeshes.length) return null;
-  raycaster.params.Line.threshold = linePickThreshold();
-  const hit = raycaster.intersectObjects(sketchLineMeshes, false)[0];
-  return hit?.object.userData.sketch ?? null;
-}
-
-function pickHoveredSurfaceHit() {
-  if (!surfaceMeshes.length) return null;
-  return raycaster.intersectObjects(surfaceMeshes, false)[0] ?? null;
-}
-
-function repaintSurfaces() {
-  for (const mesh of surfaceMeshes) {
-    const name = mesh.userData.surface?.name;
-    if (selectedSurface?.name === name) {
-      mesh.material = surfaceSelectedMaterial;
-    } else if (hoveredSurface?.name === name) {
-      mesh.material = surfaceHoverMaterial;
-    } else {
-      mesh.material = mesh.userData.baseMaterial;
-    }
-  }
-}
-
-// Face hover: triangle index -> group -> engine faceId. By construction.
-const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2();
-let hoveredGroup = -1;
-
-function setPointerFromEvent(event) {
-  const rect = renderer.domElement.getBoundingClientRect();
-  const ndc = eventToNdc(event.clientX, event.clientY, rect);
-  pointer.x = ndc.x;
-  pointer.y = ndc.y;
-}
-
-function pointerCtx() {
-  raycaster.setFromCamera(pointer, camera);
-  return {
-    raycaster, pointer, partMesh, scene, camera, controls, meshGroups,
-    get faceHit() {
-      return partMesh ? raycaster.intersectObject(partMesh)[0] : undefined;
-    },
-  };
-}
-
-function pluginSeesPointer() {
-  return !assemblyState && !planePicking && !measuring;
-}
-
-renderer.domElement.addEventListener("pointermove", (event) => {
-  if (sketchMode.active) return;
-  if (boxStart && isDrag(boxStart, { x: event.clientX, y: event.clientY })) {
-    boxOverlay.show(boxStart, { x: event.clientX, y: event.clientY });
-  }
-  setPointerFromEvent(event);
-  if (pluginSeesPointer()
-      && pluginRuntime?.dispatchPointer("move", event, pointerCtx())) {
-    return;
-  }
-  updateHover(event);
-});
-
-// Dernière position où le survol a été calculé : un appui ailleurs (le
-// pointeur arrivé sans mouvement, après un menu ou une fenêtre) le
-// recalcule d'abord, sinon le clic viserait l'ancien survol.
-let hoverAt = null;
-
-/** Face, arête, esquisse, surface ou plan sous le pointeur. */
-function updateHover(event) {
-  hoverAt = { x: event.clientX, y: event.clientY };
-  setPointerFromEvent(event);
-  if (planePicking) {
-    raycaster.setFromCamera(pointer, camera);
-    const hit = raycaster.intersectObjects(Object.values(planeMeshes))[0];
-    const id = hit?.object.userData.plane ?? null;
-    if (id !== hoverPlane) {
-      hoverPlane = id;
-      updatePlaneVisibility();
-    }
-    renderer.domElement.style.cursor = id ? "pointer" : "";
-    return;
-  }
-  if (!partMesh && !sketchLineMeshes.length && !surfaceMeshes.length) {
-    coordsEl.textContent = "";
-    return;
-  }
-  raycaster.setFromCamera(pointer, camera);
-
-  // L'esquisse libre gagne sur la face (et l'arête) derrière elle :
-  // le geste vise le profil, pas le solide. Priorité en pixels, inchangée.
-  const sketchHit = pickHoveredSketch();
-
-  let edgeGroupIndex = -1;
-  let groupIndex = -1;
-  let surfaceHit = null;
-  if (!sketchHit) {
-    const faceHit = partMesh
-      ? raycaster.intersectObject(partMesh)[0] : undefined;
-    let edgeHit;
-    if (partMesh && partEdges) {
-      const { radius } = partCenterRadius();
-      raycaster.params.Line.threshold = linePickThreshold();
-      edgeHit = raycaster.intersectObject(partEdges)[0];
-      if (edgeHit && (!faceHit
-          || edgeHit.distance <= faceHit.distance + radius * 0.02)) {
-        edgeGroupIndex = edgeGroups.findIndex(
-          (g) => edgeHit.index >= g.start
-              && edgeHit.index < g.start + g.count);
-      }
-    }
-    if (edgeGroupIndex < 0 && faceHit) {
-      const indexPosition = faceHit.faceIndex * 3;
-      groupIndex = meshGroups.findIndex(
-        (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
-    }
-    const surfHit = pickHoveredSurfaceHit();
-    let pointHit = edgeGroupIndex >= 0 ? edgeHit : faceHit;
-    if (surfHit) {
-      const solidHit = edgeGroupIndex >= 0 ? edgeHit : faceHit;
-      if (!solidHit || surfHit.distance < solidHit.distance) {
-        surfaceHit = surfHit.object.userData.surface;
-        groupIndex = -1;
-        edgeGroupIndex = -1;
-        pointHit = surfHit;
-      }
-    }
-    // Barre d'état : coordonnées du point visé sur la pièce.
-    coordsEl.textContent = coordsText(pointHit?.point ?? null);
-  }
-  const surfaceName = surfaceHit?.name ?? null;
-  if (groupIndex !== hoveredGroup || edgeGroupIndex !== hoveredEdgeGroup
-      || sketchHit?.name !== hoveredSketch?.name
-      || surfaceName !== hoveredSurface?.name) {
-    hoveredGroup = groupIndex;
-    hoveredEdgeGroup = edgeGroupIndex;
-    hoveredSketch = sketchHit;
-    hoveredSurface = surfaceHit;
-    renderer.domElement.style.cursor =
-      groupIndex >= 0 || edgeGroupIndex >= 0 || sketchHit || surfaceHit
-        ? "pointer" : "";
-    repaintGroups();
-    repaintEdges();
-    repaintSurfaces();
-  }
-}
-
-function repaintGroups() {
-  if (partMesh) {
-    partMesh.geometry.groups.forEach((g, i) => {
-      const isSelected = meshGroups[i].faceId === selectedFaceId;
-      g.materialIndex = isSelected ? 2 : (i === hoveredGroup ? 1 : 0);
-    });
-  }
-  const parts = [];
-  if (hoveredSketch) {
-    parts.push(hoveredSketch.label);
-  } else if (hoveredSurface) {
-    parts.push(hoveredSurface.label);
-  } else if (hoveredEdgeGroup >= 0) {
-    parts.push(t("Arête {n}", { n: edgeGroups[hoveredEdgeGroup].edgeId }));
-  } else if (hoveredGroup >= 0) {
-    parts.push(t("Face {n}", { n: meshGroups[hoveredGroup].faceId }));
-  }
-  if (selectedEdges.size) {
-    parts.push(t("sél. {n} arête(s) — Ctrl+clic : ajouter",
-      { n: selectedEdges.size }));
-  } else if (selectedFaceId !== null) {
-    parts.push(t("sél. Face {n}", { n: selectedFaceId }));
-  } else if (selectedSurface) {
-    parts.push(t("sél. {s}", { s: selectedSurface.label }));
-  }
-  pickEl.textContent = parts.join(" · ");
-  measureEl.textContent = measureText([...selectedEdges].map((id) =>
-    edgeGroups.find((g) => g.edgeId === id)?.length));
-}
-
-// Click selects the hovered face (sticky); click in the void deselects.
-// Guarded against orbit drags: a press that travels is navigation, not a pick.
-let pressPosition = null;
-let boxStart = null; // appui gauche dans le vide : peut devenir un cadre
-
-/** Arêtes du corps actif retenues par le cadre (fenêtre ou capture). */
-function selectEdgesInBox(start, end, additive) {
-  if (!partEdges) return;
-  const rect = normalizeRect(start, end);
-  const host = renderer.domElement.getBoundingClientRect();
-  const pos = partEdges.geometry.getAttribute("position");
-  const index = partEdges.geometry.getIndex();
-  const v = new THREE.Vector3();
-  const items = edgeGroups.map((g) => {
-    const points = [];
-    for (let k = g.start; k < g.start + g.count; k++) {
-      v.fromBufferAttribute(pos, index.getX(k)).project(camera);
-      points.push(ndcToScreen(v.x, v.y, host));
-    }
-    return { id: g.edgeId, points };
-  });
-  const ids = pickInBox(items, rect, boxMode(start, end));
-  selectedEdges = additive ? new Set([...selectedEdges, ...ids]) : new Set(ids);
-  selectedFaceId = null;
-  cancelPendingSurfaceClick();
-  clearSketchSelection({ quiet: true });
-  clearSurfaceSelection({ quiet: true });
-  repaintGroups();
-  repaintEdges();
-  if (lastTree) renderTree(lastTree);
-  panel.notifyPick("edges", { kind: "edges", edges: [...selectedEdges] });
-}
-
-renderer.domElement.addEventListener("pointerdown", (event) => {
-  if (sketchMode.active) return;
-  pressPosition = { x: event.clientX, y: event.clientY };
-  if (!assemblyState
-      && (hoverAt?.x !== event.clientX || hoverAt?.y !== event.clientY)) {
-    updateHover(event);
-  }
-  const nothingHovered = hoveredGroup < 0 && hoveredEdgeGroup < 0
-    && !hoveredSketch && !hoveredSurface;
-  boxStart = event.button === 0 && nothingHovered && !assemblyState
-    && !planePicking && !measuring && partEdges
-    ? { x: event.clientX, y: event.clientY } : null;
-  if (!pluginSeesPointer()) return;
-  setPointerFromEvent(event);
-  pluginRuntime?.dispatchPointer("down", event, pointerCtx());
-});
-renderer.domElement.addEventListener("pointerup", (event) => {
-  if (sketchMode.active) return;
-  if (pluginSeesPointer()) {
-    setPointerFromEvent(event);
-    if (pluginRuntime?.dispatchPointer("up", event, pointerCtx())) {
-      pressPosition = null;
-      return;
-    }
-  }
-  const box = boxStart;
-  boxStart = null;
-  boxOverlay.hide();
-  if (box && isDrag(box, { x: event.clientX, y: event.clientY })) {
-    pressPosition = null;
-    selectEdgesInBox(box, { x: event.clientX, y: event.clientY },
-      event.ctrlKey || event.metaKey);
-    return;
-  }
-  if (!pressPosition) return;
-  const travel = Math.hypot(event.clientX - pressPosition.x,
-                            event.clientY - pressPosition.y);
-  pressPosition = null;
-  if (travel > 5) return;
-  if (assemblyState) {
-    raycaster.setFromCamera(pointer, camera);
-    const hit = asmGroup
-      ? raycaster.intersectObjects(asmGroup.children, false)[0] : null;
-    // Panneau Contrainte ouvert : le clic vise une FACE du composant.
-    if (hit && panel.active) {
-      const groups = hit.object.userData.groups ?? [];
-      const indexPosition = hit.faceIndex * 3;
-      const g = groups.find((grp) => indexPosition >= grp.start
-        && indexPosition < grp.start + grp.count);
-      if (g && panel.notifyPick("asmface", {
-            kind: "asmface",
-            component: hit.object.userData.component,
-            componentLabel: hit.object.userData.componentLabel,
-            face: g.faceId })) {
-        selectComponent(hit.object.userData.component);
-        return;
-      }
-    }
-    selectComponent(hit ? hit.object.userData.component : null);
-    return;
-  }
-  if (planePicking) {
-    if (hoverPlane) pickPlane(hoverPlane);
-    return;
-  }
-
-  if (onMeasurePointerUp()) return;
-
-  const clearPlaneChoice = () => {
-    if (selectedPlane !== null || selectedDatumFeature !== null) {
-      selectedPlane = null;
-      selectedDatumFeature = null;
-      refreshDatumGhost(null);
-      updatePlaneVisibility();
-      if (lastTree) renderTree(lastTree);
-    }
-  };
-
-  if (hoveredSketch) {
-    selectedFaceId = null;
-    selectedEdges = new Set();
-    clearPlaneChoice();
-    cancelPendingSurfaceClick();
-    clearSurfaceSelection({ quiet: true });
-    repaintGroups();
-    repaintEdges();
-    selectSketch(hoveredSketch);
-    if (event.button === 0) showContextToolbar(event);
-    return;
-  }
-
-  if (hoveredSurface) {
-    selectedFaceId = null;
-    selectedEdges = new Set();
-    clearPlaneChoice();
-    clearSketchSelection({ quiet: true });
-    repaintGroups();
-    repaintEdges();
-    onSurfaceClick(hoveredSurface);
-    return;
-  }
-
-  if (hoveredEdgeGroup >= 0) {
-    const id = edgeGroups[hoveredEdgeGroup].edgeId;
-    if (event.ctrlKey || event.metaKey) {
-      if (!selectedEdges.delete(id)) selectedEdges.add(id);
-    } else {
-      selectedEdges = new Set([id]);
-    }
-    selectedFaceId = null;
-    clearPlaneChoice();
-    cancelPendingSurfaceClick();
-    clearSketchSelection({ quiet: true });
-    clearSurfaceSelection({ quiet: true });
-    if (lastTree) renderTree(lastTree);
-    repaintGroups();
-    repaintEdges();
-    panel.notifyPick("edges",
-      { kind: "edges", edges: [...selectedEdges] });
-    if (event.button === 0) showContextToolbar(event);
-    return;
-  }
-
-  selectedFaceId = hoveredGroup >= 0 ? meshGroups[hoveredGroup].faceId : null;
-  selectedEdges = new Set(); // une face (ou le vide) remplace les arêtes
-  cancelPendingSurfaceClick();
-  clearSketchSelection({ quiet: true });
-  clearSurfaceSelection({ quiet: true });
-  repaintEdges();
-  repaintGroups();
-  if (selectedFaceId !== null) {
-    clearPlaneChoice();
-    raycaster.setFromCamera(pointer, camera);
-    const faceHit = partMesh
-      ? raycaster.intersectObject(partMesh)[0] : null;
-    if (faceHit) {
-      // La normale sert à « Normal à » (Ctrl+8).
-      const normal = faceHit.face
-        ? faceHit.face.normal.clone()
-          .transformDirection(faceHit.object.matrixWorld)
-        : null;
-      lastFaceHit = {
-        face: selectedFaceId,
-        x: faceHit.point.x, y: faceHit.point.y, z: faceHit.point.z,
-        normal: normal ? [normal.x, normal.y, normal.z] : null,
-      };
-    }
-    // A command panel with a selection box absorbs the pick.
-    panel.notifyPick("face", { kind: "face", face: selectedFaceId });
-    if (event.button === 0) showContextToolbar(event);
-  } else {
-    lastFaceHit = null;
-    clearPlaneChoice();
-    clearFeatureDims();
-    pluginRuntime?.runPointerIdle(pointerCtx());
-  }
-  if (lastTree) renderTree(lastTree);
-});
-
-function findFeatureInTree(tree, name) {
-  if (!name || !tree) return null;
-  for (const feature of tree.features ?? []) {
-    if (feature.name === name) return feature;
-    for (const child of feature.children ?? []) {
-      if (child.name === name) return child;
-    }
-  }
-  for (const surface of tree.surfaces ?? []) {
-    if (surface.name === name) return surface;
-  }
-  return null;
-}
-
-function disposeFeatureDimSprites() {
-  for (const sprite of featureDimSprites) {
-    sprite.material?.map?.dispose();
-    sprite.material?.dispose();
-  }
-  featureDimsGroup.clear();
-  featureDimSprites = [];
-}
-
-function clearFeatureDims() {
-  disposeFeatureDimSprites();
-  featureDimContext = null;
-  if (selectedFeatureName) {
-    selectedFeatureName = null;
-    if (lastTree) renderTree(lastTree);
-  }
-}
-
-function sketchWorldPoint(placement, x, y) {
-  const matrix = new THREE.Matrix4().set(...placement);
-  return new THREE.Vector3(x, y, 0).applyMatrix4(matrix);
-}
-
-function featureParamWorldPos(param, feature, hit, sketchState) {
-  if (sketchState?.placement
-      && (param.prop === "Length" || param.prop === "LengthFwd")) {
-    const matrix = new THREE.Matrix4().set(...sketchState.placement);
-    const origin = new THREE.Vector3().setFromMatrixPosition(matrix);
-    const normal = new THREE.Vector3(0, 0, 1).transformDirection(matrix);
-    return origin.add(normal.normalize().multiplyScalar(param.value / 2));
-  }
-  if (hit) return hit.clone().add(new THREE.Vector3(0, 0, 3));
-  return new THREE.Vector3(0, 0, 8);
-}
-
-async function showFeatureDims(featureName, hit) {
-  if (!featureName) {
-    const match = lastFaceMatch;
-    const detail = match && match.faces
-      ? " " + t("({m}/{n} face(s) appariée(s) à une fonction)",
-        { m: match.matched, n: match.faces })
-      : "";
-    say(t("cette face n'a pas de fonction associée") + detail, true);
-    clearFeatureDims();
-    return;
-  }
-  const feature = findFeatureInTree(lastTree, featureName);
-  if (!feature) {
-    say("cette face n'appartient à aucune fonction éditable");
-    clearFeatureDims();
-    return;
-  }
-  selectedFeatureName = feature.name;
-  featureDimContext = {
-    feature: feature.name,
-    hit: hit ? hit.clone() : null,
-  };
-  disposeFeatureDimSprites();
-  const sketches = (feature.children ?? []).filter(
-    (child) => child.type === "Sketcher::SketchObject");
-  if (feature.type === "Sketcher::SketchObject") sketches.push(feature);
-  const params = feature.params?.length
-    ? feature.params
-    : ((await call("get_params", { feature: feature.name })).params ?? []);
-  let firstSketchState = null;
-  for (const sketch of sketches) {
-    let state;
-    try {
-      state = await call("sketch_state", { sketch: sketch.name });
-    } catch (error) {
-      say(error.message, true);
-      continue;
-    }
-    if (!firstSketchState) firstSketchState = state;
-    for (const dim of state.dims ?? []) {
-      const anchor = sketchDimAnchor(dim, state.entities);
-      if (!anchor) continue;
-      const world = sketchWorldPoint(state.placement, anchor.x, anchor.y);
-      const sprite = createDimSprite(dimLabel(dim), world.x, world.y, world.z);
-      sprite.userData.dim = { ...dim, kind: "sketch", sketch: sketch.name };
-      sprite.renderOrder = 24;
-      featureDimsGroup.add(sprite);
-      featureDimSprites.push(sprite);
-    }
-  }
-  for (const param of params) {
-    const [label, unit] = PROP_LABELS[param.prop] ?? [param.prop, "mm"];
-    const dim = {
-      kind: "param",
-      name: label,
-      value: param.value,
-      expr: param.expr || "",
-      unit,
-      feature: feature.name,
-      prop: param.prop,
-      type: param.prop === "Angle" ? "Angle" : "Distance",
-    };
-    const world = featureParamWorldPos(
-      param, feature, hit, firstSketchState);
-    const sprite = createDimSprite(dimLabel({
-      ...dim,
-      type: dim.unit === "°" ? "Angle" : dim.type,
-      value: dim.unit === "°" ? dim.value * Math.PI / 180 : dim.value,
-    }), world.x, world.y, world.z);
-    sprite.userData.dim = dim;
-    sprite.renderOrder = 24;
-    featureDimsGroup.add(sprite);
-    featureDimSprites.push(sprite);
-  }
-  if (!featureDimSprites.length) {
-    say(t("{f} : aucune cote à afficher", { f: feature.label }));
-    return;
-  }
-  if (lastTree) renderTree(lastTree);
-  say(t("{f} : {n} cote(s) — double-clic une cote pour la changer",
-    { f: feature.label, n: featureDimSprites.length }));
-}
-
-function pickFeatureDim(event) {
-  if (!featureDimSprites.length) return false;
-  const rect = renderer.domElement.getBoundingClientRect();
-  for (const sprite of featureDimSprites) {
-    const projected = sprite.position.clone().project(camera);
-    const screen = ndcToScreen(projected.x, projected.y, rect);
-    const sx = screen.x;
-    const sy = screen.y;
-    if (Math.hypot(sx - event.clientX, sy - event.clientY) < 22) {
-      editFeatureDim(sprite.userData.dim);
-      return true;
-    }
-  }
-  return false;
-}
-
-function editFeatureDim(dim) {
-  if (!dim) return;
-  openDimEditor({
-    panel,
-    dim,
-    onApply: (values, meta) => {
-      const extra = dimEditPayload(values, dim, meta);
-      if (dim.kind === "sketch") {
-        if (extra.name === undefined && extra.value === undefined
-            && extra.expr === undefined) return;
-        refreshFeatureDimEdit(call("sketch_set_dim", {
-          sketch: dim.sketch, dim: dim.id, ...extra,
-        }).then(() => call("get_tree")));
-        return;
-      }
-      if (extra.value === undefined && extra.expr === undefined) return;
-      const raw = extra.expr ?? extra.value;
-      refreshFeatureDimEdit(call("set_params", {
-        feature: dim.feature,
-        values: { [dim.prop]: raw },
-      }));
-    },
-  });
-}
-
-function refreshFeatureDimEdit(treePromise) {
-  const ctx = featureDimContext;
-  refresh(treePromise).then(() => {
-    if (ctx) return showFeatureDims(ctx.feature, ctx.hit);
-  });
-}
-
-renderer.domElement.addEventListener("dblclick", (event) => {
-  if (sketchMode.active || assemblyState || planePicking || measuring) return;
-  if (hoveredSurface) {
-    onSurfaceDblClick(hoveredSurface);
-    return;
-  }
-  if (pickFilletRadiusBubble(event)) {
-    focusPanelField("radius");
-    return;
-  }
-  if (pickFeatureDim(event)) return;
-  if (hoveredGroup < 0) {
-    clearFeatureDims();
-    return;
-  }
-  const group = meshGroups[hoveredGroup];
-  const hit = lastFaceHit && lastFaceHit.face === group.faceId
-    ? new THREE.Vector3(lastFaceHit.x, lastFaceHit.y, lastFaceHit.z)
-    : null;
-  showFeatureDims(group.feature, hit);
-});
 
 /** Frustum orthographique pour un rapport largeur / hauteur. */
 function setOrthoFrustum(cam, width, height) {
@@ -1952,12 +1378,31 @@ function expose(name, get, set) {
   });
 }
 
+expose("featureDimSprites", () => featureDimSprites, (v) => { featureDimSprites = v; });
+expose("lastFaceMatch", () => lastFaceMatch);
+expose("hoverPlane", () => hoverPlane, (v) => { hoverPlane = v; });
+expose("sketchLineMeshes", () => sketchLineMeshes);
+expose("surfaceMeshes", () => surfaceMeshes);
+expose("planeMeshes", () => planeMeshes);
+Object.assign(ctx, {
+  THREE, scene, camera, renderer, controls, container, viewSize, ORTHO_HEIGHT,
+  say, call, panel, pickEl, measureEl, coordsEl, refresh, selectComponent,
+  boxOverlay, featureDimsGroup, createDimSprite,
+  surfaceHoverMaterial, surfaceSelectedMaterial,
+  focusPanelField, pickFilletRadiusBubble,
+  updatePlaneVisibility, repaintEdges, pickPlane,
+});
+const {
+  raycaster, pointer, setPointerFromEvent,
+  repaintGroups, repaintSurfaces, findFeatureInTree, clearFeatureDims,
+} = installPicking(ctx);
+
 // ---------- vues standard et boîte d'orientation ----------
 
 expose("partMesh", () => partMesh);
 expose("partEdges", () => partEdges);
 expose("selectedFaceId", () => selectedFaceId, (v) => { selectedFaceId = v; });
-expose("lastFaceHit", () => lastFaceHit);
+expose("lastFaceHit", () => lastFaceHit, (v) => { lastFaceHit = v; });
 expose("selectedPlane", () => selectedPlane);
 Object.assign(ctx, {
   THREE, camera, controls, viewSize, ORTHO_HEIGHT, say, setLayout, container,
@@ -2117,6 +1562,11 @@ const {
   beginInlineRename, treeRowFor, beginRenameSelected,
   renderTree, editSurface, editFeature,
 } = installTree(ctx);
+Object.assign(ctx, {
+  renderTree, refreshDatumGhost, clearSketchSelection,
+  cancelPendingSurfaceClick, onSurfaceClick, onSurfaceDblClick,
+  clearSurfaceSelection, selectSketch,
+});
 
 // ---------- menus contextuels (arbre et zone graphique) ----------
 // Lu à l'appel : certaines variables sont déclarées plus bas.
@@ -2148,6 +1598,7 @@ Object.assign(ctx, {
 
 const { openMenu, showContextToolbar, hideContextToolbar } = installContextMenu(ctx);
 ctx.openMenu = openMenu;
+ctx.showContextToolbar = showContextToolbar;
 
 // ---------- ruban à onglets (CommandManager) ----------
 
@@ -2674,6 +2125,7 @@ let measuring = false;
 
 Object.assign(ctx, { call, say, panel });
 const { onMeasurePointerUp, cancelMeasure } = installMeasure(ctx);
+ctx.onMeasurePointerUp = onMeasurePointerUp;
 
 document.getElementById("btn-sketch").addEventListener("click", () =>
   featureCommand(async () => {

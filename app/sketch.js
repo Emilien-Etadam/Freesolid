@@ -202,11 +202,19 @@ export function createSketchMode(deps) {
     }
   }
 
+  // Points d'accrochage : les extrémités et centres, plus l'origine de
+  // l'esquisse — on démarre souvent un profil dessus (le moteur en fait une
+  // coïncidence). L'origine ne se glisse pas : overEndpoint ne la voit pas.
+  function* snapPoints() {
+    yield* endpoints();
+    yield { geo: -1, point: 1, x: 0, y: 0 };
+  }
+
   function snap(local, event) {
     // Endpoint snap first (screen-space), then axis snap along the chain,
     // then inference lines: alignment on any existing point (a guide only,
     // no relation is created for it).
-    for (const p of endpoints()) {
+    for (const p of snapPoints()) {
       const s = toScreen(p.x, p.y);
       if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < SNAP_PX) {
         return { x: p.x, y: p.y, onPoint: p, guides: [], hv: null };
@@ -232,7 +240,7 @@ export function createSketchMode(deps) {
     const s0 = toScreen(0, 0), s1 = toScreen(1, 0);
     const tol = (SNAP_PX * 0.7) / (Math.hypot(s1.x - s0.x, s1.y - s0.y) || 1);
     let alignX = null, alignY = null;
-    for (const p of endpoints()) {
+    for (const p of snapPoints()) {
       if (mode.chain && p.x === mode.chain.x && p.y === mode.chain.y) continue;
       if (!alignX && hv !== "V" && Math.abs(p.x - x) < tol) alignX = p;
       if (!alignY && hv !== "H" && Math.abs(p.y - y) < tol) alignY = p;

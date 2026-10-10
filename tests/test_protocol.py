@@ -531,6 +531,7 @@ def test_ops_snapshot_keys():
         "check_interference",
         "delete_feature",
         "delete_variable",
+        "document_status",
         "edit_graph_feature",
         "edit_repeat_feature",
         "edit_text",

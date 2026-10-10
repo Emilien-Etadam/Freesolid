@@ -2347,6 +2347,19 @@ class SelftestMixin:
             except KernelError:
                 report["p38_coque_refus"] = True
 
+            mark("p40: un profil démarré sur l'origine y reste attaché")
+            self.new_part("Pièce origine")
+            name = self.sketch_start()["sketch"]
+            self.sketch_add_line(name, 0, 0, 30, 0)
+            self.sketch_add_line(name, 30, 0, 30, 10)
+            state = self.sketch_add_circle(name, 0, 0, 5)
+            rooted = [c for c in self._get_sketch(name).Constraints
+                      if c.Type == "Coincident" and c.Second == -1]
+            report["p40_origine"] = (
+                len(rooted) == 2
+                and {c.FirstPos for c in rooted} == {1, 3}
+                and state["dof"] == 3)  # deux longueurs, un rayon
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

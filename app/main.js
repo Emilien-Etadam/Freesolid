@@ -1540,7 +1540,22 @@ async function refresh(treePromise) {
   if (ok) say("À jour.");
 }
 
-document.getElementById("btn-new").addEventListener("click", () => {
+/** Le document en cours peut-il être abandonné (nouveau, ouvrir) ? S'il
+ *  a des modifications non enregistrées, l'utilisateur confirme. */
+async function mayDiscard() {
+  let status = null;
+  try {
+    status = await call("document_status");
+  } catch {
+    return true; // moteur injoignable : l'appel suivant le dira
+  }
+  if (!status?.open || !status.modified) return true;
+  return confirm("Le document en cours a des modifications non enregistrées. Les abandonner ?");
+}
+ctx.mayDiscard = mayDiscard;
+
+document.getElementById("btn-new").addEventListener("click", async () => {
+  if (!(await mayDiscard())) return;
   clearFeatureDims();
   refresh(call("new_part"));
 });
@@ -1811,6 +1826,7 @@ const pickFile = installFileDialog(document, {
 
 async function openDocument(path) {
   if (!path) return;
+  if (!(await mayDiscard())) return;
   const gen = ++viewGen;
   try {
     const tree = await call("open_part", { path });

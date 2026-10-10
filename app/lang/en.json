@@ -748,5 +748,6 @@
  "Thème": "Theme",
  "Sombre": "Dark",
  "Clair": "Light",
- "Selon le système": "Follow the system"
+ "Selon le système": "Follow the system",
+ "Le document en cours a des modifications non enregistrées. Les abandonner ?": "The current document has unsaved changes. Discard them?"
 }

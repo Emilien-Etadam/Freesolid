@@ -267,6 +267,9 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
         self._doc = None
         self._body = None
         self._assembly = False  # le document courant est un assemblage
+        # Modifié depuis le dernier « nouveau / ouvrir / enregistrer » :
+        # le client demande confirmation avant de l'abandonner.
+        self._modified = False
         # Langue de l'interface (posée par le serveur à chaque requête) :
         # les libellés que le noyau écrit dans le document la suivent.
         self.lang = "fr"
@@ -617,6 +620,11 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
             return doc.getMaxUndoStackSize()
         return None
 
+    def document_status(self):
+        """État du document pour le client : ouvert, modifié depuis le
+        dernier enregistrement (ou depuis sa création / son ouverture)."""
+        return {"open": self._doc is not None, "modified": self._modified}
+
     def new_part(self, name=None):
         App = self._app()
         self._close_current()
@@ -805,6 +813,19 @@ _TRANSACTIONAL = frozenset({
 })
 
 
+#: Ops qui laissent un document « propre » : neuf, ouvert ou enregistré.
+_CLEAN_OPS = frozenset({"new_part", "new_assembly", "open_part", "save_part"})
+#: Ops qui changent le document hors transaction.
+_DIRTY_OPS = frozenset({"undo", "redo", "sketch_move"})
+
+
+def _track_modified(kernel, op):
+    if op in _CLEAN_OPS:
+        kernel._modified = False
+    elif op in _DIRTY_OPS or _transactional(kernel, op):
+        kernel._modified = True
+
+
 def _abort(doc):
     if doc is None:
         return
@@ -850,4 +871,5 @@ def dispatch(kernel: Kernel, op: str, params: dict):
             doc.commitTransaction()
         except Exception:
             pass
+    _track_modified(kernel, op)
     return protocol.ok(result)

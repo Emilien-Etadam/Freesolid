@@ -380,11 +380,12 @@ class SketchMixin:
         import Sketcher
         C = Sketcher.Constraint
         geo = sk.Geometry[gid]
+        origin = self._app().Vector(0, 0, 0)
         for pos, point in self._endpoints_of(geo):
+            matched = False
             for other in range(len(sk.Geometry)):
                 if other == gid:
                     continue
-                matched = False
                 for opos, opoint in self._endpoints_of(sk.Geometry[other]):
                     if point.distanceToPoint(opoint) < self._SNAP_TOL:
                         sk.addConstraint(C("Coincident", gid, pos,
@@ -393,6 +394,10 @@ class SketchMixin:
                         break
                 if matched:
                     break
+            # Point posé sur l'origine : coïncident avec le point racine
+            # (GeoId -1 = axe H, PosId 1 = son départ, l'origine).
+            if not matched and point.distanceToPoint(origin) < self._SNAP_TOL:
+                sk.addConstraint(C("Coincident", gid, pos, -1, 1))
         if geo.TypeId != "Part::GeomLineSegment":
             return
         dx = abs(geo.EndPoint.x - geo.StartPoint.x)
@@ -835,9 +840,13 @@ class SketchMixin:
         if float(r) <= 0:
             raise KernelError("le rayon doit être positif")
         App = self._app()
-        sk.addGeometry(Part.Circle(
+        gid = sk.addGeometry(Part.Circle(
             App.Vector(float(cx), float(cy), 0),
             App.Vector(0, 0, 1), float(r)), False)
+        # Centre posé sur l'origine (le client y accroche) : coïncident.
+        if self._coincident_2d(cx, cy, 0, 0):
+            import Sketcher
+            sk.addConstraint(Sketcher.Constraint("Coincident", gid, 3, -1, 1))
         return self.sketch_state(sketch)
 
     def sketch_move(self, sketch, geo, point, x, y):

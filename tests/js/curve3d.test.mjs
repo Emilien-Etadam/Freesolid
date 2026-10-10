@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 
 import { alongAxis, clickPlane, curveProblem, nextPlane, rayPlane,
   solveRules } from "../../app/curve3d.js";
+
+const dist = (a, b) => Math.hypot(...a.map((v, k) => v - b[k]));
 import { boundaryText, samePick } from "../../app/panel.js";
 import { boundaryParam, deleteFacesBuild, deleteFacesParams, extendParams,
   freeformParams, midParams, surfaceFilletParams, trimParams }
@@ -41,9 +43,12 @@ describe("spline 3D : plan de clic", () => {
     assert.deepEqual(solveRules([[10, 10, 10], [10, 10, 30], [20, 10, 40]],
       [{}, { angle: 90, length: 10 }]).map((p) => p.map((v) =>
       Math.round(v * 1e6) / 1e6)), [[10, 10, 10], [10, 10, 30], [20, 10, 30]]);
-    // Un point lié ne bouge pas : la règle qui voudrait le déplacer cède.
-    assert.deepEqual(solveRules([[0, 0, 0], [3, 4, 0]], [{ length: 10 }], [1]),
-      [[0, 0, 0], [3, 4, 0]]);
+    // Deux extrémités liées : le point du milieu tient les deux longueurs.
+    const mid = solveRules([[0, 0, 0], [5, 5, 0], [14, 0, 0]],
+      [{ length: 10 }, { length: 10 }], [0, 2]);
+    assert.ok(Math.abs(dist(mid[0], mid[1]) - 10) < 1e-4);
+    assert.ok(Math.abs(dist(mid[1], mid[2]) - 10) < 1e-4);
+    assert.deepEqual(mid[2], [14, 0, 0]);
     // Segment libre : rien ne bouge.
     assert.deepEqual(solveRules([[0, 0, 0], [3, 4, 0]], [{ axis: "" }]),
       [[0, 0, 0], [3, 4, 0]]);

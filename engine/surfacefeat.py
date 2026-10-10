@@ -2072,7 +2072,89 @@ class SurfaceMixin:
                 if j in fixed:
                     break
                 pts[j] = [pts[j][k] + shift[k] for k in range(3)]
-        return pts
+        # Passe globale : les règles qu'un point lié a empêchées en chaîne
+        # se règlent ensemble, par relaxation.
+        return SurfaceMixin._relax_rules(pts, rules or [], fixed)
+
+    @staticmethod
+    def _relax_rules(pts, rules, fixed, rounds=4000, tolerance=1e-7):
+        """Relaxation par projections successives : chaque règle déplace
+        les extrémités libres de son segment (les points liés ne bougent
+        pas ; sans point lié, le premier sert d'ancre). Refus si les
+        règles ne peuvent pas tenir ensemble."""
+        from engine.kernel import KernelError
+        import math
+        if len(pts) < 2 or not any(isinstance(r, dict) and any(
+                r.get(k) not in (None, "") for k in ("axis", "length",
+                                                    "angle"))
+                for r in rules):
+            return pts
+        locked = set(fixed) if fixed else {0}
+
+        def free(i):
+            return 0.0 if i in locked else 1.0
+
+        def residual():
+            worst = 0.0
+            for i, rule in enumerate(rules):
+                if i + 1 >= len(pts) or not isinstance(rule, dict):
+                    continue
+                d = [pts[i + 1][k] - pts[i][k] for k in range(3)]
+                axis = str(rule.get("axis") or "")
+                if axis in ("X", "Y", "Z"):
+                    k = "XYZ".index(axis)
+                    worst = max(worst, math.sqrt(sum(
+                        d[n] ** 2 for n in range(3) if n != k)))
+                elif rule.get("angle") not in (None, "") and i >= 1:
+                    prev = [pts[i][k] - pts[i - 1][k] for k in range(3)]
+                    want = SurfaceMixin._turn_to_angle(prev, d,
+                                                       float(rule["angle"]))
+                    worst = max(worst, math.sqrt(sum(
+                        (want[k] - d[k]) ** 2 for k in range(3))))
+                if rule.get("length") not in (None, ""):
+                    size = math.sqrt(sum(c * c for c in d))
+                    worst = max(worst, abs(size - float(rule["length"])))
+            return worst
+
+        def move(i, j, delta):
+            """Répartit ``delta`` (à appliquer à j − i) entre i et j."""
+            wi, wj = free(i), free(j)
+            total = wi + wj
+            if total == 0:
+                return
+            for k in range(3):
+                pts[i][k] -= delta[k] * wi / total
+                pts[j][k] += delta[k] * wj / total
+
+        for _ in range(rounds):
+            if residual() < tolerance:
+                return pts
+            for i, rule in enumerate(rules):
+                if i + 1 >= len(pts) or not isinstance(rule, dict):
+                    continue
+                d = [pts[i + 1][k] - pts[i][k] for k in range(3)]
+                axis = str(rule.get("axis") or "")
+                if axis in ("X", "Y", "Z"):
+                    k = "XYZ".index(axis)
+                    move(i, i + 1, [0.0 if n == k else -d[n]
+                                    for n in range(3)])
+                elif rule.get("angle") not in (None, "") and i >= 1:
+                    prev = [pts[i][k] - pts[i - 1][k] for k in range(3)]
+                    want = SurfaceMixin._turn_to_angle(
+                        prev, d, float(rule["angle"]))
+                    move(i, i + 1, [want[k] - d[k] for k in range(3)])
+                length = rule.get("length")
+                if length not in (None, ""):
+                    d = [pts[i + 1][k] - pts[i][k] for k in range(3)]
+                    size = math.sqrt(sum(c * c for c in d))
+                    if size > 1e-12:
+                        grow = (float(length) - size) / size
+                        move(i, i + 1, [c * grow for c in d])
+        if residual() < 1e-5:
+            return pts
+        raise KernelError("règles d'esquisse 3D incompatibles : les points "
+                          "liés, axes, angles et longueurs ne peuvent pas "
+                          "tenir ensemble")
 
     @staticmethod
     def _turn_to_angle(prev, d, degrees):

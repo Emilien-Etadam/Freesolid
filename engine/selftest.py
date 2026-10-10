@@ -2560,6 +2560,25 @@ class SelftestMixin:
             anchored = (spec_a.get("links") or [None])[0]
             self.set_params(pad_name, {"Length": 15.0})
             first = angle_obj.FreeSolidPoints[0]
+            # Solveur global : deux extrémités liées, deux longueurs —
+            # le point du milieu se place sur les deux sphères à la fois ;
+            # des règles impossibles sont refusées.
+            pts = self.solve_curve_rules(
+                [[0, 0, 0], [5, 5, 0], [14, 0, 0]],
+                [{"length": 10}, {"length": 10}], [0, 2])
+            import math as _m
+            global_ok = (abs(_m.dist(pts[0], pts[1]) - 10) < 1e-4
+                         and abs(_m.dist(pts[1], pts[2]) - 10) < 1e-4
+                         and pts[2] == [14, 0, 0])
+            try:
+                self.solve_curve_rules(
+                    [[0, 0, 0], [5, 5, 0], [30, 0, 0]],
+                    [{"length": 10}, {"length": 10}], [0, 2])
+                impossible_refused = False
+            except KernelError as exc:
+                impossible_refused = "incompatibles" in str(exc)
+            report["p46_esquisse3d_solveur_global"] = (
+                global_ok and impossible_refused)
             report["p46_esquisse3d_angle_lien"] = (
                 spec_a.get("points")[2] == [20, 10, 30]
                 and isinstance(anchored, dict)

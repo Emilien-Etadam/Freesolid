@@ -68,6 +68,62 @@ export function solveRules(points, rules, fixed = []) {
       pts[j] = pts[j].map((v, n) => v + shift[n]);
     }
   });
+  return relaxRules(pts, rules ?? [], locked);
+}
+
+/** Passe globale par relaxation (comme le moteur) : chaque règle déplace
+ *  les extrémités libres de son segment jusqu'à ce que toutes tiennent.
+ *  Sans point lié, le premier sert d'ancre. Rend le meilleur résultat —
+ *  le moteur refuse à l'OK des règles incompatibles. */
+export function relaxRules(pts, rules, locked = new Set(), rounds = 4000) {
+  const active = (r) => r && ["axis", "length", "angle"]
+    .some((k) => r[k] != null && r[k] !== "");
+  if (pts.length < 2 || !rules.some(active)) return pts;
+  const fixed = locked.size ? locked : new Set([0]);
+  const free = (i) => (fixed.has(i) ? 0 : 1);
+  const diff = (i) => pts[i + 1].map((v, k) => v - pts[i][k]);
+  const move = (i, j, delta) => {
+    const total = free(i) + free(j);
+    if (!total) return;
+    pts[i] = pts[i].map((v, k) => v - (delta[k] * free(i)) / total);
+    pts[j] = pts[j].map((v, k) => v + (delta[k] * free(j)) / total);
+  };
+  const want = (i, rule) => {
+    const d = diff(i);
+    const k = "XYZ".indexOf(rule.axis ?? "");
+    if (rule.axis && k >= 0) return d.map((v, n) => (n === k ? v : 0));
+    if (rule.angle != null && rule.angle !== "" && i >= 1) {
+      return turnToAngle(pts[i].map((v, n) => v - pts[i - 1][n]), d,
+        Number(rule.angle));
+    }
+    return d;
+  };
+  const residual = () => rules.reduce((worst, rule, i) => {
+    if (!rule || i + 1 >= pts.length) return worst;
+    const d = diff(i);
+    const w = want(i, rule);
+    let r = Math.hypot(...w.map((v, k) => v - d[k]));
+    if (rule.length != null && rule.length !== "") {
+      r = Math.max(r, Math.abs(Math.hypot(...d) - Number(rule.length)));
+    }
+    return Math.max(worst, r);
+  }, 0);
+  for (let round = 0; round < rounds && residual() > 1e-7; round++) {
+    rules.forEach((rule, i) => {
+      if (!rule || i + 1 >= pts.length) return;
+      const d = diff(i);
+      const w = want(i, rule);
+      move(i, i + 1, w.map((v, k) => v - d[k]));
+      if (rule.length != null && rule.length !== "") {
+        const e = diff(i);
+        const size = Math.hypot(...e);
+        if (size > 1e-12) {
+          const grow = (Number(rule.length) - size) / size;
+          move(i, i + 1, e.map((v) => v * grow));
+        }
+      }
+    });
+  }
   return pts;
 }
 

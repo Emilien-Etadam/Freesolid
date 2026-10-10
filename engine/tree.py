@@ -592,6 +592,9 @@ class TreeMixin:
                     "x": float(obj.FreeSolidTextX),
                     "y": float(obj.FreeSolidTextY),
                 }
+            cut = self._surface_cut_spec(obj)
+            if cut is not None:
+                item["surface_cut"] = cut
             if "FreeSolidGraphJson" in obj.PropertiesList:
                 graph = self._tree_graph_payload(obj)
                 if graph is not None:

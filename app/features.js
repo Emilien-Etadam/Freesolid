@@ -1139,6 +1139,27 @@ export const FEATURES = [
     },
     invalid: "Épaissir : une surface et une épaisseur non nulle",
   }),
+  {
+    button: "btn-surf-cut",
+    icon: "surface_cut",
+    title: "Couper avec une surface",
+    groups: (ctx) => [
+      { label: "Surface",
+        rows: [{ type: "selection", key: "surface", accepts: ["surface"],
+                 hint: "Cliquez la surface qui traverse le solide",
+                 value: ctx.selection(["surface"]) }] },
+      { label: "Options",
+        rows: [{ type: "check", key: "flip", label: "Inverser le côté",
+                 value: false }] },
+    ],
+    note: "L'aperçu montre ce qui reste. La surface doit traverser le "
+      + "solide de part en part.",
+    build: (v) => (v.surface ? { op: "add_surface_cut",
+      params: { surface: v.surface.name, flip: !!v.flip } } : null),
+    invalid: () => ({ text: "Couper : cliquez une surface",
+                      tone: "guide" }),
+    refresh: "part",
+  },
   surface({
     button: "btn-surf-planar",
     icon: "surface_planar",

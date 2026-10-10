@@ -818,5 +818,11 @@
  "Plan de clic : {p}": "Click plane: {p}",
  "Tous les bords": "All edges",
  "Prolonger : une distance positive": "Extend: a positive distance",
- "Garder l'autre partie": "Keep the other part"
+ "Garder l'autre partie": "Keep the other part",
+ "Couper le solide avec une surface — enlève ce qui est d'un côté": "Cut the solid with a surface — removes what lies on one side",
+ "Couper": "Cut",
+ "Couper avec une surface": "Cut With Surface",
+ "Cliquez la surface qui traverse le solide": "Click the surface that goes through the solid",
+ "L'aperçu montre ce qui reste. La surface doit traverser le solide de part en part.": "The preview shows what remains. The surface must go right through the solid.",
+ "Couper : cliquez une surface": "Cut: click a surface"
 }

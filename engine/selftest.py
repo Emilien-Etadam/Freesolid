@@ -2627,6 +2627,64 @@ class SelftestMixin:
                 self._require_doc().getObject(
                     tree["surfaces"][-1]["name"]).Shape.Area - 400) < 1e-3
 
+            mark("p47: couper le solide avec une surface")
+            self.new_part("Pièce coupe surface")
+            self.add_rect_sketch(40, 40)
+            self.add_pad(20)
+            body = self._require_body()
+            state = self.sketch_start(plane="XY")
+            line = state["sketch"]
+            self.sketch_add_line(line, -40, -40, 40, 40)
+            self.sketch_finish(line)
+            App = self._app()
+            self._require_doc().getObject(line).AttachmentOffset = (
+                App.Placement(App.Vector(0, 0, -10), App.Rotation()))
+            self._recompute()
+            tree = self.surface_extrude(40, sketch=line)
+            wall = tree["surfaces"][-1]["name"]
+            shown = self.preview("add_surface_cut", {"surface": wall})
+            report["p47_apercu_coupe"] = (
+                bool(shown.get("positions"))
+                and abs(body.Shape.Volume - 32000) < 1e-3)
+            tree = self.add_surface_cut(wall)
+            cut = tree["features"][-1]
+            half_volume = body.Shape.Volume
+            entry = next(s for s in tree["surfaces"] if s["name"] == wall)
+            mesh = self.tessellate()
+            report["p47_coupe_par_surface"] = (
+                abs(half_volume - 16000) < 1e-3
+                and cut.get("surface_cut") == {"surface": wall,
+                                               "flip": False}
+                and entry.get("consumed") is True
+                and not any(s["name"] == wall
+                            for s in mesh.get("surfaces") or [])
+                and len(tree["bodies"]) == 1)
+            kept_x = body.Shape.Solids[0].CenterOfMass.x
+            self.edit_surface_cut(cut["name"], True)
+            report["p47_coupe_autre_cote"] = (
+                abs(body.Shape.Volume - 16000) < 1e-3
+                and (body.Shape.Solids[0].CenterOfMass.x > 0) != (kept_x > 0))
+            # La surface bouge : la coupe suit (cote paramétrique).
+            line_obj = self._require_doc().getObject(line)
+            line_obj.AttachmentOffset = App.Placement(
+                App.Vector(10, 0, -10), App.Rotation())
+            self._recompute()
+            report["p47_coupe_suit_surface"] = abs(
+                body.Shape.Volume - 16000) > 100
+            try:
+                state = self.sketch_start(plane="XY")
+                far = state["sketch"]
+                self.sketch_add_line(far, 100, -40, 100, 40)
+                self.sketch_finish(far)
+                tree = self.surface_extrude(40, sketch=far)
+                count = len(self.get_tree()["features"])
+                self.add_surface_cut(tree["surfaces"][-1]["name"])
+                report["p47_coupe_sans_effet_refusee"] = False
+            except KernelError as exc:
+                report["p47_coupe_sans_effet_refusee"] = (
+                    ("ne coupe pas" in str(exc) or "enlève tout" in str(exc))
+                    and len(self.get_tree()["features"]) == count)
+
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")
             self.add_rect_sketch(60, 40)

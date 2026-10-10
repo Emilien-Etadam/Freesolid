@@ -375,5 +375,13 @@
  "ajustement inconnu : {}": "unknown trim: {}",
  "courbe 3D inconnue : {}": "unknown 3D curve: {}",
  "une courbe fermée demande au moins trois points": "a closed curve needs at least three points",
- "deux points consécutifs sont confondus": "two consecutive points coincide"
+ "deux points consécutifs sont confondus": "two consecutive points coincide",
+ "couper avec une surface demande un solide": "cutting with a surface needs a solid",
+ "couper demande une surface, pas une courbe": "cutting needs a surface, not a curve",
+ "la surface n'a pas de côté défini — elle se referme sur elle-même": "the surface has no defined side — it closes on itself",
+ "la surface ne coupe pas le solide — elle doit le traverser de part en part": "the surface does not cut the solid — it must go right through it",
+ "la surface enlève tout le solide — inversez le côté": "the surface removes the whole solid — reverse the side",
+ "Couper avec une surface": "Cut With Surface",
+ "coupe par surface inconnue : {}": "unknown surface cut: {}",
+ "coupe incomplète — le corps outil est absent": "incomplete cut — the tool body is missing"
 }

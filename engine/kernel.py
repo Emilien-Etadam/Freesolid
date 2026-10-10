@@ -743,7 +743,7 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
         "add_mirror", "add_linear_pattern", "add_polar_pattern",
         "add_hole", "set_params",
         "add_loft", "add_sweep", "add_helix", "add_boolean", "add_text",
-        "add_datum_plane",
+        "add_datum_plane", "add_surface_cut",
     })
 
     def preview(self, op, params):
@@ -810,6 +810,7 @@ _TRANSACTIONAL = frozenset({
     "surface_thicken", "add_curve3d", "edit_curve3d", "surface_planar",
     "surface_sweep", "surface_offset", "surface_fill", "surface_extend",
     "edit_surface_extend", "surface_trim", "edit_surface_trim",
+    "add_surface_cut", "edit_surface_cut",
     "sketch_convert", "add_text",
     "edit_text", "add_graph_feature", "edit_graph_feature",
     "add_repeat_feature", "edit_repeat_feature", "make_drawing",

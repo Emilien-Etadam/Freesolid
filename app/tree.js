@@ -1182,6 +1182,25 @@ export function installTree(ctx) {
     });
   }
 
+  // Coupe par surface : garder l'autre côté, avec l'aperçu.
+  function editSurfaceCut(feature) {
+    const spec = feature.surface_cut;
+    panel.open({
+      icon: "surface_cut",
+      title: feature.label,
+      groups: [{
+        label: t("Options"),
+        rows: [{ type: "check", key: "flip", label: t("Inverser le côté"),
+                 value: spec.flip }],
+      }],
+      onApply: (v) => {
+        if (!!v.flip === spec.flip) return;
+        refresh(call("edit_surface_cut",
+          { feature: feature.name, flip: !!v.flip }));
+      },
+    });
+  }
+
   // Surface décalée : sa distance (négative = de l'autre côté).
   function editOffset(surface) {
     panel.open({
@@ -1334,6 +1353,10 @@ export function installTree(ctx) {
           }));
         },
       });
+      return;
+    }
+    if (feature.surface_cut) {
+      editSurfaceCut(feature);
       return;
     }
     if (feature.type === "PartDesign::Chamfer" && feature.chamfer) {

@@ -157,6 +157,7 @@ export const ICONS = {
   solve: "fs_solve.svg",
   surface_body: "fs_surface_body.svg",
   surface_extrude: "fs_surface_extrude.svg",
+  surface_cut: "fs_surface_cut.svg",
   surface_extend: "fs_surface_extend.svg",
   surface_fill: "fs_surface_fill.svg",
   surface_loft: "fs_surface_loft.svg",

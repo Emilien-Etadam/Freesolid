@@ -441,7 +441,8 @@ class SurfaceMixin:
 
     @staticmethod
     def _mark_internal(obj):
-        """Objet de service (découpe d'un ajustement) : hors arbre."""
+        """Objet de service (découpe d'un ajustement, demi-espace d'une
+        coupe par surface) : hors arbre."""
         obj.addProperty("App::PropertyBool", "FreeSolidSurfaceTool",
                         "FreeSolid")
         obj.setEditorMode("FreeSolidSurfaceTool", 2)
@@ -510,6 +511,113 @@ class SurfaceMixin:
         self._recompute()
         return self.get_tree()
 
+    @staticmethod
+    def _surface_normal(shape):
+        """Normale moyenne d'une peau (pondérée par l'aire des faces)."""
+        import FreeCAD as App
+        total = App.Vector(0, 0, 0)
+        for face in shape.Faces:
+            u0, u1, v0, v1 = face.ParameterRange
+            normal = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
+            total = total + normal * face.Area
+        return total
+
+    def add_surface_cut(self, surface, flip=False):
+        """Couper le solide avec une surface : tout ce qui est du côté de
+        la normale (ou de l'autre, ``flip``) part. La surface balaie un
+        demi-espace (extrusion paramétrique), combiné en soustraction dans
+        l'historique — la coupe suit la surface quand elle change."""
+        from engine.kernel import KernelError
+        body = self._require_body()
+        doc = self._require_doc()
+        shape = getattr(body, "Shape", None)
+        if shape is None or not shape.Solids:
+            raise KernelError("couper avec une surface demande un solide")
+        src = self._get_surface(surface)
+        if not src.Shape.Faces:
+            raise KernelError("couper demande une surface, pas une courbe")
+        normal = self._surface_normal(src.Shape)
+        if normal.Length < 1e-9:
+            raise KernelError("la surface n'a pas de côté défini — elle se "
+                              "referme sur elle-même")
+        normal.normalize()
+        if flip:
+            normal = normal * -1
+        reach = max(1000.0, 4 * shape.BoundBox.DiagonalLength
+                    + 4 * src.Shape.BoundBox.DiagonalLength)
+        before = shape.Volume
+        half = doc.addObject("Part::Extrusion", "SurfaceCutHalf")
+        self._mark_internal(half)
+        half.Base = src
+        half.DirMode = "Custom"
+        half.Dir = normal
+        half.LengthFwd = reach
+        half.Solid = True
+        tool_body = doc.addObject("PartDesign::Body", "SurfaceCutBody")
+        self._mark_internal(tool_body)
+        tool_body.BaseFeature = half
+
+        def discard():
+            # Le corps outil range un « BaseFeature » interne : le retirer
+            # aussi, sinon il reste orphelin et invalide.
+            names = [o.Name for o in (getattr(tool_body, "Group", None)
+                                      or [])]
+            for name in names + [tool_body.Name, half.Name]:
+                try:
+                    doc.removeObject(name)
+                except Exception:
+                    pass
+
+        try:
+            doc.recompute()
+            self.add_boolean(tool=tool_body.Name, type="cut")
+        except KernelError:
+            discard()
+            raise
+        tip = body.Tip
+        after = body.Shape.Volume if body.Shape.Solids else 0.0
+        problem = None
+        if abs(after - before) < 1e-6 * max(before, 1.0):
+            problem = ("la surface ne coupe pas le solide — elle doit le "
+                       "traverser de part en part")
+        elif after < 1e-6 * before:
+            problem = ("la surface enlève tout le solide — inversez le côté")
+        if problem:
+            self._drop_failed_feature(body, doc, tip, tip.BaseFeature)
+            discard()
+            self._recompute()
+            raise KernelError(problem)
+        tip.Label = self._t("Couper avec une surface")
+        self._stamp(tip, cutsurface=src.Name, cutflip=int(bool(flip)))
+        return self.get_tree()
+
+    def edit_surface_cut(self, feature, flip):
+        """Rééditer une coupe par surface : garder l'autre côté."""
+        from engine.kernel import KernelError
+        obj = self._require_doc().getObject(str(feature))
+        if obj is None or not getattr(obj, "FreeSolidCutsurface", ""):
+            raise KernelError("coupe par surface inconnue : {}".format(
+                feature))
+        tool_body = next((o for o in (getattr(obj, "Group", None) or [])
+                          if o.TypeId == "PartDesign::Body"), None)
+        half = getattr(tool_body, "BaseFeature", None)
+        if half is None:
+            raise KernelError("coupe incomplète — le corps outil est absent")
+        flip = bool(flip)
+        if flip != bool(obj.FreeSolidCutflip):
+            half.Dir = half.Dir * -1
+            obj.FreeSolidCutflip = int(flip)
+        self._recompute()
+        return self.get_tree()
+
+    @staticmethod
+    def _surface_cut_spec(obj):
+        """Paramètres d'une coupe par surface (ligne d'arbre), ou None."""
+        name = getattr(obj, "FreeSolidCutsurface", "")
+        if not name:
+            return None
+        return {"surface": name, "flip": bool(obj.FreeSolidCutflip)}
+
     def _consumed_surfaces(self):
         """Noms des surfaces remplacées par une autre : source d'un
         ajustement, d'un prolongement, d'un épaississement ou d'une
@@ -530,6 +638,12 @@ class SurfaceMixin:
                 source = getattr(obj, "Source", None)
                 if source is not None:
                     consumed.add(source.Name)
+            if (obj.TypeId == "Part::Extrusion"
+                    and getattr(obj, "FreeSolidSurfaceTool", False)):
+                # Demi-espace d'une coupe par surface : la surface a servi.
+                base = getattr(obj, "Base", None)
+                if base is not None:
+                    consumed.add(base.Name)
             for name in str(getattr(obj, "FreeSolidSources", "")).split(";"):
                 if name:
                     consumed.add(name)

@@ -41,6 +41,7 @@ simulation FEM. Verdicts :
 |---|---|---|
 | Remplir (surface de remplissage) | ✅ **fait** | `Surface::Filling` sur des bords cliqués (surfaces, courbes, arêtes du solide, esquisses) ; sans tangence imposée — la continuité G1 sur un contour plan donne une forme invalide (sonde 2026-10-10) |
 | Surface frontière | 🟧 | `Surface::GeomFillSurface` / sections — moins riche que SW |
+| Couper avec une surface | ✅ **fait** | la surface balaie un demi-espace (extrusion paramétrique) combiné en soustraction dans l'historique ; aperçu, « inverser le côté » en réédition ; refus clair si la surface ne traverse pas le solide |
 | Surface plane, balayée, décalée | ✅ **fait** | `Part::Face`, `Part::Sweep` (profil ouvert, trajectoire esquisse ou spline 3D), `Part::Offset` sans remplissage — paramétriques |
 | Esquisse 3D | 🟧 **spline 3D faite** | points cliqués sur la pièce (sommets et centres aimantés) ou sur un plan de clic passant par le dernier point (Tab), coordonnées corrigeables, réédition, aperçu exact du moteur ; pas de lignes ni de relations 3D |
 | Supprimer la face (defeaturing) | 🟧 | `Part.defeaturing` existe selon compilation OCCT |

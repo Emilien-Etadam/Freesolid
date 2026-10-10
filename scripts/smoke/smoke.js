@@ -502,11 +502,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("drag arête");
   await page.screenshot({ path: path.join(SHOTS, "2b-drag-edge.png") });
 
-  // P027 — avant le extrusion, aucun solide : compteur honnête.
+  // P027 — avant l'extrusion, aucun solide : compteur honnête.
   const folderTextsBeforePad = await page.locator("#tree li.folder")
     .allTextContents();
   if (!folderTextsBeforePad.some((t) => t.includes("Corps volumiques (0)"))) {
-    errors.push("P027 : attendu « Corps volumiques (0) » avant le extrusion"
+    errors.push("P027 : attendu « Corps volumiques (0) » avant l'extrusion"
       + " (vu : " + folderTextsBeforePad.join(" | ") + ")");
   }
 
@@ -519,7 +519,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.screenshot({ path: path.join(SHOTS, "3-apercu.png") });
   await page.click('#panel [title^="OK"]');
   await sleep(3000);
-  await step("extrusion appliqué");
+  await step("extrusion appliquée");
   await page.screenshot({ path: path.join(SHOTS, "4-extrusion.png") });
 
   // N003 — variable avant d'ouvrir le graphe, pour tirer un fil.
@@ -585,7 +585,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const padShowsDepth = graphInfo.labels.some((t) =>
     /Extrusion/i.test(t) && /Profondeur/.test(t));
   if (!padShowsDepth) {
-    errors.push("N007 : le nœud de extrusion devrait montrer sa profondeur ("
+    errors.push("N007 : le nœud d'extrusion devrait montrer sa profondeur ("
       + graphInfo.labels.join(" | ") + ")");
   }
   await page.screenshot({ path: path.join(SHOTS, "4a-graphe.png") });
@@ -734,13 +734,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }
   }
   if (!folderTexts.some((t) => t.includes("Corps volumiques (1)"))) {
-    errors.push("P027 : attendu « Corps volumiques (1) » après le extrusion"
+    errors.push("P027 : attendu « Corps volumiques (1) » après l'extrusion"
       + " (vu : " + folderJoined + ")");
   }
   const bodyRowsAfterPad = await page.locator("#tree li.body").count();
   if (bodyRowsAfterPad < 1) {
     errors.push("P027 : dossier Corps volumiques devrait être déplié "
-      + "après le extrusion (ligne de corps invisible)");
+      + "après l'extrusion (ligne de corps invisible)");
   }
   await page.waitForSelector("#tree li.rollback", { timeout: 8000 });
   await page.waitForSelector("#tree li.feat", { timeout: 8000 });
@@ -753,7 +753,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   });
   const facesBefore = await faceCount();
   if (facesBefore < 1) {
-    errors.push("barre de reprise : pas de solide après le extrusion");
+    errors.push("barre de reprise : pas de solide après l'extrusion");
   }
   const dragRollback = async (fromSel, toY) => {
     const box = await page.locator(fromSel).boundingBox();
@@ -790,13 +790,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("barre de reprise redescendue");
   await page.screenshot({ path: path.join(SHOTS, "4c-reprise-bas.png") });
 
-  // 4d. Clic droit sur le extrusion → Modifier ouvre le panneau d'édition.
+  // 4d. Clic droit sur l'extrusion → Modifier ouvre le panneau d'édition.
   const padRow = page.locator("#tree li.feat").first();
   await padRow.click({ button: "right" });
   await sleep(250);
   const modifyHidden = await page.$eval("#ctx-modify", (el) => el.hidden);
   if (modifyHidden) {
-    errors.push("Modifier : entrée masquée sur le extrusion");
+    errors.push("Modifier : entrée masquée sur l'extrusion");
   }
   await page.click("#ctx-modify");
   await sleep(1200);
@@ -812,7 +812,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(250);
   await step("modifier au clic droit");
 
-  // 4e. Esquisse sur une face du extrusion : la pièce reste visible (Q1).
+  // 4e. Esquisse sur une face de l'extrusion : la pièce reste visible (Q1).
   const volumeCount = () => page.evaluate(
     () => window.__freesolidDebug?.volumeVisibleCount ?? -1);
   const facesBeforeSketch = await volumeCount();
@@ -841,7 +841,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   };
   const facePicked = await pickSolidFace();
   if (!facePicked) {
-    errors.push("esquisse sur face : aucune face du extrusion sélectionnée");
+    errors.push("esquisse sur face : aucune face de l'extrusion sélectionnée");
   }
   await page.click("#btn-sketch");
   await sleep(2000);
@@ -937,13 +937,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await step("esquisse cliquée dans le viewport");
 
-  // N005 — esquisse sur une face du solide (un extrusion disjoint
+  // N005 — esquisse sur une face du solide (une extrusion disjoint
   // depuis l'esquisse libre 4f est refusé par PartDesign), puis
-  // palette du graphe : poser le extrusion et le supprimer.
+  // palette du graphe : poser l'extrusion et le supprimer.
   const n005Face = await pickSolidFace();
   let n005SketchName = null;
   if (!n005Face) {
-    errors.push("N005 : aucune face pour l'esquisse du extrusion");
+    errors.push("N005 : aucune face pour l'esquisse de l'extrusion");
   } else {
     await page.click("#btn-sketch");
     await sleep(1800);
@@ -1364,7 +1364,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("gravure rééditée");
   await page.screenshot({ path: path.join(SHOTS, "8-gravure-editee.png") });
 
-  // N007 — sur la vitrine : sous-élément du congé, profondeur du extrusion.
+  // N007 — sur la vitrine : sous-élément du congé, profondeur de l'extrusion.
   const graphWasOpen = await page.evaluate(() =>
     document.getElementById("graph-view")?.classList.contains("open") === true);
   if (!graphWasOpen) await page.click("#btn-graph");
@@ -1387,7 +1387,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     };
   });
   if (!/Profondeur/.test(n7info.padText)) {
-    errors.push("N007 : nœud de extrusion vitrine sans profondeur (« "
+    errors.push("N007 : nœud d'extrusion vitrine sans profondeur (« "
       + n7info.padText + " »)");
   }
   if (!n7info.filletSubs && !n7info.filletLabel) {
@@ -1444,7 +1444,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const volAfterCreate = await volumeOf();
   if (!isVolume(volBeforeGraph) || !isVolume(volAfterCreate)
       || volAfterCreate <= volBeforeGraph + 50) {
-    errors.push("N004b : le extrusion graphe devrait augmenter le volume ("
+    errors.push("N004b : l'extrusion graphe devrait augmenter le volume ("
       + volBeforeGraph + " → " + volAfterCreate + ")");
   }
   const hint = await page.textContent("#graph-fn-hint");

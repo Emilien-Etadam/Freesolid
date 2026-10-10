@@ -8,12 +8,12 @@
 import { t } from "./i18n.js";
 
 export const REPO_URL = "https://github.com/Emilien-Etadam/Freesolid";
-export const RELEASES_URL = REPO_URL + "/releases";
+const RELEASES_URL = REPO_URL + "/releases";
 export const ISSUES_URL = REPO_URL + "/issues";
-export const LICENSE_URL = REPO_URL + "/blob/main/LICENSE";
+const LICENSE_URL = REPO_URL + "/blob/main/LICENSE";
 
 export const LANG_KEY = "freesolid.lang";
-export const LANGS = [["fr", "Français"], ["en", "English"]];
+const LANGS = [["fr", "Français"], ["en", "English"]];
 
 /** « fr-FR », « en_US », « de »… → langue livrée, français par défaut. */
 export function detectLang(navigatorLang) {

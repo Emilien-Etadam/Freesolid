@@ -5,7 +5,7 @@
 // build(v, ctx) rend { op, params } ou null (aperçu éteint, OK bloqué).
 
 import { t } from "./i18n.js";
-import { num } from "./num.js";
+import { num, plainNumber } from "./num.js";
 import { minimalGraphCurve, minimalGraphFeature, minimalRepeatGraph } from "./graph.js";
 import { combineConfirmMessage } from "./progress.js";
 
@@ -21,13 +21,13 @@ export function availableSketches(tree) {
     (f) => f.type === "Sketcher::SketchObject" && !f.rolled_back);
 }
 
-export function latestAvailableSketch(tree) {
+function latestAvailableSketch(tree) {
   const sketches = availableSketches(tree);
   return sketches.length ? sketches[sketches.length - 1] : null;
 }
 
 /** Corps inactifs + semis non vides : les outils que Combiner accepte. */
-export function booleanToolOptions(ctx) {
+function booleanToolOptions(ctx) {
   const others = (ctx.lastTree?.bodies ?? []).filter((b) => !b.active);
   const gems = (ctx.lastTree?.gems ?? []).filter((g) => (g.count || 0) > 0);
   return [
@@ -47,7 +47,7 @@ export function hasSelection(sel) {
     ? sel.edges.length > 0 : sel.face != null);
 }
 
-export function dressupParams(sel) {
+function dressupParams(sel) {
   return sel.kind === "edges"
     ? { edges: sel.edges } : { face: sel.face };
 }
@@ -180,7 +180,7 @@ export function revolutionGroups(sketch, {
 
 /** Params `add_revolution` / `add_groove`, ou null si l'angle est invalide. */
 export function revolutionCreationParams(v, op) {
-  const angle = pureNumber(v.angle);
+  const angle = plainNumber(v.angle);
   if (!(angle > 0) || angle > 360) return null;
   const params = { angle };
   const axis = v.axis || "vertical";
@@ -472,22 +472,13 @@ export function patternDirectionParams(v) {
   return params;
 }
 
-/** Nombre entier ou décimal, pas une expression (« 2*Largeur »). */
-function pureNumber(value) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  const text = String(value ?? "").trim().replace(",", ".");
-  if (!/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/i.test(text)) return null;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function expressionText(raw) {
   const text = String(raw ?? "").trim();
-  return text.length > 0 && pureNumber(text) == null;
+  return text.length > 0 && plainNumber(text) == null;
 }
 
 function measureRow(key, label, value, unit, showIf) {
-  const parsed = pureNumber(value);
+  const parsed = plainNumber(value);
   const row = parsed == null
     ? { type: "text", key, label, unit, value: String(value ?? "") }
     : { type: "number", key, label, unit, value: parsed, min: 0.01 };
@@ -527,16 +518,16 @@ export function chamferFieldValue(params, prop, fallback) {
 export function chamferCreationParams(v) {
   const kind = v.kind || "egale";
   if (!CHAMFER_KINDS.has(kind)) return null;
-  const size = pureNumber(v.size);
+  const size = plainNumber(v.size);
   if (!(size > 0)) return null;
   const params = { size, chamfer_type: kind };
   if (kind === "deux") {
-    const size2 = pureNumber(v.size2);
+    const size2 = plainNumber(v.size2);
     if (!(size2 > 0)) return null;
     params.size2 = size2;
     params.flip = !!v.flip;
   } else if (kind === "angle") {
-    const angle = pureNumber(v.angle);
+    const angle = plainNumber(v.angle);
     if (!(angle > 0) || !(angle < 90)) return null;
     params.angle = angle;
     params.flip = !!v.flip;
@@ -547,14 +538,14 @@ export function chamferCreationParams(v) {
 /** Message français quand la saisie ne peut pas être appliquée. */
 export function chamferProblem(v) {
   const kind = v.kind || "egale";
-  const size = pureNumber(v.size);
+  const size = plainNumber(v.size);
   if (size == null) {
     if (!expressionText(v.size)) return "Distance de chanfrein invalide";
   } else if (!(size > 0)) {
     return "Distance de chanfrein invalide";
   }
   if (kind === "deux") {
-    const size2 = pureNumber(v.size2);
+    const size2 = plainNumber(v.size2);
     if (size2 == null) {
       if (!expressionText(v.size2)) return "Seconde distance de chanfrein invalide";
     } else if (!(size2 > 0)) {
@@ -562,7 +553,7 @@ export function chamferProblem(v) {
     }
   }
   if (kind === "angle") {
-    const angle = pureNumber(v.angle);
+    const angle = plainNumber(v.angle);
     if (angle == null) {
       if (!expressionText(v.angle)) return "Angle de chanfrein invalide";
     } else if (!(angle > 0) || !(angle < 90)) {
@@ -576,7 +567,7 @@ function storedMeasure(params, prop, fallback) {
   const found = (params ?? []).find((item) => item.prop === prop);
   if (found?.expr) return { expr: String(found.expr) };
   if (found && found.value != null) return { numeric: Number(found.value) };
-  const parsed = pureNumber(fallback);
+  const parsed = plainNumber(fallback);
   return parsed == null
     ? { expr: String(fallback ?? "") }
     : { numeric: parsed };
@@ -585,7 +576,7 @@ function storedMeasure(params, prop, fallback) {
 function readMeasure(raw, stored, bounds) {
   const text = typeof raw === "string" ? raw.trim() : raw;
   if (stored.expr && String(text ?? "").trim() === stored.expr) return stored.expr;
-  const parsed = pureNumber(text);
+  const parsed = plainNumber(text);
   if (parsed == null) {
     const expr = String(text ?? "").trim();
     return expr ? expr : null;

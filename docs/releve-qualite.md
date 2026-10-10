@@ -167,8 +167,8 @@ Revus le 2026-10-10 :
 | # | Chantier | Prio | Qui |
 |---|---|---|---|
 | Q1 | Messages d'erreur : textes clean-room, traduction anglaise, erreurs du noyau (congé ou chanfrein trop grand…) en phrases claires | P1 | fait |
-| Q2 | Petites bavures : `console.log`, exports et icônes inutilisés, `--warn`, aides en double (mm, projection, nombres) | P2 | Cursor |
-| Q3 | Jetons de style : couleurs, espacements, rayons, tailles de texte, côté CSS et côté scène 3D | P2 | Cursor |
+| Q2 | Petites bavures : `console.log`, exports et icônes inutilisés, `--warn`, aides en double (mm, projection, nombres) | P2 | fait |
+| Q3 | Jetons de style : couleurs, espacements, rayons, tailles de texte, côté CSS et côté scène 3D | P2 | fait |
 | Q4 | Découpage de `main.js` en modules, à comportement identique | P2 | Claude |
 | Q5 | Découpage de `kernel.py`, selftest sorti du code de production | P2 | Cursor, après Q4 |
 | Q6 | En-tête compact (≤ 130 px en 1366) | P1 | Claude, sur maquette validée |
@@ -186,9 +186,9 @@ de suite. Q6 et Q7 attendent une maquette et un échantillon validés.
 | # | État |
 |---|---|
 | Q1 | fait (Cursor) |
-| Q2 | confié à Cursor |
-| Q3 | confié à Cursor |
-| Q4 | après Q2 et Q3 |
+| Q2 | fait (Cursor) |
+| Q3 | fait (Cursor) |
+| Q4 | à faire (Q2 et Q3 faits) |
 | Q5 | après Q4 |
 | Q6, Q7 | maquette en attente de validation ; icônes de l'utilisateur à reprendre |
 | Q8 | fait : lumières liées à la vue, fond en dégradé, grille estompée |

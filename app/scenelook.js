@@ -27,9 +27,6 @@ const CAMERA_LIGHTS = [
   { position: [0.2, 0.6, -1.0], intensity: 0.6 },   // contre-jour
 ];
 
-const BACKGROUND_TOP = "#2c323a";
-const BACKGROUND_BOTTOM = "#121417";
-
 const GRID_VERTEX = /* glsl */ `
   varying vec2 vWorld;
   void main() {
@@ -73,7 +70,9 @@ const GRID_FRAGMENT = /* glsl */ `
   }
 `;
 
-export function createSceneLook(THREE, scene) {
+/** ``theme`` : couleurs de readScene() (app/theme.js), entiers 0xRRGGBB. */
+export function createSceneLook(THREE, scene, theme) {
+  const css = (value) => `#${value.toString(16).padStart(6, "0")}`;
   // Fond : un dégradé vertical, texture de canvas (chaque fenêtre en
   // charge sa copie dans son propre contexte WebGL).
   const canvas = document.createElement("canvas");
@@ -81,8 +80,8 @@ export function createSceneLook(THREE, scene) {
   canvas.height = 256;
   const ctx = canvas.getContext("2d");
   const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, BACKGROUND_TOP);
-  gradient.addColorStop(1, BACKGROUND_BOTTOM);
+  gradient.addColorStop(0, css(theme.bgTop));
+  gradient.addColorStop(1, css(theme.bgBottom));
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   const background = new THREE.CanvasTexture(canvas);
@@ -91,12 +90,12 @@ export function createSceneLook(THREE, scene) {
 
   // Ciel au-dessus (Z), sol en dessous : les faces du dessus restent les
   // plus claires.
-  const hemi = new THREE.HemisphereLight(0xe4eaf1, 0x2a2e34, 1.2);
+  const hemi = new THREE.HemisphereLight(theme.sky, theme.ground, 1.2);
   hemi.position.set(0, 0, 1);
   scene.add(hemi);
   const rig = new THREE.Group();
   for (const spec of CAMERA_LIGHTS) {
-    const light = new THREE.DirectionalLight(0xffffff, spec.intensity);
+    const light = new THREE.DirectionalLight(theme.light, spec.intensity);
     light.position.set(...spec.position);
     rig.add(light);
     rig.add(light.target); // la cible à l'origine du repère : direction fixe
@@ -109,9 +108,9 @@ export function createSceneLook(THREE, scene) {
       uCenter: { value: new THREE.Vector2() },
       uFadeStart: { value: 150 },
       uFadeEnd: { value: 400 },
-      uMinor: { value: new THREE.Color(0x3a414a) },
-      uMajor: { value: new THREE.Color(0x4c545e) },
-      uAxis: { value: new THREE.Color(0x66707c) },
+      uMinor: { value: new THREE.Color(theme.grid) },
+      uMajor: { value: new THREE.Color(theme.gridMajor) },
+      uAxis: { value: new THREE.Color(theme.gridAxis) },
     },
     vertexShader: GRID_VERTEX,
     fragmentShader: GRID_FRAGMENT,
@@ -145,5 +144,5 @@ export function createSceneLook(THREE, scene) {
     rig.updateMatrixWorld(true);
   }
 
-  return { grid, fitGrid, follow, backgroundTop: BACKGROUND_TOP };
+  return { grid, fitGrid, follow };
 }

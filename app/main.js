@@ -9,6 +9,8 @@ import {
 } from "./dims.js";
 import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
+import { eventToNdc, ndcToScreen } from "./screen.js";
+import { cssHex, readScene } from "./theme.js";
 import {
   readDisplay, writeDisplay, displayEffects,
 } from "./display.js";
@@ -91,6 +93,8 @@ import {
   paramChoiceCaption,
   removeGraphNode,
 } from "./graph.js";
+
+const sceneTheme = readScene();
 
 // Le ruban du noyau est rendu depuis ribbon.json avant tout câblage :
 // les getElementById("btn-…") plus bas supposent les boutons présents.
@@ -257,7 +261,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 container.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-const look = createSceneLook(THREE, scene);
+const look = createSceneLook(THREE, scene, sceneTheme);
 
 // Hauteur du frustum (unités monde) à zoom = 1. Le zoom OrbitControls
 // et « Zoom au mieux » ajustent camera.zoom, pas la distance.
@@ -368,7 +372,7 @@ let rotationPivot = null;
 let pivotDrag = null;
 const pivotMarker = new THREE.Points(
   new THREE.BufferGeometry().setFromPoints([new THREE.Vector3()]),
-  new THREE.PointsMaterial({ color: 0xd9924a, size: 10,
+  new THREE.PointsMaterial({ color: sceneTheme.selection, size: 10,
     sizeAttenuation: false, depthTest: false }));
 pivotMarker.visible = false;
 pivotMarker.renderOrder = 30;
@@ -376,9 +380,8 @@ scene.add(pivotMarker);
 
 function pickPivot(event) {
   const rect = renderer.domElement.getBoundingClientRect();
-  const at = new THREE.Vector2(
-    ((event.clientX - rect.left) / rect.width) * 2 - 1,
-    -((event.clientY - rect.top) / rect.height) * 2 + 1);
+  const ndc = eventToNdc(event.clientX, event.clientY, rect);
+  const at = new THREE.Vector2(ndc.x, ndc.y);
   raycaster.setFromCamera(at, camera);
   const targets = [partMesh, ...othersMeshes, ...surfaceMeshes,
     ...(asmGroup ? asmGroup.children : [])].filter(Boolean);
@@ -505,11 +508,12 @@ function sketchScreenPoint() {
   const mid = a.add(b).multiplyScalar(0.5);
   mid.project(camera);
   const rect = renderer.domElement.getBoundingClientRect();
+  const screen = ndcToScreen(mid.x, mid.y, rect);
   return {
     name: lines.userData.sketch?.name ?? null,
     label: lines.userData.sketch?.label ?? null,
-    x: (mid.x * 0.5 + 0.5) * rect.width + rect.left,
-    y: (-mid.y * 0.5 + 0.5) * rect.height + rect.top,
+    x: screen.x,
+    y: screen.y,
   };
 }
 
@@ -521,11 +525,12 @@ function surfaceScreenPoint() {
   if (!center) return null;
   const projected = center.clone().project(camera);
   const rect = renderer.domElement.getBoundingClientRect();
+  const screen = ndcToScreen(projected.x, projected.y, rect);
   return {
     name: mesh.userData.surface?.name ?? null,
     label: mesh.userData.surface?.label ?? null,
-    x: (projected.x * 0.5 + 0.5) * rect.width + rect.left,
-    y: (-projected.y * 0.5 + 0.5) * rect.height + rect.top,
+    x: screen.x,
+    y: screen.y,
   };
 }
 
@@ -542,10 +547,7 @@ function volumeScreenPoint() {
   if (!center) return null;
   const projected = mesh.localToWorld(center.clone()).project(camera);
   const rect = renderer.domElement.getBoundingClientRect();
-  return {
-    x: (projected.x * 0.5 + 0.5) * rect.width + rect.left,
-    y: (-projected.y * 0.5 + 0.5) * rect.height + rect.top,
-  };
+  return ndcToScreen(projected.x, projected.y, rect);
 }
 
 window.__freesolidDebug = {
@@ -568,8 +570,7 @@ window.__freesolidDebug = {
     camera.updateMatrixWorld();
     const p = rotationPivot.clone().project(camera);
     const rect = renderer.domElement.getBoundingClientRect();
-    return { x: (p.x * 0.5 + 0.5) * rect.width + rect.left,
-             y: (-p.y * 0.5 + 0.5) * rect.height + rect.top };
+    return ndcToScreen(p.x, p.y, rect);
   },
   get selectedFeatureName() { return selectedFeatureName; },
   refresh: () => refresh(call("get_tree")),
@@ -583,16 +584,16 @@ window.__freesolidDebug = {
 };
 
 const baseMaterial = new THREE.MeshStandardMaterial({
-  color: 0xaebccb, metalness: 0.08, roughness: 0.5,
+  color: sceneTheme.part, metalness: 0.08, roughness: 0.5,
   transparent: true, opacity: 1, // l'aperçu jaune estompe la pièce
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 const hoverMaterial = new THREE.MeshStandardMaterial({
-  color: 0x4f8fdb, metalness: 0.08, roughness: 0.45,
+  color: sceneTheme.accent, metalness: 0.08, roughness: 0.45,
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 const selectedMaterial = new THREE.MeshStandardMaterial({
-  color: 0xd9924a, metalness: 0.08, roughness: 0.45,
+  color: sceneTheme.selection, metalness: 0.08, roughness: 0.45,
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 
@@ -610,7 +611,7 @@ let edgeGroups = [];
 let hoveredEdgeGroup = -1;
 
 const othersMaterial = new THREE.MeshStandardMaterial({
-  color: 0x5f6b78, metalness: 0.1, roughness: 0.7,
+  color: sceneTheme.partMuted, metalness: 0.1, roughness: 0.7,
   transparent: true, opacity: 0.45, depthWrite: false,
 });
 // Surfaces : même teinte que le solide, DoubleSide (peau ouverte).
@@ -618,8 +619,8 @@ const surfaceHoverMaterial = hoverMaterial.clone();
 surfaceHoverMaterial.side = THREE.DoubleSide;
 const surfaceSelectedMaterial = selectedMaterial.clone();
 surfaceSelectedMaterial.side = THREE.DoubleSide;
-const curvesMaterial = new THREE.LineBasicMaterial({ color: 0x4fb8a8 });
-const sketchesMaterial = new THREE.LineBasicMaterial({ color: 0x8fa8c8 });
+const curvesMaterial = new THREE.LineBasicMaterial({ color: sceneTheme.curve });
+const sketchesMaterial = new THREE.LineBasicMaterial({ color: sceneTheme.sketch });
 let surfaceMeshes = []; // un mesh par surface, sélectionnable
 let curvesLines = null;
 let sketchLineMeshes = []; // esquisses libres, un LineSegments chacune
@@ -797,11 +798,11 @@ function showMesh(mesh) {
 // Les vraies arêtes BREP du moteur (pas une silhouette approchée) :
 // chaque arête OCCT est son propre groupe d'indices — picking par
 // construction, exactement comme les faces.
-const edgeBaseMaterial = new THREE.LineBasicMaterial({ color: 0x11141a });
-const edgeHoverMaterial = new THREE.LineBasicMaterial({ color: 0x4f8fdb });
-const edgeSelectedMaterial = new THREE.LineBasicMaterial({ color: 0xd9924a });
+const edgeBaseMaterial = new THREE.LineBasicMaterial({ color: sceneTheme.edge });
+const edgeHoverMaterial = new THREE.LineBasicMaterial({ color: sceneTheme.accent });
+const edgeSelectedMaterial = new THREE.LineBasicMaterial({ color: sceneTheme.selection });
 const hiddenEdgeMaterial = new THREE.LineBasicMaterial({
-  color: 0x7d8792,
+  color: sceneTheme.edgeFaint,
   depthFunc: THREE.GreaterEqualDepth,
 });
 const maskMaterial = new THREE.MeshBasicMaterial({
@@ -874,7 +875,7 @@ let treeHoverPlane = null;  // survol d'une ligne de plan dans l'arbre
 let selectedSketch = null;  // { name, label } | null — esquisse sélectionnée
 let sketchHighlightGroup = null;
 const sketchHighlightMaterial = new THREE.LineBasicMaterial({
-  color: 0xd9924a, depthTest: false,
+  color: sceneTheme.selection, depthTest: false,
 });
 
 // Mêmes noms que vocab.ORIGIN_PLANES — affichés sur les plans eux-mêmes.
@@ -888,7 +889,7 @@ function makePlaneLabel(text) {
   canvas.height = 44;
   const ctx = canvas.getContext("2d");
   ctx.font = "600 24px system-ui";
-  ctx.fillStyle = "#7fc4ff";
+  ctx.fillStyle = cssHex(sceneTheme.dim);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, 128, 22);
@@ -919,14 +920,14 @@ function rebuildPlanes() {
     const holder = new THREE.Group();
     holder.rotation.set(...rotation);
     const fillMaterial = new THREE.MeshBasicMaterial({
-      color: 0x4f8fdb, transparent: true, opacity: 0.1,
+      color: sceneTheme.accent, transparent: true, opacity: 0.1,
       side: THREE.DoubleSide, depthWrite: false });
     fillMaterial.userData.own = true;
     const fill = new THREE.Mesh(
       new THREE.PlaneGeometry(size, size), fillMaterial);
     fill.userData.plane = id;
     const borderMaterial = new THREE.LineBasicMaterial(
-      { color: 0x4f8fdb, transparent: true, opacity: 0.6 });
+      { color: sceneTheme.accent, transparent: true, opacity: 0.6 });
     borderMaterial.userData.own = true;
     const border = new THREE.LineSegments(
       new THREE.EdgesGeometry(fill.geometry), borderMaterial);
@@ -957,7 +958,7 @@ function rebuildOrigin() {
   originGroup.clear();
   const { radius } = partCenterRadius();
   const length = Math.max(radius * 0.35, 12);
-  const axes = [[1, 0, 0, 0xe06666], [0, 1, 0, 0x6aa84f], [0, 0, 1, 0x4b9bd5]];
+  const axes = [[1, 0, 0, sceneTheme.axisX], [0, 1, 0, sceneTheme.axisY], [0, 0, 1, sceneTheme.axisZ]];
   for (const [x, y, z, color] of axes) {
     const arrow = new THREE.ArrowHelper(
       new THREE.Vector3(x, y, z), new THREE.Vector3(0, 0, 0),
@@ -1024,7 +1025,7 @@ function applyDisplay() {
     // Sur le solide clair, les arêtes sont sombres. Sur le fond, elles
     // doivent rester lisibles (filaire, lignes cachées).
     edgeBaseMaterial.color.setHex(
-      fx.faces && !fx.mask ? 0x11141a : 0xd5dde6);
+      fx.faces && !fx.mask ? sceneTheme.edge : sceneTheme.edgeOnBg);
   }
   if (hiddenEdgeLines) {
     hiddenEdgeLines.removeFromParent();
@@ -1150,7 +1151,7 @@ function pickPlane(id) {
 // ---------- aperçu jaune (le ghost du PropertyManager) ----------
 
 const ghostMaterial = new THREE.MeshStandardMaterial({
-  color: 0xf2c94c, metalness: 0.1, roughness: 0.5,
+  color: sceneTheme.ghost, metalness: 0.1, roughness: 0.5,
   transparent: true, opacity: 0.55, depthWrite: false,
 });
 let ghostMesh = null;
@@ -1260,8 +1261,9 @@ function pickFilletRadiusBubble(event) {
   if (!filletRadiusSprite) return false;
   const rect = renderer.domElement.getBoundingClientRect();
   const projected = filletRadiusSprite.position.clone().project(camera);
-  const sx = (projected.x * 0.5 + 0.5) * rect.width + rect.left;
-  const sy = (-projected.y * 0.5 + 0.5) * rect.height + rect.top;
+  const screen = ndcToScreen(projected.x, projected.y, rect);
+  const sx = screen.x;
+  const sy = screen.y;
   return Math.hypot(sx - event.clientX, sy - event.clientY) < 28;
 }
 
@@ -1325,8 +1327,9 @@ let hoveredGroup = -1;
 
 function setPointerFromEvent(event) {
   const rect = renderer.domElement.getBoundingClientRect();
-  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  const ndc = eventToNdc(event.clientX, event.clientY, rect);
+  pointer.x = ndc.x;
+  pointer.y = ndc.y;
 }
 
 function pointerCtx() {
@@ -1487,10 +1490,7 @@ function selectEdgesInBox(start, end, additive) {
     const points = [];
     for (let k = g.start; k < g.start + g.count; k++) {
       v.fromBufferAttribute(pos, index.getX(k)).project(camera);
-      points.push({
-        x: (v.x * 0.5 + 0.5) * host.width + host.left,
-        y: (-v.y * 0.5 + 0.5) * host.height + host.top,
-      });
+      points.push(ndcToScreen(v.x, v.y, host));
     }
     return { id: g.edgeId, points };
   });
@@ -1825,8 +1825,9 @@ function pickFeatureDim(event) {
   const rect = renderer.domElement.getBoundingClientRect();
   for (const sprite of featureDimSprites) {
     const projected = sprite.position.clone().project(camera);
-    const sx = (projected.x * 0.5 + 0.5) * rect.width + rect.left;
-    const sy = (-projected.y * 0.5 + 0.5) * rect.height + rect.top;
+    const screen = ndcToScreen(projected.x, projected.y, rect);
+    const sx = screen.x;
+    const sy = screen.y;
     if (Math.hypot(sx - event.clientX, sy - event.clientY) < 22) {
       editFeatureDim(sprite.userData.dim);
       return true;
@@ -2386,13 +2387,13 @@ function refreshDatumGhost(hoverFeature) {
   holder.matrixAutoUpdate = false;
   holder.matrix.set(...feature.placement);
   const fillMaterial = new THREE.MeshBasicMaterial({
-    color: 0x4f8fdb, transparent: true, opacity: 0.14,
+    color: sceneTheme.accent, transparent: true, opacity: 0.14,
     side: THREE.DoubleSide, depthWrite: false });
   fillMaterial.userData.own = true;
   const fill = new THREE.Mesh(
     new THREE.PlaneGeometry(size, size), fillMaterial);
   const borderMaterial = new THREE.LineBasicMaterial(
-    { color: 0x4f8fdb, transparent: true, opacity: 0.7 });
+    { color: sceneTheme.accent, transparent: true, opacity: 0.7 });
   borderMaterial.userData.own = true;
   const border = new THREE.LineSegments(
     new THREE.EdgesGeometry(fill.geometry), borderMaterial);
@@ -3662,7 +3663,7 @@ document.getElementById("ctx-color").addEventListener("click", () => {
   if (!menuFeature) return;
   const bodyName = menuFeature.name;
   const picker = document.getElementById("body-color-picker");
-  picker.value = hexColor(menuFeature.color) || "#9fb2c4";
+  picker.value = hexColor(menuFeature.color) || cssHex(sceneTheme.part);
   picker.addEventListener("change", () => {
     refresh(call("set_body_color", { body: bodyName, color: picker.value }));
   }, { once: true });
@@ -5718,7 +5719,7 @@ document.getElementById("btn-drawing").addEventListener("click", () => {
 let assemblyState = null;      // dernier assembly_tree, ou null (mode pièce)
 let selectedComponent = null;
 let asmGroup = null;
-const asmOutlineMaterial = new THREE.LineBasicMaterial({ color: 0x11141a });
+const asmOutlineMaterial = new THREE.LineBasicMaterial({ color: sceneTheme.edge });
 
 function clearAssemblyView() {
   if (asmGroup) {
@@ -6663,7 +6664,6 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
         { faces: report.mesh_faces, tris: report.mesh_triangles,
           result: report.m0_reparam_ok ? "OK" : t("ÉCHEC") }));
     }
-    console.log("selftest", report);
   } catch (error) {
     if (gen !== viewGen) return;
     say(t("Autotest : ") + error.message, true);

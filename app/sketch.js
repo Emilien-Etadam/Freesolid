@@ -123,6 +123,10 @@ export function createSketchMode(deps) {
   }
   const previewMaterial = new THREE.LineBasicMaterial(
     { color: sceneTheme.accent, ...ON_TOP });
+  // Références liées à la pièce : couleur des courbes 3D, elles suivent
+  // la pièce et ne se déplacent pas à la main.
+  const externalMaterial = new THREE.LineBasicMaterial(
+    { color: sceneTheme.curve, ...ON_TOP });
   const selectedMaterial = new THREE.LineBasicMaterial(
     { color: sceneTheme.selection, ...ON_TOP });
   // Cotes : lignes d'attache, ligne de cote et flèches. Pilotante en bleu
@@ -592,8 +596,9 @@ export function createSketchMode(deps) {
       const isSelected = mode.selection.some((s) => s.geo === entity.id);
       const status = STATUS_COLORS[entity.status] ? entity.status : "under";
       const material = isSelected ? selectedMaterial
-        : entity.construction ? constructionMaterials[status]
-          : lineMaterials[status];
+        : entity.external ? externalMaterial
+          : entity.construction ? constructionMaterials[status]
+            : lineMaterials[status];
       if (entity.type === "arc") {
         const { a1, a2 } = arcAngles(entity);
         const segments = [];
@@ -2521,6 +2526,26 @@ export function createSketchMode(deps) {
         cx: num(v.cx) ?? 0, cy: num(v.cy) ?? 0 })),
     });
   });
+
+  // Références liées : arêtes de la face porteuse, intersection du plan
+  // avec le solide, percée des courbes 3D.
+  for (const [id, mode_, done] of [
+    ["sk-ref-edges", "edges", "Arêtes liées : {n} — elles suivent la pièce"],
+    ["sk-ref-intersection", "intersection",
+     "Courbe d'intersection : {n} arête(s) liée(s)"],
+    ["sk-ref-pierce", "pierce", "Points de percée : {n}"],
+  ]) {
+    document.getElementById(id).addEventListener("click", async () => {
+      if (!mode.state) return;
+      const request = call("sketch_reference",
+        { sketch: mode.state.sketch, mode: mode_ });
+      await safe(request);
+      const state = await request.catch(() => null);
+      if (state?.referenced != null) {
+        say(t(done, { n: state.referenced }));
+      }
+    });
+  }
 
   let offsetPreviewGen = 0;
 

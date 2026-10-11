@@ -618,6 +618,7 @@ def test_ops_snapshot_keys():
         "sketch_offset_preview",
         "sketch_place_dim",
         "sketch_polar_array",
+        "sketch_reference",
         "sketch_set_dim",
         "sketch_split",
         "sketch_start",

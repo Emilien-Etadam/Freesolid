@@ -353,6 +353,9 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_polar_array": _Req(
         ("sketch", str), ("geos", list), ("cx", float), ("cy", float),
         ("count", int)),               # optional: angle (°, 360)
+    "sketch_reference": _Req(("sketch", str)),
+                                       # optional: mode (edges | intersection
+                                       # | pierce), defining — liées à la pièce
     "sketch_add_slot": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float), ("width", float)),

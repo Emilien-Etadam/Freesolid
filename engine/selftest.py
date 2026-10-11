@@ -3454,6 +3454,48 @@ class SelftestMixin:
                 and not list(sko.RedundantConstraints))
             self.sketch_finish(sk_name)
 
+            mark("p51: esquisse — références liées à la pièce")
+            self.new_part("Pièce références")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if abs(f.CenterOfMass.z - 10) < 1e-6)
+            st = self.sketch_start(face=top)
+            ref_sk = st["sketch"]
+            state = self.sketch_reference(ref_sk, mode="edges")
+            refs = [e for e in state["entities"] if e.get("external")]
+            self.sketch_finish(ref_sk)
+            # Le contour lié suit la pièce : le profil de base passe à 50.
+            base_sk = next(o for o in body.Group
+                           if o.TypeId == "Sketcher::SketchObject")
+            width = next(i for i, c in enumerate(base_sk.Constraints)
+                         if c.Type in ("DistanceX", "Distance")
+                         and abs(c.Value - 40) < 1e-6)
+            base_sk.setDatum(width, 50)
+            self._recompute()
+            state = self.sketch_state(ref_sk)
+            xs = [abs(p[0]) for e in state["entities"] if e.get("external")
+                  for p in (e["p1"], e["p2"])]
+            follows = abs(max(xs) - 25) < 1e-6
+            st = self.sketch_start(plane="XZ")
+            cut_sk = st["sketch"]
+            inter = self.sketch_reference(cut_sk, mode="intersection")
+            self.sketch_finish(cut_sk)
+            self.curve_helix(5, 20, 10)
+            st = self.sketch_start(plane="XY")
+            pierce_sk = st["sketch"]
+            pierced = self.sketch_reference(pierce_sk, mode="pierce")
+            pts = [e for e in pierced["entities"] if e.get("external")]
+            state = self.sketch_delete_geo(pierce_sk, pts[0]["id"])
+            self.sketch_finish(pierce_sk)
+            report["p51_references"] = (
+                len(refs) == 4 and follows and inter["referenced"] == 4
+                and pierced["referenced"] >= 1 and pts[0]["type"] == "point"
+                and not any(e.get("external") for e in state["entities"])
+                and "Percee" not in [f["label"] for f
+                                     in self.get_tree()["features"]])
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

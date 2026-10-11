@@ -1068,5 +1068,11 @@
  "Angle à l'axe — l'angle d'une ligne avec l'horizontale": "Angle to axis — a line's angle with the horizontal",
  "Diamètre — d'un cercle ou d'un arc": "Diameter — of a circle or an arc",
  "Cote ordonnée horizontale — une base, puis chaque point": "Horizontal ordinate dimension — a base, then each point",
- "Cote ordonnée verticale — une base, puis chaque point": "Vertical ordinate dimension — a base, then each point"
+ "Cote ordonnée verticale — une base, puis chaque point": "Vertical ordinate dimension — a base, then each point",
+ "Convertir en restant lié — les arêtes de la face porteuse suivent la pièce": "Convert and stay linked — the supporting face's edges follow the part",
+ "Courbe d'intersection — là où le plan de l'esquisse coupe le solide (liée)": "Intersection curve — where the sketch plane cuts the solid (linked)",
+ "Points de percée — là où les courbes 3D traversent le plan (liés)": "Pierce points — where 3D curves cross the plane (linked)",
+ "Arêtes liées : {n} — elles suivent la pièce": "Linked edges: {n} — they follow the part",
+ "Courbe d'intersection : {n} arête(s) liée(s)": "Intersection curve: {n} linked edge(s)",
+ "Points de percée : {n}": "Pierce points: {n}"
 }

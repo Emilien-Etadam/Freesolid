@@ -478,5 +478,11 @@
  "intersection : un point puis deux courbes": "intersection: a point then two curves",
  "longueur d'arc : cliquez un arc": "arc length: click an arc",
  "diamètre : cliquez un cercle ou un arc": "diameter: click a circle or an arc",
- "angle à l'axe : cliquez une ligne": "angle to axis: click a line"
+ "angle à l'axe : cliquez une ligne": "angle to axis: click a line",
+ "l'esquisse n'est pas posée sur une face de la pièce": "the sketch does not lie on a face of the part",
+ "intersection : il faut un solide": "intersection: a solid is needed",
+ "référence inconnue : {}": "unknown reference: {}",
+ "aucune arête sur la face porteuse": "no edge on the supporting face",
+ "le plan de l'esquisse ne coupe pas le solide": "the sketch plane does not cut the solid",
+ "aucune courbe 3D ne perce le plan de l'esquisse": "no 3D curve pierces the sketch plane"
 }

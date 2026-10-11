@@ -464,5 +464,14 @@
  "conique : rho doit être entre 0 et 1": "conic: rho must be between 0 and 1",
  "conique : le sommet est aligné avec les deux bouts": "conic: the apex is aligned with the two ends",
  "rainure en arc : la largeur dépasse le diamètre de l'arc": "arc slot: the width exceeds the arc diameter",
- "rainure en arc : l'arc doit rester ouvert": "arc slot: the arc must stay open"
+ "rainure en arc : l'arc doit rester ouvert": "arc slot: the arc must stay open",
+ "chanfrein : cliquez deux lignes": "chamfer: click two lines",
+ "chanfrein : les deux lignes sont parallèles": "chamfer: the two lines are parallel",
+ "chanfrein : la distance dépasse la ligne": "chamfer: the distance exceeds the line",
+ "prolonger : cliquez une ligne ou un arc": "extend: click a line or an arc",
+ "prolonger : rien à rejoindre dans ce sens": "extend: nothing to reach in that direction",
+ "scinder : cliquez une entité": "split: click an entity",
+ "sélectionnez les entités à transformer": "select the entities to transform",
+ "l'échelle doit être positive": "the scale must be positive",
+ "au moins deux exemplaires": "at least two instances"
 }

@@ -338,6 +338,21 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_add_arc_slot": _Req(
         ("sketch", str), ("cx", float), ("cy", float), ("r", float),
         ("a1", float), ("a2", float), ("width", float)),
+    # Édition (engine/sketchedit.py).
+    "sketch_chamfer": _Req(
+        ("sketch", str), ("geo1", int), ("geo2", int), ("x1", float),
+        ("y1", float), ("x2", float), ("y2", float), ("distance", float)),
+                                       # optional: distance2
+    "sketch_extend": _Req(
+        ("sketch", str), ("geo", int), ("x", float), ("y", float)),
+    "sketch_split": _Req(
+        ("sketch", str), ("geo", int), ("x", float), ("y", float)),
+    "sketch_transform": _Req(("sketch", str), ("geos", list)),
+                                       # optional: dx, dy, angle (°), cx, cy,
+                                       # scale, copy
+    "sketch_polar_array": _Req(
+        ("sketch", str), ("geos", list), ("cx", float), ("cy", float),
+        ("count", int)),               # optional: angle (°, 360)
     "sketch_add_slot": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float), ("width", float)),

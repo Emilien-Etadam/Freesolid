@@ -3355,6 +3355,47 @@ class SelftestMixin:
                 and abs(areas["slot"][0] - 44 * math.pi) < 1e-3
                 and all(d != "over" for _, d in areas.values()))
 
+            mark("p51: esquisse — outils d'édition")
+            import math
+            self.new_part("Pièce édition")
+            st = self.sketch_start(plane="XY")
+            sk_name = st["sketch"]
+            sko = self._get_sketch(sk_name)
+            self.sketch_add_rectangle(sk_name, 0, 0, 40, 30)
+            state = self.sketch_chamfer(sk_name, 0, 1, 35, 0, 40, 5, 5)
+            bevel = state["entities"][-1]
+            chamfer_ok = (bevel["type"] == "line"
+                          and abs(math.dist(bevel["p1"], bevel["p2"])
+                                  - 5 * math.sqrt(2)) < 1e-6
+                          and state["definition"] != "over")
+            self.sketch_add_line(sk_name, 0, 50, 10, 50)
+            self.sketch_add_line(sk_name, 30, 40, 30, 70)
+            lid = len(self.sketch_state(sk_name)["entities"]) - 2
+            state = self.sketch_extend(sk_name, lid, 9, 50)
+            extend_ok = state["entities"][lid]["p2"] == [30.0, 50.0]
+            count = len(state["entities"])
+            state = self.sketch_split(sk_name, lid + 1, 30, 55)
+            split_ok = len(state["entities"]) == count + 1
+            self.sketch_add_circle(sk_name, 60, 0, 5)
+            cid = len(self.sketch_state(sk_name)["entities"]) - 1
+            state = self.sketch_transform(sk_name, [cid], dx=10)
+            move_ok = state["entities"][cid]["c"] == [70.0, 0.0]
+            state = self.sketch_transform(sk_name, [cid], angle=90, copy=True)
+            rot = state["entities"][-1]["c"]
+            state = self.sketch_polar_array(sk_name, [cid], 0, 0, 4)
+            polar = [e["c"] for e in state["entities"][-3:]]
+            state = self.sketch_transform(sk_name, [cid], scale=2, cx=70,
+                                          cy=0)
+            scaled = state["entities"][-1]
+            report["p51_edition"] = (
+                chamfer_ok and extend_ok and split_ok and move_ok
+                and abs(rot[0]) < 1e-6 and abs(rot[1] - 70) < 1e-6
+                and abs(polar[1][0] + 70) < 1e-6
+                and scaled["type"] == "circle" and abs(scaled["r"] - 10) < 1e-6
+                and not list(sko.ConflictingConstraints)
+                and not list(sko.RedundantConstraints))
+            self.sketch_finish(sk_name)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

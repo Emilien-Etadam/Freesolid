@@ -150,6 +150,7 @@ export function createSketchMode(deps) {
     pendingArc: null,     // { c, start? } — centre puis départ puis fin
     pendingSpline: null,  // points cliqués — Entrée pour terminer
     pendingClicks: null,  // clics des outils de sketchtools.js
+    chamfer: { distance: 2, distance2: null }, // outil chanfrein
     pendingEllipse: null, // { c, major? } — centre, grand axe, petit axe
     pendingArc3: null,    // [p1, p2] — départ, fin, puis passage
     pendingSlot: null,    // { a, b? } — centres puis largeur
@@ -201,6 +202,7 @@ export function createSketchMode(deps) {
                     rectc: "crosshair", circle: "crosshair",
                     arc: "crosshair", arc3: "crosshair", slot: "crosshair",
                     polygon: "crosshair", skfillet: "pointer",
+                    skchamfer: "pointer", extend: "pointer", split: "pointer",
                     trim: "pointer", construction: "pointer",
                     spline: "crosshair", ellipse: "crosshair",
                     dim: "crosshair",
@@ -1133,6 +1135,32 @@ export function createSketchMode(deps) {
           geo1: first.geo, geo2: target,
           x1: first.x, y1: first.y, x2: local.x, y2: local.y, radius }));
       }
+    } else if (mode.tool === "skchamfer") {
+      const target = nearestEntity(event);
+      if (target === null) return;
+      if (!mode.pendingFillet) {
+        mode.pendingFillet = { geo: target, x: local.x, y: local.y };
+        say("Chanfrein d'esquisse : cliquez la seconde ligne, près du coin");
+      } else if (mode.pendingFillet.geo !== target) {
+        const first = mode.pendingFillet;
+        mode.pendingFillet = null;
+        const { distance, distance2 } = mode.chamfer;
+        if (!(distance > 0)) {
+          say(t("Chanfrein d'esquisse : distance invalide"), true);
+          return;
+        }
+        say(t("Chanfrein d'esquisse : cliquez deux lignes près du coin"));
+        await safe(call("sketch_chamfer", { sketch: name,
+          geo1: first.geo, geo2: target, x1: first.x, y1: first.y,
+          x2: local.x, y2: local.y, distance,
+          ...(distance2 > 0 ? { distance2 } : {}) }));
+      }
+    } else if (mode.tool === "extend" || mode.tool === "split") {
+      const target = nearestEntity(event);
+      if (target !== null) {
+        safe(call(mode.tool === "extend" ? "sketch_extend" : "sketch_split",
+          { sketch: name, geo: target, x: snapped.x, y: snapped.y }));
+      }
     } else if (mode.tool === "trim") {
       const target = nearestEntity(event);
       if (target !== null) {
@@ -1301,6 +1329,32 @@ export function createSketchMode(deps) {
   function openToolPanel(tool) {
     abandonEntityPanel();
     toolPanelOpen = tool;
+    if (tool === "skchamfer") {
+      panel.open({
+        icon: "sk_chamfer",
+        title: t("Chanfrein d'esquisse"),
+        groups: [{
+          label: t("Paramètres"),
+          rows: [
+            { type: "number", key: "distance", label: t("Distance"),
+              value: mode.chamfer.distance, unit: "mm", min: 0.01 },
+            { type: "number", key: "distance2",
+              label: t("Seconde distance (vide = égale)"),
+              value: mode.chamfer.distance2 ?? "", unit: "mm", min: 0.01 },
+          ],
+        }],
+        note: t("Cliquez deux lignes près du coin à chanfreiner."),
+        onChange: (v) => {
+          const d = num(v.distance);
+          if (d > 0) mode.chamfer.distance = d;
+          const d2 = num(v.distance2);
+          mode.chamfer.distance2 = d2 > 0 ? d2 : null;
+        },
+        onApply: () => { toolPanelOpen = null; setTool("select"); },
+        onCancel: () => { toolPanelOpen = null; setTool("select"); },
+      });
+      return;
+    }
     const fillet = tool === "skfillet";
     panel.open({
       icon: fillet ? "sketch_fillet" : "polygon",
@@ -2036,7 +2090,7 @@ export function createSketchMode(deps) {
     } else {
       mode.pendingPoly = null;
     }
-    if (tool === "skfillet") openToolPanel("skfillet");
+    if (tool === "skfillet" || tool === "skchamfer") openToolPanel(tool);
     else if (tool !== "polygon") closeToolPanel();
     setCursor(CURSORS[tool] ?? "default");
     if (previewLine) previewLine.visible = false;
@@ -2057,6 +2111,9 @@ export function createSketchMode(deps) {
       slot: "Rainure : cliquez le centre du premier bout",
       polygon: "Polygone : cliquez le centre",
       skfillet: "Congé d'esquisse : cliquez la première ligne, près du coin",
+      skchamfer: "Chanfrein d'esquisse : cliquez la première ligne, près du coin",
+      extend: "Prolonger : cliquez l'entité près du bout à allonger",
+      split: "Scinder : cliquez l'entité à l'endroit de la coupure",
       trim: "Ajuster : cliquez le tronçon à supprimer",
       construction: "Construction : cliquez une entité pour la basculer",
       dim: "Cotation : cliquez une entité ou une extrémité",
@@ -2346,6 +2403,87 @@ export function createSketchMode(deps) {
         dx: num(v.dx) ?? 0, dy: num(v.dy) ?? 0,
         cols: parseInt(v.cols, 10) || 1,
         rows: parseInt(v.rows, 10) || 1 })),
+    });
+  });
+
+  // Déplacer, copier, tourner, mettre à l'échelle : un panneau par
+  // geste, le même moteur (sketch_transform).
+  const TRANSFORMS = {
+    "sk-move": { icon: "sk_move", title: "Déplacer", copy: false,
+      rows: [["dx", "Déplacement X", 10], ["dy", "Déplacement Y", 0]] },
+    "sk-copy": { icon: "sk_copy", title: "Copier", copy: true,
+      rows: [["dx", "Déplacement X", 10], ["dy", "Déplacement Y", 0]] },
+    "sk-rotate": { icon: "sk_rotate", title: "Tourner", copy: false,
+      rows: [["angle", "Angle (°)", 90], ["cx", "Centre X", 0],
+             ["cy", "Centre Y", 0]], copyOption: true },
+    "sk-scale": { icon: "sk_scale", title: "Échelle", copy: false,
+      rows: [["scale", "Facteur", 2], ["cx", "Centre X", 0],
+             ["cy", "Centre Y", 0]], copyOption: true },
+  };
+  for (const [id, spec] of Object.entries(TRANSFORMS)) {
+    document.getElementById(id).addEventListener("click", () => {
+      if (!mode.state) return;
+      if (!entityPicks().length) {
+        say(t("{title} : sélectionnez d'abord des entités",
+          { title: t(spec.title) }), true);
+        return;
+      }
+      const geos = [...new Set(entityPicks().map((s) => s.geo))];
+      abandonEntityPanel();
+      const rows = spec.rows.map(([key, label, value]) => ({
+        type: "number", key, label: t(label), value,
+        ...(key === "scale" ? { min: 0.001 } : {}),
+        ...(key === "angle" ? {} : { unit: key === "scale" ? "" : "mm" }) }));
+      if (spec.copyOption) {
+        rows.push({ type: "check", key: "copy", label: t("Garder l'original (copie)"),
+                    value: false });
+      }
+      panel.open({
+        icon: spec.icon,
+        title: t(spec.title),
+        groups: [{ label: t("Paramètres"), rows }],
+        note: t("Les relations internes à la sélection suivent ; celles "
+          + "vers le reste de l'esquisse tombent en tournant ou en "
+          + "changeant d'échelle."),
+        onApply: (v) => safe(call("sketch_transform", {
+          sketch: mode.state.sketch, geos,
+          dx: num(v.dx) ?? 0, dy: num(v.dy) ?? 0, angle: num(v.angle) ?? 0,
+          cx: num(v.cx) ?? 0, cy: num(v.cy) ?? 0, scale: num(v.scale) ?? 1,
+          copy: spec.copy || !!v.copy })),
+      });
+    });
+  }
+
+  document.getElementById("sk-polar").addEventListener("click", () => {
+    if (!mode.state) return;
+    if (!entityPicks().length) {
+      say("Répétition circulaire : sélectionnez d'abord des entités", true);
+      return;
+    }
+    const geos = [...new Set(entityPicks().map((s) => s.geo))];
+    abandonEntityPanel();
+    panel.open({
+      icon: "sk_polar",
+      title: t("Répétition circulaire"),
+      groups: [{
+        label: t("Paramètres"),
+        rows: [
+          { type: "number", key: "count", label: t("Exemplaires"), value: 6,
+            min: 2, step: 1 },
+          { type: "number", key: "angle", label: t("Angle total (°)"),
+            value: 360 },
+          { type: "number", key: "cx", label: t("Centre X"), value: 0,
+            unit: "mm" },
+          { type: "number", key: "cy", label: t("Centre Y"), value: 0,
+            unit: "mm" },
+        ],
+      }],
+      note: t("Les exemplaires (l'original compris) sont répartis sur "
+        + "l'angle ; 360° : un tour complet."),
+      onApply: (v) => safe(call("sketch_polar_array", {
+        sketch: mode.state.sketch, geos,
+        count: parseInt(v.count, 10) || 2, angle: num(v.angle) ?? 360,
+        cx: num(v.cx) ?? 0, cy: num(v.cy) ?? 0 })),
     });
   });
 

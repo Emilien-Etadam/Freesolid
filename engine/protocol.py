@@ -141,7 +141,7 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # face, keep_edges
     "edit_surface_freeform": _Req(("surface", str)),
                                        # radius, pushes, height,
-                                       # keep_edges | moves
+                                       # keep_edges | moves, grid
     "surface_control_points": _Req(("surface", str)),
                                        # optional: face, grid — lecture seule
     "curve_helix": _Req(("pitch", float), ("height", float),

@@ -3188,7 +3188,7 @@ class SelftestMixin:
             poles_ok = (grid["grid"] == [6, 6] and 1 < max(zs) < 6
                         and abs(min(zs)) < 1e-6
                         and (tree["surfaces"][-1].get("surface") or {})
-                        .get("moves") == [[3, 3, 0.0, 0.0, 6.0]])
+                        .get("moves") == [[0, 3, 3, 0.0, 0.0, 6.0]])
             self.edit_surface_freeform(lifted.Name, moves=[[3, 3, 0, 0, -6]])
             poles_ok = poles_ok and min(heights(lifted)) < -1
             # Surface à deux faces (extrusion d'un profil en L) : la face
@@ -3206,9 +3206,24 @@ class SelftestMixin:
                                          grid=6, face=0)
             l_free = self._require_doc().getObject(
                 tree["surfaces"][-1]["name"])
+            area_one = l_free.Shape.Area
+            # Les deux faces dans la même fonction ; puis grille plus fine
+            # en réédition : le pôle réglé suit sa place.
+            self.edit_surface_freeform(l_free.Name, moves=[
+                [0, 3, 3, 0, 6, 0], [1, 3, 3, -6, 0, 0]])
+            area_two = l_free.Shape.Area
+            self.edit_surface_freeform(l_free.Name, grid=11)
+            spec = next(s for s in self.get_tree()["surfaces"]
+                        if s["name"] == l_free.Name)["surface"]
+            grids = self.surface_control_points(l_surf.Name, grid=6)
             poles_ok = poles_ok and (
                 faces_before == 2 and len(l_free.Shape.Faces) == 2
-                and l_free.Shape.Area > area_before + 1e-3)
+                and area_one > area_before + 1e-3
+                and area_two > area_one + 1e-3
+                and len(grids["faces"]) == 2
+                and spec["grid"] == 11
+                and [m[:3] for m in spec["moves"]] == [[0, 5, 5], [1, 5, 5]]
+                and len(l_free.Shape.Faces) == 2)
             report["p50_forme_libre"] = poles_ok and multi_ok and (
                 3 < abs(top) < 5.5
                 and 5 < abs(bump.Shape.BoundBox.ZMax) < 8.5

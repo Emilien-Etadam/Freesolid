@@ -40,7 +40,7 @@ Une commande est **faite** quand les six points tiennent :
 | Surface réglée | ✅ | `surface_ruled` | `p48_surface_reglee` |
 | Surface médiane (deux faces, ou toute la pièce) | ✅ | `surface_mid` | `p50_surface_mediane` |
 | Forme libre — points poussés (bosses, creux, bords fixes) | ✅ | `surface_freeform` (`pushes`) | `p50_forme_libre` |
-| Forme libre — points de contrôle déplacés un à un | ✅ | `surface_freeform` (`moves`), `surface_control_points` | `p50_forme_libre` |
+| Forme libre — points de contrôle déplacés un à un, sur une ou plusieurs faces | ✅ | `surface_freeform` (`moves`), `surface_control_points` | `p50_forme_libre` |
 | Aplatir (patron à plat) | ✅ | `surface_flatten` | `p50_aplatir` |
 
 ## Opérations sur les surfaces
@@ -85,11 +85,11 @@ Ces commandes relèvent d'autres domaines ; elles ne comptent pas dans
 
 ## Comportements à connaître
 
-- Forme libre (points poussés ou pôles) : une face par fonction — celle
-  qu'on clique ; les autres faces de la surface sont gardées telles
-  quelles. Pour déformer une autre face, on enchaîne une seconde forme
-  libre sur le résultat. La grille de pôles est fixée à la création
-  (changer sa taille déplacerait les pôles déjà réglés).
+- Forme libre : une même fonction déforme autant de faces qu'on veut —
+  chaque point poussé agit sur la face où il est posé, les grilles de pôles
+  de toutes les faces s'affichent ensemble ; les faces non touchées restent
+  telles quelles, le tout recousu. La taille de grille se change aussi en
+  réédition : chaque pôle réglé garde sa place relative sur sa face.
 - Aplatir : le patron est exact pour une face développable (plan, cylindre,
   cône) ; une face à double courbure ne peut pas, mathématiquement, être
   mise à plat sans déformation — le patron répartit alors l'étirement au

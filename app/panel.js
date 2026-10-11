@@ -33,7 +33,8 @@
 //         d'avant, longueur cotée
 //       points : linksKey? — liste parallèle ; un point lié porte ⛓ et se
 //         délie dès qu'on retape une de ses coordonnées ; head: n — les n
-//         premières valeurs nomment la ligne (lecture seule) ; titles —
+//         premières valeurs nomment la ligne (lecture seule, headText(p)
+//         pour les écrire autrement) ; titles —
 //         infobulles des colonnes éditables
 //
 // invalidateSelections() : vide les rows `selection` (ids périmés au rebuild).
@@ -573,7 +574,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       const linked = row.linksKey && (active.values[row.linksKey] ?? [])[index];
       const head = row.head ?? 0;
       const name = el("span", "ppoint-name", head
-        ? point.slice(0, head).join(", ")
+        ? (row.headText?.(point) ?? point.slice(0, head).join(", "))
         : linked ? `P${index + 1}⛓` : `P${index + 1}`);
       if (linked) name.title = t("Lié à la géométrie — suit la pièce");
       line.append(name);

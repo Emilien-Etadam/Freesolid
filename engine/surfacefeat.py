@@ -1012,9 +1012,7 @@ class SurfaceMixin:
         if getattr(obj, "FreeSolidCapedges", ""):
             return {"kind": "fill", "cap": True}
         if getattr(obj, "FreeSolidFreemoves", ""):
-            moves = [[int(r.split(",")[0]), int(r.split(",")[1])]
-                     + [float(v) for v in r.split(",")[2:]]
-                     for r in str(obj.FreeSolidFreemoves).split(";") if r]
+            moves = self._free_moves(self._frozen_stamps(obj))
             return {"kind": "freeform", "moves": moves,
                     "grid": int(getattr(obj, "FreeSolidFreegrid", 6)),
                     "source": str(getattr(obj, "FreeSolidFreesource", "")),
@@ -1516,7 +1514,7 @@ class SurfaceMixin:
             # Points de contrôle déplacés un à un : [[i, j, dx, dy, dz], …]
             # sur une grille de ``grid`` × ``grid`` pôles.
             stamps = {"freesource": src.Name, "freeface": int(face),
-                      "freemoves": self._moves_text(moves),
+                      "freemoves": self._moves_text(moves, int(face)),
                       "freegrid": int(grid), "freeradius": 0.0}
             shape = self._free_shape(src.Shape, stamps)
             return self._add_frozen_surface(shape, "Forme libre", stamps)
@@ -1534,7 +1532,8 @@ class SurfaceMixin:
         return self._add_frozen_surface(shape, "Forme libre", stamps)
 
     def edit_surface_freeform(self, surface, radius=None, pushes=None,
-                              height=None, keep_edges=None, moves=None):
+                              height=None, keep_edges=None, moves=None,
+                              grid=None):
         """Rééditer une forme libre : points poussés et leurs hauteurs (ou
         une hauteur commune), rayon d'influence, bords fixes."""
         from engine.kernel import KernelError
@@ -1543,11 +1542,21 @@ class SurfaceMixin:
             raise KernelError("forme libre inconnue : {}".format(surface))
         stamps = self._frozen_stamps(obj)
         if stamps.get("freemoves"):
-            if moves is not None:
-                stamps["freemoves"] = self._moves_text(moves)
             src = self._get_surface(stamps["freesource"])
+            old_grid = int(stamps.get("freegrid", 6))
+            new_grid = int(grid) if grid is not None else old_grid
+            if moves is not None:
+                # Indices donnés pour la grille demandée.
+                stamps["freemoves"] = self._moves_text(
+                    moves, int(stamps["freeface"]))
+            elif new_grid != old_grid:
+                # Seule la grille change : chaque pôle réglé suit sa place.
+                stamps["freemoves"] = self._moves_text(self._remap_moves(
+                    src.Shape, self._free_moves(stamps), old_grid, new_grid))
+            stamps["freegrid"] = new_grid
             obj.Shape = self._free_shape(src.Shape, stamps)
-            self._stamp(obj, freemoves=stamps["freemoves"])
+            self._stamp(obj, freemoves=stamps["freemoves"],
+                        freegrid=new_grid)
             self._recompute()
             return self.get_tree()
         if radius is None:
@@ -1569,17 +1578,24 @@ class SurfaceMixin:
         return self.get_tree()
 
     @staticmethod
-    def _moves_text(moves):
+    def _moves_text(moves, face=0):
+        """``[[face, i, j, dx, dy, dz]…]`` — ou ``[i, j, dx, dy, dz]`` sur
+        la face ``face`` — en texte rangé sur l'objet."""
         from engine.kernel import KernelError
         rows = []
         for move in moves:
             try:
-                i, j = int(move[0]), int(move[1])
-                dx, dy, dz = (float(v) for v in move[2:5])
+                move = list(move)
+                if len(move) == 5:
+                    move = [face] + move
+                if len(move) != 6:
+                    raise ValueError
+                f, i, j = int(move[0]), int(move[1]), int(move[2])
+                dx, dy, dz = (float(v) for v in move[3:6])
             except Exception:
                 raise KernelError("point de contrôle invalide : {}".format(
                     move))
-            rows.append("%d,%d,%.9g,%.9g,%.9g" % (i, j, dx, dy, dz))
+            rows.append("%d,%d,%d,%.9g,%.9g,%.9g" % (f, i, j, dx, dy, dz))
         if not rows:
             raise KernelError("choisissez au moins un point de contrôle")
         return ";".join(rows)
@@ -1602,17 +1618,64 @@ class SurfaceMixin:
                 insert(lo + (hi - lo) * k / (missing + 1.0), 1, 1e-9)
         return surface
 
-    def surface_control_points(self, surface, face=0, grid=6):
-        """Grille de contrôle d'une face de surface (lecture seule) : les
-        pôles que la forme libre peut déplacer un par un."""
+    def surface_control_points(self, surface, face=None, grid=6):
+        """Grilles de contrôle d'une surface (lecture seule) : les pôles
+        que la forme libre peut déplacer un par un. ``faces`` : une grille
+        par face ; ``grid``/``poles`` : celle de ``face`` (0 par défaut)."""
         src = self._get_surface(surface)
-        target = self._source_face(src.Shape, int(face))
-        control = self._control_surface(target, grid)
-        return {"grid": [control.NbUPoles, control.NbVPoles],
+        grids = []
+        for k, target in enumerate(src.Shape.Faces):
+            control = self._control_surface(target, grid)
+            grids.append({
+                "face": k, "grid": [control.NbUPoles, control.NbVPoles],
                 "poles": [[[p.x, p.y, p.z]
                            for p in [control.getPole(i, j) for j in
                                      range(1, control.NbVPoles + 1)]]
-                          for i in range(1, control.NbUPoles + 1)]}
+                          for i in range(1, control.NbUPoles + 1)]})
+        self._source_face(src.Shape, int(face or 0))
+        chosen = grids[int(face or 0)]
+        return {"grid": chosen["grid"], "poles": chosen["poles"],
+                "faces": grids}
+
+    @staticmethod
+    def _free_moves(stamps):
+        """Déplacements rangés : ``[[face, i, j, dx, dy, dz]…]`` (l'ancien
+        format à 5 valeurs vise la face de la fonction)."""
+        default = int(stamps.get("freeface", 0) or 0)
+        moves = []
+        for row in str(stamps.get("freemoves", "")).split(";"):
+            if not row:
+                continue
+            parts = row.split(",")
+            if len(parts) == 5:
+                parts = [default] + parts
+            moves.append([int(parts[0]), int(parts[1]), int(parts[2])]
+                         + [float(v) for v in parts[3:6]])
+        return moves
+
+    def _remap_moves(self, shape, moves, old_grid, new_grid):
+        """Indices des pôles réglés reportés sur une grille plus fine ou
+        plus grossière : même place relative sur la face."""
+        import math
+        counts = {}
+        out = []
+        for f, i, j, dx, dy, dz in moves:
+            if f not in counts:
+                face = self._source_face(shape, f)
+                old = self._control_surface(face, old_grid)
+                new = self._control_surface(face, new_grid)
+                counts[f] = (old.NbUPoles, old.NbVPoles,
+                             new.NbUPoles, new.NbVPoles)
+            ou, ov, nu, nv = counts[f]
+            # Arrondi au plus proche, moitiés vers le haut (comme l'aperçu).
+            ni = 1 + int(math.floor((i - 1) * (nu - 1)
+                                    / float(max(ou - 1, 1)) + 0.5))
+            nj = 1 + int(math.floor((j - 1) * (nv - 1)
+                                    / float(max(ov - 1, 1)) + 0.5))
+            if any(m[:3] == [f, ni, nj] for m in out):
+                continue
+            out.append([f, ni, nj, dx, dy, dz])
+        return out
 
     @staticmethod
     def _pushes_text(pushes):
@@ -1725,15 +1788,37 @@ class SurfaceMixin:
         return box
 
     def _free_shape(self, shape, stamps):
-        """La face déformée, et les autres faces de la surface telles
-        quelles — cousues quand elles se touchent encore."""
+        """Les faces déformées — pôles déplacés face par face, ou points
+        poussés rangés sur la face la plus proche — et les autres faces
+        telles quelles, recousues quand elles se touchent encore."""
         import Part
-        index = int(stamps["freeface"])
-        result = self._free_face_shape(shape, stamps)
-        others = [f.copy() for k, f in enumerate(shape.Faces) if k != index]
-        if not others:
-            return result
-        faces = result.Faces + others
+        default = int(stamps["freeface"])
+        changed = {}
+        if stamps.get("freemoves"):
+            groups = {}
+            for f, i, j, dx, dy, dz in self._free_moves(stamps):
+                groups.setdefault(f, []).append((i, j, dx, dy, dz))
+            for f, rows in sorted(groups.items()):
+                changed[f] = self._moved_shape(
+                    self._source_face(shape, f), rows,
+                    int(stamps.get("freegrid", 6)))
+        else:
+            groups = {}
+            for push in self._free_pushes(stamps):
+                f = default
+                if len(shape.Faces) > 1:
+                    point = Part.Vertex(*push[:3])
+                    f = min(range(len(shape.Faces)), key=lambda k: shape
+                            .Faces[k].distToShape(point)[0])
+                groups.setdefault(f, []).append(push)
+            for f, pushes in sorted(groups.items()):
+                changed[f] = self._free_face_shape(
+                    self._source_face(shape, f), pushes, stamps)
+        faces = []
+        for k, face in enumerate(shape.Faces):
+            faces.extend(changed[k].Faces if k in changed else [face.copy()])
+        if len(faces) == 1:
+            return faces[0]
         try:
             shell = Part.makeShell(faces)
             shell.sewShape()
@@ -1743,16 +1828,12 @@ class SurfaceMixin:
             pass
         return Part.makeCompound(faces)
 
-    def _free_face_shape(self, shape, stamps):
-        """Pôles de la surface déplacés selon la normale, avec une cloche
+    def _free_face_shape(self, face, pushes, stamps):
+        """Pôles de la face déplacés selon la normale, avec une cloche
         qui s'éteint au rayon d'influence (mesuré sur la surface)."""
         from engine.kernel import KernelError
         import math
         import FreeCAD as App
-        face = self._source_face(shape, int(stamps["freeface"]))
-        if stamps.get("freemoves"):
-            return self._moved_shape(face, stamps)
-        pushes = self._free_pushes(stamps)
         keep_edges = bool(int(stamps.get("freeedges", 0) or 0))
         radius = float(stamps["freeradius"])
         if radius <= 0:
@@ -1807,16 +1888,12 @@ class SurfaceMixin:
                               "— réduisez la hauteur")
         return result
 
-    def _moved_shape(self, face, stamps):
+    def _moved_shape(self, face, rows, grid):
         """Pôles de la grille de contrôle déplacés de leur vecteur."""
         from engine.kernel import KernelError
         import FreeCAD as App
-        control = self._control_surface(face, int(stamps.get("freegrid", 6)))
-        for row in str(stamps["freemoves"]).split(";"):
-            if not row:
-                continue
-            i, j, dx, dy, dz = row.split(",")
-            i, j = int(i), int(j)
+        control = self._control_surface(face, grid)
+        for i, j, dx, dy, dz in rows:
             if not (1 <= i <= control.NbUPoles and 1 <= j <= control.NbVPoles):
                 raise KernelError("point de contrôle hors de la grille : "
                                   "{} {}".format(i, j))

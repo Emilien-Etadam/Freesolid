@@ -319,10 +319,20 @@ class SurfaceMixin:
                  for obj, sub in links]
         triples = [(obj.Name, sub, face)
                    for (obj, sub), face in zip(links, faces)]
+        closed = any(obj.Shape.Edges[int(sub[4:]) - 1].isClosed()
+                     for obj, sub in links)
+        if tangent and closed and all(faces):
+            # Arête fermée + tangence : les demi-arêtes auxiliaires n'ont
+            # pas de trace sur la face voisine, et le solveur plante dessus
+            # (SIGSEGV dans GeomPlate sous OCCT 7.9). Bouchon tangent direct.
+            return self._tangent_cap(triples)
         # Une arête fermée seule (bout de tube) : le noyau ne sait pas la
-        # remplir. Un objet auxiliaire la coupe en deux moitiés (et garde
-        # la face voisine pour la tangence), recalculé avec sa source.
-        links, faces = self._split_closed_links(links, faces)
+        # remplir. Un objet auxiliaire la coupe en deux moitiés,
+        # recalculé avec sa source (tangence : voir plus haut).
+        # Sans tangence sur les demi-arêtes : elles n'ont pas de trace sur
+        # la face voisine.
+        links, faces = self._split_closed_links(
+            links, [""] * len(links) if closed else faces)
 
         def configure(obj):
             obj.BoundaryEdges = links
@@ -337,9 +347,12 @@ class SurfaceMixin:
             if not tangent or not all(face for _, _, face in triples):
                 raise
         # Le solveur ne tient pas la tangence (faces voisines
-        # perpendiculaires : bout de tube) : bouchon B-spline construit,
-        # tangent par sa deuxième rangée de pôles, recalculé avec ses
-        # sources.
+        # perpendiculaires) : bouchon B-spline construit.
+        return self._tangent_cap(triples)
+
+    def _tangent_cap(self, triples):
+        """Bouchon tangent par sa deuxième rangée de pôles, recalculé avec
+        ses sources."""
         stamps = {"capedges": ";".join(":".join(t) for t in triples)}
         shape = self._cap_shape(stamps["capedges"])
         return self._add_frozen_surface(shape, "Surface de remplissage",

@@ -236,6 +236,11 @@
   }
   .ribbon-group-btns button:not(:has(> img)) { padding: 0 var(--space-2); }
   .ribbon-group-btns button:has(> img):not(:has(> :not(img))) { justify-content: center; }
+  .ribbon-group-btns.rows-3 { grid-template-rows: repeat(3, 19px); gap: 1px; }
+  .ribbon-group-btns.rows-3 button { height: 19px; }
+  .ribbon-group-btns.rows-3 button img { width: 15px; height: 15px; }
+  .ribbon-group-btns.rows-3 button.large { grid-row: span 3; height: 59px; }
+  .ribbon-group-btns.rows-3 button.large img { width: 24px; height: 24px; }
   .ribbon-group-btns button:hover {
     background: var(--panel); border-color: var(--line);
   }
@@ -775,6 +780,8 @@
   #tree li.child.in-folder { padding-left: 52px; }
   #tree li.rolled-back { color: var(--ink-2); }
   #tree li.rolled-back img { opacity: 0.4; }
+  #tree li.surface.consumed { color: var(--ink-2); font-style: italic; }
+  #tree li.surface.consumed img { opacity: 0.5; }
 
   /* Panneau de propriétés : remplace l'arbre pendant une commande. */
   aside.panel-open h2, aside.panel-open #tree { display: none; }
@@ -787,9 +794,11 @@
     border-bottom: 1px solid var(--line);
   }
   #panel .phead-main img { width: 18px; height: 18px; }
+  /* Un titre long (« Enlèvement par révolution ») passe sur deux lignes
+     plutôt que d'être coupé. */
   #panel .ptitle {
-    flex: 1; font-weight: 600; font-size: var(--text-s);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1; min-width: 0; font-weight: 600; font-size: var(--text-s);
+    line-height: 1.2; overflow-wrap: anywhere;
   }
   #panel .pok, #panel .pcancel {
     width: 28px; height: 28px; border-radius: 50%;
@@ -861,6 +870,15 @@
   .plist-item.editable { cursor: pointer; }
   .plist-item.editable:hover { background: var(--hover); }
   .plist-item.readonly { color: var(--ink-2); cursor: default; }
+  .ppoint { justify-content: flex-start; padding: 2px var(--space-2); }
+  .ppoint-name { color: var(--ink-2); min-width: 22px; }
+  .ppoint .ppoint-coord {
+    width: 0; flex: 1; min-width: 0; background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: var(--radius-s);
+    padding: 2px 4px; font: inherit; font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+  .ppoint .pdel { margin-left: auto; }
   .plist-item .pdel {
     padding: 1px var(--space-2); font-size: var(--text-xs); color: var(--error); flex: none;
   }
@@ -944,6 +962,10 @@
     font-size: var(--text-s); color: var(--ink-2);
     position: relative; overflow: hidden;
   }
+  /* Une seule ligne : un texte trop long s'abrège (… ), en entier au survol. */
+  footer > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  footer #status { flex: 0 1 auto; min-width: 0; }
+  footer > span:not(#status) { flex: none; }
   footer .err { color: var(--error); }
   footer .err.sticky { cursor: pointer; }
   footer .push { margin-left: auto; }

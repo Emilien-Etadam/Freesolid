@@ -1,7 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { arrowSegments, dimGeometry, dimLabel } from "../../app/dims.js";
+import {
+  arrowTriangle, dimGeometry, dimLabel, dimOffsetAt, pointPairDimKind,
+  pointPairDimPath,
+} from "../../app/dims.js";
 
 const close = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
 
@@ -38,6 +41,15 @@ describe("dimGeometry", () => {
       { geos: [0, 2, null], pos: [1, 1, 0] }, rect, 1);
     assert.equal(g.arrows.length, 2);
     assert.equal(g.segments.length, 3);
+  });
+
+  it("centre d'un cercle → origine : cote alignée jusqu'à (0, 0)", () => {
+    const hole = [{ id: 0, type: "circle", c: [0, -30], r: 4 }];
+    const g = dimGeometry({ type: "Distance", geo: 0 },
+      { geos: [0, -1, null], pos: [3, 1, 0] }, hole, 1);
+    assert.equal(g.arrows.length, 2);
+    const tips = g.arrows.map((a) => [a.x, a.y]);
+    assert.ok(tips.some(([x, y]) => close(x, tips[0][0]) && close(Math.abs(y - tips[1][1]), 30)));
   });
 
   it("point → ligne : cote directe jusqu'au pied de la perpendiculaire", () => {
@@ -80,12 +92,102 @@ describe("dimGeometry", () => {
     assert.deepEqual(g, { label: { x: 5, y: 4 }, segments: [], arrows: [] });
   });
 
-  it("une pointe de flèche fait deux traits de la bonne longueur", () => {
-    const segs = arrowSegments({ x: 0, y: 0, dx: 1, dy: 0 }, 2);
-    assert.equal(segs.length, 2);
-    for (const [x1, y1, x2, y2] of segs) {
-      assert.ok(close(Math.hypot(x2 - x1, y2 - y1), 2));
-      assert.ok(x2 < 0);   // les traits partent en arrière de la pointe
-    }
+  it("une pointe de flèche est un triangle plein, en arrière de la pointe", () => {
+    const [x1, y1, x2, y2, x3, y3] = arrowTriangle(
+      { x: 0, y: 0, dx: 1, dy: 0 }, 9, 1.5);
+    assert.deepEqual([x1, y1], [0, 0]);
+    assert.ok(close(x2, -9) && close(x3, -9));
+    assert.ok(close(Math.abs(y2 - y3), 3));
+  });
+});
+
+describe("cote entre deux points : le 3e clic choisit le sens", () => {
+  const a = { x: 0, y: 0 }, b = { x: 20, y: 12 };
+  it("au-dessus ou au-dessous : horizontale", () => {
+    assert.equal(pointPairDimKind(a, b, { x: 10, y: 20 }), "DistanceX");
+    assert.equal(pointPairDimKind(a, b, { x: 5, y: -4 }), "DistanceX");
+  });
+  it("à côté : verticale", () => {
+    assert.equal(pointPairDimKind(a, b, { x: 30, y: 6 }), "DistanceY");
+    assert.equal(pointPairDimKind(a, b, { x: -3, y: 2 }), "DistanceY");
+  });
+  it("entre les points ou en biais : alignée", () => {
+    assert.equal(pointPairDimKind(a, b, { x: 10, y: 6 }), "Distance");
+    assert.equal(pointPairDimKind(a, b, { x: 30, y: 30 }), "Distance");
+  });
+  it("aperçu horizontal : la ligne de cote passe par le curseur", () => {
+    const path = pointPairDimPath(a, b, "DistanceX", { x: 10, y: 20 });
+    assert.deepEqual(path, [a, { x: 0, y: 20 }, { x: 20, y: 20 }, b]);
+  });
+  it("cote horizontale posée : tracé parallèle à X entre les deux points", () => {
+    const entities = [{ id: 0, type: "line", p1: [0, 0], p2: [20, 12] }];
+    const g = dimGeometry({ type: "DistanceX", geo: 0 },
+      { geos: [0, 0, null], pos: [1, 2, 0] }, entities, 1);
+    assert.deepEqual(g.segments[2], [0, 14, 20, 14]);
+    assert.equal(g.arrows.length, 2);
+  });
+});
+
+describe("cote posée : elle reste où on l'a cliquée", () => {
+  const line = [{ id: 0, type: "line", p1: [0, 0], p2: [10, 0] }];
+  it("longueur : ligne de cote au décalage retenu, du côté choisi", () => {
+    const below = dimGeometry({ type: "Distance", geo: 0, offset: -7 },
+      { geos: [0, null, null], pos: [0, 0, 0] }, line, 1);
+    assert.deepEqual(below.segments[2], [0, -7, 10, -7]);
+    const above = dimGeometry({ type: "Distance", geo: 0, offset: 4 },
+      { geos: [0, null, null], pos: [0, 0, 0] }, line, 1);
+    assert.deepEqual(above.segments[2], [0, 4, 10, 4]);
+  });
+  it("horizontale sous les points : attaches vers le bas", () => {
+    const pts = [{ id: 0, type: "line", p1: [0, 0], p2: [20, 12] }];
+    const g = dimGeometry({ type: "DistanceX", geo: 0, offset: -5 },
+      { geos: [0, 0, null], pos: [1, 2, 0] }, pts, 1);
+    assert.deepEqual(g.segments[2], [0, -5, 20, -5]);
+    assert.ok(g.label.y < -5);
+  });
+});
+
+describe("cote glissée : décalage sous le curseur", () => {
+  const line = [{ id: 0, type: "line", p1: [0, 0], p2: [10, 0] }];
+  const own = { geos: [0, null, null], pos: [0, 0, 0] };
+  it("longueur d'une ligne : distance signée à la ligne", () => {
+    assert.equal(dimOffsetAt({ type: "Distance", geo: 0 }, own, line,
+      { x: 3, y: -6 }), -6);
+  });
+  it("horizontale / verticale depuis l'origine : depuis le 1er point", () => {
+    const pt = [{ id: 0, type: "line", p1: [20, 12], p2: [36, 12] }];
+    const pair = { geos: [-1, 0, null], pos: [1, 1, 0] };
+    assert.equal(dimOffsetAt({ type: "DistanceX", geo: -1 }, pair, pt,
+      { x: 5, y: 30 }), 30);
+    assert.equal(dimOffsetAt({ type: "DistanceY", geo: -1 }, pair, pt,
+      { x: -8, y: 5 }), -8);
+  });
+  it("diamètre : ne se glisse pas ainsi", () => {
+    const circle = [{ id: 0, type: "circle", c: [0, 0], r: 5 }];
+    assert.equal(dimOffsetAt({ type: "Diameter", geo: 0 },
+      { geos: [0, null, null], pos: [0, 0, 0] }, circle, { x: 1, y: 1 }),
+      null);
+  });
+});
+
+describe("cote d'angle : près des lignes, pas au sommet", () => {
+  // Deux lignes qui ne se touchent pas : leur rencontre est en (0, 0).
+  const lines = [
+    { id: 0, type: "line", p1: [20, 0], p2: [40, 0] },
+    { id: 1, type: "line", p1: [20, 20], p2: [40, 40] },
+  ];
+  const pair = { geos: [0, 1, null], pos: [0, 0, 0] };
+  it("sans pose : l'arc passe au milieu de la plus proche", () => {
+    const g = dimGeometry({ type: "Angle", geo: 0 }, pair, lines, 1);
+    const [x, y] = g.segments[0];
+    assert.ok(close(Math.hypot(x, y), 30));
+  });
+  it("posée : l'arc passe par le clic, attache jusqu'à lui", () => {
+    const g = dimGeometry({ type: "Angle", geo: 0, offset: 60 }, pair, lines, 1);
+    const [x, y] = g.segments[0];
+    assert.ok(close(Math.hypot(x, y), 60));
+    assert.ok(g.segments.length > 24);   // les attaches suivent l'arc
+    assert.ok(close(dimOffsetAt({ type: "Angle", geo: 0 }, pair, lines,
+      { x: 0, y: 50 }), 50));
   });
 });

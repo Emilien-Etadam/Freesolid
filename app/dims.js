@@ -31,6 +31,8 @@ export function filletRadiusLabel(raw) {
 // de l'écran. Résultat : { label, segments, arrows } — une flèche est
 // { x, y, dx, dy } : pointe en (x, y), dirigée selon (dx, dy) unitaire.
 
+const ORIGIN = { id: -1, type: "point", p1: [0, 0] };
+
 function pointOf(entity, pos) {
   if (!entity) return null;
   if (pos === 1 && entity.p1) return { x: entity.p1[0], y: entity.p1[1] };
@@ -54,20 +56,29 @@ function centroid(entities) {
   return n ? { x: sx / n, y: sy / n } : { x: 0, y: 0 };
 }
 
-/** Cote alignée entre A et B, décalée vers l'extérieur de l'esquisse. */
-function alignedDim(a, b, entities, size) {
+/** Cote alignée entre A et B : à l'endroit où elle a été posée
+ *  (`offset`, signé, sur la normale A→B), sinon décalée vers l'extérieur
+ *  de l'esquisse. */
+function alignedDim(a, b, entities, size, offset = null) {
   const d = unit(b.x - a.x, b.y - a.y);
   if (!d) return null;
   let n = { x: -d.y, y: d.x };
-  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  const c = centroid(entities);
-  if ((mid.x - c.x) * n.x + (mid.y - c.y) * n.y < 0) n = { x: -n.x, y: -n.y };
-  const off = size * 2;
+  let off = size * 2;
+  if (offset != null) {
+    if (offset < 0) n = { x: -n.x, y: -n.y };
+    off = Math.abs(offset);
+  } else {
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const c = centroid(entities);
+    if ((mid.x - c.x) * n.x + (mid.y - c.y) * n.y < 0) n = { x: -n.x, y: -n.y };
+  }
   const ext = size * 0.6;
   const a2 = { x: a.x + n.x * off, y: a.y + n.y * off };
   const b2 = { x: b.x + n.x * off, y: b.y + n.y * off };
   return {
     label: { x: (a2.x + b2.x) / 2 + n.x * size, y: (a2.y + b2.y) / 2 + n.y * size },
+    along: { x: (a2.x + b2.x) / 2, y: (a2.y + b2.y) / 2 },
+    normal: n,
     segments: [
       [a.x, a.y, a.x + n.x * (off + ext), a.y + n.y * (off + ext)],
       [b.x, b.y, b.x + n.x * (off + ext), b.y + n.y * (off + ext)],
@@ -78,6 +89,71 @@ function alignedDim(a, b, entities, size) {
       { x: b2.x, y: b2.y, dx: d.x, dy: d.y },
     ],
   };
+}
+
+/** Cote horizontale ("DistanceX") ou verticale ("DistanceY") entre A et
+ *  B : ligne de cote parallèle à l'axe, là où elle a été posée (`offset`
+ *  depuis A), sinon au-dessus / à droite. */
+function axisDim(a, b, kind, size, offset = null) {
+  const off = size * 2;
+  const ext = size * 0.6;
+  if (kind === "DistanceX") {
+    const y = offset != null ? a.y + offset : Math.max(a.y, b.y) + off;
+    const dir = Math.sign(b.x - a.x) || 1;
+    const side = y >= Math.max(a.y, b.y) ? 1 : -1;
+    return {
+      label: { x: (a.x + b.x) / 2, y: y + size * side },
+      along: { x: (a.x + b.x) / 2, y },
+      normal: { x: 0, y: side },
+      segments: [[a.x, a.y, a.x, y + ext * side], [b.x, b.y, b.x, y + ext * side],
+                 [a.x, y, b.x, y]],
+      arrows: [{ x: a.x, y, dx: -dir, dy: 0 }, { x: b.x, y, dx: dir, dy: 0 }],
+    };
+  }
+  const x = offset != null ? a.x + offset : Math.max(a.x, b.x) + off;
+  const dir = Math.sign(b.y - a.y) || 1;
+  const side = x >= Math.max(a.x, b.x) ? 1 : -1;
+  return {
+    label: { x: x + size * side, y: (a.y + b.y) / 2 },
+    along: { x, y: (a.y + b.y) / 2 },
+    normal: { x: side, y: 0 },
+    segments: [[a.x, a.y, x + ext * side, a.y], [b.x, b.y, x + ext * side, b.y],
+               [x, a.y, x, b.y]],
+    arrows: [{ x, y: a.y, dx: 0, dy: -dir }, { x, y: b.y, dx: 0, dy: dir }],
+  };
+}
+
+/**
+ * Cote entre deux points, selon l'endroit où le curseur la pose : à côté
+ * des deux points → verticale, au-dessus ou au-dessous → horizontale,
+ * entre eux ou en biais → alignée. Coordonnées locales de l'esquisse.
+ */
+export function pointPairDimKind(a, b, cursor) {
+  const tolerance = 1e-9;
+  const besideX = cursor.x < Math.min(a.x, b.x) - tolerance
+    || cursor.x > Math.max(a.x, b.x) + tolerance;
+  const besideY = cursor.y < Math.min(a.y, b.y) - tolerance
+    || cursor.y > Math.max(a.y, b.y) + tolerance;
+  if (besideY && !besideX) return "DistanceX";
+  if (besideX && !besideY) return "DistanceY";
+  return "Distance";
+}
+
+/** Aperçu de cette cote : la polyligne A → attache → attache → B, la
+ *  ligne de cote passant par le curseur. */
+export function pointPairDimPath(a, b, kind, cursor) {
+  if (kind === "DistanceX") {
+    return [a, { x: a.x, y: cursor.y }, { x: b.x, y: cursor.y }, b];
+  }
+  if (kind === "DistanceY") {
+    return [a, { x: cursor.x, y: a.y }, { x: cursor.x, y: b.y }, b];
+  }
+  const d = unit(b.x - a.x, b.y - a.y);
+  if (!d) return [a, b];
+  const n = { x: -d.y, y: d.x };
+  const off = (cursor.x - a.x) * n.x + (cursor.y - a.y) * n.y;
+  return [a, { x: a.x + n.x * off, y: a.y + n.y * off },
+          { x: b.x + n.x * off, y: b.y + n.y * off }, b];
 }
 
 /** Cote directe de A à B (point → ligne, lignes parallèles). */
@@ -123,7 +199,8 @@ function lineDirFrom(line, origin) {
     ?? unit(line.p2[0] - line.p1[0], line.p2[1] - line.p1[1]);
 }
 
-function angleDim(l1, l2, size) {
+/** Point de rencontre des deux lignes (prolongées), ou null si parallèles. */
+function lineIntersection(l1, l2) {
   const x1 = l1.p1[0], y1 = l1.p1[1];
   const v1x = l1.p2[0] - x1, v1y = l1.p2[1] - y1;
   const x2 = l2.p1[0], y2 = l2.p1[1];
@@ -131,29 +208,67 @@ function angleDim(l1, l2, size) {
   const den = v1x * v2y - v1y * v2x;
   if (Math.abs(den) < 1e-12) return null;
   const s = ((x2 - x1) * v2y - (y2 - y1) * v2x) / den;
-  const o = { x: x1 + s * v1x, y: y1 + s * v1y };
+  return { x: x1 + s * v1x, y: y1 + s * v1y };
+}
+
+/** Distances, depuis O le long de d, des deux bouts d'une ligne. */
+function reachAlong(line, o, d) {
+  return [line.p1, line.p2].map(
+    (p) => (p[0] - o.x) * d.x + (p[1] - o.y) * d.y);
+}
+
+/**
+ * Cote d'angle entre deux lignes : un arc centré sur leur point de
+ * rencontre, au rayon `radius` (là où la cote a été posée), sinon assez
+ * loin pour passer le long des lignes — pas collé au sommet quand elles
+ * ne se touchent pas. Une attache prolonge une ligne jusqu'à l'arc.
+ */
+function angleDim(l1, l2, size, radius = null) {
+  const o = lineIntersection(l1, l2);
+  if (!o) return null;
   const d1 = lineDirFrom(l1, o);
   const d2 = lineDirFrom(l2, o);
   if (!d1 || !d2) return null;
+  const reach1 = reachAlong(l1, o, d1);
+  const reach2 = reachAlong(l2, o, d2);
+  // Par défaut : au milieu de la plus proche des deux lignes.
+  const middle = (r) => (r[0] + r[1]) / 2;
+  const r = radius != null && radius > 0 ? radius
+    : Math.max(Math.min(middle(reach1), middle(reach2)), size * 4);
   let a1 = Math.atan2(d1.y, d1.x);
   let a2 = Math.atan2(d2.y, d2.x);
   let sweep = a2 - a1;
   while (sweep > Math.PI) sweep -= Math.PI * 2;
   while (sweep < -Math.PI) sweep += Math.PI * 2;
-  const r = size * 4;
   const segments = [];
-  const steps = 16;
+  const steps = 24;
   for (let i = 0; i < steps; i++) {
     const t0 = a1 + sweep * (i / steps);
     const t1 = a1 + sweep * ((i + 1) / steps);
     segments.push([o.x + r * Math.cos(t0), o.y + r * Math.sin(t0),
                    o.x + r * Math.cos(t1), o.y + r * Math.sin(t1)]);
   }
+  // Attaches : la ligne prolongée jusqu'à l'arc s'il passe hors d'elle.
+  const ext = size * 0.6;
+  for (const [d, reach] of [[d1, reach1], [d2, reach2]]) {
+    const near = Math.min(...reach), far = Math.max(...reach);
+    if (r > far) {
+      segments.push([o.x + d.x * far, o.y + d.y * far,
+                     o.x + d.x * (r + ext), o.y + d.y * (r + ext)]);
+    } else if (r < near) {
+      segments.push([o.x + d.x * near, o.y + d.y * near,
+                     o.x + d.x * Math.max(r - ext, 0),
+                     o.y + d.y * Math.max(r - ext, 0)]);
+    }
+  }
   const mid = a1 + sweep / 2;
   const sign = Math.sign(sweep) || 1;
   a2 = a1 + sweep;
+  const radial = { x: Math.cos(mid), y: Math.sin(mid) };
   return {
-    label: { x: o.x + (r + size) * Math.cos(mid), y: o.y + (r + size) * Math.sin(mid) },
+    label: { x: o.x + (r + size) * radial.x, y: o.y + (r + size) * radial.y },
+    along: { x: o.x + r * radial.x, y: o.y + r * radial.y },
+    normal: radial,
     segments,
     arrows: [
       { x: o.x + r * Math.cos(a1), y: o.y + r * Math.sin(a1),
@@ -170,7 +285,9 @@ function angleDim(l1, l2, size) {
  * prévu, seul le libellé est placé (ancrage historique).
  */
 export function dimGeometry(dim, constraint, entities, size = 2) {
-  const byId = (id) => (entities ?? []).find((e) => e.id === id) ?? null;
+  // -1 : l'origine de l'esquisse, un point (cote depuis l'origine).
+  const byId = (id) => (id === -1 ? ORIGIN
+    : (entities ?? []).find((e) => e.id === id) ?? null);
   const fallback = () => {
     const anchor = sketchDimAnchor(dim, entities);
     return anchor ? { label: anchor, segments: [], arrows: [] } : null;
@@ -178,18 +295,23 @@ export function dimGeometry(dim, constraint, entities, size = 2) {
   const [g1, g2] = constraint?.geos ?? [dim.geo, null];
   const [p1, p2] = constraint?.pos ?? [0, 0];
   const e1 = byId(g1);
-  const e2 = g2 != null && g2 >= 0 ? byId(g2) : null;
+  const e2 = g2 != null && g2 >= -1 ? byId(g2) : null;
   let out = null;
   if (dim.type === "Distance" && e1) {
     if (!e2 && e1.type === "line" && !p1) {
-      out = alignedDim(pointOf(e1, 1), pointOf(e1, 2), entities, size);
+      out = alignedDim(pointOf(e1, 1), pointOf(e1, 2), entities, size,
+        dim.offset);
     } else if (e2 && p1 && p2) {
       const a = pointOf(e1, p1), b = pointOf(e2, p2);
-      if (a && b) out = alignedDim(a, b, entities, size);
+      if (a && b) out = alignedDim(a, b, entities, size, dim.offset);
     } else if (e2 && p1 && e2.type === "line") {
       const a = pointOf(e1, p1);
       if (a) out = directDim(a, projectOnLine(a, e2), size);
     }
+  } else if ((dim.type === "DistanceX" || dim.type === "DistanceY")
+             && e1 && e2 && p1 && p2) {
+    const a = pointOf(e1, p1), b = pointOf(e2, p2);
+    if (a && b) out = axisDim(a, b, dim.type, size, dim.offset);
   } else if ((dim.type === "Radius" || dim.type === "Diameter")
              && e1?.c && e1.r != null) {
     const dir = radialDirection(e1);
@@ -216,22 +338,56 @@ export function dimGeometry(dim, constraint, entities, size = 2) {
     }
   } else if (dim.type === "Angle" && e1?.type === "line"
              && e2?.type === "line") {
-    out = angleDim(e1, e2, size);
+    out = angleDim(e1, e2, size, dim.offset);
   }
   return out ?? fallback();
 }
 
-/** Les deux traits d'une pointe de flèche, en segments. */
-export function arrowSegments(arrow, length) {
-  const segs = [];
-  for (const sign of [1, -1]) {
-    const a = Math.PI * (1 - sign * 0.14);
-    const cos = Math.cos(a), sin = Math.sin(a);
-    const bx = arrow.dx * cos - arrow.dy * sin;
-    const by = arrow.dx * sin + arrow.dy * cos;
-    segs.push([arrow.x, arrow.y, arrow.x + bx * length, arrow.y + by * length]);
+/**
+ * Décalage qu'aurait la cote si sa ligne passait par `at` (coordonnées de
+ * l'esquisse) — le même calcul que le moteur à la pose : depuis le premier
+ * point, au-dessus pour une horizontale, à droite pour une verticale, sur
+ * la normale A→B pour une alignée. null : cote qui ne se déplace pas ainsi
+ * (diamètre, rayon, angle, point → ligne).
+ */
+export function dimOffsetAt(dim, constraint, entities, at) {
+  const byId = (id) => (id === -1 ? ORIGIN
+    : (entities ?? []).find((e) => e.id === id) ?? null);
+  const [g1, g2] = constraint?.geos ?? [dim.geo, null];
+  const [p1, p2] = constraint?.pos ?? [0, 0];
+  const e1 = byId(g1);
+  if (dim.type === "Angle") {
+    // Angle : le rayon de l'arc, depuis le point de rencontre.
+    const e2 = byId(g2);
+    if (e1?.type !== "line" || e2?.type !== "line") return null;
+    const o = lineIntersection(e1, e2);
+    return o ? Math.hypot(at.x - o.x, at.y - o.y) : null;
   }
-  return segs;
+  let a = null, b = null;
+  if (g2 == null && e1?.type === "line" && !p1) {
+    a = pointOf(e1, 1);
+    b = pointOf(e1, 2);
+  } else if (g2 != null && p1 && p2) {
+    a = pointOf(e1, p1);
+    b = pointOf(byId(g2), p2);
+  }
+  if (!a || !b) return null;
+  if (dim.type === "DistanceX") return at.y - a.y;
+  if (dim.type === "DistanceY") return at.x - a.x;
+  if (dim.type !== "Distance") return null;
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  if (length < 1e-12) return null;
+  return ((at.x - a.x) * -(b.y - a.y) + (at.y - a.y) * (b.x - a.x)) / length;
+}
+
+/** Pointe de flèche pleine : triangle (x, y) × 3, la pointe d'abord.
+ *  `length` le long de la flèche, `halfWidth` de part et d'autre. */
+export function arrowTriangle(arrow, length, halfWidth) {
+  const bx = arrow.x - arrow.dx * length;
+  const by = arrow.y - arrow.dy * length;
+  return [arrow.x, arrow.y,
+          bx - arrow.dy * halfWidth, by + arrow.dx * halfWidth,
+          bx + arrow.dy * halfWidth, by - arrow.dx * halfWidth];
 }
 
 /** Position 2D d'une cote d'esquisse, dans le plan de l'esquisse. */

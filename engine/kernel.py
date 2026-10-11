@@ -267,6 +267,9 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
         self._doc = None
         self._body = None
         self._assembly = False  # le document courant est un assemblage
+        # Modifié depuis le dernier « nouveau / ouvrir / enregistrer » :
+        # le client demande confirmation avant de l'abandonner.
+        self._modified = False
         # Langue de l'interface (posée par le serveur à chaque requête) :
         # les libellés que le noyau écrit dans le document la suivent.
         self.lang = "fr"
@@ -333,6 +336,12 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
         doc = self._require_doc()
         self._sync_revolution_axes()
         doc.recompute()
+        # Formes figées (suppression de face) : elles suivent les
+        # fonctions d'avant, une passe par niveau d'imbrication.
+        for _ in range(8):
+            if not self._refresh_frozen_shapes():
+                break
+            doc.recompute()
         if not self._assembly:
             self._report_progress("Reconstruction de l'arbre")
             self._plugins.run_after_recompute(self)
@@ -617,6 +626,11 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
             return doc.getMaxUndoStackSize()
         return None
 
+    def document_status(self):
+        """État du document pour le client : ouvert, modifié depuis le
+        dernier enregistrement (ou depuis sa création / son ouverture)."""
+        return {"open": self._doc is not None, "modified": self._modified}
+
     def new_part(self, name=None):
         App = self._app()
         self._close_current()
@@ -735,6 +749,9 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
         "add_mirror", "add_linear_pattern", "add_polar_pattern",
         "add_hole", "set_params",
         "add_loft", "add_sweep", "add_helix", "add_boolean", "add_text",
+        "add_datum_plane", "add_surface_cut", "add_delete_face",
+        "add_replace_face",
+        "surface_delete_faces",
     })
 
     def preview(self, op, params):
@@ -752,8 +769,18 @@ class Kernel(TreeMixin, SolidsMixin, SketchMixin, EquationsMixin, FilesMixin, Gr
             raise KernelError("params doit être un objet JSON")
         doc.openTransaction("freesolid-preview")
         self._previewing = True
+        planes = {o.Name for o in doc.Objects
+                  if o.TypeId == "PartDesign::Plane"}
         try:
             getattr(self, op)(**params)
+            if op == "add_datum_plane":
+                # Un plan ne change pas le solide : on renvoie où il se pose.
+                made = [o for o in doc.Objects
+                        if o.TypeId == "PartDesign::Plane"
+                        and o.Name not in planes]
+                if not made:
+                    raise KernelError("plan de référence introuvable")
+                return {"plane": list(made[-1].Placement.Matrix.A)}
             return self.tessellate()
         finally:
             self._previewing = False
@@ -788,14 +815,26 @@ _TRANSACTIONAL = frozenset({
     "add_body", "add_boolean", "set_body_color",
     "insert_component", "move_component", "add_joint", "solve_assembly",
     "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
-    "surface_thicken", "add_curve3d", "sketch_convert", "add_text",
+    "surface_thicken", "add_curve3d", "edit_curve3d", "surface_planar",
+    "surface_sweep", "surface_offset", "surface_fill", "surface_extend",
+    "edit_surface_extend", "surface_trim", "edit_surface_trim",
+    "add_surface_cut", "edit_surface_cut", "surface_boundary",
+    "add_delete_face", "add_replace_face",
+    "surface_ruled", "surface_delete_faces", "surface_untrim",
+    "surface_fillet", "curve_intersection", "curve_project",
+    "curve_composite", "edit_surface_fillet", "surface_split",
+    "curve_helix", "surface_radiate", "surface_mid", "surface_flatten",
+    "surface_freeform", "edit_surface_freeform",
+    "sketch_convert", "add_text",
     "edit_text", "add_graph_feature", "edit_graph_feature",
     "add_repeat_feature", "edit_repeat_feature", "make_drawing",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
     "set_tip", "tip_to_end", "delete_feature",
-    "sketch_start", "sketch_add_line", "sketch_add_circle", "sketch_dim",
-    "sketch_set_dim", "sketch_delete_geo", "sketch_finish",
+    "sketch_start", "sketch_add_line", "sketch_add_rectangle",
+    "sketch_add_circle", "sketch_dim",
+    "sketch_set_dim", "sketch_place_dim", "sketch_delete_geo",
+    "sketch_finish",
     "sketch_toggle_construction",
     "sketch_add_arc", "sketch_add_slot", "sketch_add_polygon",
     "sketch_fillet", "sketch_trim", "sketch_constrain",
@@ -803,6 +842,19 @@ _TRANSACTIONAL = frozenset({
     "sketch_array", "sketch_offset", "array_component",
     "set_component_grounded", "reorder_feature",
 })
+
+
+#: Ops qui laissent un document « propre » : neuf, ouvert ou enregistré.
+_CLEAN_OPS = frozenset({"new_part", "new_assembly", "open_part", "save_part"})
+#: Ops qui changent le document hors transaction.
+_DIRTY_OPS = frozenset({"undo", "redo", "sketch_move"})
+
+
+def _track_modified(kernel, op):
+    if op in _CLEAN_OPS:
+        kernel._modified = False
+    elif op in _DIRTY_OPS or _transactional(kernel, op):
+        kernel._modified = True
 
 
 def _abort(doc):
@@ -850,4 +902,5 @@ def dispatch(kernel: Kernel, op: str, params: dict):
             doc.commitTransaction()
         except Exception:
             pass
+    _track_modified(kernel, op)
     return protocol.ok(result)

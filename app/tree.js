@@ -48,9 +48,32 @@ export const TREE_ICONS = {
   "App::Link": "insert",
 };
 
+// Icônes des surfaces dans l'arbre, par type d'objet.
+const SURFACE_ICONS = {
+  "Part::Extrusion": "surface_extrude",
+  "Part::Revolution": "surface_revolve",
+  "Part::Loft": "surface_loft",
+  "Part::Sweep": "surface_sweep",
+  "Part::Face": "surface_planar",
+  "Part::Offset": "surface_offset",
+  "Surface::Filling": "surface_fill",
+  "Surface::Extend": "surface_extend",
+  "Part::FeaturePython": "surface_trim",
+  "Surface::GeomFillSurface": "surface_boundary",
+  "Part::RuledSurface": "surface_ruled",
+  "Part::Fillet": "surface_fillet",
+  "Part::Section": "curve_intersection",
+  "Part::ProjectOnSurface": "curve_project",
+  "PartDesign::SubShapeBinder": "curve_composite",
+  "Part::Helix": "nodes_helix",
+  "Part::Offset2D": "surface_radiate",
+};
+
 export const PROP_LABELS = {
   Length: ["Profondeur", "mm"],
   LengthFwd: ["Longueur", "mm"],
+  Pitch: ["Pas", "mm"],
+  Height: ["Hauteur", "mm"],
   Radius: ["Rayon", "mm"],
   Size: ["Distance", "mm"],
   Angle: ["Angle", "°"],
@@ -537,6 +560,17 @@ export function installTree(ctx) {
     treeEl.appendChild(bodyItem);
   }
 
+  function surfaceIcon(surface) {
+    if (isGraphFeature(surface)) return "graph_feature";
+    if (surface.curve) return "spline3d";
+    if (surface.surface?.kind === "untrim") return "surface_untrim";
+    if (surface.surface?.kind === "deleteface") return "surface_delete_face";
+    if (surface.surface?.kind === "split") return "surface_split";
+    if (surface.surface?.kind === "flatten") return "surface_flatten";
+    if (surface.surface?.kind === "freeform") return "surface_freeform";
+    return SURFACE_ICONS[surface.type] ?? "surface_body";
+  }
+
   function appendSurfaceRow(surface, { inFolder = true, rolledBack = false } = {}) {
     const item = document.createElement("li");
     item.className = "surface" + (inFolder ? " in-folder" : "")
@@ -560,9 +594,13 @@ export function installTree(ctx) {
       });
     }
     item.appendChild(arrow);
-    item.appendChild(treeIcon(
-      isGraphFeature(surface) ? "graph_feature" : "surface_body"));
+    item.appendChild(treeIcon(surfaceIcon(surface)));
     item.appendChild(document.createTextNode(surface.label));
+    if (surface.consumed) {
+      // Remplacée par une autre (ajustée, prolongée, épaissie, cousue) :
+      // gardée dans l'historique, plus affichée.
+      item.classList.add("consumed");
+    }
     item.title = t("Surface / courbe — clic : sélectionner pour une " +
       "commande · double-clic : modifier · clic droit : modifier, " +
       "renommer, supprimer");
@@ -1015,7 +1053,10 @@ export function installTree(ctx) {
       ? "graph_feature"
       : isRepeatFeature(feature)
         ? "linear_pattern"
-        : TREE_ICONS[feature.type];
+        : feature.surface_cut ? "surface_cut"
+          : feature.delete_face ? "surface_delete_face"
+            : feature.replace_face ? "replace_face"
+            : TREE_ICONS[feature.type];
     if (icon) row.appendChild(treeIcon(icon));
     row.appendChild(document.createTextNode(
       feature.type === "Sketcher::SketchObject"
@@ -1104,6 +1145,30 @@ export function installTree(ctx) {
       enterGraphFeature(surface);
       return;
     }
+    if (surface.curve) {
+      ctx.openCurve3d(surface);
+      return;
+    }
+    if (surface.surface?.kind === "extend") {
+      editExtend(surface);
+      return;
+    }
+    if (surface.surface?.kind === "trim") {
+      editTrim(surface);
+      return;
+    }
+    if (surface.surface?.kind === "offset") {
+      editOffset(surface);
+      return;
+    }
+    if (surface.surface?.kind === "fillet") {
+      editSurfaceFillet(surface);
+      return;
+    }
+    if (surface.surface?.kind === "freeform") {
+      editFreeform(surface);
+      return;
+    }
     if (surface.static || surface.type === "Part::Feature") {
       say("Surface figée — non éditable");
       return;
@@ -1112,6 +1177,137 @@ export function installTree(ctx) {
       name: surface.name,
       label: surface.label,
       type: surface.type,
+    });
+  }
+
+  // Prolongement : la distance (et le bord d'origine) se rééditent.
+  function editExtend(surface) {
+    const spec = surface.surface;
+    panel.open({
+      icon: "surface_extend",
+      title: surface.label,
+      groups: [{
+        label: t("Paramètres"),
+        rows: [
+          { type: "number", key: "distance", label: t("Distance"),
+            value: spec.distance, unit: "mm", min: 0.01 },
+          { type: "check", key: "all", label: t("Tous les bords"),
+            value: spec.edge == null },
+        ],
+      }],
+      onApply: (v) => {
+        const distance = num(v.distance);
+        if (!(distance > 0)) {
+          say(t("Prolonger : une distance positive"), true);
+          return;
+        }
+        const params = { surface: surface.name, distance };
+        if (!v.all && spec.edge != null) params.edge = spec.edge;
+        refresh(call("edit_surface_extend", params));
+      },
+    });
+  }
+
+  // Coupe par surface : garder l'autre côté, avec l'aperçu.
+  function editSurfaceCut(feature) {
+    const spec = feature.surface_cut;
+    panel.open({
+      icon: "surface_cut",
+      title: feature.label,
+      groups: [{
+        label: t("Options"),
+        rows: [{ type: "check", key: "flip", label: t("Inverser le côté"),
+                 value: spec.flip }],
+      }],
+      onApply: (v) => {
+        if (!!v.flip === spec.flip) return;
+        refresh(call("edit_surface_cut",
+          { feature: feature.name, flip: !!v.flip }));
+      },
+    });
+  }
+
+  // Forme libre : hauteur et rayon d'influence.
+  function editFreeform(surface) {
+    const spec = surface.surface;
+    panel.open({
+      icon: "surface_freeform",
+      title: surface.label,
+      groups: [
+        { label: t("Points à pousser"),
+          rows: [{ type: "points", key: "pushes", value: spec.pushes,
+                   extra: { label: "Hauteur", value: 5 } }] },
+        { label: t("Paramètres"),
+          rows: [
+            { type: "number", key: "radius", label: t("Rayon d'influence"),
+              value: spec.radius, unit: "mm", min: 0.01 },
+            { type: "check", key: "keepEdges", label: t("Bords fixes"),
+              value: spec.keep_edges },
+          ] },
+      ],
+      onApply: (v) => {
+        const radius = num(v.radius);
+        const pushes = (v.pushes ?? []).filter((p) => p.length === 4);
+        if (!(radius > 0) || !pushes.length) return;
+        refresh(call("edit_surface_freeform", { surface: surface.name,
+          radius, pushes, keep_edges: !!v.keepEdges }));
+      },
+    });
+  }
+
+  // Congé de surface : son rayon.
+  function editSurfaceFillet(surface) {
+    panel.open({
+      icon: "surface_fillet",
+      title: surface.label,
+      groups: [{
+        label: t("Paramètres"),
+        rows: [{ type: "number", key: "radius", label: t("Rayon"),
+                 value: surface.surface.radius, unit: "mm", min: 0.01 }],
+      }],
+      onApply: (v) => {
+        const radius = num(v.radius);
+        if (!(radius > 0)) return;
+        refresh(call("edit_surface_fillet",
+          { surface: surface.name, radius }));
+      },
+    });
+  }
+
+  // Surface décalée : sa distance (négative = de l'autre côté).
+  function editOffset(surface) {
+    panel.open({
+      icon: "surface_offset",
+      title: surface.label,
+      groups: [{
+        label: t("Paramètres"),
+        rows: [{ type: "number", key: "distance", label: t("Distance"),
+                 value: surface.surface.distance, unit: "mm" }],
+      }],
+      onApply: (v) => {
+        const distance = num(v.distance);
+        if (distance === null) return;
+        refresh(call("set_params", {
+          feature: surface.name, values: { Value: distance } }));
+      },
+    });
+  }
+
+  // Ajustement : garder l'autre partie (la partie écartée n'est plus
+  // visible, on ne peut pas la cliquer).
+  function editTrim(surface) {
+    panel.open({
+      icon: "surface_trim",
+      title: surface.label,
+      groups: [{
+        label: t("Partie à garder"),
+        rows: [{ type: "check", key: "other",
+                 label: t("Garder l'autre partie"), value: true }],
+      }],
+      onApply: (v) => {
+        if (!v.other) return;
+        refresh(call("edit_surface_trim", { surface: surface.name }));
+      },
     });
   }
 
@@ -1230,6 +1426,10 @@ export function installTree(ctx) {
           }));
         },
       });
+      return;
+    }
+    if (feature.surface_cut) {
+      editSurfaceCut(feature);
       return;
     }
     if (feature.type === "PartDesign::Chamfer" && feature.chamfer) {

@@ -106,6 +106,19 @@ describe("splitHistoryAroundBar", () => {
   });
 });
 
+describe("plan de référence", () => {
+  it("sans solide, il reste au-dessus de la barre, comme une esquisse", () => {
+    const features = [
+      feat("Sketch", 1, "Sketcher::SketchObject"),
+      feat("DatumPlane", 2, "PartDesign::Plane"),
+    ];
+    const split = splitHistoryAroundBar(features, [], null);
+    assert.deepEqual(split.before.map((row) => row.item.name),
+      ["Sketch", "DatumPlane"]);
+    assert.deepEqual(split.after, []);
+  });
+});
+
 describe("sketchTreeLabel", () => {
   it("préfixe (-) une esquisse encore libre, (+) une esquisse en trop", async () => {
     const { sketchTreeLabel } = await import("../../app/history.js");

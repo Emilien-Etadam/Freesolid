@@ -4,6 +4,7 @@
 
 import { t } from "./i18n.js";
 import { eventToNdc, ndcToScreen } from "./screen.js";
+import { snapFacePoint } from "./pointsnap.js";
 import { coordsText, measureText } from "./statusbar.js";
 import { boxMode, isDrag, normalizeRect, pickInBox } from "./navigation.js";
 import {
@@ -48,6 +49,20 @@ export function installPicking(ctx) {
     return hit?.object.userData.sketch ?? null;
   }
 
+  /** Arête de surface ou courbe 3D sous le pointeur. */
+  function pickBoundaryHit() {
+    if (!ctx.boundaryLines.length) return null;
+    raycaster.params.Line.threshold = linePickThreshold();
+    const hit = raycaster.intersectObjects(ctx.boundaryLines, false)[0];
+    if (!hit) return null;
+    const { name, label, curve, groups } = hit.object.userData.boundary;
+    const group = groups.find((g) => hit.index >= g.start
+      && hit.index < g.start + g.count);
+    if (!group) return null;
+    return { distance: hit.distance, point: hit.point,
+             boundary: { name, label, curve, edge: group.edgeId } };
+  }
+
   function pickHoveredSurfaceHit() {
     if (!ctx.surfaceMeshes.length) return null;
     return raycaster.intersectObjects(ctx.surfaceMeshes, false)[0] ?? null;
@@ -69,6 +84,11 @@ export function installPicking(ctx) {
   // Face hover: triangle index -> group -> engine faceId. By construction.
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
+  function worldToScreen(point) {
+    const ndc = new THREE.Vector3(point.x, point.y, point.z).project(camera);
+    return ndcToScreen(ndc.x, ndc.y, renderer.domElement.getBoundingClientRect());
+  }
+
   function setPointerFromEvent(event) {
     const rect = renderer.domElement.getBoundingClientRect();
     const ndc = eventToNdc(event.clientX, event.clientY, rect);
@@ -124,7 +144,8 @@ export function installPicking(ctx) {
       renderer.domElement.style.cursor = id ? "pointer" : "";
       return;
     }
-    if (!ctx.partMesh && !ctx.sketchLineMeshes.length && !ctx.surfaceMeshes.length) {
+    if (!ctx.partMesh && !ctx.sketchLineMeshes.length && !ctx.surfaceMeshes.length
+        && !ctx.boundaryLines.length) {
       coordsEl.textContent = "";
       return;
     }
@@ -137,6 +158,7 @@ export function installPicking(ctx) {
     let edgeGroupIndex = -1;
     let groupIndex = -1;
     let surfaceHit = null;
+    let boundaryHit = null;
     if (!sketchHit) {
       const faceHit = ctx.partMesh
         ? raycaster.intersectObject(ctx.partMesh)[0] : undefined;
@@ -157,7 +179,10 @@ export function installPicking(ctx) {
         groupIndex = ctx.meshGroups.findIndex(
           (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
       }
-      const surfHit = pickHoveredSurfaceHit();
+      // Un panneau qui attend une face du solide voit à travers les
+      // surfaces (remplacer une face recouverte par sa surface).
+      const throughSurfaces = panel.needs("face") && (faceHit || edgeHit);
+      const surfHit = throughSurfaces ? null : pickHoveredSurfaceHit();
       let pointHit = edgeGroupIndex >= 0 ? edgeHit : faceHit;
       if (surfHit) {
         const solidHit = edgeGroupIndex >= 0 ? edgeHit : faceHit;
@@ -168,23 +193,44 @@ export function installPicking(ctx) {
           pointHit = surfHit;
         }
       }
+      // Un bord (arête de surface, courbe 3D) gagne sur ce qu'il borde,
+      // à la même tolérance qu'une arête du solide.
+      const bound = throughSurfaces ? null : pickBoundaryHit();
+      if (bound) {
+        const { radius } = ctx.partMesh ? ctx.partCenterRadius()
+          : { radius: 50 };
+        if (!pointHit || bound.distance <= pointHit.distance + radius * 0.02) {
+          boundaryHit = bound.boundary;
+          surfaceHit = null;
+          groupIndex = -1;
+          edgeGroupIndex = -1;
+          pointHit = bound;
+        }
+      }
       // Barre d'état : coordonnées du point visé sur la pièce.
       coordsEl.textContent = coordsText(pointHit?.point ?? null);
     }
     const surfaceName = surfaceHit?.name ?? null;
+    const boundaryKey = boundaryHit
+      ? `${boundaryHit.name}:${boundaryHit.edge}` : null;
+    const hoveredKey = ctx.hoveredBoundary
+      ? `${ctx.hoveredBoundary.name}:${ctx.hoveredBoundary.edge}` : null;
     if (groupIndex !== ctx.hoveredGroup || edgeGroupIndex !== ctx.hoveredEdgeGroup
         || sketchHit?.name !== ctx.hoveredSketch?.name
-        || surfaceName !== ctx.hoveredSurface?.name) {
+        || surfaceName !== ctx.hoveredSurface?.name
+        || boundaryKey !== hoveredKey) {
       ctx.hoveredGroup = groupIndex;
       ctx.hoveredEdgeGroup = edgeGroupIndex;
       ctx.hoveredSketch = sketchHit;
       ctx.hoveredSurface = surfaceHit;
+      ctx.hoveredBoundary = boundaryHit;
       renderer.domElement.style.cursor =
         groupIndex >= 0 || edgeGroupIndex >= 0 || sketchHit || surfaceHit
-          ? "pointer" : "";
+          || boundaryHit ? "pointer" : "";
       repaintGroups();
       repaintEdges();
       repaintSurfaces();
+      ctx.repaintBoundaries();
     }
   }
 
@@ -198,6 +244,10 @@ export function installPicking(ctx) {
     const parts = [];
     if (ctx.hoveredSketch) {
       parts.push(ctx.hoveredSketch.label);
+    } else if (ctx.hoveredBoundary) {
+      const b = ctx.hoveredBoundary;
+      parts.push(b.curve ? b.label
+        : `${b.label} · ${t("Arête {n}", { n: b.edge })}`);
     } else if (ctx.hoveredSurface) {
       parts.push(ctx.hoveredSurface.label);
     } else if (ctx.hoveredEdgeGroup >= 0) {
@@ -252,14 +302,15 @@ export function installPicking(ctx) {
   }
 
   renderer.domElement.addEventListener("pointerdown", (event) => {
-    if (ctx.sketchMode.active) return;
+    // L'esquisse et la spline 3D gèrent leurs propres clics.
+    if (ctx.sketchMode.active || ctx.curveTool?.active) return;
     pressPosition = { x: event.clientX, y: event.clientY };
     if (!ctx.assemblyState
         && (hoverAt?.x !== event.clientX || hoverAt?.y !== event.clientY)) {
       updateHover(event);
     }
     const nothingHovered = ctx.hoveredGroup < 0 && ctx.hoveredEdgeGroup < 0
-      && !ctx.hoveredSketch && !ctx.hoveredSurface;
+      && !ctx.hoveredSketch && !ctx.hoveredSurface && !ctx.hoveredBoundary;
     boxStart = event.button === 0 && nothingHovered && !ctx.assemblyState
       && !ctx.planePicking && !ctx.measuring && ctx.partEdges
       ? { x: event.clientX, y: event.clientY } : null;
@@ -268,7 +319,7 @@ export function installPicking(ctx) {
     ctx.pluginRuntime?.dispatchPointer("down", event, pointerCtx());
   });
   renderer.domElement.addEventListener("pointerup", (event) => {
-    if (ctx.sketchMode.active) return;
+    if (ctx.sketchMode.active || ctx.curveTool?.active) return;
     if (pluginSeesPointer()) {
       setPointerFromEvent(event);
       if (ctx.pluginRuntime?.dispatchPointer("up", event, pointerCtx())) {
@@ -342,6 +393,27 @@ export function installPicking(ctx) {
       return;
     }
 
+    if (ctx.hoveredBoundary) {
+      const b = ctx.hoveredBoundary;
+      ctx.selectedFaceId = null;
+      ctx.selectedEdges = new Set();
+      clearPlaneChoice();
+      ctx.clearSketchSelection({ quiet: true });
+      repaintGroups();
+      repaintEdges();
+      // Un panneau qui attend des bords les prend ; sinon le clic choisit
+      // l'objet entier (la courbe, la surface), comme dans l'arbre. Si la
+      // première case vide attend une surface, l'arête la désigne.
+      const wanted = panel.firstNeeded(["boundary", "surface"]);
+      if (wanted === "surface") {
+        ctx.onSurfaceClick({ name: b.name, label: b.label });
+        return;
+      }
+      if (panel.notifyPick("boundary", { kind: "boundary", ...b })) return;
+      ctx.onSurfaceClick({ name: b.name, label: b.label });
+      return;
+    }
+
     if (ctx.hoveredSurface) {
       ctx.selectedFaceId = null;
       ctx.selectedEdges = new Set();
@@ -349,12 +421,52 @@ export function installPicking(ctx) {
       ctx.clearSketchSelection({ quiet: true });
       repaintGroups();
       repaintEdges();
+      // Une face précise de la surface (supprimer, projeter, désajuster).
+      if (panel.accepts("surfface")) {
+        raycaster.setFromCamera(pointer, camera);
+        const hit = pickHoveredSurfaceHit();
+        const groups = hit?.object.userData.groups ?? [];
+        const at = hit ? hit.faceIndex * 3 : -1;
+        const group = groups.find((g) => at >= g.start && at < g.start + g.count);
+        if (hit && panel.notifyPick("surfface", {
+          kind: "surfface", ...ctx.hoveredSurface,
+          face: group?.faceId ?? 0 })) return;
+      }
+      // Forme libre : une fois la surface choisie, chaque clic ajoute un
+      // point à pousser.
+      if (panel.accepts("point3d") && !panel.needs("surface")) {
+        raycaster.setFromCamera(pointer, camera);
+        const hit = pickHoveredSurfaceHit();
+        const round = (v) => Math.round(v * 1000) / 1000;
+        if (hit && panel.notifyPick("point3d", { kind: "point3d",
+          x: round(hit.point.x), y: round(hit.point.y),
+          z: round(hit.point.z) })) return;
+      }
+      // Ajuster : une fois l'outil choisi, le clic désigne la partie
+      // gardée — la surface ET l'endroit cliqué.
+      if (panel.accepts("surfpoint") && !panel.needs("surface")) {
+        raycaster.setFromCamera(pointer, camera);
+        const hit = pickHoveredSurfaceHit();
+        const groups = hit?.object.userData.groups ?? [];
+        const at = hit ? hit.faceIndex * 3 : -1;
+        const group = groups.find((g) => at >= g.start && at < g.start + g.count);
+        if (hit && panel.notifyPick("surfpoint", {
+          kind: "surfpoint", ...ctx.hoveredSurface, face: group?.faceId ?? 0,
+          x: hit.point.x, y: hit.point.y, z: hit.point.z })) return;
+      }
       ctx.onSurfaceClick(ctx.hoveredSurface);
       return;
     }
 
     if (ctx.hoveredEdgeGroup >= 0) {
       const id = ctx.edgeGroups[ctx.hoveredEdgeGroup].edgeId;
+      // Remplissage : une arête du solide devient un bord du contour.
+      if (panel.accepts("boundary") && !panel.accepts("edges")
+          && panel.notifyPick("boundary", {
+            kind: "boundary", body: true, name: "body",
+            label: t("Solide"), edge: id })) {
+        return;
+      }
       if (event.ctrlKey || event.metaKey) {
         if (!ctx.selectedEdges.delete(id)) ctx.selectedEdges.add(id);
       } else {
@@ -398,8 +510,22 @@ export function installPicking(ctx) {
           normal: normal ? [normal.x, normal.y, normal.z] : null,
         };
       }
-      // A command panel with a selection box absorbs the pick.
-      panel.notifyPick("face", { kind: "face", face: ctx.selectedFaceId });
+      // A command panel with a selection box absorbs the pick : d'abord
+      // une zone de positions (le point cliqué), sinon une zone de faces.
+      // La position s'aimante au centre d'un cercle ou à un sommet tout
+      // proche : un perçage au centre d'un moyeu tombe juste.
+      const hit = ctx.lastFaceHit
+        && snapFacePoint(ctx.lastFaceHit, ctx.lastFaceHit.normal,
+          ctx.edgeSnaps, worldToScreen);
+      const tookPoint = hit && panel.notifyPick("point", {
+        kind: "point", face: ctx.selectedFaceId, x: hit.x, y: hit.y, z: hit.z });
+      if (tookPoint && hit.snapped) {
+        say(hit.snapped === "center"
+          ? t("Position au centre du cercle.") : t("Position sur le sommet."));
+      }
+      if (!tookPoint) {
+        panel.notifyPick("face", { kind: "face", face: ctx.selectedFaceId });
+      }
       if (event.button === 0) ctx.showContextToolbar(event);
     } else {
       ctx.lastFaceHit = null;

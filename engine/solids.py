@@ -359,9 +359,15 @@ class SolidsMixin:
 
     def _tip_with_helpers(self, obj):
         """Barre de retour sur une fonction : après sa cavité éventuelle."""
-        features = [h for h in self._thin_helpers(obj)
+        features = [h for h in self._thin_helpers(obj) + [obj]
                     if h.isDerivedFrom("PartDesign::Feature")]
-        return features[-1] if features else obj
+        if not features:
+            return obj
+        # La dernière dans le corps — un auxiliaire peut précéder sa
+        # fonction (ajout d'un remplacement de face mixte).
+        order = {o.Name: i for i, o in enumerate(
+            getattr(obj.getParentGeoFeatureGroup(), "Group", None) or [])}
+        return max(features, key=lambda o: order.get(o.Name, -1))
 
     def _sync_thin(self, obj):
         """Recopie les épaisseurs de la fonction dans ses liants."""
@@ -1268,12 +1274,17 @@ class SolidsMixin:
         return self.get_tree()
 
     def add_hole(self, diameter, depth=None, through=False, cut="none",
-                 cut_diameter=None, cut_depth=None, cut_angle=None):
-        """Perçage — version simple.
+                 cut_diameter=None, cut_depth=None, cut_angle=None,
+                 face=None, points=None):
+        """Perçage.
 
-        Le profil est la dernière esquisse non utilisée : ses cercles (un
-        par perçage) positionnent les trous ; le diamètre saisi remplace
-        le leur. Borgne ou à travers tout, lamage ou fraisage optionnel.
+        Avec ``face`` et ``points`` (les centres cliqués sur la face, en
+        coordonnées monde) : une esquisse est posée sur la face, un cercle
+        par point, et le perçage la consomme — le geste « face, clics,
+        OK ». Sinon le profil est la dernière esquisse non utilisée : ses
+        cercles positionnent les trous. Dans les deux cas le diamètre
+        saisi remplace celui des cercles. Borgne ou à travers tout,
+        lamage ou fraisage optionnel.
         """
         from engine.kernel import (
             KernelError,
@@ -1288,7 +1299,12 @@ class SolidsMixin:
                 "fraisage".format(cut))
         if float(diameter) <= 0:
             raise KernelError("le diamètre doit être positif")
-        profile = self._latest_sketch()
+        if points:
+            if face is None:
+                raise KernelError("perçage : la face des positions manque")
+            profile = self._hole_positions_sketch(face, points, diameter)
+        else:
+            profile = self._latest_sketch()
         hole = body.newObject("PartDesign::Hole", "Hole")
         hole.Profile = profile
         hole.Threaded = False
@@ -1313,5 +1329,29 @@ class SolidsMixin:
             self._recompute()
         except KernelError:
             doc.removeObject(hole.Name)
+            if points:
+                doc.removeObject(profile.Name)
             raise
         return self.get_tree()
+
+    def _hole_positions_sketch(self, face, points, diameter):
+        """Esquisse sur ``face`` avec un cercle par point (monde → plan)."""
+        from engine.kernel import KernelError
+        import Part
+        body = self._require_body()
+        doc = self._require_doc()
+        sketch = doc.addObject("Sketcher::SketchObject", "Sketch")
+        body.addObject(sketch)
+        sketch.Label = self._t("Esquisse")
+        self._attach_to_face(sketch, face)
+        sketch.recompute()
+        V = self._app().Vector
+        to_local = sketch.getGlobalPlacement().inverse()
+        for point in points:
+            if not isinstance(point, (list, tuple)) or len(point) != 3:
+                doc.removeObject(sketch.Name)
+                raise KernelError("perçage : une position est [x, y, z]")
+            local = to_local.multVec(V(*(float(c) for c in point)))
+            sketch.addGeometry(Part.Circle(
+                V(local.x, local.y, 0), V(0, 0, 1), float(diameter) / 2), False)
+        return sketch

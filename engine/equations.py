@@ -15,7 +15,7 @@ class EquationsMixin:
                        "Thickness", "Thickness2", "CapThickness", "Value",
                        "Occurrences",
                        "Diameter", "Depth", "HoleCutDiameter",
-                       "HoleCutDepth")
+                       "HoleCutDepth", "Pitch", "Height")
 
     _VARSET_NAME = "Variables"
 

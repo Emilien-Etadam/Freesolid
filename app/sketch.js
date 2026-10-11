@@ -20,28 +20,50 @@ import {
   boxMode, isDrag, normalizeRect, pickInBox, sketchLocalPoints,
 } from "./navigation.js";
 import {
-  arrowSegments, dimEditPayload, dimGeometry, dimLabel, openDimEditor,
+  arrowTriangle, dimEditPayload, dimGeometry, dimLabel, dimOffsetAt,
+  openDimEditor, pointPairDimKind, pointPairDimPath,
 } from "./dims.js";
 
 const sceneTheme = readScene();
 
+/** Hauteur du texte d'une cote à l'écran, en pixels CSS. */
+export const DIM_TEXT_PX = 12;
+// Le canevas est dessiné 4 fois plus grand : texte net une fois réduit.
+const DIM_TEXT_OVERSAMPLE = 4;
+/** Hauteur de l'étiquette (texte + marge) rapportée à celle du texte. */
+const DIM_LABEL_RATIO = 1.4;
+
+/** Étiquette de cote : le texte seul, à sa longueur, cerné d'un halo de la
+ *  couleur du fond pour rester lisible sur un trait ou une face — pas de
+ *  pavé. `userData.aspect` : largeur / hauteur, pour la mise à l'échelle. */
 export function createDimSprite(text, x, y, z = 0.01, color = cssHex(sceneTheme.dim)) {
+  const k = DIM_TEXT_OVERSAMPLE;
+  const font = `500 ${DIM_TEXT_PX * k}px system-ui, sans-serif`;
   const canvas = document.createElement("canvas");
-  canvas.width = 256; canvas.height = 40;
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = cssRgba(sceneTheme.bg, 0.85);
-  ctx.fillRect(0, 0, 256, 40);
-  ctx.font = "22px system-ui";
-  ctx.fillStyle = color;
+  ctx.font = font;
+  const pad = 4 * k;
+  canvas.width = Math.ceil(ctx.measureText(text).width) + pad * 2;
+  canvas.height = Math.round(DIM_TEXT_PX * DIM_LABEL_RATIO * k);
+  ctx.font = font; // un canevas redimensionné oublie sa police
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(text, 128, 21);
-  const material = new THREE.SpriteMaterial({
-    map: new THREE.CanvasTexture(canvas), depthTest: false });
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 3 * k;
+  ctx.strokeStyle = cssRgba(sceneTheme.bg, 0.75);
+  ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
+  ctx.fillStyle = color;
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  const material = new THREE.SpriteMaterial({ map: texture, depthTest: false });
   material.userData.own = true;
   const sprite = new THREE.Sprite(material);
+  sprite.userData.aspect = canvas.width / canvas.height;
   sprite.position.set(x, y, z);
-  sprite.scale.set(26, 4.1, 1);
+  // Cotes de fonction en 3D : hauteur en unités du modèle.
+  sprite.scale.set(3.2 * sprite.userData.aspect, 3.2, 1);
   return sprite;
 }
 
@@ -68,6 +90,9 @@ function createGlyphSprite(text) {
   return new THREE.Sprite(material);
 }
 
+/** Le point racine du moteur : l'origine de l'esquisse (point 1). */
+const ORIGIN_GEO = -1;
+
 export function createSketchMode(deps) {
   const { scene, camera, renderer, controls, call, say, refresh, panel,
     boxOverlay, hideContextToolbar } = deps;
@@ -81,28 +106,36 @@ export function createSketchMode(deps) {
   // Couleur = état de définition de l'entité (moteur : entity.status) :
   // bleu = encore libre, clair = entièrement définie, rouge = en trop.
   const STATUS_COLORS = { under: sceneTheme.under, full: sceneTheme.defined, over: sceneTheme.danger };
+  // « transparent » partout : la pièce l'est (estompage de l'aperçu), donc
+  // dessinée dans la passe transparente — un trait opaque passerait avant
+  // elle et resterait caché par le solide (esquisse sur un plan qui le
+  // traverse). Dans la même passe, l'ordre 20 du groupe le met devant.
+  const ON_TOP = { depthTest: false, transparent: true };
   const lineMaterials = {};
   const constructionMaterials = {};
   for (const [status, color] of Object.entries(STATUS_COLORS)) {
-    lineMaterials[status] = new THREE.LineBasicMaterial(
-      { color, depthTest: false });
+    lineMaterials[status] = new THREE.LineBasicMaterial({ color, ...ON_TOP });
     // Construction : en tirets et estompée, comme partout.
     constructionMaterials[status] = new THREE.LineDashedMaterial({
       color, dashSize: 2.5, gapSize: 1.8, depthTest: false,
       transparent: true, opacity: 0.6 });
   }
   const previewMaterial = new THREE.LineBasicMaterial(
-    { color: sceneTheme.accent, depthTest: false });
+    { color: sceneTheme.accent, ...ON_TOP });
   const selectedMaterial = new THREE.LineBasicMaterial(
-    { color: sceneTheme.selection, depthTest: false });
+    { color: sceneTheme.selection, ...ON_TOP });
   // Cotes : lignes d'attache, ligne de cote et flèches. Pilotante en bleu
   // clair, de référence (pilotée) en gris.
   const dimLineMaterial = new THREE.LineBasicMaterial(
-    { color: sceneTheme.dim, depthTest: false });
+    { color: sceneTheme.dim, ...ON_TOP });
   const drivenDimLineMaterial = new THREE.LineBasicMaterial(
-    { color: sceneTheme.ink2, depthTest: false });
+    { color: sceneTheme.ink2, ...ON_TOP });
+  const dimTipMaterial = new THREE.MeshBasicMaterial(
+    { color: sceneTheme.dim, side: THREE.DoubleSide, ...ON_TOP });
+  const drivenDimTipMaterial = new THREE.MeshBasicMaterial(
+    { color: sceneTheme.ink2, side: THREE.DoubleSide, ...ON_TOP });
   const pointMaterial = new THREE.PointsMaterial({
-    color: sceneTheme.accent, size: 7, sizeAttenuation: false, depthTest: false });
+    color: sceneTheme.accent, size: 7, sizeAttenuation: false, ...ON_TOP });
   group.renderOrder = 20;
 
   const mode = {
@@ -121,6 +154,10 @@ export function createSketchMode(deps) {
     pendingPoly: null,    // { sides, c? } — centre puis sommet
     pendingFillet: null,  // { geo, x, y } — première ligne cliquée
     pendingDim: null,     // { geo, point? } — première entité cotée
+    pendingDimPair: null, // deux points choisis, la cote attend sa place
+    dimDrag: null,        // cote saisie par son étiquette, en déplacement
+    filletRadius: 3,      // rayon du congé d'esquisse (panneau de l'outil)
+    polygonSides: 6,      // côtés du polygone (panneau de l'outil)
     selection: [],        // [{ geo, point? }] — outil Sélectionner
     justDragged: false,   // un drag qui finit ne doit pas sélectionner
     drag: null,           // { geo, point } while dragging
@@ -190,8 +227,16 @@ export function createSketchMode(deps) {
     return ndcToScreen(projected.x, projected.y, rect);
   }
 
+  /** Unité de tracé des cotes : suit le zoom, taille constante à l'écran. */
+  function dimDrawSize() {
+    return (camera.top - camera.bottom) / (camera.zoom || 1) * 0.02;
+  }
+
   function* endpoints() {
     for (const entity of mode.state?.entities ?? []) {
+      if (entity.type === "point") {
+        yield { geo: entity.id, point: 1, x: entity.p1[0], y: entity.p1[1] };
+      }
       if (entity.type === "line" || entity.type === "arc") {
         yield { geo: entity.id, point: 1, x: entity.p1[0], y: entity.p1[1] };
         yield { geo: entity.id, point: 2, x: entity.p2[0], y: entity.p2[1] };
@@ -202,11 +247,19 @@ export function createSketchMode(deps) {
     }
   }
 
+  // Points d'accrochage : les extrémités et centres, plus l'origine de
+  // l'esquisse — on démarre souvent un profil dessus (le moteur en fait une
+  // coïncidence). L'origine ne se glisse pas : overEndpoint ne la voit pas.
+  function* snapPoints() {
+    yield* endpoints();
+    yield { geo: ORIGIN_GEO, point: 1, x: 0, y: 0 };
+  }
+
   function snap(local, event) {
     // Endpoint snap first (screen-space), then axis snap along the chain,
     // then inference lines: alignment on any existing point (a guide only,
     // no relation is created for it).
-    for (const p of endpoints()) {
+    for (const p of snapPoints()) {
       const s = toScreen(p.x, p.y);
       if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < SNAP_PX) {
         return { x: p.x, y: p.y, onPoint: p, guides: [], hv: null };
@@ -232,7 +285,7 @@ export function createSketchMode(deps) {
     const s0 = toScreen(0, 0), s1 = toScreen(1, 0);
     const tol = (SNAP_PX * 0.7) / (Math.hypot(s1.x - s0.x, s1.y - s0.y) || 1);
     let alignX = null, alignY = null;
-    for (const p of endpoints()) {
+    for (const p of snapPoints()) {
       if (mode.chain && p.x === mode.chain.x && p.y === mode.chain.y) continue;
       if (!alignX && hv !== "V" && Math.abs(p.x - x) < tol) alignX = p;
       if (!alignY && hv !== "H" && Math.abs(p.y - y) < tol) alignY = p;
@@ -253,7 +306,7 @@ export function createSketchMode(deps) {
     color: sceneTheme.under, dashSize: 1.5, gapSize: 1.2, depthTest: false,
     transparent: true, opacity: 0.8 });
   const snapMaterial = new THREE.PointsMaterial({
-    color: sceneTheme.selection, size: 11, sizeAttenuation: false, depthTest: false });
+    color: sceneTheme.selection, size: 11, sizeAttenuation: false, depthTest: false, transparent: true });
   let inferLines = null;
   let snapPoint = null;
   let readoutEl = null;
@@ -569,6 +622,8 @@ export function createSketchMode(deps) {
         circle.renderOrder = 20;
         group.add(circle);
         points.push(entity.c);
+      } else if (entity.type === "point") {
+        points.push(entity.p1);
       } else if (entity.type === "poly" && entity.points?.length > 1) {
         // Splines, ellipses, coniques : le serveur envoie la polyligne.
         const pts = entity.points.map(
@@ -583,10 +638,12 @@ export function createSketchMode(deps) {
     // Origine de l'esquisse : deux flèches courtes, à taille d'écran.
     const span = (camera.top - camera.bottom) / (camera.zoom || 1);
     const size = span * 0.035;
+    const originSelected = mode.selection.some((s) => s.geo === ORIGIN_GEO);
     for (const [dx, dy] of [[1, 0], [0, 1]]) {
       const arrow = new THREE.ArrowHelper(
         new THREE.Vector3(dx, dy, 0), new THREE.Vector3(0, 0, 0),
-        size, sceneTheme.axisX, size * 0.3, size * 0.18);
+        size, originSelected ? sceneTheme.accent : sceneTheme.axisX,
+        size * 0.3, size * 0.18);
       arrow.traverse((obj) => {
         if (obj.material) {
           obj.material.transparent = true;
@@ -617,16 +674,28 @@ export function createSketchMode(deps) {
     }
 
     // L'unité de tracé suit le zoom : la cote garde sa taille à l'écran.
-    const dimSize = span * 0.02;
+    const dimSize = dimDrawSize();
+    // Un pixel d'écran, en unités de l'esquisse.
+    const px = span / Math.max(renderer.domElement.clientHeight, 1);
     for (const dim of mode.state.dims) {
       const constraint = (mode.state.constraints ?? [])
         .find((c) => c.id === dim.id);
       const shape = dimGeometry(dim, constraint, mode.state.entities, dimSize);
       if (!shape) continue;
-      const segments = [
-        ...shape.segments,
-        ...shape.arrows.flatMap((a) => arrowSegments(a, dimSize * 0.9)),
-      ];
+      const segments = shape.segments;
+      if (shape.arrows.length) {
+        // Pointes pleines et fines, à taille d'écran (9 × 3 px).
+        const tips = new Float32Array(shape.arrows.flatMap((a) => {
+          const [x1, y1, x2, y2, x3, y3] = arrowTriangle(a, px * 9, px * 1.6);
+          return [x1, y1, 0, x2, y2, 0, x3, y3, 0];
+        }));
+        const tipGeometry = new THREE.BufferGeometry();
+        tipGeometry.setAttribute("position", new THREE.BufferAttribute(tips, 3));
+        const arrows = new THREE.Mesh(tipGeometry,
+          constraint?.driving === false ? drivenDimTipMaterial : dimTipMaterial);
+        arrows.renderOrder = 21;
+        group.add(arrows);
+      }
       if (segments.length) {
         const flat = new Float32Array(segments.flatMap(
           ([x1, y1, x2, y2]) => [x1, y1, 0, x2, y2, 0]));
@@ -639,8 +708,19 @@ export function createSketchMode(deps) {
         group.add(lines);
       }
       const sprite = createDimSprite(dimLabel(dim), shape.label.x, shape.label.y);
-      // Étiquette à taille d'écran constante (le canevas fait 256 × 40).
-      sprite.scale.set(span * 0.16, span * 0.16 * 40 / 256, 1);
+      // Étiquette à taille d'écran constante.
+      const labelHeight = px * DIM_TEXT_PX * DIM_LABEL_RATIO;
+      const labelWidth = labelHeight * sprite.userData.aspect;
+      sprite.scale.set(labelWidth, labelHeight, 1);
+      if (shape.along && shape.normal) {
+        // Juste à côté de sa ligne, sans la chevaucher : le texte est plus
+        // large que haut, une cote verticale l'écarte de sa demi-largeur.
+        const n = shape.normal;
+        const reach = Math.abs(n.x) * labelWidth / 2
+          + Math.abs(n.y) * labelHeight / 2 + px * 2;
+        sprite.position.set(shape.along.x + n.x * reach,
+                            shape.along.y + n.y * reach, 0.01);
+      }
       sprite.userData.dim = dim;
       sprite.renderOrder = 22;
       group.add(sprite);
@@ -664,8 +744,10 @@ export function createSketchMode(deps) {
     // Geometry ids may have shifted (trim, delete): stale picks lie,
     // unless the appelant garantit que les ids tiennent (move, cote…).
     const ids = new Set((state.entities ?? []).map((e) => e.id));
-    mode.selection = prevSelection.filter((s) => ids.has(s.geo));
+    mode.selection = prevSelection.filter(
+      (s) => ids.has(s.geo) || s.geo === ORIGIN_GEO);
     mode.pendingDim = null;
+    mode.pendingDimPair = null;
     mode.pendingFillet = null;
     mode.matrix.set(...state.placement);
     mode.inverse.copy(mode.matrix).invert();
@@ -709,7 +791,7 @@ export function createSketchMode(deps) {
     if (mode.tool === "line" && mode.chain) {
       const from = mode.chain;
       mode.chain = point.onPoint ? null : { x: point.x, y: point.y };
-      safe(call("sketch_add_line", { sketch: name,
+      await safe(call("sketch_add_line", { sketch: name,
         x1: from.x, y1: from.y, x2: point.x, y2: point.y }));
     } else if (mode.tool === "rect" && mode.pendingRect) {
       const a = mode.pendingRect;
@@ -726,7 +808,7 @@ export function createSketchMode(deps) {
       building = true;
       try {
         await addRectangle(name,
-          { x: 2 * c.x - point.x, y: 2 * c.y - point.y }, point);
+          { x: 2 * c.x - point.x, y: 2 * c.y - point.y }, point, true);
       } finally {
         building = false;
       }
@@ -734,7 +816,7 @@ export function createSketchMode(deps) {
       const c = mode.pendingCircle;
       mode.pendingCircle = null;
       const r = Math.hypot(point.x - c.x, point.y - c.y);
-      if (r > 0) safe(call("sketch_add_circle",
+      if (r > 0) await safe(call("sketch_add_circle",
         { sketch: name, cx: c.x, cy: c.y, r }));
     }
   }
@@ -798,7 +880,10 @@ export function createSketchMode(deps) {
       }
       if (mode.tool !== tool) return;
       clearInference();
+      if (previewLine) previewLine.visible = false;
+      const before = new Set((mode.state?.entities ?? []).map((e) => e.id));
       await placeDrawPoint({ ...target, onPoint: false });
+      await dimTyped(tool, before, a, b);
     };
     box.addEventListener("keydown", (event) => {
       event.stopPropagation();
@@ -814,6 +899,31 @@ export function createSketchMode(deps) {
     inputs[0].setSelectionRange(firstKey.length, firstKey.length);
   }
 
+  /** Les valeurs tapées deviennent des cotes de l'entité tracée : on a
+   *  donné la dimension exacte, l'esquisse la garde. */
+  async function dimTyped(tool, before, a, b) {
+    if (!mode.state) return;
+    const fresh = mode.state.entities.filter((e) => !before.has(e.id));
+    const sketch = mode.state.sketch;
+    const dims = [];
+    if (tool === "circle") {
+      const circle = fresh.find((e) => e.type === "circle");
+      if (circle && a > 0) dims.push({ geo: circle.id, radius: true, value: a });
+    } else if (tool === "line") {
+      const line = fresh.find((e) => e.type === "line");
+      if (line && a > 0) dims.push({ geo: line.id, value: a });
+    } else if (tool === "rect" || tool === "rectc") {
+      const lines = fresh.filter((e) => e.type === "line");
+      const flat = lines.find((e) => Math.abs(e.p1[1] - e.p2[1]) < 1e-9);
+      const upright = lines.find((e) => Math.abs(e.p1[0] - e.p2[0]) < 1e-9);
+      if (flat && a > 0) dims.push({ geo: flat.id, value: a });
+      if (upright && b > 0) dims.push({ geo: upright.id, value: b });
+    }
+    for (const dim of dims) {
+      await safe(call("sketch_dim", { sketch, ...dim }));
+    }
+  }
+
   async function onClick(event) {
     if (building) return;
     const local = toLocal(event);
@@ -823,7 +933,7 @@ export function createSketchMode(deps) {
 
     if (mode.tool === "select") {
       if (mode.justDragged) { mode.justDragged = false; return; }
-      const endpoint = overEndpoint(event);
+      const endpoint = overPoint(event);
       const picked = endpoint
         ? { geo: endpoint.geo, point: endpoint.point }
         : (() => { const n = nearestEntity(event);
@@ -956,10 +1066,14 @@ export function createSketchMode(deps) {
       } else if (mode.pendingFillet.geo !== target) {
         const first = mode.pendingFillet;
         mode.pendingFillet = null;
-        const radius = num(
-          window.prompt(t("Rayon du congé d'esquisse (mm) :"), "3") ?? "");
-        if (!radius) return;
-        safe(call("sketch_fillet", { sketch: name,
+        // Le rayon vient du panneau de l'outil, réglé avant les clics.
+        const radius = mode.filletRadius;
+        if (!(radius > 0)) {
+          say(t("Congé d'esquisse : rayon invalide"), true);
+          return;
+        }
+        say(t("Congé d'esquisse : cliquez deux lignes près du coin"));
+        await safe(call("sketch_fillet", { sketch: name,
           geo1: first.geo, geo2: target,
           x1: first.x, y1: first.y, x2: local.x, y2: local.y, radius }));
       }
@@ -1010,7 +1124,20 @@ export function createSketchMode(deps) {
           { sketch: name, geo: target }));
       }
     } else if (mode.tool === "dim") {
-      const endpoint = overEndpoint(event);
+      if (mode.pendingDimPair) {
+        // 3e clic : l'endroit choisi décide horizontale, verticale ou alignée.
+        const { first, second, a, b } = mode.pendingDimPair;
+        mode.pendingDimPair = null;
+        if (previewLine) previewLine.visible = false;
+        const kind = pointPairDimKind(a, b, local);
+        const params = { sketch: name, geo: first.geo, geo2: second.geo,
+                         point: first.point, point2: second.point };
+        if (kind === "DistanceX") params.axis = "x";
+        if (kind === "DistanceY") params.axis = "y";
+        await addDim(params, event);
+        return;
+      }
+      const endpoint = overPoint(event);
       const nearest = nearestEntity(event);
       const target = endpoint
         ? { geo: endpoint.geo, point: endpoint.point }
@@ -1023,47 +1150,149 @@ export function createSketchMode(deps) {
       } else {
         const first = mode.pendingDim;
         mode.pendingDim = null;
+        if (previewLine) previewLine.visible = false;
         let params;
         if (!target
             || (target.geo === first.geo && target.point === first.point)) {
+          if (first.geo === ORIGIN_GEO) {
+            // L'origine seule n'a rien à coter : il lui faut un vis-à-vis.
+            mode.pendingDim = first;
+            say(t("Cotation : cliquez l'entité à coter depuis l'origine"));
+            return;
+          }
           params = { sketch: name, geo: first.geo };
+          // Une ligne : ce 2e clic pose sa longueur — à côté : verticale,
+          // dessus ou dessous : horizontale, entre : alignée.
+          const ends = lineEnds(first);
+          if (ends && local) {
+            const kind = pointPairDimKind(ends[0], ends[1], local);
+            if (kind !== "Distance") {
+              Object.assign(params, { geo2: first.geo, point: 1, point2: 2,
+                                      axis: kind === "DistanceX" ? "x" : "y" });
+            }
+          }
+        } else if (target.geo === first.geo && isRound(first.geo)
+                   && [first.point, target.point].includes(3)
+                   && [first.point, target.point].includes(undefined)) {
+          // Un cercle puis son centre (ou l'inverse) : le rayon.
+          params = { sketch: name, geo: first.geo, radius: true };
         } else {
+          // Deux points (un cercle compte par son centre) : la cote se
+          // pose d'un 3e clic, qui choisit son sens.
+          const pair = [first, target].map((pick) => (pick.point == null
+            && isRound(pick.geo) ? { geo: pick.geo, point: 3 } : pick));
+          const ends = pair.map(pickPoint);
+          if (ends.every(Boolean)) {
+            mode.pendingDimPair = { first: pair[0], second: pair[1],
+                                    a: ends[0], b: ends[1] };
+            say(t("Cotation : cliquez où poser la cote — à côté : verticale, "
+              + "dessus ou dessous : horizontale, entre : alignée"));
+            return;
+          }
           params = { sketch: name, geo: first.geo, geo2: target.geo };
           if (first.point != null) params.point = first.point;
           if (target.point != null) params.point2 = target.point;
         }
-        // La cote est posée à la valeur mesurée, puis on saisit la vraie.
-        const before = new Set((mode.state.dims ?? []).map((d) => d.id));
-        const at = { x: event.clientX, y: event.clientY };
-        try {
-          applyState(await call("sketch_dim", params));
-          const created = (mode.state.dims ?? [])
-            .find((d) => !before.has(d.id));
-          if (created) openModifyBox(created, at);
-        } catch (error) {
-          say(error.message, true);
-        }
+        await addDim(params, event);
       }
     }
   }
 
-  async function addRectangle(name, a, b) {
-    // Four chained lines: the server's auto-constraints close the loop
-    // (coincidents) and square it (horizontal/vertical) — exactly what
-    // drawing them by hand would earn.
+  /** Pose la cote à la valeur mesurée, puis ouvre la saisie de la vraie. */
+  async function addDim(params, event) {
+    const before = new Set((mode.state.dims ?? []).map((d) => d.id));
+    const at = { x: event.clientX, y: event.clientY };
+    // Là où on a cliqué pour la poser : la cote y reste.
+    const local = toLocal(event);
+    const placed = local ? { ...params, at: [local.x, local.y] } : params;
+    try {
+      applyState(await call("sketch_dim", placed));
+      const created = (mode.state.dims ?? [])
+        .find((d) => !before.has(d.id));
+      if (created) openModifyBox(created, at);
+    } catch (error) {
+      say(error.message, true);
+    }
+  }
+
+  /** Extrémités d'une ligne choisie entière, ou null. */
+  function lineEnds(pick) {
+    if (pick.point != null) return null;
+    const entity = mode.state?.entities.find((e) => e.id === pick.geo);
+    if (entity?.type !== "line") return null;
+    return [{ x: entity.p1[0], y: entity.p1[1] },
+            { x: entity.p2[0], y: entity.p2[1] }];
+  }
+
+  function isRound(geo) {
+    const entity = mode.state?.entities.find((e) => e.id === geo);
+    return entity?.type === "circle" || entity?.type === "arc";
+  }
+
+  /** Coordonnées locales d'un point choisi (extrémité, centre, origine). */
+  function pickPoint(pick) {
+    if (pick.geo === ORIGIN_GEO) return { x: 0, y: 0 };
+    const entity = mode.state?.entities.find((e) => e.id === pick.geo);
+    const p = pick.point === 1 ? entity?.p1 : pick.point === 2 ? entity?.p2
+      : pick.point === 3 ? entity?.c : null;
+    return p ? { x: p[0], y: p[1] } : null;
+  }
+
+  // Panneau d'outil : la valeur de l'outil (rayon du congé, nombre de
+  // côtés) se règle à gauche, l'outil reste actif pour plusieurs clics.
+  let toolPanelOpen = null;
+
+  function openToolPanel(tool) {
+    abandonEntityPanel();
+    toolPanelOpen = tool;
+    const fillet = tool === "skfillet";
+    panel.open({
+      icon: fillet ? "sketch_fillet" : "polygon",
+      title: fillet ? t("Congé d'esquisse") : t("Polygone"),
+      groups: [{
+        label: t("Paramètres"),
+        rows: [fillet
+          ? { type: "number", key: "value", label: t("Rayon"),
+              value: mode.filletRadius, unit: "mm", min: 0.01 }
+          : { type: "number", key: "value", label: t("Nombre de côtés"),
+              value: mode.polygonSides, min: 3, step: 1 }],
+      }],
+      note: fillet ? t("Cliquez deux lignes près du coin à arrondir.")
+        : t("Cliquez le centre, puis un sommet."),
+      onChange: (v) => {
+        if (fillet) {
+          const radius = num(v.value);
+          if (radius > 0) mode.filletRadius = radius;
+        } else {
+          const sides = parseInt(v.value, 10);
+          if (sides >= 3) {
+            mode.polygonSides = sides;
+            if (mode.pendingPoly) mode.pendingPoly.sides = sides;
+          }
+        }
+      },
+      onApply: () => { toolPanelOpen = null; setTool("select"); },
+      onCancel: () => { toolPanelOpen = null; setTool("select"); },
+    });
+  }
+
+  function closeToolPanel() {
+    if (!toolPanelOpen) return;
+    toolPanelOpen = null;
+    if (panel.active) panel.close({ silent: true });
+  }
+
+  async function addRectangle(name, a, b, center = false) {
+    // Une seule opération (un seul Ctrl+Z) : le moteur enchaîne les quatre
+    // côtés comme tracés à la main (coïncidences, horizontal/vertical) ;
+    // par le centre, les coins restent symétriques autour de lui.
     if (a.x === b.x || a.y === b.y) {
       say("Rectangle : les sommets doivent être en diagonale", true);
       return;
     }
     try {
-      const corners = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }, a];
-      let state = null;
-      for (let i = 0; i < 4; i++) {
-        state = await call("sketch_add_line", { sketch: name,
-          x1: corners[i].x, y1: corners[i].y,
-          x2: corners[i + 1].x, y2: corners[i + 1].y });
-      }
-      applyState(state);
+      applyState(await call("sketch_add_rectangle", { sketch: name,
+        x1: a.x, y1: a.y, x2: b.x, y2: b.y, center }));
     } catch (error) {
       say(error.message, true);
     }
@@ -1098,6 +1327,16 @@ export function createSketchMode(deps) {
 
   function onPointerDown(event) {
     if (event.button !== 0 || mode.tool !== "select" || !mode.state) return;
+    // Étiquette de cote : on la glisse pour déplacer la cote.
+    const dim = dimLabelAt(event);
+    const grab = dim && grabDelta(dim, event);
+    if (grab != null) {
+      mode.dimDrag = { dim, grab, screen: { x: event.clientX, y: event.clientY },
+                       moved: false, offset: null };
+      controls.enabled = false;
+      setCursor("grabbing");
+      return;
+    }
     const p = overEndpoint(event);
     if (p) {
       mode.drag = { geo: p.geo, point: p.point };
@@ -1156,6 +1395,18 @@ export function createSketchMode(deps) {
     if (b.points) {
       entity.points = b.points.map((p) => [p[0] + dx, p[1] + dy]);
     }
+  }
+
+  /** Extrémité, centre ou origine sous le curseur — ce qu'on clique pour
+   *  sélectionner ou coter ; l'origine, elle, ne se glisse pas. */
+  function overPoint(event) {
+    for (const p of snapPoints()) {
+      const s = toScreen(p.x, p.y);
+      if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < SNAP_PX) {
+        return p;
+      }
+    }
+    return null;
   }
 
   function overEndpoint(event) {
@@ -1260,8 +1511,27 @@ export function createSketchMode(deps) {
       if (isDrag(mode.box, here)) boxOverlay?.show(mode.box, here);
       return;
     }
+    if (mode.dimDrag) {
+      const drag = mode.dimDrag;
+      if (Math.hypot(event.clientX - drag.screen.x,
+                     event.clientY - drag.screen.y) > DRAG_CLICK_PX) {
+        drag.moved = true;
+      }
+      const under = dragOffset(drag.dim, event);
+      if (drag.moved && under != null) {
+        // Aperçu local : la cote suit, le moteur la retient au lâcher.
+        // L'étiquette garde sa prise : elle reste sous le curseur.
+        const offset = under - drag.grab;
+        drag.offset = offset;
+        const live = mode.state.dims.find((d) => d.id === drag.dim.id);
+        if (live) live.offset = offset;
+        redraw();
+      }
+      return;
+    }
     if (mode.tool === "select" && !mode.drag) {
-      const hot = overEndpoint(event) || overEntity(event);
+      const hot = overEndpoint(event) || overEntity(event)
+        || dimLabelAt(event);
       setCursor(hot ? "grab" : "default");
     }
     if (mode.drag) {
@@ -1304,6 +1574,29 @@ export function createSketchMode(deps) {
         redraw();
       }
       enqueueSketchMove(target.x, target.y);
+    } else if (mode.tool === "dim" && mode.pendingDim && previewLine
+               && lineEnds(mode.pendingDim)) {
+      const local = toLocal(event);
+      if (!local) return;
+      // Sur une autre entité, c'est une cote à deux qui se prépare.
+      const other = overPoint(event) ?? nearestEntity(event);
+      if (other != null && (other.geo ?? other) !== mode.pendingDim.geo) {
+        previewLine.visible = false;
+        return;
+      }
+      const [a, b] = lineEnds(mode.pendingDim);
+      const path = pointPairDimPath(a, b, pointPairDimKind(a, b, local), local);
+      previewLine.geometry.setFromPoints(
+        path.map((p) => new THREE.Vector3(p.x, p.y, 0)));
+      previewLine.visible = true;
+    } else if (mode.tool === "dim" && mode.pendingDimPair && previewLine) {
+      const local = toLocal(event);
+      if (!local) return;
+      const { a, b } = mode.pendingDimPair;
+      const path = pointPairDimPath(a, b, pointPairDimKind(a, b, local), local);
+      previewLine.geometry.setFromPoints(
+        path.map((p) => new THREE.Vector3(p.x, p.y, 0)));
+      previewLine.visible = true;
     } else if (mode.tool === "line" && mode.chain && previewLine) {
       const local = toLocal(event);
       if (!local) return;
@@ -1362,6 +1655,19 @@ export function createSketchMode(deps) {
   }
 
   function onPointerUp(event) {
+    if (mode.dimDrag) {
+      const { dim, moved, offset } = mode.dimDrag;
+      mode.dimDrag = null;
+      controls.enabled = true;
+      setCursor("grab");
+      mode.justDragged = moved; // le click qui suit ne sélectionne rien
+      if (moved && offset != null && mode.state) {
+        safe(call("sketch_place_dim",
+          { sketch: mode.state.sketch, dim: dim.id, offset }),
+          { keepSelection: true });
+      }
+      return;
+    }
     if (mode.box) {
       const start = mode.box;
       mode.box = null;
@@ -1451,15 +1757,47 @@ export function createSketchMode(deps) {
 
   function onDoubleClick(event) {
     if (!mode.state) return;
+    const dim = dimLabelAt(event);
+    if (dim) openModifyBox(dim, { x: event.clientX, y: event.clientY });
+  }
+
+  /** La cote dont l'étiquette est sous le curseur, ou null. */
+  function dimLabelAt(event) {
     for (const child of group.children) {
       const dim = child.userData?.dim;
       if (!dim) continue;
       const s = toScreen(child.position.x, child.position.y);
       if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < 22) {
-        openModifyBox(dim, { x: s.x, y: s.y });
-        return;
+        return dim;
       }
     }
+    return null;
+  }
+
+  /** Écart, en décalage, entre le curseur qui saisit l'étiquette et la
+   *  ligne de cote actuelle — gardé pendant le glisser. null : cote qui
+   *  ne se déplace pas (diamètre, rayon, angle). */
+  function grabDelta(dim, event) {
+    const under = dragOffset(dim, event);
+    if (under == null) return null;
+    const constraint = (mode.state.constraints ?? [])
+      .find((c) => c.id === dim.id);
+    const shape = dimGeometry(dim, constraint, mode.state.entities,
+      dimDrawSize());
+    const line = shape?.segments?.[2];
+    if (!line) return null;
+    const current = dimOffsetAt(dim, constraint, mode.state.entities,
+      { x: line[0], y: line[1] });
+    return current == null ? null : under - current;
+  }
+
+  /** Décalage de la cote si sa ligne passait sous le curseur. */
+  function dragOffset(dim, event) {
+    const local = toLocal(event);
+    if (!local || !mode.state) return null;
+    const constraint = (mode.state.constraints ?? [])
+      .find((c) => c.id === dim.id);
+    return dimOffsetAt(dim, constraint, mode.state.entities, local);
   }
 
   // ---------- boîte de saisie d'une cote ----------
@@ -1607,17 +1945,18 @@ export function createSketchMode(deps) {
     mode.pendingSlot = null;
     mode.pendingFillet = null;
     mode.pendingDim = null;
+    mode.pendingDimPair = null;
     mode.pendingSpline = null;
     mode.pendingEllipse = null;
     mode.selection = [];
     if (tool === "polygon") {
-      const sides = parseInt(window.prompt(t("Polygone — nombre de côtés :"), "6")
-                             ?? "", 10);
-      mode.pendingPoly = sides >= 3 ? { sides } : null;
-      if (!mode.pendingPoly) { setTool("select"); return; }
+      mode.pendingPoly = { sides: mode.polygonSides };
+      openToolPanel("polygon");
     } else {
       mode.pendingPoly = null;
     }
+    if (tool === "skfillet") openToolPanel("skfillet");
+    else if (tool !== "polygon") closeToolPanel();
     setCursor(CURSORS[tool] ?? "default");
     if (previewLine) previewLine.visible = false;
     for (const button of bar.querySelectorAll("button[data-tool]")) {
@@ -1651,6 +1990,11 @@ export function createSketchMode(deps) {
     const tool = event.target.dataset?.tool;
     if (tool) setTool(tool);
   });
+
+  /** La sélection sans l'origine : ce qu'on peut symétriser, répéter… */
+  function entityPicks() {
+    return mode.selection.filter((pick) => pick.geo !== ORIGIN_GEO);
+  }
 
   function uniqueSelectionGeos() {
     const seen = [];
@@ -1815,7 +2159,13 @@ export function createSketchMode(deps) {
 
   function applyConstraint(kind) {
     if (!mode.state) return;
-    const needed = CONSTRAINT_NEEDS[kind];
+    let needed = CONSTRAINT_NEEDS[kind];
+    // Horizontale / verticale : une ligne, ou deux points alignés.
+    const lastTwo = mode.selection.slice(-2);
+    if ((kind === "horizontal" || kind === "vertical") && lastTwo.length === 2
+        && lastTwo.every((pick) => pick.point != null)) {
+      needed = 2;
+    }
     if (mode.selection.length < needed) {
       say(t("Relation : sélectionnez d'abord {n} entité(s) avec l'outil Sélectionner",
         { n: needed }), true);
@@ -1871,24 +2221,25 @@ export function createSketchMode(deps) {
   // la dernière entité sélectionnée est l'axe.
   document.getElementById("sk-mirror").addEventListener("click", () => {
     if (!mode.state) return;
-    if (mode.selection.length < 2) {
+    const picks = entityPicks();
+    if (picks.length < 2) {
       say("Symétrie : sélectionnez les entités PUIS la ligne d'axe " +
           "en dernier", true);
       return;
     }
-    const geos = mode.selection.slice(0, -1).map((s) => s.geo);
-    const axis = mode.selection[mode.selection.length - 1].geo;
+    const geos = picks.slice(0, -1).map((s) => s.geo);
+    const axis = picks[picks.length - 1]?.geo;
     safe(call("sketch_mirror",
       { sketch: mode.state.sketch, geos, axis }));
   });
 
   document.getElementById("sk-array").addEventListener("click", () => {
     if (!mode.state) return;
-    if (!mode.selection.length) {
+    if (!entityPicks().length) {
       say("Répétition : sélectionnez d'abord des entités", true);
       return;
     }
-    const geos = mode.selection.map((s) => s.geo);
+    const geos = entityPicks().map((s) => s.geo);
     abandonEntityPanel();
     panel.open({
       icon: "sketch_array",
@@ -1916,13 +2267,35 @@ export function createSketchMode(deps) {
     });
   });
 
+  let offsetPreviewGen = 0;
+
+  async function previewOffset(geos, v) {
+    const gen = ++offsetPreviewGen;
+    const distance = num(v.distance);
+    if (!previewLine || !mode.state || !(distance > 0)) return;
+    try {
+      const { points } = await call("sketch_offset_preview", {
+        sketch: mode.state.sketch, geos, distance, reversed: !!v.reversed });
+      if (gen !== offsetPreviewGen || !panel.active) return;
+      previewLine.geometry.setFromPoints(
+        points.map(([x, y]) => new THREE.Vector3(x, y, 0)));
+      previewLine.visible = true;
+    } catch {
+      if (gen === offsetPreviewGen) previewLine.visible = false;
+    }
+  }
+
   document.getElementById("sk-offset").addEventListener("click", () => {
     if (!mode.state) return;
-    if (!mode.selection.length) {
+    if (!entityPicks().length) {
       say("Décaler : sélectionnez d'abord une chaîne d'entités", true);
       return;
     }
-    const geos = mode.selection.map((s) => s.geo);
+    const geos = entityPicks().map((s) => s.geo);
+    // Arêtes projetées (bloquées) : on veut la copie seule dans le profil.
+    const blocked = new Set((mode.state.constraints ?? [])
+      .filter((c) => c.type === "Block").map((c) => c.geos[0]));
+    const projected = geos.every((geo) => blocked.has(geo));
     abandonEntityPanel();
     panel.open({
       icon: "offset",
@@ -1934,14 +2307,20 @@ export function createSketchMode(deps) {
             unit: "mm", min: 0.01 },
           { type: "check", key: "reversed", label: t("Inverser le côté"),
             value: false },
+          { type: "check", key: "construction",
+            label: t("Originaux en construction"), value: projected },
         ],
       }],
       note: t("Les copies restent libres — le décalage paramétrique " +
             "viendra plus tard."),
+      // Aperçu : la copie se dessine avant de valider — on voit le côté.
+      onChange: (v) => previewOffset(geos, v),
+      onCancel: () => { if (previewLine) previewLine.visible = false; },
       onApply: (v) => safe(call("sketch_offset", {
         sketch: mode.state.sketch, geos,
         distance: num(v.distance) ?? 5,
-        reversed: !!v.reversed })),
+        reversed: !!v.reversed, construction: !!v.construction })
+        .finally(() => { if (previewLine) previewLine.visible = false; })),
     });
   });
 
@@ -2068,8 +2447,8 @@ export function createSketchMode(deps) {
           { sketch: mode.state.sketch });
         await refresh(Promise.resolve(tree));
         if (tree.open_profile) {
-          say("Esquisse fermée — contour ouvert : utilisable comme "
-              + "trajectoire ou surface, pas comme profil de bossage.");
+          say("Esquisse terminée — profil non fermé : il servira de "
+              + "trajectoire ou de surface, pas de profil d'extrusion.");
         }
       } catch (error) {
         say(error.message, true);

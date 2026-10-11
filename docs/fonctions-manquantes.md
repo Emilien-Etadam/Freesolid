@@ -39,10 +39,22 @@ simulation FEM. Verdicts :
 
 | Fonction SW | Verdict | Comment / pourquoi |
 |---|---|---|
-| Remplir (surface de remplissage) | ✅ | `Surface::Filling` marche headless |
-| Surface frontière | 🟧 | `Surface::GeomFillSurface` / sections — moins riche que SW |
-| Supprimer la face (defeaturing) | 🟧 | `Part.defeaturing` existe selon compilation OCCT |
-| Prolonger / ajuster la surface | 🟧 | API OCCT présente, gestes à construire |
+| Remplir (surface de remplissage) | ✅ **fait** | `Surface::Filling` sur des bords cliqués (surfaces, courbes, arêtes du solide, esquisses), option « tangent aux faces voisines » (G1 sur la face que borde chaque arête). Une arête fermée seule (bout de tube) est coupée en deux moitiés par un objet auxiliaire recalculé. Quand le solveur ne tient pas la tangence (faces voisines perpendiculaires : bout de tube), un bouchon B-spline tangent par construction prend le relais (écart < 0,1° au bord), recalculé avec ses sources |
+| Surface frontière, surface réglée | ✅ **fait** | `Surface::GeomFillSurface` sur 2 à 4 courbes ; `Part::RuledSurface` entre deux courbes — paramétriques |
+| Congé de surface | ✅ **fait** | `Part::Fillet` sur une peau cousue (arêtes entre deux faces), rayon rééditable |
+| Supprimer des faces, ligne de séparation, désajuster | ✅ **fait** | lieur de forme qui garde les autres faces ; découpe `BOPTools` (mode standard) par une courbe posée sur la surface ; `Surface::Extend` à 0 (bords naturels, trous bouchés) |
+| Courbes : composite, projetée, intersection, hélice | ✅ **fait** | lieur de forme d'arêtes bout à bout ; `Part::ProjectOnSurface` selon la normale de l'esquisse ; `Part::Section` (deux surfaces, ou surface et solide) ; `Part::Helix` (pas, hauteur, rayon, conicité, sens, axe) — paramétriques |
+| Surface radiée | ✅ **fait** | `Part::Offset2D` rempli sur un contour plan (arêtes du solide, d'une surface, esquisse), coins vifs |
+| Ajustement mutuel | ✅ **fait** | option d'« Ajuster » : l'outil est aussi coupé par la surface, la partie cliquée sur chacune est gardée |
+| Surface médiane | ✅ **fait** | deux faces cliquées (plans parallèles et cylindres concentriques exacts, faces inclinées ou courbes par une B-spline passant par les milieux) ou toutes les parois de la pièce sous une épaisseur donnée ; recalculée à chaque reconstruction |
+| Forme libre | ✅ **fait** | la surface est convertie en B-spline affinée ; plusieurs points poussés, chacun avec sa hauteur (bosses et creux), rayon d'influence, bords fixes en option ; tout se réédite et suit la surface d'origine |
+| Aplatir une surface | ✅ **fait** | `flatmesh` (déroulé conforme par moindres carrés) : patron à plat posé à côté de la surface, exact pour une face développable ; suit la surface d'origine |
+| Remplacer la face | ✅ **fait** | la face est prolongée en prisme puis la surface coupe ce qui la dépasse ; forme recalculée à chaque reconstruction ; un booléen d'ajout, d'intersection, ou les deux quand la matière croît et décroît ; clic à travers les surfaces pour viser la face recouverte |
+| Couper avec une surface | ✅ **fait** | la surface balaie un demi-espace (extrusion paramétrique) combiné en soustraction dans l'historique ; aperçu, « inverser le côté » en réédition ; refus clair si la surface ne traverse pas le solide |
+| Surface plane, balayée, décalée | ✅ **fait** | `Part::Face`, `Part::Sweep` (profil ouvert, trajectoire esquisse ou spline 3D), `Part::Offset` sans remplissage — paramétriques |
+| Esquisse 3D | ✅ **fait** (spline / polyligne 3D) | points cliqués sur la pièce (sommets et centres aimantés) ou sur un plan de clic passant par le dernier point (Tab) ; segments droits ou lisses ; règles par segment gardées dans la courbe — axe imposé X/Y/Z (Maj+clic le pose), angle avec le segment d'avant, longueur cotée — appliquées par un solveur en chaîne puis une relaxation globale (moteur et aperçu) qui fait tenir ensemble toutes les règles et les points liés, et refuse des règles incompatibles ; points liés (⛓) à un sommet ou un centre de la pièce par un clic aimanté, qui suivent quand la pièce change ; coordonnées corrigeables, réédition, aperçu exact |
+| Supprimer la face (defeaturing) | ✅ **fait** | `Shape.defeaturing` sur la fonction courante : forme figée recalculée à chaque reconstruction (elle suit les fonctions d'avant), combinée par un booléen (ajout si le trou se referme, intersection si un bossage part) ; aperçu ; pas d'objet `Part::Defeaturing` headless en 1.1.3 |
+| Prolonger / ajuster la surface | ✅ **fait** | prolonger : `Surface::Extend` au-delà du bord cliqué (distance en mm → fractions de l'isocourbe) ; ajuster : découpe `BOPTools` + pièce gardée `CompoundTools`, choisie au clic, « garder l'autre partie » en réédition. La surface remplacée sort de la vue, reste dans l'arbre |
 
 ## Assemblages
 

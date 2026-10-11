@@ -222,6 +222,7 @@ export function installAssembly(ctx) {
   // Un assemblage neuf enchaîne sur l'insertion du premier composant
   // (fixé à l'origine), puis propose d'en insérer d'autres.
   document.getElementById("btn-newasm").addEventListener("click", async () => {
+    if (ctx.mayDiscard && !(await ctx.mayDiscard())) return;
     clearGhost();
     await refreshAssembly(call("new_assembly"));
     if (ctx.assemblyState) insertComponents();

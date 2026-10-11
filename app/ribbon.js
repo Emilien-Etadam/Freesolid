@@ -46,7 +46,9 @@ export function buildRibbonElement(doc, id, groupes) {
     const group = doc.createElement("div");
     group.className = "ribbon-group";
     const btns = doc.createElement("div");
-    btns.className = "ribbon-group-btns";
+    // « lignes »: 3 — boutons compacts sur trois rangées (groupe chargé).
+    btns.className = groupe.lignes === 3 ? "ribbon-group-btns rows-3"
+      : "ribbon-group-btns";
     if (isDomNode(groupe.node)) {
       btns.appendChild(groupe.node);
     } else {

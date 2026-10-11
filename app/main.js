@@ -62,6 +62,8 @@ import {
   isRepeatFeature,
   latestGraphOrRepeat,
 } from "./graph.js";
+import { edgeSnapPoints } from "./pointsnap.js";
+import { installCurve3d } from "./curve3d.js";
 
 const sceneTheme = readScene();
 
@@ -154,7 +156,8 @@ function say(text, isError = false) {
   statusEl.textContent = t(text);
   statusEl.className = isError ? "err" : "";
   if (statusSticky) statusEl.classList.add("sticky");
-  statusEl.title = statusSticky ? t("Cliquer pour fermer") : "";
+  // Le texte entier en infobulle : la barre l'abrège s'il est trop long.
+  statusEl.title = statusSticky ? t("Cliquer pour fermer") : statusEl.textContent;
 }
 
 /** Erreur qui reste jusqu'à ce que l'utilisateur clique la barre d'état. */
@@ -180,9 +183,12 @@ const panel = createPropertyPanel({
     clearFilletRadiusBubble();
     sketchInfoOpen = false;
   },
+  onPicks: (items) => setSelectedBoundaries(items),
   onToggle: () => {
     updateConfirmCorner();
     updateTreeFlyout();
+    // La barre d'icônes du clic précédent n'a plus lieu d'être.
+    ctx.hideContextToolbar?.();
   },
 });
 
@@ -336,12 +342,16 @@ const baseMaterial = new THREE.MeshStandardMaterial({
   transparent: true, opacity: 1, // l'aperçu jaune estompe la pièce
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
+// Transparents comme la pièce : pendant un aperçu, la face choisie
+// s'estompe aussi au lieu de cacher le résultat (une ouverture de coque).
 const hoverMaterial = new THREE.MeshStandardMaterial({
   color: sceneTheme.accent, metalness: 0.08, roughness: 0.45,
+  transparent: true, opacity: 1,
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 const selectedMaterial = new THREE.MeshStandardMaterial({
   color: sceneTheme.selection, metalness: 0.08, roughness: 0.45,
+  transparent: true, opacity: 1,
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
 });
 
@@ -356,6 +366,7 @@ let othersMeshes = []; // corps non actifs, un mesh chacun
 let partBaseMaterial = null; // clone possédé — couleur du corps actif
 let meshGroups = [];
 let edgeGroups = [];
+let edgeSnaps = []; // centres de cercles et sommets (clics de position)
 let hoveredEdgeGroup = -1;
 let hoveredGroup = -1;
 
@@ -371,7 +382,12 @@ surfaceSelectedMaterial.side = THREE.DoubleSide;
 const curvesMaterial = new THREE.LineBasicMaterial({ color: sceneTheme.curve });
 const sketchesMaterial = new THREE.LineBasicMaterial({ color: sceneTheme.sketch });
 let surfaceMeshes = []; // un mesh par surface, sélectionnable
-let curvesLines = null;
+// Bords : arêtes des surfaces et courbes 3D, une LineSegments par objet,
+// un groupe par arête — remplissage, prolongement, trajectoire.
+let boundaryLines = [];
+let boundarySnaps = []; // sommets et centres des bords (spline 3D)
+let hoveredBoundary = null; // { name, label, edge, curve } | null
+let selectedBoundaries = new Set(); // clés « nom:arête »
 let sketchLineMeshes = []; // esquisses libres, un LineSegments chacune
 let hoveredSketch = null;  // { name, label } | null
 let hoveredSurface = null; // { name, label } | null
@@ -461,11 +477,14 @@ function showMesh(mesh) {
   }
   detachSurfaceMeshes();
   hoveredSurface = null;
-  if (curvesLines) {
-    scene.remove(curvesLines);
-    curvesLines.geometry.dispose();
-    curvesLines = null;
+  for (const lines of boundaryLines) {
+    lines.removeFromParent();
+    lines.geometry.dispose();
   }
+  boundaryLines = [];
+  boundarySnaps = [];
+  hoveredBoundary = null;
+  selectedBoundaries = new Set();
   for (const lines of sketchLineMeshes) detachMesh(lines);
   sketchLineMeshes = [];
   hoveredSketch = null;
@@ -495,17 +514,14 @@ function showMesh(mesh) {
     material.opacity = 1;
     const surfMesh = new THREE.Mesh(geometry, material);
     surfMesh.userData.surface = { name: surface.name, label: surface.label };
+    surfMesh.userData.groups = surface.groups ?? [];
     surfMesh.userData.baseMaterial = material;
     volumesGroup.add(surfMesh);
     surfaceMeshes.push(surfMesh);
+    addBoundaryLines(surface, false);
   }
-  if (mesh.curves?.indices.length) {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position",
-      new THREE.Float32BufferAttribute(mesh.curves.positions, 3));
-    geometry.setIndex(mesh.curves.indices);
-    curvesLines = new THREE.LineSegments(geometry, curvesMaterial);
-    scene.add(curvesLines);
+  for (const curve of Array.isArray(mesh.curves) ? mesh.curves : []) {
+    addBoundaryLines(curve, true);
   }
   for (const sketch of mesh.sketches ?? []) {
     if (!sketch.indices?.length) continue;
@@ -566,8 +582,11 @@ function showEdgeLines(data) {
   }
   partEdges = null;
   edgeGroups = data.groups;
+  edgeSnaps = edgeSnapPoints(data);
   hoveredEdgeGroup = -1;
   selectedEdges = new Set(); // ids shift after every rebuild, like faces
+  // La barre d'état citait encore les arêtes d'avant la reconstruction.
+  repaintGroups();
   if (!data.indices.length) return;
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position",
@@ -578,6 +597,57 @@ function showEdgeLines(data) {
     [edgeBaseMaterial, edgeHoverMaterial, edgeSelectedMaterial]);
   volumesGroup.add(partEdges);
   applyVolumeVisibility();
+}
+
+function addBoundaryLines(item, curve) {
+  const edges = item.edges;
+  if (!edges?.indices?.length) return;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position",
+    new THREE.Float32BufferAttribute(edges.positions, 3));
+  geometry.setIndex(edges.indices);
+  for (const g of edges.groups) geometry.addGroup(g.start, g.count, 0);
+  const lines = new THREE.LineSegments(geometry, [
+    curve ? curvesMaterial : edgeBaseMaterial,
+    edgeHoverMaterial, edgeSelectedMaterial]);
+  lines.userData.boundary = {
+    name: item.name, label: item.label, curve, groups: edges.groups };
+  // Une courbe reste visible même volumes masqués, comme une esquisse.
+  (curve ? scene : volumesGroup).add(lines);
+  boundaryLines.push(lines);
+  boundarySnaps.push(...edgeSnapPoints(edges));
+}
+
+function boundaryKey(name, edge) { return `${name}:${edge}`; }
+
+let boundaryOwnsEdges = false; // selectedEdges vient des bords du panneau
+
+function repaintBoundaries() {
+  for (const lines of boundaryLines) {
+    const { name, groups } = lines.userData.boundary;
+    lines.geometry.groups.forEach((g, i) => {
+      const edge = groups[i].edgeId;
+      g.materialIndex = selectedBoundaries.has(boundaryKey(name, edge)) ? 2
+        : (hoveredBoundary?.name === name && hoveredBoundary.edge === edge
+          ? 1 : 0);
+    });
+  }
+}
+
+/** Bords retenus par le panneau : surlignés dans la vue. */
+function setSelectedBoundaries(items) {
+  const bounds = (items ?? []).filter((i) => i.kind === "boundary");
+  selectedBoundaries = new Set(bounds.filter((i) => !i.body)
+    .map((i) => boundaryKey(i.name, i.edge)));
+  repaintBoundaries();
+  // Arêtes du solide prises comme bords : surlignées comme une sélection,
+  // effacées quand le panneau se ferme.
+  const bodyEdges = bounds.filter((i) => i.body).map((i) => i.edge);
+  if (bodyEdges.length || boundaryOwnsEdges) {
+    selectedEdges = new Set(bodyEdges);
+    boundaryOwnsEdges = bodyEdges.length > 0;
+    repaintEdges();
+  }
 }
 
 function repaintEdges() {
@@ -751,6 +821,7 @@ let previewGen = 0;
 function clearGhost() {
   clearTimeout(previewTimer);
   previewTimer = null;
+  clearPlaneGhost();
   if (ghostMesh) {
     ghostMesh.removeFromParent();
     ghostMesh.geometry.dispose();
@@ -758,6 +829,34 @@ function clearGhost() {
   }
   baseMaterial.opacity = 1;
   if (partBaseMaterial) partBaseMaterial.opacity = 1;
+  hoverMaterial.opacity = selectedMaterial.opacity = 1;
+}
+
+// Aperçu d'un plan de référence : un carré translucide là où le moteur
+// le pose (matrice 4 × 4 par lignes), à l'échelle de la pièce.
+let planeGhost = null;
+
+function clearPlaneGhost() {
+  if (!planeGhost) return;
+  planeGhost.removeFromParent();
+  planeGhost.traverse((obj) => obj.geometry?.dispose());
+  planeGhost = null;
+}
+
+function showPlaneGhost(matrix) {
+  clearPlaneGhost();
+  const size = partMesh ? Math.max(partCenterRadius().radius * 2.4, 40) : 100;
+  const fill = new THREE.Mesh(new THREE.PlaneGeometry(size, size),
+    new THREE.MeshBasicMaterial({ color: sceneTheme.accent, transparent: true,
+      opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }));
+  const border = new THREE.LineSegments(new THREE.EdgesGeometry(fill.geometry),
+    new THREE.LineBasicMaterial({ color: sceneTheme.accent }));
+  planeGhost = new THREE.Group();
+  planeGhost.add(fill, border);
+  planeGhost.matrixAutoUpdate = false;
+  planeGhost.matrix.set(...matrix);
+  planeGhost.renderOrder = 15;
+  scene.add(planeGhost);
 }
 
 function showGhost(mesh, { bothSides = false } = {}) {
@@ -779,6 +878,7 @@ function showGhost(mesh, { bothSides = false } = {}) {
   applyVolumeVisibility();
   baseMaterial.opacity = 0.15; // la pièce s'efface derrière le résultat
   if (partBaseMaterial) partBaseMaterial.opacity = 0.15;
+  hoverMaterial.opacity = selectedMaterial.opacity = 0.3;
 }
 
 // Bulle « R = … » pendant le congé, près de l'arête choisie.
@@ -860,7 +960,9 @@ function pickFilletRadiusBubble(event) {
 // Chaque frappe dans le panneau relance l'aperçu, débouncé — le serveur
 // exécute la fonction dans une transaction puis l'annule (op "preview").
 // previewGen s'incrémente à chaque appel (y compris built == null) : une
-// réponse obsolète ne montre ni n'efface le fantôme.
+// réponse obsolète ne montre ni n'efface le fantôme. Un aperçu réussi
+// efface le message d'un aperçu raté précédent.
+let previewFailed = false;
 function schedulePreview(built) {
   const gen = ++previewGen;
   clearTimeout(previewTimer);
@@ -871,12 +973,16 @@ function schedulePreview(built) {
         { op: built.op, params: built.params });
       if (gen !== previewGen) return;
       if (!panel.active) return;
-      showGhost(mesh, { bothSides: built.op === "add_fillet" });
+      if (mesh.plane) showPlaneGhost(mesh.plane);
+      else showGhost(mesh, { bothSides: built.op === "add_fillet" });
+      if (previewFailed) say("");
+      previewFailed = false;
     } catch (error) {
       if (gen !== previewGen) return;
       if (!panel.active) return;
       clearGhost();
       say("Aperçu — " + error.message);
+      previewFailed = true;
     }
   }, 250);
 }
@@ -894,6 +1000,10 @@ expose("lastFaceMatch", () => lastFaceMatch);
 expose("hoverPlane", () => hoverPlane, (v) => { hoverPlane = v; });
 expose("sketchLineMeshes", () => sketchLineMeshes);
 expose("surfaceMeshes", () => surfaceMeshes);
+expose("boundaryLines", () => boundaryLines);
+expose("boundarySnaps", () => boundarySnaps);
+expose("hoveredBoundary", () => hoveredBoundary,
+  (v) => { hoveredBoundary = v; });
 expose("planeMeshes", () => planeMeshes, (v) => { planeMeshes = v; });
 expose("othersMeshes", () => othersMeshes);
 Object.assign(ctx, {
@@ -901,6 +1011,7 @@ Object.assign(ctx, {
   say, call, panel, pickEl, measureEl, coordsEl, refresh, selectComponent,
   boxOverlay, featureDimsGroup, createDimSprite,
   surfaceHoverMaterial, surfaceSelectedMaterial,
+  repaintBoundaries, setSelectedBoundaries,
   focusPanelField, pickFilletRadiusBubble,
   updatePlaneVisibility, repaintEdges, pickPlane,
 });
@@ -914,6 +1025,7 @@ ctx.raycaster = raycaster;
 
 expose("partMesh", () => partMesh);
 expose("partEdges", () => partEdges);
+expose("edgeSnaps", () => edgeSnaps);
 expose("selectedFaceId", () => selectedFaceId, (v) => { selectedFaceId = v; });
 expose("lastFaceHit", () => lastFaceHit, (v) => { lastFaceHit = v; });
 expose("selectedPlane", () => selectedPlane);
@@ -1213,6 +1325,8 @@ document.addEventListener("freesolid:sketch-enter", () => {
   inSketchMode = true;
   applyVolumeVisibility();
   showTab("sketch");
+  // Esquisse rééditée : tout son contenu à l'écran, pas seulement la pièce.
+  if (sketchMode.framePoints().length) frameSketch();
   // L'esquisse ouverte apparaît dans l'arbre dès sa création.
   call("get_tree").then((tree) => renderTree(tree)).catch(() => {});
 });
@@ -1413,21 +1527,12 @@ deleteFeatureWithConfirmImpl = graphApi.deleteFeatureWithConfirm;
 graphHandleEscapeImpl = graphApi.graphHandleEscape;
 graphHandleDeleteImpl = graphApi.graphHandleDelete;
 
+// Spline 3D : clics dans la vue, points corrigeables dans le panneau.
+const curveTool = installCurve3d(ctx);
+ctx.curveTool = curveTool;
+ctx.openCurve3d = (curve) => curveTool.open(curve);
 document.getElementById("btn-curve3d").addEventListener("click", () =>
-  featureCommand(() => {
-    const raw = prompt(
-      "Courbe 3D — points x,y,z séparés par « ; »\n" +
-      "ex. : 0,0,0 ; 0,0,30 ; 20,0,50", "0,0,0 ; 0,0,30 ; 20,0,50");
-    if (!raw) return;
-    const points = raw.split(";").map((p) =>
-      p.split(",").map((v) => num(v.trim())));
-    if (points.length < 2
-        || points.some((p) => p.length !== 3 || p.some((n) => n === null))) {
-      say("Courbe 3D : au moins deux points x,y,z valides", true);
-      return;
-    }
-    refresh(call("add_curve3d", { points, spline: points.length >= 3 }));
-  }));
+  featureCommand(() => curveTool.open()));
 
 document.getElementById("btn-drawing").addEventListener("click", () => {
   panel.open({
@@ -1546,6 +1651,9 @@ async function refresh(treePromise) {
   try {
     const tree = await treePromise;
     if (gen !== viewGen) return;
+    // L'opération a réussi : l'erreur d'avant (gardée jusqu'au clic) n'a
+    // plus lieu d'être.
+    statusSticky = false;
     renderTree(tree);
     await updateViewport(gen);
     if (gen !== viewGen) return;
@@ -1559,7 +1667,22 @@ async function refresh(treePromise) {
   if (ok) say("À jour.");
 }
 
-document.getElementById("btn-new").addEventListener("click", () => {
+/** Le document en cours peut-il être abandonné (nouveau, ouvrir) ? S'il
+ *  a des modifications non enregistrées, l'utilisateur confirme. */
+async function mayDiscard() {
+  let status = null;
+  try {
+    status = await call("document_status");
+  } catch {
+    return true; // moteur injoignable : l'appel suivant le dira
+  }
+  if (!status?.open || !status.modified) return true;
+  return confirm("Le document en cours a des modifications non enregistrées. Les abandonner ?");
+}
+ctx.mayDiscard = mayDiscard;
+
+document.getElementById("btn-new").addEventListener("click", async () => {
+  if (!(await mayDiscard())) return;
   clearFeatureDims();
   refresh(call("new_part"));
 });
@@ -1684,6 +1807,19 @@ function currentSelection(accepts) {
   if (accepts.includes("face") && selectedFaceId !== null) {
     return { kind: "face", face: selectedFaceId };
   }
+  // Surface cliquée avant la commande (décaler, prolonger, ajuster).
+  if (accepts.includes("surface") && selectedSurface) {
+    return { kind: "surface", name: selectedSurface.name,
+             label: selectedSurface.label };
+  }
+  // Fonction cliquée dans l'arbre avant la commande (répétitions,
+  // symétrie) : elle remplit d'emblée la case, comme une face présélectionnée.
+  const feature = accepts.includes("feature")
+    && findFeatureInTree(lastTree, selectedFeatureName);
+  if (feature && feature.type !== "Sketcher::SketchObject") {
+    return { kind: "feature", items: [
+      { kind: "feature", name: feature.name, label: feature.label }] };
+  }
   return null;
 }
 
@@ -1736,6 +1872,13 @@ function openFeaturePanel(entry, sketchOverride) {
           rememberCombineFinished(stoneCount, (Date.now() - started) / 1000);
         }
         return tree;
+      });
+      // Refus du moteur : le panneau revient avec les valeurs saisies, au
+      // lieu de les perdre (le message reste dans la barre d'état).
+      promise.catch(() => {
+        if (panel.active) return;
+        openFeaturePanel(entry, sketchOverride);
+        panel.restore(v);
       });
       if (entry.openGraphEditor) {
         run(promise.then((tree) => {
@@ -1812,16 +1955,24 @@ document.getElementById("btn-datum").addEventListener("click", () =>
         ],
       },
     ],
+    // Aperçu : le plan se dessine là où il se posera.
+    onChange: (v) => schedulePreview(datumBuild(v)),
+    onPreview: (on, v) => schedulePreview(on ? datumBuild(v) : null),
     onApply: (v) => {
-      const params = {
-        offset: num(v.offset) ?? 0,
-        angle: num(v.angle) ?? 0,
-      };
-      if (v.sel && v.sel.face != null) params.face = v.sel.face;
-      else params.base = v.base;
-      refresh(call("add_datum_plane", params));
+      clearGhost();
+      refresh(call("add_datum_plane", datumBuild(v).params));
     },
   })));
+
+function datumBuild(v) {
+  const params = {
+    offset: num(v.offset) ?? 0,
+    angle: num(v.angle) ?? 0,
+  };
+  if (v.sel && v.sel.face != null) params.face = v.sel.face;
+  else params.base = v.base;
+  return { op: "add_datum_plane", params };
+}
 
 const pickFile = installFileDialog(document, {
   listDir: (path) => call("list_dir", path ? { path } : {}),
@@ -1830,6 +1981,7 @@ const pickFile = installFileDialog(document, {
 
 async function openDocument(path) {
   if (!path) return;
+  if (!(await mayDiscard())) return;
   const gen = ++viewGen;
   try {
     const tree = await call("open_part", { path });

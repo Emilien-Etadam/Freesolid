@@ -2,7 +2,8 @@
 
 ``friendly_error`` reconnaît un fragment du message brut.
 ``failure_message`` construit la ligne montrée à l'utilisateur : la phrase
-utile, et le texte brut entre parenthèses quand il aide au diagnostic.
+utile, et le texte brut entre parenthèses quand il aide au diagnostic —
+jamais le générique « command not done », qui n'apprend rien.
 
 Purs : aucun import du modeleur, testés sans lui.
 """
@@ -19,6 +20,15 @@ _TRANSLATIONS: tuple[tuple[str, str], ...] = (
      "{} : L'esquisse utilise une géométrie qui n'appartient pas à la "
      "pièce active. Importez d'abord cette géométrie dans la pièce, "
      "puis cotez sur cette copie."),
+    ("failed to make thick solid",
+     "{} : Le modeleur n'a pas pu creuser cette pièce. Cela arrive "
+     "quand une arête passe d'un angle vif à une tangence (lissage "
+     "d'un carré vers un rond) ou quand l'épaisseur dépasse un rayon. "
+     "Essayez une épaisseur plus faible ou la coque vers l'extérieur —"
+     " ou creusez par un enlèvement : lissage ou extrusion des profils"
+     " décalés de l'épaisseur."),
+    ("failed to create a face from constraints",
+     "{} : Le remplissage n'a pas pu tendre une surface sur ce contour. Vérifiez qu'il est fermé ; sans tangence, la surface passe plus facilement — la tangence échoue quand les faces voisines sont perpendiculaires à la surface cherchée (bout de tube)."),
     ("wire is not closed",
      "{} : Le contour de l'esquisse n'est pas fermé. Le profil doit "
      "former une boucle fermée pour produire un solide. Fermez le "
@@ -98,7 +108,7 @@ def failure_message(label: str, text: str, kind: str = "") -> str | None:
     template = _OPAQUE_BY_KIND.get(kind or "")
     if template is None or not _opaque(kind, raw, lowered):
         return None
-    if raw:
+    if raw and "command not done" not in lowered:
         return _fill(template, (label, raw))
     return _fill(_without_raw(template), (label,))
 

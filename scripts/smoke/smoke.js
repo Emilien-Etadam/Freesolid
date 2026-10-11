@@ -136,6 +136,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-surf-loft", tab: "surfaces" },
     { id: "btn-surf-sew", tab: "surfaces" },
     { id: "btn-surf-thicken", tab: "surfaces" },
+    { id: "btn-surf-cut", tab: "surfaces" },
+    { id: "btn-surf-planar", tab: "surfaces" },
+    { id: "btn-surf-sweep", tab: "surfaces" },
+    { id: "btn-surf-offset", tab: "surfaces" },
+    { id: "btn-surf-fill", tab: "surfaces" },
+    { id: "btn-surf-boundary", tab: "surfaces" },
+    { id: "btn-surf-radiate", tab: "surfaces" },
+    { id: "btn-surf-mid", tab: "surfaces" },
+    { id: "btn-surf-ruled", tab: "surfaces" },
+    { id: "btn-surf-split", tab: "surfaces" },
+    { id: "btn-replace-face", tab: "surfaces" },
+    { id: "btn-surf-delete-face", tab: "surfaces" },
+    { id: "btn-surf-untrim", tab: "surfaces" },
+    { id: "btn-surf-fillet", tab: "surfaces" },
+    { id: "btn-curve-intersection", tab: "surfaces" },
+    { id: "btn-curve-project", tab: "surfaces" },
+    { id: "btn-curve-helix", tab: "surfaces" },
+    { id: "btn-curve-composite", tab: "surfaces" },
+    { id: "btn-surf-flatten", tab: "surfaces" },
+    { id: "btn-surf-freeform", tab: "surfaces" },
+    { id: "btn-surf-extend", tab: "surfaces" },
+    { id: "btn-surf-trim", tab: "surfaces" },
   ];
   const panelIds = new Set(FEATURE_PANELS.map((item) => item.id));
   for (const entry of FEATURES) {
@@ -1002,7 +1024,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // Le compte du NOYAU seul. La palette vient de `graphPaletteItems(FEATURES)`
   // et un plugin y ajoute les siennes : avec bijouterie installée, c'est 25.
   // Ajouter une fonction au noyau doit faire bouger ce nombre — c'est le but.
-  const PALETTE_NOYAU = 24;
+  const PALETTE_NOYAU = 46;
   if (paletteState.count !== PALETTE_NOYAU) {
     errors.push("N005 : palette " + paletteState.count
       + " items (attendu " + PALETTE_NOYAU + " sans plugin)");
@@ -1936,6 +1958,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       { timeout: 8000 },
     ).catch(() => {});
   }
+  // La fonction encore sélectionnée (la gravure rééditée plus haut)
+  // préremplirait le panneau : un clic dans le vide de la vue la lâche.
+  const view = page.viewportSize() ?? { width: 1400, height: 900 };
+  await page.mouse.click(view.width - 60, view.height - 80);
+  await sleep(300);
   await page.click('[data-tab="features"]');
   await sleep(200);
   await page.click("#btn-repeat-variable");

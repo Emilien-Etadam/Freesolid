@@ -71,6 +71,7 @@ _TYPE_LABELS = {
 #: params are documented in the kernel docstrings and are not typed here.
 OPS: dict[str, tuple[str, ...]] = {
     "ping": (),
+    "document_status": (),             # ouvert, modifié depuis l'enregistrement
     "list_plugins": (),            # nom + point d'entrée JS de chaque plugin chargé
     # Runs the full flow headless and returns stats — the same
     # paste-me-the-report loop that debugged the Qt addon.
@@ -105,7 +106,57 @@ OPS: dict[str, tuple[str, ...]] = {
     "surface_loft": _Req(("sketches", list)),
     "surface_sew": _Req(("surfaces", list)),  # coudre ; solidifie si fermé
     "surface_thicken": _Req(("surface", str), ("thickness", float)),
-    "add_curve3d": _Req(("points", list)),  # optional: spline — trajectoire 3D
+    "add_curve3d": _Req(("points", list)),  # optional: spline, closed,
+                                       # rules [{axis, length}] par segment
+    "curve3d_preview": _Req(("points", list)),
+                                       # optional: spline, closed — lecture seule
+    "edit_curve3d": _Req(("curve", str), ("points", list)),
+                                       # optional: spline, closed
+    "surface_planar": (),              # optional: sketch — contour fermé
+    "surface_sweep": _Req(("profile", str), ("spine", str)),
+    "surface_offset": _Req(("surface", str), ("distance", float)),
+    "surface_fill": _Req(("boundary", list)),
+                                       # [{name, edge?} | {body: true, edge}]
+                                       # optional: tangent
+    "surface_boundary": _Req(("boundary", list)),   # 2 à 4 courbes
+    "surface_ruled": _Req(("boundary", list)),      # exactement 2 courbes
+    "surface_delete_faces": _Req(("surface", str), ("faces", list)),
+    "surface_untrim": _Req(("surface", str)),       # optional: face
+    "surface_split": _Req(("surface", str), ("tool", str)),
+    "surface_fillet": _Req(("surface", str), ("edges", list),
+                           ("radius", float)),
+    "edit_surface_fillet": _Req(("surface", str), ("radius", float)),
+    "curve_intersection": _Req(("first", str)),     # optional: second, body
+    "curve_project": _Req(("sketch", str), ("surface", str)),
+                                       # optional: face
+    "curve_composite": _Req(("boundary", list)),
+    "surface_radiate": _Req(("boundary", list), ("distance", float)),
+    "surface_mid": (),                 # optional: faces (deux, base 0) |
+                                       # thickness (paires automatiques)
+    "surface_flatten": _Req(("surface", str)),  # optional: face
+    "surface_freeform": _Req(("surface", str), ("radius", float)),
+                                       # optional: pushes [[x,y,z,h]…] |
+                                       # point + height ; face, keep_edges
+    "edit_surface_freeform": _Req(("surface", str), ("radius", float)),
+                                       # optional: pushes, height,
+                                       # keep_edges
+    "curve_helix": _Req(("pitch", float), ("height", float),
+                        ("radius", float)),
+                                       # optional: angle, left, axis (X|Y|Z)
+    "surface_extend": _Req(("surface", str), ("distance", float)),
+                                       # optional: edge (bord prolongé)
+    "edit_surface_extend": _Req(("surface", str), ("distance", float)),
+                                       # optional: edge
+    "surface_trim": _Req(("surface", str), ("tool", str)),
+                                       # optional: point — partie gardée,
+                                       # tool_point — ajustement mutuel
+    "add_surface_cut": _Req(("surface", str)),  # optional: flip
+    "add_delete_face": _Req(("faces", list)),  # faces du solide, base 0
+    "add_replace_face": _Req(("face", int), ("surface", str)),
+    "edit_surface_cut": _Req(("feature", str), ("flip", bool)),
+    "edit_surface_trim": _Req(("surface", str)),
+                                       # optional: point — sans point,
+                                       # la partie suivante
     # Phase E — évaluer + mise en plan.
     "mass_properties": (),             # optional: density (g/cm³)
     "measure": _Req(("a_kind", str), ("a_id", int),
@@ -198,9 +249,11 @@ OPS: dict[str, tuple[str, ...]] = {
     "set_variable": _Req(("name", str), "value"),
     "delete_variable": _Req(("name", str)),
     "rename": _Req(("feature", str), ("label", str)),
-    "add_hole": _Req(("diameter", float)),  # optional: depth | through, cut
+    "add_hole": _Req(("diameter", float), optional={"face": int, "points": list}),
+                                       # optional: depth | through, cut
                                        # (none|lamage|fraisage), cut_diameter,
-                                       # cut_depth, cut_angle
+                                       # cut_depth, cut_angle ; face + points :
+                                       # les centres cliqués sur la face
     "get_params": _Req(("feature", str)),  # editable numeric properties
     "set_tip": (),                     # optional: feature — nom d'une
                                        # ligne d'historique (fonction,
@@ -228,6 +281,11 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_add_line": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float)),
+    "sketch_add_rectangle": _Req(
+        ("sketch", str), ("x1", float), ("y1", float),
+        ("x2", float), ("y2", float), optional={"center": bool}),
+                                       # coins opposés ; center : tenu par
+                                       # son centre s'il est sur l'origine
     "sketch_add_circle": _Req(
         ("sketch", str), ("cx", float), ("cy", float), ("r", float)),
     # Palier 3 — outils d'esquisse avancés. Angles en radians, sens trigo.
@@ -244,9 +302,12 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_array": _Req(
         ("sketch", str), ("geos", list), ("dx", float), ("dy", float),
         ("cols", int), ("rows", int)),
+    "sketch_offset_preview": _Req(
+        ("sketch", str), ("geos", list), ("distance", float)),
+                                       # optional: reversed — lecture seule
     "sketch_offset": _Req(
         ("sketch", str), ("geos", list), ("distance", float)),
-                                       # optional: reversed
+                                       # optional: reversed, construction
     "sketch_add_slot": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float), ("width", float)),
@@ -265,8 +326,13 @@ OPS: dict[str, tuple[str, ...]] = {
         ("sketch", str), ("geo", int), ("point", int),
         ("x", float), ("y", float)),
     "sketch_dim": _Req(("sketch", str), ("geo", int)),
-                                       # optional: value, geo2, point, point2
+                                       # optional: value, geo2, point, point2,
+                                       # axis (x | y : cote horizontale / verticale),
+                                       # at ([x, y] : où la cote a été posée),
+                                       # radius (cercle coté au rayon)
     "sketch_set_dim": _Req(("sketch", str), ("dim", int)),
+    "sketch_place_dim": _Req(("sketch", str), ("dim", int),
+                             ("offset", float)),
                                        # optional: value | expr, name
     "sketch_constraints": _Req(("sketch", str)),
                                        # optional: geo — relations d'une entité
@@ -800,7 +866,9 @@ def pack_edges(edge_lines) -> dict:
         edge_lines: iterable of ``(edge_id, points)`` where ``points`` is
             the discretized polyline of that BREP edge, as ``(x, y, z)`` ;
             un troisième élément facultatif, la longueur exacte de l'arête,
-            est recopié dans son groupe (``length``, barre d'état).
+            est recopié dans son groupe (``length``, barre d'état) ; un
+            quatrième, le centre d'un cercle ou d'un arc (``center``, où
+            s'aimante un clic de position).
 
     Returns:
         ``positions``, ``indices`` (pairs — LineSegments) and ``groups``
@@ -827,6 +895,8 @@ def pack_edges(edge_lines) -> dict:
         }
         if extra:
             group["length"] = round(float(extra[0]), 6)
+        if len(extra) > 1 and extra[1] is not None:
+            group["center"] = [round(float(v), 6) for v in extra[1]]
         groups.append(group)
         vertex_base += len(points)
     return {"positions": positions, "indices": indices, "groups": groups}

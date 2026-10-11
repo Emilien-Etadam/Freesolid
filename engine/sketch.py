@@ -4,6 +4,10 @@ Mixin de ``Kernel``. Pas d'import FreeCAD au niveau du module :
 les méthodes importent le noyau à l'appel, pour éviter un cycle.
 """
 
+#: Le point racine de Sketcher : l'origine de l'esquisse (point 1).
+ROOT_GEO = -1
+
+
 class SketchMixin:
     # -- esquisse ---------------------------------------------------------
 
@@ -186,7 +190,11 @@ class SketchMixin:
         sk = self._get_sketch(sketch)
         entities = []
         for gid, geo in enumerate(sk.Geometry):
-            if geo.TypeId == "Part::GeomLineSegment":
+            if geo.TypeId == "Part::GeomPoint":
+                # Point d'esquisse (coin gardé d'un congé…) : point 1.
+                entity = {"id": gid, "type": "point",
+                          "p1": [geo.X, geo.Y]}
+            elif geo.TypeId == "Part::GeomLineSegment":
                 entity = {
                     "id": gid, "type": "line",
                     "p1": [geo.StartPoint.x, geo.StartPoint.y],
@@ -233,8 +241,19 @@ class SketchMixin:
         for cid, constraint in enumerate(sk.Constraints):
             if constraint.Type in ("Distance", "DistanceX", "DistanceY",
                                    "Radius", "Diameter", "Angle"):
+                value = float(constraint.Value)
+                if constraint.Type in ("DistanceX", "DistanceY"):
+                    value = abs(value)  # le signe ne dit que le sens
+                entry_offset = None
+                label = (round(float(getattr(constraint, "LabelDistance",
+                                             10.0)), 9),
+                         round(float(getattr(constraint, "LabelPosition",
+                                             0.0)), 9))
+                if label != self._DEFAULT_LABEL:
+                    entry_offset = label[0]
                 dims.append({"id": cid, "type": constraint.Type,
-                             "value": float(constraint.Value),
+                             "offset": entry_offset,
+                             "value": value,
                              "name": constraint.Name or "",
                              "expr": exprs.get(cid, ""),
                              "geo": constraint.First})
@@ -380,11 +399,12 @@ class SketchMixin:
         import Sketcher
         C = Sketcher.Constraint
         geo = sk.Geometry[gid]
+        origin = self._app().Vector(0, 0, 0)
         for pos, point in self._endpoints_of(geo):
+            matched = False
             for other in range(len(sk.Geometry)):
                 if other == gid:
                     continue
-                matched = False
                 for opos, opoint in self._endpoints_of(sk.Geometry[other]):
                     if point.distanceToPoint(opoint) < self._SNAP_TOL:
                         sk.addConstraint(C("Coincident", gid, pos,
@@ -393,6 +413,10 @@ class SketchMixin:
                         break
                 if matched:
                     break
+            # Point posé sur l'origine : coïncident avec le point racine
+            # (GeoId -1 = axe H, PosId 1 = son départ, l'origine).
+            if not matched and point.distanceToPoint(origin) < self._SNAP_TOL:
+                sk.addConstraint(C("Coincident", gid, pos, -1, 1))
         if geo.TypeId != "Part::GeomLineSegment":
             return
         dx = abs(geo.EndPoint.x - geo.StartPoint.x)
@@ -414,6 +438,36 @@ class SketchMixin:
         gid = sk.addGeometry(Part.LineSegment(
             V(float(x1), float(y1), 0), V(float(x2), float(y2), 0)), False)
         self._auto_constrain(sk, gid)
+        return self.sketch_state(sketch)
+
+    def sketch_add_rectangle(self, sketch, x1, y1, x2, y2, center=False):
+        """Rectangle par deux coins opposés, en une opération (un seul
+        Ctrl+Z). Les côtés s'enchaînent comme tracés à la main
+        (coïncidences, horizontal/vertical, origine). ``center`` avec le
+        milieu sur l'origine : les deux coins restent symétriques autour
+        d'elle (ailleurs, le centre est libre de toute façon)."""
+        from engine.kernel import KernelError
+        import Part
+        import Sketcher
+        x1, y1, x2, y2 = (float(v) for v in (x1, y1, x2, y2))
+        if self._coincident_2d(x1, 0, x2, 0) or self._coincident_2d(0, y1, 0, y2):
+            raise KernelError(
+                "rectangle : les deux coins doivent être en diagonale")
+        sk = self._get_sketch(sketch)
+        V = self._app().Vector
+        corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+        first = None
+        for i in range(4):
+            (ax, ay), (bx, by) = corners[i], corners[(i + 1) % 4]
+            gid = sk.addGeometry(Part.LineSegment(
+                V(ax, ay, 0), V(bx, by, 0)), False)
+            first = gid if first is None else first
+            self._auto_constrain(sk, gid)
+        if center and self._coincident_2d((x1 + x2) / 2, (y1 + y2) / 2, 0, 0):
+            # Coin (x1, y1) = départ du 1er côté ; (x2, y2) = départ du 3e ;
+            # (-1, 1) = le point racine, l'origine.
+            sk.addConstraint(Sketcher.Constraint(
+                "Symmetric", first, 1, first + 2, 1, -1, 1))
         return self.sketch_state(sketch)
 
     def sketch_add_arc(self, sketch, cx, cy, r, a1, a2):
@@ -537,11 +591,14 @@ class SketchMixin:
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
-    def sketch_offset(self, sketch, geos, distance, reversed=False):
+    def sketch_offset(self, sketch, geos, distance, reversed=False,
+                      construction=False):
         """Décalage d'entités : offset 2D non contraint (makeOffset2D).
 
         Le décalage paramétrique des modeleurs courants (contraintes d'égalité
         de distance) viendra plus tard — les copies restent libres.
+        ``construction`` : les originaux passent en construction — le profil
+        ne garde que la copie (arêtes projetées puis décalées).
         """
         from engine.kernel import (
             KernelError,
@@ -564,6 +621,52 @@ class SketchMixin:
             if gid < 0 or gid >= len(sk.Geometry):
                 raise KernelError("entité inconnue : {}".format(gid))
             ids.append(gid)
+        if not ids:
+            raise KernelError("sélectionnez les entités à décaler")
+        offset_edges = self._offset_edges(sk, ids, distance, reversed)
+
+        # Tout ou rien : convertir d'abord, n'injecter qu'ensuite.
+        geoms = [self._geom_from_offset_edge(edge, Part, App)
+                 for edge in offset_edges]
+        for geom in geoms:
+            sk.addGeometry(geom, False)
+        if construction:
+            for gid in ids:
+                if not self._is_construction(sk, gid, sk.Geometry[gid]):
+                    sk.toggleConstruction(gid)
+        return self.sketch_state(sketch)
+
+    def sketch_offset_preview(self, sketch, geos, distance, reversed=False):
+        """Aperçu du décalage : la polyligne de la copie, sans rien
+        ajouter à l'esquisse."""
+        sk = self._get_sketch(sketch)
+        ids = [int(g) for g in geos or ()]
+        edges = self._offset_edges(sk, ids, distance, reversed)
+        points = []
+        for edge in edges:
+            try:
+                samples = edge.discretize(Deviation=0.05)
+            except Exception:
+                samples = edge.discretize(Number=48)
+            pts = [[p.x, p.y] for p in samples]
+            if points and pts and abs(points[-1][0] - pts[0][0]) < 1e-6 \
+                    and abs(points[-1][1] - pts[0][1]) < 1e-6:
+                pts = pts[1:]
+            points.extend(pts)
+        return {"points": points}
+
+    def _offset_edges(self, sk, ids, distance, reversed):
+        """Arêtes de la copie décalée. Un contour fermé part vers
+        l'extérieur, ``reversed`` vers l'intérieur — quel que soit le sens
+        de parcours de ses arêtes."""
+        from engine.kernel import (
+            KernelError,
+            _explain,
+        )
+        import Part
+        for gid in ids:
+            if gid < 0 or gid >= len(sk.Geometry):
+                raise KernelError("entité inconnue : {}".format(gid))
         if not ids:
             raise KernelError("sélectionnez les entités à décaler")
         dist = float(distance)
@@ -593,19 +696,19 @@ class SketchMixin:
         try:
             wire = Part.Wire(chains[0])
             offset_shape = wire.makeOffset2D(signed)
+            if wire.isClosed():
+                # Le signe suit le sens de parcours : on vérifie à l'aire.
+                grows = (Part.Face(Part.Wire(offset_shape.Edges)).Area
+                         > Part.Face(wire).Area)
+                if grows == bool(reversed):
+                    offset_shape = wire.makeOffset2D(-signed)
         except Exception as exc:  # noqa: BLE001
             raise KernelError("décalage impossible : {}".format(_explain(exc)))
 
         offset_edges = list(offset_shape.Edges)
         if not offset_edges:
             raise KernelError("décalage impossible : aucun contour produit")
-
-        # Tout ou rien : convertir d'abord, n'injecter qu'ensuite.
-        geoms = [self._geom_from_offset_edge(edge, Part, App)
-                 for edge in offset_edges]
-        for geom in geoms:
-            sk.addGeometry(geom, False)
-        return self.sketch_state(sketch)
+        return offset_edges
 
     @staticmethod
     def _geom_from_offset_edge(edge, Part, App):
@@ -715,7 +818,11 @@ class SketchMixin:
         return self.sketch_state(sketch)
 
     def sketch_fillet(self, sketch, geo1, geo2, x1, y1, x2, y2, radius):
-        """Congé d'esquisse entre deux lignes, aux points cliqués."""
+        """Congé d'esquisse entre deux lignes, aux points cliqués.
+
+        Le coin disparu reste comme point de construction : les cotes des
+        deux lignes s'y rattachent au lieu d'être perdues, et le rayon est
+        coté — l'esquisse reste aussi définie qu'avant."""
         from engine.kernel import (
             KernelError,
             _explain,
@@ -724,10 +831,17 @@ class SketchMixin:
         if float(radius) <= 0:
             raise KernelError("le rayon doit être positif")
         V = self._app().Vector
+        import Sketcher
+        before = len(sk.Geometry)
         try:
             sk.fillet(int(geo1), int(geo2),
                       V(float(x1), float(y1), 0), V(float(x2), float(y2), 0),
-                      float(radius))
+                      float(radius), True, True)
+            arcs = [gid for gid in range(before, len(sk.Geometry))
+                    if sk.Geometry[gid].TypeId == "Part::GeomArcOfCircle"]
+            if arcs:
+                sk.addConstraint(Sketcher.Constraint(
+                    "Radius", arcs[0], float(radius)))
         except Exception as exc:  # noqa: BLE001
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
@@ -761,6 +875,13 @@ class SketchMixin:
         round_types = ("Part::GeomCircle", "Part::GeomArcOfCircle")
         g1 = int(geo1)
         if kind in ("horizontal", "vertical"):
+            if geo2 is not None:
+                # Deux points (extrémités, centres ou l'origine) alignés.
+                if point1 is None or point2 is None:
+                    raise KernelError(
+                        "{} : une ligne, ou deux points".format(kind))
+                return C(kind.capitalize(), g1, int(point1),
+                         int(geo2), int(point2))
             return C(kind.capitalize(), g1)
         if kind == "fixed":
             return C("Block", g1)
@@ -835,9 +956,13 @@ class SketchMixin:
         if float(r) <= 0:
             raise KernelError("le rayon doit être positif")
         App = self._app()
-        sk.addGeometry(Part.Circle(
+        gid = sk.addGeometry(Part.Circle(
             App.Vector(float(cx), float(cy), 0),
             App.Vector(0, 0, 1), float(r)), False)
+        # Centre posé sur l'origine (le client y accroche) : coïncident.
+        if self._coincident_2d(cx, cy, 0, 0):
+            import Sketcher
+            sk.addConstraint(Sketcher.Constraint("Coincident", gid, 3, -1, 1))
         return self.sketch_state(sketch)
 
     def sketch_move(self, sketch, geo, point, x, y):
@@ -880,7 +1005,11 @@ class SketchMixin:
 
     @staticmethod
     def _point_of(geo, pos):
-        """Sketcher point convention: 1 start, 2 end, 3 center."""
+        """Sketcher point convention: 1 start, 2 end, 3 center.
+        ``geo`` None : le point racine (l'origine de l'esquisse)."""
+        if geo is None:
+            import FreeCAD
+            return FreeCAD.Vector(0, 0, 0)
         if pos == 3:
             return geo.Center
         if pos == 2:
@@ -896,34 +1025,70 @@ class SketchMixin:
             return 0.0
         return abs(abx * (p.y - a.y) - aby * (p.x - a.x)) / denominator
 
-    def _dim_two(self, sk, g1, g2, point, point2, value):
+    def _dim_two(self, sk, g1, g2, point, point2, value, axis=None):
         """Smart dimension between two entities — the pair decides the
         constraint, as under the cursor: two points → distance,
         point + line → distance, parallel lines → distance, otherwise angle
-        (radians on the wire; the client displays degrees)."""
+        (radians on the wire; the client displays degrees). Un cercle ou un
+        arc compte par son centre face à un point, une ligne ou un autre
+        cercle."""
         from engine.kernel import KernelError
         import math
         import Sketcher
         C = Sketcher.Constraint
+        line = "Part::GeomLineSegment"
+        round_types = ("Part::GeomCircle", "Part::GeomArcOfCircle")
+        if g1 == ROOT_GEO:
+            # L'origine en premier : on la met en second, la cote est la même.
+            g1, g2, point, point2 = g2, g1, point2, point
+        if g2 == ROOT_GEO:
+            point2 = 1
+        # Un cercle ou un arc coté contre un point se prend par son centre.
+        if (point is None and point2 is not None
+                and sk.Geometry[g1].TypeId in round_types):
+            point = 3
+        if (point2 is None and point is not None and g2 != ROOT_GEO
+                and sk.Geometry[g2].TypeId in round_types):
+            point2 = 3
+        if point is None and point2 is None and g2 != ROOT_GEO:
+            round1 = sk.Geometry[g1].TypeId in round_types
+            round2 = sk.Geometry[g2].TypeId in round_types
+            if round1 and round2:
+                point = point2 = 3          # deux cercles : entre centres
+            elif round1:
+                point = 3                   # cercle + ligne : centre → ligne
+            elif round2:
+                point2 = 3
         if point is None and point2 is not None:
             # Normalize "line then point" to "point then line".
             g1, g2 = g2, g1
             point, point2 = point2, None
-        e1, e2 = sk.Geometry[g1], sk.Geometry[g2]
-        line = "Part::GeomLineSegment"
+        e1 = sk.Geometry[g1]
+        e2 = None if g2 == ROOT_GEO else sk.Geometry[g2]
         if point is not None and point2 is not None:
             v1 = self._point_of(e1, int(point))
             v2 = self._point_of(e2, int(point2))
+            if axis in ("x", "y"):
+                # Cote horizontale / verticale : de la plus petite coordonnée
+                # à la plus grande, la valeur reste positive.
+                along = (lambda v: v.x) if axis == "x" else (lambda v: v.y)
+                if along(v2) < along(v1):
+                    g1, g2, point, point2 = g2, g1, point2, point
+                    v1, v2 = v2, v1
+                distance = (abs(value) if value is not None
+                            else along(v2) - along(v1))
+                return C("DistanceX" if axis == "x" else "DistanceY",
+                         g1, int(point), g2, int(point2), float(distance))
             distance = value if value is not None else v1.distanceToPoint(v2)
             return C("Distance", g1, int(point), g2, int(point2),
                      float(distance))
-        if point is not None and e2.TypeId == line:
+        if point is not None and e2 is not None and e2.TypeId == line:
             v1 = self._point_of(e1, int(point))
             distance = (value if value is not None else
                         self._distance_point_line(
                             v1, e2.StartPoint, e2.EndPoint))
             return C("Distance", g1, int(point), g2, float(distance))
-        if e1.TypeId == line and e2.TypeId == line:
+        if e2 is not None and e1.TypeId == line and e2.TypeId == line:
             d1x = e1.EndPoint.x - e1.StartPoint.x
             d1y = e1.EndPoint.y - e1.StartPoint.y
             d2x = e2.EndPoint.x - e2.StartPoint.x
@@ -934,6 +1099,11 @@ class SketchMixin:
                             self._distance_point_line(
                                 e1.StartPoint, e2.StartPoint, e2.EndPoint))
                 return C("Distance", g1, 1, g2, float(distance))
+            # Sketcher compte l'angle de la 1re ligne vers la 2e, dans le
+            # sens trigonométrique : on les ordonne ainsi, sinon la cote
+            # ferait pivoter les lignes pour inverser l'angle.
+            if cross < 0:
+                g1, g2 = g2, g1
             angle = (value if value is not None else
                      abs(math.atan2(cross, d1x * d2x + d1y * d2y)))
             return C("Angle", g1, g2, float(angle))
@@ -941,12 +1111,88 @@ class SketchMixin:
                           "deux points, un point et une ligne, ou deux "
                           "lignes")
 
+    #: Position de cote par défaut de Sketcher : « jamais posée ».
+    _DEFAULT_LABEL = (10.0, 0.0)
+
+    def _place_dim(self, sk, index, at):
+        """Retient où la cote a été posée : le décalage (signé, en mm) de
+        sa ligne par rapport à son premier point — au-dessus pour une
+        horizontale, à droite pour une verticale, sur la normale A→B pour
+        une alignée. Stocké dans ``LabelDistance``, sauvé avec la pièce."""
+        if at is None:
+            return
+        try:
+            x, y = float(at[0]), float(at[1])
+            c = sk.Constraints[index]
+            if c.Type == "Angle":
+                corner = self._angle_corner(sk, c)
+                if corner is not None:
+                    import math
+                    self._set_dim_offset(
+                        sk, index, math.hypot(x - corner.x, y - corner.y))
+                return
+            a, b = self._dim_ends(sk, c)
+            if a is None:
+                return
+            if c.Type == "DistanceX":
+                offset = y - a.y
+            elif c.Type == "DistanceY":
+                offset = x - a.x
+            else:
+                import math
+                dx, dy = b.x - a.x, b.y - a.y
+                length = math.hypot(dx, dy)
+                if length < 1e-12:
+                    return
+                offset = ((x - a.x) * -dy + (y - a.y) * dx) / length
+            self._set_dim_offset(sk, index, offset)
+        except Exception:
+            pass  # la cote reste, à sa place par défaut
+
+    def _set_dim_offset(self, sk, index, offset):
+        if (round(offset, 9), 0.0) == self._DEFAULT_LABEL:
+            offset += 1e-6  # 10 tout rond voudrait dire « jamais posée »
+        sk.setLabelDistance(index, float(offset))
+
+    @staticmethod
+    def _angle_corner(sk, c):
+        """Point de rencontre des deux lignes d'une cote d'angle."""
+        try:
+            l1, l2 = sk.Geometry[c.First], sk.Geometry[c.Second]
+            p, r = l1.StartPoint, l1.EndPoint - l1.StartPoint
+            q, s = l2.StartPoint, l2.EndPoint - l2.StartPoint
+            den = r.x * s.y - r.y * s.x
+            if abs(den) < 1e-12:
+                return None
+            t = ((q.x - p.x) * s.y - (q.y - p.y) * s.x) / den
+            return p + r * t
+        except Exception:
+            return None
+
+    def _dim_ends(self, sk, c):
+        """Les deux points mesurés d'une cote de distance (A, B)."""
+        undefined = -2000
+        first, second = c.First, c.Second
+        pos1 = int(getattr(c.FirstPos, "value", c.FirstPos) or 0)
+        pos2 = int(getattr(c.SecondPos, "value", c.SecondPos) or 0)
+        geo1 = None if first == ROOT_GEO else sk.Geometry[first]
+        if second is None or second <= undefined:
+            if geo1 is None or geo1.TypeId != "Part::GeomLineSegment":
+                return None, None
+            return geo1.StartPoint, geo1.EndPoint
+        if not pos1 or not pos2:
+            return None, None
+        geo2 = None if second == ROOT_GEO else sk.Geometry[second]
+        return self._point_of(geo1, pos1), self._point_of(geo2, pos2)
+
     def sketch_dim(self, sketch, geo, value=None,
-                   geo2=None, point=None, point2=None):
+                   geo2=None, point=None, point2=None, axis=None, at=None,
+                   radius=False):
         """Smart dimension: length on a line, diameter on a circle,
         radius on an arc, distance/angle between two entities.
 
-        Driving: dimension it and the geometry obeys.
+        Driving: dimension it and the geometry obeys. ``at`` : le point
+        (x, y de l'esquisse) où la cote a été posée ; sa ligne y passe.
         """
         from engine.kernel import (
             KernelError,
@@ -955,23 +1201,37 @@ class SketchMixin:
         import Sketcher
         sk = self._get_sketch(sketch)
         gid = int(geo)
-        if gid < 0 or gid >= len(sk.Geometry):
+        # L'origine (point racine) ne se cote que contre une autre entité.
+        if ((gid < 0 and not (gid == ROOT_GEO and geo2 is not None))
+                or gid >= len(sk.Geometry)):
             raise KernelError("géométrie inconnue : {}".format(geo))
         try:
             if geo2 is not None:
                 g2 = int(geo2)
-                if g2 < 0 or g2 >= len(sk.Geometry):
+                # La même entité deux fois : seulement par deux de ses
+                # points (longueur projetée d'une ligne).
+                if ((g2 < 0 and g2 != ROOT_GEO) or g2 >= len(sk.Geometry)
+                        or (g2 == gid and (point is None or point2 is None
+                                           or point == point2))):
                     raise KernelError("géométrie inconnue : {}".format(geo2))
-                sk.addConstraint(
-                    self._dim_two(sk, gid, g2, point, point2, value))
+                index = sk.addConstraint(self._dim_two(
+                    sk, gid, g2, point, point2, value,
+                    axis=str(axis).lower() if axis else None))
+                self._place_dim(sk, index, at)
                 return self.sketch_state(sketch)
             target = sk.Geometry[gid]
             if target.TypeId == "Part::GeomLineSegment":
                 length = (value if value is not None
                           else target.StartPoint.distanceToPoint(
                               target.EndPoint))
-                sk.addConstraint(Sketcher.Constraint(
+                index = sk.addConstraint(Sketcher.Constraint(
                     "Distance", gid, float(length)))
+                self._place_dim(sk, index, at)
+            elif target.TypeId == "Part::GeomCircle" and radius:
+                # Cercle puis son centre : le rayon.
+                value_r = value if value is not None else target.Radius
+                sk.addConstraint(Sketcher.Constraint(
+                    "Radius", gid, float(value_r)))
             elif target.TypeId == "Part::GeomCircle":
                 # Un cercle se cote au diamètre, un arc au rayon.
                 diameter = (value if value is not None
@@ -988,6 +1248,18 @@ class SketchMixin:
             raise
         except Exception as exc:  # noqa: BLE001 - over-constrained, mostly
             raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
+
+    def sketch_place_dim(self, sketch, dim, offset):
+        """Déplace une cote posée : nouveau décalage de sa ligne (même
+        convention que la pose, voir ``_place_dim``). La valeur ne change
+        pas."""
+        from engine.kernel import KernelError
+        sk = self._get_sketch(sketch)
+        idx = int(dim)
+        if idx < 0 or idx >= len(sk.Constraints):
+            raise KernelError("cote inconnue : {}".format(dim))
+        self._set_dim_offset(sk, idx, float(offset))
         return self.sketch_state(sketch)
 
     def sketch_set_dim(self, sketch, dim, value=None, name=None, expr=None):
@@ -1022,7 +1294,12 @@ class SketchMixin:
                     sk.setExpression(path, None)
                 except Exception:
                     pass
-                sk.setDatum(idx, float(value))
+                target = float(value)
+                if (sk.Constraints[idx].Type in ("DistanceX", "DistanceY")
+                        and sk.Constraints[idx].Value < 0):
+                    # Cote affichée sans signe : le sens reste celui tracé.
+                    target = -abs(target)
+                sk.setDatum(idx, target)
         except KernelError:
             raise
         except Exception as exc:  # noqa: BLE001

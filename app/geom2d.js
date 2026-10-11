@@ -373,7 +373,7 @@ export function applicableRelations(selection, entities) {
     if (kinds[0] === "line") out.push("horizontal", "vertical");
     out.push("fixed");
   } else if (kinds.length === 2) {
-    if (count("point") === 2) out.push("coincident");
+    if (count("point") === 2) out.push("coincident", "horizontal", "vertical");
     if (count("line") === 2) {
       out.push("parallel", "perpendicular", "equal", "collinear");
     }

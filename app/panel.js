@@ -15,7 +15,8 @@
 //     noApply?: boolean,   // panneau info : pas de bouton OK
 //     autoFocus?: boolean, // false : ne pas voler le focus clavier
 //     actions?: [{ label, title?, className?, onClick(values) }],
-//     onApply(values), onCancel?(), onChange?(values)
+//     onApply(values), onCancel?(), onChange?(values),
+//     onClose?() — à chaque fermeture (OK, annuler, panneau remplacé)
 //   }
 // Rows: { type: "number", key, label, value, unit?, min?, step?, showIf? }
 //       { type: "select", key, options: [[value, label]…], value, label? }
@@ -24,6 +25,14 @@
 //       { type: "text", key, label, value?, placeholder?, unit? }
 //       { type: "list", items: [{ label, onDelete?, onEdit?, editable? }], empty? }
 //       { type: "note", text, readonly?, onClick? }
+//       { type: "points", key, value: [[x, y, z]…], extra? } — liste
+//         éditable, alimentée aussi par les clics « point3d » de la vue ;
+//         extra: { label, value } ajoute une 4e colonne (hauteur…)
+//       { type: "segments", key, pointsKey } — une règle par segment entre
+//         points consécutifs : axe imposé (X/Y/Z), angle avec le segment
+//         d'avant, longueur cotée
+//       points : linksKey? — liste parallèle ; un point lié porte ⛓ et se
+//         délie dès qu'on retape une de ses coordonnées
 //
 // invalidateSelections() : vide les rows `selection` (ids périmés au rebuild).
 
@@ -74,7 +83,30 @@ export function panelNotice(notice, { selectionGuides = false } = {}) {
   return { text, tone };
 }
 
-export function createPropertyPanel({ say, onClose, onToggle }) {
+/** Deux choix d'une zone multiple désignent-ils la même chose ? Une
+ *  face par son numéro, un bord par objet + arête, le reste par nom. */
+export function samePick(a, b) {
+  if (b.kind === "point") return false;
+  if (b.kind === "surfface") {
+    return a.kind === "surfface" && a.name === b.name && a.face === b.face;
+  }
+  if (b.face != null) return a.face === b.face;
+  if (b.kind === "boundary") {
+    return a.kind === "boundary" && a.name === b.name && a.edge === b.edge;
+  }
+  return a.name === b.name;
+}
+
+/** Texte d'une zone remplie de bords (arêtes de surface, de courbe, du
+ *  solide) ou d'esquisses entières. */
+export function boundaryText(items, tr = (s, v) => s.replace(/\{(\w+)\}/g,
+  (_, k) => v?.[k] ?? "")) {
+  if (items.length > 3) return tr("{n} éléments", { n: items.length });
+  return items.map((i) => (i.kind !== "boundary" || i.curve ? i.label
+    : `${i.label} · ${tr("Arête {n}", { n: i.edge })}`)).join(", ");
+}
+
+export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
   const aside = document.querySelector("aside");
   const panelEl = document.getElementById("panel");
 
@@ -134,9 +166,18 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     onToggle?.();
     document.addEventListener("keydown", onKey, true);
     if (spec.autoFocus !== false) {
-      panelEl.querySelector("input, select")?.focus();
+      // La première valeur à taper (pas une liste ni une case), sélectionnée :
+      // la frappe la remplace au lieu de s'y ajouter.
+      const field = panelEl.querySelector(
+        'input:not([type="checkbox"]):not([type="radio"])')
+        ?? panelEl.querySelector("select");
+      field?.focus();
+      if (field?.select) field.select();
     }
     changed(); // premier aperçu avec les valeurs par défaut
+    // Rien n'a encore été tapé : la première Entrée valide (OK), elle
+    // n'a pas de valeur à prendre.
+    editedInput = null;
   }
 
   function close(apply, { silent = false } = {}) {
@@ -147,6 +188,8 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     document.removeEventListener("keydown", onKey, true);
     panelEl.innerHTML = "";
     onClose?.(); // efface l'aperçu avant d'appliquer ou d'abandonner
+    onPicks?.([]);
+    spec.onClose?.(); // l'outil range ses écouteurs, quoi qu'il arrive
     onToggle?.();
     if (apply) spec.onApply?.({ ...values });
     else if (!silent) spec.onCancel?.();
@@ -187,20 +230,30 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     const rows = [];
     for (const group of active.spec.groups) {
       for (const row of group.rows ?? []) {
+        // Une zone masquée (showIf) n'absorbe pas les clics.
         if (row.type === "selection"
-            && (row.accepts ?? ["face"]).includes(kind)) {
+            && (row.accepts ?? ["face"]).includes(kind)
+            && (!row.showIf || row.showIf(active.values))) {
           rows.push(row);
         }
       }
+    }
+    const pointsRow = kind === "point3d" && findPointsRow();
+    if (pointsRow) {
+      const list = [...(active.values[pointsRow.key] ?? [])];
+      const point = [value.x, value.y, value.z];
+      if (pointsRow.extra) point.push(pointsRow.extra.value ?? 0);
+      list.push(point);
+      active.values[pointsRow.key] = list;
+      render();
+      changed();
+      return true;
     }
     if (!rows.length) return false;
     const multiRow = rows.find((r) => r.multiple);
     if (multiRow) {
       const current = active.values[multiRow.key] ?? { kind, items: [] };
-      // Une face n'a pas de nom : son numéro l'identifie.
-      const same = (i) => (value.face != null
-        ? i.face === value.face : i.name === value.name);
-      const at = current.items.findIndex(same);
+      const at = current.items.findIndex((i) => samePick(i, value));
       if (at >= 0) current.items.splice(at, 1);
       else current.items.push(value);
       active.values[multiRow.key] = { ...current };
@@ -214,7 +267,44 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     }
     render();
     changed();
+    reportPicks();
     return true;
+  }
+
+  function findPointsRow() {
+    for (const group of active.spec.groups) {
+      for (const row of group.rows ?? []) {
+        if (row.type === "points") return row;
+      }
+    }
+    return null;
+  }
+
+  function selectionRows(kind) {
+    const rows = [];
+    for (const group of active?.spec.groups ?? []) {
+      for (const row of group.rows ?? []) {
+        if (row.type === "selection"
+            && (row.accepts ?? ["face"]).includes(kind)
+            && (!row.showIf || row.showIf(active.values))) rows.push(row);
+      }
+    }
+    return rows;
+  }
+
+  /** Tous les choix des zones de sélection — la vue les surligne. */
+  function reportPicks() {
+    if (!onPicks) return;
+    const items = [];
+    for (const group of active?.spec.groups ?? []) {
+      for (const row of group.rows ?? []) {
+        if (row.type !== "selection") continue;
+        const value = active.values[row.key];
+        if (value?.items) items.push(...value.items);
+        else if (value) items.push(value);
+      }
+    }
+    onPicks(items);
   }
 
   // Les ids de faces/arêtes meurent à chaque rebuild. Le viewport vide
@@ -352,6 +442,9 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
       return wrap;
     }
 
+    if (row.type === "points") return renderPoints(row);
+    if (row.type === "segments") return renderSegments(row);
+
     if (row.type === "selection") {
       const box = el("div", "pselect-box");
       const value = values[row.key];
@@ -360,10 +453,31 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
           t(row.hint ?? "Cliquez une face dans la zone graphique");
         return box;
       }
-      if (value.items && value.items.every((i) => i.face != null)) {
+      if (value.items && value.items.every((i) => i.kind === "point")) {
+        box.textContent = t("{n} position(s)", { n: value.items.length });
+      } else if (value.items && value.items.every((i) => i.kind === "surfface")) {
+        box.textContent = value.items.length <= 3
+          ? value.items.map((i) => `${i.label} · ${t("Face {n}", { n: i.face })}`)
+            .join(", ")
+          : t("{n} faces", { n: value.items.length });
+      } else if (value.kind === "surfface") {
+        box.textContent = `${value.label} · ${t("Face {n}", { n: value.face })}`;
+      } else if (value.items && value.items.every((i) => i.face != null)) {
         box.textContent = value.items.length <= 4
           ? value.items.map((i) => t("Face {n}", { n: i.face })).join(", ")
           : t("{n} faces", { n: value.items.length });
+      } else if (value.items && (value.items.some((i) => i.kind === "boundary")
+                 || (row.accepts ?? []).includes("boundary"))) {
+        box.textContent = boundaryText(value.items, t);
+      } else if (value.kind === "boundary") {
+        box.textContent = boundaryText([value], t);
+      } else if (value.kind === "surfpoint") {
+        box.textContent = t("{s} — partie cliquée", { s: value.label });
+      } else if (value.items && value.items.every((i) => i.kind === "feature")) {
+        // Fonctions à répéter : une liste, pas un ordre de profils.
+        const labels = value.items.map((i) => i.label).join(", ");
+        box.textContent = value.items.length <= 2 ? labels
+          : t("{n} fonctions : ", { n: value.items.length }) + labels;
       } else if (value.items) {
         box.textContent = value.items.length <= 2
           ? value.items.map((i) => i.label).join(" → ")
@@ -443,13 +557,179 @@ export function createPropertyPanel({ say, onClose, onToggle }) {
     return rowEl;
   }
 
+  // Liste de points x, y, z : chaque coordonnée se corrige au clavier,
+  // ✕ retire le point. Les clics de la vue en ajoutent (« point3d »).
+  function renderPoints(row) {
+    const wrap = el("div", "plist ppoints");
+    const list = active.values[row.key] ?? [];
+    if (!list.length) {
+      wrap.append(el("div", "pnote",
+        row.empty ?? "Cliquez des points dans la zone graphique"));
+    }
+    list.forEach((point, index) => {
+      const line = el("div", "plist-item ppoint");
+      const linked = row.linksKey && (active.values[row.linksKey] ?? [])[index];
+      const name = el("span", "ppoint-name",
+        linked ? `P${index + 1}⛓` : `P${index + 1}`);
+      if (linked) name.title = t("Lié à la géométrie — suit la pièce");
+      line.append(name);
+      point.forEach((coord, axis) => {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.inputMode = "decimal";
+        input.className = "ppoint-coord";
+        input.value = String(Math.round(coord * 1000) / 1000);
+        input.title = axis < 3 ? ["X", "Y", "Z"][axis]
+          : t(row.extra?.label ?? "");
+        input.addEventListener("change", () => {
+          const parsed = Number(input.value.replace(",", "."));
+          if (!Number.isFinite(parsed)) {
+            input.value = String(point[axis]);
+            return;
+          }
+          const next = (active.values[row.key] ?? []).map((p) => [...p]);
+          next[index][axis] = parsed;
+          active.values[row.key] = next;
+          if (linked && axis < 3) {
+            // Une coordonnée retapée : le point quitte la géométrie.
+            const links = [...(active.values[row.linksKey] ?? [])];
+            links[index] = null;
+            active.values[row.linksKey] = links;
+          }
+          changed();
+        });
+        line.append(input);
+      });
+      const remove = el("button", "pdel", "✕");
+      remove.title = t("Retirer le point");
+      remove.addEventListener("click", () => {
+        const next = [...(active.values[row.key] ?? [])];
+        next.splice(index, 1);
+        active.values[row.key] = next;
+        if (row.linksKey) {
+          const links = [...(active.values[row.linksKey] ?? [])];
+          links.splice(index, 1);
+          active.values[row.linksKey] = links;
+        }
+        render();
+        changed();
+      });
+      line.append(remove);
+      wrap.append(line);
+    });
+    return wrap;
+  }
+
+  // Règles des segments d'une esquisse 3D : axe et longueur. Une
+  // longueur vide laisse le segment libre (sa longueur actuelle en gris).
+  function renderSegments(row) {
+    const wrap = el("div", "plist psegments");
+    const pts = active.values[row.pointsKey] ?? [];
+    const rules = active.values[row.key] ?? [];
+    if (pts.length < 2) {
+      wrap.append(el("div", "pnote", "Au moins deux points"));
+      return wrap;
+    }
+    const update = (index, patchRule) => {
+      const next = [...(active.values[row.key] ?? [])];
+      while (next.length < pts.length - 1) next.push({ axis: "", length: null });
+      next[index] = { ...next[index], ...patchRule };
+      active.values[row.key] = next;
+      changed();
+    };
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const rule = rules[i] ?? { axis: "", length: null };
+      const [a, b] = [pts[i], pts[i + 1]];
+      const length = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      const line = el("div", "plist-item ppoint");
+      line.append(el("span", "ppoint-name", `S${i + 1}`));
+      const axis = document.createElement("select");
+      axis.className = "ppoint-coord";
+      axis.title = t("Axe imposé");
+      for (const [value, label] of [["", "—"], ["X", "X"], ["Y", "Y"],
+        ["Z", "Z"]]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        axis.append(option);
+      }
+      axis.value = rule.axis ?? "";
+      axis.addEventListener("change", () => update(i, { axis: axis.value }));
+      const size = document.createElement("input");
+      size.type = "text";
+      size.inputMode = "decimal";
+      size.className = "ppoint-coord";
+      size.title = t("Longueur cotée (vide : libre)");
+      size.placeholder = String(Math.round(length * 100) / 100);
+      size.value = rule.length == null ? "" : String(rule.length);
+      size.addEventListener("change", () => {
+        const text = size.value.trim().replace(",", ".");
+        const parsed = Number(text);
+        if (text !== "" && !(Number.isFinite(parsed) && parsed > 0)) {
+          size.value = rule.length == null ? "" : String(rule.length);
+          return;
+        }
+        update(i, { length: text === "" ? null : parsed });
+      });
+      const turn = document.createElement("input");
+      turn.type = "text";
+      turn.inputMode = "decimal";
+      turn.className = "ppoint-coord";
+      turn.title = t("Angle avec le segment d'avant (vide : libre)");
+      turn.placeholder = "°";
+      turn.disabled = i === 0;
+      turn.value = rule.angle == null ? "" : String(rule.angle);
+      turn.addEventListener("change", () => {
+        const text = turn.value.trim().replace(",", ".");
+        const parsed = Number(text);
+        if (text !== "" && !(Number.isFinite(parsed) && parsed >= 0
+                             && parsed <= 180)) {
+          turn.value = rule.angle == null ? "" : String(rule.angle);
+          return;
+        }
+        update(i, { angle: text === "" ? null : parsed });
+      });
+      line.append(axis, turn, size, el("span", "punit", "mm"));
+      wrap.append(line);
+    }
+    return wrap;
+  }
+
   return {
     open,
     close: (opts) => close(false, opts),
+    /** Une zone de sélection accepte ce genre de choix. */
+    accepts: (kind) => active !== null
+      && (selectionRows(kind).length > 0
+          || (kind === "point3d" && findPointsRow() !== null)),
+    /** Parmi `kinds`, celui qu'attend la première zone vide (dans
+     *  l'ordre du panneau), ou null. */
+    firstNeeded: (kinds) => {
+      for (const group of active?.spec.groups ?? []) {
+        for (const row of group.rows ?? []) {
+          if (row.type !== "selection") continue;
+          if (row.showIf && !row.showIf(active.values)) continue;
+          if (selectionFilled(active.values[row.key])) continue;
+          const kind = kinds.find((k) => (row.accepts ?? ["face"]).includes(k));
+          if (kind) return kind;
+        }
+      }
+      return null;
+    },
+    /** Une zone de sélection VIDE attend ce genre de choix. */
+    needs: (kind) => selectionRows(kind).some(
+      (row) => !selectionFilled(active.values[row.key])),
     /** OK, comme le bouton ✓ — sans effet sur un panneau d'information. */
     apply: () => { if (active && !active.spec.noApply) close(true); },
     notifyPick,
     invalidateSelections,
+    /** Remet des valeurs dans le panneau ouvert (après un refus du moteur). */
+    restore(values) {
+      if (!active) return;
+      active.values = { ...active.values, ...values };
+      render();
+      changed();
+    },
     get active() { return active !== null; },
     /** Un panneau de commande (avec OK) est ouvert. */
     get applicable() { return active !== null && !active.spec.noApply; },

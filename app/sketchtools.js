@@ -180,6 +180,50 @@ export function polesSplinePoints(poles, segments = 48) {
   return pts;
 }
 
+/** Rectangle par le centre, le milieu d'un côté et la demi-largeur :
+ *  les trois points que `rect3Corners` attend (un côté, puis la largeur). */
+export function centerRect3Points(c, mid, p) {
+  const ax = mid.x - c.x, ay = mid.y - c.y;
+  const len = Math.hypot(ax, ay);
+  if (len < 1e-12) return null;
+  const vx = -ay / len, vy = ax / len;
+  const h = (p.x - c.x) * vx + (p.y - c.y) * vy;
+  if (Math.abs(h) < 1e-9) return null;
+  const p1 = { x: c.x - ax - h * vx, y: c.y - ay - h * vy };
+  const p2 = { x: c.x + ax - h * vx, y: c.y + ay - h * vy };
+  const p3 = { x: p2.x + 2 * h * vx, y: p2.y + 2 * h * vy };
+  return [p1, p2, p3];
+}
+
+/** Sommet d'un polygone donné par son cercle inscrit : le clic est au
+ *  milieu d'un côté. */
+export function polygonVertexFromApothem(c, p, sides) {
+  const a = Math.PI / sides;
+  const dx = p.x - c.x, dy = p.y - c.y;
+  const k = 1 / Math.cos(a);
+  return { x: c.x + k * (dx * Math.cos(a) - dy * Math.sin(a)),
+           y: c.y + k * (dx * Math.sin(a) + dy * Math.cos(a)) };
+}
+
+/** Rainure en arc par trois points : bouts de l'arc médian, un point de
+ *  passage, puis la largeur — mêmes paramètres que la rainure par centre. */
+function arcSlot3Params([p1, p2, through, w]) {
+  const k = circumcircle(p1, p2, through);
+  if (!k) return null;
+  const c = { x: k.x, y: k.y };
+  const norm = (a, from) => {
+    let v = a;
+    while (v <= from) v += TAU;
+    return v;
+  };
+  const aS = polar(c, p1);
+  const aE = norm(polar(c, p2), aS);
+  const aM = norm(polar(c, through), aS);
+  const [a1, a2] = aM < aE ? [aS, aE] : [polar(c, p2), norm(aS, polar(c, p2))];
+  const width = w ? 2 * Math.abs(Math.hypot(w.x - c.x, w.y - c.y) - k.r) : 0;
+  return { cx: c.x, cy: c.y, r: k.r, a1, a2, width };
+}
+
 /** Angle polaire de `p` autour de `c`. */
 const polar = (c, p) => Math.atan2(p.y - c.y, p.x - c.x);
 
@@ -336,6 +380,52 @@ export const CLICK_TOOLS = {
       return arcSlotPoints(arcSlotParams([c, s, e, cur]));
     },
   },
+  arcslot3: {
+    clicks: 4,
+    prompts: ["Rainure en arc 3 points : cliquez un bout de l'arc",
+      "Rainure en arc 3 points : cliquez l'autre bout",
+      "Rainure en arc 3 points : cliquez un point de passage",
+      "Rainure en arc 3 points : cliquez pour donner la largeur"],
+    build: (pts) => {
+      const k = arcSlot3Params(pts);
+      if (!k) return { error: "Rainure en arc : les trois points sont alignés" };
+      if (!(k.width > 0) || !(k.r > k.width / 2)) {
+        return { error: "Rainure en arc : largeur nulle ou plus grande que l'arc" };
+      }
+      return { op: "sketch_add_arc_slot", params: k };
+    },
+    preview: (pts, cur) => {
+      if (pts.length < 2) return [xy(pts[0]), xy(cur)];
+      if (pts.length < 3) {
+        const k = arcSlot3Params([pts[0], pts[1], cur]);
+        return k ? arcPts(k.cx, k.cy, k.r, k.a1, k.a2) : [xy(pts[0]), xy(cur)];
+      }
+      const k = arcSlot3Params([...pts, cur]);
+      return k ? arcSlotPoints(k) : [];
+    },
+  },
+  rectc3: {
+    clicks: 3,
+    prompts: ["Rectangle 3 points par le centre : cliquez le centre",
+      "Rectangle 3 points par le centre : cliquez le milieu d'un côté",
+      "Rectangle 3 points par le centre : cliquez pour donner la largeur"],
+    build: ([c, mid, p]) => {
+      const k = centerRect3Points(c, mid, p);
+      if (!k) return { error: "Rectangle : les trois points sont alignés" };
+      const [a, b, d] = k;
+      return { op: "sketch_add_rect3", params: {
+        x1: a.x, y1: a.y, x2: b.x, y2: b.y, x3: d.x, y3: d.y } };
+    },
+    preview: (pts, cur) => {
+      if (pts.length < 2) {
+        return [{ x: 2 * pts[0].x - cur.x, y: 2 * pts[0].y - cur.y }, xy(cur)];
+      }
+      const k = centerRect3Points(pts[0], pts[1], cur);
+      if (!k) return [];
+      const q = rect3Corners(...k);
+      return q ? [...q.map(xy), xy(q[0])] : [];
+    },
+  },
   ellarc: {
     clicks: 4,
     prompts: ["Arc d'ellipse : cliquez le centre",
@@ -421,4 +511,37 @@ export function endpointDirection(entity, point) {
     return point === 2 ? { x: -ry, y: rx } : { x: ry, y: -rx };
   }
   return null;
+}
+
+/** Pas de grille rond (1, 2 ou 5 × 10ⁿ) pour une vue de hauteur `view`. */
+export function gridStep(view) {
+  const raw = Math.max(view, 1e-6) / 40;
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const unit = raw / power;
+  return (unit < 1.5 ? 1 : unit < 3.5 ? 2 : unit < 7.5 ? 5 : 10) * power;
+}
+
+/** Peigne de courbure de plusieurs polylignes : pour chaque point
+ *  intérieur, la dent [point, bout] le long de la normale, de longueur
+ *  proportionnelle à la courbure — la plus forte de toutes vaut `reach`. */
+export function curvatureComb(polylines, reach) {
+  const samples = [];
+  for (const points of polylines) {
+    for (let i = 1; i + 1 < points.length; i++) {
+      const [ax, ay] = points[i - 1], [bx, by] = points[i];
+      const [cx, cy] = points[i + 1];
+      const ab = Math.hypot(bx - ax, by - ay), bc = Math.hypot(cx - bx, cy - by);
+      const ca = Math.hypot(ax - cx, ay - cy);
+      const cross = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+      const k = ab * bc * ca > 1e-12 ? (2 * cross) / (ab * bc * ca) : 0;
+      const tx = cx - ax, ty = cy - ay, tn = Math.hypot(tx, ty) || 1;
+      samples.push({ p: [bx, by], n: [-ty / tn, tx / tn], k });
+    }
+  }
+  const top = Math.max(0, ...samples.map((c) => Math.abs(c.k)));
+  if (!(top > 0)) return [];
+  return samples.map(({ p, n, k }) => {
+    const len = (k / top) * reach;
+    return [p, [p[0] - n[0] * len, p[1] - n[1] * len]];
+  });
 }

@@ -164,3 +164,64 @@ class SketchRefMixin:
         state = self.sketch_state(sketch)
         state["referenced"] = external_count(sk) - before
         return state
+
+    def sketch_silhouette(self, sketch):
+        """Silhouette : les arêtes vues du solide, regardé de face depuis le
+        plan de l'esquisse (contours apparents compris), projetées et
+        bloquées dans l'esquisse."""
+        from engine.kernel import KernelError, _explain
+        import Part
+        import Sketcher
+        sk = self._get_sketch(sketch)
+        body = self._require_body()
+        tip = getattr(body, "Tip", None)
+        if tip is None or not tip.Shape.Solids:
+            raise KernelError("silhouette : il faut un solide")
+        try:
+            import TechDraw
+        except ImportError:
+            raise KernelError("silhouette : module de projection "
+                              "indisponible")
+        App = self._app()
+        placement = sk.getGlobalPlacement() if hasattr(
+            sk, "getGlobalPlacement") else sk.Placement
+        shape = tip.Shape.copy()
+        shape.transformShape(placement.inverse().toMatrix())
+        try:
+            views = TechDraw.projectEx(shape, App.Vector(0, 0, 1))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        # 0 : arêtes vives vues ; 3 : contours apparents (silhouette).
+        edges = [e for index in (0, 3) for e in views[index].Edges
+                 if e.Length > 1e-6]
+        if not edges:
+            raise KernelError("silhouette : rien de visible depuis ce plan")
+        added = []
+        V = App.Vector
+        try:
+            for edge in edges:
+                kind = type(edge.Curve).__name__
+                a, b = edge.Vertexes[0].Point, edge.Vertexes[-1].Point
+                if kind == "Line":
+                    geo = Part.LineSegment(V(a.x, a.y, 0), V(b.x, b.y, 0))
+                elif kind == "Circle" and edge.isClosed():
+                    c = edge.Curve.Center
+                    geo = Part.Circle(V(c.x, c.y, 0), V(0, 0, 1),
+                                      edge.Curve.Radius)
+                elif kind == "Circle":
+                    m = edge.valueAt((edge.FirstParameter
+                                      + edge.LastParameter) / 2)
+                    p1, pm, p2 = (V(q.x, q.y, 0) for q in (a, m, b))
+                    geo = Part.ArcOfCircle(p1, pm, p2)
+                    if geo.Axis.z < 0:  # l'esquisse veut des arcs en +Z
+                        geo = Part.ArcOfCircle(p2, pm, p1)
+                else:
+                    geo = edge.toNurbs().Edges[0].Curve
+                added.append(sk.addGeometry(geo, False))
+            for gid in added:
+                sk.addConstraint(Sketcher.Constraint("Block", gid))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        state = self.sketch_state(sketch)
+        state["referenced"] = len(added)
+        return state

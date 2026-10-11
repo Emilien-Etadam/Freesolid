@@ -9,17 +9,18 @@ simulation FEM. Verdicts :
 
 ## Esquisse
 
+Périmètre complet et critère « fait » : [esquisse.md](esquisse.md).
+
 | Fonction SW | Verdict | Comment / pourquoi |
 |---|---|---|
-| Splines (B-splines) | ✅ | `Sketcher` les a (`Part.GeomBSplineCurve`) ; geste client à créer |
-| Ellipses, arcs elliptiques | ✅ | idem |
-| Convertir les entités (projeter des arêtes) | ✅ **fait** | contour de la face porteuse → géométrie bloquée (lignes/cercles/arcs) |
-| Symétrie / répétition d'entités d'esquisse | ✅ | `addSymmetric`, `addCopy`, `addRectangularArray` |
-| Décaler les entités | 🟧 | offset de fil (`Part.Wire.makeOffset2D`) puis réinjection ; la version contrainte de SW est plus riche |
-| Texte d'esquisse | 🟧 | `Draft.make_shapestring` headless → gravure/embossage possible (marquage de pièces — utile impression 3D) ; gestion des polices à régler |
-| Image d'esquisse (calque de fond) | 🟧 | trivial CÔTÉ CLIENT (image posée sur le plan dans Three.js) — reprendre un scan/logo |
-| Blocs d'esquisse | ❌ | aucun équivalent FreeCAD |
-| Splines de style, courbure peignée | ❌ | outillage GUI profond |
+| Splines (par points, par pôles), ellipses, arcs d'ellipse, paraboles, coniques | ✅ **fait** | tracés au clic avec aperçu ; conique en B-spline rationnelle (galbe rho) |
+| Convertir les entités | ✅ **fait** | figées (bloquées) ou liées à la pièce (géométrie externe qui suit les cotes) ; courbe d'intersection, points de percée, silhouette |
+| Symétrie / répétition d'entités | ✅ **fait** | symétrie, répétition linéaire et circulaire, déplacer / copier / tourner / échelle |
+| Décaler les entités | ✅ **fait** | aperçu, côté, originaux en construction |
+| Texte d'esquisse | ✅ **fait** | contours des lettres, bloqués |
+| Image d'esquisse (calque de fond) | ✅ **fait** | enregistrée avec l'esquisse (jusqu'à 5 Mo) |
+| Blocs d'esquisse | ✅ **fait** | créer depuis une sélection, insérer (position, angle, échelle) ; les copies posées ne suivent pas une redéfinition du bloc |
+| Splines de style, courbure peignée | ✅ **fait** | convertir en spline, insérer un nœud, augmenter le degré, peigne de courbure ; pas d'égalité de courbure (G2) dans le solveur |
 
 ## Fonctions volumiques
 

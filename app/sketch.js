@@ -7,7 +7,8 @@
 import * as THREE from "three";
 import { t } from "./i18n.js";
 import { createLocalSolver } from "./solver.js";
-import { CLICK_TOOLS, OPEN_TOOLS, endpointDirection } from "./sketchtools.js";
+import { CLICK_TOOLS, OPEN_TOOLS, curvatureComb, endpointDirection,
+  gridStep, polygonVertexFromApothem } from "./sketchtools.js";
 import {
   applicableRelations, arcAngles, chainClickAction, distanceToEntity,
   numericDrawTarget, numericFields, relationGlyphs,
@@ -127,6 +128,9 @@ export function createSketchMode(deps) {
   // la pièce et ne se déplacent pas à la main.
   const externalMaterial = new THREE.LineBasicMaterial(
     { color: sceneTheme.curve, ...ON_TOP });
+  const combMaterial = new THREE.LineBasicMaterial(
+    { color: sceneTheme.accent, transparent: true, opacity: 0.55,
+      depthTest: false });
   const selectedMaterial = new THREE.LineBasicMaterial(
     { color: sceneTheme.selection, ...ON_TOP });
   // Cotes : lignes d'attache, ligne de cote et flèches. Pilotante en bleu
@@ -207,6 +211,8 @@ export function createSketchMode(deps) {
                     arc: "crosshair", arc3: "crosshair", slot: "crosshair",
                     polygon: "crosshair", skfillet: "pointer",
                     skchamfer: "pointer", extend: "pointer", split: "pointer",
+                    skcorner: "pointer", splconvert: "pointer",
+                    splknot: "pointer", spldegree: "pointer",
                     dimarc: "crosshair", dimaxis: "crosshair",
                     dimdia: "crosshair", ordx: "crosshair", ordy: "crosshair",
                     trim: "pointer", construction: "pointer",
@@ -306,6 +312,12 @@ export function createSketchMode(deps) {
     if (alignX) { x = alignX.x; guides.push(alignX); }
     if (alignY) { y = alignY.y; guides.push(alignY); }
     if (hv && mode.chain) guides.push(mode.chain);
+    if (mode.gridSnap) {
+      // Grille : un pas rond qui suit le zoom (≈ 1/40 de la vue).
+      const step = gridStep((camera.top - camera.bottom) / (camera.zoom || 1));
+      if (!guides.some((g) => g.x === x)) x = Math.round(x / step) * step;
+      if (!guides.some((g) => g.y === y)) y = Math.round(y / step) * step;
+    }
     return { x, y, onPoint: null, guides, hv };
   }
 
@@ -404,10 +416,27 @@ export function createSketchMode(deps) {
 
   let previewLine = null;
 
-  // Calque d'image d'esquisse : mesh + texture alloués ici, jamais
-  // envoyés au serveur. Une seule image à la fois ; survit aux redraw,
-  // disparaît à l'exit.
+  // Calque d'image d'esquisse : mesh + texture alloués ici. Une seule
+  // image à la fois ; enregistrée avec l'esquisse (jusqu'à 5 Mo), elle
+  // revient à la réouverture.
   const MAX_SKETCH_IMAGE_BYTES = 25 * 1024 * 1024;
+  const MAX_SAVED_IMAGE_BYTES = 5 * 1024 * 1024;
+  let imageSaveTimer = null;
+
+  /** Enregistre l'image (ou l'efface) avec l'esquisse ouverte. */
+  function saveImageLayer() {
+    if (!mode.state) return;
+    clearTimeout(imageSaveTimer);
+    const sketch = mode.state.sketch;
+    const picture = imageLayer?.data
+      ? { data: imageLayer.data, fileName: imageLayer.fileName,
+          ...imageLayer.params }
+      : {};
+    imageSaveTimer = setTimeout(() => {
+      call("sketch_picture", { sketch, picture }).catch((error) =>
+        say(error.message, true));
+    }, 400);
+  }
   let imageLayer = null; // { mesh, aspect, fileName, params }
   let pendingImageUrl = null;
   let imageLoadGen = 0;
@@ -479,6 +508,7 @@ export function createSketchMode(deps) {
               label: imageLayer?.fileName || "image",
               onDelete: () => {
                 disposeImageLayer();
+                saveImageLayer();
                 say("Image d'esquisse supprimée.");
                 document.querySelector("#panel .pcancel")?.click();
               },
@@ -486,9 +516,13 @@ export function createSketchMode(deps) {
           }],
         },
       ],
-      note: t("L'image ne survit pas à la fermeture de l'esquisse — "
-        + "réimporter au besoin. Elle ne quitte pas le navigateur."),
-      onChange: (v) => applyImageLayer(v),
+      note: imageLayer?.data
+        ? t("L'image est enregistrée avec l'esquisse.")
+        : t("Image de plus de 5 Mo : calque de travail, non enregistré."),
+      onChange: (v) => {
+        applyImageLayer(v);
+        if (imageLayer?.data) saveImageLayer();
+      },
       onApply: () => {},
     });
   }
@@ -508,9 +542,26 @@ export function createSketchMode(deps) {
       return;
     }
 
+    if (file.size <= MAX_SAVED_IMAGE_BYTES) {
+      // Petite image : lue en data: URL, elle part avec l'esquisse.
+      const reader = new FileReader();
+      const gen = ++imageLoadGen;
+      reader.onload = () => {
+        if (gen !== imageLoadGen || !mode.active) return;
+        showImage(String(reader.result), name || "image", null, true);
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
     revokePendingImageUrl();
     const url = URL.createObjectURL(file);
     pendingImageUrl = url;
+    showImage(url, name || "image", null, false);
+  }
+
+  /** Pose le calque ; `data` (data: URL) est gardé pour l'enregistrer,
+   *  `params` replace une image relue. */
+  function showImage(url, name, params, persist) {
     const gen = ++imageLoadGen;
     const img = new Image();
     img.onload = () => {
@@ -548,12 +599,16 @@ export function createSketchMode(deps) {
         mesh,
         aspect: w / h,
         fileName: name || "image",
-        params: { width: 100, x: 0, y: 0, rotation: 0, opacity: 0.5 },
+        data: url.startsWith("data:") ? url : null,
+        params: params ?? { width: 100, x: 0, y: 0, rotation: 0, opacity: 0.5 },
       };
       applyImageLayer(imageLayer.params);
       group.add(mesh);
+      if (params) return; // image relue à l'ouverture : pas de panneau
       openImagePanel();
-      say("Image d'esquisse posée — calque de travail, non enregistré.");
+      if (persist) saveImageLayer();
+      say(persist ? t("Image d'esquisse posée — enregistrée avec l'esquisse.")
+        : t("Image d'esquisse posée — calque de travail, non enregistré."));
     };
     img.onerror = () => {
       if (pendingImageUrl === url) {
@@ -668,6 +723,31 @@ export function createSketchMode(deps) {
         obj.renderOrder = 19;
       });
       group.add(arrow);
+    }
+
+    if (mode.showComb) {
+      // Peigne de courbure : une dent par point, normale à la courbe,
+      // longue comme la courbure — on voit où elle se tend ou s'aplatit.
+      // Les courbes sélectionnées, sinon toutes les courbes libres (pas
+      // les contours bloqués d'un texte).
+      const blocked = new Set((mode.state.constraints ?? [])
+        .filter((c) => c.type === "Block").map((c) => c.geos[0]));
+      const picked = new Set(mode.selection.map((s) => s.geo));
+      const curves = mode.state.entities.filter((e) => e.type === "poly"
+        && e.points?.length > 2
+        && (picked.size ? picked.has(e.id) : !blocked.has(e.id)));
+      const comb = [];
+      for (const [p, q] of curvatureComb(curves.map((e) => e.points),
+        span * 0.08)) {
+        comb.push(new THREE.Vector3(p[0], p[1], 0),
+                  new THREE.Vector3(q[0], q[1], 0));
+      }
+      if (comb.length) {
+        const teeth = new THREE.LineSegments(
+          new THREE.BufferGeometry().setFromPoints(comb), combMaterial);
+        teeth.renderOrder = 20;
+        group.add(teeth);
+      }
     }
 
     if (points.length) {
@@ -1119,8 +1199,11 @@ export function createSketchMode(deps) {
       } else {
         const { sides, c } = mode.pendingPoly;
         mode.pendingPoly = { sides };
+        // Cercle inscrit : le clic est au milieu d'un côté, pas au sommet.
+        const vertex = mode.polygonInscribed
+          ? polygonVertexFromApothem(c, snapped, sides) : snapped;
         safe(call("sketch_add_polygon", { sketch: name,
-          cx: c.x, cy: c.y, x: snapped.x, y: snapped.y, sides }));
+          cx: c.x, cy: c.y, x: vertex.x, y: vertex.y, sides }));
       }
     } else if (mode.tool === "skfillet") {
       const target = nearestEntity(event);
@@ -1161,6 +1244,28 @@ export function createSketchMode(deps) {
           geo1: first.geo, geo2: target, x1: first.x, y1: first.y,
           x2: local.x, y2: local.y, distance,
           ...(distance2 > 0 ? { distance2 } : {}) }));
+      }
+    } else if (mode.tool === "skcorner") {
+      const target = nearestEntity(event);
+      if (target === null) return;
+      if (!mode.pendingFillet) {
+        mode.pendingFillet = { geo: target, x: local.x, y: local.y };
+        say(t("Coin : cliquez la seconde ligne, du côté à garder"));
+      } else if (mode.pendingFillet.geo !== target) {
+        const first = mode.pendingFillet;
+        mode.pendingFillet = null;
+        say(t("Coin : cliquez deux lignes, du côté à garder"));
+        await safe(call("sketch_corner", { sketch: name,
+          geo1: first.geo, geo2: target, x1: first.x, y1: first.y,
+          x2: local.x, y2: local.y }));
+      }
+    } else if (["splconvert", "splknot", "spldegree"].includes(mode.tool)) {
+      const target = nearestEntity(event);
+      if (target !== null) {
+        const action = { splconvert: "convert", splknot: "knot",
+                         spldegree: "degree" }[mode.tool];
+        safe(call("sketch_spline", { sketch: name, geo: target, action,
+          x: local.x, y: local.y }));
       }
     } else if (["dimarc", "dimaxis", "dimdia"].includes(mode.tool)) {
       const target = nearestEntity(event);
@@ -1398,15 +1503,19 @@ export function createSketchMode(deps) {
           ? { type: "number", key: "value", label: t("Rayon"),
               value: mode.filletRadius, unit: "mm", min: 0.01 }
           : { type: "number", key: "value", label: t("Nombre de côtés"),
-              value: mode.polygonSides, min: 3, step: 1 }],
+              value: mode.polygonSides, min: 3, step: 1 },
+          ...(fillet ? [] : [{ type: "check", key: "inscribed",
+            label: t("Par le cercle inscrit (clic au milieu d'un côté)"),
+            value: !!mode.polygonInscribed }])],
       }],
       note: fillet ? t("Cliquez deux lignes près du coin à arrondir.")
-        : t("Cliquez le centre, puis un sommet."),
+        : t("Cliquez le centre, puis un sommet (ou le milieu d'un côté)."),
       onChange: (v) => {
         if (fillet) {
           const radius = num(v.value);
           if (radius > 0) mode.filletRadius = radius;
         } else {
+          mode.polygonInscribed = !!v.inscribed;
           const sides = parseInt(v.value, 10);
           if (sides >= 3) {
             mode.polygonSides = sides;
@@ -1794,7 +1903,9 @@ export function createSketchMode(deps) {
         : mode.tool === "ellipse" ? mode.pendingEllipse
         : mode.tool === "slot" ? mode.pendingSlot
         : mode.tool === "arc" ? mode.pendingArc
-        : mode.tool === "polygon" ? mode.pendingPoly
+        : mode.tool === "polygon"
+          ? (mode.pendingPoly && { ...mode.pendingPoly,
+            inscribed: !!mode.polygonInscribed })
         : null;
       if (!pending) return;
       const local = toLocal(event);
@@ -2147,6 +2258,10 @@ export function createSketchMode(deps) {
       skfillet: "Congé d'esquisse : cliquez la première ligne, près du coin",
       skchamfer: "Chanfrein d'esquisse : cliquez la première ligne, près du coin",
       extend: "Prolonger : cliquez l'entité près du bout à allonger",
+      skcorner: "Coin : cliquez deux lignes, du côté à garder",
+      splconvert: "Convertir en spline : cliquez une entité",
+      splknot: "Insérer un nœud : cliquez la spline à l'endroit voulu",
+      spldegree: "Augmenter le degré : cliquez une spline",
       dimarc: "Longueur d'arc : cliquez un arc",
       dimaxis: "Angle à l'axe : cliquez une ligne",
       dimdia: "Diamètre : cliquez un cercle ou un arc",
@@ -2529,6 +2644,16 @@ export function createSketchMode(deps) {
 
   // Références liées : arêtes de la face porteuse, intersection du plan
   // avec le solide, percée des courbes 3D.
+  document.getElementById("sk-silhouette").addEventListener("click", async () => {
+    if (!mode.state) return;
+    const request = call("sketch_silhouette", { sketch: mode.state.sketch });
+    await safe(request);
+    const state = await request.catch(() => null);
+    if (state?.referenced != null) {
+      say(t("Silhouette : {n} arête(s) projetée(s)", { n: state.referenced }));
+    }
+  });
+
   for (const [id, mode_, done] of [
     ["sk-ref-edges", "edges", "Arêtes liées : {n} — elles suivent la pièce"],
     ["sk-ref-intersection", "intersection",
@@ -2546,6 +2671,150 @@ export function createSketchMode(deps) {
       }
     });
   }
+
+  for (const [id, key, on, off] of [
+    ["sk-grid", "gridSnap", "Accrochage à la grille : actif",
+     "Accrochage à la grille : coupé"],
+    ["sk-comb", "showComb", "Peigne de courbure affiché",
+     "Peigne de courbure masqué"],
+  ]) {
+    const button = document.getElementById(id);
+    button.addEventListener("click", () => {
+      mode[key] = !mode[key];
+      button.classList.toggle("on", mode[key]);
+      say(t(mode[key] ? on : off));
+      redraw();
+    });
+  }
+
+  document.getElementById("sk-text").addEventListener("click", () => {
+    if (!mode.state) return;
+    abandonEntityPanel();
+    panel.open({
+      icon: "sk_text",
+      title: t("Texte d'esquisse"),
+      groups: [{ label: t("Paramètres"), rows: [
+        { type: "text", key: "text", label: t("Texte"), value: "FreeSolid" },
+        { type: "number", key: "size", label: t("Hauteur"), value: 8,
+          unit: "mm", min: 0.1 },
+        { type: "number", key: "x", label: t("X"), value: 0, unit: "mm" },
+        { type: "number", key: "y", label: t("Y"), value: 0, unit: "mm" },
+        { type: "number", key: "angle", label: t("Angle (°)"), value: 0 },
+      ] }],
+      note: t("Les contours des lettres deviennent des entités bloquées : "
+        + "à extruder, graver ou découper."),
+      onApply: (v) => safe(call("sketch_add_text", {
+        sketch: mode.state.sketch, text: String(v.text ?? ""),
+        size: num(v.size) ?? 8, x: num(v.x) ?? 0, y: num(v.y) ?? 0,
+        angle: num(v.angle) ?? 0 })),
+    });
+  });
+
+  document.getElementById("sk-equation").addEventListener("click", () => {
+    if (!mode.state) return;
+    abandonEntityPanel();
+    panel.open({
+      icon: "sk_equation",
+      title: t("Courbe par équation"),
+      groups: [{ label: t("Équation"), rows: [
+        { type: "text", key: "x", label: t("x(t)"), value: "t" },
+        { type: "text", key: "y", label: t("y(t)"), value: "10*sin(t)" },
+        { type: "number", key: "t0", label: t("t début"), value: 0 },
+        { type: "number", key: "t1", label: t("t fin"), value: 6.2832 },
+      ] }],
+      note: t("Fonctions : sin, cos, tan, sqrt, exp, log, abs, pow… ; "
+        + "constantes pi et e. x(t) = t : la courbe y = f(x)."),
+      onApply: (v) => safe(call("sketch_add_equation", {
+        sketch: mode.state.sketch, x: String(v.x ?? "t"),
+        y: String(v.y ?? "0"), t0: num(v.t0) ?? 0, t1: num(v.t1) ?? 1 })),
+    });
+  });
+
+  document.getElementById("sk-repair").addEventListener("click", async () => {
+    if (!mode.state) return;
+    const request = call("sketch_repair", { sketch: mode.state.sketch });
+    await safe(request);
+    const state = await request.catch(() => null);
+    if (state?.repair) {
+      const { redundant, conflicts, joined } = state.repair;
+      say(t("Réparation : {r} relation(s) en trop, {c} conflit(s) levé(s), {j} jonction(s)",
+        { r: redundant, c: conflicts, j: joined }));
+    }
+  });
+
+  document.getElementById("sk-define").addEventListener("click", async () => {
+    if (!mode.state) return;
+    const request = call("sketch_fully_define", { sketch: mode.state.sketch });
+    await safe(request);
+    const state = await request.catch(() => null);
+    if (state?.added != null) {
+      say(t("Définir entièrement : {n} cote(s) ajoutée(s)", { n: state.added }));
+    }
+  });
+
+  document.getElementById("sk-block-save").addEventListener("click", () => {
+    if (!mode.state) return;
+    if (!entityPicks().length) {
+      say(t("Bloc : sélectionnez d'abord des entités"), true);
+      return;
+    }
+    const geos = [...new Set(entityPicks().map((s) => s.geo))];
+    abandonEntityPanel();
+    panel.open({
+      icon: "sk_block",
+      title: t("Créer un bloc"),
+      groups: [{ label: t("Bloc"), rows: [
+        { type: "text", key: "name", label: t("Nom"), value: "" },
+      ] }],
+      note: t("Les entités choisies et leurs relations sont rangées sous "
+        + "ce nom ; on les réinsère ensuite où l'on veut."),
+      onApply: (v) => {
+        const blockName = String(v.name ?? "").trim();
+        if (!blockName) {
+          say(t("donnez un nom au bloc"), true);
+          return;
+        }
+        call("sketch_block_save", { sketch: mode.state.sketch, geos,
+          name: blockName })
+          .then(() => say(t("Bloc « {name} » enregistré", { name: blockName })))
+          .catch((error) => say(error.message, true));
+      },
+    });
+  });
+
+  document.getElementById("sk-block-insert").addEventListener("click", async () => {
+    if (!mode.state) return;
+    let blocks = [];
+    try {
+      ({ blocks } = await call("sketch_blocks"));
+    } catch (error) {
+      say(error.message, true);
+      return;
+    }
+    if (!blocks.length) {
+      say(t("Aucun bloc : créez-en un depuis une sélection"), true);
+      return;
+    }
+    abandonEntityPanel();
+    panel.open({
+      icon: "sk_block_insert",
+      title: t("Insérer un bloc"),
+      groups: [{ label: t("Bloc"), rows: [
+        { type: "select", key: "name", label: t("Bloc"),
+          options: blocks.map((b) => [b.name, b.name]),
+          value: blocks[0].name },
+        { type: "number", key: "x", label: t("X"), value: 0, unit: "mm" },
+        { type: "number", key: "y", label: t("Y"), value: 0, unit: "mm" },
+        { type: "number", key: "angle", label: t("Angle (°)"), value: 0 },
+        { type: "number", key: "scale", label: t("Échelle"), value: 1,
+          min: 0.001 },
+      ] }],
+      onApply: (v) => safe(call("sketch_block_insert", {
+        sketch: mode.state.sketch, name: v.name, x: num(v.x) ?? 0,
+        y: num(v.y) ?? 0, angle: num(v.angle) ?? 0,
+        scale: num(v.scale) ?? 1 })),
+    });
+  });
 
   let offsetPreviewGen = 0;
 
@@ -2686,6 +2955,12 @@ export function createSketchMode(deps) {
       // Le ruban bascule sur l'onglet Esquisse (main.js écoute).
       document.dispatchEvent(new Event("freesolid:sketch-enter"));
       setTool("line");
+      call("sketch_picture", { sketch: state.sketch }).then(({ picture }) => {
+        if (picture?.data && mode.active && mode.state?.sketch === state.sketch) {
+          const { data, fileName, ...params } = picture;
+          showImage(data, fileName || "image", params, true);
+        }
+      }).catch(() => {});
     } catch (error) {
       say(error.message, true);
     }

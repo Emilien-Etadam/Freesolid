@@ -353,9 +353,31 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_polar_array": _Req(
         ("sketch", str), ("geos", list), ("cx", float), ("cy", float),
         ("count", int)),               # optional: angle (°, 360)
+    "sketch_silhouette": _Req(("sketch", str)),  # arêtes vues, bloquées
     "sketch_reference": _Req(("sketch", str)),
                                        # optional: mode (edges | intersection
                                        # | pierce), defining — liées à la pièce
+    # Compléments (engine/sketchmore.py).
+    "sketch_add_text": _Req(("sketch", str), ("text", str)),
+                                       # optional: x, y, size, angle, font
+    "sketch_corner": _Req(
+        ("sketch", str), ("geo1", int), ("geo2", int), ("x1", float),
+        ("y1", float), ("x2", float), ("y2", float)),
+    "sketch_add_equation": _Req(
+        ("sketch", str), ("x", str), ("y", str), ("t0", float),
+        ("t1", float)),                # optional: count
+    "sketch_repair": _Req(("sketch", str)),
+    "sketch_fully_define": _Req(("sketch", str)),
+    "sketch_spline": _Req(
+        ("sketch", str), ("geo", int), ("action", str)),
+                                       # convert | knot | degree ; x, y
+    "sketch_blocks": (),
+    "sketch_block_save": _Req(
+        ("sketch", str), ("geos", list), ("name", str)),
+    "sketch_block_insert": _Req(
+        ("sketch", str), ("name", str), ("x", float), ("y", float)),
+                                       # optional: angle, scale
+    "sketch_picture": _Req(("sketch", str)),  # optional: picture
     "sketch_add_slot": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float), ("width", float)),

@@ -3489,12 +3489,80 @@ class SelftestMixin:
             pts = [e for e in pierced["entities"] if e.get("external")]
             state = self.sketch_delete_geo(pierce_sk, pts[0]["id"])
             self.sketch_finish(pierce_sk)
+            st = self.sketch_start(plane="XZ")
+            sil = self.sketch_silhouette(st["sketch"])
+            sil_pts = [p for e in sil["entities"] if e["type"] == "line"
+                       for p in (e["p1"], e["p2"])]
+            silhouette_ok = (abs(max(p[0] for p in sil_pts)
+                                 - min(p[0] for p in sil_pts) - 50) < 1e-6
+                             and abs(max(p[1] for p in sil_pts) - 10) < 1e-6)
+            self.sketch_finish(st["sketch"])
             report["p51_references"] = (
-                len(refs) == 4 and follows and inter["referenced"] == 4
+                silhouette_ok
+                and len(refs) == 4 and follows and inter["referenced"] == 4
                 and pierced["referenced"] >= 1 and pts[0]["type"] == "point"
                 and not any(e.get("external") for e in state["entities"])
                 and "Percee" not in [f["label"] for f
                                      in self.get_tree()["features"]])
+
+            mark("p51: esquisse — texte, coin, équation, blocs, définition")
+            import math
+            self.new_part("Pièce compléments")
+            st = self.sketch_start(plane="XY")
+            sk_name = st["sketch"]
+            sko = self._get_sketch(sk_name)
+            state = self.sketch_add_text(sk_name, "Ab", 0, 50, 10)
+            text_ok = len(state["entities"]) > 4 and all(
+                any(c["type"] == "Block" and c["geos"][0] == e["id"]
+                    for c in state["constraints"]) for e in state["entities"])
+            self.sketch_add_line(sk_name, 0, 0, 20, 0)
+            self.sketch_add_line(sk_name, 30, 5, 30, 30)
+            nb = len(self.sketch_state(sk_name)["entities"])
+            state = self.sketch_corner(sk_name, nb - 2, nb - 1, 10, 0, 30, 20)
+            corner_ok = (state["entities"][nb - 2]["p2"] == [30.0, 0.0]
+                         and state["entities"][nb - 1]["p1"] == [30.0, 0.0])
+            state = self.sketch_add_equation(sk_name, "t", "10*sin(t)", 0,
+                                             2 * math.pi)
+            wave = state["entities"][-1]["points"]
+            equation_ok = (abs(max(p[1] for p in wave) - 10) < 0.5
+                           and abs(wave[-1][0] - 2 * math.pi) < 1e-6)
+            try:
+                self.sketch_add_equation(sk_name, "t", "__import__('os')", 0, 1)
+                equation_ok = False
+            except KernelError:
+                pass
+            self.sketch_add_circle(sk_name, 80, 0, 5)
+            cid = len(self.sketch_state(sk_name)["entities"]) - 1
+            self.sketch_spline(sk_name, cid, "convert")
+            state = self.sketch_spline(sk_name, cid, "degree")
+            spline_ok = state["entities"][cid].get("kind") == "spline"
+            self.sketch_block_save(sk_name, [cid], "rond")
+            count = len(self.sketch_state(sk_name)["entities"])
+            state = self.sketch_block_insert(sk_name, "rond", 100, 0, scale=2)
+            inserted = state["entities"][-1]
+            block_ok = (len(state["entities"]) == count + 1
+                        and abs(max(p[0] for p in inserted["points"]) - 110)
+                        < 0.2)
+            self.sketch_picture(sk_name, {"data": "data:image/png;base64,AA",
+                                          "x": 1, "y": 2, "width": 50})
+            picture_ok = self.sketch_picture(sk_name)["picture"]["width"] == 50
+            self.sketch_finish(sk_name)
+            st = self.sketch_start(plane="XY")
+            def_sk = st["sketch"]
+            self.sketch_add_rectangle(def_sk, 10, 10, 50, 40)
+            self.sketch_add_circle(def_sk, 30, 25, 5)
+            defined = self.sketch_fully_define(def_sk)
+            self.sketch_add_line(def_sk, 60, 0, 70, 0)
+            self.sketch_add_line(def_sk, 70.0005, 0, 80, 10)
+            repaired = self.sketch_repair(def_sk)
+            self.sketch_finish(def_sk)
+            report["p51_complements"] = (
+                text_ok and corner_ok and equation_ok and spline_ok
+                and block_ok and picture_ok
+                and defined["definition"] == "full" and defined["added"] == 7
+                and repaired["repair"]["joined"] == 1
+                and "Bloc" not in [f["label"] for f
+                                   in self.get_tree()["features"]])
 
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")

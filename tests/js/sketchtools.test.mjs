@@ -98,3 +98,52 @@ describe("outils de tracé : ops", () => {
     assert.ok(OPEN_TOOLS.splinecp.preview([P(0, 0), P(5, 5)], P(10, 0)).length > 3);
   });
 });
+
+describe("aides : grille et peigne", () => {
+  it("le pas de grille est rond et suit la vue", async () => {
+    const { gridStep } = await import("../../app/sketchtools.js");
+    assert.equal(gridStep(400), 10);
+    assert.equal(gridStep(40), 1);
+    assert.equal(gridStep(80), 2);
+    assert.equal(gridStep(200), 5);
+  });
+
+  it("peigne : nul sur une droite, dents égales sur un cercle", async () => {
+    const { curvatureComb } = await import("../../app/sketchtools.js");
+    assert.deepEqual(curvatureComb([[[0, 0], [1, 0], [2, 0]]], 5), []);
+    const circle = Array.from({ length: 13 }, (_, i) =>
+      [10 * Math.cos(i * Math.PI / 6), 10 * Math.sin(i * Math.PI / 6)]);
+    const teeth = curvatureComb([circle], 5);
+    const lengths = teeth.map(([p, q]) => Math.hypot(q[0] - p[0], q[1] - p[1]));
+    assert.ok(lengths.every((l) => Math.abs(l - 5) < 1e-9));
+  });
+});
+
+describe("variantes : rectangle par le centre, polygone inscrit, rainure 3 points", () => {
+  it("rectangle 3 points par le centre : symétrique autour du centre", async () => {
+    const { centerRect3Points, rect3Corners: corners } =
+      await import("../../app/sketchtools.js");
+    const k = centerRect3Points({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 3, y: 4 });
+    const q = corners(...k);
+    const cx = q.reduce((s, p) => s + p.x, 0) / 4;
+    const cy = q.reduce((s, p) => s + p.y, 0) / 4;
+    assert.ok(Math.abs(cx) < 1e-9 && Math.abs(cy) < 1e-9);
+    assert.deepEqual(q.map((p) => [Math.abs(p.x), Math.abs(p.y)]),
+      [[10, 4], [10, 4], [10, 4], [10, 4]]);
+  });
+
+  it("polygone inscrit : l'apothème est la distance au clic", async () => {
+    const { polygonVertexFromApothem } = await import("../../app/sketchtools.js");
+    const v = polygonVertexFromApothem({ x: 0, y: 0 }, { x: 10, y: 0 }, 4);
+    assert.ok(Math.abs(Math.hypot(v.x, v.y) - 10 * Math.SQRT2) < 1e-9);
+  });
+
+  it("rainure en arc 3 points : même op que la rainure par centre", () => {
+    const P = (x, y) => ({ x, y });
+    const out = CLICK_TOOLS.arcslot3.build([P(20, 0), P(0, 20),
+      P(20 * Math.SQRT1_2, 20 * Math.SQRT1_2), P(22, 0)]);
+    assert.equal(out.op, "sketch_add_arc_slot");
+    assert.ok(Math.abs(out.params.r - 20) < 1e-9
+      && Math.abs(out.params.width - 4) < 1e-9);
+  });
+});

@@ -50,6 +50,7 @@ from engine.sketch import SketchMixin
 from engine.sketchdraw import SketchDrawMixin
 from engine.sketchedit import SketchEditMixin
 from engine.sketchref import SketchRefMixin
+from engine.sketchmore import SketchMoreMixin
 from engine.solids import SolidsMixin
 from engine.tree import TreeMixin
 
@@ -263,7 +264,7 @@ def _format_mm(value):
     return text.replace(".", ",") or "0"
 
 
-class Kernel(TreeMixin, SolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
+class Kernel(TreeMixin, SolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
     """Owns one FreeCAD document and executes protocol operations."""
 
     def __init__(self):
@@ -847,7 +848,10 @@ _TRANSACTIONAL = frozenset({
     "sketch_add_ellipse_arc", "sketch_add_parabola", "sketch_add_conic",
     "sketch_add_spline_poles", "sketch_add_arc_slot",
     "sketch_chamfer", "sketch_extend", "sketch_split", "sketch_transform",
-    "sketch_polar_array", "sketch_reference",
+    "sketch_polar_array", "sketch_reference", "sketch_silhouette", "sketch_add_text",
+    "sketch_corner", "sketch_add_equation", "sketch_repair",
+    "sketch_fully_define", "sketch_spline", "sketch_block_save",
+    "sketch_block_insert", "sketch_picture",
     "set_component_grounded", "reorder_feature",
 })
 

@@ -1209,6 +1209,8 @@
           <button data-tool="parallelogram" data-label="Parallélogramme" title="Parallélogramme — deux côtés cliqués"><img data-icon="sk_parallelogram" alt=""></button>
           <button data-tool="slotc" data-label="Rainure par le centre" title="Rainure par le centre — milieu, bout, largeur"><img data-icon="sk_slot_center" alt=""></button>
           <button data-tool="arcslot" data-label="Rainure en arc" title="Rainure en arc — centre, départ, arrivée, largeur"><img data-icon="sk_arc_slot" alt=""></button>
+          <button data-tool="arcslot3" data-label="Rainure en arc 3 points" title="Rainure en arc 3 points — deux bouts, un passage, la largeur"><img data-icon="sk_arc_slot3" alt=""></button>
+          <button data-tool="rectc3" data-label="Rectangle 3 points par le centre" title="Rectangle 3 points par le centre — centre, milieu d'un côté, largeur"><img data-icon="sk_rect_center3" alt=""></button>
           <button data-tool="ellarc" data-label="Arc d'ellipse" title="Arc d'ellipse — centre, grand axe, départ, arrivée"><img data-icon="sk_ellipse_arc" alt=""></button>
           <button data-tool="parabola" data-label="Parabole" title="Parabole — sommet, foyer, deux bouts"><img data-icon="sk_parabola" alt=""></button>
           <button data-tool="conic" data-label="Conique" title="Conique — deux bouts, sommet des tangentes, galbe"><img data-icon="sk_conic" alt=""></button>
@@ -1223,10 +1225,17 @@
           <button data-tool="skchamfer" title="Chanfrein d'esquisse — cliquez deux lignes près du coin"><img data-icon="sk_chamfer" alt=""></button>
           <button data-tool="extend" title="Prolonger — le bout cliqué va jusqu'à l'entité suivante"><img data-icon="sk_extend" alt=""></button>
           <button data-tool="split" title="Scinder — coupe l'entité au point cliqué"><img data-icon="sk_split" alt=""></button>
+          <button data-tool="skcorner" title="Coin — deux lignes prolongées ou raccourcies jusqu'à se rejoindre"><img data-icon="sk_corner" alt=""></button>
+          <button data-tool="splconvert" title="Convertir en spline — l'entité cliquée devient une spline éditable"><img data-icon="sk_spline_convert" alt=""></button>
+          <button data-tool="splknot" title="Insérer un nœud — un point de contrôle de plus sur la spline"><img data-icon="sk_spline_knot" alt=""></button>
+          <button data-tool="spldegree" title="Augmenter le degré de la spline — plus souple"><img data-icon="sk_spline_degree" alt=""></button>
+          <button id="sk-text" title="Texte d'esquisse — les lettres deviennent des contours"><img data-icon="sk_text" alt=""></button>
+          <button id="sk-equation" title="Courbe par équation — x(t), y(t)"><img data-icon="sk_equation" alt=""></button>
           <button data-tool="construction" title="Géométrie de construction (G) — cliquez une entité"><img data-icon="construction" alt=""></button>
           <button id="sk-convert" title="Projeter les arêtes — le contour de la face porteuse devient de la géométrie bloquée"><img data-icon="project" alt=""></button>
           <button id="sk-ref-edges" title="Convertir en restant lié — les arêtes de la face porteuse suivent la pièce"><img data-icon="sk_ref_edges" alt=""></button>
           <button id="sk-ref-intersection" title="Courbe d'intersection — là où le plan de l'esquisse coupe le solide (liée)"><img data-icon="sk_ref_intersection" alt=""></button>
+          <button id="sk-silhouette" title="Silhouette — les arêtes vues de la pièce, projetées sur le plan"><img data-icon="sk_silhouette" alt=""></button>
           <button id="sk-ref-pierce" title="Points de percée — là où les courbes 3D traversent le plan (liés)"><img data-icon="sk_ref_pierce" alt=""></button>
           <button data-tool="dim" data-label="Cotation" title="Cotation (D) — 1 ou 2 entités, cote pilotante"><img data-icon="dimension" alt=""></button>
           <button data-tool="dimarc" title="Longueur d'arc — cliquez un arc"><img data-icon="dim_arc_length" alt=""></button>
@@ -1264,6 +1273,12 @@
           <button id="sk-offset" title="Décaler — sélectionnez une chaîne, puis la distance"><img data-icon="offset" alt="">Décaler</button>
           <button id="sk-image" title="Image d'esquisse — calque de fond pour redessiner un scan ou un logo"><img data-icon="sketch_image" alt="">Image</button>
           <button id="sk-relations" title="Relations de l'entité sélectionnée — voir et supprimer"><img data-icon="relations" alt=""></button>
+          <button id="sk-repair" title="Réparer l'esquisse — relations en trop et conflits retirés, extrémités presque jointes soudées"><img data-icon="sk_repair" alt=""></button>
+          <button id="sk-define" title="Définir entièrement — les cotes qui manquent sont ajoutées"><img data-icon="sk_define" alt=""></button>
+          <button id="sk-grid" title="Accrochage à la grille — un pas rond qui suit le zoom"><img data-icon="sk_grid" alt=""></button>
+          <button id="sk-comb" title="Peigne de courbure — voir où les courbes se tendent"><img data-icon="sk_comb" alt=""></button>
+          <button id="sk-block-save" title="Créer un bloc — la sélection rangée sous un nom"><img data-icon="sk_block" alt=""></button>
+          <button id="sk-block-insert" title="Insérer un bloc"><img data-icon="sk_block_insert" alt=""></button>
         </div>
         <div class="ribbon-group-label">Contraintes</div>
       </div>

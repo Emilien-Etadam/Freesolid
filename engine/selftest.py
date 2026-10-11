@@ -3292,6 +3292,69 @@ class SelftestMixin:
                 and tree["features"][-1]["type"] == "PartDesign::Hole"
                 and len(tree["features"]) == 2)
 
+            mark("p51: esquisse — tracés complémentaires")
+            import math
+            self.new_part("Pièce tracés")
+            st = self.sketch_start(plane="XY")
+            sk_name = st["sketch"]
+            self.sketch_add_point(sk_name, 5, 5)
+            self.sketch_add_line(sk_name, -30, 0, -30, 30, construction=True)
+            self.sketch_add_line(sk_name, 0, 0, 20, 0)
+            line_id = len(self.sketch_state(sk_name)["entities"]) - 1
+            state = self.sketch_add_tangent_arc(sk_name, line_id, 2, 20, 20)
+            arc = state["entities"][-1]
+            tangent_ok = any(c["type"] == "Tangent" and line_id in c["geos"]
+                             for c in state["constraints"])
+            state = self.sketch_add_ellipse_arc(sk_name, 60, 0, 10, 5, 0,
+                                                math.pi / 2)
+            ell = state["entities"][-1]
+            state = self.sketch_add_parabola(sk_name, 0, 50, 0, 55,
+                                             -10, 60, 10, 60)
+            par = state["entities"][-1]["points"]
+            state = self.sketch_add_conic(sk_name, 40, 40, 60, 40, 50, 50,
+                                          rho=0.4)
+            con = state["entities"][-1]["points"]
+            state = self.sketch_add_spline_poles(
+                sk_name, [[80, 0], [90, 10], [100, 0], [110, 10]])
+            spl = state["entities"][-1]
+            ents = state["entities"]
+            report["p51_traces"] = (
+                ents[0]["type"] == "point"
+                and ents[1]["construction"] is True
+                and arc["type"] == "arc" and abs(arc["r"] - 10) < 1e-6
+                and tangent_ok
+                and ell.get("kind") == "ellipse"
+                and abs(ell["points"][0][0] - 70) < 1e-6
+                and abs(ell["points"][-1][1] - 5) < 1e-6
+                and sorted(round(p[0], 6) for p in (par[0], par[-1]))
+                == [-10, 10] and abs(par[0][1] - 55) < 1e-6
+                and abs(con[0][0] - 40) < 1e-6 and abs(con[-1][0] - 60) < 1e-6
+                and spl.get("kind") == "spline" and spl.get("npoints") == 4
+                and state["definition"] != "over")
+            self.sketch_finish(sk_name)
+            # Contours fermés extrudés : l'aire dit que la forme est juste.
+            areas = {}
+            for key, draw in (
+                    ("rect3", lambda n: self.sketch_add_rect3(
+                        n, 0, 0, 30, 40, 14, 52)),
+                    ("para", lambda n: self.sketch_add_rect3(
+                        n, 0, 0, 30, 0, 40, 20, parallelogram=True)),
+                    ("slot", lambda n: self.sketch_add_arc_slot(
+                        n, 0, 0, 20, 0, math.pi / 2, 4))):
+                self.new_part("Pièce " + key)
+                st = self.sketch_start(plane="XY")
+                draw(st["sketch"])
+                definition = self.sketch_state(st["sketch"])["definition"]
+                self.sketch_finish(st["sketch"])
+                self.add_pad(5, sketch=st["sketch"])
+                areas[key] = (self._require_body().Shape.Volume / 5,
+                              definition)
+            report["p51_contours"] = (
+                abs(areas["rect3"][0] - 1000) < 1e-3
+                and abs(areas["para"][0] - 600) < 1e-3
+                and abs(areas["slot"][0] - 44 * math.pi) < 1e-3
+                and all(d != "over" for _, d in areas.values()))
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

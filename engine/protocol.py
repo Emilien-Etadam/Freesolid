@@ -286,7 +286,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_state": _Req(("sketch", str)),
     "sketch_add_line": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
-        ("x2", float), ("y2", float)),
+        ("x2", float), ("y2", float), optional={"construction": bool}),
+                                       # construction : ligne d'axe
     "sketch_add_rectangle": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float), optional={"center": bool}),
@@ -314,6 +315,29 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_offset": _Req(
         ("sketch", str), ("geos", list), ("distance", float)),
                                        # optional: reversed, construction
+    # Tracés complémentaires (engine/sketchdraw.py).
+    "sketch_add_point": _Req(("sketch", str), ("x", float), ("y", float)),
+    "sketch_add_tangent_arc": _Req(
+        ("sketch", str), ("geo", int), ("point", int),
+        ("x", float), ("y", float)),   # part d'une extrémité (1|2)
+    "sketch_add_rect3": _Req(
+        ("sketch", str), ("x1", float), ("y1", float), ("x2", float),
+        ("y2", float), ("x3", float), ("y3", float),
+        optional={"parallelogram": bool}),
+    "sketch_add_ellipse_arc": _Req(
+        ("sketch", str), ("cx", float), ("cy", float), ("rx", float),
+        ("ry", float), ("a1", float), ("a2", float)),  # optional: angle (°)
+    "sketch_add_parabola": _Req(
+        ("sketch", str), ("vx", float), ("vy", float), ("fx", float),
+        ("fy", float), ("x1", float), ("y1", float), ("x2", float),
+        ("y2", float)),                # sommet, foyer, deux bouts
+    "sketch_add_conic": _Req(
+        ("sketch", str), ("x1", float), ("y1", float), ("x2", float),
+        ("y2", float), ("ax", float), ("ay", float)),  # optional: rho
+    "sketch_add_spline_poles": _Req(("sketch", str), ("points", list)),
+    "sketch_add_arc_slot": _Req(
+        ("sketch", str), ("cx", float), ("cy", float), ("r", float),
+        ("a1", float), ("a2", float), ("width", float)),
     "sketch_add_slot": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float), ("width", float)),

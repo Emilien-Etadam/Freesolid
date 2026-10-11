@@ -7,6 +7,7 @@
 import * as THREE from "three";
 import { t } from "./i18n.js";
 import { createLocalSolver } from "./solver.js";
+import { CLICK_TOOLS, OPEN_TOOLS, endpointDirection } from "./sketchtools.js";
 import {
   applicableRelations, arcAngles, chainClickAction, distanceToEntity,
   numericDrawTarget, numericFields, relationGlyphs,
@@ -148,6 +149,7 @@ export function createSketchMode(deps) {
     pendingRectC: null,   // center while waiting for a corner
     pendingArc: null,     // { c, start? } — centre puis départ puis fin
     pendingSpline: null,  // points cliqués — Entrée pour terminer
+    pendingClicks: null,  // clics des outils de sketchtools.js
     pendingEllipse: null, // { c, major? } — centre, grand axe, petit axe
     pendingArc3: null,    // [p1, p2] — départ, fin, puis passage
     pendingSlot: null,    // { a, b? } — centres puis largeur
@@ -201,7 +203,10 @@ export function createSketchMode(deps) {
                     polygon: "crosshair", skfillet: "pointer",
                     trim: "pointer", construction: "pointer",
                     spline: "crosshair", ellipse: "crosshair",
-                    dim: "crosshair" };
+                    dim: "crosshair",
+                    ...Object.fromEntries(
+                      [...Object.keys(CLICK_TOOLS), ...Object.keys(OPEN_TOOLS)]
+                        .map((tool) => [tool, "crosshair"])) };
 
   function setCursor(name) {
     renderer.domElement.style.cursor = name;
@@ -301,7 +306,8 @@ export function createSketchMode(deps) {
   // (longueur, angle, dimensions) près du curseur.
 
   const DRAW_TOOLS = new Set(["line", "rect", "rectc", "circle", "arc",
-    "arc3", "slot", "polygon", "spline", "ellipse"]);
+    "arc3", "slot", "polygon", "spline", "ellipse",
+    ...Object.keys(CLICK_TOOLS), ...Object.keys(OPEN_TOOLS)]);
   const guideMaterial = new THREE.LineDashedMaterial({
     color: sceneTheme.under, dashSize: 1.5, gapSize: 1.2, depthTest: false,
     transparent: true, opacity: 0.8 });
@@ -924,12 +930,62 @@ export function createSketchMode(deps) {
     }
   }
 
+  /** Un clic d'un outil de sketchtools.js : rangé, puis l'op au dernier. */
+  async function clickToolStep(spec, snapped, name) {
+    const pts = [...(mode.pendingClicks ?? [])];
+    let p = { x: snapped.x, y: snapped.y };
+    if (spec.needsEndpoint && !pts.length) {
+      const on = snapped.onPoint;
+      const entity = on && (mode.state.entities ?? []).find(
+        (e) => e.id === on.geo);
+      const dir = entity && (on.point === 1 || on.point === 2)
+        ? endpointDirection(entity, on.point) : null;
+      if (!dir) {
+        say(t(spec.prompts[0]), true);
+        return;
+      }
+      p = { ...p, geo: on.geo, point: on.point, dir };
+    }
+    pts.push(p);
+    if (pts.length < spec.clicks) {
+      mode.pendingClicks = pts;
+      say(t(spec.prompts[pts.length]));
+      return;
+    }
+    mode.pendingClicks = null;
+    if (previewLine) previewLine.visible = false;
+    const out = spec.build(pts);
+    if (out.error) {
+      say(t(out.error), true);
+      return;
+    }
+    say(t(spec.prompts[0]));
+    await safe(call(out.op, { sketch: name, ...out.params }));
+  }
+
   async function onClick(event) {
     if (building) return;
     const local = toLocal(event);
     if (!local || !mode.state) return;
     const snapped = snap(local, event);
     const name = mode.state.sketch;
+
+    if (CLICK_TOOLS[mode.tool]) {
+      await clickToolStep(CLICK_TOOLS[mode.tool], snapped, name);
+      return;
+    }
+    if (OPEN_TOOLS[mode.tool]) {
+      const spec = OPEN_TOOLS[mode.tool];
+      const pts = mode.pendingClicks ?? [];
+      const last = pts[pts.length - 1];
+      if (last && chainClickAction(toScreen(last.x, last.y),
+          { x: event.clientX, y: event.clientY }, SNAP_PX) === "finish") {
+        return;
+      }
+      mode.pendingClicks = [...pts, { x: snapped.x, y: snapped.y }];
+      say(t(spec.prompt, { n: mode.pendingClicks.length }));
+      return;
+    }
 
     if (mode.tool === "select") {
       if (mode.justDragged) { mode.justDragged = false; return; }
@@ -1589,6 +1645,19 @@ export function createSketchMode(deps) {
       previewLine.geometry.setFromPoints(
         path.map((p) => new THREE.Vector3(p.x, p.y, 0)));
       previewLine.visible = true;
+    } else if ((CLICK_TOOLS[mode.tool] || OPEN_TOOLS[mode.tool])
+               && mode.pendingClicks?.length && previewLine) {
+      const local = toLocal(event);
+      if (!local) return;
+      const spec = CLICK_TOOLS[mode.tool] ?? OPEN_TOOLS[mode.tool];
+      const pts = spec.preview(mode.pendingClicks, snap(local, event));
+      if (pts.length < 2) {
+        previewLine.visible = false;
+        return;
+      }
+      previewLine.geometry.setFromPoints(
+        pts.map((q) => new THREE.Vector3(q.x, q.y, 0)));
+      previewLine.visible = true;
     } else if (mode.tool === "dim" && mode.pendingDimPair && previewLine) {
       const local = toLocal(event);
       if (!local) return;
@@ -1898,6 +1967,17 @@ export function createSketchMode(deps) {
     if (event.key === "Escape") {
       if (previewLine) previewLine.visible = false;
       setTool("select");
+    } else if (event.key === "Enter" && OPEN_TOOLS[mode.tool]) {
+      const spec = OPEN_TOOLS[mode.tool];
+      const pts = mode.pendingClicks ?? [];
+      if (pts.length >= spec.min) {
+        mode.pendingClicks = null;
+        if (previewLine) previewLine.visible = false;
+        const out = spec.build(pts);
+        safe(call(out.op, { sketch: mode.state.sketch, ...out.params }));
+      } else {
+        say(t(spec.prompt, { n: pts.length }), true);
+      }
     } else if (event.key === "Enter" && mode.tool === "spline") {
       const pts = mode.pendingSpline ?? [];
       if (pts.length >= 3) {
@@ -1947,6 +2027,7 @@ export function createSketchMode(deps) {
     mode.pendingDim = null;
     mode.pendingDimPair = null;
     mode.pendingSpline = null;
+    mode.pendingClicks = null;
     mode.pendingEllipse = null;
     mode.selection = [];
     if (tool === "polygon") {
@@ -1980,7 +2061,8 @@ export function createSketchMode(deps) {
       construction: "Construction : cliquez une entité pour la basculer",
       dim: "Cotation : cliquez une entité ou une extrémité",
     };
-    say(hints[tool]);
+    say(hints[tool] ?? (CLICK_TOOLS[tool] ? t(CLICK_TOOLS[tool].prompts[0])
+      : OPEN_TOOLS[tool] ? t(OPEN_TOOLS[tool].prompt, { n: 0 }) : undefined));
     redraw();
     syncEntityPanel();
   }

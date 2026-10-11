@@ -427,7 +427,7 @@ class SketchMixin:
             elif dx < self._SNAP_TOL:
                 sk.addConstraint(C("Vertical", gid))
 
-    def sketch_add_line(self, sketch, x1, y1, x2, y2):
+    def sketch_add_line(self, sketch, x1, y1, x2, y2, construction=False):
         from engine.kernel import KernelError
         import Part
         sk = self._get_sketch(sketch)
@@ -436,7 +436,8 @@ class SketchMixin:
                 "segment de longueur nulle — les deux points coïncident")
         V = self._app().Vector
         gid = sk.addGeometry(Part.LineSegment(
-            V(float(x1), float(y1), 0), V(float(x2), float(y2), 0)), False)
+            V(float(x1), float(y1), 0), V(float(x2), float(y2), 0)),
+            bool(construction))
         self._auto_constrain(sk, gid)
         return self.sketch_state(sketch)
 

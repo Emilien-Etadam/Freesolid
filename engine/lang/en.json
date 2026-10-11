@@ -455,5 +455,14 @@
  "point de contrôle hors de la grille : {} {}": "control point outside the grid: {} {}",
  "forme libre : la surface déformée est invalide": "freeform: the deformed surface is invalid",
  "la surface épaissie ne touche pas le solide": "the thickened surface does not touch the solid",
- "Épaissir en enlevant": "Thicken cut"
+ "Épaissir en enlevant": "Thicken cut",
+ "arc tangent : partez de l'extrémité d'une ligne ou d'un arc": "tangent arc: start from the end of a line or arc",
+ "arc tangent : le point d'arrivée est dans l'axe de la tangente — tracez une ligne": "tangent arc: the end point lies on the tangent — draw a line",
+ "les trois points sont alignés": "the three points are aligned",
+ "parabole : le foyer est sur le sommet": "parabola: the focus is on the vertex",
+ "parabole : les deux bouts sont confondus": "parabola: the two ends coincide",
+ "conique : rho doit être entre 0 et 1": "conic: rho must be between 0 and 1",
+ "conique : le sommet est aligné avec les deux bouts": "conic: the apex is aligned with the two ends",
+ "rainure en arc : la largeur dépasse le diamètre de l'arc": "arc slot: the width exceeds the arc diameter",
+ "rainure en arc : l'arc doit rester ouvert": "arc slot: the arc must stay open"
 }

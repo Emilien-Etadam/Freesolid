@@ -1725,6 +1725,25 @@ class SurfaceMixin:
         return box
 
     def _free_shape(self, shape, stamps):
+        """La face déformée, et les autres faces de la surface telles
+        quelles — cousues quand elles se touchent encore."""
+        import Part
+        index = int(stamps["freeface"])
+        result = self._free_face_shape(shape, stamps)
+        others = [f.copy() for k, f in enumerate(shape.Faces) if k != index]
+        if not others:
+            return result
+        faces = result.Faces + others
+        try:
+            shell = Part.makeShell(faces)
+            shell.sewShape()
+            if shell.isValid() and len(shell.Faces) == len(faces):
+                return shell
+        except Exception:  # noqa: BLE001
+            pass
+        return Part.makeCompound(faces)
+
+    def _free_face_shape(self, shape, stamps):
         """Pôles de la surface déplacés selon la normale, avec une cloche
         qui s'éteint au rayon d'influence (mesuré sur la surface)."""
         from engine.kernel import KernelError

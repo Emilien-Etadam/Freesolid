@@ -83,12 +83,16 @@ Ces commandes relèvent d'autres domaines ; elles ne comptent pas dans
   spécialisées à traiter après le cœur pièce (voir le cap « mini-SolidWorks
   propre »).
 
-## Limites connues
+## Comportements à connaître
 
-- Points de contrôle : la grille est prise sur une face à la fois ; les
-  déplacements s'appliquent à la surface d'origine (la grille ne change pas
-  en réédition).
-- Aplatir : exact pour une face développable, approché (moindres carrés)
-  sinon.
+- Forme libre (points poussés ou pôles) : une face par fonction — celle
+  qu'on clique ; les autres faces de la surface sont gardées telles
+  quelles. Pour déformer une autre face, on enchaîne une seconde forme
+  libre sur le résultat. La grille de pôles est fixée à la création
+  (changer sa taille déplacerait les pôles déjà réglés).
+- Aplatir : le patron est exact pour une face développable (plan, cylindre,
+  cône) ; une face à double courbure ne peut pas, mathématiquement, être
+  mise à plat sans déformation — le patron répartit alors l'étirement au
+  mieux (moindres carrés conformes).
 - Coudre : pas d'objet paramétrique natif dans FreeCAD 1.1 — la peau
   cousue est recalculée depuis ses sources à chaque reconstruction.

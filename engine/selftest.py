@@ -3191,6 +3191,24 @@ class SelftestMixin:
                         .get("moves") == [[3, 3, 0.0, 0.0, 6.0]])
             self.edit_surface_freeform(lifted.Name, moves=[[3, 3, 0, 0, -6]])
             poles_ok = poles_ok and min(heights(lifted)) < -1
+            # Surface à deux faces (extrusion d'un profil en L) : la face
+            # déformée change, l'autre reste — rien ne disparaît.
+            st = self.sketch_start(plane="XY")
+            l_sk = st["sketch"]
+            self.sketch_add_line(l_sk, 100, 0, 140, 0)
+            self.sketch_add_line(l_sk, 140, 0, 140, 30)
+            self.sketch_finish(l_sk)
+            l_surf = self._require_doc().getObject(
+                self.surface_extrude(20, sketch=l_sk)["surfaces"][-1]["name"])
+            faces_before = len(l_surf.Shape.Faces)
+            area_before = l_surf.Shape.Area
+            tree = self.surface_freeform(l_surf.Name, moves=[[3, 3, 0, 6, 0]],
+                                         grid=6, face=0)
+            l_free = self._require_doc().getObject(
+                tree["surfaces"][-1]["name"])
+            poles_ok = poles_ok and (
+                faces_before == 2 and len(l_free.Shape.Faces) == 2
+                and l_free.Shape.Area > area_before + 1e-3)
             report["p50_forme_libre"] = poles_ok and multi_ok and (
                 3 < abs(top) < 5.5
                 and 5 < abs(bump.Shape.BoundBox.ZMax) < 8.5

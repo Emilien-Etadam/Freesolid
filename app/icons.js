@@ -169,6 +169,7 @@ export const ICONS = {
   surface_fillet: "fs_surface_fillet.svg",
   surface_flatten: "fs_surface_flatten.svg",
   surface_freeform: "fs_surface_freeform.svg",
+  surface_poles: "fs_surface_poles.svg",
   surface_loft: "fs_surface_loft.svg",
   surface_mid: "fs_surface_mid.svg",
   surface_offset: "fs_surface_offset.svg",

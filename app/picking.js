@@ -302,8 +302,9 @@ export function installPicking(ctx) {
   }
 
   renderer.domElement.addEventListener("pointerdown", (event) => {
-    // L'esquisse et la spline 3D gèrent leurs propres clics.
-    if (ctx.sketchMode.active || ctx.curveTool?.active) return;
+    // L'esquisse, la spline 3D et les pôles gèrent leurs clics.
+    if (ctx.sketchMode.active || ctx.curveTool?.active
+        || ctx.polesTool?.active) return;
     pressPosition = { x: event.clientX, y: event.clientY };
     if (!ctx.assemblyState
         && (hoverAt?.x !== event.clientX || hoverAt?.y !== event.clientY)) {
@@ -319,7 +320,8 @@ export function installPicking(ctx) {
     ctx.pluginRuntime?.dispatchPointer("down", event, pointerCtx());
   });
   renderer.domElement.addEventListener("pointerup", (event) => {
-    if (ctx.sketchMode.active || ctx.curveTool?.active) return;
+    if (ctx.sketchMode.active || ctx.curveTool?.active
+        || ctx.polesTool?.active) return;
     if (pluginSeesPointer()) {
       setPointerFromEvent(event);
       if (ctx.pluginRuntime?.dispatchPointer("up", event, pointerCtx())) {

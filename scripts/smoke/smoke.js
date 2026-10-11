@@ -156,6 +156,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-curve-composite", tab: "surfaces" },
     { id: "btn-surf-flatten", tab: "surfaces" },
     { id: "btn-surf-freeform", tab: "surfaces" },
+    { id: "btn-surf-poles", tab: "surfaces" },
     { id: "btn-surf-extend", tab: "surfaces" },
     { id: "btn-surf-trim", tab: "surfaces" },
   ];

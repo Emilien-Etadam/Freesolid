@@ -449,5 +449,11 @@
  "bouchon tangent : arête dégénérée": "tangent cap: degenerate edge",
  "bouchon tangent : le contour ne donne pas de sens au bouchon": "tangent cap: the boundary gives the cap no direction",
  "bouchon tangent : surface invalide": "tangent cap: invalid surface",
- "règles d'esquisse 3D incompatibles : les points liés, axes, angles et longueurs ne peuvent pas tenir ensemble": "incompatible 3D sketch rules: the linked points, axes, angles and lengths cannot all hold"
+ "règles d'esquisse 3D incompatibles : les points liés, axes, angles et longueurs ne peuvent pas tenir ensemble": "incompatible 3D sketch rules: the linked points, axes, angles and lengths cannot all hold",
+ "point de contrôle invalide : {}": "invalid control point: {}",
+ "choisissez au moins un point de contrôle": "choose at least one control point",
+ "point de contrôle hors de la grille : {} {}": "control point outside the grid: {} {}",
+ "forme libre : la surface déformée est invalide": "freeform: the deformed surface is invalid",
+ "la surface épaissie ne touche pas le solide": "the thickened surface does not touch the solid",
+ "Épaissir en enlevant": "Thicken cut"
 }

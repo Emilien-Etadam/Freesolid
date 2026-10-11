@@ -1165,6 +1165,14 @@ export function installTree(ctx) {
       editSurfaceFillet(surface);
       return;
     }
+    if (surface.surface?.kind === "freeform" && surface.surface.moves) {
+      ctx.openPoles(surface);
+      return;
+    }
+    if (surface.surface?.kind === "flatten") {
+      showFlatten(surface);
+      return;
+    }
     if (surface.surface?.kind === "freeform") {
       editFreeform(surface);
       return;
@@ -1216,15 +1224,53 @@ export function installTree(ctx) {
       title: feature.label,
       groups: [{
         label: t("Options"),
-        rows: [{ type: "check", key: "flip", label: t("Inverser le côté"),
-                 value: spec.flip }],
+        rows: [
+          { type: "check", key: "flip", label: t("Inverser le côté"),
+            value: spec.flip },
+          ...(spec.thickness ? [{ type: "number", key: "thickness",
+            label: t("Épaisseur"), value: spec.thickness, unit: "mm",
+            min: 0.01 }] : []),
+        ],
       }],
       onApply: (v) => {
-        if (!!v.flip === spec.flip) return;
-        refresh(call("edit_surface_cut",
-          { feature: feature.name, flip: !!v.flip }));
+        const thickness = spec.thickness ? num(v.thickness) : null;
+        if (!!v.flip === spec.flip && thickness === (spec.thickness ?? null)) {
+          return;
+        }
+        if (spec.thickness && !(thickness > 0)) return;
+        refresh(call("edit_surface_cut", { feature: feature.name,
+          flip: !!v.flip, ...(thickness ? { thickness } : {}) }));
       },
     });
+  }
+
+  // Patron à plat : sa déformation mesurée (lecture seule ; le patron
+  // suit la surface d'origine).
+  function showFlatten(surface) {
+    const spec = surface.surface;
+    const exact = (spec.area_error ?? 0) < 0.5 && (spec.edge_error ?? 0) < 0.5;
+    panel.open({
+      icon: "surface_flatten",
+      title: surface.label,
+      noApply: true,
+      groups: [{
+        label: t("Déformation du patron"),
+        rows: [
+          { type: "note", readonly: true, text: t(
+            "Aire : {a} % · contour : {e} %",
+            { a: fmtPct(spec.area_error), e: fmtPct(spec.edge_error) }) },
+          { type: "note", readonly: true, text: exact
+            ? t("Face développable : le patron est exact.")
+            : t("Face à double courbure : le patron s'étire pour se "
+              + "mettre à plat ; ces écarts disent de combien.") },
+        ],
+      }],
+    });
+  }
+
+  function fmtPct(value) {
+    return (Math.round((value ?? 0) * 100) / 100).toLocaleString(
+      document.documentElement.lang || undefined);
   }
 
   // Forme libre : hauteur et rayon d'influence.

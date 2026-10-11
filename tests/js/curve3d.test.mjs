@@ -8,7 +8,8 @@ import { alongAxis, clickPlane, curveProblem, nextPlane, rayPlane,
 const dist = (a, b) => Math.hypot(...a.map((v, k) => v - b[k]));
 import { boundaryText, samePick } from "../../app/panel.js";
 import { boundaryParam, deleteFacesBuild, deleteFacesParams, extendParams,
-  freeformParams, midParams, surfaceFilletParams, trimParams }
+  freeformParams, midParams, surfaceCutParams, surfaceFilletParams,
+  trimParams }
   from "../../app/features.js";
 
 describe("spline 3D : plan de clic", () => {
@@ -184,5 +185,18 @@ describe("panneaux de fonctions", () => {
     const { FEATURES } = await import("../../app/features.js");
     assert.deepEqual(FEATURES.filter((e) => typeof e.groups !== "function")
       .map((e) => e.button), []);
+  });
+});
+
+describe("couper avec une surface", () => {
+  it("tout un côté, ou une bande épaisse quand l'option est cochée", () => {
+    assert.deepEqual(surfaceCutParams({ surface: { name: "S" }, flip: true }),
+      { op: "add_surface_cut", params: { surface: "S", flip: true } });
+    assert.deepEqual(surfaceCutParams({ surface: { name: "S" }, thick: true,
+      thickness: "2,5" }).params, { surface: "S", flip: false,
+      thickness: 2.5 });
+    assert.equal(surfaceCutParams({ surface: { name: "S" }, thick: true,
+      thickness: 0 }), null);
+    assert.equal(surfaceCutParams({ surface: null }), null);
   });
 });

@@ -32,7 +32,10 @@
 //         points consécutifs : axe imposé (X/Y/Z), angle avec le segment
 //         d'avant, longueur cotée
 //       points : linksKey? — liste parallèle ; un point lié porte ⛓ et se
-//         délie dès qu'on retape une de ses coordonnées
+//         délie dès qu'on retape une de ses coordonnées ; head: n — les n
+//         premières valeurs nomment la ligne (lecture seule, headText(p)
+//         pour les écrire autrement) ; titles —
+//         infobulles des colonnes éditables
 //
 // invalidateSelections() : vide les rows `selection` (ids périmés au rebuild).
 
@@ -569,18 +572,21 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     list.forEach((point, index) => {
       const line = el("div", "plist-item ppoint");
       const linked = row.linksKey && (active.values[row.linksKey] ?? [])[index];
-      const name = el("span", "ppoint-name",
-        linked ? `P${index + 1}⛓` : `P${index + 1}`);
+      const head = row.head ?? 0;
+      const name = el("span", "ppoint-name", head
+        ? (row.headText?.(point) ?? point.slice(0, head).join(", "))
+        : linked ? `P${index + 1}⛓` : `P${index + 1}`);
       if (linked) name.title = t("Lié à la géométrie — suit la pièce");
       line.append(name);
       point.forEach((coord, axis) => {
+        if (axis < head) return;
         const input = document.createElement("input");
         input.type = "text";
         input.inputMode = "decimal";
         input.className = "ppoint-coord";
         input.value = String(Math.round(coord * 1000) / 1000);
-        input.title = axis < 3 ? ["X", "Y", "Z"][axis]
-          : t(row.extra?.label ?? "");
+        input.title = row.titles ? row.titles[axis - head] ?? ""
+          : axis < 3 ? ["X", "Y", "Z"][axis] : t(row.extra?.label ?? "");
         input.addEventListener("change", () => {
           const parsed = Number(input.value.replace(",", "."));
           if (!Number.isFinite(parsed)) {

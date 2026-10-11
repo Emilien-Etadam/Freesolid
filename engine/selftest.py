@@ -3160,13 +3160,67 @@ class SelftestMixin:
             multi_ok = (wb.ZMax > 3 and wb.ZMin < -3 and edges_still
                         and len(spec.get("pushes") or []) == 2
                         and spec.get("keep_edges") is True)
-            report["p50_forme_libre"] = multi_ok and (
+            # Points de contrôle : la grille se lit, un pôle intérieur
+            # monte de 6 mm, le bord ne bouge pas.
+            grid = self.surface_control_points(plate.Name, grid=6)
+            tree = self.surface_freeform(plate.Name, moves=[[3, 3, 0, 0, 6]],
+                                         grid=6)
+            lifted = self._require_doc().getObject(
+                tree["surfaces"][-1]["name"])
+            # La boîte d'une B-spline borne ses pôles : on échantillonne.
+            def heights(obj):
+                f = obj.Shape.Faces[0]
+                u0, u1, v0, v1 = f.ParameterRange
+                return [f.valueAt(u0 + (u1 - u0) * a / 20,
+                                  v0 + (v1 - v0) * b / 20).z
+                        for a in range(21) for b in range(21)]
+            zs = heights(lifted)
+            poles_ok = (grid["grid"] == [6, 6] and 1 < max(zs) < 6
+                        and abs(min(zs)) < 1e-6
+                        and (tree["surfaces"][-1].get("surface") or {})
+                        .get("moves") == [[3, 3, 0.0, 0.0, 6.0]])
+            self.edit_surface_freeform(lifted.Name, moves=[[3, 3, 0, 0, -6]])
+            poles_ok = poles_ok and min(heights(lifted)) < -1
+            report["p50_forme_libre"] = poles_ok and multi_ok and (
                 3 < abs(top) < 5.5
                 and 5 < abs(bump.Shape.BoundBox.ZMax) < 8.5
                 and abs(bump.Shape.BoundBox.XLength - 40) < 1e-3
                 and plate.Name not in {s["name"] for s
                                        in self.tessellate().get("surfaces")
                                        or []})
+
+            mark("p50: épaissir en enlevant la matière")
+            # Bloc 40×30×10 ; plaque à z = 8, épaissie de 3 mm vers le
+            # haut : la tranche 8–10 part (2 400 mm³). Réédition : côté
+            # inversé, 8 mm — la tranche 0–8 part (9 600 mm³).
+            App = self._app()
+            self.new_part("Pièce épaissir-enlever")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            st = self.sketch_start(plane="XY")
+            slab_sk = st["sketch"]
+            self.sketch_add_rectangle(slab_sk, -25, -20, 25, 20)
+            self.sketch_finish(slab_sk)
+            slab = self._require_doc().getObject(
+                self.surface_planar(sketch=slab_sk)["surfaces"][-1]["name"])
+            slab.Placement = App.Placement(App.Vector(0, 0, 8),
+                                           App.Rotation())
+            self._recompute()
+            body = self._require_body()
+            v0 = body.Shape.Volume
+            tree = self.add_surface_cut(slab.Name, thickness=3)
+            cut_feat = body.Tip
+            v1 = body.Shape.Volume
+            spec = next((f.get("surface_cut") for f in tree["features"]
+                         if f.get("name") == cut_feat.Name), None) or {}
+            self.edit_surface_cut(cut_feat.Name, flip=True, thickness=8)
+            v2 = body.Shape.Volume
+            report["p50_epaissir_enlever"] = (
+                abs((v0 - v1) - 2400) < 1e-2
+                and abs((v0 - v2) - 9600) < 1e-2
+                and spec.get("thickness") == 3.0
+                and slab.Name in {s["name"] for s
+                                  in self.tessellate().get("surfaces") or []})
 
             mark("p41: perçage par centres cliqués sur une face")
             self.new_part("Pièce perçage")

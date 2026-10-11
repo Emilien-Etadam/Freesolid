@@ -1165,6 +1165,10 @@ export function installTree(ctx) {
       editSurfaceFillet(surface);
       return;
     }
+    if (surface.surface?.kind === "freeform" && surface.surface.moves) {
+      ctx.openPoles(surface);
+      return;
+    }
     if (surface.surface?.kind === "freeform") {
       editFreeform(surface);
       return;
@@ -1216,13 +1220,22 @@ export function installTree(ctx) {
       title: feature.label,
       groups: [{
         label: t("Options"),
-        rows: [{ type: "check", key: "flip", label: t("Inverser le côté"),
-                 value: spec.flip }],
+        rows: [
+          { type: "check", key: "flip", label: t("Inverser le côté"),
+            value: spec.flip },
+          ...(spec.thickness ? [{ type: "number", key: "thickness",
+            label: t("Épaisseur"), value: spec.thickness, unit: "mm",
+            min: 0.01 }] : []),
+        ],
       }],
       onApply: (v) => {
-        if (!!v.flip === spec.flip) return;
-        refresh(call("edit_surface_cut",
-          { feature: feature.name, flip: !!v.flip }));
+        const thickness = spec.thickness ? num(v.thickness) : null;
+        if (!!v.flip === spec.flip && thickness === (spec.thickness ?? null)) {
+          return;
+        }
+        if (spec.thickness && !(thickness > 0)) return;
+        refresh(call("edit_surface_cut", { feature: feature.name,
+          flip: !!v.flip, ...(thickness ? { thickness } : {}) }));
       },
     });
   }

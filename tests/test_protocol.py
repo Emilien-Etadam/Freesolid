@@ -615,6 +615,7 @@ def test_ops_snapshot_keys():
         "solve_assembly",
         "spike_assembly",
         "surface_boundary",
+        "surface_control_points",
         "surface_delete_faces",
         "surface_extend",
         "surface_extrude",

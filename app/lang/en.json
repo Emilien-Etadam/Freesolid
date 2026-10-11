@@ -821,7 +821,6 @@
  "Couper": "Cut",
  "Couper avec une surface": "Cut With Surface",
  "Cliquez la surface qui traverse le solide": "Click the surface that goes through the solid",
- "L'aperçu montre ce qui reste. La surface doit traverser le solide de part en part.": "The preview shows what remains. The surface must go right through the solid.",
  "Couper : cliquez une surface": "Cut: click a surface",
  "Courbe composite — des courbes et arêtes bout à bout en une trajectoire": "Composite Curve — curves and edges end to end as one path",
  "Composite": "Composite",
@@ -940,5 +939,19 @@
  "Longueur cotée (vide : libre)": "Dimensioned length (empty: free)",
  "Lié à la géométrie — suit la pièce": "Linked to geometry — follows the part",
  "Angle avec le segment d'avant (vide : libre)": "Angle with the previous segment (empty: free)",
- "⛓ : point lié à un sommet ou un centre de la pièce": "⛓: point linked to a vertex or centre of the part"
+ "⛓ : point lié à un sommet ou un centre de la pièce": "⛓: point linked to a vertex or centre of the part",
+ "Points de contrôle — déplacer un à un les pôles d'une surface": "Control points — move a surface's poles one by one",
+ "Pôles": "Poles",
+ "Points de contrôle": "Control points",
+ "Cliquez les points de contrôle à déplacer.": "Click the control points to move.",
+ "Point de contrôle {i}, {j} — réglez son déplacement.": "Control point {i}, {j} — set its displacement.",
+ "Grille": "Grid",
+ "Pôles par côté": "Poles per side",
+ "Points déplacés": "Moved points",
+ "Cliquez des points de contrôle dans la vue": "Click control points in the view",
+ "Chaque point de contrôle déplacé tire la surface vers lui ; les autres restent en place.": "Each moved control point pulls the surface towards it; the others stay put.",
+ "Points de contrôle : une surface et au moins un point déplacé": "Control points: a surface and at least one moved point",
+ "Les déplacements s'appliquent à la surface d'origine.": "The displacements apply to the original surface.",
+ "Enlever une bande épaisse": "Remove a thick band",
+ "L'aperçu montre ce qui reste. La surface doit traverser le solide de part en part ; en bande épaisse, seule la matière qu'elle occupe part.": "The preview shows what remains. The surface must cross the solid right through; as a thick band, only the material it occupies is removed."
 }

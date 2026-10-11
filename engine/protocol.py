@@ -134,12 +134,16 @@ OPS: dict[str, tuple[str, ...]] = {
     "surface_mid": (),                 # optional: faces (deux, base 0) |
                                        # thickness (paires automatiques)
     "surface_flatten": _Req(("surface", str)),  # optional: face
-    "surface_freeform": _Req(("surface", str), ("radius", float)),
-                                       # optional: pushes [[x,y,z,h]…] |
-                                       # point + height ; face, keep_edges
-    "edit_surface_freeform": _Req(("surface", str), ("radius", float)),
-                                       # optional: pushes, height,
-                                       # keep_edges
+    "surface_freeform": _Req(("surface", str)),
+                                       # radius + pushes [[x,y,z,h]…] |
+                                       # point + height ; ou moves
+                                       # [[i,j,dx,dy,dz]…] + grid ;
+                                       # face, keep_edges
+    "edit_surface_freeform": _Req(("surface", str)),
+                                       # radius, pushes, height,
+                                       # keep_edges | moves
+    "surface_control_points": _Req(("surface", str)),
+                                       # optional: face, grid — lecture seule
     "curve_helix": _Req(("pitch", float), ("height", float),
                         ("radius", float)),
                                        # optional: angle, left, axis (X|Y|Z)
@@ -150,10 +154,12 @@ OPS: dict[str, tuple[str, ...]] = {
     "surface_trim": _Req(("surface", str), ("tool", str)),
                                        # optional: point — partie gardée,
                                        # tool_point — ajustement mutuel
-    "add_surface_cut": _Req(("surface", str)),  # optional: flip
+    "add_surface_cut": _Req(("surface", str)),  # optional: flip,
+                                                # thickness (bande enlevée)
     "add_delete_face": _Req(("faces", list)),  # faces du solide, base 0
     "add_replace_face": _Req(("face", int), ("surface", str)),
     "edit_surface_cut": _Req(("feature", str), ("flip", bool)),
+                                       # optional: thickness
     "edit_surface_trim": _Req(("surface", str)),
                                        # optional: point — sans point,
                                        # la partie suivante

@@ -64,6 +64,7 @@ import {
 } from "./graph.js";
 import { edgeSnapPoints } from "./pointsnap.js";
 import { installCurve3d } from "./curve3d.js";
+import { installPoles } from "./poles.js";
 
 const sceneTheme = readScene();
 
@@ -1533,6 +1534,13 @@ ctx.curveTool = curveTool;
 ctx.openCurve3d = (curve) => curveTool.open(curve);
 document.getElementById("btn-curve3d").addEventListener("click", () =>
   featureCommand(() => curveTool.open()));
+
+// Points de contrôle : la grille de pôles d'une surface, déplacés un à un.
+const polesTool = installPoles(ctx);
+ctx.polesTool = polesTool;
+ctx.openPoles = (surface) => polesTool.open(surface);
+document.getElementById("btn-surf-poles").addEventListener("click", () =>
+  featureCommand(() => polesTool.open()));
 
 document.getElementById("btn-drawing").addEventListener("click", () => {
   panel.open({

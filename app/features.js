@@ -303,6 +303,18 @@ export function midParams(v) {
   return { op: "surface_mid", params: { faces: items.map((i) => i.face) } };
 }
 
+/** Couper avec une surface — tout un côté, ou une bande épaisse. */
+export function surfaceCutParams(v) {
+  if (!v.surface) return null;
+  const params = { surface: v.surface.name, flip: !!v.flip };
+  if (v.thick) {
+    const thickness = num(v.thickness);
+    if (!(thickness > 0)) return null;
+    params.thickness = thickness;
+  }
+  return { op: "add_surface_cut", params };
+}
+
 /** Forme libre : surface, points poussés [x, y, z, h], rayon. */
 export function freeformParams(v) {
   const radius = num(v.radius);
@@ -1211,13 +1223,19 @@ export const FEATURES = [
                  hint: "Cliquez la surface qui traverse le solide",
                  value: ctx.selection(["surface"]) }] },
       { label: "Options",
-        rows: [{ type: "check", key: "flip", label: "Inverser le côté",
-                 value: false }] },
+        rows: [
+          { type: "check", key: "flip", label: "Inverser le côté",
+            value: false },
+          { type: "check", key: "thick", label: "Enlever une bande épaisse",
+            value: false },
+          { type: "number", key: "thickness", label: "Épaisseur", value: 2,
+            unit: "mm", min: 0.01, showIf: (v) => v.thick },
+        ] },
     ],
     note: "L'aperçu montre ce qui reste. La surface doit traverser le "
-      + "solide de part en part.",
-    build: (v) => (v.surface ? { op: "add_surface_cut",
-      params: { surface: v.surface.name, flip: !!v.flip } } : null),
+      + "solide de part en part ; en bande épaisse, seule la matière "
+      + "qu'elle occupe part.",
+    build: (v) => surfaceCutParams(v),
     invalid: () => ({ text: "Couper : cliquez une surface",
                       tone: "guide" }),
     refresh: "part",

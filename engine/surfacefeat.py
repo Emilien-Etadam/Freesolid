@@ -1011,6 +1011,14 @@ class SurfaceMixin:
                              if base is not None and base.Tools else None)}
         if getattr(obj, "FreeSolidCapedges", ""):
             return {"kind": "fill", "cap": True}
+        if getattr(obj, "FreeSolidFreemoves", ""):
+            moves = [[int(r.split(",")[0]), int(r.split(",")[1])]
+                     + [float(v) for v in r.split(",")[2:]]
+                     for r in str(obj.FreeSolidFreemoves).split(";") if r]
+            return {"kind": "freeform", "moves": moves,
+                    "grid": int(getattr(obj, "FreeSolidFreegrid", 6)),
+                    "source": str(getattr(obj, "FreeSolidFreesource", "")),
+                    "face": int(getattr(obj, "FreeSolidFreeface", 0))}
         if getattr(obj, "FreeSolidFreesource", ""):
             pushes = self._free_pushes(self._frozen_stamps(obj))
             return {"kind": "freeform", "pushes": pushes,
@@ -1078,11 +1086,13 @@ class SurfaceMixin:
             total = total + normal * face.Area
         return total
 
-    def add_surface_cut(self, surface, flip=False):
+    def add_surface_cut(self, surface, flip=False, thickness=None):
         """Couper le solide avec une surface : tout ce qui est du côté de
         la normale (ou de l'autre, ``flip``) part. La surface balaie un
         demi-espace (extrusion paramétrique), combiné en soustraction dans
-        l'historique — la coupe suit la surface quand elle change."""
+        l'historique — la coupe suit la surface quand elle change.
+        ``thickness`` : seule une bande de cette épaisseur part (la surface
+        épaissie, ``Part::Offset`` rempli) — épaissir en enlevant."""
         from engine.kernel import KernelError
         body = self._require_body()
         doc = self._require_doc()
@@ -1102,13 +1112,23 @@ class SurfaceMixin:
         reach = max(1000.0, 4 * shape.BoundBox.DiagonalLength
                     + 4 * src.Shape.BoundBox.DiagonalLength)
         before = shape.Volume
-        half = doc.addObject("Part::Extrusion", "SurfaceCutHalf")
-        self._mark_internal(half)
-        half.Base = src
-        half.DirMode = "Custom"
-        half.Dir = normal
-        half.LengthFwd = reach
-        half.Solid = True
+        if thickness is not None:
+            thickness = abs(float(thickness))
+            if thickness < 1e-9:
+                raise KernelError("l'épaisseur ne peut pas être nulle")
+            half = doc.addObject("Part::Offset", "SurfaceCutThick")
+            self._mark_internal(half)
+            half.Source = src
+            half.Value = -thickness if flip else thickness
+            half.Fill = True
+        else:
+            half = doc.addObject("Part::Extrusion", "SurfaceCutHalf")
+            self._mark_internal(half)
+            half.Base = src
+            half.DirMode = "Custom"
+            half.Dir = normal
+            half.LengthFwd = reach
+            half.Solid = True
         tool_body = doc.addObject("PartDesign::Body", "SurfaceCutBody")
         self._mark_internal(tool_body)
         tool_body.BaseFeature = half
@@ -1134,7 +1154,9 @@ class SurfaceMixin:
         after = body.Shape.Volume if body.Shape.Solids else 0.0
         problem = None
         if abs(after - before) < 1e-6 * max(before, 1.0):
-            problem = ("la surface ne coupe pas le solide — elle doit le "
+            problem = ("la surface épaissie ne touche pas le solide"
+                       if thickness is not None else
+                       "la surface ne coupe pas le solide — elle doit le "
                        "traverser de part en part")
         elif after < 1e-6 * before:
             problem = ("la surface enlève tout le solide — inversez le côté")
@@ -1143,8 +1165,10 @@ class SurfaceMixin:
             discard()
             self._recompute()
             raise KernelError(problem)
-        tip.Label = self._t("Couper avec une surface")
-        self._stamp(tip, cutsurface=src.Name, cutflip=int(bool(flip)))
+        tip.Label = self._t("Épaissir en enlevant" if thickness is not None
+                            else "Couper avec une surface")
+        self._stamp(tip, cutsurface=src.Name, cutflip=int(bool(flip)),
+                    cutthick=float(thickness or 0.0))
         return self.get_tree()
 
     @staticmethod
@@ -1478,8 +1502,9 @@ class SurfaceMixin:
         shape = self._flat_shape(src.Shape, int(face))
         return self._add_frozen_surface(shape, "Surface aplatie", stamps)
 
-    def surface_freeform(self, surface, radius, pushes=None, point=None,
-                         height=None, face=0, keep_edges=False):
+    def surface_freeform(self, surface, radius=None, pushes=None,
+                         point=None, height=None, face=0, keep_edges=False,
+                         moves=None, grid=6):
         """Forme libre : la surface est poussée en un ou plusieurs points
         ``pushes`` = [[x, y, z, hauteur], …] (ou ``point`` + ``height``),
         selon sa normale, chaque effet s'éteignant en douceur à
@@ -1487,6 +1512,16 @@ class SurfaceMixin:
         Rééditable, et suit la surface d'origine."""
         from engine.kernel import KernelError
         src = self._get_surface(surface)
+        if moves:
+            # Points de contrôle déplacés un à un : [[i, j, dx, dy, dz], …]
+            # sur une grille de ``grid`` × ``grid`` pôles.
+            stamps = {"freesource": src.Name, "freeface": int(face),
+                      "freemoves": self._moves_text(moves),
+                      "freegrid": int(grid), "freeradius": 0.0}
+            shape = self._free_shape(src.Shape, stamps)
+            return self._add_frozen_surface(shape, "Forme libre", stamps)
+        if radius is None:
+            raise KernelError("le rayon d'influence doit être positif")
         if not pushes:
             if point is None or height is None:
                 raise KernelError("cliquez au moins un point à pousser")
@@ -1498,8 +1533,8 @@ class SurfaceMixin:
         shape = self._free_shape(src.Shape, stamps)
         return self._add_frozen_surface(shape, "Forme libre", stamps)
 
-    def edit_surface_freeform(self, surface, radius, pushes=None,
-                              height=None, keep_edges=None):
+    def edit_surface_freeform(self, surface, radius=None, pushes=None,
+                              height=None, keep_edges=None, moves=None):
         """Rééditer une forme libre : points poussés et leurs hauteurs (ou
         une hauteur commune), rayon d'influence, bords fixes."""
         from engine.kernel import KernelError
@@ -1507,6 +1542,16 @@ class SurfaceMixin:
         if obj is None or not getattr(obj, "FreeSolidFreesource", ""):
             raise KernelError("forme libre inconnue : {}".format(surface))
         stamps = self._frozen_stamps(obj)
+        if stamps.get("freemoves"):
+            if moves is not None:
+                stamps["freemoves"] = self._moves_text(moves)
+            src = self._get_surface(stamps["freesource"])
+            obj.Shape = self._free_shape(src.Shape, stamps)
+            self._stamp(obj, freemoves=stamps["freemoves"])
+            self._recompute()
+            return self.get_tree()
+        if radius is None:
+            raise KernelError("le rayon d'influence doit être positif")
         current = self._free_pushes(stamps)
         if pushes is None:
             pushes = [p[:3] + [float(height) if height is not None else p[3]]
@@ -1522,6 +1567,52 @@ class SurfaceMixin:
                     freeedges=int(stamps.get("freeedges", 0)))
         self._recompute()
         return self.get_tree()
+
+    @staticmethod
+    def _moves_text(moves):
+        from engine.kernel import KernelError
+        rows = []
+        for move in moves:
+            try:
+                i, j = int(move[0]), int(move[1])
+                dx, dy, dz = (float(v) for v in move[2:5])
+            except Exception:
+                raise KernelError("point de contrôle invalide : {}".format(
+                    move))
+            rows.append("%d,%d,%.9g,%.9g,%.9g" % (i, j, dx, dy, dz))
+        if not rows:
+            raise KernelError("choisissez au moins un point de contrôle")
+        return ";".join(rows)
+
+    @staticmethod
+    def _control_surface(face, grid):
+        """B-spline de la face, montée au degré 3 et affinée jusqu'à
+        ``grid`` × ``grid`` pôles (au moins) — la grille de contrôle."""
+        surface = face.toNurbs().Faces[0].Surface
+        surface.increaseDegree(max(3, surface.UDegree),
+                               max(3, surface.VDegree))
+        u0, u1, v0, v1 = surface.bounds()
+        grid = max(4, min(int(grid), 16))
+        for direction in ("U", "V"):
+            count = getattr(surface, "Nb%sPoles" % direction)
+            lo, hi = (u0, u1) if direction == "U" else (v0, v1)
+            missing = grid - count
+            insert = getattr(surface, "insert%sKnot" % direction)
+            for k in range(1, missing + 1):
+                insert(lo + (hi - lo) * k / (missing + 1.0), 1, 1e-9)
+        return surface
+
+    def surface_control_points(self, surface, face=0, grid=6):
+        """Grille de contrôle d'une face de surface (lecture seule) : les
+        pôles que la forme libre peut déplacer un par un."""
+        src = self._get_surface(surface)
+        target = self._source_face(src.Shape, int(face))
+        control = self._control_surface(target, grid)
+        return {"grid": [control.NbUPoles, control.NbVPoles],
+                "poles": [[[p.x, p.y, p.z]
+                           for p in [control.getPole(i, j) for j in
+                                     range(1, control.NbVPoles + 1)]]
+                          for i in range(1, control.NbUPoles + 1)]}
 
     @staticmethod
     def _pushes_text(pushes):
@@ -1640,6 +1731,8 @@ class SurfaceMixin:
         import math
         import FreeCAD as App
         face = self._source_face(shape, int(stamps["freeface"]))
+        if stamps.get("freemoves"):
+            return self._moved_shape(face, stamps)
         pushes = self._free_pushes(stamps)
         keep_edges = bool(int(stamps.get("freeedges", 0) or 0))
         radius = float(stamps["freeradius"])
@@ -1693,6 +1786,27 @@ class SurfaceMixin:
         if result.isNull() or not result.isValid():
             raise KernelError("forme libre : la surface poussée est invalide "
                               "— réduisez la hauteur")
+        return result
+
+    def _moved_shape(self, face, stamps):
+        """Pôles de la grille de contrôle déplacés de leur vecteur."""
+        from engine.kernel import KernelError
+        import FreeCAD as App
+        control = self._control_surface(face, int(stamps.get("freegrid", 6)))
+        for row in str(stamps["freemoves"]).split(";"):
+            if not row:
+                continue
+            i, j, dx, dy, dz = row.split(",")
+            i, j = int(i), int(j)
+            if not (1 <= i <= control.NbUPoles and 1 <= j <= control.NbVPoles):
+                raise KernelError("point de contrôle hors de la grille : "
+                                  "{} {}".format(i, j))
+            control.setPole(i, j, control.getPole(i, j)
+                            + App.Vector(float(dx), float(dy), float(dz)))
+        result = control.toShape()
+        if result.isNull() or not result.isValid():
+            raise KernelError("forme libre : la surface déformée est "
+                              "invalide")
         return result
 
     def _refresh_frozen_shapes(self):
@@ -1815,8 +1929,9 @@ class SurfaceMixin:
                 changed = True
         return changed
 
-    def edit_surface_cut(self, feature, flip):
-        """Rééditer une coupe par surface : garder l'autre côté."""
+    def edit_surface_cut(self, feature, flip, thickness=None):
+        """Rééditer une coupe par surface : garder l'autre côté ; pour une
+        surface épaissie, son épaisseur."""
         from engine.kernel import KernelError
         obj = self._require_doc().getObject(str(feature))
         if obj is None or not getattr(obj, "FreeSolidCutsurface", ""):
@@ -1828,7 +1943,15 @@ class SurfaceMixin:
         if half is None:
             raise KernelError("coupe incomplète — le corps outil est absent")
         flip = bool(flip)
-        if flip != bool(obj.FreeSolidCutflip):
+        if half.TypeId == "Part::Offset":
+            value = abs(float(thickness if thickness is not None
+                              else half.Value))
+            if value < 1e-9:
+                raise KernelError("l'épaisseur ne peut pas être nulle")
+            half.Value = -value if flip else value
+            obj.FreeSolidCutflip = int(flip)
+            obj.FreeSolidCutthick = value
+        elif flip != bool(obj.FreeSolidCutflip):
             half.Dir = half.Dir * -1
             obj.FreeSolidCutflip = int(flip)
         self._recompute()
@@ -1840,7 +1963,11 @@ class SurfaceMixin:
         name = getattr(obj, "FreeSolidCutsurface", "")
         if not name:
             return None
-        return {"surface": name, "flip": bool(obj.FreeSolidCutflip)}
+        spec = {"surface": name, "flip": bool(obj.FreeSolidCutflip)}
+        thick = float(getattr(obj, "FreeSolidCutthick", 0.0) or 0.0)
+        if thick > 0:
+            spec["thickness"] = thick
+        return spec
 
     def _consumed_surfaces(self):
         """Noms des surfaces remplacées par une autre : source d'un
@@ -1869,7 +1996,8 @@ class SurfaceMixin:
                 base = getattr(obj, "Base", None)
                 if base is not None:
                     consumed.add(base.Name)
-            elif obj.TypeId == "Part::Offset" and getattr(obj, "Fill", False):
+            elif (obj.TypeId == "Part::Offset" and getattr(obj, "Fill", False)
+                  and not getattr(obj, "FreeSolidSurfaceTool", False)):
                 source = getattr(obj, "Source", None)
                 if source is not None:
                     consumed.add(source.Name)

@@ -99,6 +99,7 @@
             {"id": "btn-surf-split", "titre": "Ligne de séparation — une courbe posée sur la surface scinde ses faces", "icon": "surface_split", "libelle": "Scinder"},
             {"id": "btn-surf-delete-face", "titre": "Supprimer des faces — du solide (le trou se referme) ou d'une surface", "icon": "surface_delete_face", "libelle": "Supprimer face"},
             {"id": "btn-surf-freeform", "titre": "Forme libre — bomber ou creuser une surface au point cliqué", "icon": "surface_freeform", "libelle": "Forme libre"},
+            {"id": "btn-surf-poles", "titre": "Points de contrôle — déplacer un à un les pôles d'une surface", "icon": "surface_poles", "libelle": "Pôles"},
             {"id": "btn-surf-flatten", "titre": "Aplatir — le patron à plat d'une face de surface", "icon": "surface_flatten", "libelle": "Aplatir"},
             {"id": "btn-surf-untrim", "titre": "Désajuster — la face retrouve ses bords naturels, trous bouchés", "icon": "surface_untrim", "libelle": "Désajuster"}
           ]

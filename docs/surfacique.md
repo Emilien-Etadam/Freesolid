@@ -50,7 +50,7 @@ Une commande est **faite** quand les six points tiennent :
 | Prolonger (un bord ou tous) | ✅ | `surface_extend` | `p46_prolonger_*` |
 | Ajuster (standard et mutuel, partie gardée au clic) | ✅ | `surface_trim` | `p46_ajuster_*`, `p46_ajustement_mutuel` |
 | Désajuster (bords naturels, trous bouchés) | ✅ | `surface_untrim` | `p48_desajuster` |
-| Coudre (et solidifier une peau fermée) | ✅ | `surface_sew` | `p12_sew_ok` |
+| Coudre (et solidifier une peau fermée ; suit ses sources) | ✅ | `surface_sew` | `p12_sew_ok` |
 | Épaissir en solide | ✅ | `surface_thicken` | `p12_thicken_solid_ok` |
 | Épaissir en enlevant (bande épaisse ôtée au solide) | ✅ | `add_surface_cut` (`thickness`) | `p50_epaissir_enlever` |
 | Couper le solide avec une surface | ✅ | `add_surface_cut` | `p47_coupe_*` |
@@ -90,4 +90,5 @@ Ces commandes relèvent d'autres domaines ; elles ne comptent pas dans
   en réédition).
 - Aplatir : exact pour une face développable, approché (moindres carrés)
   sinon.
-- Coudre : forme figée (pas d'objet paramétrique natif dans FreeCAD 1.1).
+- Coudre : pas d'objet paramétrique natif dans FreeCAD 1.1 — la peau
+  cousue est recalculée depuis ses sources à chaque reconstruction.

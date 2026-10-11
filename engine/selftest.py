@@ -793,7 +793,17 @@ class SelftestMixin:
             tree = self.surface_extrude(20, sketch=surf_sk2)
             names = [s["name"] for s in tree["surfaces"]]
             tree = self.surface_sew(names)
-            report["p12_sew_ok"] = len(tree["surfaces"]) == 3
+            sewn = self._require_doc().getObject(tree["surfaces"][-1]["name"])
+            area0 = sewn.Shape.Area
+            # La couture suit ses sources : une surface rallongée de 20 à
+            # 30 mm agrandit la peau cousue (40 × 10 mm de plus).
+            self._require_doc().getObject(names[0]).LengthFwd = 30
+            self._recompute()
+            sew_follows = abs(sewn.Shape.Area - area0 - 400) < 1e-6
+            self._require_doc().getObject(names[0]).LengthFwd = 20
+            self._recompute()
+            report["p12_sew_ok"] = (len(tree["surfaces"]) == 3 and sew_follows
+                                    and abs(sewn.Shape.Area - area0) < 1e-6)
             tree = self.surface_thicken(names[0], 2)
             thick = self._require_doc().getObject(
                 tree["surfaces"][-1]["name"])

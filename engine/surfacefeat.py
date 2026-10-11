@@ -1835,6 +1835,24 @@ class SurfaceMixin:
                     obj.Shape = shape
                     changed = True
                 continue
+            sew_sources = getattr(obj, "FreeSolidSources", "")
+            if sew_sources:
+                sources = [doc.getObject(n) for n in
+                           str(sew_sources).split(";") if n]
+                if any(s is None or not getattr(s, "Shape", None)
+                       for s in sources):
+                    continue
+                try:
+                    result = self._sew_shape([s.Shape for s in sources])
+                except Exception:  # noqa: BLE001
+                    continue
+                old = obj.Shape
+                if (old.isNull() or abs(old.Area - result.Area) > 1e-9
+                        or (old.BoundBox.Center - result.BoundBox.Center)
+                        .Length > 1e-9):
+                    obj.Shape = result
+                    changed = True
+                continue
             cap_spec = getattr(obj, "FreeSolidCapedges", "")
             if cap_spec:
                 try:
@@ -2027,34 +2045,38 @@ class SurfaceMixin:
         return obj
 
     def surface_sew(self, surfaces):
-        """Coudre des surfaces ; reste figé (pas d'objet Part paramétrique
-        natif pour la couture). Si la peau est fermée, elle devient un
-        solide — le geste « coudre puis solidifier »."""
-        from engine.kernel import (
-            KernelError,
-            _explain,
-        )
-        import Part
+        """Coudre des surfaces (pas d'objet Part paramétrique natif pour
+        la couture : forme recalculée depuis ses sources à chaque
+        reconstruction). Si la peau est fermée, elle devient un solide —
+        le geste « coudre puis solidifier »."""
+        from engine.kernel import KernelError
         if not isinstance(surfaces, (list, tuple)) or len(surfaces) < 2:
             raise KernelError("coudre demande au moins deux surfaces")
-        faces = []
-        for name in surfaces:
-            faces.extend(self._get_surface(name).Shape.Faces)
-        if not faces:
-            raise KernelError("aucune face à coudre")
-        try:
-            shell = Part.makeShell(faces)
-            shell.sewShape()
-            closed = shell.isClosed()
-            shape = Part.makeSolid(shell) if closed else shell
-        except Exception as exc:  # noqa: BLE001
-            raise KernelError(_explain(exc))
+        shape = self._sew_shape([self._get_surface(name).Shape
+                                 for name in surfaces])
+        closed = bool(shape.Solids)
         tree = self._add_surface(
             shape, "Solide cousu" if closed else "Surface cousue")
         # Les surfaces cousues sont consommées : la couture les remplace.
         sewn = self._require_doc().getObject(tree["surfaces"][-1]["name"])
         self._stamp(sewn, sources=";".join(str(n) for n in surfaces))
         return self.get_tree()
+
+    @staticmethod
+    def _sew_shape(shapes):
+        """Peau cousue des faces de ``shapes`` ; solide si elle est
+        fermée."""
+        from engine.kernel import KernelError, _explain
+        import Part
+        faces = [f for shape in shapes for f in shape.Faces]
+        if not faces:
+            raise KernelError("aucune face à coudre")
+        try:
+            shell = Part.makeShell(faces)
+            shell.sewShape()
+            return Part.makeSolid(shell) if shell.isClosed() else shell
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
 
     def surface_thicken(self, surface, thickness):
         """Épaissir une surface en solide — Part::Offset paramétrique."""

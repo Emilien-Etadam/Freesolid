@@ -1024,7 +1024,10 @@ class SurfaceMixin:
                     "radius": float(obj.FreeSolidFreeradius),
                     "keep_edges": bool(getattr(obj, "FreeSolidFreeedges", 0))}
         if getattr(obj, "FreeSolidFlatsource", ""):
-            return {"kind": "flatten"}
+            spec = {"kind": "flatten",
+                    "face": int(getattr(obj, "FreeSolidFlatface", 0))}
+            spec.update(self._flat_distortion(obj))
+            return spec
         if obj.TypeId == "Part::Offset" and not getattr(obj, "Fill", True):
             value = getattr(obj, "Value", 0.0)
             return {"kind": "offset",
@@ -1761,6 +1764,26 @@ class SurfaceMixin:
                                   box.YMin - flat.BoundBox.YMin,
                                   -flat.BoundBox.ZMin))
         return flat
+
+    def _flat_distortion(self, obj):
+        """Déformation du patron, en % : écart d'aire et écart de longueur
+        du contour entre la face d'origine et son patron à plat (0 pour
+        une face développable)."""
+        src = self._require_doc().getObject(str(obj.FreeSolidFlatsource))
+        shape = getattr(obj, "Shape", None)
+        try:
+            face = self._source_face(src.Shape, int(obj.FreeSolidFlatface))
+        except Exception:  # noqa: BLE001
+            return {}
+        if shape is None or shape.isNull() or face.Area <= 0:
+            return {}
+        outer = sum(e.Length for e in face.OuterWire.Edges)
+        flat_outer = (sum(e.Length for e in shape.Faces[0].OuterWire.Edges)
+                      if shape.Faces else 0.0)
+        return {"area_error": round(100.0 * abs(shape.Area - face.Area)
+                                    / face.Area, 2),
+                "edge_error": round(100.0 * abs(flat_outer - outer)
+                                    / max(outer, 1e-12), 2)}
 
     def _scene_box(self, fallback):
         """Encombrement du corps actif et des surfaces affichées, hors

@@ -3140,8 +3140,11 @@ class SelftestMixin:
                 self.surface_extrude(30, sketch=arc_sk)["surfaces"][-1]["name"])
             tree = self.surface_flatten(half.Name)
             flat = self._require_doc().getObject(tree["surfaces"][-1]["name"])
+            flat_spec = tree["surfaces"][-1].get("surface") or {}
             report["p50_aplatir"] = (
-                abs(flat.Shape.Area - math.pi * 10 * 30) < 2
+                flat_spec.get("area_error", 99) < 1
+                and flat_spec.get("edge_error", 99) < 1
+                and abs(flat.Shape.Area - math.pi * 10 * 30) < 2
                 and flat.Shape.BoundBox.XMin >= half.Shape.BoundBox.XMax
                 and abs(flat.Shape.BoundBox.ZMax) < 1e-6
                 and (tree["surfaces"][-1].get("surface") or {}).get("kind")
@@ -3156,6 +3159,13 @@ class SelftestMixin:
                                          height=5)
             bump = self._require_doc().getObject(tree["surfaces"][-1]["name"])
             top = bump.Shape.BoundBox.ZMax
+            # Une bosse n'est pas développable : son patron dit de combien
+            # il s'étire.
+            dome_spec = self.surface_flatten(bump.Name)["surfaces"][-1].get(
+                "surface") or {}
+            report["p50_aplatir"] = report["p50_aplatir"] and (
+                max(dome_spec.get("area_error", 0),
+                    dome_spec.get("edge_error", 0)) > 0.5)
             self.edit_surface_freeform(bump.Name, 15, height=8)
             # Deux poussées opposées, bords fixes : une bosse et un creux,
             # le contour de la plaque ne bouge pas.

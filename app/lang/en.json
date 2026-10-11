@@ -953,5 +953,9 @@
  "Points de contrôle : une surface et au moins un point déplacé": "Control points: a surface and at least one moved point",
  "Les déplacements s'appliquent à la surface d'origine.": "The displacements apply to the original surface.",
  "Enlever une bande épaisse": "Remove a thick band",
- "L'aperçu montre ce qui reste. La surface doit traverser le solide de part en part ; en bande épaisse, seule la matière qu'elle occupe part.": "The preview shows what remains. The surface must cross the solid right through; as a thick band, only the material it occupies is removed."
+ "L'aperçu montre ce qui reste. La surface doit traverser le solide de part en part ; en bande épaisse, seule la matière qu'elle occupe part.": "The preview shows what remains. The surface must cross the solid right through; as a thick band, only the material it occupies is removed.",
+ "Déformation du patron": "Pattern distortion",
+ "Aire : {a} % · contour : {e} %": "Area: {a} % · outline: {e} %",
+ "Face développable : le patron est exact.": "Developable face: the pattern is exact.",
+ "Face à double courbure : le patron s'étire pour se mettre à plat ; ces écarts disent de combien.": "Doubly curved face: the pattern stretches to lie flat; these deviations say by how much."
 }

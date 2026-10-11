@@ -41,7 +41,7 @@ Une commande est **faite** quand les six points tiennent :
 | Surface médiane (deux faces, ou toute la pièce) | ✅ | `surface_mid` | `p50_surface_mediane` |
 | Forme libre — points poussés (bosses, creux, bords fixes) | ✅ | `surface_freeform` (`pushes`) | `p50_forme_libre` |
 | Forme libre — points de contrôle déplacés un à un, sur une ou plusieurs faces | ✅ | `surface_freeform` (`moves`), `surface_control_points` | `p50_forme_libre` |
-| Aplatir (patron à plat) | ✅ | `surface_flatten` | `p50_aplatir` |
+| Aplatir (patron à plat, déformation mesurée) | ✅ | `surface_flatten` | `p50_aplatir` |
 
 ## Opérations sur les surfaces
 
@@ -90,9 +90,11 @@ Ces commandes relèvent d'autres domaines ; elles ne comptent pas dans
   de toutes les faces s'affichent ensemble ; les faces non touchées restent
   telles quelles, le tout recousu. La taille de grille se change aussi en
   réédition : chaque pôle réglé garde sa place relative sur sa face.
-- Aplatir : le patron est exact pour une face développable (plan, cylindre,
-  cône) ; une face à double courbure ne peut pas, mathématiquement, être
-  mise à plat sans déformation — le patron répartit alors l'étirement au
-  mieux (moindres carrés conformes).
+- Aplatir : le patron donne sa déformation mesurée (écart d'aire et de
+  longueur du contour, en %, double-clic dans l'arbre). Elle est nulle
+  sur une face développable (plan, cylindre, cône) ; sur une face à double
+  courbure, le patron s'étire forcément pour se mettre à plat et le
+  chiffre dit de combien — le déroulé (moindres carrés conformes) répartit
+  cet étirement au mieux.
 - Coudre : pas d'objet paramétrique natif dans FreeCAD 1.1 — la peau
   cousue est recalculée depuis ses sources à chaque reconstruction.

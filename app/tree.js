@@ -1169,6 +1169,10 @@ export function installTree(ctx) {
       ctx.openPoles(surface);
       return;
     }
+    if (surface.surface?.kind === "flatten") {
+      showFlatten(surface);
+      return;
+    }
     if (surface.surface?.kind === "freeform") {
       editFreeform(surface);
       return;
@@ -1238,6 +1242,35 @@ export function installTree(ctx) {
           flip: !!v.flip, ...(thickness ? { thickness } : {}) }));
       },
     });
+  }
+
+  // Patron à plat : sa déformation mesurée (lecture seule ; le patron
+  // suit la surface d'origine).
+  function showFlatten(surface) {
+    const spec = surface.surface;
+    const exact = (spec.area_error ?? 0) < 0.5 && (spec.edge_error ?? 0) < 0.5;
+    panel.open({
+      icon: "surface_flatten",
+      title: surface.label,
+      noApply: true,
+      groups: [{
+        label: t("Déformation du patron"),
+        rows: [
+          { type: "note", readonly: true, text: t(
+            "Aire : {a} % · contour : {e} %",
+            { a: fmtPct(spec.area_error), e: fmtPct(spec.edge_error) }) },
+          { type: "note", readonly: true, text: exact
+            ? t("Face développable : le patron est exact.")
+            : t("Face à double courbure : le patron s'étire pour se "
+              + "mettre à plat ; ces écarts disent de combien.") },
+        ],
+      }],
+    });
+  }
+
+  function fmtPct(value) {
+    return (Math.round((value ?? 0) * 100) / 100).toLocaleString(
+      document.documentElement.lang || undefined);
   }
 
   // Forme libre : hauteur et rayon d'influence.

@@ -1052,5 +1052,21 @@
  "Répétition circulaire": "Circular pattern",
  "Exemplaires": "Instances",
  "Angle total (°)": "Total angle (°)",
- "Les exemplaires (l'original compris) sont répartis sur l'angle ; 360° : un tour complet.": "The instances (original included) are spread over the angle; 360°: a full turn."
+ "Les exemplaires (l'original compris) sont répartis sur l'angle ; 360° : un tour complet.": "The instances (original included) are spread over the angle; 360°: a full turn.",
+ "Relation sur l'entité — un point posé sur une courbe": "On-entity relation — a point lying on a curve",
+ "Relation corradiale — deux cercles ou arcs, même centre et même rayon": "Coradial relation — two circles or arcs, same center and radius",
+ "Relation intersection — un point, puis deux courbes qui s'y croisent": "Intersection relation — a point, then two curves crossing at it",
+ "Cote de référence (mesure, ne pilote pas)": "Reference dimension (measures, does not drive)",
+ "Cote ordonnée : cliquez un point (extrémité, centre, origine)": "Ordinate dimension: click a point (end, center, origin)",
+ "Cote ordonnée : cliquez les points à coter depuis la base": "Ordinate dimension: click the points to dimension from the base",
+ "Longueur d'arc : cliquez un arc": "Arc length: click an arc",
+ "Angle à l'axe : cliquez une ligne": "Angle to axis: click a line",
+ "Diamètre : cliquez un cercle ou un arc": "Diameter: click a circle or an arc",
+ "Cote ordonnée horizontale : cliquez le point de base": "Horizontal ordinate dimension: click the base point",
+ "Cote ordonnée verticale : cliquez le point de base": "Vertical ordinate dimension: click the base point",
+ "Longueur d'arc — cliquez un arc": "Arc length — click an arc",
+ "Angle à l'axe — l'angle d'une ligne avec l'horizontale": "Angle to axis — a line's angle with the horizontal",
+ "Diamètre — d'un cercle ou d'un arc": "Diameter — of a circle or an arc",
+ "Cote ordonnée horizontale — une base, puis chaque point": "Horizontal ordinate dimension — a base, then each point",
+ "Cote ordonnée verticale — une base, puis chaque point": "Vertical ordinate dimension — a base, then each point"
 }

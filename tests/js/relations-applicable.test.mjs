@@ -19,7 +19,7 @@ describe("relations proposées selon la sélection", () => {
     assert.deepEqual(applicableRelations([{ geo: 0 }, { geo: 1 }], entities),
       ["parallel", "perpendicular", "equal", "collinear"]);
     assert.deepEqual(applicableRelations([{ geo: 2 }, { geo: 3 }], entities),
-      ["equal", "concentric", "tangent"]);
+      ["equal", "concentric", "tangent", "coradial"]);
     assert.deepEqual(applicableRelations([{ geo: 0 }, { geo: 2 }], entities),
       ["tangent"]);
   });
@@ -33,7 +33,12 @@ describe("relations proposées selon la sélection", () => {
       [{ geo: 2, point: 3 }, { geo: -1, point: 1 }], entities),
       ["coincident", "horizontal", "vertical"]);
     assert.deepEqual(applicableRelations(
-      [{ geo: 2, point: 3 }, { geo: 0 }], entities), ["midpoint"]);
+      [{ geo: 2, point: 3 }, { geo: 0 }], entities), ["midpoint", "onobject"]);
+    assert.deepEqual(applicableRelations(
+      [{ geo: 0, point: 1 }, { geo: 2 }], entities), ["onobject"]);
+    assert.deepEqual(applicableRelations(
+      [{ geo: 2, point: 3 }, { geo: 0 }, { geo: 1 }], entities),
+      ["intersection"]);
     assert.deepEqual(applicableRelations(
       [{ geo: 0, point: 1 }, { geo: 1, point: 1 }, { geo: 0 }], entities),
       ["symmetric"]);

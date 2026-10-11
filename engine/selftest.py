@@ -3396,6 +3396,64 @@ class SelftestMixin:
                 and not list(sko.RedundantConstraints))
             self.sketch_finish(sk_name)
 
+            mark("p51: esquisse — relations et cotes")
+            import math
+            self.new_part("Pièce relations")
+            st = self.sketch_start(plane="XY")
+            sk_name = st["sketch"]
+            sko = self._get_sketch(sk_name)
+            self.sketch_add_line(sk_name, 0, 0, 40, 0)
+            self.sketch_add_line(sk_name, 0, 0, 30, 30)
+            self.sketch_add_point(sk_name, 20, 5)
+            # Point sur la première ligne, puis à l'intersection des deux.
+            self.sketch_constrain(sk_name, "onobject", 2, point1=1, geo2=0)
+            on_line = abs(self.sketch_state(sk_name)["entities"][2]["p1"][1]) < 1e-6
+            self.sketch_add_point(sk_name, 3, 4)
+            state = self.sketch_constrain(sk_name, "intersection", 3,
+                                          point1=1, geo2=0, geo3=1)
+            crossing = state["entities"][3]["p1"]
+            self.sketch_add_circle(sk_name, 80, 0, 5)
+            self.sketch_add_circle(sk_name, 90, 10, 8)
+            state = self.sketch_constrain(sk_name, "coradial", 4, geo2=5)
+            c4, c5 = state["entities"][4], state["entities"][5]
+            coradial_ok = (abs(c4["r"] - c5["r"]) < 1e-6
+                           and math.dist(c4["c"], c5["c"]) < 1e-6)
+            # Cotes : longueur d'arc, angle à l'axe, diamètre d'arc,
+            # ordonnée, puis une cote de référence qui ne pilote plus.
+            self.sketch_add_arc(sk_name, 0, 60, 10, 0, math.pi / 2)
+            arc_id = len(self.sketch_state(sk_name)["entities"]) - 1
+            state = self.sketch_dim(sk_name, arc_id, value=20,
+                                    measure="arc_length")
+            arc = state["entities"][arc_id]
+            a1 = math.atan2(arc["p1"][1] - arc["c"][1], arc["p1"][0] - arc["c"][0])
+            a2 = math.atan2(arc["p2"][1] - arc["c"][1], arc["p2"][0] - arc["c"][0])
+            sweep = (a2 - a1) % (2 * math.pi)
+            arc_len_ok = (abs(arc["r"] * sweep - 20) < 1e-4
+                          and state["dims"][-1]["kind"] == "arc_length")
+            state = self.sketch_dim(sk_name, 1, value=math.radians(30),
+                                    measure="axis_angle")
+            l1 = state["entities"][1]
+            axis_ok = abs(math.degrees(math.atan2(
+                l1["p2"][1] - l1["p1"][1], l1["p2"][0] - l1["p1"][0])) - 30) < 1e-6
+            state = self.sketch_dim(sk_name, arc_id, value=30,
+                                    measure="diameter")
+            dia_ok = abs(state["entities"][arc_id]["r"] - 15) < 1e-6
+            state = self.sketch_dim(sk_name, 0, point=1, geo2=0, point2=2,
+                                    axis="x")
+            ordinate = state["dims"][-1]
+            state = self.sketch_set_dim(sk_name, ordinate["id"],
+                                        driving=False)
+            driven = next(d for d in state["dims"]
+                          if d["id"] == ordinate["id"])
+            report["p51_relations_cotes"] = (
+                on_line and abs(crossing[0]) < 1e-6 and abs(crossing[1]) < 1e-6
+                and coradial_ok and arc_len_ok and axis_ok and dia_ok
+                and ordinate["type"] == "DistanceX"
+                and driven["driving"] is False
+                and not list(sko.ConflictingConstraints)
+                and not list(sko.RedundantConstraints))
+            self.sketch_finish(sk_name)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

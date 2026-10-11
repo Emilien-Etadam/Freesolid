@@ -12,9 +12,11 @@ export function dimLabel(dim) {
     ? (dim.value * 180 / Math.PI).toFixed(1) + "°"
     : Number(dim.value).toFixed(2);
   const symbol = dim.type === "Diameter" ? "Ø"
-    : dim.type === "Radius" ? "R" : "";
-  return (dim.expr ? "Σ " : "")
+    : dim.type === "Radius" ? "R" : dim.kind === "arc_length" ? "⌒" : "";
+  const text = (dim.expr ? "Σ " : "")
     + (dim.name ? dim.name + " = " : "") + symbol + number;
+  // Cote de référence (pilotée) : entre parenthèses, elle mesure.
+  return dim.driving === false ? `(${text})` : text;
 }
 
 /** Bulle du congé en cours : « R = 3.00 », ou l'expression telle quelle. */
@@ -279,6 +281,38 @@ function angleDim(l1, l2, size, radius = null) {
   };
 }
 
+/** Longueur d'arc : un arc concentrique un peu au-dessus, et ses deux
+ *  attaches radiales. */
+function arcLengthDim(arc, size) {
+  const c = { x: arc.c[0], y: arc.c[1] };
+  const a1 = Math.atan2(arc.p1[1] - c.y, arc.p1[0] - c.x);
+  let a2 = Math.atan2(arc.p2[1] - c.y, arc.p2[0] - c.x);
+  if (a2 <= a1) a2 += Math.PI * 2;
+  const r = arc.r + size * 1.5;
+  const at = (a, rr) => ({ x: c.x + rr * Math.cos(a), y: c.y + rr * Math.sin(a) });
+  const segments = [];
+  const steps = 24;
+  for (let i = 0; i < steps; i++) {
+    const p = at(a1 + (a2 - a1) * (i / steps), r);
+    const q = at(a1 + (a2 - a1) * ((i + 1) / steps), r);
+    segments.push([p.x, p.y, q.x, q.y]);
+  }
+  for (const a of [a1, a2]) {
+    const p = at(a, arc.r), q = at(a, r + size * 0.4);
+    segments.push([p.x, p.y, q.x, q.y]);
+  }
+  const mid = (a1 + a2) / 2;
+  const e1 = at(a1, r), e2 = at(a2, r);
+  return {
+    label: at(mid, r + size),
+    segments,
+    arrows: [
+      { x: e1.x, y: e1.y, dx: Math.sin(a1), dy: -Math.cos(a1) },
+      { x: e2.x, y: e2.y, dx: -Math.sin(a2), dy: Math.cos(a2) },
+    ],
+  };
+}
+
 /**
  * Tracé complet d'une cote d'esquisse. `constraint` vient de
  * sketch_state.constraints (geos, pos) ; sans lui, ou pour un cas non
@@ -301,6 +335,8 @@ export function dimGeometry(dim, constraint, entities, size = 2) {
     if (!e2 && e1.type === "line" && !p1) {
       out = alignedDim(pointOf(e1, 1), pointOf(e1, 2), entities, size,
         dim.offset);
+    } else if (!e2 && e1.type === "arc") {
+      out = arcLengthDim(e1, size);
     } else if (e2 && p1 && p2) {
       const a = pointOf(e1, p1), b = pointOf(e2, p2);
       if (a && b) out = alignedDim(a, b, entities, size, dim.offset);
@@ -339,6 +375,10 @@ export function dimGeometry(dim, constraint, entities, size = 2) {
   } else if (dim.type === "Angle" && e1?.type === "line"
              && e2?.type === "line") {
     out = angleDim(e1, e2, size, dim.offset);
+  } else if (dim.type === "Angle" && e1?.type === "line" && !e2) {
+    // Angle à l'axe X : contre une horizontale passant par le départ.
+    const axis = { type: "line", p1: e1.p1, p2: [e1.p1[0] + 1, e1.p1[1]] };
+    out = angleDim(e1, axis, size, dim.offset);
   }
   return out ?? fallback();
 }
@@ -428,6 +468,10 @@ export function openDimEditor({ panel, dim, onApply, onCancel }) {
           showIf: () => dim.kind === "sketch" },
         { type: "text", key: "value", label: t("Valeur ou expression"),
           value: shown, unit },
+        { type: "check", key: "driven",
+          label: t("Cote de référence (mesure, ne pilote pas)"),
+          value: dim.driving === false,
+          showIf: () => dim.kind === "sketch" },
       ],
     }],
     note: t("Expression : « Variables.Largeur / 2 » ou " +
@@ -443,6 +487,10 @@ export function dimEditPayload(values, dim, { shown, isSketchAngle }) {
   if (dim.kind === "sketch") {
     const name = (values.name ?? "").trim();
     if (name !== (dim.name ?? "")) payload.name = name;
+    if (values.driven !== undefined
+        && !!values.driven !== (dim.driving === false)) {
+      payload.driving = !values.driven;
+    }
   }
   const raw = String(values.value ?? "").trim();
   if (raw && raw !== shown) {

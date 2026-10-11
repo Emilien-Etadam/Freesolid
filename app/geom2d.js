@@ -377,12 +377,20 @@ export function applicableRelations(selection, entities) {
     if (count("line") === 2) {
       out.push("parallel", "perpendicular", "equal", "collinear");
     }
-    if (count("round") === 2) out.push("equal", "concentric", "tangent");
+    if (count("round") === 2) {
+      out.push("equal", "concentric", "tangent", "coradial");
+    }
     if (count("line") === 1 && count("round") === 1) out.push("tangent");
     if (count("point") === 1 && count("line") === 1) out.push("midpoint");
+    if (count("point") === 1 && kinds.some((k) => k !== "point")) {
+      out.push("onobject");
+    }
   } else if (kinds.length === 3 && kinds[0] === "point"
              && kinds[1] === "point" && kinds[2] === "line") {
     out.push("symmetric");
+  } else if (kinds.length === 3 && kinds[0] === "point"
+             && kinds[1] !== "point" && kinds[2] !== "point") {
+    out.push("intersection");
   }
   return out;
 }

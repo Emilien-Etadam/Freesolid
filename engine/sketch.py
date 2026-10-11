@@ -251,7 +251,20 @@ class SketchMixin:
                                              0.0)), 9))
                 if label != self._DEFAULT_LABEL:
                     entry_offset = label[0]
+                second = getattr(constraint, "Second", -2000)
+                single = second is None or second <= -2000
+                kind = ""
+                first = constraint.First
+                on_arc = (0 <= first < len(sk.Geometry) and sk.Geometry[
+                    first].TypeId == "Part::GeomArcOfCircle")
+                if single and constraint.Type == "Distance" and on_arc:
+                    kind = "arc_length"
+                elif single and constraint.Type == "Angle":
+                    kind = "axis_angle"
                 dims.append({"id": cid, "type": constraint.Type,
+                             "kind": kind,
+                             "driving": bool(getattr(constraint, "Driving",
+                                                     True)),
                              "offset": entry_offset,
                              "value": value,
                              "name": constraint.Name or "",
@@ -922,14 +935,32 @@ class SketchMixin:
                 raise KernelError("symétrique : le 3e élément doit être "
                                   "une ligne (l'axe)")
             return C("Symmetric", g1, int(point1), g2, int(point2), g3)
+        if kind == "onobject":
+            # Un point posé sur une courbe (ligne prolongée, cercle…).
+            if point1 is not None and point2 is None:
+                return C("PointOnObject", g1, int(point1), g2)
+            if point2 is not None and point1 is None:
+                return C("PointOnObject", g2, int(point2), g1)
+            raise KernelError("sur l'entité : un point et une courbe")
+        if kind == "coradial":
+            for g in (g1, g2):
+                if sk.Geometry[g].TypeId not in round_types:
+                    raise KernelError("corradiale : deux cercles ou arcs")
+            return [C("Coincident", g1, 3, g2, 3), C("Equal", g1, g2)]
+        if kind == "intersection":
+            if point1 is None or geo3 is None:
+                raise KernelError("intersection : un point puis deux "
+                                  "courbes")
+            return [C("PointOnObject", g1, int(point1), g2),
+                    C("PointOnObject", g1, int(point1), int(geo3))]
         if kind in ("parallel", "perpendicular", "equal", "tangent"):
             names = {"parallel": "Parallel", "perpendicular": "Perpendicular",
                      "equal": "Equal", "tangent": "Tangent"}
             return C(names[kind], g1, g2)
-        raise KernelError(
-            "contrainte inconnue « {} » — attendu : horizontal, vertical, "
-            "coincident, parallel, perpendicular, equal, tangent, "
-            "concentric, collinear, midpoint, symmetric, fixed".format(kind))
+        raise KernelError("contrainte inconnue « {} » — attendu : {}".format(
+            kind, "horizontal, vertical, coincident, parallel, perpendicular, "
+            "equal, tangent, concentric, collinear, midpoint, symmetric, "
+            "fixed, onobject, coradial, intersection"))
 
     def sketch_constrain(self, sketch, kind, geo1, point1=None,
                          geo2=None, point2=None, geo3=None):
@@ -943,7 +974,9 @@ class SketchMixin:
         try:
             constraint = self._constraint_for(
                 sk, str(kind), geo1, point1, geo2, point2, geo3)
-            sk.addConstraint(constraint)
+            for item in (constraint if isinstance(constraint, list)
+                         else [constraint]):
+                sk.addConstraint(item)
         except KernelError:
             raise
         except Exception as exc:  # noqa: BLE001 - over-constrained, mostly
@@ -1188,7 +1221,7 @@ class SketchMixin:
 
     def sketch_dim(self, sketch, geo, value=None,
                    geo2=None, point=None, point2=None, axis=None, at=None,
-                   radius=False):
+                   radius=False, measure=None):
         """Smart dimension: length on a line, diameter on a circle,
         radius on an arc, distance/angle between two entities.
 
@@ -1221,6 +1254,11 @@ class SketchMixin:
                 self._place_dim(sk, index, at)
                 return self.sketch_state(sketch)
             target = sk.Geometry[gid]
+            if measure:
+                index = self._dim_measure(sk, gid, target, str(measure),
+                                          value)
+                self._place_dim(sk, index, at)
+                return self.sketch_state(sketch)
             if target.TypeId == "Part::GeomLineSegment":
                 length = (value if value is not None
                           else target.StartPoint.distanceToPoint(
@@ -1251,6 +1289,34 @@ class SketchMixin:
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
+    @staticmethod
+    def _dim_measure(sk, gid, target, measure, value):
+        """Cotes à une entité au-delà de la cote « intelligente » :
+        longueur d'arc, diamètre d'arc, angle d'une ligne à l'axe X."""
+        from engine.kernel import KernelError
+        import math
+        import Sketcher
+        C = Sketcher.Constraint
+        if measure == "arc_length":
+            if target.TypeId != "Part::GeomArcOfCircle":
+                raise KernelError("longueur d'arc : cliquez un arc")
+            length = (value if value is not None else target.Radius
+                      * (target.LastParameter - target.FirstParameter))
+            return sk.addConstraint(C("Distance", gid, float(length)))
+        if measure == "diameter":
+            if target.TypeId not in ("Part::GeomArcOfCircle",
+                                     "Part::GeomCircle"):
+                raise KernelError("diamètre : cliquez un cercle ou un arc")
+            diameter = value if value is not None else 2 * target.Radius
+            return sk.addConstraint(C("Diameter", gid, float(diameter)))
+        if measure == "axis_angle":
+            if target.TypeId != "Part::GeomLineSegment":
+                raise KernelError("angle à l'axe : cliquez une ligne")
+            d = target.EndPoint - target.StartPoint
+            angle = value if value is not None else math.atan2(d.y, d.x)
+            return sk.addConstraint(C("Angle", gid, float(angle)))
+        raise KernelError("cote inconnue : {}".format(measure))
+
     def sketch_place_dim(self, sketch, dim, offset):
         """Déplace une cote posée : nouveau décalage de sa ligne (même
         convention que la pose, voir ``_place_dim``). La valeur ne change
@@ -1263,7 +1329,8 @@ class SketchMixin:
         self._set_dim_offset(sk, idx, float(offset))
         return self.sketch_state(sketch)
 
-    def sketch_set_dim(self, sketch, dim, value=None, name=None, expr=None):
+    def sketch_set_dim(self, sketch, dim, value=None, name=None, expr=None,
+                       driving=None):
         """Edit a dimension — the double-click-a-dim gesture, complete:
         value, **name** (``largeur``) and **expression** (``largeur/2``).
 
@@ -1287,6 +1354,10 @@ class SketchMixin:
                         "nom invalide « {} » — lettres, chiffres et _ "
                         "seulement".format(name))
                 sk.renameConstraint(idx, name)
+            if driving is not None and bool(driving) != bool(
+                    getattr(sk.Constraints[idx], "Driving", True)):
+                # Cote de référence : elle mesure, elle ne pilote plus.
+                sk.setDriving(idx, bool(driving))
             path = "Constraints[{}]".format(idx)
             if expr is not None and str(expr).strip():
                 sk.setExpression(path, self._user_expression(expr))

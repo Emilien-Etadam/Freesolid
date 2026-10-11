@@ -53,7 +53,6 @@
  "colinéaire : deux lignes": "collinear: two lines",
  "composant inconnu : {}": "unknown component: {}",
  "concentrique : deux cercles ou arcs": "concentric: two circles or arcs",
- "contrainte inconnue « {} » — attendu : horizontal, vertical, coincident, parallel, perpendicular, equal, tangent, concentric, collinear, midpoint, symmetric, fixed": "unknown constraint \"{}\" — expected: horizontal, vertical, coincident, parallel, perpendicular, equal, tangent, concentric, collinear, midpoint, symmetric, fixed",
  "contrainte inconnue « {} » — attendu : {}": "unknown constraint \"{}\" — expected: {}",
  "corps inconnu : {}": "unknown body: {}",
  "corps outil inconnu : {}": "unknown tool body: {}",
@@ -473,5 +472,11 @@
  "scinder : cliquez une entité": "split: click an entity",
  "sélectionnez les entités à transformer": "select the entities to transform",
  "l'échelle doit être positive": "the scale must be positive",
- "au moins deux exemplaires": "at least two instances"
+ "au moins deux exemplaires": "at least two instances",
+ "sur l'entité : un point et une courbe": "on entity: a point and a curve",
+ "corradiale : deux cercles ou arcs": "coradial: two circles or arcs",
+ "intersection : un point puis deux courbes": "intersection: a point then two curves",
+ "longueur d'arc : cliquez un arc": "arc length: click an arc",
+ "diamètre : cliquez un cercle ou un arc": "diameter: click a circle or an arc",
+ "angle à l'axe : cliquez une ligne": "angle to axis: click a line"
 }

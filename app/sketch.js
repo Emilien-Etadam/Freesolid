@@ -203,6 +203,8 @@ export function createSketchMode(deps) {
                     arc: "crosshair", arc3: "crosshair", slot: "crosshair",
                     polygon: "crosshair", skfillet: "pointer",
                     skchamfer: "pointer", extend: "pointer", split: "pointer",
+                    dimarc: "crosshair", dimaxis: "crosshair",
+                    dimdia: "crosshair", ordx: "crosshair", ordy: "crosshair",
                     trim: "pointer", construction: "pointer",
                     spline: "crosshair", ellipse: "crosshair",
                     dim: "crosshair",
@@ -1155,6 +1157,32 @@ export function createSketchMode(deps) {
           x2: local.x, y2: local.y, distance,
           ...(distance2 > 0 ? { distance2 } : {}) }));
       }
+    } else if (["dimarc", "dimaxis", "dimdia"].includes(mode.tool)) {
+      const target = nearestEntity(event);
+      if (target !== null) {
+        const measure = { dimarc: "arc_length", dimaxis: "axis_angle",
+                          dimdia: "diameter" }[mode.tool];
+        safe(call("sketch_dim", { sketch: name, geo: target, measure,
+          at: [snapped.x, snapped.y] }));
+      }
+    } else if (mode.tool === "ordx" || mode.tool === "ordy") {
+      // Cote ordonnée : le point de base, puis chaque point coté depuis
+      // lui, le long de X (ordx) ou de Y (ordy).
+      const point = snapped.onPoint;
+      if (!point) {
+        say(t("Cote ordonnée : cliquez un point (extrémité, centre, origine)"), true);
+        return;
+      }
+      if (!mode.ordinateBase) {
+        mode.ordinateBase = point;
+        say(t("Cote ordonnée : cliquez les points à coter depuis la base"));
+      } else {
+        const base = mode.ordinateBase;
+        safe(call("sketch_dim", { sketch: name,
+          geo: base.geo, point: base.point, geo2: point.geo,
+          point2: point.point, axis: mode.tool === "ordx" ? "x" : "y",
+          at: [snapped.x, snapped.y] }));
+      }
     } else if (mode.tool === "extend" || mode.tool === "split") {
       const target = nearestEntity(event);
       if (target !== null) {
@@ -1831,7 +1859,7 @@ export function createSketchMode(deps) {
       onApply: (values, meta) => {
         const extra = dimEditPayload(values, { ...dim, kind: "sketch" }, meta);
         if (extra.name === undefined && extra.value === undefined
-            && extra.expr === undefined) return;
+            && extra.expr === undefined && extra.driving === undefined) return;
         const params = { sketch: mode.state.sketch, dim: dim.id, ...extra };
         safe((async () => {
           const state = await call("sketch_set_dim", params);
@@ -2082,6 +2110,7 @@ export function createSketchMode(deps) {
     mode.pendingDimPair = null;
     mode.pendingSpline = null;
     mode.pendingClicks = null;
+    mode.ordinateBase = null;
     mode.pendingEllipse = null;
     mode.selection = [];
     if (tool === "polygon") {
@@ -2113,6 +2142,11 @@ export function createSketchMode(deps) {
       skfillet: "Congé d'esquisse : cliquez la première ligne, près du coin",
       skchamfer: "Chanfrein d'esquisse : cliquez la première ligne, près du coin",
       extend: "Prolonger : cliquez l'entité près du bout à allonger",
+      dimarc: "Longueur d'arc : cliquez un arc",
+      dimaxis: "Angle à l'axe : cliquez une ligne",
+      dimdia: "Diamètre : cliquez un cercle ou un arc",
+      ordx: "Cote ordonnée horizontale : cliquez le point de base",
+      ordy: "Cote ordonnée verticale : cliquez le point de base",
       split: "Scinder : cliquez l'entité à l'endroit de la coupure",
       trim: "Ajuster : cliquez le tronçon à supprimer",
       construction: "Construction : cliquez une entité pour la basculer",
@@ -2293,7 +2327,8 @@ export function createSketchMode(deps) {
     horizontal: 1, vertical: 1, fixed: 1,
     parallel: 2, perpendicular: 2, equal: 2, tangent: 2,
     coincident: 2, concentric: 2, collinear: 2, midpoint: 2,
-    symmetric: 3,
+    onobject: 2, coradial: 2,
+    symmetric: 3, intersection: 3,
   };
 
   function applyConstraint(kind) {

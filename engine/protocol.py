@@ -41,6 +41,9 @@ class _Req(tuple):
         return obj
 
 
+#: Conditions de fin d'extrusion communes au bossage et à l'enlèvement.
+_EXTRUDE_OPTIONAL = {"cond": str, "face": int, "offset": float, "taper": float, "midplane": bool, "reversed": bool, "cond2": str, "length2": float, "face2": int, "offset2": float, "taper2": float, "sketch": str, "thin": dict}
+
 #: Comptes / occurrences : entier ≥ 1, plafond anti-absurde.
 _COUNT_PARAMS = frozenset({"count", "cols", "rows", "sides"})
 _COUNT_MIN = 1
@@ -83,11 +86,14 @@ OPS: dict[str, tuple[str, ...]] = {
     "new_assembly": (),                # optional: name
     "insert_component": _Req(("path", str)),  # .FCStd — App::Link vers son corps
     "move_component": _Req(("component", str)),  # optional: x, y, z, yaw, pitch, roll
+    "set_component_grounded": _Req(("component", str),
+                                   optional={"grounded": bool}),
     "array_component": _Req(("component", str), ("count", int)),  # optional: dx, dy, dz
     "assembly_tree": (),
     "tessellate_assembly": (),         # optional: deviation
     # Phase C3 — contraintes d'assemblage (joints natifs + solveur MbD).
-    "add_joint": _Req(("component1", str), ("component2", str)),
+    "add_joint": _Req(("component1", str), ("component2", str),
+                      optional={"angle": float, "flip": bool}),
                                        # optional: type (fixe|pivot|
                                        # cylindrique|glissiere|rotule|
                                        # distance), sub1, sub2, distance
@@ -136,22 +142,47 @@ OPS: dict[str, tuple[str, ...]] = {
     "progress": (),                    # avancement hors noyau — jamais de verrou
     "add_rect_sketch": _Req(("width", float), ("height", float)),
                                        # optional: face (id) to attach
-    "add_pad": _Req(("length", float)),  # optional: sketch, reversed, midplane
-    "add_pocket": (),                  # optional: length | through — sans profondeur = à travers tout ; reversed, sketch
+    # Conditions de fin : engine/extrude.py. Sans length : jusqu'à…
+    "add_pad": _Req(optional={"length": float, **_EXTRUDE_OPTIONAL}),
+    # Sans profondeur ni condition = à travers tout.
+    "add_pocket": _Req(optional={"length": float, "through": bool,
+                                 **_EXTRUDE_OPTIONAL}),
     "add_fillet": _Req(("radius", float)),  # face OU edges (liste d'ids)
-    "add_chamfer": _Req(("size", float)),  # face OU edges
+    "add_chamfer": _Req(("size", float), optional={
+        "size2": float,          # deux distances
+        "angle": float,          # distance et angle, degrés
+        "chamfer_type": str,     # egale | deux | angle
+        "flip": bool,            # échange les deux côtés
+    }),  # face OU edges
     # Palier 2 — fonctions volumiques, aucune interaction nouvelle.
-    "add_revolution": (),              # optional: angle (°), sketch
-    "add_groove": (),                  # optional: angle (°), sketch
+    "add_revolution": _Req(optional={
+        "angle": float,          # degrés, défaut 360
+        "axis": str,             # vertical | horizontal | line:<id> | X | Y | Z
+        "reversed": bool,
+        "midplane": bool,
+    }),                                # sketch reste libre (nom d'esquisse)
+    "add_groove": _Req(optional={
+        "angle": float,
+        "axis": str,
+        "reversed": bool,
+        "midplane": bool,
+    }),
     "add_mirror": _Req(optional={"features": list}),
                                        # optional: plane (XY|XZ|YZ), features
     "add_linear_pattern": _Req(("length", float), ("count", int),
-                               optional={"features": list}),
+                               optional={"features": list, "axis": str,
+                                         "edge": int, "spacing": bool,
+                                         "reversed": bool}),
                                        # optional: axis (X|Y|Z), features
     "add_polar_pattern": _Req(("count", int),
-                              optional={"features": list}),
+                              optional={"features": list, "axis": str,
+                                        "edge": int, "angle": float,
+                                        "reversed": bool}),
                                        # optional: angle (°), axis, features
-    "add_thickness": _Req(("face", int), ("thickness", float)),
+    # face (une) ou faces (plusieurs) ; outward : coque vers l'extérieur.
+    "add_thickness": _Req(("thickness", float),
+                          optional={"face": int, "faces": list,
+                                    "outward": bool}),
     "add_draft": _Req(("face", int), ("angle", float)),
                                        # optional: neutral (XY|XZ|YZ)
     # Phase B — références et ossature.
@@ -177,8 +208,11 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # Absent = barre avant la première
     "tip_to_end": (),                  # back to the final state
     "delete_feature": _Req(("feature", str)),
+    "reorder_feature": _Req(("feature", str), ("target", str),
+                            optional={"after": bool}),
     "save_part": _Req(("path", str)),
     "open_part": _Req(("path", str)),
+    "list_dir": _Req(optional={"path": str}),  # dossier ; absent = dossier personnel
     "get_tree": (),
     "rebuild": (),                     # recalcul forcé de tout l'arbre
     "tessellate": (),                  # optional: deviation
@@ -242,6 +276,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_convert": _Req(("sketch", str)),
                                        # optional: face — contour projeté, bloqué
     "sketch_finish": _Req(("sketch", str)),
+    "sketch_cancel": _Req(("sketch", str)),  # quitter sans garder
 }
 
 #: Ops du noyau, avant fusion des plugins. Un plugin ne peut pas les redéfinir.
@@ -443,6 +478,100 @@ def _allowed_path_roots():
     return roots
 
 
+def _assert_in_jail(resolved, *, allow_root=False):
+    """Même prison que ``resolve_user_path``.
+
+    ``allow_root`` autorise la racine elle-même (lister le dossier
+    personnel). Un fichier n'a pas le droit d'être la racine.
+    """
+    matched_root = None
+    for root in _allowed_path_roots():
+        if _is_under_root(root, resolved):
+            matched_root = root
+            break
+    if matched_root is None:
+        raise ProtocolError("chemin hors du dossier autorisé")
+    try:
+        relative = os.path.relpath(resolved, matched_root)
+    except ValueError:
+        # Windows : un nom réservé (« nul », « con »…) se résout en
+        # périphérique, sur un autre « lecteur » que la prison.
+        raise ProtocolError("chemin hors du dossier autorisé") from None
+    if relative == ".." or relative.startswith(".." + os.sep):
+        raise ProtocolError("chemin hors du dossier autorisé")
+    if relative == os.curdir:
+        if allow_root:
+            return matched_root
+        raise ProtocolError("chemin hors du dossier autorisé")
+    for component in relative.split(os.sep):
+        if component.startswith("."):
+            raise ProtocolError("chemin hors du dossier autorisé")
+    return matched_root
+
+
+#: Extensions qu'un dialogue peut montrer. Le filtre fin est côté client.
+_LIST_EXTENSIONS = frozenset({
+    ".fcstd", ".step", ".stp", ".stl", ".3mf", ".iges", ".igs",
+})
+
+
+def resolve_user_dir(path):
+    """Dossier listable, ou lève ProtocolError. Vide : le dossier personnel."""
+    if path is None or str(path).strip() == "":
+        resolved = os.path.realpath(os.path.expanduser("~"))
+    else:
+        expanded = os.path.expanduser(str(path))
+        if ".." in expanded.replace("\\", "/").split("/"):
+            raise ProtocolError("chemin hors du dossier autorisé")
+        resolved = os.path.realpath(expanded)
+    _assert_in_jail(resolved, allow_root=True)
+    if not os.path.isdir(resolved):
+        raise ProtocolError("dossier introuvable")
+    return resolved
+
+
+def list_user_dir(path=None):
+    """Contenu d'un dossier de la prison : dossiers, puis fichiers connus.
+
+    Les noms qui commencent par ``.`` sont omis. Un lien dont la cible
+    sort de la prison est omis aussi. ``parent`` est ``None`` si remonter
+    sortirait de la prison.
+    """
+    resolved = resolve_user_dir(path)
+    parent = os.path.dirname(resolved)
+    parent_ok = None
+    if parent and os.path.normcase(parent) != os.path.normcase(resolved):
+        try:
+            parent_ok = resolve_user_dir(parent)
+        except ProtocolError:
+            parent_ok = None
+    try:
+        names = os.listdir(resolved)
+    except OSError as exc:
+        raise ProtocolError("dossier introuvable") from exc
+    entries = []
+    for name in names:
+        if not name or name.startswith("."):
+            continue
+        full = os.path.join(resolved, name)
+        try:
+            real = os.path.realpath(full)
+        except OSError:
+            continue
+        try:
+            _assert_in_jail(real, allow_root=True)
+        except ProtocolError:
+            continue
+        if os.path.isdir(real):
+            entries.append({"name": name, "kind": "dir"})
+        elif os.path.isfile(real):
+            ext = os.path.splitext(name)[1].lower()
+            if ext in _LIST_EXTENSIONS:
+                entries.append({"name": name, "kind": "file"})
+    entries.sort(key=lambda entry: (entry["kind"] != "dir", entry["name"].casefold()))
+    return {"path": resolved, "parent": parent_ok, "entries": entries}
+
+
 def _is_under_root(root: str, resolved: str) -> bool:
     try:
         return os.path.commonpath([root, resolved]) == root
@@ -499,20 +628,7 @@ def resolve_user_path(path, extensions, must_exist=False):
     if ".." in expanded.replace("\\", "/").split("/"):
         raise ProtocolError("chemin hors du dossier autorisé")
     resolved = os.path.realpath(expanded)
-    matched_root = None
-    for root in _allowed_path_roots():
-        if _is_under_root(root, resolved):
-            matched_root = root
-            break
-    if matched_root is None:
-        raise ProtocolError("chemin hors du dossier autorisé")
-
-    relative = os.path.relpath(resolved, matched_root)
-    if relative == os.curdir or relative.startswith(".." + os.sep) or relative == "..":
-        raise ProtocolError("chemin hors du dossier autorisé")
-    for component in relative.split(os.sep):
-        if component.startswith("."):
-            raise ProtocolError("chemin hors du dossier autorisé")
+    _assert_in_jail(resolved)
 
     ext = os.path.splitext(resolved)[1].lower()
     if ext not in allowed_ext:
@@ -682,7 +798,9 @@ def pack_edges(edge_lines) -> dict:
 
     Args:
         edge_lines: iterable of ``(edge_id, points)`` where ``points`` is
-            the discretized polyline of that BREP edge, as ``(x, y, z)``.
+            the discretized polyline of that BREP edge, as ``(x, y, z)`` ;
+            un troisième élément facultatif, la longueur exacte de l'arête,
+            est recopié dans son groupe (``length``, barre d'état).
 
     Returns:
         ``positions``, ``indices`` (pairs — LineSegments) and ``groups``
@@ -694,7 +812,7 @@ def pack_edges(edge_lines) -> dict:
     indices: list[int] = []
     groups: list[dict] = []
     vertex_base = 0
-    for edge_id, points in edge_lines:
+    for edge_id, points, *extra in edge_lines:
         if len(points) < 2:
             continue
         start = len(indices)
@@ -702,10 +820,13 @@ def pack_edges(edge_lines) -> dict:
             positions.extend((float(x), float(y), float(z)))
         for i in range(len(points) - 1):
             indices.extend((vertex_base + i, vertex_base + i + 1))
-        groups.append({
+        group = {
             "edgeId": edge_id,
             "start": start,
             "count": len(indices) - start,
-        })
+        }
+        if extra:
+            group["length"] = round(float(extra[0]), 6)
+        groups.append(group)
         vertex_base += len(points)
     return {"positions": positions, "indices": indices, "groups": groups}

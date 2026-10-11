@@ -1,4 +1,4 @@
-// Graphe de dépendances du FeatureManager — module pur.
+// Graphe de dépendances de l'arbre de création — module pur.
 // Pas de DOM, pas de window, pas de réseau. Entrée : l'arbre `get_tree`.
 //
 // Disposition : couches par plus long chemin (Sugiyama, étape 1), puis
@@ -767,7 +767,7 @@ export function newGraphNode(spec, id, pos) {
   return node;
 }
 
-export function functionNodeSize(spec) {
+function functionNodeSize(spec) {
   const rows = Math.max(
     listOfSpec(spec?.inputs).length,
     listOfSpec(spec?.fields).length,
@@ -779,7 +779,7 @@ export function functionNodeSize(spec) {
   };
 }
 
-export function functionPortLayout(spec, size) {
+function functionPortLayout(spec, size) {
   const width = size?.width ?? FN_NODE_WIDTH;
   const height = size?.height ?? FN_HEADER + FN_ROW;
   const inputs = listOfSpec(spec?.inputs).map((input, index) => ({

@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FreeSolid</title>
+<script>
+  // Thème avant le premier rendu et avant que la scène lise ses
+  // couleurs (même calcul que resolveTheme dans settings.js).
+  try {
+    const pref = localStorage.getItem("freesolid.theme");
+    const light = pref === "light" || (pref === "system"
+      && matchMedia("(prefers-color-scheme: light)").matches);
+    if (light) document.documentElement.dataset.theme = "light";
+  } catch { /* stockage indisponible : thème sombre */ }
+</script>
 <style>
   :root {
     --bg: #17191c;
@@ -13,14 +23,109 @@
     --ink: #d7dce2;
     --ink-2: #8b939d;
     --accent: #4f8fdb;
+    --accent-2: #9fd0ff;
+    --accent-wash: #243040;
     --error: #d4655c;
+    --error-deep: #8a4a45;
+    --danger: #ff5c5c;
+    --warn: #f59e0b;
+    --warn-ink: #f3d9a0;
+    --caution: #c9a227;
+    --success: #6fbf8f;
+    --success-2: #8fd9a8;
+    --success-deep: #4a7c5d;
+    --success-soft: #6fcf97;
+    --success-wash: #243328;
+    --ok: #46c37b;
+    --hover: var(--panel-2);
+    --selection: #d9924a;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --radius-s: 4px;
+    --radius-m: 6px;
+    --radius-l: 8px;
+    --text-xs: 11px;
+    --text-s: 12px;
+    --text-m: 13px;
+    --text-l: 16px;
+    --scene-bg-top: #2c323a;
+    --scene-bg-bottom: #121417;
+    --scene-sky: #e4eaf1;
+    --scene-ground: #2a2e34;
+    --scene-light: #ffffff;
+    --scene-grid: #3a414a;
+    --scene-grid-major: #4c545e;
+    --scene-grid-axis: #66707c;
+    --scene-part: #aebccb;
+    --scene-part-muted: #5f6b78;
+    --scene-curve: #4fb8a8;
+    --scene-sketch: #8fa8c8;
+    --scene-edge: #11141a;
+    --scene-edge-faint: #7d8792;
+    --scene-edge-on-bg: #d5dde6;
+    --scene-ghost: #f2c94c;
+    --scene-axis-x: #e06666;
+    --scene-axis-y: #6aa84f;
+    --scene-axis-z: #4b9bd5;
+    --scene-under: #5aa9ff;
+    --scene-defined: #e8edf2;
+    --scene-dim: #7fc4ff;
+  }
+
+  /* Thème clair (Q11) : mêmes jetons, autres valeurs. Le choix est posé
+     sur <html data-theme> par le script en tête de page. */
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #eceef1;
+    --panel: #f8f9fa;
+    --panel-2: #e6e9ed;
+    --line: #cdd2d8;
+    --ink: #1d2126;
+    --ink-2: #5b636d;
+    --accent: #2f6fc0;
+    --accent-2: #1f5aa6;
+    --accent-wash: #dbe7f6;
+    --error: #c0392b;
+    --error-deep: #e8b4ae;
+    --danger: #d63031;
+    --warn: #b7791f;
+    --warn-ink: #7a4f0e;
+    --caution: #9a7b12;
+    --success: #2e8b57;
+    --success-2: #23744a;
+    --success-deep: #a6d3b8;
+    --success-soft: #2f9e5f;
+    --success-wash: #dff1e6;
+    --ok: #23934f;
+    --selection: #d9822b;
+    --scene-bg-top: #f4f6f8;
+    --scene-bg-bottom: #c9d0d8;
+    --scene-sky: #ffffff;
+    --scene-ground: #8f969f;
+    --scene-light: #ffffff;
+    --scene-grid: #b9c0c9;
+    --scene-grid-major: #a0a8b2;
+    --scene-grid-axis: #7f8894;
+    --scene-part: #9fb1c4;
+    --scene-part-muted: #9aa4af;
+    --scene-curve: #16806f;
+    --scene-sketch: #2f5d9a;
+    --scene-edge: #161a20;
+    --scene-edge-faint: #8a929c;
+    --scene-edge-on-bg: #242a31;
+    --scene-ghost: #d6a100;
+    --scene-under: #1f6fd1;
+    --scene-defined: #1d2126;
+    --scene-dim: #1f6fbf;
   }
   * { margin: 0; box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     background: var(--bg);
     color: var(--ink);
-    font: 13px/1.45 system-ui, "Segoe UI", sans-serif;
+    font: var(--text-m)/1.45 system-ui, "Segoe UI", sans-serif;
     display: grid;
     grid-template-rows: auto 1fr 26px;
     grid-template-columns: 260px 1fr;
@@ -28,84 +133,164 @@
     overflow: hidden;
   }
 
+  /* En-tête compact (docs/maquettes/entete.html) : 32 + 28 + 70 px.
+     Ligne 1 : marque, menus, accès rapide, recherche. Ligne 2 : onglets.
+     Ligne 3 : le ruban de l'onglet actif, sur une seule rangée. */
   header {
     grid-area: top;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
   }
+  #titlebar {
+    height: 32px; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-2);
+    padding: 0 var(--space-2);
+    border-bottom: 1px solid var(--line);
+  }
+  #titlebar .grow { flex: 1; }
+  #quickbar { display: flex; align-items: center; gap: 2px; }
+  #quickbar button, #btn-settings {
+    width: 28px; height: 26px; padding: 0; justify-content: center;
+    background: none; border-color: transparent; border-radius: var(--radius-s);
+  }
+  #quickbar button:hover, #btn-settings:hover {
+    background: var(--panel-2); border-color: var(--line);
+  }
+  #quickbar .sep { height: 16px; margin: 0 var(--space-1); }
   #topbar {
-    display: flex; align-items: center; gap: 6px;
-    flex-wrap: wrap; row-gap: 4px;
-    padding: 4px 12px 0;
+    height: 28px; display: flex; align-items: flex-end; gap: 2px;
+    padding: 0 var(--space-2);
   }
   #topbar .push { margin-left: auto; }
+  #command-search { position: relative; display: flex; align-items: center; }
+  #command-query {
+    width: 210px; height: 24px; box-sizing: border-box;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: var(--radius-s);
+    padding: 0 3.6em 0 var(--space-2); font: inherit; font-size: var(--text-s);
+  }
+  #command-search kbd {
+    position: absolute; right: 6px; pointer-events: none;
+    font: inherit; font-size: 10px; color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 3px; padding: 0 var(--space-1);
+  }
+  #command-query:focus + kbd { display: none; }
+  #command-results {
+    position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+    width: 260px; max-height: 280px; overflow: auto;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius-l); padding: var(--space-1);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  }
+  #command-results[hidden] { display: none; }
+  #command-results button {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: var(--space-2); width: 100%; background: none; border: none;
+    text-align: left; padding: var(--space-1) 6px; border-radius: var(--radius-s); font-size: var(--text-s);
+  }
+  #command-results button:hover:not(:disabled) { background: var(--hover); }
+  #command-results .cmd-tab { color: var(--ink-2); font-size: var(--text-xs); }
   header .tab {
-    background: none; border: none; border-radius: 0;
-    border-bottom: 2px solid transparent;
-    padding: 7px 11px 5px;
-    color: var(--ink-2); font-weight: 600; font-size: 12px;
+    background: none; border: none;
+    border-radius: var(--radius-s) var(--radius-s) 0 0;
+    padding: 5px var(--space-3);
+    color: var(--ink-2); font-weight: 600; font-size: var(--text-s);
   }
   header .tab:hover { color: var(--ink); }
-  header .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  header .tab.active {
+    color: var(--ink); background: var(--panel-2);
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+  /* Le ruban : une rangée de groupes, deux lignes de 28 px. Les commandes
+     de tête (taille "large" dans ribbon.json) occupent les deux lignes,
+     icône au-dessus du libellé ; les autres s'empilent deux par deux. */
   .ribbon {
-    display: none; align-items: stretch; flex-wrap: wrap;
-    gap: 0; row-gap: 4px;
-    padding: 4px 8px 2px;
-    border-top: 1px solid var(--line);
+    display: none; align-items: stretch;
+    height: 69px; box-sizing: border-box;
+    padding: var(--space-1) var(--space-1);
+    background: var(--panel-2);
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
   }
   .ribbon.active { display: flex; }
   .ribbon-group {
-    display: flex; flex-direction: column;
-    /* shrink autorisé : un groupe seul plus large que l'écran replie ses
-       boutons (flex-wrap ci-dessous) au lieu d'être coupé à droite. */
-    flex: 0 1 auto;
-    padding: 2px 10px 2px;
+    display: flex; flex: 0 0 auto;
+    padding: 0 var(--space-1);
     border-right: 1px solid var(--line);
-    min-width: min-content;
   }
   .ribbon-group:last-child { border-right: none; }
   .ribbon-group-btns {
-    display: flex; align-items: center; justify-content: center;
-    flex-wrap: wrap;
-    gap: 4px; flex: 1;
+    display: grid; grid-auto-flow: column;
+    grid-template-rows: repeat(2, 28px);
+    align-content: center; align-items: center;
+    gap: 2px;
   }
+  /* Le nom du groupe reste dans le DOM (recherche, lecteurs d'écran) ;
+     les séparateurs suffisent à l'œil. */
   .ribbon-group-label {
-    text-align: center; white-space: nowrap;
-    font-size: 10px; color: var(--ink-2);
-    padding-top: 3px; line-height: 1.2;
-    user-select: none;
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
   }
-  /* Hiérarchie visuelle transposée de FreeCAD-Ribbon : les commandes
-     de tête (taille "large" dans ribbon.json) en colonne, grosse icône,
-     libellé dessous — les autres restent en ligne. */
+  .ribbon-group-btns button {
+    height: 28px; padding: 0 var(--space-2) 0 var(--space-1);
+    background: none; border-color: transparent; border-radius: var(--radius-s);
+    font-size: var(--text-xs); white-space: nowrap;
+  }
+  .ribbon-group-btns button:not(:has(> img)) { padding: 0 var(--space-2); }
+  .ribbon-group-btns button:has(> img):not(:has(> :not(img))) { justify-content: center; }
+  .ribbon-group-btns button:hover {
+    background: var(--panel); border-color: var(--line);
+  }
   .ribbon button.large {
-    flex-direction: column;
-    gap: 4px;
-    padding: 5px 8px;
-    max-width: 6.5em;
-    white-space: normal;
-    text-align: center;
-    line-height: 1.15;
+    grid-row: span 2; height: 58px; width: 60px;
+    flex-direction: column; justify-content: center;
+    gap: 3px; padding: 2px;
+    white-space: normal; text-align: center; line-height: 1.15;
+    border-radius: var(--radius-m);
   }
   .ribbon button.large img { width: 24px; height: 24px; }
-  /* Dans une rangée qui contient des boutons large, le séparateur de
-     bloc suit la hauteur de la rangée au lieu de rester à 22 px. */
-  .ribbon-group-btns .sep { align-self: stretch; height: auto; margin: 3px 0; }
-  body.ribbon-icons-only .ribbon button:has(> img) {
-    font-size: 0; gap: 0; padding: 6px;
+  .ribbon-group-btns .sep {
+    grid-row: span 2; align-self: stretch; width: 1px; height: auto;
+    margin: var(--space-1) var(--space-1);
   }
-  /* font-size 0 rend le max-width en em des boutons large nul : le bouton
-     ferait 14 px sous une icône de 24 px. Sans libellé, plus de plafond. */
-  body.ribbon-icons-only .ribbon button.large { max-width: none; }
+  body.ribbon-icons-only .ribbon button:has(> img) {
+    font-size: 0; gap: 0; padding: 0 6px;
+  }
+  body.ribbon-icons-only .ribbon button.large { width: 40px; }
   header .sep { width: 1px; height: 22px; background: var(--line); }
-  header .logo { font-weight: 600; letter-spacing: 0.02em; margin-right: 12px; }
+  header .logo { font-weight: 700; letter-spacing: 0.02em; margin-right: var(--space-1); }
   header .logo span { color: var(--accent); }
+  #menubar { display: flex; align-items: center; gap: 0; }
+  #menubar .menu-top {
+    position: relative;
+    background: transparent; border: 1px solid transparent;
+    border-radius: var(--radius-s); padding: 3px var(--space-2); color: var(--ink);
+  }
+  #menubar .menu-top.open,
+  #menubar .menu-top:hover { background: var(--panel-2); border-color: var(--line); }
+  #menubar .menu-panel {
+    position: absolute; top: 100%; left: 0; z-index: 50;
+    min-width: 240px; max-height: 70vh; overflow: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-m);
+    padding: var(--space-1); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+  #menubar .menu-panel[hidden] { display: none; }
+  #menubar .menu-panel button {
+    display: flex; width: 100%; justify-content: space-between; gap: var(--space-4);
+    background: none; border: none; border-radius: var(--radius-s);
+    text-align: left; padding: var(--space-1) var(--space-2);
+  }
+  #menubar .menu-panel button:hover:not(:disabled) { background: var(--hover); }
+  #menubar .menu-heading {
+    font-size: var(--text-xs); color: var(--ink-2); text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 6px var(--space-2) 2px; user-select: none;
+  }
+  #menubar .menu-sep { height: 1px; background: var(--line); margin: var(--space-1) 6px; }
+  #menubar .menu-shortcut { color: var(--ink-2); font-size: var(--text-xs); }
   button {
     background: var(--panel-2);
     color: var(--ink);
     border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 6px 12px;
+    border-radius: var(--radius-m);
+    padding: 6px var(--space-3);
     font: inherit;
     cursor: pointer;
   }
@@ -130,25 +315,201 @@
   header button, #sketchbar button, #viewbar button {
     display: inline-flex; align-items: center; gap: 6px;
   }
+  header button[hidden] { display: none; }
 
   #viewbar {
     position: absolute; top: 10px; right: 10px;
     display: flex; gap: 2px; z-index: 4;
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 8px; padding: 4px;
+    border-radius: var(--radius-l); padding: var(--space-1);
   }
-  #viewbar button { padding: 5px; border: none; background: none; }
-  #viewbar button:hover { background: var(--panel-2); }
+  #viewbar button { padding: var(--space-1); border: none; background: none; }
+  #viewbar button:hover { background: var(--hover); }
   #viewbar button.on { color: var(--accent); }
+  .view-drop { position: relative; display: flex; }
+  .view-menu {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 6;
+    min-width: 220px; padding: var(--space-1);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius-l); box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  }
+  .view-menu[hidden] { display: none; }
+  .view-menu button, .view-menu label {
+    display: flex; align-items: center; gap: var(--space-2); width: 100%;
+    padding: 6px var(--space-2); border: none; background: none;
+    text-align: left; border-radius: var(--radius-s); cursor: pointer;
+  }
+  .view-menu button:hover, .view-menu label:hover { background: var(--hover); }
+  .view-menu button.on { color: var(--accent); }
+
+  /* Arbre en surimpression pendant une commande (haut gauche de la vue). */
+  #tree-flyout {
+    position: absolute; top: 10px; left: 10px; z-index: 4;
+    max-width: 280px; max-height: 60%; display: flex; flex-direction: column;
+    background: color-mix(in srgb, var(--bg) 82%, transparent); border: 1px solid var(--line);
+    border-radius: var(--radius-l);
+  }
+  #tree-flyout[hidden] { display: none; }
+  #tree-flyout-toggle {
+    text-align: left; padding: var(--space-1) var(--space-2); font-size: var(--text-xs); font-weight: 600;
+    text-transform: uppercase; color: var(--ink-2);
+    background: none; border: none; cursor: pointer;
+  }
+  #tree-flyout-toggle::before { content: "▾ "; }
+  #tree-flyout.collapsed #tree-flyout-toggle::before { content: "▸ "; }
+  #tree-flyout.collapsed #tree-flyout-body { display: none; }
+  #tree-flyout-body { overflow: auto; padding: 0 var(--space-1) var(--space-1); }
+  /* Le volet laisse voir la pièce : pas de fond, des lignes serrées, et
+     les clics dans ses vides passent à la vue (orbite, sélection). */
+  #tree-flyout {
+    background: none; border: none; max-width: 230px; max-height: 55%;
+    pointer-events: none;
+  }
+  #tree-flyout-toggle, #tree-flyout-body li { pointer-events: auto; }
+  #tree-flyout-body { scrollbar-width: thin; }
+  #tree-flyout-body #tree li {
+    padding-top: 1px; padding-bottom: 1px; font-size: var(--text-s);
+    text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg);
+  }
+  #tree-flyout-body #tree li:hover {
+    background: color-mix(in srgb, var(--panel-2) 85%, transparent);
+  }
+  #tree-flyout-body #tree li.folder.empty { display: none; }
+
+  /* Boîte d'orientation : vues standard en croix, ouverte sous le curseur. */
+  #orient-box {
+    position: absolute; z-index: 6; width: 300px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius-l); padding: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  }
+  #orient-box[hidden] { display: none; }
+  #shortcut-box {
+    position: fixed; z-index: 60; width: 292px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius-l); padding: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  }
+  #shortcut-box[hidden] { display: none; }
+  #shortcut-search {
+    width: 100%; margin: 0 0 6px; box-sizing: border-box;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: var(--radius-s);
+    padding: var(--space-1) 6px; font: inherit;
+  }
+  #shortcut-list {
+    display: flex; flex-wrap: wrap; gap: 2px;
+    max-height: 220px; overflow: auto;
+  }
+  #shortcut-list button {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: flex-start; gap: 2px;
+    width: 68px; min-height: 52px; padding: var(--space-1);
+    background: none; border: none; border-radius: var(--radius-s);
+    font-size: var(--text-xs); line-height: 1.15; text-align: center;
+  }
+  #shortcut-list button img { width: 20px; height: 20px; }
+  #shortcut-list button:hover:not(:disabled) { background: var(--hover); }
+  .shortcut-empty { color: var(--ink-2); font-size: var(--text-s); margin: 0; padding: var(--space-1) 6px; }
+  #orient-box button {
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: var(--radius-s); padding: var(--space-1) 2px; font-size: var(--text-xs); cursor: pointer;
+  }
+  #orient-box button:hover { border-color: var(--accent); color: var(--accent); }
+  .orient-head { display: flex; align-items: center; gap: var(--space-1); margin-bottom: 6px; }
+  .orient-head span { flex: 1; font-weight: 600; }
+  .orient-head button { padding: 0 6px; }
+  .orient-head button.on { border-color: var(--accent); }
+  .orient-layouts { margin-top: var(--space-1); }
+  .orient-layouts svg {
+    width: 20px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.2;
+  }
+  .orient-cross {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(3, 26px); gap: var(--space-1); margin-bottom: 6px;
+  }
+  .orient-cross .c1 { grid-column: 1; } .orient-cross .c2 { grid-column: 2; }
+  .orient-cross .c3 { grid-column: 3; } .orient-cross .c4 { grid-column: 4; }
+  .orient-cross .r1 { grid-row: 1; } .orient-cross .r2 { grid-row: 2; }
+  .orient-cross .r3 { grid-row: 3; }
+  .orient-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-1); }
+
+  /* Barre d'icônes contextuelle, près du curseur après une sélection. */
+  #ctx-toolbar {
+    position: absolute; z-index: 6; display: flex; gap: 2px; padding: var(--space-1);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius-m); box-shadow: 0 4px 14px rgba(0,0,0,.4);
+  }
+  #ctx-toolbar[hidden] { display: none; }
+  #ctx-toolbar button {
+    padding: var(--space-1); background: none; border: 1px solid transparent;
+    border-radius: var(--radius-s); cursor: pointer;
+  }
+  #ctx-toolbar button:hover { border-color: var(--accent); background: var(--hover); }
+  #ctx-toolbar img { width: 20px; height: 20px; }
+
+  /* Lecture près du curseur pendant le tracé. */
+  .sk-readout {
+    position: absolute; z-index: 6; pointer-events: none;
+    padding: 2px 6px; font-size: var(--text-xs); white-space: nowrap;
+    background: color-mix(in srgb, var(--bg) 85%, transparent); color: var(--accent-2);
+    border: 1px solid var(--line); border-radius: var(--radius-s);
+  }
+  .sk-readout[hidden] { display: none; }
+
+  /* Boîte de saisie d'une cote, posée près de la cote. */
+  .dim-modify {
+    position: absolute; z-index: 7; display: flex; align-items: center;
+    gap: var(--space-1); padding: var(--space-1); background: var(--panel);
+    border: 1px solid var(--accent); border-radius: var(--radius-m);
+    box-shadow: 0 4px 14px rgba(0,0,0,.45);
+  }
+  .dim-modify input { width: 110px; font-size: var(--text-m); }
+  .sk-numeric { gap: var(--space-2); }
+  .sk-numeric label { color: var(--ink-2); font-size: var(--text-s); }
+  .sk-numeric input { width: 70px; }
+  .dim-modify span { color: var(--ink-2); font-size: var(--text-s); }
+  .dim-modify button {
+    min-width: 24px; padding: 2px var(--space-1); cursor: pointer;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  }
+  .dim-modify .ok { color: var(--ok); }
+  .dim-modify .no { color: var(--danger); }
+
+  /* Coin de confirmation : sous la barre de vue, en haut à droite. */
+  #confirm-corner {
+    position: absolute; top: 52px; right: 10px; z-index: 4;
+    display: flex; flex-direction: column; gap: var(--space-1);
+  }
+  #confirm-corner[hidden] { display: none; }
+  #confirm-corner button {
+    width: 40px; height: 40px; font-size: 24px; line-height: 1;
+    border-radius: var(--radius-l); border: 1px solid var(--line);
+    background: var(--panel); cursor: pointer;
+  }
+  #confirm-corner .ok { color: var(--ok); }
+  #confirm-corner .no { color: var(--danger); }
+  #confirm-corner button:hover { background: var(--hover); }
+
+  /* Cadre de sélection : plein en fenêtre, tirets en capture. */
+  #box-select {
+    position: absolute; z-index: 5; pointer-events: none;
+    border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+  #box-select.crossing {
+    border-style: dashed;
+    border-color: var(--success-soft);
+    background: color-mix(in srgb, var(--success-soft) 8%, transparent);
+  }
 
   #gem-hud {
     position: absolute; top: 10px; left: 10px; z-index: 4;
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 8px 12px;
-    font-size: 12px;
+    border-radius: var(--radius-l);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-s);
     line-height: 1.45;
     color: var(--ink);
     pointer-events: none;
@@ -160,7 +521,7 @@
   #graph-view {
     display: none;
     position: absolute; inset: 0; z-index: 3;
-    background: rgba(23, 25, 28, 0.94);
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
     overflow: hidden;
     cursor: grab;
     user-select: none;
@@ -171,7 +532,7 @@
   #graph-svg { width: 100%; height: 100%; display: block; }
   #graph-empty, #graph-cap {
     position: absolute; left: 16px; bottom: 14px;
-    margin: 0; color: var(--ink-2); font-size: 12px;
+    margin: 0; color: var(--ink-2); font-size: var(--text-s);
     pointer-events: none;
   }
   #graph-cap { left: auto; right: 16px; color: var(--ink); }
@@ -183,7 +544,7 @@
     pointer-events: none;
   }
   .graph-edge.param .graph-edge-line {
-    stroke: #6fbf8f; stroke-dasharray: 7 5; stroke-width: 1.7;
+    stroke: var(--success); stroke-dasharray: 7 5; stroke-width: 1.7;
   }
   .graph-edge .graph-edge-hit {
     stroke: transparent; stroke-width: 14;
@@ -199,13 +560,13 @@
     stroke: var(--accent); stroke-width: 2.6;
   }
   .graph-edge.preview .graph-edge-line {
-    stroke: #6fbf8f; stroke-dasharray: 5 4; stroke-width: 1.8;
+    stroke: var(--success); stroke-dasharray: 5 4; stroke-width: 1.8;
   }
   .graph-node { cursor: pointer; }
   .graph-node .shape {
     fill: var(--panel-2); stroke: var(--line); stroke-width: 1.4;
   }
-  .graph-node.variable .shape { fill: #243328; stroke: #4a7c5d; }
+  .graph-node.variable .shape { fill: var(--success-wash); stroke: var(--success-deep); }
   .graph-node.variable { cursor: crosshair; }
   .graph-node.plane .shape { fill: var(--panel); stroke: var(--ink-2); }
   .graph-node.body .shape { fill: var(--panel); stroke: var(--accent); }
@@ -215,33 +576,33 @@
   .graph-node.lit { opacity: 1; }
   .graph-node.rolled-back.lit { opacity: 0.7; }
   .graph-edge.rolled-back { opacity: 0.22; }
-  .graph-node.drop-ok .shape { stroke: #6fbf8f; stroke-width: 2.2; }
-  .graph-node.drop-hover .shape { stroke: #8fd9a8; stroke-width: 2.6; }
+  .graph-node.drop-ok .shape { stroke: var(--success); stroke-width: 2.2; }
+  .graph-node.drop-hover .shape { stroke: var(--success-2); stroke-width: 2.6; }
   .graph-node.drop-no { opacity: 0.32; cursor: not-allowed; }
-  .graph-node.wiring-from .shape { stroke: #6fbf8f; }
+  .graph-node.wiring-from .shape { stroke: var(--success); }
   .graph-node text {
-    fill: var(--ink); font: 11px/1 system-ui, "Segoe UI", sans-serif;
+    fill: var(--ink); font: var(--text-xs)/1 system-ui, "Segoe UI", sans-serif;
     pointer-events: none;
   }
   .graph-node text.graph-literal { pointer-events: auto; cursor: text; }
   .graph-node text.graph-param {
-    fill: var(--ink-2); font: 10px/1 system-ui, "Segoe UI", sans-serif;
+    fill: var(--ink-2); font: var(--text-xs)/1 system-ui, "Segoe UI", sans-serif;
     pointer-events: auto; cursor: pointer;
   }
-  .graph-node text.graph-param.driven { fill: #6fbf8f; }
+  .graph-node text.graph-param.driven { fill: var(--success); }
   .graph-edge-sub {
-    fill: var(--ink-2); font: 10px/1 system-ui, "Segoe UI", sans-serif;
+    fill: var(--ink-2); font: var(--text-xs)/1 system-ui, "Segoe UI", sans-serif;
     pointer-events: none;
   }
   .graph-node image { pointer-events: none; }
   #graph-view.wiring { cursor: crosshair; }
   #graph-bar {
     position: absolute; top: 10px; left: 10px; z-index: 2;
-    display: flex; gap: 4px;
+    display: flex; gap: var(--space-1);
   }
   #graph-bar button {
     background: var(--panel); color: var(--ink);
-    border: 1px solid var(--line); border-radius: 6px;
+    border: 1px solid var(--line); border-radius: var(--radius-m);
     padding: 6px 10px; font: inherit; cursor: pointer;
   }
   #graph-bar button:hover { border-color: var(--accent); }
@@ -250,10 +611,10 @@
     min-width: 280px; max-width: 360px;
   }
   .graph-palette-item {
-    display: flex; align-items: flex-start; gap: 8px;
+    display: flex; align-items: flex-start; gap: var(--space-2);
     width: 100%; text-align: left;
     background: none; border: none; color: inherit;
-    padding: 6px 10px; border-radius: 4px; cursor: pointer;
+    padding: 6px 10px; border-radius: var(--radius-s); cursor: pointer;
     font: inherit;
   }
   .graph-palette-item:hover { background: var(--panel); color: var(--accent); }
@@ -264,68 +625,68 @@
   .graph-palette-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .graph-palette-title { line-height: 1.3; }
   .graph-palette-reason {
-    font-size: 11px; color: var(--ink-2); line-height: 1.3;
+    font-size: var(--text-xs); color: var(--ink-2); line-height: 1.3;
   }
   .graph-palette-item.disabled {
     opacity: 0.55; cursor: not-allowed; color: var(--ink-2);
   }
   .graph-palette-item.disabled:hover { background: none; color: var(--ink-2); }
   .graph-palette-wall {
-    white-space: normal; line-height: 1.35; padding-bottom: 8px;
+    white-space: normal; line-height: 1.35; padding-bottom: var(--space-2);
   }
   #graph-view.fn { cursor: default; }
   #graph-fn-bar {
     position: absolute; left: 12px; right: 12px; top: 12px; z-index: 4;
-    display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px;
+    display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2);
     pointer-events: none;
   }
   #graph-fn-bar[hidden] { display: none; }
   #graph-fn-bar button {
     pointer-events: auto;
     background: var(--panel-2); color: var(--ink);
-    border: 1px solid var(--line); border-radius: 6px;
+    border: 1px solid var(--line); border-radius: var(--radius-m);
     padding: 6px 10px; cursor: pointer;
   }
   #graph-fn-bar button:hover { border-color: var(--accent); color: var(--accent); }
-  #graph-fn-apply { color: #6fbf8f; }
+  #graph-fn-apply { color: var(--success); }
   #graph-fn-hint {
     flex: 1 1 280px; margin: 0;
-    font-size: 11px; line-height: 1.35; color: var(--ink-2);
+    font-size: var(--text-xs); line-height: 1.35; color: var(--ink-2);
     pointer-events: none;
   }
-  .graph-node.shape .shape { fill: #243040; }
+  .graph-node.shape .shape { fill: var(--accent-wash); }
   .graph-node.compute .shape { fill: var(--panel-2); }
-  .graph-node.output .shape { stroke: #6fbf8f; stroke-width: 2.2; }
+  .graph-node.output .shape { stroke: var(--success); stroke-width: 2.2; }
   .graph-node.error .shape { stroke: var(--error); stroke-width: 2.4; }
   .graph-port {
     fill: var(--panel); stroke: var(--ink-2); stroke-width: 1.3;
     cursor: crosshair;
   }
-  .graph-port.out { fill: #4f8fdb; }
-  .graph-node.output .graph-port.out { fill: #6fbf8f; }
-  .graph-port.drop-ok { stroke: #6fbf8f; stroke-width: 2; }
-  .graph-port.drop-hover { fill: #8fd9a8; }
+  .graph-port.out { fill: var(--accent); }
+  .graph-node.output .graph-port.out { fill: var(--success); }
+  .graph-port.drop-ok { stroke: var(--success); stroke-width: 2; }
+  .graph-port.drop-hover { fill: var(--success-2); }
   .graph-literal {
-    fill: var(--ink-2); font: 10px/1 system-ui, "Segoe UI", sans-serif;
+    fill: var(--ink-2); font: var(--text-xs)/1 system-ui, "Segoe UI", sans-serif;
     pointer-events: none;
   }
   .graph-port-label {
-    fill: var(--ink-2); font: 10px/1 system-ui, "Segoe UI", sans-serif;
+    fill: var(--ink-2); font: var(--text-xs)/1 system-ui, "Segoe UI", sans-serif;
     pointer-events: none;
   }
-  .graph-edge.data .graph-edge-line { stroke: #6fbf8f; }
+  .graph-edge.data .graph-edge-line { stroke: var(--success); }
   .graph-edge.data .graph-edge-hit { cursor: pointer; }
   #graph-literal-edit {
     position: fixed; z-index: 11; display: none;
     background: var(--panel-2);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     box-shadow: 0 10px 28px rgba(0,0,0,0.5);
-    padding: 8px; min-width: 160px;
+    padding: var(--space-2); min-width: 160px;
   }
   #graph-literal-edit input, #graph-literal-edit select, #graph-literal-edit textarea {
-    width: 100%; box-sizing: border-box; margin: 4px 0;
-    font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    width: 100%; box-sizing: border-box; margin: var(--space-1) 0;
+    font: var(--text-s)/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   #graph-literal-edit textarea { min-height: 160px; resize: vertical; }
   #script-trust {
@@ -343,27 +704,27 @@
     padding: 18px 18px 14px;
   }
   .script-trust-card h2 {
-    margin: 0 0 10px; font-size: 16px; font-weight: 650;
+    margin: 0 0 10px; font-size: var(--text-l); font-weight: 650;
   }
   .script-trust-card p {
-    margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: var(--ink-2);
+    margin: 0 0 var(--space-3); font-size: var(--text-m); line-height: 1.45; color: var(--ink-2);
   }
   #script-trust-code {
     margin: 0 0 14px; max-height: 240px; overflow: auto;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-    padding: 10px; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-m);
+    padding: 10px; font: var(--text-s)/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     white-space: pre-wrap; word-break: break-word;
   }
   .script-trust-actions {
-    display: flex; justify-content: flex-end; gap: 8px;
+    display: flex; justify-content: flex-end; gap: var(--space-2);
   }
   .script-trust-actions button {
     background: var(--panel); color: var(--ink);
-    border: 1px solid var(--line); border-radius: 6px;
-    padding: 6px 12px; cursor: pointer; font: inherit;
+    border: 1px solid var(--line); border-radius: var(--radius-m);
+    padding: 6px var(--space-3); cursor: pointer; font: inherit;
   }
   .script-trust-actions button:hover { border-color: var(--accent); color: var(--accent); }
-  #script-trust-allow { color: #c9a227; }
+  #script-trust-allow { color: var(--caution); }
 
   aside {
     grid-area: tree;
@@ -372,19 +733,26 @@
     overflow-y: auto;
   }
   aside h2 {
-    font-size: 11px; font-weight: 600;
+    font-size: var(--text-xs); font-weight: 600;
     letter-spacing: 0.08em; text-transform: uppercase;
     color: var(--ink-2);
-    padding: 10px 12px 6px;
+    padding: 10px var(--space-3) 6px;
   }
   #tree { list-style: none; position: relative; }
   #tree li {
-    padding: 5px 12px 5px 22px;
+    padding: var(--space-1) var(--space-3) var(--space-1) 22px;
     cursor: pointer;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  #tree li:hover { background: var(--panel-2); }
-  #tree li.body { padding-left: 12px; font-weight: 600; }
+  #tree li input.tree-rename {
+    font: inherit; color: inherit;
+    width: 9em; max-width: 70%;
+    padding: 0 var(--space-1);
+    border: 1px solid var(--accent);
+    background: var(--panel);
+  }
+  #tree li:hover { background: var(--hover); }
+  #tree li.body { padding-left: var(--space-3); font-weight: 600; }
   #tree li.body .swatch {
     display: inline-block;
     width: 10px; height: 10px;
@@ -408,106 +776,128 @@
   #tree li.rolled-back { color: var(--ink-2); }
   #tree li.rolled-back img { opacity: 0.4; }
 
-  /* PropertyManager : remplace l'arbre pendant une commande, comme SW. */
+  /* Panneau de propriétés : remplace l'arbre pendant une commande. */
   aside.panel-open h2, aside.panel-open #tree { display: none; }
   #panel { display: none; }
   aside.panel-open #panel { display: block; }
   #panel .phead-main {
-    display: flex; align-items: center; gap: 7px;
-    padding: 9px 10px;
+    display: flex; align-items: center; gap: var(--space-2);
+    padding: var(--space-2) 10px;
     background: var(--panel-2);
     border-bottom: 1px solid var(--line);
   }
   #panel .phead-main img { width: 18px; height: 18px; }
   #panel .ptitle {
-    flex: 1; font-weight: 600; font-size: 12px;
+    flex: 1; font-weight: 600; font-size: var(--text-s);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   #panel .pok, #panel .pcancel {
     width: 28px; height: 28px; border-radius: 50%;
-    padding: 0; font-size: 15px; line-height: 1; flex: none;
+    padding: 0; font-size: var(--text-l); line-height: 1; flex: none;
   }
-  #panel .pok { color: #6fbf8f; border-color: #4a7c5d; }
-  #panel .pok:hover { border-color: #6fbf8f; }
-  #panel .pcancel { color: var(--error); border-color: #8a4a45; }
+  #panel .pok { color: var(--success); border-color: var(--success-deep); }
+  #panel .pok:hover { border-color: var(--success); }
+  #panel .pcancel { color: var(--error); border-color: var(--error-deep); }
+  /* Œil : aperçu affiché ou coupé. */
+  #panel .peye {
+    width: 28px; height: 28px; padding: var(--space-1); flex: none; border-radius: var(--radius-s);
+    background: none; border: 1px solid transparent; cursor: pointer;
+  }
+  #panel .peye svg {
+    width: 18px; height: 14px; fill: none; stroke: var(--ink); stroke-width: 1.4;
+  }
+  #panel .peye.off svg { stroke: var(--ink-2); opacity: 0.5; }
+  #panel .peye:hover { border-color: var(--line); }
+  /* Consigne (texte secondaire) ou vraie erreur (rouge). */
+  #panel .phint {
+    margin: var(--space-2) 10px 2px; padding: 6px var(--space-2); border-radius: var(--radius-s);
+    font-size: var(--text-xs); line-height: 1.35;
+    color: var(--ink-2);
+  }
+  #panel .phint.error { color: var(--danger); }
+  #panel .phint[hidden] { display: none; }
   #panel .pcancel:hover { border-color: var(--error); }
   #panel .paction {
-    flex: none; height: 28px; padding: 0 8px;
-    font-size: 11px; border-radius: 4px;
+    flex: none; height: 28px; padding: 0 var(--space-2);
+    font-size: var(--text-xs); border-radius: var(--radius-s);
     color: var(--accent); border-color: var(--accent);
   }
   #panel .pcancel-text {
-    width: auto; min-width: 28px; padding: 0 8px;
-    border-radius: 4px; font-size: 11px;
+    width: auto; min-width: 28px; padding: 0 var(--space-2);
+    border-radius: var(--radius-s); font-size: var(--text-xs);
   }
   .pgroup {
-    border: 1px solid var(--line); border-radius: 6px;
-    margin: 8px; overflow: hidden;
+    border: 1px solid var(--line); border-radius: var(--radius-m);
+    margin: var(--space-2); overflow: hidden;
   }
   .pgroup .phead {
     display: flex; justify-content: space-between; align-items: center;
     background: var(--panel-2);
-    padding: 5px 9px;
-    font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.03em;
     cursor: pointer; user-select: none;
   }
   .pgroup .parrow { color: var(--ink-2); transition: transform 0.1s; }
   .pgroup.closed .pbody { display: none; }
   .pgroup.closed .parrow { transform: rotate(-90deg); }
-  .pbody { padding: 4px 0 6px; }
-  .prow { display: flex; align-items: center; gap: 6px; padding: 4px 9px; }
-  .prow label { flex: 1; color: var(--ink-2); font-size: 12px; }
+  .pbody { padding: var(--space-1) 0 6px; }
+  .prow { display: flex; align-items: center; gap: 6px; padding: var(--space-1) var(--space-2); }
+  .prow label { flex: 1; color: var(--ink-2); font-size: var(--text-s); }
   .prow label.pcheck {
-    display: flex; align-items: center; gap: 7px;
+    display: flex; align-items: center; gap: var(--space-2);
     color: var(--ink); cursor: pointer;
   }
   .prow input[type="number"], .prow input[type="text"], .prow select {
     background: var(--bg); color: var(--ink);
-    border: 1px solid var(--line); border-radius: 4px;
-    padding: 3px 6px; font: inherit; font-size: 12px;
+    border: 1px solid var(--line); border-radius: var(--radius-s);
+    padding: var(--space-1) 6px; font: inherit; font-size: var(--text-s);
   }
   .prow input[type="number"] { width: 76px; }
   .prow input[type="text"] { flex: 1.3; min-width: 60px; }
   .plist-item {
     display: flex; justify-content: space-between; align-items: center;
-    gap: 6px; padding: 3px 9px; font-size: 12px;
+    gap: 6px; padding: var(--space-1) var(--space-2); font-size: var(--text-s);
   }
   .plist-item.editable { cursor: pointer; }
-  .plist-item.editable:hover { background: var(--panel-2); }
+  .plist-item.editable:hover { background: var(--hover); }
   .plist-item.readonly { color: var(--ink-2); cursor: default; }
   .plist-item .pdel {
-    padding: 1px 7px; font-size: 11px; color: var(--error); flex: none;
+    padding: 1px var(--space-2); font-size: var(--text-xs); color: var(--error); flex: none;
   }
   .prow select { flex: 1.4; }
   .prow input[type="checkbox"] { accent-color: var(--accent); }
-  .prow .punit { color: var(--ink-2); font-size: 11px; }
+  .prow .punit { color: var(--ink-2); font-size: var(--text-xs); }
   .pselect-box {
-    margin: 4px 9px; padding: 6px 8px;
-    border: 1px dashed var(--line); border-radius: 4px;
-    color: var(--ink-2); font-size: 12px;
+    margin: var(--space-1) var(--space-2); padding: 6px var(--space-2);
+    border: 1px dashed var(--line); border-radius: var(--radius-s);
+    color: var(--ink-2); font-size: var(--text-s);
   }
   .pselect-box.filled {
     border: 1px solid var(--accent); color: var(--accent);
   }
-  .pnote { padding: 5px 12px 7px; font-size: 11px; color: var(--ink-2); }
+  .pnote { padding: var(--space-1) var(--space-3) var(--space-2); font-size: var(--text-xs); color: var(--ink-2); }
   .pnote.readonly { opacity: 0.8; cursor: default; }
   #tree li .arrow {
     display: inline-block; width: 13px;
     margin-left: -13px;
-    color: var(--ink-2); font-size: 10px;
+    color: var(--ink-2); font-size: var(--text-xs);
   }
   #tree li.plane { color: var(--ink-2); }
   #tree li.plane.sel,
   #tree li.sel { color: var(--accent); background: var(--panel-2); }
+  /* Fonction en cours de déplacement dans l'arbre. */
+  #tree li.dragging { opacity: 0.5; }
+  /* Esquisse en cours d'édition : repérée dans l'arbre. */
+  #tree li.editing { color: var(--accent); font-style: italic; }
   #tree li.child { padding-left: 40px; }
   #tree li.sel-comp { color: var(--accent); background: var(--panel-2); }
   #tree li.error { color: var(--error); }
   #tree li .kind { color: var(--ink-2); }
   #tree li.rollback {
-    color: var(--accent); font-size: 11px; text-align: center;
+    color: var(--accent); font-size: var(--text-xs); text-align: center;
     border-top: 1px dashed var(--accent);
     border-bottom: 1px dashed var(--accent);
-    margin: 3px 10px; padding: 2px;
+    margin: var(--space-1) 10px; padding: 2px;
     cursor: grab;
     user-select: none;
     touch-action: none;
@@ -530,26 +920,35 @@
      hors écran. Le canvas suit la cellule ; renderer.setSize dimensionne
      le tampon de rendu sans toucher au style (main.js). */
   main { grid-area: viewport; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
-  main canvas { display: block; width: 100% !important; height: 100% !important; }
+  main canvas { display: block; }
+  main canvas:not(.fs-pane) { width: 100% !important; height: 100% !important; }
+  /* Fenêtres multiples : chaque canvas à sa place (main.js, layouts.js). */
+  main canvas.fs-pane { position: absolute; }
+  main canvas.fs-pane.active { outline: 1px solid var(--accent); outline-offset: -1px; }
+  main canvas[hidden] { display: none !important; }  /* three.js pose display: block en ligne */
   aside { min-width: 0; min-height: 0; }
   header { min-width: 0; }
 
   #sketchbar button.on { border-color: var(--accent); color: var(--accent); }
-  #sketchbar .ok { color: #6fbf8f; }
+  /* Relations possibles pour la sélection en cours. */
+  #sketchbar button.suggest { border-color: var(--accent); background: var(--panel-2); }
+  #sketchbar .ok { color: var(--success); }
   #sketchbar .no { color: var(--error); }
 
   footer {
     grid-area: status;
-    display: flex; align-items: center; gap: 16px;
-    padding: 0 12px;
+    display: flex; align-items: center; gap: var(--space-4);
+    padding: 0 var(--space-3);
     background: var(--panel);
     border-top: 1px solid var(--line);
-    font-size: 12px; color: var(--ink-2);
+    font-size: var(--text-s); color: var(--ink-2);
     position: relative; overflow: hidden;
   }
   footer .err { color: var(--error); }
   footer .err.sticky { cursor: pointer; }
   footer .push { margin-left: auto; }
+  footer .coords { font-variant-numeric: tabular-nums; min-width: 17em; text-align: right; }
+  footer #measure:empty, footer #edit-mode:empty { display: none; }
 
   body.op-en-cours .ribbon button {
     opacity: 0.45;
@@ -570,30 +969,58 @@
     100% { transform: translateX(-10%); }
   }
 
-  #ctxmenu, #graph-edge-menu, #param-pick, #graph-palette {
+  #ctxmenu, #view-menu, #graph-edge-menu, #param-pick, #graph-palette {
     position: fixed; z-index: 10; display: none;
     background: var(--panel-2);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     box-shadow: 0 10px 28px rgba(0,0,0,0.5);
-    min-width: 190px; padding: 4px;
+    min-width: 190px; padding: var(--space-1);
   }
+  #view-menu { overflow-y: auto; }
   #param-pick { min-width: 240px; }
-  #ctxmenu div, #graph-edge-menu div,
+  #ctxmenu div, #view-menu div, #graph-edge-menu div,
   #param-pick .menu-item, #graph-palette .menu-item {
-    padding: 6px 10px; border-radius: 4px; cursor: pointer;
+    padding: 6px 10px; border-radius: var(--radius-s); cursor: pointer;
   }
-  #ctxmenu div:hover,
+  #ctxmenu div:hover, #view-menu div:hover,
   #graph-edge-menu div:hover, #param-pick .menu-item:hover,
   #graph-palette .menu-item:hover {
     background: var(--panel); color: var(--accent);
   }
-  #ctxmenu div.danger:hover, #graph-edge-menu div.danger:hover {
+  /* En-têtes et séparateurs du menu de la zone graphique. */
+  #view-menu div.head, #view-menu div.head:hover {
+    padding: 6px 10px 2px; font-size: var(--text-xs); font-weight: 600;
+    color: var(--ink-2); background: none; cursor: default;
+  }
+  #view-menu div.sep, #view-menu div.sep:hover {
+    padding: 0; margin: var(--space-1) 6px; height: 1px;
+    background: var(--line); cursor: default;
+  }
+  /* Une icône devant chaque ligne ; une case vide garde l'alignement. */
+  #view-menu div:not(.head):not(.sep):not(.bar) {
+    display: flex; align-items: center; gap: var(--space-2); padding: 5px 10px 5px 6px;
+  }
+  #view-menu div > img { width: 16px; height: 16px; flex: none; }
+  #view-menu div > img.blank { visibility: hidden; }
+  /* Rangée d'icônes en tête : les actions sur ce qu'on vise. */
+  #view-menu div.bar, #view-menu div.bar:hover {
+    display: flex; gap: 2px; padding: 2px; background: none; cursor: default;
+  }
+  #view-menu div.bar button {
+    width: 32px; height: 30px; padding: 0; justify-content: center;
+    display: inline-flex; align-items: center;
+    background: none; border-color: transparent; border-radius: var(--radius-s);
+  }
+  #view-menu div.bar button:hover { background: var(--panel); border-color: var(--line); }
+  #view-menu div.bar button img { width: 22px; height: 22px; }
+  #ctxmenu div.danger:hover, #view-menu div.danger:hover,
+  #graph-edge-menu div.danger:hover {
     color: var(--error);
   }
   #param-pick .menu-label, #graph-palette .menu-label {
     padding: 6px 10px 2px;
-    font-size: 11px; font-weight: 600; color: var(--ink-2);
+    font-size: var(--text-xs); font-weight: 600; color: var(--ink-2);
     cursor: default; user-select: none;
   }
   /* Panneau Paramètres (settings.js) — même carte que #script-trust. */
@@ -609,53 +1036,131 @@
     border: 1px solid var(--line); border-radius: 10px;
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
     width: min(560px, 100%); max-height: calc(100vh - 48px); overflow: auto;
-    padding: 16px 18px 14px; font-size: 13px;
+    padding: var(--space-4) 18px 14px; font-size: var(--text-m);
   }
   .settings-head { display: flex; align-items: center; justify-content: space-between; }
-  .settings-card h2 { margin: 0; font-size: 16px; font-weight: 650; }
+  .settings-card h2 { margin: 0; font-size: var(--text-l); font-weight: 650; }
   .settings-card h3 {
-    margin: 14px 0 6px; font-size: 11px; font-weight: 600;
+    margin: 14px 0 6px; font-size: var(--text-xs); font-weight: 600;
     text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2);
   }
   .settings-close {
     width: 28px; height: 28px; padding: 0; font-size: 18px; line-height: 1;
   }
   .settings-warn {
-    margin: 8px 0 0; padding: 8px 10px; border-radius: 6px;
-    background: rgba(245, 158, 11, 0.12); color: var(--warn, #f59e0b);
+    margin: var(--space-2) 0 0; padding: var(--space-2) 10px; border-radius: var(--radius-m);
+    background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn);
   }
-  .settings-info { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 0; }
+  .settings-info { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) 14px; margin: 0; }
   .settings-info dt { color: var(--ink-2); }
   .settings-info dd { margin: 0; word-break: break-all; user-select: text; }
   .settings-links, .settings-update, .settings-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .settings-update-status { color: var(--ink-2); }
-  .settings-field { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin: 4px 0; }
+  .settings-field { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); align-items: center; margin: var(--space-1) 0; }
   .settings-field > span:first-child, .settings-field > label:first-child { color: var(--ink-2); min-width: 120px; }
-  .settings-field label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-  .settings-note { color: var(--ink-2); font-size: 11px; }
+  .settings-field label { display: inline-flex; align-items: center; gap: var(--space-1); cursor: pointer; }
+  .settings-note { color: var(--ink-2); font-size: var(--text-xs); }
   .settings-actions { justify-content: flex-end; margin-top: 14px; }
+  #file-dialog {
+    position: fixed; inset: 0; z-index: 70;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.45); padding: 24px;
+  }
+  #file-dialog[hidden] { display: none; }
+  #welcome, #new-dialog {
+    position: fixed; inset: 0; z-index: 65;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.45); padding: 24px;
+  }
+  #welcome[hidden], #new-dialog[hidden] { display: none; }
+  .welcome-card {
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    width: min(440px, 100%); padding: 18px 18px 14px;
+  }
+  .welcome-card h2 { margin: 0 0 var(--space-3); font-size: 18px; }
+  .welcome-card h3 {
+    margin: 14px 0 6px; font-size: var(--text-xs); font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2);
+  }
+  .welcome-actions, .new-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  #welcome-recent { display: flex; flex-direction: column; gap: 2px; }
+  #welcome-recent button {
+    background: none; border: none; text-align: left; padding: var(--space-1) 6px;
+  }
+  .welcome-empty, .welcome-tip { color: var(--ink-2); font-size: var(--text-s); margin: var(--space-1) 0 0; }
+  .welcome-tip { margin-top: var(--space-3); }
+  .file-card {
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    width: min(480px, 100%); padding: 14px var(--space-4);
+  }
+  .file-card h2 { margin: 0 0 var(--space-2); font-size: var(--text-l); }
+  .file-path { color: var(--ink-2); font-size: var(--text-xs); word-break: break-all; margin: 0 0 var(--space-2); }
+  .file-row { display: flex; gap: 6px; align-items: center; margin-bottom: var(--space-2); }
+  .file-row select, .file-card input[type="text"] {
+    background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+    border-radius: var(--radius-s); padding: var(--space-1) 6px; font: inherit;
+  }
+  .file-row select { flex: 1; }
+  .file-list {
+    max-height: 240px; overflow: auto; border: 1px solid var(--line);
+    border-radius: var(--radius-m); margin-bottom: var(--space-2);
+  }
+  .file-list button {
+    display: block; width: 100%; text-align: left;
+    background: none; border: none; border-radius: 0; padding: var(--space-1) var(--space-2);
+  }
+  .file-list button.dir { color: var(--accent); }
+  .file-list button.on { background: var(--panel); }
+  .file-name { display: flex; gap: var(--space-2); align-items: center; margin-bottom: 10px; }
+  .file-name span { color: var(--ink-2); }
+  .file-name input { flex: 1; }
+  .file-actions { display: flex; justify-content: flex-end; gap: 6px; }
+  .file-error { color: var(--error); font-size: var(--text-s); margin: 0 0 var(--space-2); }
 </style>
 </head>
 <body>
   <header>
-    <div id="topbar">
+    <!-- Ligne 1 : marque, menus, accès rapide, recherche, paramètres. -->
+    <div id="titlebar">
       <div class="logo">Free<span>Solid</span></div>
-      <!-- Les onglets du ruban viennent de ribbon.json (main.js les insère
-           avant .push ; les plugins ajoutent les leurs à la suite). -->
+      <nav id="menubar"></nav>
+      <span class="grow"></span>
+      <div id="quickbar">
+        <button id="btn-new" title="Nouvelle pièce"><img data-icon="new" alt=""></button>
+        <button id="btn-open" title="Ouvrir un .FCStd"><img data-icon="open" alt=""></button>
+        <button id="btn-save" title="Enregistrer (.FCStd)"><img data-icon="save" alt=""></button>
+        <div class="sep"></div>
+        <button id="btn-undo" title="Annuler (Ctrl+Z)"><img data-icon="undo" alt=""></button>
+        <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img data-icon="redo" alt=""></button>
+        <button id="btn-rebuild" title="Reconstruire — recalcul forcé de tout l'arbre"><img data-icon="rebuild" alt=""></button>
+      </div>
+      <div id="command-search">
+        <input id="command-query" type="search" autocomplete="off"
+          placeholder="Rechercher une commande"
+          aria-label="Rechercher une commande">
+        <kbd>Ctrl+F</kbd>
+        <div id="command-results" hidden role="listbox"></div>
+      </div>
+      <button id="btn-settings" title="Paramètres — version, mises à jour, réglages"><img data-icon="settings" alt=""></button>
+    </div>
+    <!-- Ligne 2 : les onglets du ruban, tirés de ribbon.json (insérés avant
+         .push ; les plugins ajoutent les leurs à la suite). -->
+    <div id="topbar">
       <span class="push"></span>
-      <button id="btn-settings" title="Paramètres — version, mises à jour, réglages"><img src="icons/FreeSolid_Settings.svg" alt=""></button>
-      <button id="btn-new" title="Nouvelle pièce"><img src="icons/document-new.svg" alt=""></button>
-      <button id="btn-undo" title="Annuler (Ctrl+Z)"><img src="icons/edit-undo.svg" alt=""></button>
-      <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img src="icons/edit-redo.svg" alt=""></button>
-      <button id="btn-rebuild" title="Reconstruire — recalcul forcé de tout l'arbre"><img src="icons/Std_Refresh.svg" alt="">Reconstruire</button>
-      <button id="btn-equations" title="Équations — variables globales pour piloter cotes et fonctions"><img src="icons/VarSet.svg" alt=""></button>
-      <button id="btn-evaluate" title="Évaluer — volume, masse (densité), centre de gravité"><img src="icons/view-measurement.svg" alt=""></button>
+    </div>
+    <!-- Commandes sans place dans l'en-tête compact : les menus, le ruban
+         (relais) et l'accueil les déclenchent par leur id. -->
+    <div id="commands" hidden>
+      <button id="btn-home" title="Accueil">Accueil</button>
+      <button id="btn-equations" title="Équations — variables globales pour piloter cotes et fonctions"><img data-icon="VarSet" alt=""></button>
+      <button id="btn-evaluate" title="Évaluer — volume, masse (densité), centre de gravité"><img data-icon="view-measurement" alt=""></button>
       <button id="btn-measure" title="Mesurer — distance entre deux faces ou arêtes">Mesurer</button>
-      <div class="sep"></div>
-      <button id="btn-open" title="Ouvrir un .FCStd"><img src="icons/document-open.svg" alt=""></button>
-      <button id="btn-save" title="Enregistrer (.FCStd)"><img src="icons/document-save.svg" alt=""></button>
-      <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img src="icons/document-save-as.svg" alt=""></button>
-      <button id="btn-drawing" title="Mise en plan — Face / Dessus / Iso, cotes d'encombrement, coupe, export DXF"><img src="icons/TechDraw_PageDefault.svg" alt=""></button>
+      <button id="btn-export" title="Exporter en STL (impression 3D) ou STEP"><img data-icon="document-save-as" alt=""></button>
+      <button id="btn-drawing" title="Mise en plan — Face / Dessus / Iso, cotes d'encombrement, coupe, export DXF"><img data-icon="TechDraw_PageDefault" alt=""></button>
       <button id="btn-selftest">Autotest</button>
     </div>
     <!-- Les bandeaux features/surfaces/assembly sont rendus depuis
@@ -663,56 +1168,56 @@
     <div id="sketchbar" class="ribbon">
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button data-tool="select" title="Sélectionner — glisser un point, cliquer des entités">Sélectionner</button>
-          <button data-tool="line" title="Ligne (L)"><img src="icons/Sketcher_CreateLine.svg" alt=""></button>
-          <button data-tool="rect" title="Rectangle par sommet (R)"><img src="icons/Sketcher_CreateRectangle.svg" alt=""></button>
-          <button data-tool="rectc" title="Rectangle par le centre"><img src="icons/Sketcher_CreateRectangle_Center.svg" alt=""></button>
-          <button data-tool="circle" title="Cercle (C)"><img src="icons/Sketcher_CreateCircle.svg" alt=""></button>
-          <button data-tool="spline" title="Spline (S) — points cliqués, Entrée pour terminer"><img src="icons/Sketcher_CreateBSpline.svg" alt=""></button>
-          <button data-tool="ellipse" title="Ellipse (E) — centre, grand axe, petit rayon"><img src="icons/Sketcher_CreateEllipseByCenter.svg" alt=""></button>
-          <button data-tool="arc" title="Arc par centre — centre, départ, arrivée"><img src="icons/Sketcher_CreateArc.svg" alt=""></button>
-          <button data-tool="arc3" title="Arc 3 points (A) — départ, arrivée, passage"><img src="icons/Sketcher_Create3PointArc.svg" alt=""></button>
-          <button data-tool="slot" title="Rainure droite — deux centres puis largeur"><img src="icons/Sketcher_CreateSlot.svg" alt=""></button>
-          <button data-tool="polygon" title="Polygone — nombre de côtés, centre, sommet"><img src="icons/Sketcher_CreateRegularPolygon.svg" alt=""></button>
+          <button data-tool="select" data-label="Sélectionner" title="Sélectionner — glisser un point, cliquer des entités"><img data-icon="select" alt="">Sélectionner</button>
+          <button data-tool="line" data-label="Ligne" title="Ligne (L)"><img data-icon="nodes_line" alt=""></button>
+          <button data-tool="rect" data-label="Rectangle par sommet" title="Rectangle par sommet (R)"><img data-icon="rect" alt=""></button>
+          <button data-tool="rectc" data-label="Rectangle par le centre" title="Rectangle par le centre"><img data-icon="rect_center" alt=""></button>
+          <button data-tool="circle" data-label="Cercle" title="Cercle (C)"><img data-icon="nodes_circle" alt=""></button>
+          <button data-tool="spline" data-label="Spline" title="Spline — points cliqués, Entrée pour terminer"><img data-icon="nodes_bspline" alt=""></button>
+          <button data-tool="ellipse" data-label="Ellipse" title="Ellipse (E) — centre, grand axe, petit rayon"><img data-icon="ellipse" alt=""></button>
+          <button data-tool="arc" data-label="Arc par centre" title="Arc par centre — centre, départ, arrivée"><img data-icon="nodes_arc" alt=""></button>
+          <button data-tool="arc3" data-label="Arc 3 points" title="Arc 3 points (A) — départ, arrivée, passage"><img data-icon="nodes_arc_3_pt" alt=""></button>
+          <button data-tool="slot" data-label="Rainure droite" title="Rainure droite — deux centres puis largeur"><img data-icon="slot" alt=""></button>
+          <button data-tool="polygon" data-label="Polygone" title="Polygone — nombre de côtés, centre, sommet"><img data-icon="polygon" alt=""></button>
         </div>
         <div class="ribbon-group-label">Contours</div>
       </div>
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button data-tool="skfillet" title="Congé d'esquisse — cliquez deux lignes près du coin"><img src="icons/Sketcher_CreateFillet.svg" alt=""></button>
-          <button data-tool="trim" title="Ajuster les entités (T) — cliquez le tronçon à supprimer"><img src="icons/Sketcher_Trimming.svg" alt=""></button>
-          <button data-tool="construction" title="Géométrie de construction (G) — cliquez une entité"><img src="icons/Sketcher_ToggleConstruction.svg" alt=""></button>
-          <button id="sk-convert" title="Convertir les entités — le contour de la face porteuse devient de la géométrie bloquée"><img src="icons/Sketcher_Projection.svg" alt=""></button>
-          <button data-tool="dim" title="Cotation intelligente (D) — 1 ou 2 entités, cote pilotante"><img src="icons/Constraint_Dimension.svg" alt=""></button>
+          <button data-tool="skfillet" title="Congé d'esquisse — cliquez deux lignes près du coin"><img data-icon="sketch_fillet" alt=""></button>
+          <button data-tool="trim" title="Ajuster (T) — cliquez le tronçon à supprimer"><img data-icon="trim" alt=""></button>
+          <button data-tool="construction" title="Géométrie de construction (G) — cliquez une entité"><img data-icon="construction" alt=""></button>
+          <button id="sk-convert" title="Projeter les arêtes — le contour de la face porteuse devient de la géométrie bloquée"><img data-icon="project" alt=""></button>
+          <button data-tool="dim" data-label="Cotation" title="Cotation (D) — 1 ou 2 entités, cote pilotante"><img data-icon="dimension" alt=""></button>
         </div>
         <div class="ribbon-group-label">Outils</div>
       </div>
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button id="sk-c-horizontal" title="Relation horizontale"><img src="icons/Constraint_Horizontal.svg" alt=""></button>
-          <button id="sk-c-vertical" title="Relation verticale"><img src="icons/Constraint_Vertical.svg" alt=""></button>
-          <button id="sk-c-coincident" title="Relation coïncidente — deux points"><img src="icons/Constraint_Coincident.svg" alt=""></button>
-          <button id="sk-c-parallel" title="Relation parallèle"><img src="icons/Constraint_Parallel.svg" alt=""></button>
-          <button id="sk-c-perpendicular" title="Relation perpendiculaire"><img src="icons/Constraint_Perpendicular.svg" alt=""></button>
-          <button id="sk-c-tangent" title="Relation tangente"><img src="icons/Constraint_Tangent.svg" alt=""></button>
-          <button id="sk-c-equal" title="Relation égale"><img src="icons/Constraint_EqualLength.svg" alt=""></button>
-          <button id="sk-c-concentric" title="Relation concentrique — deux cercles ou arcs"><img src="icons/Constraint_Concentric.svg" alt=""></button>
-          <button id="sk-c-collinear" title="Relation colinéaire — deux lignes"><img src="icons/FreeSolid_Collinear.svg" alt=""></button>
-          <button id="sk-c-midpoint" title="Relation milieu — un point et une ligne"><img src="icons/Constraint_PointOnMidPoint.svg" alt=""></button>
-          <button id="sk-c-symmetric" title="Relation symétrique — deux points puis la ligne d'axe"><img src="icons/Constraint_Symmetric.svg" alt=""></button>
-          <button id="sk-c-fixed" title="Relation fixe — bloque l'entité"><img src="icons/Constraint_Block.svg" alt=""></button>
-          <button id="sk-mirror" title="Symétrie d'entités — sélectionnez les entités puis la ligne d'axe en dernier"><img src="icons/Sketcher_Symmetry.svg" alt=""></button>
-          <button id="sk-array" title="Répétition d'entités — grille au pas choisi"><img src="icons/Sketcher_RectangularArray.svg" alt=""></button>
-          <button id="sk-offset" title="Décaler les entités — sélectionnez une chaîne, puis la distance">Décaler</button>
-          <button id="sk-image" title="Image d'esquisse — calque de fond pour redessiner un scan ou un logo">Image</button>
-          <button id="sk-relations" title="Relations de l'entité sélectionnée — voir et supprimer"><img src="icons/Sketcher_ToggleConstraint.svg" alt=""></button>
+          <button id="sk-c-horizontal" title="Relation horizontale"><img data-icon="rel_horizontal" alt=""></button>
+          <button id="sk-c-vertical" title="Relation verticale"><img data-icon="rel_vertical" alt=""></button>
+          <button id="sk-c-coincident" title="Relation coïncidente — deux points"><img data-icon="rel_coincident" alt=""></button>
+          <button id="sk-c-parallel" title="Relation parallèle"><img data-icon="rel_parallel" alt=""></button>
+          <button id="sk-c-perpendicular" title="Relation perpendiculaire"><img data-icon="rel_perpendicular" alt=""></button>
+          <button id="sk-c-tangent" title="Relation tangente"><img data-icon="rel_tangent" alt=""></button>
+          <button id="sk-c-equal" title="Relation égale"><img data-icon="rel_equal" alt=""></button>
+          <button id="sk-c-concentric" title="Relation concentrique — deux cercles ou arcs"><img data-icon="rel_concentric" alt=""></button>
+          <button id="sk-c-collinear" title="Relation colinéaire — deux lignes"><img data-icon="rel_collinear" alt=""></button>
+          <button id="sk-c-midpoint" title="Relation milieu — un point et une ligne"><img data-icon="rel_midpoint" alt=""></button>
+          <button id="sk-c-symmetric" title="Relation symétrique — deux points puis la ligne d'axe"><img data-icon="rel_symmetric" alt=""></button>
+          <button id="sk-c-fixed" title="Relation fixe — bloque l'entité"><img data-icon="rel_fixed" alt=""></button>
+          <button id="sk-mirror" title="Symétrie — sélectionnez les entités puis la ligne d'axe en dernier"><img data-icon="sketch_mirror" alt=""></button>
+          <button id="sk-array" title="Réseau d'esquisse — grille au pas choisi"><img data-icon="sketch_array" alt=""></button>
+          <button id="sk-offset" title="Décaler — sélectionnez une chaîne, puis la distance"><img data-icon="offset" alt="">Décaler</button>
+          <button id="sk-image" title="Image d'esquisse — calque de fond pour redessiner un scan ou un logo"><img data-icon="sketch_image" alt="">Image</button>
+          <button id="sk-relations" title="Relations de l'entité sélectionnée — voir et supprimer"><img data-icon="relations" alt=""></button>
         </div>
         <div class="ribbon-group-label">Contraintes</div>
       </div>
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
-          <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire"><img src="icons/Sketcher_LeaveSketch.svg" alt="">Terminer</button>
-          <button id="sk-cancel" class="no" title="Quitter"><img src="icons/Sketcher_CancelSketch.svg" alt="">Quitter</button>
+          <button id="sk-finish" class="ok" title="Fermer l'esquisse et reconstruire"><img data-icon="sketch_ok" alt="">Terminer</button>
+          <button id="sk-cancel" class="no" title="Quitter"><img data-icon="sketch_cancel" alt="">Quitter</button>
         </div>
         <div class="ribbon-group-label">Esquisse</div>
       </div>
@@ -720,20 +1225,75 @@
   </header>
 
   <aside>
-    <h2>FeatureManager</h2>
+    <h2>Arbre de création</h2>
     <ul id="tree"><li class="body">— aucun document —</li></ul>
     <div id="panel"></div>
   </aside>
 
   <main id="viewport">
+    <div id="tree-flyout" hidden>
+      <button id="tree-flyout-toggle" title="Afficher ou replier l'arbre">Arbre de création</button>
+      <div id="tree-flyout-body"></div>
+    </div>
+    <div id="orient-box" hidden role="dialog" aria-label="Orientation">
+      <div class="orient-head">
+        <span>Orientation</span>
+        <button data-action="pin" title="Garder la boîte ouverte">📌</button>
+        <button data-action="close" title="Fermer (Échap)">×</button>
+      </div>
+      <div class="orient-cross">
+        <button data-view="view-top" class="c2 r1" title="Dessus (Ctrl+5)">Dessus</button>
+        <button data-view="view-left" class="c1 r2" title="Gauche (Ctrl+3)">Gauche</button>
+        <button data-view="view-front" class="c2 r2" title="Face (Ctrl+1)">Face</button>
+        <button data-view="view-right" class="c3 r2" title="Droite (Ctrl+4)">Droite</button>
+        <button data-view="view-back" class="c4 r2" title="Arrière (Ctrl+2)">Arrière</button>
+        <button data-view="view-bottom" class="c2 r3" title="Dessous (Ctrl+6)">Dessous</button>
+      </div>
+      <div class="orient-row">
+        <button data-view="view-iso" title="Isométrique (Ctrl+7)">Iso</button>
+        <button data-view="view-dimetric" title="Dimétrique">Dimétrique</button>
+        <button data-view="view-trimetric" title="Trimétrique">Trimétrique</button>
+        <button data-view="normal" title="Normal à la sélection (Ctrl+8)">Normal à</button>
+      </div>
+      <div class="orient-row orient-layouts">
+        <button data-layout="single" title="Une fenêtre"><svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12"/></svg></button>
+        <button data-layout="two-h" title="Deux fenêtres, l'une au-dessus de l'autre"><svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12"/><path d="M1 7h18"/></svg></button>
+        <button data-layout="two-v" title="Deux fenêtres côte à côte"><svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12"/><path d="M10 1v12"/></svg></button>
+        <button data-layout="four" title="Quatre fenêtres : dessus, face, droite et la vue en cours"><svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12"/><path d="M1 7h18M10 1v12"/></svg></button>
+      </div>
+    </div>
+    <div id="confirm-corner" hidden>
+      <button id="confirm-ok" class="ok" title="OK (Entrée)">✓</button>
+      <button id="confirm-cancel" class="no" title="Annuler (Échap)">✗</button>
+    </div>
     <div id="viewbar">
-      <button id="view-iso" title="Vue isométrique (Ctrl+7)"><img src="icons/view-isometric.svg" alt=""></button>
-      <button id="view-front" title="Vue de face (Ctrl+1)"><img src="icons/view-front.svg" alt=""></button>
-      <button id="view-top" title="Vue de dessus (Ctrl+5)"><img src="icons/view-top.svg" alt=""></button>
-      <button id="view-right" title="Vue de droite (Ctrl+4)"><img src="icons/view-right.svg" alt=""></button>
-      <button id="view-fit" title="Zoom au mieux (F)"><img src="icons/zoom-fit-best.svg" alt=""></button>
-      <button id="btn-clip" title="Plan de coupe visuel — voir l'intérieur sans couper la pièce"><img src="icons/Std_ToggleClipPlane.svg" alt=""></button>
-      <button id="btn-graph" title="Vue en graphe — dépendances des fonctions"><img src="icons/Geoassembly.svg" alt=""></button>
+      <div class="view-drop">
+        <button type="button" id="btn-style" title="Style d'affichage"><img data-icon="FreeSolid_DisplayStyle" alt=""></button>
+        <div id="style-menu" class="view-menu" hidden>
+          <button type="button" data-style="shaded-edges">Ombré + arêtes</button>
+          <button type="button" data-style="shaded">Ombré seul</button>
+          <button type="button" data-style="wireframe">Filaire</button>
+          <button type="button" data-style="hidden">Lignes cachées estompées</button>
+          <hr>
+          <button type="button" data-projection title="Perspective ou projection orthographique">Perspective</button>
+        </div>
+      </div>
+      <div class="view-drop">
+        <button type="button" id="btn-visibility" title="Masquer / afficher"><img data-icon="FreeSolid_Visibility" alt=""></button>
+        <div id="visibility-menu" class="view-menu" hidden>
+          <label><input type="checkbox" data-vis="planes"> Plans de référence</label>
+          <label><input type="checkbox" data-vis="origin"> Origine</label>
+          <label><input type="checkbox" data-vis="sketches"> Esquisses</label>
+          <label><input type="checkbox" data-vis="edges"> Aperçu des arêtes</label>
+        </div>
+      </div>
+      <button id="view-iso" title="Vue isométrique (Ctrl+7)"><img data-icon="view-isometric" alt=""></button>
+      <button id="view-front" title="Vue de face (Ctrl+1)"><img data-icon="view-front" alt=""></button>
+      <button id="view-top" title="Vue de dessus (Ctrl+5)"><img data-icon="view-top" alt=""></button>
+      <button id="view-right" title="Vue de droite (Ctrl+4)"><img data-icon="view-right" alt=""></button>
+      <button id="view-fit" title="Zoom au mieux (F)"><img data-icon="zoom-fit-best" alt=""></button>
+      <button id="btn-clip" title="Plan de coupe visuel — voir l'intérieur sans couper la pièce"><img data-icon="Std_ToggleClipPlane" alt=""></button>
+      <button id="btn-graph" title="Vue en graphe — dépendances des fonctions"><img data-icon="Geoassembly" alt=""></button>
     </div>
     <div id="graph-view">
       <div id="graph-bar">
@@ -755,6 +1315,7 @@
   <div id="ctxmenu">
     <div id="ctx-modify" hidden>Modifier</div>
     <div id="ctx-rename">Renommer</div>
+    <div id="ctx-ground" hidden>Fixer</div>
     <div id="ctx-color" hidden>Couleur…</div>
     <div id="ctx-color-reset" hidden>Couleur par défaut</div>
     <div id="ctx-rollback">Amener la barre de retour ici</div>
@@ -783,13 +1344,46 @@
     </div>
   </div>
   <div id="param-pick"></div>
+  <div id="welcome" hidden>
+    <div class="welcome-card" role="dialog" aria-modal="true" aria-label="Accueil">
+      <h2>Accueil</h2>
+      <div class="welcome-actions">
+        <button type="button" data-welcome="part">Nouvelle pièce</button>
+        <button type="button" data-welcome="assembly">Nouvel assemblage</button>
+        <button type="button" data-welcome="open">Ouvrir</button>
+      </div>
+      <h3>Récents</h3>
+      <div id="welcome-recent"></div>
+      <p id="welcome-tip" class="welcome-tip"></p>
+    </div>
+  </div>
+  <div id="new-dialog" hidden>
+    <div class="welcome-card" role="dialog" aria-modal="true" aria-label="Nouveau">
+      <h2>Nouveau</h2>
+      <div class="new-actions">
+        <button type="button" data-new="part">Pièce</button>
+        <button type="button" data-new="assembly">Assemblage</button>
+        <button type="button" data-new="cancel">Annuler (Échap)</button>
+      </div>
+    </div>
+  </div>
+  <div id="file-dialog" hidden></div>
   <!-- Panneau Paramètres : rendu par settings.js à l'ouverture. -->
   <div id="settings-dialog" hidden></div>
+
+  <div id="shortcut-box" hidden role="dialog" aria-label="Raccourcis">
+    <input id="shortcut-search" type="text" autocomplete="off"
+      placeholder="Rechercher une commande">
+    <div id="shortcut-list"></div>
+  </div>
 
   <footer>
     <span id="status">Moteur : en attente…</span>
     <span id="pick" class="push"></span>
-    <span>MMGS</span>
+    <span id="measure"></span>
+    <span id="coords" class="coords"></span>
+    <span id="edit-mode"></span>
+    <span title="Unités : millimètre, gramme, seconde">mm · g · s</span>
   </footer>
 
   <input type="file" id="sk-image-file" accept="image/*" hidden>

@@ -7,10 +7,10 @@ from engine.kernel import KernelError, resolve_pattern_originals
 
 _CATALOG = {
     "Pad": {
-        "in_body": True, "is_addsub": True, "label": "Bossage extrudé",
+        "in_body": True, "is_addsub": True, "label": "Extrusion",
     },
     "Pocket": {
-        "in_body": True, "is_addsub": True, "label": "Enlèvement de matière",
+        "in_body": True, "is_addsub": True, "label": "Enlèvement extrudé",
     },
     "Pad001": {
         "in_body": True, "is_addsub": True, "label": "Bossage 2",

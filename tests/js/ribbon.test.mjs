@@ -13,6 +13,7 @@ import {
   isButtonId,
   safeIconSrc,
 } from "../../app/ribbon.js";
+import { iconSrc } from "../../app/icons.js";
 import { FEATURES } from "../../app/features.js";
 import LAYOUT from "../../app/ribbon.json" with { type: "json" };
 
@@ -25,6 +26,13 @@ function element(tag) {
     className: "",
     dataset: {},
     children: [],
+    _listeners: {},
+    addEventListener(type, fn) {
+      (el._listeners[type] ??= []).push(fn);
+    },
+    click() {
+      for (const fn of el._listeners.click ?? []) fn();
+    },
     parentElement: null,
     textContent: "",
     appendChild(child) {
@@ -121,8 +129,10 @@ describe("ribbon.json", () => {
   it("ne référence que des icônes présentes dans app/", () => {
     for (const bouton of layoutButtons()) {
       if (!bouton.icon) continue;
-      assert.equal(safeIconSrc(bouton.icon), bouton.icon);
-      const disk = new URL("../../app/" + bouton.icon, import.meta.url);
+      const src = safeIconSrc(bouton.icon);
+      assert.equal(src, iconSrc(bouton.icon));
+      assert.match(src, /^icons\/[A-Za-z0-9_.-]+\.svg$/);
+      const disk = new URL("../../app/" + src, import.meta.url);
       assert.ok(existsSync(disk), `icône absente : ${bouton.icon}`);
     }
   });
@@ -135,11 +145,10 @@ describe("ribbon.json", () => {
   });
 });
 
-// -- l'organisation transposée de FreeCAD-Ribbon ------------------------
-// La référence est le PartDesign d'APEbbers (docs/ruban.md) : additifs,
-// séparateur, soustractifs, séparateur, booléen — un seul panneau
-// Modélisation ; l'outil de profil en tête d'onglet ; l'habillage et les
-// transformations dans l'ordre des barres FreeCAD.
+// -- l'organisation du ruban compact ------------------------------------
+// La référence est la maquette validée (docs/maquettes/entete.html) : les
+// commandes de tête en grand (deux lignes du ruban), les autres empilées
+// deux par deux à leur suite ; l'outil de profil en tête d'onglet.
 
 function groupe(ongletId, libelle) {
   const onglet = LAYOUT.onglets.find((o) => o.id === ongletId);
@@ -151,14 +160,11 @@ function sequence(g) {
 }
 
 describe("l'organisation transposée", () => {
-  it("ordonne Modélisation : additifs | soustractifs | booléen", () => {
+  it("ordonne Modélisation : volumes de base en grand, puis le reste", () => {
     assert.deepEqual(sequence(groupe("features", "Modélisation")), [
-      "btn-pad", "btn-revolution", "btn-loft", "btn-sweep", "btn-helix",
-      "btn-text", "btn-graph-feature",
-      "|",
-      "btn-pocket", "btn-hole", "btn-groove",
-      "|",
-      "btn-boolean",
+      "btn-pad", "btn-revolution", "btn-pocket", "btn-groove", "btn-hole",
+      "btn-loft", "btn-sweep", "btn-helix", "btn-text",
+      "btn-graph-feature", "btn-boolean",
     ]);
   });
 
@@ -167,19 +173,20 @@ describe("l'organisation transposée", () => {
       ["btn-sketch", "btn-body", "btn-datum"]);
   });
 
-  it("ordonne l'habillage et les transformations comme FreeCAD", () => {
+  it("ordonne l'habillage et les transformations", () => {
     assert.deepEqual(sequence(groupe("features", "Habillage")),
-      ["btn-fillet", "btn-chamfer", "btn-draft", "btn-shell"]);
+      ["btn-fillet", "btn-chamfer", "btn-shell", "btn-draft"]);
     assert.deepEqual(sequence(groupe("features", "Transformations")),
       ["btn-linpattern", "btn-polpattern", "btn-mirror",
         "btn-repeat-variable"]);
   });
 
-  it("met en avant les commandes de tête d'APEbbers (taille large)", () => {
+  it("met en avant les commandes de tête (taille large)", () => {
     const larges = layoutButtons().filter((b) => b.taille).map((b) => b.id);
     assert.deepEqual(larges, [
-      "btn-sketch", "btn-pad", "btn-pocket", "btn-fillet", "btn-chamfer",
-      "btn-linpattern", "btn-curve3d", "btn-newasm",
+      "btn-sketch", "btn-pad", "btn-revolution", "btn-pocket", "btn-groove",
+      "btn-hole", "btn-fillet", "btn-chamfer", "btn-shell",
+      "btn-linpattern", "btn-curve3d", "ribbon-mass", "btn-newasm",
     ]);
     for (const bouton of layoutButtons()) {
       if (bouton.taille !== undefined) assert.equal(bouton.taille, "large");
@@ -195,12 +202,32 @@ describe("l'organisation transposée", () => {
   it("ordonne l'assemblage : créer, résoudre, insérer, répéter, éclater", () => {
     const onglet = LAYOUT.onglets.find((o) => o.id === "assembly");
     assert.deepEqual(onglet.groupes.map((g) => g.libelle),
-      ["Assemblage", "Liaisons", "Évaluer"]);
+      ["Assemblage", "Liaisons"]);
     assert.deepEqual(sequence(groupe("assembly", "Assemblage")),
       ["btn-newasm", "btn-solve", "btn-insert", "btn-array-comp",
         "btn-explode"]);
     assert.deepEqual(sequence(groupe("assembly", "Liaisons")),
       ["btn-move", "btn-joint"]);
+  });
+
+  it("regroupe mesurer, la masse, les équations, la mise en plan et les interférences", () => {
+    const onglet = LAYOUT.onglets.find((o) => o.id === "evaluate");
+    assert.equal(onglet.libelle, "Évaluer");
+    assert.deepEqual(sequence(groupe("evaluate", "Évaluer")), [
+      "ribbon-measure", "ribbon-mass", "ribbon-equations", "ribbon-drawing",
+      "btn-interf",
+    ]);
+    const byId = Object.fromEntries(
+      groupe("evaluate", "Évaluer").boutons.map((button) => [button.id, button]));
+    assert.equal(byId["ribbon-measure"].relais, "btn-measure");
+    assert.equal(byId["ribbon-measure"].libelle, "Mesurer");
+    assert.equal(byId["ribbon-mass"].relais, "btn-evaluate");
+    assert.equal(byId["ribbon-mass"].libelle, "Évaluer");
+    assert.equal(byId["ribbon-equations"].relais, "btn-equations");
+    assert.equal(byId["ribbon-equations"].libelle, "Équations");
+    assert.equal(byId["ribbon-drawing"].relais, "btn-drawing");
+    assert.equal(byId["btn-interf"].libelle, "Interférences");
+    assert.equal(byId["btn-interf"].relais, undefined);
   });
 });
 
@@ -214,25 +241,27 @@ describe("installCoreRibbons", () => {
       features: "ribbon-features",
       sketch: "sketchbar",
       surfaces: "ribbon-surfaces",
+      evaluate: "ribbon-evaluate",
       assembly: "ribbon-assembly",
     });
 
     const tabs = doc.topbar.children.filter((c) => c.className?.includes("tab"));
     assert.deepEqual(tabs.map((t) => t.dataset.tab),
-      ["features", "sketch", "surfaces", "assembly"]);
+      ["features", "sketch", "surfaces", "evaluate", "assembly"]);
     assert.deepEqual(tabs.map((t) => t.textContent),
-      ["Fonctions", "Esquisse", "Surfaces", "Assemblage"]);
+      ["Fonctions", "Esquisse", "Surfaces", "Évaluer", "Assemblage"]);
     // Les onglets précèdent .push (la droite de la topbar reste à droite).
     assert.equal(doc.topbar.children.at(-1), doc.push);
 
     // Le premier onglet est actif, et lui seul.
     assert.deepEqual(tabs.map((t) => t.className),
-      ["tab active", "tab", "tab", "tab"]);
+      ["tab active", "tab", "tab", "tab", "tab"]);
 
     // Les bandeaux construits précèdent #sketchbar, dans l'ordre du JSON.
     const bars = doc.header.children.filter((c) => c !== doc.topbar);
     assert.deepEqual(bars.map((b) => b.id),
-      ["ribbon-features", "ribbon-surfaces", "ribbon-assembly", "sketchbar"]);
+      ["ribbon-features", "ribbon-surfaces", "ribbon-evaluate",
+        "ribbon-assembly", "sketchbar"]);
     assert.equal(bars[0].className, "ribbon active");
     assert.equal(bars[1].className, "ribbon");
   });
@@ -247,15 +276,15 @@ describe("installCoreRibbons", () => {
       ["Préparation", "Modélisation", "Habillage", "Transformations"]);
 
     const pad = doc.getElementById("btn-pad");
-    assert.equal(pad.title, "Bossage/Base extrudé");
-    assert.equal(buttonText(pad), "Bossage extrudé");
+    assert.equal(pad.title, "Extrusion");
+    assert.equal(buttonText(pad), "Extrusion");
     const img = pad.children.find((c) => c.tagName === "img");
-    assert.equal(img.src, "icons/PartDesign_Pad.svg");
+    assert.equal(img.src, "icons/nodes_extrude.svg");
 
-    // Un bouton sans icône reste un bouton texte (btn-move, assemblage).
-    const move = doc.getElementById("btn-move");
-    assert.ok(!move.children.some((c) => c.tagName === "img"));
-    assert.equal(buttonText(move), "Déplacer");
+    // Icône et libellé : l'icône d'abord, le texte ensuite.
+    const solve = doc.getElementById("btn-solve");
+    assert.equal(solve.children[0].tagName, "img");
+    assert.equal(buttonText(solve), "Résoudre");
   });
 
   it("mappe l'onglet esquisse sur le bandeau déjà présent", () => {
@@ -311,6 +340,22 @@ describe("buildRibbonElement", () => {
     assert.deepEqual(
       rangee.map((el) => (el.className === "sep" ? "|" : el.id)),
       ["btn-a", "|", "btn-b"]);
+  });
+
+  it("un relais déclenche le bouton déjà présent", () => {
+    const doc = fakeDoc();
+    const target = doc.createElement("button");
+    target.id = "btn-measure";
+    let clicks = 0;
+    target.addEventListener("click", () => { clicks += 1; });
+    doc.header.appendChild(target);
+    const ribbon = buildRibbonElement(doc, "evaluate", [{
+      libelle: "Évaluer",
+      boutons: [{ id: "ribbon-measure", libelle: "Mesurer",
+        relais: "btn-measure" }],
+    }]);
+    ribbon.children[0].children[0].children[0].click();
+    assert.equal(clicks, 1);
   });
 
   it("filtre les ids et les icônes dangereuses, honore disabled", () => {

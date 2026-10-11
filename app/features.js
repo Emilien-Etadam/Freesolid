@@ -4,15 +4,15 @@
 // Chaque entrée décrit un panneau « ouvrir → éditer → aperçu → OK ».
 // build(v, ctx) rend { op, params } ou null (aperçu éteint, OK bloqué).
 
-import { num } from "./num.js";
+import { t } from "./i18n.js";
+import { num, plainNumber } from "./num.js";
 import { minimalGraphCurve, minimalGraphFeature, minimalRepeatGraph } from "./graph.js";
 import { combineConfirmMessage } from "./progress.js";
 
-/** Message moteur quand aucune esquisse libre n'est disponible. */
+/** Message moteur quand aucune esquisse libre n'est disponible (d'un
+ *  seul tenant : c'est aussi la clé de traduction). */
 export const NO_SKETCH_AVAILABLE =
-  "aucune esquisse disponible — les esquisses existantes "
-  + "sont déjà utilisées par des fonctions, dessinez-en une "
-  + "nouvelle";
+  "aucune esquisse disponible — les esquisses existantes sont déjà utilisées par des fonctions, dessinez-en une nouvelle";
 
 /** Esquisses libres (non consommées) dans l'ordre du corps — comme
  *  `_latest_sketch` côté moteur. */
@@ -21,13 +21,13 @@ export function availableSketches(tree) {
     (f) => f.type === "Sketcher::SketchObject" && !f.rolled_back);
 }
 
-export function latestAvailableSketch(tree) {
+function latestAvailableSketch(tree) {
   const sketches = availableSketches(tree);
   return sketches.length ? sketches[sketches.length - 1] : null;
 }
 
 /** Corps inactifs + semis non vides : les outils que Combiner accepte. */
-export function booleanToolOptions(ctx) {
+function booleanToolOptions(ctx) {
   const others = (ctx.lastTree?.bodies ?? []).filter((b) => !b.active);
   const gems = (ctx.lastTree?.gems ?? []).filter((g) => (g.count || 0) > 0);
   return [
@@ -47,7 +47,15 @@ export function hasSelection(sel) {
     ? sel.edges.length > 0 : sel.face != null);
 }
 
-export function dressupParams(sel) {
+/** Consigne : rien n'est encore choisi. Ce n'est pas une erreur. */
+function clickFirst(title) {
+  return {
+    text: t("{f} : cliquez d'abord dans la zone graphique", { f: t(title) }),
+    tone: "guide",
+  };
+}
+
+function dressupParams(sel) {
   return sel.kind === "edges"
     ? { edges: sel.edges } : { face: sel.face };
 }
@@ -67,13 +75,22 @@ export function dressup({ button, icon, title, selectionLabel, group, rows, buil
     ],
     build: (v, ctx) => hasSelection(v.sel) ? build(v, ctx) : null,
     invalid: (v, ctx) => {
+      if (!hasSelection(v.sel)) return clickFirst(title);
       if (typeof invalid === "function") return invalid(v, ctx);
-      return hasSelection(v.sel)
-        ? (invalid ?? "Valeur invalide")
-        : `${title} : cliquez d'abord dans la zone graphique`;
+      return invalid ?? "Valeur invalide";
     },
     refresh: "part",
   };
+}
+
+/** Coque : faces à ouvrir (une ou plusieurs), épaisseur, sens. */
+export function shellBuild(v) {
+  const faces = (v.faces?.items ?? []).map((item) => item.face)
+    .filter((face) => face != null);
+  const thickness = num(v.thickness);
+  if (!faces.length || !(thickness > 0)) return null;
+  return { op: "add_thickness",
+           params: { faces, thickness, outward: !!v.outward } };
 }
 
 /** Fonctions à profil d'esquisse : ligne « Profil : … », params.sketch
@@ -89,9 +106,7 @@ function withSketchProfile(entry) {
       return [
         { label: "Profil",
           rows: [{ type: "note",
-            text: profile
-              ? `Profil : ${profile.label}`
-              : "Profil : —" }] },
+            text: t("Profil : {p}", { p: profile ? profile.label : "—" }) }] },
         ...groups,
       ];
     },
@@ -116,22 +131,103 @@ function withSketchProfile(entry) {
   };
 }
 
+function lineAxisLabel(line) {
+  const key = line.construction
+    ? "Ligne de construction {n} ({x1}, {y1}) → ({x2}, {y2})"
+    : "Ligne {n} ({x1}, {y1}) → ({x2}, {y2})";
+  return t(key, {
+    n: line.id + 1,
+    x1: line.x1, y1: line.y1, x2: line.x2, y2: line.y2,
+  });
+}
+
+/** Options d'axe : vertical, lignes (construction d'abord), origine. */
+export function revolutionAxisOptions(sketch, current = "vertical") {
+  const options = [
+    ["vertical", "Axe vertical de l'esquisse"],
+    ["horizontal", "Axe horizontal de l'esquisse"],
+  ];
+  const lines = [...(sketch?.lines ?? [])].sort((a, b) =>
+    Number(b.construction) - Number(a.construction) || a.id - b.id);
+  for (const line of lines) options.push(["line:" + line.id, lineAxisLabel(line)]);
+  options.push(
+    ["X", "Axe X de l'origine"],
+    ["Y", "Axe Y de l'origine"],
+    ["Z", "Axe Z de l'origine"],
+  );
+  if (current && !options.some(([value]) => value === current)) {
+    const id = Number(String(current).replace(/^line:/, ""));
+    options.push([current, t("Ligne {n} ({x1}, {y1}) → ({x2}, {y2})", {
+      n: Number.isFinite(id) ? id + 1 : current,
+      x1: "—", y1: "—", x2: "—", y2: "—",
+    })]);
+  }
+  return options;
+}
+
+/** Groupes du panneau révolution / gorge, à la création comme à la réédition. */
+export function revolutionGroups(sketch, {
+  angle = 360, axis = "vertical", reversed = false, midplane = false,
+} = {}) {
+  return [
+    { label: "Direction 1", rows: [
+      { type: "select", key: "cond", value: midplane ? "milieu" : "one",
+        options: [["one", "Une direction"], ["milieu", "Plan milieu"]] },
+      measureRow("angle", "Angle", angle, "°"),
+      { type: "check", key: "reversed", label: "Inverser la direction",
+        value: !!reversed && !midplane,
+        showIf: (v) => v.cond !== "milieu" },
+    ] },
+    { label: "Axe", rows: [
+      { type: "select", key: "axis", label: "Axe", value: axis,
+        options: revolutionAxisOptions(sketch, axis) },
+    ] },
+  ];
+}
+
+/** Params `add_revolution` / `add_groove`, ou null si l'angle est invalide. */
+export function revolutionCreationParams(v, op) {
+  const angle = plainNumber(v.angle);
+  if (!(angle > 0) || angle > 360) return null;
+  const params = { angle };
+  const axis = v.axis || "vertical";
+  if (axis !== "vertical") params.axis = axis;
+  if (v.cond === "milieu") params.midplane = true;
+  else if (v.reversed) params.reversed = true;
+  return { op, params };
+}
+
+export function revolutionProblem() {
+  return "Angle de révolution invalide";
+}
+
+/**
+ * Valeurs `set_params` pour rééditer une révolution ou une gorge.
+ * `{}` si rien n'a changé, `null` si l'angle est invalide.
+ */
+export function revolutionEditValues(v, revolution, params) {
+  const stored = storedMeasure(params, "Angle", revolution.angle);
+  const angle = readMeasure(v.angle, stored, { min: 0, max: 360.0001 });
+  if (angle == null) return null;
+  const axis = v.axis || "vertical";
+  const midplane = v.cond === "milieu";
+  const reversed = midplane ? false : !!v.reversed;
+  const values = {};
+  if (!sameMeasure(angle, stored)) values.Angle = angle;
+  if (axis !== (revolution.axis || "vertical")) values.axis = axis;
+  if (reversed !== !!revolution.reversed || midplane !== !!revolution.midplane) {
+    values.Reversed = reversed;
+    values.Midplane = midplane;
+  }
+  return values;
+}
+
 function revolved({ button, op, icon, title }) {
   return withSketchProfile({
     button, icon, title,
-    groups: () => [{
-      label: "Direction 1",
-      rows: [
-        { type: "number", key: "angle", label: "Angle", value: 360,
-          unit: "°", min: 0.01 },
-      ],
-    }],
-    note: "Axe de révolution : l'axe vertical de l'esquisse",
-    build: (v) => {
-      const angle = num(v.angle);
-      return angle ? { op, params: { angle } } : null;
-    },
-    invalid: "Angle invalide",
+    groups: (ctx) => revolutionGroups(resolveProfileSketch(ctx)),
+    build: (v) => revolutionCreationParams(v, op),
+    invalid: () => revolutionProblem(),
     refresh: "part",
   });
 }
@@ -153,7 +249,7 @@ function surface({ button, icon, title, groups, note, build, invalid }) {
 /** Combiner : même panneau sous `btn-boolean` (groupe Corps) et
  *  `btn-gem-combine` (onglet Bijouterie). Un seul objet, deux ids. */
 const COMBINE_FEATURE = {
-  icon: "PartDesign_Boolean.svg",
+  icon: "boolean",
   title: "Combiner",
   guard: (ctx) => {
     const options = booleanToolOptions(ctx);
@@ -186,74 +282,393 @@ const COMBINE_FEATURE = {
   refresh: "part",
 };
 
+
+// ---------- conditions de fin d'extrusion (bossage, enlèvement) ----------
+// Direction 1 : borgne, jusqu'au suivant, jusqu'au dernier / à travers
+// tout, jusqu'à une face (décalage), plan milieu ; dépouille. Direction 2
+// facultative. Le moteur traduit (engine/extrude.py).
+
+const EXTRUDE_CONDITIONS = {
+  pad: [["borgne", "Borgne"], ["suivant", "Jusqu'au suivant"],
+        ["dernier", "Jusqu'au dernier"], ["face", "Jusqu'à la face"],
+        ["milieu", "Plan milieu"]],
+  pocket: [["travers", "À travers tout"], ["borgne", "Borgne"],
+           ["suivant", "Jusqu'au suivant"], ["face", "Jusqu'à la face"],
+           ["milieu", "Plan milieu"]],
+};
+
+const usesLength = (cond) => cond === "borgne" || cond === "milieu";
+
+export function extrudeGroups(kind) {
+  const conditions = EXTRUDE_CONDITIONS[kind];
+  const second = conditions.filter(([c]) => c !== "face" && c !== "milieu");
+  return [
+    {
+      label: "Direction 1",
+      rows: [
+        { type: "select", key: "cond", value: conditions[0][0],
+          options: conditions },
+        { type: "number", key: "length", label: "Profondeur", value: 10,
+          unit: "mm", min: 0.01, showIf: (v) => usesLength(v.cond) },
+        { type: "selection", key: "face", accepts: ["face"],
+          label: "Face d'arrivée", hint: "Cliquez la face d'arrivée",
+          showIf: (v) => v.cond === "face" },
+        { type: "number", key: "offset", label: "Décalage", value: 0,
+          unit: "mm", showIf: (v) => v.cond === "face" },
+        { type: "check", key: "reversed", label: "Inverser la direction",
+          value: false, showIf: (v) => v.cond !== "milieu" },
+        { type: "number", key: "taper", label: "Dépouille", value: 0,
+          unit: "°" },
+        { type: "check", key: "taperOut", label: "Dépouille vers l'extérieur",
+          value: false, showIf: (v) => (num(v.taper) ?? 0) !== 0 },
+      ],
+    },
+    {
+      label: "Direction 2",
+      rows: [
+        { type: "check", key: "dir2", label: "Deuxième direction",
+          value: false, showIf: (v) => v.cond !== "milieu" },
+        { type: "select", key: "cond2", value: second[0][0], options: second,
+          showIf: (v) => v.dir2 && v.cond !== "milieu" },
+        { type: "number", key: "length2", label: "Profondeur", value: 10,
+          unit: "mm", min: 0.01,
+          showIf: (v) => v.dir2 && v.cond !== "milieu"
+            && v.cond2 === "borgne" },
+        { type: "number", key: "taper2", label: "Dépouille", value: 0,
+          unit: "°", showIf: (v) => v.dir2 && v.cond !== "milieu" },
+      ],
+    },
+    {
+      label: "Paroi mince",
+      rows: [
+        { type: "check", key: "thin", label: "Paroi d'épaisseur constante",
+          value: false },
+        { type: "select", key: "thinType", value: "un",
+          options: THIN_TYPES, showIf: (v) => v.thin },
+        { type: "number", key: "thinT", label: "Épaisseur", value: 2,
+          unit: "mm", min: 0.01, showIf: (v) => v.thin },
+        { type: "number", key: "thinT2", label: "Épaisseur côté 2",
+          value: 2, unit: "mm", min: 0.01,
+          showIf: (v) => v.thin && v.thinType === "deux" },
+        { type: "check", key: "thinReversed", label: "Inverser le côté",
+          value: false, showIf: (v) => v.thin && v.thinType !== "milieu" },
+        ...(kind === "pad" ? [
+          { type: "check", key: "thinCaps", label: "Extrémités fermées",
+            value: false, showIf: (v) => v.thin && capsAllowed(v) },
+          { type: "number", key: "thinCapT", label: "Épaisseur des extrémités",
+            value: 1, unit: "mm", min: 0.01,
+            showIf: (v) => v.thin && v.thinCaps && capsAllowed(v) },
+        ] : []),
+      ],
+    },
+  ];
+}
+
+// Extrémités fermées (extrusion, profil fermé) : profondeurs borgnes et
+// sans dépouille — la cavité se règle sur elles.
+const capsAllowed = (v) => usesLength(v.cond) && !(num(v.taper) ?? 0)
+  && !(v.dir2 && v.cond !== "milieu"
+       && (v.cond2 !== "borgne" || (num(v.taper2) ?? 0)));
+
+// Paroi mince : vers l'extérieur d'un profil fermé (à droite du tracé
+// d'un profil ouvert) ; « Inverser le côté » passe de l'autre côté.
+const THIN_TYPES = [["un", "Un côté"], ["milieu", "Plan milieu"],
+                    ["deux", "Deux côtés"]];
+
+/** Paroi mince pour le moteur, ``undefined`` sans, ``null`` si invalide. */
+function thinParams(v, op) {
+  if (!v.thin) return undefined;
+  const thickness = Math.abs(num(v.thinT) ?? 0);
+  if (!thickness) return null;
+  const type = v.thinType ?? "un";
+  const thin = { type, thickness, reversed: type !== "milieu" && !!v.thinReversed };
+  if (type === "deux") {
+    const thickness2 = Math.abs(num(v.thinT2) ?? 0);
+    if (!thickness2) return null;
+    thin.thickness2 = thickness2;
+  }
+  if (op === "add_pad" && v.thinCaps && capsAllowed(v)) {
+    const caps = Math.abs(num(v.thinCapT) ?? 0);
+    if (!caps) return null;
+    thin.caps = caps;
+  }
+  return thin;
+}
+
+/** Paramètres moteur, ou null si la saisie est incomplète. */
+export function extrudeBuild(op, v) {
+  const params = { reversed: !!v.reversed };
+  const midplane = v.cond === "milieu";
+  params.cond = midplane ? "borgne" : v.cond;
+  if (midplane) params.midplane = true;
+  if (usesLength(v.cond)) {
+    const length = Math.abs(num(v.length) ?? 0);
+    if (!length) return null;
+    params.length = length;
+  }
+  if (v.cond === "face") {
+    if (v.face?.face == null) return null;
+    params.face = v.face.face;
+    params.offset = num(v.offset) ?? 0;
+  }
+  const taper = Math.abs(num(v.taper) ?? 0);
+  if (taper) params.taper = v.taperOut ? -taper : taper;
+  if (v.dir2 && !midplane) {
+    params.cond2 = v.cond2;
+    if (v.cond2 === "borgne") {
+      const length2 = Math.abs(num(v.length2) ?? 0);
+      if (!length2) return null;
+      params.length2 = length2;
+    }
+    const taper2 = num(v.taper2) ?? 0;
+    if (taper2) params.taper2 = taper2;
+  }
+  const thin = thinParams(v, op);
+  if (thin === null) return null;
+  if (thin) params.thin = thin;
+  return { op, params };
+}
+
+export function extrudeInvalid(v) {
+  if (v.cond === "face" && v.face?.face == null) {
+    return "Jusqu'à la face : cliquez la face d'arrivée";
+  }
+  if (thinParams(v, "add_pad") === null) return "Épaisseur de paroi invalide";
+  return "Profondeur invalide";
+}
+
+// ---------- répétitions et symétrie ----------
+// Fonctions à répéter : clic dans l'arbre (plusieurs, un second clic
+// retire) ; vide = la dernière fonction. Direction : un axe d'origine ou
+// une arête droite cliquée dans la zone graphique.
+
+export function patternFeaturesGroup() {
+  return {
+    label: "Fonctions à répéter",
+    rows: [{ type: "selection", key: "features", accepts: ["feature"],
+             multiple: true,
+             hint: "Cliquez les fonctions dans l'arbre — vide : la dernière" }],
+  };
+}
+
+export function patternFeaturesParams(v) {
+  const items = v.features?.items ?? [];
+  return items.length ? { features: items.map((i) => i.name) } : {};
+}
+
+export function patternDirectionRows(defaultAxis) {
+  return [
+    { type: "select", key: "dirKind", value: "axis",
+      options: [["axis", "Axe d'origine"], ["edge", "Arête"]] },
+    { type: "select", key: "axis", value: defaultAxis,
+      options: [["X", "Axe X"], ["Y", "Axe Y"], ["Z", "Axe Z"]],
+      showIf: (v) => v.dirKind !== "edge" },
+    { type: "selection", key: "edge", accepts: ["edges"],
+      hint: "Cliquez une arête droite",
+      showIf: (v) => v.dirKind === "edge" },
+    { type: "check", key: "reversed", label: "Inverser la direction",
+      value: false },
+  ];
+}
+
+export function patternDirectionParams(v) {
+  const params = { reversed: !!v.reversed };
+  const edge = v.edge?.edges?.[0];
+  if (v.dirKind === "edge" && edge != null) params.edge = edge;
+  else params.axis = v.axis;
+  return params;
+}
+
+function expressionText(raw) {
+  const text = String(raw ?? "").trim();
+  return text.length > 0 && plainNumber(text) == null;
+}
+
+function measureRow(key, label, value, unit, showIf) {
+  const parsed = plainNumber(value);
+  const row = parsed == null
+    ? { type: "text", key, label, unit, value: String(value ?? "") }
+    : { type: "number", key, label, unit, value: parsed, min: 0.01 };
+  if (showIf) row.showIf = showIf;
+  return row;
+}
+
+const CHAMFER_KINDS = new Set(["egale", "deux", "angle"]);
+
+/** Champs du panneau : le type décide de ce qui est visible. */
+export function chamferRows({
+  kind = "egale", size = 2, size2 = 2, angle = 45, flip = false,
+} = {}) {
+  return [
+    { type: "select", key: "kind", value: kind, label: "Type de chanfrein",
+      options: [["egale", "Distance égale"], ["deux", "Deux distances"],
+                ["angle", "Distance et angle"]] },
+    measureRow("size", "Distance", size, "mm"),
+    measureRow("size2", "Seconde distance", size2, "mm",
+      (v) => v.kind === "deux"),
+    measureRow("angle", "Angle", angle, "°",
+      (v) => v.kind === "angle"),
+    { type: "check", key: "flip", label: "Inverser les côtés",
+      value: !!flip, showIf: (v) => v.kind === "deux" || v.kind === "angle" },
+  ];
+}
+
+/** Valeur affichée : l'expression si la cote en a une, sinon le nombre. */
+export function chamferFieldValue(params, prop, fallback) {
+  const found = (params ?? []).find((item) => item.prop === prop);
+  if (found?.expr) return found.expr;
+  if (found && found.value != null) return found.value;
+  return fallback;
+}
+
+/** Params `add_chamfer`, ou null si les champs visibles sont invalides. */
+export function chamferCreationParams(v) {
+  const kind = v.kind || "egale";
+  if (!CHAMFER_KINDS.has(kind)) return null;
+  const size = plainNumber(v.size);
+  if (!(size > 0)) return null;
+  const params = { size, chamfer_type: kind };
+  if (kind === "deux") {
+    const size2 = plainNumber(v.size2);
+    if (!(size2 > 0)) return null;
+    params.size2 = size2;
+    params.flip = !!v.flip;
+  } else if (kind === "angle") {
+    const angle = plainNumber(v.angle);
+    if (!(angle > 0) || !(angle < 90)) return null;
+    params.angle = angle;
+    params.flip = !!v.flip;
+  }
+  return params;
+}
+
+/** Message français quand la saisie ne peut pas être appliquée. */
+export function chamferProblem(v) {
+  const kind = v.kind || "egale";
+  const size = plainNumber(v.size);
+  if (size == null) {
+    if (!expressionText(v.size)) return "Distance de chanfrein invalide";
+  } else if (!(size > 0)) {
+    return "Distance de chanfrein invalide";
+  }
+  if (kind === "deux") {
+    const size2 = plainNumber(v.size2);
+    if (size2 == null) {
+      if (!expressionText(v.size2)) return "Seconde distance de chanfrein invalide";
+    } else if (!(size2 > 0)) {
+      return "Seconde distance de chanfrein invalide";
+    }
+  }
+  if (kind === "angle") {
+    const angle = plainNumber(v.angle);
+    if (angle == null) {
+      if (!expressionText(v.angle)) return "Angle de chanfrein invalide";
+    } else if (!(angle > 0) || !(angle < 90)) {
+      return "Angle de chanfrein invalide";
+    }
+  }
+  return "Valeurs du chanfrein invalides";
+}
+
+function storedMeasure(params, prop, fallback) {
+  const found = (params ?? []).find((item) => item.prop === prop);
+  if (found?.expr) return { expr: String(found.expr) };
+  if (found && found.value != null) return { numeric: Number(found.value) };
+  const parsed = plainNumber(fallback);
+  return parsed == null
+    ? { expr: String(fallback ?? "") }
+    : { numeric: parsed };
+}
+
+function readMeasure(raw, stored, bounds) {
+  const text = typeof raw === "string" ? raw.trim() : raw;
+  if (stored.expr && String(text ?? "").trim() === stored.expr) return stored.expr;
+  const parsed = plainNumber(text);
+  if (parsed == null) {
+    const expr = String(text ?? "").trim();
+    return expr ? expr : null;
+  }
+  if (!(parsed > bounds.min) || !(parsed < bounds.max)) return null;
+  return parsed;
+}
+
+function sameMeasure(value, stored) {
+  if (typeof value === "string") return stored.expr === value;
+  return stored.numeric != null && Math.abs(value - stored.numeric) < 1e-9;
+}
+
+/**
+ * Valeurs `set_params` pour rééditer un chanfrein.
+ * `{}` si rien n'a changé, `null` si la saisie est invalide.
+ */
+export function chamferEditValues(v, chamfer, params) {
+  const kind = v.kind || "egale";
+  if (!CHAMFER_KINDS.has(kind)) return null;
+  const sizeStored = storedMeasure(params, "Size", chamfer.size);
+  const size = readMeasure(v.size, sizeStored, { min: 0, max: Infinity });
+  if (size == null) return null;
+  const values = { ChamferType: kind, Size: size };
+  const flip = kind === "egale" ? false : !!v.flip;
+  let secondSame = true;
+  if (kind === "deux") {
+    const stored = storedMeasure(params, "Size2", chamfer.size2);
+    const size2 = readMeasure(v.size2, stored, { min: 0, max: Infinity });
+    if (size2 == null) return null;
+    values.Size2 = size2;
+    values.FlipDirection = flip;
+    secondSame = sameMeasure(size2, stored);
+  } else if (kind === "angle") {
+    const stored = storedMeasure(params, "Angle", chamfer.angle);
+    const angle = readMeasure(v.angle, stored, { min: 0, max: 90 });
+    if (angle == null) return null;
+    values.Angle = angle;
+    values.FlipDirection = flip;
+    secondSame = sameMeasure(angle, stored);
+  } else {
+    values.FlipDirection = false;
+  }
+  const unchanged = kind === chamfer.type
+    && flip === !!chamfer.flip
+    && sameMeasure(size, sizeStored)
+    && secondSame;
+  return unchanged ? {} : values;
+}
+
 export const FEATURES = [
   withSketchProfile({
     button: "btn-pad",
-    icon: "PartDesign_Pad.svg",
-    title: "Bossage/Base extrudé",
-    groups: () => [{
-      label: "Direction 1",
-      rows: [
-        { type: "select", key: "cond", value: "borgne",
-          options: [["borgne", "Borgne"], ["milieu", "Plan milieu"]] },
-        { type: "number", key: "length", label: "Profondeur", value: 10,
-          unit: "mm", min: 0.01 },
-        { type: "check", key: "reversed", label: "Inverser la direction",
-          value: false, showIf: (v) => v.cond !== "milieu" },
-      ],
-    }],
-    build: (v) => {
-      const length = Math.abs(num(v.length) ?? 0);
-      if (!length) return null;
-      return { op: "add_pad",
-               params: { length, reversed: !!v.reversed,
-                         midplane: v.cond === "milieu" } };
-    },
-    invalid: "Profondeur invalide",
+    icon: "nodes_extrude",
+    title: "Extrusion",
+    groups: () => extrudeGroups("pad"),
+    build: (v) => extrudeBuild("add_pad", v),
+    invalid: extrudeInvalid,
     refresh: "part",
   }),
   withSketchProfile({
     button: "btn-pocket",
-    icon: "PartDesign_Pocket.svg",
-    title: "Enlèvement de matière extrudé",
-    groups: () => [{
-      label: "Direction 1",
-      rows: [
-        { type: "select", key: "cond", value: "travers",
-          options: [["travers", "À travers tout"], ["borgne", "Borgne"]] },
-        { type: "number", key: "length", label: "Profondeur", value: 10,
-          unit: "mm", min: 0.01, showIf: (v) => v.cond === "borgne" },
-        { type: "check", key: "reversed", label: "Inverser la direction",
-          value: false },
-      ],
-    }],
-    build: (v) => {
-      const reversed = !!v.reversed;
-      if (v.cond === "travers") {
-        return { op: "add_pocket", params: { through: true, reversed } };
-      }
-      const length = Math.abs(num(v.length) ?? 0);
-      return length ? { op: "add_pocket", params: { length, reversed } } : null;
-    },
-    invalid: "Profondeur invalide",
+    icon: "pocket",
+    title: "Enlèvement extrudé",
+    groups: () => extrudeGroups("pocket"),
+    build: (v) => extrudeBuild("add_pocket", v),
+    invalid: extrudeInvalid,
     refresh: "part",
   }),
   revolved({
     button: "btn-revolution",
     op: "add_revolution",
-    icon: "PartDesign_Revolution.svg",
-    title: "Bossage/Base avec révolution",
+    icon: "revolve",
+    title: "Révolution",
   }),
   revolved({
     button: "btn-groove",
     op: "add_groove",
-    icon: "PartDesign_Groove.svg",
-    title: "Enlèvement de matière avec révolution",
+    icon: "groove",
+    title: "Enlèvement par révolution",
   }),
   {
     button: "btn-hole",
-    icon: "PartDesign_Hole.svg",
-    title: "Assistant de perçage",
+    icon: "hole",
+    title: "Perçage",
     groups: () => [
       {
         label: "Type de perçage",
@@ -317,8 +732,8 @@ export const FEATURES = [
   },
   {
     button: "btn-loft",
-    icon: "PartDesign_AdditiveLoft.svg",
-    title: "Bossage/Base lissé",
+    icon: "loft",
+    title: "Lissage",
     groups: () => [
       { label: "Profils",
         rows: [{ type: "selection", key: "profiles", accepts: ["sketch"],
@@ -328,7 +743,7 @@ export const FEATURES = [
       { label: "Options",
         rows: [
           { type: "check", key: "subtractive",
-            label: "Enlèvement de matière", value: false },
+            label: "Enlever de la matière", value: false },
           { type: "check", key: "ruled", label: "Lissage droit (réglé)",
             value: false },
           { type: "check", key: "closed", label: "Boucle fermée",
@@ -349,8 +764,8 @@ export const FEATURES = [
   },
   {
     button: "btn-sweep",
-    icon: "PartDesign_AdditivePipe.svg",
-    title: "Bossage/Base balayé",
+    icon: "sweep",
+    title: "Balayage",
     groups: () => [
       { label: "Profil",
         rows: [{ type: "selection", key: "profile", accepts: ["sketch"],
@@ -360,7 +775,7 @@ export const FEATURES = [
                  hint: "Puis l'esquisse de la trajectoire" }] },
       { label: "Options",
         rows: [{ type: "check", key: "subtractive",
-                 label: "Enlèvement de matière", value: false }] },
+                 label: "Enlever de la matière", value: false }] },
     ],
     build: (v) => {
       if (!v.profile || !v.spine) return null;
@@ -375,7 +790,7 @@ export const FEATURES = [
   },
   {
     button: "btn-helix",
-    icon: "PartDesign_AdditiveHelix.svg",
+    icon: "nodes_helix",
     title: "Hélice",
     groups: () => [{
       label: "Paramètres",
@@ -399,7 +814,7 @@ export const FEATURES = [
   },
   dressup({
     button: "btn-text",
-    icon: "Draft_ShapeString.svg", title: "Texte",
+    icon: "nodes_text", title: "Texte",
     selectionLabel: "Face d'appui",
     group: "Texte",
     rows: [
@@ -429,7 +844,7 @@ export const FEATURES = [
   }),
   dressup({
     button: "btn-fillet",
-    icon: "PartDesign_Fillet.svg", title: "Congé",
+    icon: "fillet", title: "Congé",
     selectionLabel: "Éléments à arrondir",
     accepts: ["edges", "face"],
     hint: "Cliquez des arêtes (Ctrl = ajouter) ou une face",
@@ -446,39 +861,52 @@ export const FEATURES = [
   }),
   dressup({
     button: "btn-chamfer",
-    icon: "PartDesign_Chamfer.svg", title: "Chanfrein",
+    icon: "chamfer", title: "Chanfrein",
     selectionLabel: "Éléments à chanfreiner",
     accepts: ["edges", "face"],
     hint: "Cliquez des arêtes (Ctrl = ajouter) ou une face",
     group: "Paramètres du chanfrein",
-    rows: [{ type: "number", key: "size", label: "Distance", value: 2,
-             unit: "mm", min: 0.01 }],
+    rows: chamferRows(),
     build: (v) => {
-      const size = num(v.size);
-      return size > 0
+      const params = chamferCreationParams(v);
+      return params
         ? { op: "add_chamfer",
-            params: { ...dressupParams(v.sel), size } }
+            params: { ...dressupParams(v.sel), ...params } }
         : null;
     },
+    invalid: (v) => chamferProblem(v),
   }),
-  dressup({
+  {
     button: "btn-shell",
-    icon: "PartDesign_Thickness.svg", title: "Coque",
-    selectionLabel: "Faces à supprimer",
-    group: "Paramètres",
-    rows: [{ type: "number", key: "thickness", label: "Épaisseur", value: 2,
-             unit: "mm", min: 0.01 }],
-    build: (v) => {
-      const thickness = num(v.thickness);
-      return thickness > 0
-        ? { op: "add_thickness",
-            params: { face: v.sel.face, thickness } }
-        : null;
+    icon: "shell", title: "Coque",
+    dressup: true,
+    groups: (ctx) => {
+      const first = ctx.selection(["face"]);
+      return [
+        { label: "Faces à supprimer",
+          rows: [{ type: "selection", key: "faces", accepts: ["face"],
+                   multiple: true,
+                   hint: "Cliquez les faces à ouvrir — un second clic retire",
+                   value: { kind: "face",
+                            items: first?.face != null ? [first] : [] } }] },
+        { label: "Paramètres",
+          rows: [
+            { type: "number", key: "thickness", label: "Épaisseur",
+              value: 2, unit: "mm", min: 0.01 },
+            { type: "check", key: "outward", label: "Coque vers l'extérieur",
+              value: false },
+          ] },
+      ];
     },
-  }),
+    build: (v) => shellBuild(v),
+    invalid: (v) => ((v.faces?.items ?? []).length
+      ? "Épaisseur invalide"
+      : { text: t("Coque : cliquez au moins une face à ouvrir"), tone: "guide" }),
+    refresh: "part",
+  },
   dressup({
     button: "btn-draft",
-    icon: "PartDesign_Draft.svg", title: "Dépouille",
+    icon: "draft", title: "Dépouille",
     selectionLabel: "Faces à dépouiller",
     group: "Angle de dépouille",
     rows: [
@@ -498,25 +926,32 @@ export const FEATURES = [
   }),
   {
     button: "btn-linpattern",
-    icon: "PartDesign_LinearPattern.svg",
-    title: "Répétition linéaire",
-    groups: () => [{
-      label: "Direction 1",
-      rows: [
-        { type: "select", key: "axis", value: "X", label: "Direction",
-          options: [["X", "Axe X"], ["Y", "Axe Y"], ["Z", "Axe Z"]] },
-        { type: "number", key: "length", label: "Longueur totale",
-          value: 40, unit: "mm", min: 0.01 },
-        { type: "number", key: "count", label: "Nombre d'occurrences",
-          value: 3, min: 2, step: 1 },
-      ],
-    }],
-    note: "S'applique à la dernière fonction (bossage ou enlèvement)",
+    icon: "linear_pattern",
+    title: "Réseau linéaire",
+    groups: () => [
+      patternFeaturesGroup(),
+      {
+        label: "Direction 1",
+        rows: [
+          ...patternDirectionRows("X"),
+          { type: "select", key: "mode", value: "spacing",
+            options: [["spacing", "Pas entre occurrences"],
+                      ["extent", "Longueur totale"]] },
+          { type: "number", key: "length", label: "Distance",
+            value: 20, unit: "mm", min: 0.01 },
+          { type: "number", key: "count", label: "Nombre d'occurrences",
+            value: 3, min: 2, step: 1 },
+        ],
+      },
+    ],
     build: (v) => {
       const length = num(v.length);
       const count = parseInt(v.count, 10);
       return length && count >= 2
-        ? { op: "add_linear_pattern", params: { axis: v.axis, length, count } }
+        ? { op: "add_linear_pattern",
+            params: { ...patternDirectionParams(v), length, count,
+                      spacing: v.mode === "spacing",
+                      ...patternFeaturesParams(v) } }
         : null;
     },
     invalid: "Valeurs invalides",
@@ -524,41 +959,50 @@ export const FEATURES = [
   },
   {
     button: "btn-polpattern",
-    icon: "PartDesign_PolarPattern.svg",
-    title: "Répétition circulaire",
-    groups: () => [{
-      label: "Direction 1",
-      rows: [
-        { type: "number", key: "angle", label: "Angle", value: 360,
-          unit: "°", min: 0.01 },
-        { type: "number", key: "count", label: "Nombre d'occurrences",
-          value: 4, min: 2, step: 1 },
-      ],
-    }],
-    note: "Axe : Z — s'applique à la dernière fonction",
+    icon: "polar_pattern",
+    title: "Réseau circulaire",
+    groups: () => [
+      patternFeaturesGroup(),
+      {
+        label: "Axe",
+        rows: [
+          ...patternDirectionRows("Z"),
+          { type: "number", key: "angle", label: "Angle total", value: 360,
+            unit: "°", min: 0.01 },
+          { type: "number", key: "count", label: "Nombre d'occurrences",
+            value: 4, min: 2, step: 1 },
+        ],
+      },
+    ],
     build: (v) => {
       const angle = num(v.angle);
       const count = parseInt(v.count, 10);
       return angle && count >= 2
-        ? { op: "add_polar_pattern", params: { count, angle } } : null;
+        ? { op: "add_polar_pattern",
+            params: { ...patternDirectionParams(v), count, angle,
+                      ...patternFeaturesParams(v) } }
+        : null;
     },
     invalid: "Valeurs invalides",
     refresh: "part",
   },
   {
     button: "btn-mirror",
-    icon: "PartDesign_Mirrored.svg",
+    icon: "mirror",
     title: "Symétrie",
-    groups: () => [{
-      label: "Plan de symétrie",
-      rows: [
-        { type: "select", key: "plane", value: "YZ",
-          options: [["YZ", "Plan de droite"], ["XZ", "Plan de face"],
-                    ["XY", "Plan de dessus"]] },
-      ],
-    }],
-    note: "S'applique à la dernière fonction (bossage ou enlèvement)",
-    build: (v) => ({ op: "add_mirror", params: { plane: v.plane } }),
+    groups: () => [
+      patternFeaturesGroup(),
+      {
+        label: "Plan de symétrie",
+        rows: [
+          { type: "select", key: "plane", value: "YZ",
+            options: [["YZ", "Plan de droite"], ["XZ", "Plan de face"],
+                      ["XY", "Plan de dessus"]] },
+        ],
+      },
+    ],
+    build: (v) => ({ op: "add_mirror",
+                     params: { plane: v.plane, ...patternFeaturesParams(v) } }),
     refresh: "part",
   },
   {
@@ -568,7 +1012,7 @@ export const FEATURES = [
   },
   surface({
     button: "btn-surf-extrude",
-    icon: "Surface_Filling.svg", title: "Surface extrudée",
+    icon: "surface_extrude", title: "Surface extrudée",
     groups: [{ label: "Paramètres", rows: [
       { type: "number", key: "length", label: "Longueur", value: 20,
         unit: "mm" },
@@ -581,7 +1025,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-revolve",
-    icon: "PartDesign_Revolution.svg", title: "Surface de révolution",
+    icon: "surface_revolve", title: "Surface de révolution",
     groups: [{ label: "Paramètres", rows: [
       { type: "number", key: "angle", label: "Angle", value: 360,
         unit: "°", min: 0.01 },
@@ -594,7 +1038,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-loft",
-    icon: "PartDesign_AdditiveLoft.svg",
+    icon: "surface_loft",
     title: "Surface lissée",
     groups: [{ label: "Profils",
       rows: [{ type: "selection", key: "profiles", accepts: ["sketch"],
@@ -610,7 +1054,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-sew",
-    icon: "Part_3D_object.svg",
+    icon: "sew",
     title: "Coudre",
     groups: [{ label: "Surfaces",
       rows: [{ type: "selection", key: "surfaces", accepts: ["surface"],
@@ -627,7 +1071,7 @@ export const FEATURES = [
   }),
   surface({
     button: "btn-surf-thicken",
-    icon: "PartDesign_Thickness.svg",
+    icon: "thicken",
     title: "Épaissir",
     groups: [
       { label: "Surface",
@@ -647,7 +1091,7 @@ export const FEATURES = [
   }),
   {
     button: "btn-graph-feature",
-    icon: "Geoassembly.svg",
+    icon: "graph_feature",
     title: "Fonction graphe",
     preview: false,
     groups: () => [{
@@ -682,8 +1126,8 @@ export const FEATURES = [
   },
   {
     button: "btn-repeat-variable",
-    icon: "PartDesign_LinearPattern.svg",
-    title: "Répétition variable",
+    icon: "variable_pattern",
+    title: "Réseau variable",
     preview: false,
     groups: () => [
       { label: "Fonctions",
@@ -712,7 +1156,7 @@ export const FEATURES = [
         },
       };
     },
-    invalid: "Répétition variable : cliquez au moins une fonction dans l'arbre",
+    invalid: "Réseau variable : cliquez au moins une fonction dans l'arbre",
     refresh: "part",
     openGraphEditor: true,
   },

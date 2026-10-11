@@ -1,5 +1,8 @@
 // Géométrie 2D partagée esquisse / solveur local.
 
+import { t } from "./i18n.js";
+import { fmtMm } from "./num.js";
+
 // Sweep CCW p1 → p2 autour de c, comme le moteur stocke les arcs.
 export function arcAngles(entity) {
   const a1 = Math.atan2(entity.p1[1] - entity.c[1],
@@ -11,13 +14,13 @@ export function arcAngles(entity) {
 }
 
 /** Distance point → segment [a, b] (a, b = [x, y]). */
-export function distancePointSegment(px, py, a, b) {
+function distancePointSegment(px, py, a, b) {
   const abx = b[0] - a[0], aby = b[1] - a[1];
   const len2 = abx * abx + aby * aby;
   if (len2 < 1e-18) return Math.hypot(px - a[0], py - a[1]);
-  let t = ((px - a[0]) * abx + (py - a[1]) * aby) / len2;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (a[0] + t * abx), py - (a[1] + t * aby));
+  let u = ((px - a[0]) * abx + (py - a[1]) * aby) / len2;
+  u = Math.max(0, Math.min(1, u));
+  return Math.hypot(px - (a[0] + u * abx), py - (a[1] + u * aby));
 }
 
 /** Distance réelle à l'entité en coordonnées locales d'esquisse. */
@@ -80,10 +83,6 @@ export function isDrivingConstraint(constraint) {
     && Number.isFinite(constraint.value);
 }
 
-function fmtMm(value) {
-  return Number(value).toFixed(2);
-}
-
 export function circlePoints(cx, cy, r, segments = 48) {
   if (!(r > 0)) return [];
   const pts = [];
@@ -94,7 +93,7 @@ export function circlePoints(cx, cy, r, segments = 48) {
   return pts;
 }
 
-export function arcPoints(cx, cy, r, a1, a2, segments = 32) {
+function arcPoints(cx, cy, r, a1, a2, segments = 32) {
   if (!(r > 0)) return [];
   let sweep = a2 - a1;
   if (sweep <= 0) sweep += Math.PI * 2;
@@ -227,11 +226,71 @@ export function sketchPreviewPoints(tool, pending, cursor) {
   return [];
 }
 
+// ---------- symboles de relations ----------
+// Un petit symbole près de chaque entité contrainte : H horizontale,
+// V verticale, ∥ parallèle, ⊥ perpendiculaire, = égale, T tangente,
+// ⚓ fixe, ≡ colinéaire, M milieu, S symétrique, ◎ concentrique.
+// Les coïncidences, trop nombreuses, ne sont pas marquées (comme les
+// points d'extrémité partagés qui les montrent déjà).
+
+const RELATION_GLYPHS = {
+  Horizontal: "H", Vertical: "V", Parallel: "∥", Perpendicular: "⊥",
+  Equal: "=", Tangent: "T", Block: "⚓", Symmetric: "S",
+};
+
+function entityMid(entity) {
+  if (!entity) return null;
+  if (entity.p1 && entity.p2 && entity.type === "line") {
+    return { x: (entity.p1[0] + entity.p2[0]) / 2,
+             y: (entity.p1[1] + entity.p2[1]) / 2,
+             nx: -(entity.p2[1] - entity.p1[1]),
+             ny: entity.p2[0] - entity.p1[0] };
+  }
+  if (entity.c && entity.r != null) {
+    return { x: entity.c[0], y: entity.c[1] + entity.r, nx: 0, ny: 1 };
+  }
+  if (entity.points?.length) {
+    const p = entity.points[Math.floor(entity.points.length / 2)];
+    return { x: p[0], y: p[1], nx: 0, ny: 1 };
+  }
+  return null;
+}
+
+/**
+ * Symboles à dessiner : [{ text, x, y }] en coordonnées d'esquisse,
+ * décalés de `offset` hors de l'entité. Plusieurs symboles sur la même
+ * entité s'étalent le long de la normale.
+ */
+export function relationGlyphs(constraints, entities, offset = 2) {
+  const byId = new Map((entities ?? []).map((e) => [e.id, e]));
+  const count = new Map();
+  const glyphs = [];
+  for (const c of constraints ?? []) {
+    const text = RELATION_GLYPHS[c.type];
+    if (!text) continue;
+    // Une relation entre un point et une ligne (milieu, sur l'objet…)
+    // ne se marque pas ; une relation entre deux courbes se marque sur
+    // chacune.
+    const geos = (c.geos ?? []).filter((g) => g != null && g >= 0);
+    for (const g of c.type === "Symmetric" ? geos.slice(0, 2) : geos) {
+      const mid = entityMid(byId.get(g));
+      if (!mid) continue;
+      const k = count.get(g) ?? 0;
+      count.set(g, k + 1);
+      const len = Math.hypot(mid.nx, mid.ny) || 1;
+      const d = offset * (1 + k * 1.2);
+      glyphs.push({ text, x: mid.x + mid.nx / len * d,
+                    y: mid.y + mid.ny / len * d, geo: g });
+    }
+  }
+  return glyphs;
+}
+
 function fmtXy(point) {
   return `(${fmtMm(point[0])}, ${fmtMm(point[1])})`;
 }
 
-/** Titre PropertyManager — vocabulaire SolidWorks 2025, en français. */
+/** Titre du panneau d'une entité d'esquisse. */
 export function entityKindTitle(entity) {
   if (!entity) return "Entité";
   if (entity.type === "line") return "Ligne";
@@ -255,16 +314,16 @@ export function entityPropertyLines(entity) {
     const length = Math.hypot(
       entity.p2[0] - entity.p1[0], entity.p2[1] - entity.p1[1]);
     return [
-      `Longueur : ${fmtMm(length)} mm`,
-      `Départ : ${fmtXy(entity.p1)} mm`,
-      `Arrivée : ${fmtXy(entity.p2)} mm`,
+      t("Longueur : {v} mm", { v: fmtMm(length) }),
+      t("Départ : {v} mm", { v: fmtXy(entity.p1) }),
+      t("Arrivée : {v} mm", { v: fmtXy(entity.p2) }),
     ];
   }
   if (entity.type === "circle" && entity.c && entity.r != null) {
     return [
-      `Centre : ${fmtXy(entity.c)} mm`,
-      `Rayon : ${fmtMm(entity.r)} mm`,
-      `Diamètre : ${fmtMm(entity.r * 2)} mm`,
+      t("Centre : {v} mm", { v: fmtXy(entity.c) }),
+      t("Rayon : {v} mm", { v: fmtMm(entity.r) }),
+      t("Diamètre : {v} mm", { v: fmtMm(entity.r * 2) }),
     ];
   }
   if (entity.type === "arc" && entity.c && entity.r != null
@@ -272,21 +331,97 @@ export function entityPropertyLines(entity) {
     const { a1, a2 } = arcAngles(entity);
     const sweepDeg = (a2 - a1) * 180 / Math.PI;
     return [
-      `Centre : ${fmtXy(entity.c)} mm`,
-      `Rayon : ${fmtMm(entity.r)} mm`,
-      `Angle balayé : ${fmtMm(sweepDeg)} °`,
+      t("Centre : {v} mm", { v: fmtXy(entity.c) }),
+      t("Rayon : {v} mm", { v: fmtMm(entity.r) }),
+      t("Angle balayé : {v} °", { v: fmtMm(sweepDeg) }),
     ];
   }
   if (entity.type === "poly" && entity.kind === "ellipse") {
     const lines = [];
-    if (entity.c) lines.push(`Centre : ${fmtXy(entity.c)} mm`);
-    if (entity.rx != null) lines.push(`Grand rayon : ${fmtMm(entity.rx)} mm`);
-    if (entity.ry != null) lines.push(`Petit rayon : ${fmtMm(entity.ry)} mm`);
+    if (entity.c) lines.push(t("Centre : {v} mm", { v: fmtXy(entity.c) }));
+    if (entity.rx != null) {
+      lines.push(t("Grand rayon : {v} mm", { v: fmtMm(entity.rx) }));
+    }
+    if (entity.ry != null) {
+      lines.push(t("Petit rayon : {v} mm", { v: fmtMm(entity.ry) }));
+    }
     return lines;
   }
   if (entity.type === "poly") {
     const n = entity.npoints ?? entity.points?.length ?? 0;
-    return [`Nombre de points : ${n}`];
+    return [t("Nombre de points : {n}", { n })];
   }
   return [];
 }
+
+/**
+ * Relations possibles pour la sélection d'esquisse (``[{geo, point?}]``,
+ * dans l'ordre des clics) : seules celles que le moteur sait poser sur
+ * ces éléments. Un point est une extrémité ou un centre cliqué.
+ */
+export function applicableRelations(selection, entities) {
+  const kinds = (selection ?? []).map((item) => {
+    if (item.point != null) return "point";
+    const entity = (entities ?? []).find((e) => e.id === item.geo);
+    if (entity?.type === "line") return "line";
+    if (entity?.type === "circle" || entity?.type === "arc") return "round";
+    return "other";
+  });
+  const count = (kind) => kinds.filter((k) => k === kind).length;
+  const out = [];
+  if (kinds.length === 1) {
+    if (kinds[0] === "line") out.push("horizontal", "vertical");
+    out.push("fixed");
+  } else if (kinds.length === 2) {
+    if (count("point") === 2) out.push("coincident");
+    if (count("line") === 2) {
+      out.push("parallel", "perpendicular", "equal", "collinear");
+    }
+    if (count("round") === 2) out.push("equal", "concentric", "tangent");
+    if (count("line") === 1 && count("round") === 1) out.push("tangent");
+    if (count("point") === 1 && count("line") === 1) out.push("midpoint");
+  } else if (kinds.length === 3 && kinds[0] === "point"
+             && kinds[1] === "point" && kinds[2] === "line") {
+    out.push("symmetric");
+  }
+  return out;
+}
+
+/** Saisie numérique pendant le tracé : libellés des champs par outil. */
+export function numericFields(tool) {
+  if (tool === "line") return ["Longueur", "Angle"];
+  if (tool === "circle") return ["Rayon"];
+  if (tool === "rect" || tool === "rectc") return ["Largeur", "Hauteur"];
+  return [];
+}
+
+/**
+ * Point à poser quand on tape les cotes au lieu de cliquer. ``pending`` :
+ * le point déjà posé (départ de la ligne, centre, premier sommet) ;
+ * ``cursor`` : le curseur, qui donne la direction ou le quadrant ;
+ * ``a``, ``b`` : les valeurs tapées (``b`` facultatif : NaN).
+ * Ligne : longueur puis angle en degrés (sinon vers le curseur). Cercle :
+ * rayon. Rectangle : largeur puis hauteur (sinon celle du curseur), du
+ * côté du curseur ; par le centre, ce sont les dimensions totales.
+ */
+export function numericDrawTarget(tool, pending, cursor, a, b) {
+  if (!pending || !(a > 0)) return null;
+  const here = cursor ?? pending;
+  const dx = here.x - pending.x, dy = here.y - pending.y;
+  const towards = dx || dy ? Math.atan2(dy, dx) : 0;
+  if (tool === "line" || tool === "circle") {
+    const angle = tool === "line" && Number.isFinite(b)
+      ? b * Math.PI / 180 : towards;
+    return { x: pending.x + a * Math.cos(angle),
+             y: pending.y + a * Math.sin(angle) };
+  }
+  if (tool === "rect" || tool === "rectc") {
+    const half = tool === "rectc" ? 0.5 : 1;
+    const h = Number.isFinite(b) && b > 0 ? b : Math.abs(dy) / half;
+    if (!(h > 0)) return null;
+    return { x: pending.x + (dx < 0 ? -1 : 1) * a * half,
+             y: pending.y + (dy < 0 ? -1 : 1) * h * half };
+  }
+  return null;
+}
+

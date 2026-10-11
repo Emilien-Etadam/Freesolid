@@ -8,20 +8,28 @@ import * as THREE from "three";
 import { t } from "./i18n.js";
 import { createLocalSolver } from "./solver.js";
 import {
-  arcAngles, chainClickAction, distanceToEntity,
+  applicableRelations, arcAngles, chainClickAction, distanceToEntity,
+  numericDrawTarget, numericFields, relationGlyphs,
   entityKindTitle, entityPropertyLines,
   isDrivingConstraint, sketchPreviewPoints,
 } from "./geom2d.js";
-import { num } from "./num.js";
+import { fmtMm, num } from "./num.js";
+import { eventToNdc, ndcToScreen } from "./screen.js";
+import { cssHex, cssRgba, readScene } from "./theme.js";
 import {
-  dimEditPayload, dimLabel, openDimEditor, sketchDimAnchor,
+  boxMode, isDrag, normalizeRect, pickInBox, sketchLocalPoints,
+} from "./navigation.js";
+import {
+  arrowSegments, dimEditPayload, dimGeometry, dimLabel, openDimEditor,
 } from "./dims.js";
 
-export function createDimSprite(text, x, y, z = 0.01, color = "#7fc4ff") {
+const sceneTheme = readScene();
+
+export function createDimSprite(text, x, y, z = 0.01, color = cssHex(sceneTheme.dim)) {
   const canvas = document.createElement("canvas");
   canvas.width = 256; canvas.height = 40;
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "rgba(23,25,28,0.85)";
+  ctx.fillStyle = cssRgba(sceneTheme.bg, 0.85);
   ctx.fillRect(0, 0, 256, 40);
   ctx.font = "22px system-ui";
   ctx.fillStyle = color;
@@ -37,27 +45,64 @@ export function createDimSprite(text, x, y, z = 0.01, color = "#7fc4ff") {
   return sprite;
 }
 
+/** Petit symbole de relation (H, V, ∥…) : pastille ronde lisible. */
+function createGlyphSprite(text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 48; canvas.height = 48;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = cssRgba(sceneTheme.bg, 0.85);
+  ctx.beginPath();
+  ctx.arc(24, 24, 22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = cssHex(sceneTheme.successSoft);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.font = "bold 26px system-ui";
+  ctx.fillStyle = cssHex(sceneTheme.successSoft);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 24, 26);
+  const material = new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(canvas), depthTest: false });
+  material.userData.own = true;
+  return new THREE.Sprite(material);
+}
+
 export function createSketchMode(deps) {
-  const { scene, camera, renderer, controls, call, say, refresh, panel } =
-    deps;
+  const { scene, camera, renderer, controls, call, say, refresh, panel,
+    boxOverlay, hideContextToolbar } = deps;
 
   const group = new THREE.Group();
   scene.add(group);
 
   // depthTest off + high renderOrder: the sketch reads through the solid,
-  // SolidWorks-style — a sketch drawn on a face was invisible behind the
+  // as in common modelers — a sketch drawn on a face was invisible behind the
   // mesh (user report).
-  const lineMaterial = new THREE.LineBasicMaterial(
-    { color: 0xe8edf2, depthTest: false });
-  // Construction geometry: dashed and dimmed, as in every CAD since ever.
-  const constructionMaterial = new THREE.LineDashedMaterial(
-    { color: 0x8b939d, dashSize: 2.5, gapSize: 1.8, depthTest: false });
+  // Couleur = état de définition de l'entité (moteur : entity.status) :
+  // bleu = encore libre, clair = entièrement définie, rouge = en trop.
+  const STATUS_COLORS = { under: sceneTheme.under, full: sceneTheme.defined, over: sceneTheme.danger };
+  const lineMaterials = {};
+  const constructionMaterials = {};
+  for (const [status, color] of Object.entries(STATUS_COLORS)) {
+    lineMaterials[status] = new THREE.LineBasicMaterial(
+      { color, depthTest: false });
+    // Construction : en tirets et estompée, comme partout.
+    constructionMaterials[status] = new THREE.LineDashedMaterial({
+      color, dashSize: 2.5, gapSize: 1.8, depthTest: false,
+      transparent: true, opacity: 0.6 });
+  }
   const previewMaterial = new THREE.LineBasicMaterial(
-    { color: 0x4f8fdb, depthTest: false });
+    { color: sceneTheme.accent, depthTest: false });
   const selectedMaterial = new THREE.LineBasicMaterial(
-    { color: 0xd9924a, depthTest: false });
+    { color: sceneTheme.selection, depthTest: false });
+  // Cotes : lignes d'attache, ligne de cote et flèches. Pilotante en bleu
+  // clair, de référence (pilotée) en gris.
+  const dimLineMaterial = new THREE.LineBasicMaterial(
+    { color: sceneTheme.dim, depthTest: false });
+  const drivenDimLineMaterial = new THREE.LineBasicMaterial(
+    { color: sceneTheme.ink2, depthTest: false });
   const pointMaterial = new THREE.PointsMaterial({
-    color: 0x4f8fdb, size: 7, sizeAttenuation: false, depthTest: false });
+    color: sceneTheme.accent, size: 7, sizeAttenuation: false, depthTest: false });
   group.renderOrder = 20;
 
   const mode = {
@@ -79,6 +124,7 @@ export function createSketchMode(deps) {
     selection: [],        // [{ geo, point? }] — outil Sélectionner
     justDragged: false,   // un drag qui finit ne doit pas sélectionner
     drag: null,           // { geo, point } while dragging
+    box: null,            // { x, y } — appui dans le vide : cadre possible
     dragLocal: null,      // dernière position locale d'un drag local (M3)
     solverOk: false,      // l'esquisse est chargée dans le solveur local
     savedCamera: null,
@@ -93,13 +139,13 @@ export function createSketchMode(deps) {
   let building = false; // construction multi-appels (rectangle) en cours
 
   const ENTITY_ICONS = {
-    Ligne: "Sketcher_CreateLine.svg",
-    Cercle: "Sketcher_CreateCircle.svg",
-    Arc: "Sketcher_CreateArc.svg",
-    Spline: "Sketcher_CreateBSpline.svg",
-    Ellipse: "Sketcher_CreateEllipseByCenter.svg",
-    Polyligne: "Sketcher_CreateLine.svg",
-    Entité: "Sketcher_Sketch.svg",
+    Ligne: "nodes_line",
+    Cercle: "nodes_circle",
+    Arc: "nodes_arc",
+    Spline: "nodes_bspline",
+    Ellipse: "ellipse",
+    Polyligne: "nodes_line",
+    Entité: "sketch",
   };
 
   let entityPanelOpen = false;
@@ -128,9 +174,8 @@ export function createSketchMode(deps) {
 
   function toLocal(event) {
     const rect = renderer.domElement.getBoundingClientRect();
-    const pointer = new THREE.Vector2(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1);
+    const ndc = eventToNdc(event.clientX, event.clientY, rect);
+    const pointer = new THREE.Vector2(ndc.x, ndc.y);
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(pointer, camera);
     const world = new THREE.Vector3();
@@ -142,10 +187,7 @@ export function createSketchMode(deps) {
     const world = new THREE.Vector3(x, y, 0).applyMatrix4(mode.matrix);
     const projected = world.project(camera);
     const rect = renderer.domElement.getBoundingClientRect();
-    return {
-      x: (projected.x + 1) / 2 * rect.width + rect.left,
-      y: (-projected.y + 1) / 2 * rect.height + rect.top,
-    };
+    return ndcToScreen(projected.x, projected.y, rect);
   }
 
   function* endpoints() {
@@ -161,25 +203,134 @@ export function createSketchMode(deps) {
   }
 
   function snap(local, event) {
-    // Endpoint snap first (screen-space), then axis snap along the chain.
+    // Endpoint snap first (screen-space), then axis snap along the chain,
+    // then inference lines: alignment on any existing point (a guide only,
+    // no relation is created for it).
     for (const p of endpoints()) {
       const s = toScreen(p.x, p.y);
       if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < SNAP_PX) {
-        return { x: p.x, y: p.y, onPoint: p };
+        return { x: p.x, y: p.y, onPoint: p, guides: [], hv: null };
       }
     }
     let { x, y } = local;
+    let hv = null;
+    const guides = [];
     if (mode.chain) {
       const sHere = toScreen(x, y);
       const sAxisV = toScreen(mode.chain.x, y);
       const sAxisH = toScreen(x, mode.chain.y);
       if (Math.hypot(sHere.x - sAxisV.x, sHere.y - sAxisV.y) < SNAP_PX) {
         x = mode.chain.x;
+        hv = "V";
       } else if (Math.hypot(sHere.x - sAxisH.x, sHere.y - sAxisH.y) < SNAP_PX) {
         y = mode.chain.y;
+        hv = "H";
       }
     }
-    return { x, y, onPoint: null };
+    // Tolérance en unités d'esquisse : les axes de l'esquisse ne suivent
+    // pas forcément ceux de l'écran.
+    const s0 = toScreen(0, 0), s1 = toScreen(1, 0);
+    const tol = (SNAP_PX * 0.7) / (Math.hypot(s1.x - s0.x, s1.y - s0.y) || 1);
+    let alignX = null, alignY = null;
+    for (const p of endpoints()) {
+      if (mode.chain && p.x === mode.chain.x && p.y === mode.chain.y) continue;
+      if (!alignX && hv !== "V" && Math.abs(p.x - x) < tol) alignX = p;
+      if (!alignY && hv !== "H" && Math.abs(p.y - y) < tol) alignY = p;
+    }
+    if (alignX) { x = alignX.x; guides.push(alignX); }
+    if (alignY) { y = alignY.y; guides.push(alignY); }
+    if (hv && mode.chain) guides.push(mode.chain);
+    return { x, y, onPoint: null, guides, hv };
+  }
+
+  // ---------- aides au tracé ----------
+  // Lignes d'inférence pointillées, point accroché en évidence et lecture
+  // (longueur, angle, dimensions) près du curseur.
+
+  const DRAW_TOOLS = new Set(["line", "rect", "rectc", "circle", "arc",
+    "arc3", "slot", "polygon", "spline", "ellipse"]);
+  const guideMaterial = new THREE.LineDashedMaterial({
+    color: sceneTheme.under, dashSize: 1.5, gapSize: 1.2, depthTest: false,
+    transparent: true, opacity: 0.8 });
+  const snapMaterial = new THREE.PointsMaterial({
+    color: sceneTheme.selection, size: 11, sizeAttenuation: false, depthTest: false });
+  let inferLines = null;
+  let snapPoint = null;
+  let readoutEl = null;
+
+  function clearInference() {
+    for (const obj of [inferLines, snapPoint]) {
+      if (obj) { group.remove(obj); obj.geometry.dispose(); }
+    }
+    inferLines = null;
+    snapPoint = null;
+    if (readoutEl) readoutEl.hidden = true;
+  }
+
+  function readoutText(s) {
+    const parts = [];
+    if (s.hv) parts.push(s.hv);
+    if (mode.tool === "line" && mode.chain) {
+      const dx = s.x - mode.chain.x, dy = s.y - mode.chain.y;
+      parts.push(t("L {v} mm", { v: fmtMm(Math.hypot(dx, dy)) }),
+        `${fmtMm(Math.atan2(dy, dx) * 180 / Math.PI)}°`);
+    } else if (mode.tool === "rect" && mode.pendingRect) {
+      parts.push(`${fmtMm(Math.abs(s.x - mode.pendingRect.x))} × `
+        + `${fmtMm(Math.abs(s.y - mode.pendingRect.y))} mm`);
+    } else if (mode.tool === "rectc" && mode.pendingRectC) {
+      parts.push(`${fmtMm(2 * Math.abs(s.x - mode.pendingRectC.x))} × `
+        + `${fmtMm(2 * Math.abs(s.y - mode.pendingRectC.y))} mm`);
+    } else if (mode.tool === "circle" && mode.pendingCircle) {
+      const r = Math.hypot(s.x - mode.pendingCircle.x, s.y - mode.pendingCircle.y);
+      parts.push(t("R {v} mm", { v: fmtMm(r) }));
+    } else {
+      parts.push(`${fmtMm(s.x)}, ${fmtMm(s.y)}`);
+    }
+    return parts.join(" · ");
+  }
+
+  /** Position du curseur dans l'esquisse, pour la barre d'état. */
+  function emitPointer(local) {
+    document.dispatchEvent(new CustomEvent("freesolid:sketch-pointer", {
+      detail: local ? { x: local.x, y: local.y } : null }));
+  }
+
+  function updateInference(event) {
+    const local = toLocal(event);
+    if (!local || !mode.state) { clearInference(); emitPointer(null); return; }
+    const s = snap(local, event);
+    mode.lastLocal = { x: s.x, y: s.y };
+    emitPointer(s);
+    for (const obj of [inferLines, snapPoint]) {
+      if (obj) { group.remove(obj); obj.geometry.dispose(); }
+    }
+    inferLines = null;
+    snapPoint = null;
+    if (s.guides.length) {
+      const pts = s.guides.flatMap((g) => [
+        new THREE.Vector3(g.x, g.y, 0), new THREE.Vector3(s.x, s.y, 0)]);
+      inferLines = new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(pts), guideMaterial);
+      inferLines.computeLineDistances();
+      inferLines.renderOrder = 23;
+      group.add(inferLines);
+    }
+    if (s.onPoint) {
+      snapPoint = new THREE.Points(new THREE.BufferGeometry().setFromPoints(
+        [new THREE.Vector3(s.x, s.y, 0)]), snapMaterial);
+      snapPoint.renderOrder = 24;
+      group.add(snapPoint);
+    }
+    if (!readoutEl) {
+      readoutEl = document.createElement("div");
+      readoutEl.className = "sk-readout";
+      renderer.domElement.parentElement.appendChild(readoutEl);
+    }
+    const host = renderer.domElement.parentElement.getBoundingClientRect();
+    readoutEl.hidden = false;
+    readoutEl.textContent = readoutText(s);
+    readoutEl.style.left = `${event.clientX - host.left + 16}px`;
+    readoutEl.style.top = `${event.clientY - host.top + 18}px`;
   }
 
   // ---------- drawing ----------
@@ -235,7 +386,7 @@ export function createSketchMode(deps) {
     };
     abandonEntityPanel();
     panel.open({
-      icon: "Sketcher_Sketch.svg",
+      icon: "sketch",
       title: t("Image d'esquisse"),
       groups: [
         {
@@ -362,6 +513,7 @@ export function createSketchMode(deps) {
   }
 
   function redraw() {
+    updateRelationButtons();
     if (previewLine) group.remove(previewLine);
     const imageMesh = imageLayer?.mesh;
     if (imageMesh) group.remove(imageMesh);
@@ -375,8 +527,10 @@ export function createSketchMode(deps) {
     const points = [];
     for (const entity of mode.state.entities) {
       const isSelected = mode.selection.some((s) => s.geo === entity.id);
+      const status = STATUS_COLORS[entity.status] ? entity.status : "under";
       const material = isSelected ? selectedMaterial
-        : entity.construction ? constructionMaterial : lineMaterial;
+        : entity.construction ? constructionMaterials[status]
+          : lineMaterials[status];
       if (entity.type === "arc") {
         const { a1, a2 } = arcAngles(entity);
         const segments = [];
@@ -426,6 +580,24 @@ export function createSketchMode(deps) {
         group.add(line);
       }
     }
+    // Origine de l'esquisse : deux flèches courtes, à taille d'écran.
+    const span = (camera.top - camera.bottom) / (camera.zoom || 1);
+    const size = span * 0.035;
+    for (const [dx, dy] of [[1, 0], [0, 1]]) {
+      const arrow = new THREE.ArrowHelper(
+        new THREE.Vector3(dx, dy, 0), new THREE.Vector3(0, 0, 0),
+        size, sceneTheme.axisX, size * 0.3, size * 0.18);
+      arrow.traverse((obj) => {
+        if (obj.material) {
+          obj.material.transparent = true;
+          obj.material.depthTest = false;
+          obj.material.userData.own = true;
+        }
+        obj.renderOrder = 19;
+      });
+      group.add(arrow);
+    }
+
     if (points.length) {
       const flat = new Float32Array(points.flatMap((p) => [p[0], p[1], 0]));
       const geometry = new THREE.BufferGeometry();
@@ -435,21 +607,55 @@ export function createSketchMode(deps) {
       group.add(cloud);
     }
 
+    for (const glyph of relationGlyphs(mode.state.constraints,
+      mode.state.entities, span * 0.025)) {
+      const sprite = createGlyphSprite(glyph.text);
+      sprite.position.set(glyph.x, glyph.y, 0.01);
+      sprite.scale.set(span * 0.028, span * 0.028, 1);
+      sprite.renderOrder = 22;
+      group.add(sprite);
+    }
+
+    // L'unité de tracé suit le zoom : la cote garde sa taille à l'écran.
+    const dimSize = span * 0.02;
     for (const dim of mode.state.dims) {
-      const anchor = sketchDimAnchor(dim, mode.state.entities);
-      if (!anchor) continue;
-      const sprite = createDimSprite(dimLabel(dim), anchor.x, anchor.y);
+      const constraint = (mode.state.constraints ?? [])
+        .find((c) => c.id === dim.id);
+      const shape = dimGeometry(dim, constraint, mode.state.entities, dimSize);
+      if (!shape) continue;
+      const segments = [
+        ...shape.segments,
+        ...shape.arrows.flatMap((a) => arrowSegments(a, dimSize * 0.9)),
+      ];
+      if (segments.length) {
+        const flat = new Float32Array(segments.flatMap(
+          ([x1, y1, x2, y2]) => [x1, y1, 0, x2, y2, 0]));
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.BufferAttribute(flat, 3));
+        const lines = new THREE.LineSegments(geometry,
+          constraint?.driving === false ? drivenDimLineMaterial
+            : dimLineMaterial);
+        lines.renderOrder = 21;
+        group.add(lines);
+      }
+      const sprite = createDimSprite(dimLabel(dim), shape.label.x, shape.label.y);
+      // Étiquette à taille d'écran constante (le canevas fait 256 × 40).
+      sprite.scale.set(span * 0.16, span * 0.16 * 40 / 256, 1);
       sprite.userData.dim = dim;
       sprite.renderOrder = 22;
       group.add(sprite);
     }
 
     const dof = mode.state.dof;
-    say(mode.state.fullyConstrained
-      ? "Esquisse : totalement contrainte"
-      : dof !== null
-        ? `Esquisse : sous-contrainte (${dof} DDL)`
-        : "Esquisse : en édition");
+    const definition = mode.state.definition
+      ?? (mode.state.fullyConstrained ? "full" : "under");
+    say(definition === "over"
+      ? t("Esquisse : sur-contrainte — une relation ou une cote est en trop")
+      : definition === "full"
+        ? t("Esquisse : totalement contrainte")
+        : dof !== null
+          ? t("Esquisse : sous-contrainte ({n} DDL)", { n: dof })
+          : t("Esquisse : en édition"));
   }
 
   function applyState(state, { keepSelection = false } = {}) {
@@ -469,6 +675,7 @@ export function createSketchMode(deps) {
     mode.plane.setFromNormalAndCoplanarPoint(normal, origin);
     mode.solverOk = localSolver.ready && localSolver.load(state);
     redraw();
+    document.dispatchEvent(new Event("freesolid:sketch-state"));
     if (!mode.drag && entityPanelOpen) syncEntityPanel({ refresh: true });
   }
 
@@ -493,6 +700,118 @@ export function createSketchMode(deps) {
       x: (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d,
       y: (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d,
     };
+  }
+
+  /** Le point qui termine l'entité en cours (second clic, ou cotes
+   *  tapées) : ligne (la chaîne continue), rectangle, cercle. */
+  async function placeDrawPoint(point) {
+    const name = mode.state.sketch;
+    if (mode.tool === "line" && mode.chain) {
+      const from = mode.chain;
+      mode.chain = point.onPoint ? null : { x: point.x, y: point.y };
+      safe(call("sketch_add_line", { sketch: name,
+        x1: from.x, y1: from.y, x2: point.x, y2: point.y }));
+    } else if (mode.tool === "rect" && mode.pendingRect) {
+      const a = mode.pendingRect;
+      mode.pendingRect = null;
+      building = true;
+      try {
+        await addRectangle(name, a, point);
+      } finally {
+        building = false;
+      }
+    } else if (mode.tool === "rectc" && mode.pendingRectC) {
+      const c = mode.pendingRectC;
+      mode.pendingRectC = null;
+      building = true;
+      try {
+        await addRectangle(name,
+          { x: 2 * c.x - point.x, y: 2 * c.y - point.y }, point);
+      } finally {
+        building = false;
+      }
+    } else if (mode.tool === "circle" && mode.pendingCircle) {
+      const c = mode.pendingCircle;
+      mode.pendingCircle = null;
+      const r = Math.hypot(point.x - c.x, point.y - c.y);
+      if (r > 0) safe(call("sketch_add_circle",
+        { sketch: name, cx: c.x, cy: c.y, r }));
+    }
+  }
+
+  /** Point déjà posé par l'outil en cours, si la saisie numérique a un
+   *  sens maintenant. */
+  function pendingDrawPoint() {
+    if (mode.tool === "line") return mode.chain;
+    if (mode.tool === "circle") return mode.pendingCircle;
+    if (mode.tool === "rect") return mode.pendingRect;
+    if (mode.tool === "rectc") return mode.pendingRectC;
+    return null;
+  }
+
+  // Saisie numérique : taper un chiffre pendant le tracé ouvre, près du
+  // curseur, les cotes de l'entité (longueur et angle, rayon, largeur et
+  // hauteur). Tab passe au champ suivant, Entrée pose, Échap renonce.
+  let numericBox = null;
+
+  function closeNumericEntry() {
+    numericBox?.remove();
+    numericBox = null;
+  }
+
+  function openNumericEntry(firstKey) {
+    const pending = pendingDrawPoint();
+    const labels = numericFields(mode.tool);
+    if (!pending || !labels.length) return;
+    closeNumericEntry();
+    const host = renderer.domElement.parentElement;
+    const box = document.createElement("div");
+    box.className = "dim-modify sk-numeric";
+    box.dataset.ownKeys = "";
+    const inputs = labels.map((label, index) => {
+      const field = document.createElement("label");
+      field.append(t(label) + " ");
+      const input = document.createElement("input");
+      input.type = "text";
+      input.inputMode = "decimal";
+      if (index === 0) input.value = firstKey;
+      field.append(input);
+      box.append(field);
+      return input;
+    });
+    const rect = host.getBoundingClientRect();
+    const at = mode.lastMouse ?? { clientX: rect.left + rect.width / 2,
+                                   clientY: rect.top + rect.height / 2 };
+    box.style.left = `${at.clientX - rect.left + 16}px`;
+    box.style.top = `${at.clientY - rect.top + 18}px`;
+    host.appendChild(box);
+    numericBox = box;
+    const tool = mode.tool;
+    const apply = async () => {
+      const [a, b] = inputs.map((input) => num(input.value) ?? NaN);
+      const target = numericDrawTarget(tool, pendingDrawPoint(),
+        mode.lastLocal, a, b);
+      closeNumericEntry();
+      if (!target) {
+        say("Saisie numérique : valeur invalide", true);
+        return;
+      }
+      if (mode.tool !== tool) return;
+      clearInference();
+      await placeDrawPoint({ ...target, onPoint: false });
+    };
+    box.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key === "Enter") {
+        event.preventDefault();
+        apply();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        closeNumericEntry();
+      }
+    });
+    inputs[0].focus();
+    inputs[0].setSelectionRange(firstKey.length, firstKey.length);
   }
 
   async function onClick(event) {
@@ -532,49 +851,28 @@ export function createSketchMode(deps) {
           setTool("select");
           return;
         }
-        mode.chain = snapped.onPoint ? null : { x: snapped.x, y: snapped.y };
-        safe(call("sketch_add_line", { sketch: name,
-          x1: from.x, y1: from.y, x2: snapped.x, y2: snapped.y }));
+        await placeDrawPoint(snapped);
       }
     } else if (mode.tool === "rect") {
       if (!mode.pendingRect) {
         mode.pendingRect = { x: snapped.x, y: snapped.y };
-        say("Rectangle : cliquez le sommet opposé");
+        say("Rectangle : cliquez le sommet opposé — ou tapez la largeur");
       } else {
-        const a = mode.pendingRect;
-        mode.pendingRect = null;
-        building = true;
-        try {
-          await addRectangle(name, a, snapped);
-        } finally {
-          building = false;
-        }
+        await placeDrawPoint(snapped);
       }
     } else if (mode.tool === "rectc") {
       if (!mode.pendingRectC) {
         mode.pendingRectC = { x: snapped.x, y: snapped.y };
-        say("Rectangle par le centre : cliquez un sommet");
+        say("Rectangle par le centre : cliquez un sommet — ou tapez la largeur");
       } else {
-        const c = mode.pendingRectC;
-        mode.pendingRectC = null;
-        building = true;
-        try {
-          await addRectangle(name,
-            { x: 2 * c.x - snapped.x, y: 2 * c.y - snapped.y }, snapped);
-        } finally {
-          building = false;
-        }
+        await placeDrawPoint(snapped);
       }
     } else if (mode.tool === "circle") {
       if (!mode.pendingCircle) {
         mode.pendingCircle = { x: snapped.x, y: snapped.y };
-        say("Cercle : cliquez pour donner le rayon");
+        say("Cercle : cliquez pour donner le rayon — ou tapez-le");
       } else {
-        const c = mode.pendingCircle;
-        mode.pendingCircle = null;
-        const r = Math.hypot(snapped.x - c.x, snapped.y - c.y);
-        if (r > 0) safe(call("sketch_add_circle",
-          { sketch: name, cx: c.x, cy: c.y, r }));
+        await placeDrawPoint(snapped);
       }
     } else if (mode.tool === "arc") {
       if (!mode.pendingArc) {
@@ -725,14 +1023,25 @@ export function createSketchMode(deps) {
       } else {
         const first = mode.pendingDim;
         mode.pendingDim = null;
+        let params;
         if (!target
             || (target.geo === first.geo && target.point === first.point)) {
-          safe(call("sketch_dim", { sketch: name, geo: first.geo }));
+          params = { sketch: name, geo: first.geo };
         } else {
-          const params = { sketch: name, geo: first.geo, geo2: target.geo };
+          params = { sketch: name, geo: first.geo, geo2: target.geo };
           if (first.point != null) params.point = first.point;
           if (target.point != null) params.point2 = target.point;
-          safe(call("sketch_dim", params));
+        }
+        // La cote est posée à la valeur mesurée, puis on saisit la vraie.
+        const before = new Set((mode.state.dims ?? []).map((d) => d.id));
+        const at = { x: event.clientX, y: event.clientY };
+        try {
+          applyState(await call("sketch_dim", params));
+          const created = (mode.state.dims ?? [])
+            .find((d) => !before.has(d.id));
+          if (created) openModifyBox(created, at);
+        } catch (error) {
+          say(error.message, true);
         }
       }
     }
@@ -788,7 +1097,7 @@ export function createSketchMode(deps) {
   }
 
   function onPointerDown(event) {
-    if (mode.tool !== "select" || !mode.state) return;
+    if (event.button !== 0 || mode.tool !== "select" || !mode.state) return;
     const p = overEndpoint(event);
     if (p) {
       mode.drag = { geo: p.geo, point: p.point };
@@ -800,7 +1109,10 @@ export function createSketchMode(deps) {
     }
     // Drag d'arête entière (Sketcher point 0 = courbe).
     const entity = overEntity(event);
-    if (!entity) return;
+    if (!entity) {
+      mode.box = { x: event.clientX, y: event.clientY };
+      return;
+    }
     const local = toLocal(event);
     if (!local) return;
     mode.drag = {
@@ -901,8 +1213,53 @@ export function createSketchMode(deps) {
     }
   }
 
+  /** Points écran d'une entité, en polyligne, pour le cadre. */
+  function entityScreenPoints(entity) {
+    let pts = [];
+    if (entity.type === "line") {
+      pts = [entity.p1, entity.p2];
+    } else if (entity.type === "circle" || entity.type === "arc") {
+      const { a1, a2 } = entity.type === "arc"
+        ? arcAngles(entity) : { a1: 0, a2: Math.PI * 2 };
+      for (let i = 0; i <= 32; i++) {
+        const a = a1 + (i / 32) * (a2 - a1);
+        pts.push([entity.c[0] + entity.r * Math.cos(a),
+                  entity.c[1] + entity.r * Math.sin(a)]);
+      }
+    } else if (entity.points) {
+      pts = entity.points;
+    }
+    return pts.map((p) => toScreen(p[0], p[1]));
+  }
+
+  function selectInBox(start, end, additive) {
+    const items = (mode.state?.entities ?? []).map((entity) => ({
+      id: entity.id, points: entityScreenPoints(entity),
+    }));
+    const ids = pickInBox(items, normalizeRect(start, end),
+      boxMode(start, end));
+    const kept = additive ? mode.selection : [];
+    const fresh = ids.filter((id) => !kept.some((s) => s.geo === id))
+      .map((geo) => ({ geo }));
+    mode.selection = [...kept, ...fresh];
+    say(t("Sélection : {n} entité(s) — relation, symétrie ou répétition ; clic dans le vide = vider",
+      { n: mode.selection.length }));
+    redraw();
+    syncEntityPanel();
+  }
+
   function onPointerMove(event) {
     mode.lastMouse = { clientX: event.clientX, clientY: event.clientY };
+    if (DRAW_TOOLS.has(mode.tool)) updateInference(event);
+    else {
+      if (inferLines || snapPoint || !readoutEl?.hidden) clearInference();
+      emitPointer(toLocal(event));
+    }
+    if (mode.box) {
+      const here = { x: event.clientX, y: event.clientY };
+      if (isDrag(mode.box, here)) boxOverlay?.show(mode.box, here);
+      return;
+    }
     if (mode.tool === "select" && !mode.drag) {
       const hot = overEndpoint(event) || overEntity(event);
       setCursor(hot ? "grab" : "default");
@@ -1004,7 +1361,18 @@ export function createSketchMode(deps) {
     }
   }
 
-  function onPointerUp() {
+  function onPointerUp(event) {
+    if (mode.box) {
+      const start = mode.box;
+      mode.box = null;
+      boxOverlay?.hide();
+      const end = { x: event.clientX, y: event.clientY };
+      if (isDrag(start, end)) {
+        mode.justDragged = true; // le click qui suit ne vide pas la sélection
+        selectInBox(start, end, event.ctrlKey || event.metaKey);
+      }
+      return;
+    }
     if (mode.drag) {
       // Drag local (M3) : un seul sketch_move au lâcher, via la même
       // file — il ne double pas un move serveur déjà en vol.
@@ -1088,10 +1456,94 @@ export function createSketchMode(deps) {
       if (!dim) continue;
       const s = toScreen(child.position.x, child.position.y);
       if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < 22) {
-        editDim(dim);
+        openModifyBox(dim, { x: s.x, y: s.y });
         return;
       }
     }
+  }
+
+  // ---------- boîte de saisie d'une cote ----------
+  // Petite boîte flottante près de la cote : la valeur mesurée est
+  // sélectionnée, on tape la nouvelle (ou une expression), Entrée applique,
+  // Échap garde la valeur mesurée. « … » ouvre le panneau complet (nom).
+
+  let modifyBox = null;
+
+  function closeModifyBox() {
+    modifyBox?.remove();
+    modifyBox = null;
+  }
+
+  function openModifyBox(dim, at) {
+    closeModifyBox();
+    const host = renderer.domElement.parentElement;
+    const rect = host.getBoundingClientRect();
+    const sketchDim = { ...dim, kind: "sketch" };
+    const isSketchAngle = dim.type === "Angle";
+    const shown = dim.expr
+      || (isSketchAngle
+        ? (dim.value * 180 / Math.PI).toFixed(2)
+        : String(+Number(dim.value).toFixed(4)));
+    const box = document.createElement("div");
+    box.className = "dim-modify";
+    box.dataset.ownKeys = "1"; // le panneau ne capte pas Entrée / Échap ici
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = shown;
+    input.title = t("Valeur ou expression — Entrée pour appliquer, Échap pour garder la valeur mesurée");
+    const unitEl = document.createElement("span");
+    unitEl.textContent = isSketchAngle ? "°" : "mm";
+    const ok = document.createElement("button");
+    ok.className = "ok";
+    ok.textContent = "✓";
+    ok.title = t("Appliquer (Entrée)");
+    const cancel = document.createElement("button");
+    cancel.className = "no";
+    cancel.textContent = "✗";
+    cancel.title = t("Garder la valeur mesurée (Échap)");
+    const more = document.createElement("button");
+    more.textContent = "…";
+    more.title = t("Nom et expression de la cote");
+    box.append(input, unitEl, ok, cancel, more);
+    host.appendChild(box);
+    const left = Math.min(Math.max(at.x - rect.left + 12, 4),
+      rect.width - box.offsetWidth - 4);
+    const top = Math.min(Math.max(at.y - rect.top - box.offsetHeight - 12, 4),
+      rect.height - box.offsetHeight - 4);
+    box.style.left = `${left}px`;
+    box.style.top = `${top}px`;
+    modifyBox = box;
+
+    const apply = () => {
+      const extra = dimEditPayload({ value: input.value, name: dim.name ?? "" },
+        sketchDim, { shown, isSketchAngle });
+      closeModifyBox();
+      if (extra.value === undefined && extra.expr === undefined) return;
+      const params = { sketch: mode.state.sketch, dim: dim.id, ...extra };
+      safe((async () => {
+        const state = await call("sketch_set_dim", params);
+        await refresh(call("get_tree"));
+        return state;
+      })(), { keepSelection: true });
+    };
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        apply();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        closeModifyBox();
+      }
+      event.stopPropagation();
+    });
+    ok.addEventListener("click", apply);
+    cancel.addEventListener("click", closeModifyBox);
+    more.addEventListener("click", () => {
+      closeModifyBox();
+      editDim(dim);
+    });
+    input.focus();
+    input.select();
   }
 
   function onKey(event) {
@@ -1099,6 +1551,12 @@ export function createSketchMode(deps) {
     // Taper dans un champ du panneau ne doit pas changer d'outil.
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
     const key = event.key.toLowerCase();
+    if (/^[0-9.,]$/.test(event.key) && !event.ctrlKey && !event.metaKey
+        && !event.altKey && pendingDrawPoint()) {
+      event.preventDefault();
+      openNumericEntry(event.key);
+      return;
+    }
     if (event.key === "Escape") {
       if (previewLine) previewLine.visible = false;
       setTool("select");
@@ -1125,7 +1583,6 @@ export function createSketchMode(deps) {
     else if (key === "r") setTool("rect");
     else if (key === "c") setTool("circle");
     else if (key === "a") setTool("arc3");
-    else if (key === "s") setTool("spline");
     else if (key === "e") setTool("ellipse");
     else if (key === "t") setTool("trim");
     else if (key === "g") setTool("construction");
@@ -1138,6 +1595,8 @@ export function createSketchMode(deps) {
 
   function setTool(tool) {
     if (building) return;
+    closeNumericEntry();
+    clearInference();
     mode.tool = tool;
     mode.chain = null;
     mode.pendingCircle = null;
@@ -1171,7 +1630,7 @@ export function createSketchMode(deps) {
       rect: "Rectangle par sommet : cliquez le premier sommet",
       rectc: "Rectangle par le centre : cliquez le centre",
       circle: "Cercle : cliquez le centre",
-      spline: "Spline : cliquez les points, Entrée pour terminer (S)",
+      spline: "Spline : cliquez les points, Entrée pour terminer",
       ellipse: "Ellipse : cliquez le centre",
       arc: "Arc par centre : cliquez le centre",
       arc3: "Arc 3 points : cliquez le point de départ",
@@ -1180,7 +1639,7 @@ export function createSketchMode(deps) {
       skfillet: "Congé d'esquisse : cliquez la première ligne, près du coin",
       trim: "Ajuster : cliquez le tronçon à supprimer",
       construction: "Construction : cliquez une entité pour la basculer",
-      dim: "Cotation intelligente : cliquez une entité ou une extrémité",
+      dim: "Cotation : cliquez une entité ou une extrémité",
     };
     say(hints[tool]);
     redraw();
@@ -1228,6 +1687,10 @@ export function createSketchMode(deps) {
   function syncEntityPanel({ refresh = false } = {}) {
     if (!mode.active || mode.drag) return;
     const geos = uniqueSelectionGeos();
+    // Barre d'état : la longueur de ce qui est sélectionné.
+    document.dispatchEvent(new CustomEvent("freesolid:sketch-selection", {
+      detail: geos.map((id) => mode.state?.entities.find((e) => e.id === id))
+        .filter(Boolean) }));
     if (geos.length !== 1) {
       closeEntityPanel();
       return;
@@ -1264,7 +1727,8 @@ export function createSketchMode(deps) {
     }));
     propRows.push({
       type: "note",
-      text: `Construction : ${entity.construction ? "oui" : "non"}`,
+      text: t("Construction : {v}",
+        { v: entity.construction ? t("oui") : t("non") }),
       readonly: true,
     });
     const constraints = listed.constraints ?? [];
@@ -1305,7 +1769,7 @@ export function createSketchMode(deps) {
       ],
       note: hasDriving
         ? "Cliquez une cote dans Relations pour la modifier."
-        : "Pour piloter une valeur : Cotation intelligente (D).",
+        : "Pour piloter une valeur : Cotation (D).",
       actions: [
         {
           label: t("Construction"),
@@ -1374,6 +1838,20 @@ export function createSketchMode(deps) {
       .addEventListener("click", () => applyConstraint(kind));
   }
 
+  /** Avec une sélection, seules les relations qu'elle permet restent
+   *  actives (et sont mises en avant) ; sans sélection, toutes. */
+  function updateRelationButtons() {
+    const selection = mode.active ? mode.selection : [];
+    const possible = selection.length
+      ? applicableRelations(selection, mode.state?.entities) : null;
+    for (const kind of Object.keys(CONSTRAINT_NEEDS)) {
+      const button = document.getElementById("sk-c-" + kind);
+      if (!button) continue;
+      button.disabled = !!possible && !possible.includes(kind);
+      button.classList.toggle("suggest", !!possible?.includes(kind));
+    }
+  }
+
   // ---------- panneau Relations (voir et supprimer) ----------
 
   async function openRelationsPanel() {
@@ -1413,8 +1891,8 @@ export function createSketchMode(deps) {
     const geos = mode.selection.map((s) => s.geo);
     abandonEntityPanel();
     panel.open({
-      icon: "Sketcher_RectangularArray.svg",
-      title: t("Répétition d'entités"),
+      icon: "sketch_array",
+      title: t("Réseau d'esquisse"),
       groups: [{
         label: t("Paramètres"),
         rows: [
@@ -1447,8 +1925,8 @@ export function createSketchMode(deps) {
     const geos = mode.selection.map((s) => s.geo);
     abandonEntityPanel();
     panel.open({
-      icon: "Sketcher_Copy.svg",
-      title: t("Décaler les entités"),
+      icon: "offset",
+      title: t("Décaler"),
       groups: [{
         label: t("Paramètres"),
         rows: [
@@ -1483,7 +1961,7 @@ export function createSketchMode(deps) {
   });
 
   // Convertir les entités : le contour de la face porteuse arrive en
-  // géométrie réelle bloquée — le point de départ SolidWorks classique.
+  // géométrie réelle bloquée — le point de départ classique.
   document.getElementById("sk-convert").addEventListener("click", () => {
     if (!mode.active || !mode.state) return;
     call("sketch_convert", { sketch: mode.state.sketch })
@@ -1509,6 +1987,9 @@ export function createSketchMode(deps) {
     try {
       const state = await statePromise;
       mode.active = true;
+      // La barre d'icônes de la face cliquée resterait au milieu du dessin
+      // et prendrait les clics destinés à l'esquisse.
+      hideContextToolbar?.();
       applyState(state);
       // Le WASM se charge en fond ; dès qu'il est prêt, l'esquisse
       // courante y est (re)chargée.
@@ -1534,6 +2015,10 @@ export function createSketchMode(deps) {
       camera.position.copy(origin.clone().add(normal.multiplyScalar(220)));
       controls.target.copy(origin);
       controls.enableRotate = false;
+      // Matrices à jour tout de suite : un clic arrivé avant l'image
+      // suivante se projette déjà dans la vue de l'esquisse.
+      controls.update();
+      camera.updateMatrixWorld();
 
       for (const [type, handler] of listeners) {
         renderer.domElement.addEventListener(type, handler);
@@ -1550,6 +2035,10 @@ export function createSketchMode(deps) {
   async function exit(keep) {
     if (!mode.active) return;
     closeEntityPanel();
+    closeModifyBox();
+    clearInference();
+    readoutEl?.remove();
+    readoutEl = null;
     mode.active = false;
     document.dispatchEvent(new Event("freesolid:sketch-exit"));
     for (const [type, handler] of listeners) {
@@ -1585,6 +2074,14 @@ export function createSketchMode(deps) {
       } catch (error) {
         say(error.message, true);
       }
+    } else if (mode.state) {
+      // Quitter sans garder : le moteur défait tout depuis l'entrée.
+      try {
+        await refresh(call("sketch_cancel", { sketch: mode.state.sketch }));
+        say("Esquisse quittée sans enregistrer les modifications.");
+      } catch (error) {
+        say(error.message, true);
+      }
     } else {
       await refresh(call("get_tree"));
     }
@@ -1600,10 +2097,23 @@ export function createSketchMode(deps) {
 
   return {
     get active() { return mode.active; },
+    /** Nom de l'esquisse ouverte, ou null. */
+    get editing() { return mode.active ? mode.state?.sketch ?? null : null; },
+    get definition() { return mode.active ? mode.state?.definition ?? null : null; },
     get lastFinished() { return mode.lastFinished; },
     enter,
     // Termine l'esquisse en la gardant — cliquer une fonction du ruban
     // pendant le dessin appelle ceci avant d'ouvrir son panneau.
     finish: () => exit(true),
+    /** Quitter sans garder (coin de confirmation, bouton Quitter). */
+    cancel: () => exit(false),
+    /** Points monde de la géométrie, pour cadrer sans quitter le plan. */
+    framePoints() {
+      if (!mode.active) return [];
+      return sketchLocalPoints(mode.state?.entities).map(([x, y]) => {
+        const world = new THREE.Vector3(x, y, 0).applyMatrix4(mode.matrix);
+        return [world.x, world.y, world.z];
+      });
+    },
   };
 }

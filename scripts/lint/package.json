@@ -1,0 +1,9 @@
+{
+  "name": "freesolid-lint",
+  "private": true,
+  "description": "Garde-fou ESLint de app/ : aucun nom jamais défini (no-undef)",
+  "devDependencies": {
+    "eslint": "9.17.0",
+    "globals": "15.14.0"
+  }
+}

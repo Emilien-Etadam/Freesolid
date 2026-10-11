@@ -8,12 +8,12 @@
 import { t } from "./i18n.js";
 
 export const REPO_URL = "https://github.com/Emilien-Etadam/Freesolid";
-export const RELEASES_URL = REPO_URL + "/releases";
+const RELEASES_URL = REPO_URL + "/releases";
 export const ISSUES_URL = REPO_URL + "/issues";
-export const LICENSE_URL = REPO_URL + "/blob/main/LICENSE";
+const LICENSE_URL = REPO_URL + "/blob/main/LICENSE";
 
 export const LANG_KEY = "freesolid.lang";
-export const LANGS = [["fr", "Français"], ["en", "English"]];
+const LANGS = [["fr", "Français"], ["en", "English"]];
 
 /** « fr-FR », « en_US », « de »… → langue livrée, français par défaut. */
 export function detectLang(navigatorLang) {
@@ -39,6 +39,39 @@ export function writeLang(storage, lang) {
   } catch {
     return false;
   }
+}
+
+export const THEME_KEY = "freesolid.theme";
+/** Thèmes proposés : id, libellé (traduit à l'affichage). */
+const THEMES = [["dark", "Sombre"], ["light", "Clair"], ["system", "Selon le système"]];
+
+/** Le thème choisi ; sombre par défaut. */
+export function readTheme(storage) {
+  try {
+    const stored = storage?.getItem(THEME_KEY);
+    if (THEMES.some(([id]) => id === stored)) return stored;
+  } catch {
+    // stockage indisponible : thème par défaut.
+  }
+  return "dark";
+}
+
+export function writeTheme(storage, theme) {
+  if (!THEMES.some(([id]) => id === theme)) return false;
+  try {
+    storage?.setItem(THEME_KEY, theme);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** « system » suit le réglage du système ; sinon le choix tel quel. Le
+ *  même calcul tourne en tête d'index.html, avant que la scène ne lise
+ *  ses couleurs. */
+export function resolveTheme(theme, prefersLight) {
+  if (theme === "system") return prefersLight ? "light" : "dark";
+  return theme === "light" ? "light" : "dark";
 }
 
 /**
@@ -111,7 +144,7 @@ function esc(text) {
  * `call` la fonction d'appel du moteur ; `ribbonLabels` {read, apply}.
  */
 export function createSettingsDialog({
-  root, doc, win, call, ribbonLabels, storage, navigatorLang,
+  root, doc, win, call, ribbonLabels, wheel, storage, navigatorLang,
 }) {
   const bridge = desktopBridge(win);
   let pendingUpdate = null;
@@ -120,6 +153,7 @@ export function createSettingsDialog({
     const rows = infoRows(ping, extra);
     const lang = readLang(storage, navigatorLang);
     const labelsMode = ribbonLabels.read();
+    const theme = readTheme(storage);
     const T = (text, vars) => esc(t(text, vars));
     root.innerHTML = `
       <div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
@@ -156,6 +190,19 @@ export function createSettingsDialog({
             ${labelsMode === "icons-and-text" ? "checked" : ""}> ${T("Icônes et texte")}</label>
           <label><input type="radio" name="ribbon-labels" value="icons-only"
             ${labelsMode === "icons-only" ? "checked" : ""}> ${T("Icônes seules")}</label>
+        </div>
+        <div class="settings-field">
+          <span>${T("Molette")}</span>
+          <label><input type="checkbox" data-action="reverse-wheel"
+            ${wheel?.read() ? "checked" : ""}> ${T("Inverser le sens du zoom")}</label>
+        </div>
+        <div class="settings-field">
+          <label for="settings-theme">${T("Thème")}</label>
+          <select id="settings-theme">
+            ${THEMES.map(([id, name]) =>
+              `<option value="${id}" ${id === theme ? "selected" : ""}>${T(name)}</option>`).join("")}
+          </select>
+          <span class="settings-note">${T("la page se recharge au changement")}</span>
         </div>
         <div class="settings-field">
           <label for="settings-lang">${T("Langue")}</label>
@@ -241,6 +288,13 @@ export function createSettingsDialog({
     for (const radio of root.querySelectorAll('input[name="ribbon-labels"]')) {
       radio.addEventListener("change", () => ribbonLabels.apply(radio.value));
     }
+    root.querySelector('[data-action="reverse-wheel"]')
+      ?.addEventListener("change", (event) => wheel?.apply(event.target.checked));
+    root.querySelector("#settings-theme")
+      ?.addEventListener("change", (event) => {
+        // Comme la langue : la scène 3D lit ses couleurs au chargement.
+        if (writeTheme(storage, event.target.value)) win.location?.reload?.();
+      });
     root.querySelector("#settings-lang")
       ?.addEventListener("change", (event) => {
         // La langue s'applique au chargement (ruban, panneaux, moteur) :

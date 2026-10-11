@@ -2,7 +2,7 @@
 // contre un serveur déjà lancé (voir README.md) :
 //
 //   esquisse sur plan → rectangle → drag de coin (solveur WASM local)
-//   → bossage avec aperçu jaune → OK → Ctrl+Z → Ctrl+Y
+//   → extrusion avec aperçu jaune → OK → Ctrl+Z → Ctrl+Y
 //
 // Toute erreur console/page fait échouer le test (exit 1). Un dispose()
 // de matériau partagé, une course async ou un état cassé explosent ici.
@@ -83,6 +83,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     process.exit(1);
   }
   await step("chargement");
+  // Sans document, l'accueil s'ouvre au démarrage et couvre l'interface :
+  // on y choisit « Nouvelle pièce », comme le ferait l'utilisateur.
+  if (await page.isVisible("#welcome")) {
+    await page.click("#welcome [data-welcome='part']");
+    await page.waitForSelector("#welcome", { state: "hidden", timeout: 10000 });
+    await sleep(1000);
+  }
   const isOrtho = await page.evaluate(
     () => window.__freesolidDebug?.isOrthographic === true);
   if (!isOrtho) errors.push("caméra : projection orthographique absente");
@@ -194,27 +201,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     document.body.classList.contains("ribbon-icons-only")
     && localStorage.getItem("freesolid.ribbonLabels") === "icons-only");
   if (!iconsOnly) errors.push("Icônes seules : classe ou localStorage absent");
-  const labelBoxes = await page.$$eval(
-    "#ribbon-features .ribbon-group",
-    (groups) => groups.map((g) => {
-      const label = g.querySelector(".ribbon-group-label");
-      const gr = g.getBoundingClientRect();
-      const lr = label.getBoundingClientRect();
-      return {
-        name: label.textContent,
-        w: Math.round(lr.width),
-        h: Math.round(lr.height),
-        overflow: lr.left < gr.left - 1 || lr.right > gr.right + 1,
-      };
-    }),
-  );
-  for (const box of labelBoxes) {
-    if (box.w < 8 || box.h < 8) {
-      errors.push("libellé invisible en icônes seules : " + box.name);
-    }
-    if (box.overflow) {
-      errors.push("libellé hors groupe en icônes seules : " + box.name);
-    }
+  // En-tête compact : les noms de groupe sont masqués à l'œil (les
+  // séparateurs suffisent) mais restent dans le DOM, pour la recherche et
+  // les lecteurs d'écran ; le ruban garde sa hauteur sur une rangée.
+  const groupNames = await page.$$eval(
+    "#ribbon-features .ribbon-group-label", (els) => els.map((e) => e.textContent));
+  if (groupNames.some((name) => !name)) {
+    errors.push("nom de groupe vide en icônes seules : " + groupNames.join(", "));
+  }
+  const ribbonHeight = await page.$eval("#ribbon-features",
+    (el) => Math.round(el.getBoundingClientRect().height));
+  if (ribbonHeight > 70) {
+    errors.push("ruban sur plus d'une rangée en icônes seules : " + ribbonHeight + " px");
   }
   // Chaque bouton du ruban doit englober son icône : en icônes seules,
   // font-size 0 rendait le max-width (em) des boutons large nul et l'icône
@@ -322,7 +320,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("rectangle");
   await page.screenshot({ path: path.join(SHOTS, "1-esquisse.png") });
 
-  // 2-p025. Propriétés d'une ligne dans le PropertyManager.
+  // 2-p025. Propriétés d'une ligne dans le panneau de propriétés.
   await page.click('[data-tool="select"]');
   await sleep(200);
   await page.mouse.click(cx, cy - 70);
@@ -347,7 +345,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const panelOpenAfterLine = await page.evaluate(
     () => document.querySelector("aside")?.classList.contains("panel-open"));
   if (!panelOpenAfterLine) {
-    errors.push("P025 : le PropertyManager devrait être ouvert sur la ligne");
+    errors.push("P025 : le panneau de propriétés devrait être ouvert sur la ligne");
   }
   await page.screenshot({ path: path.join(SHOTS, "1a-entite-ligne.png") });
   await page.mouse.click(cx + 90, cy);
@@ -495,28 +493,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("drag arête");
   await page.screenshot({ path: path.join(SHOTS, "2b-drag-edge.png") });
 
-  // P027 — avant le bossage, aucun solide : compteur honnête.
+  // P027 — avant l'extrusion, aucun solide : compteur honnête.
   const folderTextsBeforePad = await page.locator("#tree li.folder")
     .allTextContents();
   if (!folderTextsBeforePad.some((t) => t.includes("Corps volumiques (0)"))) {
-    errors.push("P027 : attendu « Corps volumiques (0) » avant le bossage"
+    errors.push("P027 : attendu « Corps volumiques (0) » avant l'extrusion"
       + " (vu : " + folderTextsBeforePad.join(" | ") + ")");
   }
 
-  // 4. Bossage : onglet Fonctions, sortie auto d'esquisse, aperçu, OK
+  // 4. Extrusion : onglet Fonctions, sortie auto d'esquisse, aperçu, OK
   await page.click('[data-tab="features"]');
   await sleep(400);
   await page.click("#btn-pad");
   await sleep(2500);
-  await step("panneau bossage + aperçu");
+  await step("panneau extrusion + aperçu");
   await page.screenshot({ path: path.join(SHOTS, "3-apercu.png") });
   await page.click('#panel [title^="OK"]');
   await sleep(3000);
-  await step("bossage appliqué");
-  await page.screenshot({ path: path.join(SHOTS, "4-bossage.png") });
+  await step("extrusion appliquée");
+  await page.screenshot({ path: path.join(SHOTS, "4-extrusion.png") });
 
   // N003 — variable avant d'ouvrir le graphe, pour tirer un fil.
-  await page.click("#btn-equations");
+  // Équations : onglet Évaluer (le bouton de l'ancienne barre du haut est
+  // caché depuis l'en-tête compact, les menus et le ruban le relaient).
+  await page.click('[data-tab="evaluate"]');
+  await page.click("#ribbon-equations");
   await page.waitForFunction(
     () => document.querySelector("#panel .ptitle")?.textContent === "Équations",
     null,
@@ -540,6 +541,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       + JSON.stringify(listedVars) + ")");
   }
   await step("variable largeur");
+  // Retour à l'onglet Fonctions : la suite clique ses boutons.
+  await page.click('[data-tab="features"]');
 
   // N002 — vue en graphe lecture seule, depuis lastTree.
   await page.click("#btn-graph");
@@ -563,35 +566,35 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const hasSketch = graphInfo.names.some((n) => /Sketch/i.test(n))
     || graphInfo.labels.some((t) => /Esquisse/i.test(t));
   const hasPad = graphInfo.names.some((n) => /Pad/i.test(n))
-    || graphInfo.labels.some((t) => /Bossage/i.test(t));
+    || graphInfo.labels.some((t) => /Extrusion/i.test(t));
   if (!hasSketch || !hasPad) {
-    errors.push("N002 : esquisse et bossage attendus dans le graphe ("
+    errors.push("N002 : esquisse et extrusion attendus dans le graphe ("
       + graphInfo.labels.join(", ") + ")");
   }
   const linked = graphInfo.edges.some((e) =>
     (/Sketch/i.test(e.from) && /Pad/i.test(e.to))
     || (/Sketch/i.test(e.to) && /Pad/i.test(e.from)));
   if (!linked) {
-    errors.push("N002 : pas d'arête esquisse–bossage ("
+    errors.push("N002 : pas d'arête esquisse–extrusion ("
       + JSON.stringify(graphInfo.edges) + ")");
   }
   const padShowsDepth = graphInfo.labels.some((t) =>
-    /Bossage/i.test(t) && /Profondeur/.test(t));
+    /Extrusion/i.test(t) && /Profondeur/.test(t));
   if (!padShowsDepth) {
-    errors.push("N007 : le nœud de bossage devrait montrer sa profondeur ("
+    errors.push("N007 : le nœud d'extrusion devrait montrer sa profondeur ("
       + graphInfo.labels.join(" | ") + ")");
   }
   await page.screenshot({ path: path.join(SHOTS, "4a-graphe.png") });
 
-  // N003 — tirer un fil variable → bossage, choisir la profondeur, couper.
+  // N003 — tirer un fil variable → extrusion, choisir la profondeur, couper.
   const varNode = page.locator("#graph-view .graph-node.variable").first();
   const padNode = page.locator("#graph-view .graph-node").filter({
-    hasText: /Bossage/,
+    hasText: /Extrusion/,
   }).first();
   const varBox = await varNode.boundingBox();
   const padNodeBox = await padNode.boundingBox();
   if (!varBox || !padNodeBox) {
-    errors.push("N003 : nœud variable ou bossage introuvable pour le drag");
+    errors.push("N003 : nœud variable ou extrusion introuvable pour le drag");
   } else {
     await page.mouse.move(varBox.x + varBox.width / 2,
       varBox.y + varBox.height / 2);
@@ -629,7 +632,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       }));
     const pad = [...document.querySelectorAll("#graph-view .graph-node")]
       .find((n) => /Pad/i.test(n.getAttribute("data-name") || "")
-        || /Bossage/i.test(n.textContent || ""));
+        || /Extrusion/i.test(n.textContent || ""));
     const feature = pad?.getAttribute("data-name") || "Pad";
     const r = await fetch("/api", { method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -643,7 +646,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const paramEdge = afterWire.edges.find((e) => e.kind === "param"
     && /largeur/i.test(e.from));
   if (!paramEdge) {
-    errors.push("N003 : arête param largeur→bossage absente ("
+    errors.push("N003 : arête param largeur→extrusion absente ("
       + JSON.stringify(afterWire.edges) + ")");
   }
   if (!(afterWire.length && Math.abs(afterWire.length.value - 25) < 1e-6
@@ -717,23 +720,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await step("vue graphe");
 
-  // 4b. FeatureManager — dossiers en tête + barre de reprise glissée.
+  // 4b. Arbre de création — dossiers en tête + barre de reprise glissée.
   const folderTexts = await page.locator("#tree li.folder").allTextContents();
   const folderJoined = folderTexts.join(" | ");
   for (const name of ["Corps volumiques", "Corps surfaciques", "Équations"]) {
     if (!folderTexts.some((t) => t.includes(name))) {
-      errors.push("dossier FeatureManager manquant : " + name
+      errors.push("dossier de l'arbre manquant : " + name
         + " (vu : " + folderJoined + ")");
     }
   }
   if (!folderTexts.some((t) => t.includes("Corps volumiques (1)"))) {
-    errors.push("P027 : attendu « Corps volumiques (1) » après le bossage"
+    errors.push("P027 : attendu « Corps volumiques (1) » après l'extrusion"
       + " (vu : " + folderJoined + ")");
   }
   const bodyRowsAfterPad = await page.locator("#tree li.body").count();
   if (bodyRowsAfterPad < 1) {
     errors.push("P027 : dossier Corps volumiques devrait être déplié "
-      + "après le bossage (ligne de corps invisible)");
+      + "après l'extrusion (ligne de corps invisible)");
   }
   await page.waitForSelector("#tree li.rollback", { timeout: 8000 });
   await page.waitForSelector("#tree li.feat", { timeout: 8000 });
@@ -746,7 +749,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   });
   const facesBefore = await faceCount();
   if (facesBefore < 1) {
-    errors.push("barre de reprise : pas de solide après le bossage");
+    errors.push("barre de reprise : pas de solide après l'extrusion");
   }
   const dragRollback = async (fromSel, toY) => {
     const box = await page.locator(fromSel).boundingBox();
@@ -783,19 +786,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("barre de reprise redescendue");
   await page.screenshot({ path: path.join(SHOTS, "4c-reprise-bas.png") });
 
-  // 4d. Clic droit sur le bossage → Modifier ouvre le panneau d'édition.
+  // 4d. Clic droit sur l'extrusion → Modifier ouvre le panneau d'édition.
   const padRow = page.locator("#tree li.feat").first();
   await padRow.click({ button: "right" });
   await sleep(250);
   const modifyHidden = await page.$eval("#ctx-modify", (el) => el.hidden);
   if (modifyHidden) {
-    errors.push("Modifier : entrée masquée sur le bossage");
+    errors.push("Modifier : entrée masquée sur l'extrusion");
   }
   await page.click("#ctx-modify");
   await sleep(1200);
   const panelTitle = await page.evaluate(() =>
     document.querySelector("#panel .ptitle")?.textContent ?? "");
-  if (!/Bossage/i.test(panelTitle)) {
+  if (!/Extrusion/i.test(panelTitle)) {
     errors.push("Modifier : panneau d'édition non ouvert ("
       + panelTitle + ")");
   }
@@ -805,7 +808,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(250);
   await step("modifier au clic droit");
 
-  // 4e. Esquisse sur une face du bossage : aucun maillage volumique visible.
+  // 4e. Esquisse sur une face de l'extrusion : la pièce reste visible (Q1).
   const volumeCount = () => page.evaluate(
     () => window.__freesolidDebug?.volumeVisibleCount ?? -1);
   const facesBeforeSketch = await volumeCount();
@@ -834,29 +837,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   };
   const facePicked = await pickSolidFace();
   if (!facePicked) {
-    errors.push("esquisse sur face : aucune face du bossage sélectionnée");
+    errors.push("esquisse sur face : aucune face de l'extrusion sélectionnée");
   }
   await page.click("#btn-sketch");
   await sleep(2000);
-  const hiddenCount = await volumeCount();
-  if (hiddenCount !== 0) {
-    errors.push("esquisse : volumes encore visibles (" + hiddenCount + ")");
+  const sketchCount = await volumeCount();
+  if (!(sketchCount > 0)) {
+    errors.push("esquisse : la pièce a disparu (" + sketchCount + ")");
   }
   const sketchTab = await page.evaluate(() =>
     document.getElementById("sketchbar")?.classList.contains("active"));
   if (!sketchTab) {
     errors.push("esquisse sur face : le ruban Esquisse n'est pas actif");
   }
-  await step("esquisse sans volume");
-  await page.screenshot({ path: path.join(SHOTS, "4e-esquisse-sans-volume.png") });
+  await step("esquisse sur la pièce visible");
+  await page.screenshot({ path: path.join(SHOTS, "4e-esquisse-sur-piece.png") });
   await page.click("#sk-cancel");
   await sleep(1800);
   const shownCount = await volumeCount();
   if (!(shownCount > 0)) {
-    errors.push("sortie esquisse : volumes toujours masqués ("
+    errors.push("sortie esquisse : volumes masqués ("
       + shownCount + ")");
   }
-  await step("volumes rétablis");
+  await step("volumes toujours visibles");
 
   // 4f. P024 — esquisse libre décalée, cliquable dans le viewport.
   await page.locator("#tree li.plane").first().click();
@@ -930,13 +933,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await step("esquisse cliquée dans le viewport");
 
-  // N005 — esquisse sur une face du solide (un bossage disjoint
+  // N005 — esquisse sur une face du solide (une extrusion disjoint
   // depuis l'esquisse libre 4f est refusé par PartDesign), puis
-  // palette du graphe : poser le bossage et le supprimer.
+  // palette du graphe : poser l'extrusion et le supprimer.
   const n005Face = await pickSolidFace();
   let n005SketchName = null;
   if (!n005Face) {
-    errors.push("N005 : aucune face pour l'esquisse du bossage");
+    errors.push("N005 : aucune face pour l'esquisse de l'extrusion");
   } else {
     await page.click("#btn-sketch");
     await sleep(1800);
@@ -970,7 +973,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const n005Before = await page.evaluate(() => {
     const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
     const pads = nodes.filter((n) => /Pad/i.test(n.getAttribute("data-name") || "")
-      || /Bossage/i.test(n.textContent || ""));
+      || /Extrusion/i.test(n.textContent || ""));
     return {
       padCount: pads.length,
       padNames: pads.map((n) => n.getAttribute("data-name") || ""),
@@ -1014,8 +1017,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(2500);
   const n005Panel = await page.evaluate(() =>
     document.querySelector("#panel .ptitle")?.textContent ?? "");
-  if (!/Bossage/i.test(n005Panel)) {
-    errors.push("N005 : panneau bossage non ouvert (" + n005Panel + ")");
+  if (!/Extrusion/i.test(n005Panel)) {
+    errors.push("N005 : panneau extrusion non ouvert (" + n005Panel + ")");
   } else {
     await page.click('#panel [title^="OK"]');
     await sleep(3000);
@@ -1023,7 +1026,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const n005AfterAdd = await page.evaluate((beforeNames) => {
     const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
     const pads = nodes.filter((n) => /Pad/i.test(n.getAttribute("data-name") || "")
-      || /Bossage/i.test(n.textContent || ""));
+      || /Extrusion/i.test(n.textContent || ""));
     const added = pads.find((n) =>
       !beforeNames.includes(n.getAttribute("data-name") || ""));
     const edges = [...document.querySelectorAll("#graph-view .graph-edge")]
@@ -1040,14 +1043,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }, n005Before.padNames);
   const facesAfterN005Add = await faceCount();
   if (n005AfterAdd.padCount !== n005Before.padCount + 1) {
-    errors.push("N005 : attendu un nœud bossage de plus ("
+    errors.push("N005 : attendu un nœud extrusion de plus ("
       + n005Before.padCount + " → " + n005AfterAdd.padCount + ")");
   }
   if (n005SketchName && n005AfterAdd.newName) {
     const linked = n005AfterAdd.edges.some((e) => e.kind === "geom"
       && e.from === n005SketchName && e.to === n005AfterAdd.newName);
     if (!linked) {
-      errors.push("N005 : pas d'arête esquisse→bossage ("
+      errors.push("N005 : pas d'arête esquisse→extrusion ("
         + JSON.stringify(n005AfterAdd.edges) + ")");
     }
   }
@@ -1055,7 +1058,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("N005 : le volume devrait augmenter ("
       + facesBeforeN005 + " → " + facesAfterN005Add + ")");
   }
-  await page.screenshot({ path: path.join(SHOTS, "4g-graphe-bossage.png") });
+  await page.screenshot({ path: path.join(SHOTS, "4g-graphe-extrusion.png") });
   if (n005AfterAdd.newName) {
     await page.locator(
       "#graph-view .graph-node[data-name='" + n005AfterAdd.newName + "'] .shape",
@@ -1069,18 +1072,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.keyboard.press("Delete");
     await sleep(3000);
   } else {
-    errors.push("N005 : impossible de supprimer, nœud bossage introuvable");
+    errors.push("N005 : impossible de supprimer, nœud extrusion introuvable");
   }
   const n005AfterDel = await page.evaluate(() => {
     const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
     const pads = nodes.filter((n) => /Pad/i.test(n.getAttribute("data-name") || "")
-      || /Bossage/i.test(n.textContent || ""));
+      || /Extrusion/i.test(n.textContent || ""));
     return { padCount: pads.length };
   });
   const facesAfterN005Del = await faceCount();
   if (n005AfterDel.padCount !== n005Before.padCount) {
     errors.push("N005 : après suppression, " + n005AfterDel.padCount
-      + " bossage(s) (attendu " + n005Before.padCount + ")");
+      + " extrusion(s) (attendu " + n005Before.padCount + ")");
   }
   if (facesAfterN005Del !== facesBeforeN005) {
     errors.push("N005 : le volume devrait revenir à l'état d'avant ("
@@ -1273,7 +1276,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.screenshot({ path: path.join(SHOTS, "6c-p030-reprise-bas.png") });
 
   // 7. P031 — Autotest lisible : statut + vérifications vertes.
-  await page.click("#btn-selftest");
+  // Le bouton a quitté la barre : il reste dans le DOM, masqué.
+  // click() exige un élément visible ; le clic programmatique suffit.
+  await page.$eval("#btn-selftest", (el) => el.click());
   try {
     await page.waitForFunction(
       () => {
@@ -1355,7 +1360,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("gravure rééditée");
   await page.screenshot({ path: path.join(SHOTS, "8-gravure-editee.png") });
 
-  // N007 — sur la vitrine : sous-élément du congé, profondeur du bossage.
+  // N007 — sur la vitrine : sous-élément du congé, profondeur de l'extrusion.
   const graphWasOpen = await page.evaluate(() =>
     document.getElementById("graph-view")?.classList.contains("open") === true);
   if (!graphWasOpen) await page.click("#btn-graph");
@@ -1363,7 +1368,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const n7info = await page.evaluate(() => {
     const nodes = [...document.querySelectorAll("#graph-view .graph-node")];
     const edges = [...document.querySelectorAll("#graph-view .graph-edge")];
-    const pad = nodes.find((n) => /Bossage/i.test(n.textContent || ""));
+    const pad = nodes.find((n) => /Extrusion/i.test(n.textContent || ""));
     const fillet = nodes.find((n) =>
       (n.getAttribute("data-type") || "").includes("Fillet")
       || /Congé/i.test(n.textContent || ""));
@@ -1378,7 +1383,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     };
   });
   if (!/Profondeur/.test(n7info.padText)) {
-    errors.push("N007 : nœud de bossage vitrine sans profondeur (« "
+    errors.push("N007 : nœud d'extrusion vitrine sans profondeur (« "
       + n7info.padText + " »)");
   }
   if (!n7info.filletSubs && !n7info.filletLabel) {
@@ -1435,7 +1440,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const volAfterCreate = await volumeOf();
   if (!isVolume(volBeforeGraph) || !isVolume(volAfterCreate)
       || volAfterCreate <= volBeforeGraph + 50) {
-    errors.push("N004b : le bossage graphe devrait augmenter le volume ("
+    errors.push("N004b : l'extrusion graphe devrait augmenter le volume ("
       + volBeforeGraph + " → " + volAfterCreate + ")");
   }
   const hint = await page.textContent("#graph-fn-hint");
@@ -1936,7 +1941,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click("#btn-repeat-variable");
   await page.waitForFunction(
     () => document.querySelector("#panel .ptitle")?.textContent
-      === "Répétition variable",
+      === "Réseau variable",
     null,
     { timeout: 8000 },
   );
@@ -1948,14 +1953,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   const pickedPad = await page.evaluate(() => {
     const row = [...document.querySelectorAll("#tree li.feat")]
-      .find((el) => /Bossage/i.test(el.textContent || ""));
+      .find((el) => /Extrusion/i.test(el.textContent || ""));
     if (!row) return false;
     row.scrollIntoView({ block: "nearest" });
     row.click();
     return true;
   });
   if (!pickedPad) {
-    errors.push("N010b : aucune fonction Bossage dans l'arbre");
+    errors.push("N010b : aucune fonction Extrusion dans l'arbre");
   }
   await sleep(400);
   await page.click('#panel [title^="OK"]');

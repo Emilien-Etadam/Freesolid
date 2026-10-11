@@ -52,8 +52,8 @@ def test_translate_nested_captures_are_translated_too():
 
 
 def test_labels_follow_the_language():
-    assert i18n.label("Bossage extrudé", "en") == "Extruded Boss"
-    assert i18n.label("Bossage extrudé", "fr") == "Bossage extrudé"
+    assert i18n.label("Extrusion", "en") == "Extrude"
+    assert i18n.label("Extrusion", "fr") == "Extrusion"
     assert i18n.label("Fixé — {}", "en").format("Pied") == "Fixed — Pied"
 
 

@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  dimEditPayload, dimLabel, sketchDimAnchor,
+  dimEditPayload, dimLabel, filletRadiusLabel, sketchDimAnchor,
 } from "../../app/dims.js";
 
 describe("cotes — libellé et ancrage", () => {
@@ -12,6 +12,13 @@ describe("cotes — libellé et ancrage", () => {
     assert.equal(dimLabel({
       type: "Distance", value: 60, name: "largeur", expr: "2*30",
     }), "Σ largeur = 60.00");
+  });
+
+  it("la bulle de congé écrit R = et garde une expression", () => {
+    assert.equal(filletRadiusLabel(3), "R = 3.00");
+    assert.equal(filletRadiusLabel("3,5"), "R = 3.50");
+    assert.equal(filletRadiusLabel("2*Largeur"), "R = 2*Largeur");
+    assert.equal(filletRadiusLabel("  "), null);
   });
 
   it("une cote d'angle s'affiche en degrés", () => {

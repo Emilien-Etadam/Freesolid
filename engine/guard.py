@@ -1,45 +1,108 @@
-"""Guardrail: translate PartDesign's cryptic failures into designer terms.
+"""Phrases claires pour les échecs géométriques connus.
 
-FreeCAD's most disorienting errors are correct but unexplained — the classic
-being the multiple-solids refusal, where SolidWorks would silently create a
-multibody part. This module maps the known error texts to explanations
-phrased in the designer's vocabulary.
+``friendly_error`` reconnaît un fragment du message brut.
+``failure_message`` construit la ligne montrée à l'utilisateur : la phrase
+utile, et le texte brut entre parenthèses quand il aide au diagnostic.
 
-``friendly_error`` is pure and unit-tested. The Qt document observer that
-used to live beside it was part of the retired addon and is not needed by
-the headless engine.
+Purs : aucun import du modeleur, testés sans lui.
 """
 
-#: (lowercase fragment of the FreeCAD error, explanation shown to the user).
-#: Fragments are matched case-insensitively against whatever error text the
-#: build exposes. English fragments: FreeCAD logs errors untranslated.
+# (fragment en minuscules, gabarit « {} » = libellé de la fonction).
+# Les fragments sont en anglais : c'est ainsi que le modeleur les écrit.
 _TRANSLATIONS: tuple[tuple[str, str], ...] = (
     ("multiple solids",
-     "Cette fonction créerait un volume séparé du reste de la pièce. "
-     "SolidWorks en ferait une pièce multicorps ; ici, un Body ne contient "
-     "qu'un seul solide d'un seul tenant. Créez un second corps "
-     "(« Nouvelle pièce ») pour le volume détaché, ou modifiez l'esquisse "
-     "pour que les volumes se touchent."),
+     "{} : Cette fonction créerait un volume séparé du reste de la pièce. "
+     "Un corps ne contient qu'un seul solide d'un seul tenant. "
+     "Créez un second corps pour le volume détaché, ou modifiez "
+     "l'esquisse pour que les volumes se touchent."),
     ("out of the allowed scope",
-     "L'esquisse référence de la géométrie extérieure à la pièce active. "
-     "Dans SolidWorks vous référenceriez l'autre pièce directement ; ici il "
-     "faut d'abord importer la géométrie dans la pièce via une référence "
-     "externe (ShapeBinder), puis coter sur cette référence."),
+     "{} : L'esquisse utilise une géométrie qui n'appartient pas à la "
+     "pièce active. Importez d'abord cette géométrie dans la pièce, "
+     "puis cotez sur cette copie."),
     ("wire is not closed",
-     "Le contour de l'esquisse n'est pas fermé. Comme pour un bossage "
-     "SolidWorks : le profil doit être une boucle fermée pour produire un "
-     "solide. Fermez le contour ou supprimez les segments en trop."),
+     "{} : Le contour de l'esquisse n'est pas fermé. Le profil doit "
+     "former une boucle fermée pour produire un solide. Fermez le "
+     "contour ou supprimez les segments en trop."),
 )
+
+# TypeId → gabarit. Premier {} = libellé, second {} = texte brut.
+_OPAQUE_BY_KIND: dict[str, str] = {
+    "PartDesign::Fillet":
+        "{} : Le rayon est trop grand pour les arêtes choisies — réduisez le rayon. ({})",
+    "PartDesign::Chamfer":
+        "{} : La distance est trop grande pour les arêtes choisies — réduisez la distance. ({})",
+    "PartDesign::Thickness":
+        "{} : La coque est impossible : l'épaisseur est trop forte pour cette pièce — réduisez l'épaisseur. ({})",
+    "PartDesign::Draft":
+        "{} : La dépouille est impossible sur cette face — réduisez l'angle, ou choisissez une autre face ou un autre plan neutre. ({})",
+    "PartDesign::Pad":
+        "{} : Le profil ne produit aucun volume. ({})",
+}
+
+_RAW_SUFFIX = " ({})"
+_LABEL_PREFIX = "{} : "
+
+
+def _without_raw(template: str) -> str:
+    if template.endswith(_RAW_SUFFIX):
+        return template[: -len(_RAW_SUFFIX)]
+    return template
+
+
+def _explanation(template: str) -> str:
+    body = _without_raw(template)
+    if body.startswith(_LABEL_PREFIX):
+        return body[len(_LABEL_PREFIX):]
+    return body
+
+
+def _fill(template: str, values) -> str:
+    """Remplace les ``{}`` dans l'ordre, sans interpréter le texte brut."""
+    out = template
+    for value in values:
+        out = out.replace("{}", str(value), 1)
+    return out
 
 
 def friendly_error(text: str) -> str | None:
-    """Explanation for a known FreeCAD error text, or ``None``.
+    """Explication d'un message brut connu, ou ``None``.
 
-    Matching is case-insensitive and fragment-based, so it survives the
-    wording drift between FreeCAD versions as long as the key phrase stays.
+    La recherche est insensible à la casse et porte sur un fragment, pour
+    suivre les petites variations de formulation.
     """
     lowered = (text or "").lower()
-    for fragment, explanation in _TRANSLATIONS:
+    for fragment, template in _TRANSLATIONS:
         if fragment in lowered:
-            return explanation
+            return _explanation(template)
     return None
+
+
+def _opaque(kind: str, raw: str, lowered: str) -> bool:
+    if not raw or "command not done" in lowered:
+        return True
+    if kind == "PartDesign::Pad" and (
+            "not a solid" in lowered or "no solid" in lowered
+            or "empty" in lowered):
+        return True
+    return False
+
+
+def failure_message(label: str, text: str, kind: str = "") -> str | None:
+    """Ligne « libellé : explication », ou ``None`` si le texte brut reste plus clair."""
+    label = "" if label is None else str(label)
+    raw = (text or "").strip()
+    lowered = raw.lower()
+    for fragment, template in _TRANSLATIONS:
+        if fragment in lowered:
+            return _fill(template, (label,))
+    template = _OPAQUE_BY_KIND.get(kind or "")
+    if template is None or not _opaque(kind, raw, lowered):
+        return None
+    if raw:
+        return _fill(template, (label, raw))
+    return _fill(_without_raw(template), (label,))
+
+
+def shell_too_thick_message() -> str:
+    """Coque acceptée par le modeleur mais sans enlèvement de matière."""
+    return _explanation(_OPAQUE_BY_KIND["PartDesign::Thickness"])

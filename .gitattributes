@@ -1,0 +1,9 @@
+# Fins de ligne LF partout, quel que soit core.autocrlf : les tests
+# i18n comparent des textes multilignes de app/index.html.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.wasm binary
+*.FCStd binary
+*.step binary
+*.stl binary

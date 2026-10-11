@@ -419,6 +419,11 @@ def _capture_feature(kernel, obj):
         "edges": edges,
         "faces": faces,
     }
+    if obj.TypeId == "PartDesign::Chamfer":
+        feat["chamfer_type"] = kernel._chamfer_kind(obj)
+        feat["flip"] = bool(getattr(obj, "FlipDirection", False))
+    if obj.TypeId in ("PartDesign::Revolution", "PartDesign::Groove"):
+        feat["axis"] = kernel._revolution_axis_token(obj)
     if obj.TypeId in INDEXED_TYPES:
         base = getattr(obj, "BaseFeature", None)
         shape = getattr(base, "Shape", None) if base is not None else None
@@ -529,12 +534,18 @@ def _replay_feature(kernel, feat, sketch_map, substitutions):
     if type_id == "PartDesign::Revolution":
         kernel.add_revolution(
             angle=_substituted(feat, substitutions, "Angle"),
-            sketch=sketch)
+            sketch=sketch,
+            axis=feat.get("axis") or "vertical",
+            reversed=bool(feat.get("reversed")),
+            midplane=bool(feat.get("midplane")))
         return
     if type_id == "PartDesign::Groove":
         kernel.add_groove(
             angle=_substituted(feat, substitutions, "Angle"),
-            sketch=sketch)
+            sketch=sketch,
+            axis=feat.get("axis") or "vertical",
+            reversed=bool(feat.get("reversed")),
+            midplane=bool(feat.get("midplane")))
         return
     if type_id == "PartDesign::Fillet":
         radius = _substituted(feat, substitutions, "Radius")
@@ -548,10 +559,20 @@ def _replay_feature(kernel, feat, sketch_map, substitutions):
         return
     if type_id == "PartDesign::Chamfer":
         size = _substituted(feat, substitutions, "Size")
+        kind = feat.get("chamfer_type") or "egale"
+        extra = {}
+        if kind == "deux":
+            extra["size2"] = _substituted(feat, substitutions, "Size2")
+            extra["chamfer_type"] = "deux"
+            extra["flip"] = bool(feat.get("flip"))
+        elif kind == "angle":
+            extra["angle"] = _substituted(feat, substitutions, "Angle")
+            extra["chamfer_type"] = "angle"
+            extra["flip"] = bool(feat.get("flip"))
         if feat["edges"]:
-            kernel.add_chamfer(size=size, edges=feat["edges"])
+            kernel.add_chamfer(size=size, edges=feat["edges"], **extra)
         elif feat["faces"]:
-            kernel.add_chamfer(size=size, face=feat["faces"][0])
+            kernel.add_chamfer(size=size, face=feat["faces"][0], **extra)
         else:
             raise KernelError(
                 "chanfrein sans arête ni face : {}".format(feat["name"]))
@@ -568,8 +589,9 @@ def _replay_feature(kernel, feat, sketch_map, substitutions):
         if not feat["faces"]:
             raise KernelError("coque sans face : {}".format(feat["name"]))
         kernel.add_thickness(
-            face=feat["faces"][0],
-            thickness=_substituted(feat, substitutions, "Value"))
+            faces=feat["faces"],
+            thickness=_substituted(feat, substitutions, "Value"),
+            outward=not feat["reversed"])
         return
     if type_id == "PartDesign::Hole":
         # add_hole consomme _latest_sketch — le profil a été cloné juste avant.

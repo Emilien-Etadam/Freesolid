@@ -1,9 +1,10 @@
-// Le ruban (CommandManager) : la disposition vit dans ribbon.json, le
+// Le ruban : la disposition vit dans ribbon.json, le
 // rendu vit ici. Un seul constructeur pour les onglets du noyau et ceux
 // des plugins — mêmes classes CSS, mêmes règles de validation. Les
 // fonctions prennent `doc` en paramètre pour tourner au banc Node.
 
 import { t } from "./i18n.js";
+import { iconSrc } from "./icons.js";
 
 /** Id d'onglet : minuscules, chiffres, underscore — jamais de balisage. */
 export function isPluginId(id) {
@@ -15,14 +16,9 @@ export function isButtonId(id) {
   return typeof id === "string" && /^[A-Za-z][A-Za-z0-9_-]*$/.test(id);
 }
 
-/** Chemin d'icône jailé : pas de remontée, pas d'antislash, pas de schéma. */
+/** URL d'un rôle du ruban, ou "" si le rôle n'est pas dans la table. */
 export function safeIconSrc(icon) {
-  if (typeof icon !== "string" || !icon) return "";
-  if (icon.includes("..") || icon.includes("\\") || icon.includes(":")) {
-    return "";
-  }
-  if (!/^[A-Za-z0-9_./-]+$/.test(icon)) return "";
-  return icon;
+  return iconSrc(icon);
 }
 
 /** Un onglet de l'en-tête (le bouton seul, sans écouteur). */
@@ -69,6 +65,12 @@ export function buildRibbonElement(doc, id, groupes) {
         if (specBtn.taille === "large") btn.className = "large";
         if (specBtn.titre) btn.title = t(String(specBtn.titre));
         if (specBtn.disabled) btn.disabled = true;
+        if (isButtonId(specBtn.relais)) {
+          const targetId = specBtn.relais;
+          btn.addEventListener("click", () => {
+            doc.getElementById(targetId)?.click();
+          });
+        }
         const icon = safeIconSrc(specBtn.icon);
         if (icon) {
           const img = doc.createElement("img");

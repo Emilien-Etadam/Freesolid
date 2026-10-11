@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquette en-tête</title>
+<style>
+  :root {
+    --bg: #17191c; --panel: #1e2126; --panel-2: #23272d; --line: #2e333a;
+    --ink: #d7dce2; --ink-2: #8b939d; --accent: #4f8fdb;
+    --accent-soft: rgba(79, 143, 219, 0.28);
+    --space-1: 4px; --space-2: 8px; --space-3: 12px;
+    --radius-s: 4px; --radius-m: 6px;
+    --text-xs: 11px; --text-s: 12px; --text-m: 13px;
+  }
+  * { margin: 0; box-sizing: border-box; }
+  body {
+    background: #0e0f11; color: var(--ink); padding: 24px 16px;
+    font: var(--text-s)/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  p.lead { color: var(--ink-2); margin-bottom: 16px; max-width: 900px; }
+  .frame {
+    width: 1366px; max-width: 100%; height: 768px; overflow: hidden;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+    display: grid; grid-template-rows: auto 1fr 24px;
+  }
+  svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor;
+          stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  svg.s { width: 16px; height: 16px; }
+  .acc { stroke: var(--accent); }
+  .accf { fill: var(--accent-soft); }
+  .dash { stroke-dasharray: 2 2.5; }
+
+  /* Ligne 1 : marque, menus, document, accès rapide, recherche. */
+  .bar1 {
+    height: 32px; display: flex; align-items: center; gap: var(--space-2);
+    padding: 0 var(--space-2); background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { font-weight: 700; margin-right: var(--space-2); }
+  .brand b { color: var(--accent); font-weight: 700; }
+  .menus span { padding: 4px 8px; border-radius: var(--radius-s); color: var(--ink); }
+  .menus span:hover { background: var(--panel-2); }
+  .doc { margin: 0 auto; color: var(--ink-2); }
+  .doc strong { color: var(--ink); font-weight: 600; }
+  .quick { display: flex; gap: 2px; }
+  .ibtn {
+    width: 28px; height: 26px; display: grid; place-items: center;
+    background: none; border: 1px solid transparent; border-radius: var(--radius-s);
+    color: var(--ink-2); cursor: pointer;
+  }
+  .ibtn:hover { color: var(--ink); background: var(--panel-2); }
+  .search {
+    display: flex; align-items: center; gap: 6px; width: 200px; height: 24px;
+    padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius-s);
+    background: var(--bg); color: var(--ink-2);
+  }
+  .search kbd { margin-left: auto; font: inherit; font-size: 10px;
+                border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+
+  /* Ligne 2 : onglets. */
+  .tabs {
+    height: 28px; display: flex; align-items: flex-end; gap: 2px;
+    padding: 0 var(--space-2); background: var(--panel);
+  }
+  .tab {
+    padding: 5px 12px; color: var(--ink-2); border-radius: var(--radius-s) var(--radius-s) 0 0;
+  }
+  .tab.on { color: var(--ink); background: var(--panel-2);
+            box-shadow: inset 0 2px 0 var(--accent); }
+
+  /* Ligne 3 : ruban compact. */
+  .ribbon {
+    height: 70px; display: flex; align-items: stretch; gap: 0;
+    padding: 4px var(--space-2); background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .group { display: flex; gap: 2px; align-items: stretch; padding: 0 6px; }
+  .group + .group { border-left: 1px solid var(--line); }
+  .big {
+    width: 62px; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 3px; padding: 2px; border-radius: var(--radius-m);
+    color: var(--ink); text-align: center; font-size: var(--text-xs); line-height: 1.15;
+  }
+  .big:hover, .small:hover { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+  .stack { display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+  .small {
+    display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 4px;
+    border-radius: var(--radius-s); font-size: var(--text-xs); white-space: nowrap;
+  }
+
+  /* Le reste de l'écran. */
+  .work { display: grid; grid-template-columns: 240px 1fr; min-height: 0; }
+  .tree { background: var(--panel); border-right: 1px solid var(--line); padding: 10px; color: var(--ink-2); }
+  .tree div { padding: 3px 4px; }
+  .tree .h { text-transform: uppercase; font-size: 10px; letter-spacing: .06em; margin-bottom: 6px; }
+  .view {
+    position: relative; display: grid; place-items: center; color: var(--ink-2);
+    background:
+      radial-gradient(ellipse at 50% 35%, #232830 0%, var(--bg) 70%);
+  }
+  .view .meas { text-align: center; font-size: var(--text-m); }
+  .view .meas strong { display: block; font-size: 28px; color: var(--ink); font-weight: 600; }
+  .status {
+    display: flex; align-items: center; gap: 16px; padding: 0 12px;
+    background: var(--panel); border-top: 1px solid var(--line);
+    font-size: var(--text-xs); color: var(--ink-2);
+  }
+  .status .push { margin-left: auto; }
+
+  .compare { margin-top: 20px; display: flex; gap: 24px; flex-wrap: wrap; color: var(--ink-2); }
+  .compare div strong { color: var(--ink); }
+  .icons { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fill, 96px); gap: 12px; }
+  .icons figure { display: grid; justify-items: center; gap: 6px; padding: 10px 4px;
+                  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  .icons figure svg { width: 32px; height: 32px; }
+  .icons figcaption { font-size: 11px; color: var(--ink-2); text-align: center; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <!-- Jeu d'icônes original : trait 1,5 px, couleur du texte, l'élément
+         que crée la commande en accent. -->
+    <symbol id="i-sketch" viewBox="0 0 24 24"><path d="M4 8v11h11"/><path class="acc" d="M12.5 15.5 19.5 8.5l2 2-7 7-2.5.5z"/><path d="M4 8h3M4 12h2"/></symbol>
+    <symbol id="i-body" viewBox="0 0 24 24"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></symbol>
+    <symbol id="i-plane" viewBox="0 0 24 24"><path class="accf acc" d="M3 16.5 8 7.5h13l-5 9z"/></symbol>
+    <symbol id="i-extrude" viewBox="0 0 24 24"><path class="accf acc" d="M4 9l8-4 8 4-8 4z"/><path d="M4 9v7l8 4 8-4V9M12 13v7"/></symbol>
+    <symbol id="i-cut" viewBox="0 0 24 24"><path d="M4 9l8-4 8 4-8 4z"/><path d="M4 9v7l8 4 8-4V9M12 13v7"/><path class="acc accf" d="M9 9l3-1.5L15 9v4.5l-3 1.5-3-1.5z"/><path class="acc" d="M9 9l3 1.5L15 9M12 10.5V15"/></symbol>
+    <symbol id="i-revolve" viewBox="0 0 24 24"><path class="dash" d="M7 3v18"/><path class="acc accf" d="M7 7h3.5l2.5 5-2.5 5H7z"/><path d="M16 5.5a9 9 0 0 1 0 13"/><path d="M13.6 18.6 16 18.5l.4-2.4"/></symbol>
+    <symbol id="i-revcut" viewBox="0 0 24 24"><path class="dash" d="M7 3v18"/><path d="M7 7h3.5l2.5 5-2.5 5H7z"/><path class="acc accf" d="M7 10h1.5l1 2-1 2H7z"/><path d="M16 5.5a9 9 0 0 1 0 13"/><path d="M13.6 18.6 16 18.5l.4-2.4"/></symbol>
+    <symbol id="i-hole" viewBox="0 0 24 24"><path d="M4 9l8-4 8 4-8 4z"/><path d="M4 9v7l8 4 8-4V9"/><ellipse class="acc accf" cx="12" cy="9" rx="3" ry="1.5"/><path class="acc dash" d="M9 9v6M15 9v6"/></symbol>
+    <symbol id="i-loft" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="4" ry="1.8"/><ellipse class="acc" cx="12" cy="18.5" rx="7" ry="2.5"/><path d="M8 5.5 5 18.5M16 5.5l3 13"/></symbol>
+    <symbol id="i-sweep" viewBox="0 0 24 24"><circle class="acc accf" cx="6" cy="17" r="3"/><path class="dash" d="M6 17c0-8 6-12 14-12"/><path d="M17 3l3 2-3 2"/></symbol>
+    <symbol id="i-helix" viewBox="0 0 24 24"><path class="acc" d="M6 5c8 0 12 2 12 3.5S6 10 6 11.5 18 13 18 14.5 6 16 6 17.5 10 20 18 20"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6h14M12 6v13"/><path class="acc" d="M9 19h6"/></symbol>
+    <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="5.5" cy="7" r="2.5"/><circle cx="5.5" cy="17" r="2.5"/><circle class="acc accf" cx="18.5" cy="12" r="2.5"/><path d="M8 7.5c4 0 4 4 8 4.3M8 16.5c4 0 4-4 8-4.3"/></symbol>
+    <symbol id="i-combine" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="11" height="11" rx="1"/><rect class="acc accf" x="9.5" y="9.5" width="11" height="11" rx="1"/></symbol>
+    <symbol id="i-fillet" viewBox="0 0 24 24"><path d="M4 20h9M20 13V4"/><path class="acc" d="M13 20a7 7 0 0 0 7-7"/><path class="accf" d="M13 20a7 7 0 0 0 7-7v7z" stroke="none"/></symbol>
+    <symbol id="i-chamfer" viewBox="0 0 24 24"><path d="M4 20h9M20 13V4"/><path class="acc" d="M13 20l7-7"/><path class="accf" d="M13 20l7-7v7z" stroke="none"/></symbol>
+    <symbol id="i-draft" viewBox="0 0 24 24"><path d="M4 20h16"/><path class="acc accf" d="M7 20 9 5h6l2 15"/><path class="dash" d="M9 5v15"/></symbol>
+    <symbol id="i-shell" viewBox="0 0 24 24"><path d="M4 9l8-4 8 4-8 4z"/><path d="M4 9v7l8 4 8-4V9M12 13v7"/><path class="acc accf" d="M7.5 9 12 6.8 16.5 9 12 11.2z"/></symbol>
+    <symbol id="i-linpat" viewBox="0 0 24 24"><rect class="acc accf" x="2.5" y="9" width="5" height="6" rx="1"/><rect x="9.5" y="9" width="5" height="6" rx="1"/><rect x="16.5" y="9" width="5" height="6" rx="1"/></symbol>
+    <symbol id="i-polpat" viewBox="0 0 24 24"><circle class="dash" cx="12" cy="12" r="7"/><circle class="acc accf" cx="12" cy="5" r="2"/><circle cx="18.1" cy="15.5" r="2"/><circle cx="5.9" cy="15.5" r="2"/></symbol>
+    <symbol id="i-mirror" viewBox="0 0 24 24"><path class="dash" d="M12 3v18"/><path class="acc accf" d="M9.5 6v12L3 18z"/><path d="M14.5 6v12l6.5 0z"/></symbol>
+    <symbol id="i-varpat" viewBox="0 0 24 24"><rect class="acc accf" x="2.5" y="12" width="4" height="5" rx="1"/><rect x="9" y="9.5" width="5" height="7.5" rx="1"/><rect x="16" y="6.5" width="5.5" height="10.5" rx="1"/></symbol>
+    <!-- Accès rapide. -->
+    <symbol id="i-new" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></symbol>
+    <symbol id="i-open" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M12 4v10M8 10l4 4 4-4"/><path d="M4 16v4h16v-4"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 7 5 11l4 4"/><path d="M5 11h9a5 5 0 0 1 0 10h-3"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 7 4 4-4 4"/><path d="M19 11h-9a5 5 0 0 0 0 10h3"/></symbol>
+    <symbol id="i-rebuild" viewBox="0 0 24 24"><path d="M19 12a7 7 0 0 1-12.5 4.3M5 12a7 7 0 0 1 12.5-4.3"/><path d="M17.5 3.5v4.2h-4.2M6.5 20.5v-4.2h4.2"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></symbol>
+  </defs>
+</svg>
+
+<h1>Maquette — en-tête compact et échantillon d'icônes</h1>
+<p class="lead">Écran de 1366 × 768. L'en-tête tient en 130 px : une ligne pour les
+menus, le document, l'accès rapide et la recherche ; une ligne d'onglets ; un ruban
+compact où les commandes principales sont en grand et les secondaires empilées par
+deux. Les doublons de l'ancienne barre du haut disparaissent (ils restent dans les
+menus et l'onglet Évaluer). Icônes : dessins originaux, trait de 1,5 px ; ce que la
+commande crée est en couleur d'accent.</p>
+
+<div class="frame">
+  <header>
+    <div class="bar1">
+      <span class="brand">Free<b>Solid</b></span>
+      <nav class="menus"><span>Fichier</span><span>Édition</span><span>Affichage</span><span>Insertion</span><span>Outils</span><span>Aide</span></nav>
+      <span class="doc"><strong>Support</strong> — pièce</span>
+      <div class="quick">
+        <button class="ibtn" title="Nouveau (Ctrl+N)"><svg class="i s"><use href="#i-new"/></svg></button>
+        <button class="ibtn" title="Ouvrir (Ctrl+O)"><svg class="i s"><use href="#i-open"/></svg></button>
+        <button class="ibtn" title="Enregistrer (Ctrl+S)"><svg class="i s"><use href="#i-save"/></svg></button>
+        <button class="ibtn" title="Annuler (Ctrl+Z)"><svg class="i s"><use href="#i-undo"/></svg></button>
+        <button class="ibtn" title="Rétablir (Ctrl+Y)"><svg class="i s"><use href="#i-redo"/></svg></button>
+        <button class="ibtn" title="Reconstruire"><svg class="i s"><use href="#i-rebuild"/></svg></button>
+      </div>
+      <div class="search"><svg class="i s"><use href="#i-search"/></svg>Rechercher une commande<kbd>Ctrl F</kbd></div>
+      <button class="ibtn" title="Paramètres"><svg class="i s"><use href="#i-settings"/></svg></button>
+    </div>
+    <div class="tabs">
+      <span class="tab on">Fonctions</span><span class="tab">Esquisse</span><span class="tab">Surfaces</span><span class="tab">Évaluer</span><span class="tab">Assemblage</span>
+    </div>
+    <div class="ribbon">
+      <div class="group">
+        <div class="big"><svg class="i"><use href="#i-sketch"/></svg>Esquisse</div>
+        <div class="stack">
+          <div class="small"><svg class="i s"><use href="#i-body"/></svg>Corps</div>
+          <div class="small"><svg class="i s"><use href="#i-plane"/></svg>Plan de référence</div>
+        </div>
+      </div>
+      <div class="group">
+        <div class="big"><svg class="i"><use href="#i-extrude"/></svg>Extrusion</div>
+        <div class="big"><svg class="i"><use href="#i-revolve"/></svg>Révolution</div>
+        <div class="big"><svg class="i"><use href="#i-cut"/></svg>Enlèvement extrudé</div>
+        <div class="big"><svg class="i"><use href="#i-revcut"/></svg>Enlèvement révolution</div>
+        <div class="big"><svg class="i"><use href="#i-hole"/></svg>Perçage</div>
+        <div class="stack">
+          <div class="small"><svg class="i s"><use href="#i-loft"/></svg>Lissage</div>
+          <div class="small"><svg class="i s"><use href="#i-sweep"/></svg>Balayage</div>
+        </div>
+        <div class="stack">
+          <div class="small"><svg class="i s"><use href="#i-helix"/></svg>Hélice</div>
+          <div class="small"><svg class="i s"><use href="#i-text"/></svg>Texte</div>
+        </div>
+        <div class="stack">
+          <div class="small"><svg class="i s"><use href="#i-graph"/></svg>Fonction graphe</div>
+          <div class="small"><svg class="i s"><use href="#i-combine"/></svg>Combiner</div>
+        </div>
+      </div>
+      <div class="group">
+        <div class="big"><svg class="i"><use href="#i-fillet"/></svg>Congé</div>
+        <div class="big"><svg class="i"><use href="#i-chamfer"/></svg>Chanfrein</div>
+        <div class="big"><svg class="i"><use href="#i-shell"/></svg>Coque</div>
+        <div class="stack">
+          <div class="small"><svg class="i s"><use href="#i-draft"/></svg>Dépouille</div>
+        </div>
+      </div>
+      <div class="group">
+        <div class="big"><svg class="i"><use href="#i-linpat"/></svg>Répétition linéaire</div>
+        <div class="stack">
+          <div class="small"><svg class="i s"><use href="#i-polpat"/></svg>Répétition circulaire</div>
+          <div class="small"><svg class="i s"><use href="#i-mirror"/></svg>Symétrie</div>
+        </div>
+        <div class="stack">
+          <div class="small"><svg class="i s"><use href="#i-varpat"/></svg>Répétition variable</div>
+        </div>
+      </div>
+    </div>
+  </header>
+  <div class="work">
+    <aside class="tree">
+      <div class="h">Arbre de création</div>
+      <div>Corps volumiques (1)</div><div>Plan de face</div><div>Plan de dessus</div>
+      <div>Plan de droite</div><div>Origine</div><div style="color:var(--ink)">Extrusion</div>
+    </aside>
+    <div class="view"><div class="meas"><strong>1126 × 584 px</strong>zone graphique — 63 % de l'écran (contre 40 % aujourd'hui)</div></div>
+  </div>
+  <div class="status"><span>Moteur prêt</span><span class="push">Édition : pièce « Support »</span><span>mm · g · s</span></div>
+</div>
+
+<div class="compare">
+  <div>En-tête aujourd'hui : <strong>365 px</strong> en 1366 × 768</div>
+  <div>Maquette : <strong>130 px</strong> (32 + 28 + 70)</div>
+</div>
+
+<div class="icons">
+  <figure><svg class="i"><use href="#i-sketch"/></svg><figcaption>Esquisse</figcaption></figure>
+  <figure><svg class="i"><use href="#i-extrude"/></svg><figcaption>Extrusion</figcaption></figure>
+  <figure><svg class="i"><use href="#i-cut"/></svg><figcaption>Enlèvement</figcaption></figure>
+  <figure><svg class="i"><use href="#i-revolve"/></svg><figcaption>Révolution</figcaption></figure>
+  <figure><svg class="i"><use href="#i-hole"/></svg><figcaption>Perçage</figcaption></figure>
+  <figure><svg class="i"><use href="#i-fillet"/></svg><figcaption>Congé</figcaption></figure>
+  <figure><svg class="i"><use href="#i-chamfer"/></svg><figcaption>Chanfrein</figcaption></figure>
+  <figure><svg class="i"><use href="#i-shell"/></svg><figcaption>Coque</figcaption></figure>
+  <figure><svg class="i"><use href="#i-draft"/></svg><figcaption>Dépouille</figcaption></figure>
+  <figure><svg class="i"><use href="#i-linpat"/></svg><figcaption>Répétition linéaire</figcaption></figure>
+  <figure><svg class="i"><use href="#i-polpat"/></svg><figcaption>Répétition circulaire</figcaption></figure>
+  <figure><svg class="i"><use href="#i-mirror"/></svg><figcaption>Symétrie</figcaption></figure>
+  <figure><svg class="i"><use href="#i-loft"/></svg><figcaption>Lissage</figcaption></figure>
+  <figure><svg class="i"><use href="#i-sweep"/></svg><figcaption>Balayage</figcaption></figure>
+  <figure><svg class="i"><use href="#i-plane"/></svg><figcaption>Plan</figcaption></figure>
+  <figure><svg class="i"><use href="#i-combine"/></svg><figcaption>Combiner</figcaption></figure>
+</div>
+</body>
+</html>

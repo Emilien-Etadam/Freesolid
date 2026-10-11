@@ -18,9 +18,9 @@ afterEach(() => setLang("fr"));
 
 describe("t()", () => {
   it("rend le texte source en français, la traduction en anglais", () => {
-    assert.equal(t("Bossage extrudé"), "Bossage extrudé");
+    assert.equal(t("Extrusion"), "Extrusion");
     setLang("en");
-    assert.equal(t("Bossage extrudé"), "Extruded Boss");
+    assert.equal(t("Extrusion"), "Extrude");
     assert.equal(currentLang(), "en");
   });
 

@@ -98,5 +98,5 @@ def translate(text, lang: str) -> str:
 
 
 def label(text: str, lang: str) -> str:
-    """Libellé posé dans le document (« Bossage extrudé » → « Extruded Boss »)."""
+    """Libellé posé dans le document (« Extrusion » → « Extrude »)."""
     return translate(text, lang)

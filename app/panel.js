@@ -1,5 +1,5 @@
-// FreeSolid — PropertyManager-style side panel, SolidWorks anatomy:
-// it replaces the FeatureManager while a command runs, carries the feature
+// FreeSolid — side property panel:
+// it replaces the feature tree while a command runs, carries the feature
 // icon + name, OK (green check) / Cancel (red cross), collapsible group
 // boxes, selection boxes fed by viewport picks, Enter/Escape.
 //
@@ -8,8 +8,8 @@
 //
 // Spec shape:
 //   {
-//     icon: "PartDesign_Pad.svg",
-//     title: "Bossage/Base extrudé",
+//     icon: "nodes_extrude",
+//     title: "Extrusion",
 //     groups: [{ label, rows: [row…] }],
 //     note?: string,
 //     noApply?: boolean,   // panneau info : pas de bouton OK
@@ -28,16 +28,82 @@
 // invalidateSelections() : vide les rows `selection` (ids périmés au rebuild).
 
 import { t } from "./i18n.js";
+import { iconSrc } from "./icons.js";
 
-export function createPropertyPanel({ say, onClose }) {
+/** Que fait Entrée dans le panneau ? Une valeur tout juste tapée dans un
+ *  champ est d'abord appliquée (l'aperçu suit, le panneau reste ouvert) ;
+ *  un second appui — ou Entrée hors d'un champ modifié — valide la
+ *  fonction. */
+export function enterAction({ tag, edited, noApply }) {
+  if (tag === "SELECT" || tag === "TEXTAREA") return "none";
+  if (tag === "INPUT" && edited) return "commit";
+  return noApply ? "none" : "apply";
+}
+
+/** Une zone de sélection contient déjà quelque chose. */
+export function selectionFilled(value) {
+  if (!value) return false;
+  if (value.items) return value.items.length > 0;
+  if (value.kind === "edges") return value.edges.length > 0;
+  if (value.kind === "face") return value.face != null;
+  return true;
+}
+
+/** Vrai si une ligne de sélection est vide : elle affiche déjà quoi choisir. */
+export function selectionLineGuides(groups, values) {
+  for (const group of groups ?? []) {
+    for (const row of group.rows ?? []) {
+      if (row.type === "selection" && !selectionFilled(values?.[row.key])) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Bandeau du panneau. Une consigne (`tone: "guide"`) est neutre et
+ *  disparaît si une ligne de sélection la dit déjà. Une chaîne, ou
+ *  `tone: "error"`, reste une erreur (rouge). */
+export function panelNotice(notice, { selectionGuides = false } = {}) {
+  if (notice == null || notice === "") return null;
+  if (typeof notice === "string") return { text: notice, tone: "error" };
+  const text = notice.text;
+  if (typeof text !== "string" || text === "") return null;
+  const tone = notice.tone === "guide" ? "guide" : "error";
+  if (tone === "guide" && selectionGuides) return null;
+  return { text, tone };
+}
+
+export function createPropertyPanel({ say, onClose, onToggle }) {
   const aside = document.querySelector("aside");
   const panelEl = document.getElementById("panel");
 
   let active = null; // { spec, values }
+  let editedInput = null; // champ modifié depuis le dernier Entrée
+  let hintEl = null;      // message d'aide (ce qui manque encore)
+  let previewOn = true;   // bascule de l'aperçu (œil de l'en-tête)
+
+  /** Message d'aide : ce qu'il manque pour pouvoir valider. */
+  function updateHint() {
+    if (!hintEl || !active) return;
+    const notice = panelNotice(active.spec.hint?.({ ...active.values }), {
+      selectionGuides: selectionLineGuides(active.spec.groups, active.values),
+    });
+    hintEl.hidden = !notice;
+    hintEl.textContent = notice ? t(notice.text) : "";
+    hintEl.classList.toggle("guide", notice?.tone === "guide");
+    hintEl.classList.toggle("error", notice?.tone === "error");
+  }
 
   // Chaque modification de valeur notifie la commande — c'est ce qui
   // alimente l'aperçu jaune en temps réel.
   function changed() {
+    const focused = document.activeElement;
+    if (focused?.tagName === "INPUT" && panelEl.contains(focused)) {
+      editedInput = focused;
+    }
+    updateHint();
+    if (active?.spec.onPreview && !previewOn) return; // aperçu coupé
     active?.spec.onChange?.({ ...active.values });
   }
 
@@ -52,10 +118,12 @@ export function createPropertyPanel({ say, onClose }) {
 
   function open(spec) {
     // Remplacer un panneau ouvert : silencieux (la présélection d'arbre
-    // doit survivre, ex. esquisse → Bossage). Fermer/Échap passent par
+    // doit survivre, ex. esquisse → Extrusion). Fermer/Échap passent par
     // close(false) qui appelle onCancel.
     if (active) close(false, { silent: true });
     active = { spec, values: {} };
+    editedInput = null;
+    previewOn = true;
     for (const group of spec.groups) {
       for (const row of group.rows ?? []) {
         if (row.key !== undefined) active.values[row.key] = row.value ?? null;
@@ -63,6 +131,7 @@ export function createPropertyPanel({ say, onClose }) {
     }
     render();
     aside.classList.add("panel-open");
+    onToggle?.();
     document.addEventListener("keydown", onKey, true);
     if (spec.autoFocus !== false) {
       panelEl.querySelector("input, select")?.focus();
@@ -78,15 +147,28 @@ export function createPropertyPanel({ say, onClose }) {
     document.removeEventListener("keydown", onKey, true);
     panelEl.innerHTML = "";
     onClose?.(); // efface l'aperçu avant d'appliquer ou d'abandonner
+    onToggle?.();
     if (apply) spec.onApply?.({ ...values });
     else if (!silent) spec.onCancel?.();
   }
 
   function onKey(event) {
-    if (event.key === "Enter" && event.target.tagName !== "SELECT") {
-      if (active?.spec.noApply) return;
+    // Une saisie flottante (boîte de cote) gère ses propres touches.
+    if (event.target?.closest?.("[data-own-keys]")) return;
+    if (event.key === "Enter") {
+      const action = enterAction({
+        tag: event.target.tagName,
+        edited: event.target === editedInput,
+        noApply: active?.spec.noApply,
+      });
+      if (action === "none") return;
       event.preventDefault();
       event.stopPropagation(); // le mode esquisse écoute aussi le clavier
+      if (action === "commit") {
+        editedInput = null;
+        event.target.select?.(); // la valeur est prise : on la montre
+        return;
+      }
       close(true);
     } else if (event.key === "Escape") {
       event.preventDefault();
@@ -100,14 +182,6 @@ export function createPropertyPanel({ say, onClose }) {
   // {kind: "edges", edges: […]}, {kind: "sketch", name, label} or, for
   // multiple rows, {kind, items: […]} (a second click on the same item
   // removes it).
-  function hasSelectionValue(value) {
-    if (!value) return false;
-    if (value.items) return value.items.length > 0;
-    if (value.kind === "edges") return value.edges.length > 0;
-    if (value.kind === "face") return value.face != null;
-    return true;
-  }
-
   function notifyPick(kind, value) {
     if (!active) return false;
     const rows = [];
@@ -123,7 +197,10 @@ export function createPropertyPanel({ say, onClose }) {
     const multiRow = rows.find((r) => r.multiple);
     if (multiRow) {
       const current = active.values[multiRow.key] ?? { kind, items: [] };
-      const at = current.items.findIndex((i) => i.name === value.name);
+      // Une face n'a pas de nom : son numéro l'identifie.
+      const same = (i) => (value.face != null
+        ? i.face === value.face : i.name === value.name);
+      const at = current.items.findIndex(same);
       if (at >= 0) current.items.splice(at, 1);
       else current.items.push(value);
       active.values[multiRow.key] = { ...current };
@@ -131,7 +208,7 @@ export function createPropertyPanel({ say, onClose }) {
       // Première zone vide, sinon la dernière est remplacée — le
       // balayage remplit Profil puis Trajectoire en deux clics.
       const target = rows.find(
-        (r) => !hasSelectionValue(active.values[r.key]))
+        (r) => !selectionFilled(active.values[r.key]))
         ?? rows[rows.length - 1];
       active.values[target.key] = value;
     }
@@ -141,7 +218,7 @@ export function createPropertyPanel({ say, onClose }) {
   }
 
   // Les ids de faces/arêtes meurent à chaque rebuild. Le viewport vide
-  // ses picks ; le PropertyManager doit faire de même — un Congé ouvert
+  // ses picks ; le panneau de propriétés doit faire de même — un Congé ouvert
   // ne doit pas appliquer des ids périmés après un Ctrl+Z.
   function invalidateSelections() {
     if (!active) return 0;
@@ -149,7 +226,7 @@ export function createPropertyPanel({ say, onClose }) {
     for (const group of active.spec.groups) {
       for (const row of group.rows ?? []) {
         if (row.type !== "selection") continue;
-        if (!hasSelectionValue(active.values[row.key])) continue;
+        if (!selectionFilled(active.values[row.key])) continue;
         active.values[row.key] = row.multiple ? { items: [] } : null;
         cleared++;
       }
@@ -168,9 +245,22 @@ export function createPropertyPanel({ say, onClose }) {
 
     const head = el("div", "phead-main");
     const icon = document.createElement("img");
-    icon.src = "icons/" + spec.icon;
+    icon.src = iconSrc(spec.icon);
     icon.alt = "";
     head.append(icon, el("span", "ptitle", spec.title));
+    if (spec.onPreview) {
+      const eye = el("button", previewOn ? "peye" : "peye off");
+      eye.innerHTML = '<svg viewBox="0 0 20 14" aria-hidden="true">'
+        + '<path d="M1 7c2.5-4 5.5-6 9-6s6.5 2 9 6c-2.5 4-5.5 6-9 6s-6.5-2-9-6z"/>'
+        + '<circle cx="10" cy="7" r="2.6"/></svg>';
+      eye.title = t("Aperçu : afficher ou masquer");
+      eye.addEventListener("click", () => {
+        previewOn = !previewOn;
+        eye.classList.toggle("off", !previewOn);
+        active.spec.onPreview(previewOn, { ...active.values });
+      });
+      head.append(eye);
+    }
     if (spec.actions) {
       for (const action of spec.actions) {
         const btn = el("button", action.className ?? "pok", action.label);
@@ -197,6 +287,10 @@ export function createPropertyPanel({ say, onClose }) {
     cancel.addEventListener("click", () => close(false));
     head.append(cancel);
     panelEl.append(head);
+    hintEl = el("div", "phint");
+    hintEl.setAttribute("role", "status");
+    panelEl.append(hintEl);
+    updateHint();
 
     for (const group of spec.groups) {
       const box = el("div", "pgroup");
@@ -261,26 +355,31 @@ export function createPropertyPanel({ say, onClose }) {
     if (row.type === "selection") {
       const box = el("div", "pselect-box");
       const value = values[row.key];
-      if (!hasSelectionValue(value)) {
+      if (!selectionFilled(value)) {
         box.textContent =
           t(row.hint ?? "Cliquez une face dans la zone graphique");
         return box;
       }
-      if (value.items) {
+      if (value.items && value.items.every((i) => i.face != null)) {
+        box.textContent = value.items.length <= 4
+          ? value.items.map((i) => t("Face {n}", { n: i.face })).join(", ")
+          : t("{n} faces", { n: value.items.length });
+      } else if (value.items) {
         box.textContent = value.items.length <= 2
           ? value.items.map((i) => i.label).join(" → ")
-          : `${value.items.length} profils : `
+          : t("{n} profils : ", { n: value.items.length })
             + value.items.map((i) => i.label).join(" → ");
       } else if (value.kind === "edges") {
         box.textContent = value.edges.length <= 3
-          ? value.edges.map((e) => `Arête ${e}`).join(", ")
-          : `${value.edges.length} arêtes`;
+          ? value.edges.map((e) => t("Arête {n}", { n: e })).join(", ")
+          : t("{n} arêtes", { n: value.edges.length });
       } else if (value.kind === "sketch" || value.kind === "surface") {
         box.textContent = value.label;
       } else if (value.kind === "asmface") {
-        box.textContent = `${value.componentLabel} · Face ${value.face}`;
+        box.textContent = `${value.componentLabel} · `
+          + t("Face {n}", { n: value.face });
       } else {
-        box.textContent = `Face ${value.face}`;
+        box.textContent = t("Face {n}", { n: value.face });
       }
       box.classList.add("filled");
       return box;
@@ -304,6 +403,7 @@ export function createPropertyPanel({ say, onClose }) {
       input.type = "number";
       input.value = values[row.key];
       input.step = row.step ?? "any";
+      input.dataset.key = row.key;
       if (row.min !== undefined) input.min = row.min;
       input.addEventListener("input", () => {
         values[row.key] = input.value;
@@ -333,6 +433,7 @@ export function createPropertyPanel({ say, onClose }) {
       input.checked = !!values[row.key];
       input.addEventListener("change", () => {
         values[row.key] = input.checked;
+        render(); // showIf rows may appear/disappear
         changed();
       });
       const label = el("label", "pcheck", row.label);
@@ -345,8 +446,12 @@ export function createPropertyPanel({ say, onClose }) {
   return {
     open,
     close: (opts) => close(false, opts),
+    /** OK, comme le bouton ✓ — sans effet sur un panneau d'information. */
+    apply: () => { if (active && !active.spec.noApply) close(true); },
     notifyPick,
     invalidateSelections,
     get active() { return active !== null; },
+    /** Un panneau de commande (avec OK) est ouvert. */
+    get applicable() { return active !== null && !active.spec.noApply; },
   };
 }

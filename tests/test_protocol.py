@@ -96,6 +96,10 @@ def test_m1_ops_declare_their_required_params():
     assert protocol.OPS["add_chamfer"] == ("size",)
     assert protocol.OPS["save_part"] == ("path",)
     assert protocol.OPS["open_part"] == ("path",)
+    assert protocol.OPS["list_dir"] == ()
+    protocol.validate_request({"op": "list_dir", "params": {}})
+    protocol.validate_request(
+        {"op": "list_dir", "params": {"path": "~/pieces"}})
     assert protocol.OPS["get_params"] == ("feature",)
     # feature optionnel : absent = barre avant la première fonction.
     assert protocol.OPS["set_tip"] == ()
@@ -152,7 +156,7 @@ def test_p2_ops_declare_their_required_params():
     assert protocol.OPS["add_mirror"] == ()          # plane, features en option
     assert protocol.OPS["add_linear_pattern"] == ("length", "count")
     assert protocol.OPS["add_polar_pattern"] == ("count",)
-    assert protocol.OPS["add_thickness"] == ("face", "thickness")
+    assert protocol.OPS["add_thickness"] == ("thickness",)  # face(s) en option
     assert protocol.OPS["add_draft"] == ("face", "angle")
 
 
@@ -209,6 +213,49 @@ def test_edge_ops_declared():
         {"op": "add_fillet", "params": {"radius": 3, "edges": [1, 5, 7]}})
     protocol.validate_request(
         {"op": "add_chamfer", "params": {"size": 2, "face": 4}})
+
+
+def test_chamfer_optional_types():
+    # Distance égale : size seul, comme avant.
+    protocol.validate_request(
+        {"op": "add_chamfer", "params": {"size": 2, "edges": [1]}})
+    protocol.validate_request({
+        "op": "add_chamfer",
+        "params": {"size": 2, "edges": [1], "chamfer_type": "deux",
+                   "size2": 4, "flip": True}})
+    protocol.validate_request({
+        "op": "add_chamfer",
+        "params": {"size": 2, "chamfer_type": "angle", "angle": 30,
+                   "flip": False}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request({
+            "op": "add_chamfer",
+            "params": {"size": 2, "flip": "yes"}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request({
+            "op": "add_chamfer",
+            "params": {"size": 2, "size2": "large"}})
+
+
+def test_revolution_axis_types():
+    assert protocol.OPS["add_revolution"] == ()
+    assert protocol.OPS["add_groove"] == ()
+    protocol.validate_request(
+        {"op": "add_revolution", "params": {"angle": 360, "sketch": "Sketch"}})
+    op, params = protocol.validate_request({
+        "op": "add_revolution",
+        "params": {"angle": 180, "axis": "line:2", "midplane": True,
+                   "sketch": "Sketch"}})
+    assert params["axis"] == "line:2" and params["midplane"] is True
+    protocol.validate_request({
+        "op": "add_groove",
+        "params": {"angle": 90, "axis": "X", "reversed": True}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request({
+            "op": "add_revolution", "params": {"axis": 1}})
+    with pytest.raises(protocol.ProtocolError):
+        protocol.validate_request({
+            "op": "add_groove", "params": {"reversed": "yes"}})
 
 
 def test_hole_rename_and_atomic_edit_ops():
@@ -494,6 +541,7 @@ def test_ops_snapshot_keys():
         "get_tree",
         "graph_vocabulary",
         "insert_component",
+        "list_dir",
         "list_plugins",
         "list_variables",
         "make_drawing",
@@ -509,11 +557,13 @@ def test_ops_snapshot_keys():
         "rebuild",
         "redo",
         "rename",
+        "reorder_feature",
         "save_part",
         "script_trust_status",
         "selftest",
         "set_active_body",
         "set_body_color",
+        "set_component_grounded",
         "set_param",
         "set_params",
         "set_tip",
@@ -526,6 +576,7 @@ def test_ops_snapshot_keys():
         "sketch_add_slot",
         "sketch_add_spline",
         "sketch_array",
+        "sketch_cancel",
         "sketch_constrain",
         "sketch_constraints",
         "sketch_convert",
@@ -796,3 +847,11 @@ def test_list_plugins_is_core_and_paramless():
     assert protocol.OPS["list_plugins"] == ()
     assert "list_plugins" in protocol.CORE_OP_NAMES
     protocol.validate_request({"op": "list_plugins"})
+
+def test_pack_edges_carries_exact_length():
+    packed = protocol.pack_edges([
+        (0, [(0, 0, 0), (3, 0, 0), (3, 4, 0)], 7.0),
+        (1, [(0, 0, 0), (1, 0, 0)]),
+    ])
+    assert packed["groups"][0]["length"] == 7.0
+    assert "length" not in packed["groups"][1]

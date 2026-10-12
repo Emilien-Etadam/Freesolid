@@ -89,6 +89,40 @@ moteur, vont à Cursor (T28 à T33 dans [`taches-cursor.md`](taches-cursor.md)).
 | 40 | Esquisse : saisie numérique pendant le tracé | P3 | fait : taper un chiffre pendant le tracé ouvre les cotes près du curseur — ligne (longueur, angle), cercle (rayon), rectangle (largeur, hauteur) ; Tab, Entrée, Échap |
 | 41 | Étiquettes des plans superposées ; « MMGS » ; textes français en anglais | P3 | fait (c6b0694, écart 27) |
 
+**Lot « comportements d'utilisation »** (relevé du 2026-10-12, à partir du
+code) — classé du plus simple au plus complexe à réaliser, traité dans cet
+ordre.
+
+| # | Écart | Prio | État |
+|---|---|---|---|
+| 42 | Zoom sur la sélection | P2 | fait : la face ou les arêtes sélectionnées remplissent la vue (barre de vue, menu Affichage) |
+| 43 | Vue précédente | P2 | fait : Ctrl+Maj+Z, aussi en esquisse ; un geste (crans de molette compris) = un pas, 20 pas gardés |
+| 44 | Capture d'écran | P3 | fait : Fichier → Capture d'écran, PNG de la vue |
+| 45 | Esquisse : masquer les symboles de relation, les cotes | P3 | fait : deux boutons de la barre Esquisse |
+| 46 | Commentaire sur une fonction | P3 | fait : clic droit → Commentaire…, ✎ dans l'arbre, texte en infobulle, enregistré dans le fichier |
+| 47 | Propriétés du fichier | P3 | fait : Fichier → Propriétés… (auteur, société, description, propriétés libres), enregistrées dans le .FCStd |
+| 48 | Historique d'annulation | P3 | fait : ▾ à côté d'Annuler, un clic défait tout jusqu'au pas choisi |
+| 49 | Masquer / afficher un corps ou une surface | P1 | fait : clic droit dans l'arbre, Tab sur ce qu'on survole, Maj+Tab = tout afficher ; enregistré dans le fichier |
+| 50 | Filtres de sélection | P1 | fait : faces, arêtes, esquisses, surfaces (entonnoir de la barre de vue, mémorisé) |
+| 51 | Désactiver / réactiver une fonction | P1 | fait : clic droit → Désactiver ; la fonction reste dans l'arbre (barrée), la pièce se calcule sans elle ; une fonction qui s'appuyait sur elle passe en erreur |
+| 52 | Changer le plan d'une esquisse | P2 | fait : clic droit → Changer de plan… (plan d'origine, plan de référence, face d'une fonction antérieure) |
+| 53 | Chanfrein sur un sommet | P3 | à faire |
+| 54 | Sélection : choisir parmi les éléments superposés, chaîne tangente | P2 | à faire |
+| 55 | Infobulles enrichies, raccourcis personnalisables | P3 | à faire |
+| 56 | Matières : bibliothèque, couleur par face | P2 | à faire |
+| 57 | Liste des erreurs de reconstruction | P2 | à faire |
+| 58 | Axe, point et repère de référence | P2 | à faire |
+| 59 | Copier-coller de fonctions | P1 | à faire |
+| 60 | Variantes : coque à épaisseurs par face, exemplaires sautés, congé variable / de face / arrondi complet | P3 | à faire |
+| 61 | Unités et gabarits | P3 | à faire |
+| 62 | Assemblage : rotation à la souris, contrainte rapide Alt+glisser, présélection reprise | P2 | à faire |
+| 63 | Arbre : dossiers, vue parents / enfants | P3 | à faire |
+| 64 | Gestes de la souris | P3 | à faire |
+| 65 | Manipulation directe : coupe déplaçable, poignées, cotes et faces à glisser, manipulateur trois axes | P1 | à faire |
+| 66 | Assemblage : vue éclatée par étapes, collisions pendant le glisser, sous-assemblages | P2 | à faire |
+| 67 | Configurations | P2 | à faire |
+| 68 | Export PDF / IGES, impression | P3 | à faire |
+
 ### Questions de conception en attente
 
 - **Q1 — Volumes pendant l'esquisse.** SolidWorks laisse la pièce visible

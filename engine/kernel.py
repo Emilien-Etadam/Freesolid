@@ -54,6 +54,7 @@ from engine.sketchmore import SketchMoreMixin
 from engine.sketchshare import SketchShareMixin
 from engine.sketchlayers import SketchLayersMixin
 from engine.docprops import DocPropsMixin
+from engine.vertexchamfer import VertexChamferMixin
 from engine.solids import SolidsMixin
 from engine.tree import TreeMixin
 
@@ -267,7 +268,7 @@ def _format_mm(value):
     return text.replace(".", ",") or "0"
 
 
-class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
+class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
     """Owns one FreeCAD document and executes protocol operations."""
 
     def __init__(self):
@@ -760,7 +761,7 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
         "add_hole", "set_params",
         "add_loft", "add_sweep", "add_helix", "add_boolean", "add_text",
         "add_datum_plane", "add_surface_cut", "add_delete_face",
-        "add_replace_face",
+        "add_replace_face", "add_vertex_chamfer",
         "surface_delete_faces",
     })
 
@@ -861,7 +862,8 @@ _TRANSACTIONAL = frozenset({
     "sketch_set_layer",
     "sketch_block_insert", "sketch_picture",
     "set_component_grounded", "reorder_feature", "set_comment",
-    "set_suppressed", "sketch_set_plane",
+    "set_suppressed", "sketch_set_plane", "add_vertex_chamfer",
+    "edit_vertex_chamfer",
 })
 
 

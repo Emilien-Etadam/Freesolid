@@ -106,7 +106,7 @@ ordre.
 | 50 | Filtres de sélection | P1 | fait : faces, arêtes, esquisses, surfaces (entonnoir de la barre de vue, mémorisé) |
 | 51 | Désactiver / réactiver une fonction | P1 | fait : clic droit → Désactiver ; la fonction reste dans l'arbre (barrée), la pièce se calcule sans elle ; une fonction qui s'appuyait sur elle passe en erreur |
 | 52 | Changer le plan d'une esquisse | P2 | fait : clic droit → Changer de plan… (plan d'origine, plan de référence, face d'une fonction antérieure) |
-| 53 | Chanfrein sur un sommet | P3 | à faire |
+| 53 | Chanfrein sur un sommet | P3 | fait : bouton « Chanfrein de sommet » (clic près du coin, aimanté au sommet), distance égale ou une par arête, aperçu, réédition au double-clic ; recalculé quand la pièce change. Le sommet est repéré par son numéro : une fonction d’avant qui change la topologie peut le déplacer |
 | 54 | Sélection : choisir parmi les éléments superposés, chaîne tangente | P2 | à faire |
 | 55 | Infobulles enrichies, raccourcis personnalisables | P3 | à faire |
 | 56 | Matières : bibliothèque, couleur par face | P2 | à faire |

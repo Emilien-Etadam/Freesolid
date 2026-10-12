@@ -3736,6 +3736,30 @@ class SelftestMixin:
                 and abs(body.Shape.Volume - 40 * 30 * 10) < 1e-6
                 and refused)
 
+            mark("p57: chanfrein de sommet")
+            self.new_part("Pièce coin")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            body = self._require_body()
+            box = body.Shape.Volume
+            corner = body.Shape.BoundBox
+            self.add_vertex_chamfer([5], point=[corner.XMax, corner.YMax,
+                                                corner.ZMax])
+            equal = box - body.Shape.Volume
+            cham = self.get_tree()["features"][-1]
+            self.edit_vertex_chamfer(cham["name"], [2, 3, 4])
+            three = box - body.Shape.Volume
+            # La pièce grandit : le chanfrein suit la fonction d'avant.
+            pad = self.get_tree()["features"][0]["name"]
+            self.set_params(pad, {"Length": 20})
+            grown = body.Shape.Volume
+            report["p57_chanfrein_sommet"] = (
+                abs(equal - 125 / 6) < 1e-6
+                and abs(three - 24 / 6) < 1e-6
+                and cham.get("vertex_chamfer", {}).get("distances")
+                == [5.0, 5.0, 5.0]
+                and abs(grown - (40 * 30 * 20 - 4)) < 1e-6)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

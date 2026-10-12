@@ -129,6 +129,23 @@ export function installPicking(ctx) {
   // recalcule d'abord, sinon le clic viserait l'ancien survol.
   let hoverAt = null;
 
+  /** Sommet du solide le plus proche du clic, à l'écran (30 px au plus). */
+  function nearestVertex(event) {
+    let best = null;
+    let bestDistance = 30;
+    for (const point of ctx.edgeSnaps ?? []) {
+      if (point.kind !== "vertex") continue;
+      const pixel = worldToScreen(point);
+      const distance = Math.hypot(pixel.x - event.clientX,
+        pixel.y - event.clientY);
+      if (distance < bestDistance) {
+        best = { x: point.x, y: point.y, z: point.z };
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
   /** Face, arête, esquisse, surface ou plan sous le pointeur. */
   function updateHover(event) {
     hoverAt = { x: event.clientX, y: event.clientY };
@@ -462,6 +479,19 @@ export function installPicking(ctx) {
           x: hit.point.x, y: hit.point.y, z: hit.point.z })) return;
       }
       ctx.onSurfaceClick(ctx.hoveredSurface);
+      return;
+    }
+
+    // Un panneau qui attend un sommet : le coin le plus proche du clic,
+    // qu'on ait touché une arête ou une face.
+    if ((ctx.hoveredEdgeGroup >= 0 || ctx.hoveredGroup >= 0)
+        && panel.accepts("vertex")) {
+      const corner = nearestVertex(event);
+      if (corner) {
+        panel.notifyPick("vertex", { kind: "vertex", ...corner });
+      } else {
+        say(t("Cliquez plus près d'un coin de la pièce"));
+      }
       return;
     }
 

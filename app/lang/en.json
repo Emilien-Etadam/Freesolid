@@ -1225,5 +1225,15 @@
  "Nouveau plan": "New plane",
  "Face d'accueil": "Target face",
  "Cliquez la face d'accueil": "Click the target face",
- "Les entités gardent leurs coordonnées dans l'esquisse ; les fonctions qui l'utilisent suivent le nouveau plan.": "Entities keep their sketch coordinates; features that use the sketch follow the new plane."
+ "Les entités gardent leurs coordonnées dans l'esquisse ; les fonctions qui l'utilisent suivent le nouveau plan.": "Entities keep their sketch coordinates; features that use the sketch follow the new plane.",
+ "Chanfrein de sommet — coupe le coin cliqué": "Vertex chamfer — cuts the clicked corner",
+ "Chanfrein de sommet": "Vertex chamfer",
+ "Sommet": "Vertex",
+ "Cliquez près d'un coin de la pièce": "Click near a corner of the part",
+ "Distances": "Distances",
+ "Une par arête": "One per edge",
+ "Distance 2": "Distance 2",
+ "Distance 3": "Distance 3",
+ "Cliquez plus près d'un coin de la pièce": "Click closer to a corner of the part",
+ "Sommet ({x} ; {y} ; {z})": "Vertex ({x}; {y}; {z})"
 }

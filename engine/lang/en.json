@@ -527,5 +527,17 @@
  "seule une fonction de volume se désactive : {}": "only a solid feature can be suppressed: {}",
  "choisissez une fonction": "choose a feature",
  "cette face dépend de l'esquisse elle-même — choisissez un plan ou la face d'une fonction antérieure": "this face depends on the sketch itself — choose a plane or a face of an earlier feature",
- "choisissez le nouveau plan de l'esquisse": "choose the sketch's new plane"
+ "choisissez le nouveau plan de l'esquisse": "choose the sketch's new plane",
+ "Chanfrein de sommet": "Vertex chamfer",
+ "donnez une distance, ou une par arête (trois)": "give one distance, or one per edge (three)",
+ "sommet inconnu : {}": "unknown vertex: {}",
+ "un chanfrein de sommet demande un coin où se rejoignent trois arêtes": "a vertex chamfer needs a corner where three edges meet",
+ "la distance {} mm dépasse l'arête": "the distance {} mm is longer than the edge",
+ "ces distances ne définissent pas de plan": "these distances do not define a plane",
+ "ce sommet n'est pas un coin saillant": "this vertex is not an outside corner",
+ "le coin ne se laisse pas chanfreiner": "the corner cannot be chamfered",
+ "cliquez un coin de la pièce": "click a corner of the part",
+ "un chanfrein de sommet demande un solide": "a vertex chamfer needs a solid",
+ "chanfrein de sommet inconnu : {}": "unknown vertex chamfer: {}",
+ "chanfrein incomplet — la forme est absente": "incomplete chamfer — the shape is missing"
 }

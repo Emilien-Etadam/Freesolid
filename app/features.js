@@ -683,6 +683,28 @@ export function chamferFieldValue(params, prop, fallback) {
   return fallback;
 }
 
+/** Chanfrein de sommet : une distance égale, ou une par arête. */
+export function vertexChamferRows({ distances = [2, 2, 2] } = {}) {
+  const same = distances.every((d) => d === distances[0]);
+  return [
+    { type: "select", key: "vkind", value: same ? "egale" : "trois",
+      options: [["egale", "Distance égale"], ["trois", "Une par arête"]] },
+    { type: "number", key: "d1", label: "Distance", value: distances[0],
+      unit: "mm", min: 0.01 },
+    { type: "number", key: "d2", label: "Distance 2", value: distances[1],
+      unit: "mm", min: 0.01, showIf: (v) => v.vkind === "trois" },
+    { type: "number", key: "d3", label: "Distance 3", value: distances[2],
+      unit: "mm", min: 0.01, showIf: (v) => v.vkind === "trois" },
+  ];
+}
+
+/** Distances du panneau → [d] ou [d1, d2, d3] ; null si l'une est fausse. */
+export function vertexChamferDistances(v) {
+  const keys = v.vkind === "trois" ? ["d1", "d2", "d3"] : ["d1"];
+  const values = keys.map((key) => num(v[key]));
+  return values.every((d) => d > 0) ? values : null;
+}
+
 /** Params `add_chamfer`, ou null si les champs visibles sont invalides. */
 export function chamferCreationParams(v) {
   const kind = v.kind || "egale";
@@ -1047,6 +1069,27 @@ export const FEATURES = [
     },
     invalid: (v) => chamferProblem(v),
   }),
+  {
+    button: "btn-vertex-chamfer",
+    icon: "vertex_chamfer", title: "Chanfrein de sommet",
+    groups: () => [
+      { label: "Sommet",
+        rows: [{ type: "selection", key: "pos", accepts: ["vertex"],
+                 hint: "Cliquez près d'un coin de la pièce" }] },
+      { label: "Distances", rows: vertexChamferRows() },
+    ],
+    build: (v) => {
+      const item = v.pos?.kind === "vertex" ? v.pos : null;
+      const distances = vertexChamferDistances(v);
+      return item && distances
+        ? { op: "add_vertex_chamfer",
+            params: { point: [item.x, item.y, item.z], distances } }
+        : null;
+    },
+    invalid: (v) => (v.pos ? "Distance de chanfrein invalide"
+      : "Cliquez près d'un coin de la pièce"),
+    refresh: "part",
+  },
   {
     button: "btn-shell",
     icon: "shell", title: "Coque",

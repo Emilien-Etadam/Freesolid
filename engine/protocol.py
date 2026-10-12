@@ -196,6 +196,9 @@ OPS: dict[str, tuple[str, ...]] = {
     "undo_history": (),                # lecture : pas à défaire / refaire
     "set_comment": _Req(("feature", str), optional={"text": str}),
     "set_hidden": _Req(("objects", list), optional={"hidden": bool}),
+    "add_vertex_chamfer": _Req(("distances", list), optional={
+        "point": list, "vertex": int}),
+    "edit_vertex_chamfer": _Req(("feature", str), ("distances", list)),
     "sketch_set_plane": _Req(("sketch", str), optional={
         "plane": str, "datum": str, "face": int}),
     "set_suppressed": _Req(("features", list),

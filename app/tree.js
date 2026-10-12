@@ -10,7 +10,7 @@ import { renameClickAction } from "./rename.js";
 import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
   revolutionGroups, revolutionEditValues, revolutionProblem,
-  checkedContours, contourRows,
+  checkedContours, contourRows, vertexChamferDistances, vertexChamferRows,
 } from "./features.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
 import { readScene } from "./theme.js";
@@ -1059,6 +1059,7 @@ export function installTree(ctx) {
       : isRepeatFeature(feature)
         ? "linear_pattern"
         : feature.surface_cut ? "surface_cut"
+          : feature.vertex_chamfer ? "vertex_chamfer"
           : feature.delete_face ? "surface_delete_face"
             : feature.replace_face ? "replace_face"
             : TREE_ICONS[feature.type];
@@ -1497,6 +1498,24 @@ export function installTree(ctx) {
     if (feature.type === "Sketcher::SketchObject") {
       closeGraph();
       ctx.sketchMode.enter(call("sketch_edit", { feature: feature.name }));
+      return;
+    }
+    if (feature.vertex_chamfer) {
+      panel.open({
+        icon: "vertex_chamfer",
+        title: feature.label,
+        groups: [{ label: t("Distances"),
+          rows: vertexChamferRows(feature.vertex_chamfer) }],
+        onApply: (v) => {
+          const distances = vertexChamferDistances(v);
+          if (!distances) {
+            say(t("Distance de chanfrein invalide"), true);
+            return;
+          }
+          refresh(call("edit_vertex_chamfer",
+            { feature: feature.name, distances }));
+        },
+      });
       return;
     }
     if (feature.text) {

@@ -1233,6 +1233,8 @@ class SurfaceMixin:
     def _frozen_result(self, stamps, base_shape):
         """Forme calculée d'une suppression ou d'un remplacement de face."""
         from engine.kernel import KernelError
+        if "vchamfer" in stamps:
+            return self._vertex_chamfered(base_shape, stamps["vchamfer"])
         if "defeatfaces" in stamps:
             faces = [int(f) for f in str(stamps["defeatfaces"]).split(";")
                      if f != ""]
@@ -2043,13 +2045,16 @@ class SurfaceMixin:
                     changed = True
                 continue
             base_name = (getattr(obj, "FreeSolidDefeatbase", "")
-                         or getattr(obj, "FreeSolidReplacebase", ""))
+                         or getattr(obj, "FreeSolidReplacebase", "")
+                         or getattr(obj, "FreeSolidVchamferbase", ""))
             if not base_name:
                 continue
             base = doc.getObject(base_name)
             if base is None or not getattr(base, "Shape", None):
                 continue
-            if getattr(obj, "FreeSolidDefeatbase", ""):
+            if getattr(obj, "FreeSolidVchamferbase", ""):
+                stamps = {"vchamfer": obj.FreeSolidVchamfer}
+            elif getattr(obj, "FreeSolidDefeatbase", ""):
                 stamps = {"defeatfaces": obj.FreeSolidDefeatfaces}
             else:
                 stamps = {"replaceface": obj.FreeSolidReplaceface,

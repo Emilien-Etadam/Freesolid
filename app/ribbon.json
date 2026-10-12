@@ -34,7 +34,8 @@
             {"id": "btn-fillet", "titre": "Congé", "taille": "large", "icon": "fillet", "libelle": "Congé"},
             {"id": "btn-chamfer", "titre": "Chanfrein", "taille": "large", "icon": "chamfer", "libelle": "Chanfrein"},
             {"id": "btn-shell", "titre": "Coque — les faces cliquées deviennent des ouvertures", "icon": "shell", "libelle": "Coque", "taille": "large"},
-            {"id": "btn-draft", "titre": "Dépouille de la face cliquée (plan neutre : Plan de dessus)", "icon": "draft", "libelle": "Dépouille"}
+            {"id": "btn-draft", "titre": "Dépouille de la face cliquée (plan neutre : Plan de dessus)", "icon": "draft", "libelle": "Dépouille"},
+            {"id": "btn-vertex-chamfer", "titre": "Chanfrein de sommet — coupe le coin cliqué", "icon": "vertex_chamfer", "libelle": "Chanfrein de sommet"}
           ]
         },
         {

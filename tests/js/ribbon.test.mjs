@@ -175,7 +175,8 @@ describe("l'organisation transposée", () => {
 
   it("ordonne l'habillage et les transformations", () => {
     assert.deepEqual(sequence(groupe("features", "Habillage")),
-      ["btn-fillet", "btn-chamfer", "btn-shell", "btn-draft"]);
+      ["btn-fillet", "btn-chamfer", "btn-shell", "btn-draft",
+        "btn-vertex-chamfer"]);
     assert.deepEqual(sequence(groupe("features", "Transformations")),
       ["btn-linpattern", "btn-polpattern", "btn-mirror",
         "btn-repeat-variable"]);

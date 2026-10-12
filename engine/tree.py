@@ -613,6 +613,12 @@ class TreeMixin:
                     "x": float(obj.FreeSolidTextX),
                     "y": float(obj.FreeSolidTextY),
                 }
+            vchamfer = getattr(obj, "FreeSolidVchamferspec", "")
+            if vchamfer:
+                from engine.vertexchamfer import parse_spec
+                vertex, distances = parse_spec(vchamfer)
+                item["vertex_chamfer"] = {"vertex": vertex,
+                                          "distances": distances}
             deleted = getattr(obj, "FreeSolidDeletefaces", "")
             if deleted:
                 item["delete_face"] = {"faces": [

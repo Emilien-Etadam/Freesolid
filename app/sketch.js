@@ -211,7 +211,7 @@ export function createSketchMode(deps) {
                     arc: "crosshair", arc3: "crosshair", slot: "crosshair",
                     polygon: "crosshair", skfillet: "pointer",
                     skchamfer: "pointer", extend: "pointer", split: "pointer",
-                    skcorner: "pointer", splconvert: "pointer",
+                    skcorner: "pointer", splconvert: "pointer", g2: "crosshair",
                     splknot: "pointer", spldegree: "pointer",
                     dimarc: "crosshair", dimaxis: "crosshair",
                     dimdia: "crosshair", ordx: "crosshair", ordy: "crosshair",
@@ -262,6 +262,16 @@ export function createSketchMode(deps) {
       }
       if (entity.type === "circle" || entity.type === "arc") {
         yield { geo: entity.id, point: 3, x: entity.c[0], y: entity.c[1] };
+      }
+      if (entity.type === "poly" && entity.kind === "spline"
+          && entity.points?.length > 1) {
+        // Bouts d'une spline : départ (1) et arrivée (2), comme Sketcher.
+        const [x1, y1] = entity.points[0];
+        const [x2, y2] = entity.points[entity.points.length - 1];
+        yield { geo: entity.id, point: 1, x: x1, y: y1 };
+        if (Math.hypot(x2 - x1, y2 - y1) > 1e-9) {
+          yield { geo: entity.id, point: 2, x: x2, y: y2 };
+        }
       }
     }
   }
@@ -1259,6 +1269,32 @@ export function createSketchMode(deps) {
           geo1: first.geo, geo2: target, x1: first.x, y1: first.y,
           x2: local.x, y2: local.y }));
       }
+    } else if (mode.tool === "g2") {
+      // Égaliser la courbure : le bout de la spline de référence, puis le
+      // bout de celle qui s'y raccorde.
+      let point = snapped.onPoint;
+      if (point && mode.pendingG2 && point.geo === mode.pendingG2.geo) {
+        // Raccord : les deux bouts sont au même endroit — on prend celui
+        // de l'autre spline.
+        point = [...endpoints()].find((q) => q.geo !== point.geo
+          && Math.hypot(q.x - point.x, q.y - point.y) < 1e-6) ?? point;
+      }
+      const entity = point && mode.state.entities.find((e) => e.id === point.geo);
+      if (!entity || entity.kind !== "spline" || !(point.point === 1 || point.point === 2)) {
+        say(t("Courbure : cliquez le bout d'une spline"), true);
+        return;
+      }
+      if (!mode.pendingG2) {
+        mode.pendingG2 = point;
+        say(t("Courbure : cliquez le bout de la spline à raccorder"));
+      } else {
+        const first = mode.pendingG2;
+        mode.pendingG2 = null;
+        say(t("Courbure : cliquez le bout de la spline de référence"));
+        await safe(call("sketch_match_curvature", { sketch: name,
+          geo1: first.geo, point1: first.point,
+          geo2: point.geo, point2: point.point }));
+      }
     } else if (["splconvert", "splknot", "spldegree"].includes(mode.tool)) {
       const target = nearestEntity(event);
       if (target !== null) {
@@ -2227,6 +2263,7 @@ export function createSketchMode(deps) {
     mode.pendingSpline = null;
     mode.pendingClicks = null;
     mode.ordinateBase = null;
+    mode.pendingG2 = null;
     mode.pendingEllipse = null;
     mode.selection = [];
     if (tool === "polygon") {
@@ -2262,6 +2299,7 @@ export function createSketchMode(deps) {
       splconvert: "Convertir en spline : cliquez une entité",
       splknot: "Insérer un nœud : cliquez la spline à l'endroit voulu",
       spldegree: "Augmenter le degré : cliquez une spline",
+      g2: "Courbure : cliquez le bout de la spline de référence",
       dimarc: "Longueur d'arc : cliquez un arc",
       dimaxis: "Angle à l'axe : cliquez une ligne",
       dimdia: "Diamètre : cliquez un cercle ou un arc",

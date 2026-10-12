@@ -851,6 +851,7 @@ _TRANSACTIONAL = frozenset({
     "sketch_polar_array", "sketch_reference", "sketch_silhouette", "sketch_add_text",
     "sketch_corner", "sketch_add_equation", "sketch_repair",
     "sketch_fully_define", "sketch_spline", "sketch_block_save",
+    "sketch_match_curvature",
     "sketch_block_insert", "sketch_picture",
     "set_component_grounded", "reorder_feature",
 })

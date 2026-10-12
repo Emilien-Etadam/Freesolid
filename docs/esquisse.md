@@ -62,6 +62,7 @@ Un outil est **fait** quand :
 | Blocs : créer, insérer (position, angle, échelle) | ✅ | `sketch_block_save`, `sketch_block_insert` | `p51_complements` |
 | Image d'esquisse (gardée avec l'esquisse) | ✅ | `sketch_picture` | `p51_complements` |
 | Splines : convertir en spline, insérer un nœud, augmenter le degré | ✅ | `sketch_spline` | `p51_complements` |
+| Égaliser la courbure (G2) au raccord de deux splines | ✅ | `sketch_match_curvature` | `p51_complements` |
 | Peigne de courbure, accrochage à la grille | ✅ | client (`curvatureComb`, `gridStep`) | `sketchtools` |
 
 ## Relations
@@ -100,9 +101,6 @@ Un outil est **fait** quand :
 
 ## Hors périmètre (assumé)
 
-- **Égalité de courbure (G2) entre splines** : le solveur d'esquisse de
-  FreeCAD n'a pas de contrainte de continuité en courbure ; la tangence
-  (G1) est là.
 - **Calques d'esquisse, esquisses partagées entre fonctions** :
   organisation du document plutôt qu'outil d'esquisse.
 
@@ -115,5 +113,10 @@ Un outil est **fait** quand :
   bloqués (forme exacte) ; pour les changer, on les retrace.
 - **Tourner, mettre à l'échelle** : les relations internes à la
   sélection suivent ; celles vers le reste de l'esquisse tombent.
+- **Égaliser la courbure** : appliquée à la demande — la seconde spline
+  est retouchée pour prolonger la première en courbure, et une tangence
+  tient le raccord. Le solveur de FreeCAD n'a pas de relation G2
+  permanente : si l'on déforme ensuite la spline de référence, on
+  réapplique l'outil.
 - **Image** : enregistrée avec l'esquisse jusqu'à 5 Mo ; au-delà, calque
   de travail pour la séance.

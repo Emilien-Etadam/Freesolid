@@ -508,5 +508,9 @@
  "image invalide": "invalid image",
  "silhouette : il faut un solide": "silhouette: a solid is needed",
  "silhouette : module de projection indisponible": "silhouette: projection module unavailable",
- "silhouette : rien de visible depuis ce plan": "silhouette: nothing visible from this plane"
+ "silhouette : rien de visible depuis ce plan": "silhouette: nothing visible from this plane",
+ "courbure : deux extrémités de splines différentes": "curvature: two ends of different splines",
+ "courbure : cliquez les bouts de deux splines": "curvature: click the ends of two splines",
+ "courbure : la seconde spline n'a pas assez de pôles": "curvature: the second spline has too few poles",
+ "courbure : impossible d'égaler la courbure avec cette spline": "curvature: cannot match the curvature with this spline"
 }

@@ -371,6 +371,9 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_spline": _Req(
         ("sketch", str), ("geo", int), ("action", str)),
                                        # convert | knot | degree ; x, y
+    "sketch_match_curvature": _Req(
+        ("sketch", str), ("geo1", int), ("point1", int), ("geo2", int),
+        ("point2", int)),              # G2 au raccord de deux splines
     "sketch_blocks": (),
     "sketch_block_save": _Req(
         ("sketch", str), ("geos", list), ("name", str)),

@@ -1128,5 +1128,9 @@
  "Par le cercle inscrit (clic au milieu d'un côté)": "By the inscribed circle (click the middle of a side)",
  "Cliquez le centre, puis un sommet (ou le milieu d'un côté).": "Click the center, then a vertex (or the middle of a side).",
  "Silhouette — les arêtes vues de la pièce, projetées sur le plan": "Silhouette — the part's visible edges, projected onto the plane",
- "Silhouette : {n} arête(s) projetée(s)": "Silhouette: {n} projected edge(s)"
+ "Silhouette : {n} arête(s) projetée(s)": "Silhouette: {n} projected edge(s)",
+ "Égaliser la courbure — deux splines se raccordent sans cassure de courbure": "Equal curvature — two splines join without a curvature break",
+ "Courbure : cliquez le bout d'une spline": "Curvature: click the end of a spline",
+ "Courbure : cliquez le bout de la spline à raccorder": "Curvature: click the end of the spline to join",
+ "Courbure : cliquez le bout de la spline de référence": "Curvature: click the end of the reference spline"
 }

@@ -3556,7 +3556,23 @@ class SelftestMixin:
             self.sketch_add_line(def_sk, 70.0005, 0, 80, 10)
             repaired = self.sketch_repair(def_sk)
             self.sketch_finish(def_sk)
-            report["p51_complements"] = (
+            st = self.sketch_start(plane="XY")
+            g2_sk = st["sketch"]
+            self.sketch_add_spline_poles(g2_sk, [[0, 0], [10, 10], [20, 10],
+                                                 [30, 0]])
+            self.sketch_add_spline_poles(g2_sk, [[30, 0], [40, -5], [50, 5],
+                                                 [60, 0]])
+            self.sketch_match_curvature(g2_sk, 0, 2, 1, 1)
+            g2o = self._get_sketch(g2_sk)
+            sa, sb = g2o.Geometry[0], g2o.Geometry[1]
+            g2_ok = (abs(self._signed_curvature(sa, sa.LastParameter)
+                         - self._signed_curvature(sb, sb.FirstParameter))
+                     < 1e-6
+                     and (sa.value(sa.LastParameter)
+                          - sb.value(sb.FirstParameter)).Length < 1e-7
+                     and not list(g2o.ConflictingConstraints))
+            self.sketch_finish(g2_sk)
+            report["p51_complements"] = g2_ok and (
                 text_ok and corner_ok and equation_ok and spline_ok
                 and block_ok and picture_ok
                 and defined["definition"] == "full" and defined["added"] == 7

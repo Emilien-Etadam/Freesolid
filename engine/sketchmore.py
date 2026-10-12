@@ -363,6 +363,90 @@ class SketchMoreMixin:
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
+    @staticmethod
+    def _signed_curvature(curve, u):
+        """Courbure signée d'une courbe plane (z = 0) au paramètre u."""
+        _p, d1, d2 = curve.getD2(u)
+        speed = (d1.x ** 2 + d1.y ** 2) ** 1.5
+        if speed < 1e-18:
+            return 0.0
+        return (d1.x * d2.y - d1.y * d2.x) / speed
+
+    def sketch_match_curvature(self, sketch, geo1, point1, geo2, point2):
+        """Égaliser la courbure (G2) au raccord de deux splines : la seconde
+        est retouchée (ses trois pôles du côté du raccord) pour prolonger
+        la première en position, en tangente et en courbure ; une relation
+        de tangence tient ensuite le raccord. La seconde spline est
+        remplacée (ses relations propres tombent)."""
+        from engine.kernel import KernelError, _explain
+        import Sketcher
+        sk = self._get_sketch(sketch)
+        g1, g2 = int(geo1), int(geo2)
+        p1, p2 = int(point1), int(point2)
+        if g1 == g2 or p1 not in (1, 2) or p2 not in (1, 2):
+            raise KernelError("courbure : deux extrémités de splines "
+                              "différentes")
+        for g in (g1, g2):
+            if not 0 <= g < len(sk.Geometry) or                     "BSpline" not in sk.Geometry[g].TypeId:
+                raise KernelError("courbure : cliquez les bouts de deux "
+                                  "splines")
+        V = self._app().Vector
+        a = sk.Geometry[g1].copy()
+        b = sk.Geometry[g2].copy()
+        # Parcours continu : A finit au raccord, B en part.
+        if p1 == 1:
+            a.reverse()
+        if p2 == 2:
+            b.reverse()
+        if b.NbPoles < 3:
+            b.increaseDegree(2)
+        if b.NbPoles < 3:
+            raise KernelError("courbure : la seconde spline n'a pas assez "
+                              "de pôles")
+        joint = a.value(a.LastParameter)
+        tangent = a.tangent(a.LastParameter)[0]
+        tangent.normalize()
+        side = V(-tangent.y, tangent.x, 0)
+        target = self._signed_curvature(a, a.LastParameter)
+        p0, q1, q2 = b.getPole(1), b.getPole(2), b.getPole(3)
+        reach = max((q1 - p0).Length, 1e-6)
+        b.setPole(1, joint)
+        first = joint + tangent * reach
+        b.setPole(2, first)
+        along = (q2 - q1).dot(tangent)
+        if along <= 1e-9:
+            along = reach
+
+        def curvature_for(h):
+            b.setPole(3, first + tangent * along + side * h)
+            return self._signed_curvature(b, b.FirstParameter) - target
+
+        h0 = (q2 - q1).dot(side)
+        h1 = h0 + reach * 0.1 + 1e-3
+        f0, f1 = curvature_for(h0), curvature_for(h1)
+        for _ in range(60):
+            if abs(f1) < 1e-10 or abs(f1 - f0) < 1e-15:
+                break
+            h0, h1 = h1, h1 - f1 * (h1 - h0) / (f1 - f0)
+            f0, f1 = f1, curvature_for(h1)
+        if abs(curvature_for(h1)) > 1e-6 * max(1.0, abs(target)):
+            raise KernelError("courbure : impossible d'égaler la courbure "
+                              "avec cette spline")
+        if p2 == 2:
+            b.reverse()
+        try:
+            construction = bool(sk.getConstruction(g2))
+            sk.delGeometry(g2)
+            first_id = g1 if g1 < g2 else g1 - 1
+            new = sk.addGeometry(b, construction)
+            sk.addConstraint(Sketcher.Constraint(
+                "Tangent", first_id, p1, new, p2))
+        except Exception as exc:  # noqa: BLE001
+            raise KernelError(_explain(exc))
+        state = self.sketch_state(sketch)
+        state["curvature"] = target
+        return state
+
     # ---------- blocs ----------
 
     def _block_sketches(self):

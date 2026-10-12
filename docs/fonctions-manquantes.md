@@ -20,7 +20,7 @@ Périmètre complet et critère « fait » : [esquisse.md](esquisse.md).
 | Texte d'esquisse | ✅ **fait** | contours des lettres, bloqués |
 | Image d'esquisse (calque de fond) | ✅ **fait** | enregistrée avec l'esquisse (jusqu'à 5 Mo) |
 | Blocs d'esquisse | ✅ **fait** | créer depuis une sélection, insérer (position, angle, échelle) ; les copies posées ne suivent pas une redéfinition du bloc |
-| Splines de style, courbure peignée | ✅ **fait** | convertir en spline, insérer un nœud, augmenter le degré, peigne de courbure ; pas d'égalité de courbure (G2) dans le solveur |
+| Splines de style, courbure peignée | ✅ **fait** | convertir en spline, insérer un nœud, augmenter le degré, peigne de courbure, égaliser la courbure (G2) au raccord de deux splines |
 
 ## Fonctions volumiques
 

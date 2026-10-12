@@ -619,6 +619,7 @@ def test_ops_snapshot_keys():
         "sketch_fillet",
         "sketch_finish",
         "sketch_fully_define",
+        "sketch_match_curvature",
         "sketch_mirror",
         "sketch_move",
         "sketch_offset",

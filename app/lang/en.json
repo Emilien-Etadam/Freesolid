@@ -1272,5 +1272,18 @@
  "Erreurs de reconstruction": "Rebuild errors",
  "Fonctions en erreur": "Features in error",
  "Aucune erreur": "No error",
- "Un clic ouvre la fonction. Corrigez d'abord la première : les suivantes en dépendent souvent.": "A click opens the feature. Fix the first one first: the next ones often depend on it."
+ "Un clic ouvre la fonction. Corrigez d'abord la première : les suivantes en dépendent souvent.": "A click opens the feature. Fix the first one first: the next ones often depend on it.",
+ "Axe de référence — sur un axe d'origine ou une arête": "Reference axis — on an origin axis or an edge",
+ "Point de référence — sur un sommet, un centre ou des coordonnées": "Reference point — on a vertex, a center or coordinates",
+ "Repère — sur un sommet ou des coordonnées": "Coordinate system — on a vertex or coordinates",
+ "Repère": "Coordinate system",
+ "Axe de référence": "Reference axis",
+ "Point de référence": "Reference point",
+ "Arête du solide": "Edge of the solid",
+ "Sommet cliqué": "Clicked vertex",
+ "Centre d'une arête circulaire": "Center of a circular edge",
+ "Coordonnées": "Coordinates",
+ "Cliquez une arête droite ou circulaire": "Click a straight or circular edge",
+ "Cliquez une arête circulaire": "Click a circular edge",
+ "Choisissez d'abord ce qui porte l'élément": "First choose what carries the element"
 }

@@ -573,8 +573,10 @@ class TreeMixin:
             }
             if getattr(obj, "Suppressed", False):
                 item["suppressed"] = True
-            if obj.TypeId == "PartDesign::Plane":
-                # Le client dessine le plan de référence dans le viewport.
+            if obj.TypeId in ("PartDesign::Plane", "PartDesign::Line",
+                              "PartDesign::Point",
+                              "PartDesign::CoordinateSystem"):
+                # Le client dessine la géométrie de référence dans la vue.
                 item["placement"] = [
                     float(v) for v in obj.Placement.Matrix.A]
                 item["rolled_back"] = self._is_rolled_back(obj)

@@ -170,7 +170,8 @@ describe("l'organisation transposée", () => {
 
   it("ouvre l'onglet Fonctions par la préparation, esquisse en tête", () => {
     assert.deepEqual(sequence(groupe("features", "Préparation")),
-      ["btn-sketch", "btn-body", "btn-datum"]);
+      ["btn-sketch", "btn-body", "btn-datum", "btn-datum-axis",
+        "btn-datum-point", "btn-datum-cs"]);
   });
 
   it("ordonne l'habillage et les transformations", () => {

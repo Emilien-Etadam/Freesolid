@@ -34,6 +34,9 @@ export const TREE_ICONS = {
   "PartDesign::Draft": "draft",
   "PartDesign::Hole": "hole",
   "PartDesign::Plane": "plane",
+  "PartDesign::Line": "datum_axis",
+  "PartDesign::Point": "datum_point",
+  "PartDesign::CoordinateSystem": "datum_cs",
   "PartDesign::AdditiveLoft": "loft",
   "PartDesign::SubtractiveLoft": "loft",
   "PartDesign::AdditivePipe": "sweep",
@@ -916,7 +919,7 @@ export function installTree(ctx) {
     clearAssemblyView(); // un arbre de pièce = le mode assemblage s'efface
     dropRolledBackSelection(tree);
     ctx.lastTree = tree;
-    ctx.onTreeRendered?.(tree);
+    for (const hook of ctx.treeHooks ?? []) hook(tree);
     updateEditMode();
     ctx.treeHoverPlane = null;
     treeEl.innerHTML = "";

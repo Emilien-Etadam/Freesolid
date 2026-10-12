@@ -565,5 +565,14 @@
  "{} : Une arête qu'elle utilisait a disparu. Rééditez la fonction pour choisir de nouveau ses arêtes.": "{}: An edge it used is gone. Edit the feature to pick its edges again.",
  "Une arête qu'elle utilisait a disparu. Rééditez la fonction pour choisir de nouveau ses arêtes.": "An edge it used is gone. Edit the feature to pick its edges again.",
  "{} : Une face qu'elle utilisait a disparu. Rééditez la fonction pour choisir de nouveau ses faces.": "{}: A face it used is gone. Edit the feature to pick its faces again.",
- "Une face qu'elle utilisait a disparu. Rééditez la fonction pour choisir de nouveau ses faces.": "A face it used is gone. Edit the feature to pick its faces again."
+ "Une face qu'elle utilisait a disparu. Rééditez la fonction pour choisir de nouveau ses faces.": "A face it used is gone. Edit the feature to pick its faces again.",
+ "Axe de référence": "Reference axis",
+ "Point de référence": "Reference point",
+ "Repère": "Coordinate system",
+ "un élément de référence sur une arête demande un solide": "a reference element on an edge needs a solid",
+ "un élément de référence sur un sommet demande un solide": "a reference element on a vertex needs a solid",
+ "choisissez une arête droite ou circulaire": "choose a straight or circular edge",
+ "le centre demande une arête circulaire": "the center needs a circular edge",
+ "donnez un sommet, un cercle ou trois coordonnées": "give a vertex, a circle or three coordinates",
+ "donnez un sommet ou trois coordonnées": "give a vertex or three coordinates"
 }

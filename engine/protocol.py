@@ -166,6 +166,10 @@ OPS: dict[str, tuple[str, ...]] = {
     # Phase E — évaluer + mise en plan.
     "mass_properties": (),             # optional: density (g/cm³)
     "material_library": (),            # lecture : matières proposées
+    "add_datum_axis": _Req(optional={"axis": str, "edge": int}),
+    "add_datum_point": _Req(optional={"point": list, "vertex": list,
+                                      "edge": int}),
+    "add_datum_cs": _Req(optional={"point": list, "vertex": list}),
     "set_body_material": _Req(("body", str), optional={
         "material": str, "density": float}),
     "set_face_color": _Req(("faces", list), "color"),

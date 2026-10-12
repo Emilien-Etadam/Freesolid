@@ -17,6 +17,9 @@ const STEP_LABELS = {
   add_draft: "Dépouille",
   add_hole: "Perçage",
   add_datum_plane: "Plan de référence",
+  add_datum_axis: "Axe de référence",
+  add_datum_point: "Point de référence",
+  add_datum_cs: "Repère",
   add_loft: "Lissage",
   add_sweep: "Balayage",
   add_helix: "Hélice",
@@ -77,7 +80,7 @@ export function sketchTreeLabel(label, definition) {
 // elles ne font pas le solide, la barre ne les recule que sur demande.
 const REFERENCE_TYPES = new Set([
   "Sketcher::SketchObject", "PartDesign::Plane", "PartDesign::Line",
-  "PartDesign::Point",
+  "PartDesign::Point", "PartDesign::CoordinateSystem",
 ]);
 
 function isVolumeRow(row) {

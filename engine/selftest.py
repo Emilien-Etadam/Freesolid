@@ -3834,6 +3834,42 @@ class SelftestMixin:
                 and orphan == [fillet] and kept
                 and self.rebuild_errors()["errors"] == [])
 
+            mark("p61: axe, point, repère de référence")
+            self.new_part("Pièce repères")
+            self.add_rect_sketch(20, 10)
+            self.add_pad(5)
+            body = self._require_body()
+            upright = next(i for i, e in enumerate(body.Shape.Edges)
+                           if abs(e.BoundBox.ZLength - 5) < 1e-6)
+            self.add_datum_axis(axis="X")
+            self.add_datum_axis(edge=upright)
+            self.add_datum_point(vertex=[10, 5, 5])
+            self.add_datum_point(point=[1, 2, 3])
+            tree = self.add_datum_cs(vertex=[-10, -5, 0])
+            refs = [f for f in tree["features"] if f["type"] in (
+                "PartDesign::Line", "PartDesign::Point",
+                "PartDesign::CoordinateSystem")]
+            doc = self._require_doc()
+
+            def base(item):
+                p = doc.getObject(item["name"]).Placement
+                return [round(p.Base.x, 6), round(p.Base.y, 6),
+                        round(p.Base.z, 6)]
+
+            def along(item):
+                v = doc.getObject(item["name"]).Placement.Rotation.multVec(
+                    self._app().Vector(0, 0, 1))
+                return [round(abs(v.x), 6), round(abs(v.y), 6),
+                        round(abs(v.z), 6)]
+            report["p61_reference"] = (
+                [r["type"].split("::")[1] for r in refs]
+                == ["Line", "Line", "Point", "Point", "CoordinateSystem"]
+                and all(len(r.get("placement") or []) == 16 for r in refs)
+                and along(refs[0]) == [1, 0, 0] and along(refs[1]) == [0, 0, 1]
+                and base(refs[2]) == [10, 5, 5] and base(refs[3]) == [1, 2, 3]
+                and base(refs[4]) == [-10, -5, 0]
+                and refs[0]["kind"] == "Axe de référence")
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

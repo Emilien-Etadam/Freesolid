@@ -111,7 +111,7 @@ ordre.
 | 55 | Infobulles enrichies, raccourcis personnalisables | P3 | fait : infobulle des barres (nom, détail, touches) ; Outils → Raccourcis clavier… (une commande du ruban par combinaison, touches réservées refusées, gardés dans le navigateur) |
 | 56 | Matières : bibliothèque, couleur par face | P2 | fait : clic droit sur un corps → Matière… (14 matières usuelles ou masse volumique personnalisée) ; Évaluer prend la matière du corps ; la teinte devient la couleur du corps sauf couleur choisie ; couleur d’une face depuis la rangée d’icônes du clic droit (enregistrée dans le fichier) |
 | 57 | Liste des erreurs de reconstruction | P2 | fait : « ⚠ n erreur(s) » dans la barre d’état, la liste au clic (message traduit, un clic ouvre la fonction) ; réactiver une fonction d’appui rend leurs arêtes aux fonctions qui l’utilisaient |
-| 58 | Axe, point et repère de référence | P2 | à faire |
+| 58 | Axe, point et repère de référence | P2 | fait : boutons Axe, Point, Repère (onglet Fonctions) ; axe sur un axe d’origine, une arête droite ou circulaire ; point sur un sommet, un centre de cercle ou des coordonnées ; repère sur un sommet ou des coordonnées ; dessinés dans la vue, ils suivent la pièce |
 | 59 | Copier-coller de fonctions | P1 | à faire |
 | 60 | Variantes : coque à épaisseurs par face, exemplaires sautés, congé variable / de face / arrondi complet | P3 | à faire |
 | 61 | Unités et gabarits | P3 | à faire |

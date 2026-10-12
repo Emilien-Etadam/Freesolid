@@ -38,6 +38,7 @@ import {
   writeShortcuts,
 } from "./shortcuts.js";
 import { countTreeErrors, undoStepLabel } from "./history.js";
+import { installRefGeometry } from "./refgeom.js";
 import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
 import { installWelcome, rememberRecent } from "./welcome.js";
@@ -1876,11 +1877,16 @@ document.getElementById("btn-undo-list").addEventListener("click", async (event)
 // Erreurs de reconstruction : le compte dans la barre d'état, la liste
 // (avec le message du modeleur) au clic ; une ligne ouvre la fonction.
 const errorsBadge = document.getElementById("errors-badge");
-ctx.onTreeRendered = (tree) => {
+ctx.treeHooks = [(tree) => {
   const count = countTreeErrors(tree);
   errorsBadge.hidden = count === 0;
   errorsBadge.textContent = t("⚠ {n} erreur(s)", { n: count });
-};
+}];
+
+// Axes, points et repères : panneaux du ruban, dessin à chaque arbre.
+Object.assign(ctx, { currentSelection, featureCommand });
+const refGeometry = installRefGeometry(ctx);
+ctx.treeHooks.push((tree) => refGeometry.draw(tree));
 errorsBadge.addEventListener("click", async () => {
   const result = await call("rebuild_errors").catch((error) => {
     say(String(error.message ?? error), true);

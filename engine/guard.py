@@ -29,6 +29,15 @@ _TRANSLATIONS: tuple[tuple[str, str], ...] = (
      " décalés de l'épaisseur."),
     ("failed to create a face from constraints",
      "{} : Le remplissage n'a pas pu tendre une surface sur ce contour. Vérifiez qu'il est fermé ; sans tangence, la surface passe plus facilement — la tangence échoue quand les faces voisines sont perpendiculaires à la surface cherchée (bout de tube)."),
+    ("base feature's toposhape is invalid",
+     "{} : La fonction sur laquelle elle s'appuie est désactivée ou en "
+     "erreur. Réactivez-la ou corrigez-la d'abord."),
+    ("invalid edge link",
+     "{} : Une arête qu'elle utilisait a disparu. Rééditez la fonction "
+     "pour choisir de nouveau ses arêtes."),
+    ("invalid face link",
+     "{} : Une face qu'elle utilisait a disparu. Rééditez la fonction "
+     "pour choisir de nouveau ses faces."),
     ("wire is not closed",
      "{} : Le contour de l'esquisse n'est pas fermé. Le profil doit "
      "former une boucle fermée pour produire un solide. Fermez le "

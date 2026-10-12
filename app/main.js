@@ -37,7 +37,7 @@ import {
   assignShortcut, comboLabel, comboOf, installRichTips, readShortcuts,
   writeShortcuts,
 } from "./shortcuts.js";
-import { undoStepLabel } from "./history.js";
+import { countTreeErrors, undoStepLabel } from "./history.js";
 import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
 import { installWelcome, rememberRecent } from "./welcome.js";
@@ -1871,6 +1871,40 @@ document.getElementById("btn-undo-list").addEventListener("click", async (event)
     menu.appendChild(button);
   });
   menu.hidden = false;
+});
+
+// Erreurs de reconstruction : le compte dans la barre d'état, la liste
+// (avec le message du modeleur) au clic ; une ligne ouvre la fonction.
+const errorsBadge = document.getElementById("errors-badge");
+ctx.onTreeRendered = (tree) => {
+  const count = countTreeErrors(tree);
+  errorsBadge.hidden = count === 0;
+  errorsBadge.textContent = t("⚠ {n} erreur(s)", { n: count });
+};
+errorsBadge.addEventListener("click", async () => {
+  const result = await call("rebuild_errors").catch((error) => {
+    say(String(error.message ?? error), true);
+    return null;
+  });
+  if (!result) return;
+  panel.open({
+    icon: "rebuild",
+    title: t("Erreurs de reconstruction"),
+    groups: [{ label: t("Fonctions en erreur"), rows: [{
+      type: "list",
+      empty: t("Aucune erreur"),
+      items: result.errors.map((error) => ({
+        label: error.message,
+        onEdit: () => {
+          const feature = findFeatureInTree(lastTree, error.name);
+          if (feature) editFeature(feature);
+        },
+      })),
+    }] }],
+    note: t("Un clic ouvre la fonction. Corrigez d'abord la première : "
+      + "les suivantes en dépendent souvent."),
+    noApply: true,
+  });
 });
 
 // Raccourcis personnels (Outils → Raccourcis clavier…), gardés dans le

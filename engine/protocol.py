@@ -198,6 +198,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "undo": _Req(optional={"steps": int}),  # une transaction = un Ctrl+Z
     "redo": _Req(optional={"steps": int}),
     "undo_history": (),                # lecture : pas à défaire / refaire
+    "rebuild_errors": (),              # lecture : fonctions en erreur
     "set_comment": _Req(("feature", str), optional={"text": str}),
     "set_hidden": _Req(("objects", list), optional={"hidden": bool}),
     "add_vertex_chamfer": _Req(("distances", list), optional={

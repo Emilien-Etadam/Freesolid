@@ -916,6 +916,7 @@ export function installTree(ctx) {
     clearAssemblyView(); // un arbre de pièce = le mode assemblage s'efface
     dropRolledBackSelection(tree);
     ctx.lastTree = tree;
+    ctx.onTreeRendered?.(tree);
     updateEditMode();
     ctx.treeHoverPlane = null;
     treeEl.innerHTML = "";

@@ -51,6 +51,21 @@ export function undoStepLabel(op) {
   return "Modification";
 }
 
+/** Nombre de lignes d'arbre en erreur (fonctions, leurs esquisses,
+ *  surfaces), chacune comptée une fois. */
+export function countTreeErrors(tree) {
+  const names = new Set();
+  const visit = (items) => {
+    for (const item of items ?? []) {
+      if (item.error) names.add(item.name);
+      visit(item.children);
+    }
+  };
+  visit(tree?.features);
+  visit(tree?.surfaces);
+  return names.size;
+}
+
 /** Libellé d'esquisse dans l'arbre : (-) encore libre, (+) en trop. */
 export function sketchTreeLabel(label, definition) {
   if (definition === "under") return `(-) ${label}`;

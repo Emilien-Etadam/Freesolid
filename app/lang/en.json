@@ -1266,5 +1266,11 @@
  "La masse (Évaluer) suit la matière ; sa teinte devient la couleur du corps, sauf couleur choisie.": "Mass (Evaluate) follows the material; its tint becomes the body color, unless a color was chosen.",
  "Masse : {m} g ({n}, {d} g/cm³)": "Mass: {m} g ({n}, {d} g/cm³)",
  "Couleur de la face…": "Face color…",
- "Couleur de face par défaut": "Default face color"
+ "Couleur de face par défaut": "Default face color",
+ "Erreurs de reconstruction — cliquer pour la liste": "Rebuild errors — click for the list",
+ "⚠ {n} erreur(s)": "⚠ {n} error(s)",
+ "Erreurs de reconstruction": "Rebuild errors",
+ "Fonctions en erreur": "Features in error",
+ "Aucune erreur": "No error",
+ "Un clic ouvre la fonction. Corrigez d'abord la première : les suivantes en dépendent souvent.": "A click opens the feature. Fix the first one first: the next ones often depend on it."
 }

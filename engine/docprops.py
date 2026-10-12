@@ -1,5 +1,6 @@
 """Commentaires des fonctions, propriétés du fichier, historique
-d'annulation, corps et surfaces masqués, fonctions désactivées.
+d'annulation, corps et surfaces masqués, fonctions désactivées, liste
+des erreurs de reconstruction.
 
 Un commentaire est une note libre posée sur une fonction (propriété
 cachée ``FreeSolidComment``) : l'arbre la montre en infobulle. Les
@@ -132,10 +133,71 @@ class DocPropsMixin:
             targets.append(obj)
         if not targets:
             raise KernelError("choisissez une fonction")
+        from engine.kernel import KernelError as _Broken
         for obj in targets:
             obj.Suppressed = bool(suppressed)
-        self._recompute()
+        for _ in range(2):
+            try:
+                self._recompute()
+                break
+            except _Broken:
+                # Les fonctions qui en dépendaient restent en erreur, sauf
+                # si elles ont seulement perdu leurs arêtes ou faces le
+                # temps de la désactivation : on les leur rend.
+                if suppressed or not self._heal_missing_links(doc):
+                    break
         return self._current_tree()
+
+    @staticmethod
+    def _heal_missing_links(doc):
+        """Sous-éléments marqués manquants (« ?Edge1 ») pendant qu'une
+        fonction d'appui était désactivée : rendus à leur nom (« Edge1 »).
+        Vrai si un lien a été réparé."""
+        healed = False
+        for obj in doc.Objects:
+            for prop in obj.PropertiesList:
+                kind = obj.getTypeIdOfProperty(prop)
+                if kind == "App::PropertyLinkSub":
+                    value = getattr(obj, prop)
+                    if value and any(str(s).startswith("?") for s in value[1]):
+                        setattr(obj, prop, (value[0], [str(s).lstrip("?")
+                                                       for s in value[1]]))
+                        healed = True
+                elif kind == "App::PropertyLinkSubList":
+                    value = getattr(obj, prop) or []
+                    if any(str(s).startswith("?") for _, subs in value
+                           for s in (subs if isinstance(subs, (list, tuple))
+                                     else [subs])):
+                        setattr(obj, prop, [
+                            (o, [str(s).lstrip("?") for s in (
+                                subs if isinstance(subs, (list, tuple))
+                                else [subs])])
+                            for o, subs in value])
+                        healed = True
+        return healed
+
+    def rebuild_errors(self):
+        """Fonctions en erreur après la reconstruction, dans l'ordre du
+        document, avec le message du modeleur (traduit quand il est
+        connu)."""
+        doc = self._require_doc()
+        out = []
+        for obj in doc.Objects:
+            state = obj.State or ()
+            if "Invalid" not in state and "Error" not in state:
+                continue
+            if self._is_internal_tool(obj):
+                continue
+            # « Fonction : ce qui ne va pas », traduit comme à la
+            # reconstruction.
+            message = self._broken_message(obj)
+            out.append({"name": obj.Name, "label": obj.Label,
+                        "kind": self._t_kind(obj), "message": message})
+        return {"errors": out}
+
+    def _t_kind(self, obj):
+        from engine.vocab import label_for_type
+        return label_for_type(obj.TypeId, self.lang)
 
     def undo_history(self):
         """Ce que Ctrl+Z et Ctrl+Y défont, du plus proche au plus loin."""

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   chronologicalHistory,
+  countTreeErrors,
   splitHistoryAroundBar,
   undoStepLabel,
 } from "../../app/history.js";
@@ -138,5 +139,18 @@ describe("undoStepLabel", () => {
     assert.equal(undoStepLabel("surface_sew"), "Surface");
     assert.equal(undoStepLabel("add_something_new"), "Fonction");
     assert.equal(undoStepLabel("Autre"), "Modification");
+  });
+});
+
+describe("countTreeErrors", () => {
+  it("compte chaque ligne en erreur une fois, enfants et surfaces compris", () => {
+    const sketch = { name: "S", error: true };
+    assert.equal(countTreeErrors({
+      features: [{ name: "Pad", error: false, children: [sketch] },
+                 { name: "Pocket", error: false, children: [sketch] },
+                 { name: "Fillet", error: true }],
+      surfaces: [{ name: "Surf", error: true }],
+    }), 3);
+    assert.equal(countTreeErrors(null), 0);
   });
 });

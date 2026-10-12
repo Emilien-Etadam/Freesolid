@@ -559,5 +559,11 @@
  "Matière personnalisée": "Custom material",
  "masse volumique invalide": "invalid density",
  "matière inconnue : {}": "unknown material: {}",
- "cliquez les faces à colorer": "click the faces to color"
+ "cliquez les faces à colorer": "click the faces to color",
+ "{} : La fonction sur laquelle elle s'appuie est désactivée ou en erreur. Réactivez-la ou corrigez-la d'abord.": "{}: The feature it is built on is suppressed or in error. Unsuppress or fix it first.",
+ "La fonction sur laquelle elle s'appuie est désactivée ou en erreur. Réactivez-la ou corrigez-la d'abord.": "The feature it is built on is suppressed or in error. Unsuppress or fix it first.",
+ "{} : Une arête qu'elle utilisait a disparu. Rééditez la fonction pour choisir de nouveau ses arêtes.": "{}: An edge it used is gone. Edit the feature to pick its edges again.",
+ "Une arête qu'elle utilisait a disparu. Rééditez la fonction pour choisir de nouveau ses arêtes.": "An edge it used is gone. Edit the feature to pick its edges again.",
+ "{} : Une face qu'elle utilisait a disparu. Rééditez la fonction pour choisir de nouveau ses faces.": "{}: A face it used is gone. Edit the feature to pick its faces again.",
+ "Une face qu'elle utilisait a disparu. Rééditez la fonction pour choisir de nouveau ses faces.": "A face it used is gone. Edit the feature to pick its faces again."
 }

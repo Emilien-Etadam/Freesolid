@@ -3809,6 +3809,31 @@ class SelftestMixin:
                 and body.FreeSolidColor == "#112233"
                 and tinted == [0])
 
+            mark("p60: liste des erreurs")
+            self.new_part("Pièce en erreur")
+            self.add_rect_sketch(20, 10)
+            self.add_pad(5)
+            clean = self.rebuild_errors()["errors"]
+            self.add_fillet(1, edges=[0])
+            fillet = self.get_tree()["features"][-1]["name"]
+            self._require_doc().getObject(fillet).Radius = 50  # trop grand
+            self._require_doc().recompute()  # sans lever : l'erreur reste
+            errors = self.rebuild_errors()["errors"]
+            self._require_doc().getObject(fillet).Radius = 1
+            self._require_doc().recompute()
+            # Désactiver la fonction d'appui : le congé passe en erreur,
+            # la désactivation est gardée.
+            pad = self.get_tree()["features"][0]["name"]
+            self.set_suppressed([pad])
+            orphan = [e["name"] for e in self.rebuild_errors()["errors"]]
+            kept = self.get_tree()["features"][0].get("suppressed") is True
+            self.set_suppressed([pad], suppressed=False)
+            report["p60_erreurs"] = (
+                clean == [] and [e["name"] for e in errors] == [fillet]
+                and bool(errors[0]["message"])
+                and orphan == [fillet] and kept
+                and self.rebuild_errors()["errors"] == [])
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

@@ -575,6 +575,7 @@ def test_ops_snapshot_keys():
         "preview",
         "progress",
         "rebuild",
+        "rebuild_errors",
         "redo",
         "rename",
         "reorder_feature",

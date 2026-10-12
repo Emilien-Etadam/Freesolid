@@ -110,7 +110,7 @@ ordre.
 | 54 | Sélection : choisir parmi les éléments superposés, chaîne tangente | P2 | fait : Alt+clic = la face de derrière (Alt+clic encore : la suivante) ; clic droit sur une arête → chaîne tangente, ou boucle (encore : la boucle de l’autre face) |
 | 55 | Infobulles enrichies, raccourcis personnalisables | P3 | fait : infobulle des barres (nom, détail, touches) ; Outils → Raccourcis clavier… (une commande du ruban par combinaison, touches réservées refusées, gardés dans le navigateur) |
 | 56 | Matières : bibliothèque, couleur par face | P2 | fait : clic droit sur un corps → Matière… (14 matières usuelles ou masse volumique personnalisée) ; Évaluer prend la matière du corps ; la teinte devient la couleur du corps sauf couleur choisie ; couleur d’une face depuis la rangée d’icônes du clic droit (enregistrée dans le fichier) |
-| 57 | Liste des erreurs de reconstruction | P2 | à faire |
+| 57 | Liste des erreurs de reconstruction | P2 | fait : « ⚠ n erreur(s) » dans la barre d’état, la liste au clic (message traduit, un clic ouvre la fonction) ; réactiver une fonction d’appui rend leurs arêtes aux fonctions qui l’utilisaient |
 | 58 | Axe, point et repère de référence | P2 | à faire |
 | 59 | Copier-coller de fonctions | P1 | à faire |
 | 60 | Variantes : coque à épaisseurs par face, exemplaires sautés, congé variable / de face / arrondi complet | P3 | à faire |

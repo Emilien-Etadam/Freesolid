@@ -156,6 +156,15 @@
     background: var(--panel-2); border-color: var(--line);
   }
   #quickbar .sep { height: 16px; margin: 0 var(--space-1); }
+  #quickbar .drop-arrow { width: 14px; font-size: 10px; color: var(--muted); }
+  #undo-menu { left: 0; right: auto; max-height: 60vh; overflow-y: auto; }
+  #quickbar #undo-menu button {
+    width: 100%; height: auto; justify-content: flex-start;
+    white-space: nowrap;
+  }
+  #undo-menu .menu-head { padding: 4px var(--space-2); color: var(--muted);
+    font-size: 11px; }
+  #tree .tree-note { color: var(--muted); }
   #topbar {
     height: 28px; display: flex; align-items: flex-end; gap: 2px;
     padding: 0 var(--space-2);
@@ -1161,6 +1170,10 @@
         <button id="btn-save" title="Enregistrer (.FCStd)"><img data-icon="save" alt=""></button>
         <div class="sep"></div>
         <button id="btn-undo" title="Annuler (Ctrl+Z)"><img data-icon="undo" alt=""></button>
+        <div class="view-drop">
+          <button id="btn-undo-list" class="drop-arrow" title="Historique — annuler plusieurs pas d'un coup">▾</button>
+          <div id="undo-menu" class="view-menu" hidden></div>
+        </div>
         <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img data-icon="redo" alt=""></button>
         <button id="btn-rebuild" title="Reconstruire — recalcul forcé de tout l'arbre"><img data-icon="rebuild" alt=""></button>
       </div>
@@ -1393,6 +1406,7 @@
   <div id="ctxmenu">
     <div id="ctx-modify" hidden>Modifier</div>
     <div id="ctx-rename">Renommer</div>
+    <div id="ctx-comment">Commentaire…</div>
     <div id="ctx-ground" hidden>Fixer</div>
     <div id="ctx-color" hidden>Couleur…</div>
     <div id="ctx-color-reset" hidden>Couleur par défaut</div>

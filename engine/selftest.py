@@ -3640,6 +3640,37 @@ class SelftestMixin:
                 and abs(self._require_body().Shape.Volume - 40 * 30 * 5)
                 < 1e-6)
 
+            mark("p53: commentaires, propriétés, historique")
+            self.new_part("Pièce notes")
+
+            def run(op, **params):
+                out = dispatch(self, op, params)
+                if not out["ok"]:
+                    raise KernelError(out["error"])
+                return out["result"]
+            run("add_rect_sketch", width=30, height=20)
+            run("add_pad", length=5)
+            pad = self.get_tree()["features"][-1]["name"]
+            noted = run("set_comment", feature=pad,
+                        text="  épaisseur de la tôle  ")
+            history = run("undo_history")
+            run("rename", feature=pad, label="Plaque")  # puis deux pas défaits
+            run("undo", steps=2)
+            after = self.get_tree()
+            props = run("set_document_properties", values={
+                "author": "Atelier", "description": "Support",
+                "custom": {"Référence": "FS-001", "Vide": ""}})
+            report["p53_notes"] = (
+                noted["features"][-1].get("comment") == "épaisseur de la tôle"
+                and history["undo"][:2] == ["set_comment", "add_pad"]
+                and history["redo"] == []
+                and after["features"][-1]["label"] != "Plaque"
+                and "comment" not in after["features"][-1]
+                and run("undo_history")["redo"][:2] == ["set_comment",
+                                                        "rename"]
+                and props["author"] == "Atelier"
+                and props["custom"] == {"Référence": "FS-001"})
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

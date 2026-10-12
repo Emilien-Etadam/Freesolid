@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   chronologicalHistory,
   splitHistoryAroundBar,
+  undoStepLabel,
 } from "../../app/history.js";
 
 function feat(name, order, type = "PartDesign::Pad") {
@@ -126,5 +127,16 @@ describe("sketchTreeLabel", () => {
     assert.equal(sketchTreeLabel("Esquisse1", "over"), "(+) Esquisse1");
     assert.equal(sketchTreeLabel("Esquisse1", "full"), "Esquisse1");
     assert.equal(sketchTreeLabel("Esquisse1", undefined), "Esquisse1");
+  });
+});
+
+describe("undoStepLabel", () => {
+  it("nomme les pas connus, sinon par famille", () => {
+    assert.equal(undoStepLabel("add_pad"), "Extrusion");
+    assert.equal(undoStepLabel("set_comment"), "Commentaire");
+    assert.equal(undoStepLabel("sketch_add_line"), "Modification d'esquisse");
+    assert.equal(undoStepLabel("surface_sew"), "Surface");
+    assert.equal(undoStepLabel("add_something_new"), "Fonction");
+    assert.equal(undoStepLabel("Autre"), "Modification");
   });
 });

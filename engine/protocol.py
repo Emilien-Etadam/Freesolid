@@ -191,8 +191,12 @@ OPS: dict[str, tuple[str, ...]] = {
     "script_trust_status": (),          # lecture : Python autorisé ce document / session
     "authorize_scripts": (),            # consentement : jamais persisté dans le .FCStd
     "check_interference": (),          # assemblage : volumes communs par paires
-    "undo": (),                        # une transaction = un Ctrl+Z
-    "redo": (),
+    "undo": _Req(optional={"steps": int}),  # une transaction = un Ctrl+Z
+    "redo": _Req(optional={"steps": int}),
+    "undo_history": (),                # lecture : pas à défaire / refaire
+    "set_comment": _Req(("feature", str), optional={"text": str}),
+    "document_properties": (),         # lecture : auteur, société, libres
+    "set_document_properties": _Req(("values", dict)),
     "export_part": _Req(("path", str)),  # .stl ou .step selon l'extension
     "preview": _Req(("op", str), ("params", dict)),
                                        # aperçu jaune : op exécutée puis annulée

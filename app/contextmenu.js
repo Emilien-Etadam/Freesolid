@@ -92,6 +92,23 @@ export function installContextMenu(ctx) {
     beginInlineRename(row, menuFeature);
   });
 
+  document.getElementById("ctx-comment").addEventListener("click", () => {
+    if (!menuFeature) return;
+    const feature = menuFeature;
+    panel.open({
+      icon: "comment",
+      title: t("Commentaire — {f}", { f: feature.label }),
+      groups: [{ label: t("Note"), rows: [
+        { type: "text", key: "text", label: t("Commentaire"),
+          value: feature.comment ?? "",
+          placeholder: t("Pourquoi cette cote, ce qu'il reste à faire…") },
+      ] }],
+      note: t("Visible en survolant la fonction dans l'arbre ; vide : retiré."),
+      onApply: (v) => refreshAny(call("set_comment",
+        { feature: feature.name, text: String(v.text ?? "") })),
+    });
+  });
+
   document.getElementById("ctx-color").addEventListener("click", () => {
     if (!menuFeature) return;
     const bodyName = menuFeature.name;

@@ -706,6 +706,8 @@ class TreeMixin:
                if getattr(body, "Tip", None) else None)
         # Variables dans le même appel : l'arbre de création affiche le
         # dossier Équations sans round-trip list_variables.
+        self._annotate_comments(items)
+        self._annotate_comments(surfaces)
         tree = {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,
                 "surfaces": surfaces,

@@ -33,6 +33,7 @@ import {
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, ISSUES_URL, readLang } from "./settings.js";
 import { installMenuBar, menuBarModel } from "./menubar.js";
+import { undoStepLabel } from "./history.js";
 import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
 import { installWelcome, rememberRecent } from "./welcome.js";
@@ -730,11 +731,10 @@ function applyDisplay() {
 }
 
 function closeViewMenus() {
-  const style = document.getElementById("style-menu");
-  const visibility = document.getElementById("visibility-menu");
-  const open = (style && !style.hidden) || (visibility && !visibility.hidden);
-  if (style) style.hidden = true;
-  if (visibility) visibility.hidden = true;
+  const menus = ["style-menu", "visibility-menu", "undo-menu"]
+    .map((id) => document.getElementById(id)).filter(Boolean);
+  const open = menus.some((menu) => !menu.hidden);
+  for (const menu of menus) menu.hidden = true;
   return open;
 }
 
@@ -1182,6 +1182,8 @@ installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
       welcomeApi?.showNew();
     } else if (name === "screenshot") {
       saveScreenshot();
+    } else if (name === "properties") {
+      openDocumentProperties();
     }
   },
 });
@@ -1727,6 +1729,75 @@ document.getElementById("btn-new").addEventListener("click", async () => {
 
 document.getElementById("btn-undo").addEventListener("click", () =>
   refreshAny(call("undo")));
+
+// Liste de l'historique : un clic sur un pas défait tout jusqu'à lui.
+document.getElementById("btn-undo-list").addEventListener("click", async (event) => {
+  event.stopPropagation();
+  const menu = document.getElementById("undo-menu");
+  const wasOpen = !menu.hidden;
+  closeViewMenus();
+  if (wasOpen) return;
+  const history = await call("undo_history").catch(() => null);
+  menu.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "menu-head";
+  head.textContent = history?.undo?.length
+    ? t("Annuler jusqu'à…") : t("Rien à annuler");
+  menu.appendChild(head);
+  (history?.undo ?? []).slice(0, 30).forEach((op, i) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = t(undoStepLabel(op));
+    button.addEventListener("click", () => {
+      closeViewMenus();
+      refreshAny(call("undo", { steps: i + 1 }));
+    });
+    menu.appendChild(button);
+  });
+  menu.hidden = false;
+});
+
+/** Propriétés du fichier : auteur, société, description, propriétés
+ *  libres (une ligne par nom ; valeur vide : retirée). */
+async function openDocumentProperties() {
+  const props = await call("document_properties").catch((error) => {
+    say(String(error.message ?? error), true);
+    return null;
+  });
+  if (!props) return;
+  const custom = Object.entries(props.custom ?? {});
+  panel.open({
+    icon: "doc_props",
+    title: t("Propriétés du fichier"),
+    groups: [
+      { label: t("Résumé"), rows: [
+        { type: "text", key: "author", label: t("Auteur"), value: props.author },
+        { type: "text", key: "company", label: t("Société"), value: props.company },
+        { type: "text", key: "description", label: t("Description"),
+          value: props.description },
+      ] },
+      { label: t("Propriétés libres"), rows: [
+        ...custom.map(([name, value], i) => ({
+          type: "text", key: `custom${i}`, label: name, value })),
+        { type: "text", key: "newName", label: t("Nouvelle propriété"),
+          value: "", placeholder: t("Référence, matière, client…") },
+        { type: "text", key: "newValue", label: t("Valeur"), value: "" },
+      ] },
+    ],
+    note: t("Enregistrées dans le fichier .FCStd ; une valeur vide retire la propriété."),
+    onApply: async (v) => {
+      const next = {};
+      custom.forEach(([name], i) => { next[name] = String(v[`custom${i}`] ?? ""); });
+      const fresh = String(v.newName ?? "").trim();
+      if (fresh) next[fresh] = String(v.newValue ?? "");
+      await call("set_document_properties", { values: {
+        author: String(v.author ?? ""), company: String(v.company ?? ""),
+        description: String(v.description ?? ""), custom: next } })
+        .then(() => say(t("Propriétés du fichier enregistrées")))
+        .catch((error) => say(String(error.message ?? error), true));
+    },
+  });
+}
 document.getElementById("btn-redo").addEventListener("click", () =>
   refreshAny(call("redo")));
 document.getElementById("btn-rebuild").addEventListener("click", () => {

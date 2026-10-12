@@ -51,6 +51,7 @@ export function menuBarModel(ribbon) {
       item("Exporter", { click: "btn-export" }),
       item("Mise en plan", { click: "btn-drawing" }),
       item("Capture d'écran", { action: "screenshot" }),
+      item("Propriétés…", { action: "properties" }),
     ] },
     { id: "edit", label: "Édition", items: [
       item("Annuler", { click: "btn-undo", shortcut: "Ctrl+Z" }),

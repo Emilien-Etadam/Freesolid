@@ -1,6 +1,56 @@
 // Découpe de l'historique autour de la barre de retour.
 // Module pur — testable en Node, sans DOM.
 
+// Pas d'annulation (op du moteur) → libellé de la liste d'historique.
+const STEP_LABELS = {
+  add_rect_sketch: "Esquisse rectangle",
+  add_pad: "Extrusion",
+  add_pocket: "Enlèvement extrudé",
+  add_fillet: "Congé",
+  add_chamfer: "Chanfrein",
+  add_revolution: "Révolution",
+  add_groove: "Enlèvement de révolution",
+  add_mirror: "Symétrie",
+  add_linear_pattern: "Répétition linéaire",
+  add_polar_pattern: "Répétition circulaire",
+  add_thickness: "Coque",
+  add_draft: "Dépouille",
+  add_hole: "Perçage",
+  add_datum_plane: "Plan de référence",
+  add_loft: "Lissage",
+  add_sweep: "Balayage",
+  add_helix: "Hélice",
+  add_body: "Corps",
+  add_boolean: "Combiner",
+  add_text: "Texte",
+  set_body_color: "Couleur du corps",
+  set_param: "Modifier la fonction",
+  set_params: "Modifier la fonction",
+  set_profile_contours: "Contours du profil",
+  rename: "Renommer",
+  set_variable: "Équations",
+  delete_variable: "Équations",
+  set_tip: "Barre de retour",
+  tip_to_end: "Barre de retour",
+  delete_feature: "Supprimer",
+  reorder_feature: "Réordonner",
+  set_comment: "Commentaire",
+  sketch_start: "Nouvelle esquisse",
+  sketch_finish: "Fermer l'esquisse",
+  insert_component: "Insérer un composant",
+  move_component: "Déplacer un composant",
+  add_joint: "Contrainte d'assemblage",
+};
+
+/** Libellé (français, traduit à l'affichage) d'un pas d'annulation. */
+export function undoStepLabel(op) {
+  if (STEP_LABELS[op]) return STEP_LABELS[op];
+  if (op.startsWith("sketch_")) return "Modification d'esquisse";
+  if (op.startsWith("surface_") || op.startsWith("curve_")) return "Surface";
+  if (op.startsWith("add_")) return "Fonction";
+  return "Modification";
+}
+
 /** Libellé d'esquisse dans l'arbre : (-) encore libre, (+) en trop. */
 export function sketchTreeLabel(label, definition) {
   if (definition === "under") return `(-) ${label}`;

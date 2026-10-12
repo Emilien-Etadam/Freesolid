@@ -539,6 +539,7 @@ def test_ops_snapshot_keys():
         "curve_project",
         "delete_feature",
         "delete_variable",
+        "document_properties",
         "document_status",
         "edit_curve3d",
         "edit_graph_feature",
@@ -578,7 +579,9 @@ def test_ops_snapshot_keys():
         "selftest",
         "set_active_body",
         "set_body_color",
+        "set_comment",
         "set_component_grounded",
+        "set_document_properties",
         "set_param",
         "set_params",
         "set_profile_contours",
@@ -671,6 +674,7 @@ def test_ops_snapshot_keys():
         "tessellate_edges",
         "tip_to_end",
         "undo",
+        "undo_history",
     ]
 
 

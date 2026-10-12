@@ -1066,6 +1066,13 @@ export function installTree(ctx) {
     if (ctx.sketchMode.editing === feature.name) row.classList.add("editing");
     row.title = `${feature.kind} — `
       + t("double-clic : modifier · clic droit : modifier, barre de retour, supprimer · glisser : réordonner");
+    if (feature.comment) {
+      const note = document.createElement("span");
+      note.className = "tree-note";
+      note.textContent = " ✎";
+      row.appendChild(note);
+      row.title = `${feature.comment}\n\n${row.title}`;
+    }
     row.addEventListener("dblclick", () => {
       if (feature.type === "Sketcher::SketchObject") {
         onSketchRowDblClick(feature);

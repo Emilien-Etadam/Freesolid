@@ -147,3 +147,25 @@ describe("variantes : rectangle par le centre, polygone inscrit, rainure 3 point
       && Math.abs(out.params.width - 4) < 1e-9);
   });
 });
+
+describe("calques d'esquisse", () => {
+  it("masque les entités des calques invisibles", async () => {
+    const { hiddenByLayers } = await import("../../app/sketchtools.js");
+    const entities = [{ id: 0, layer: "Axes" }, { id: 1, layer: "Cotes" },
+      { id: 2 }];
+    const hidden = hiddenByLayers(entities,
+      [{ name: "Axes", visible: false }, { name: "Cotes", visible: true }]);
+    assert.deepEqual([...hidden], [0]);
+  });
+
+  it("le panneau rend la liste : renommage noté, suppression, ajout", async () => {
+    const { layersFromPanel } = await import("../../app/sketchtools.js");
+    const layers = [{ name: "A", color: "", visible: true },
+      { name: "B", color: "#e05252", visible: true }];
+    assert.deepEqual(layersFromPanel({ name0: "Axes", delete1: true,
+      newName: "C" }, layers), [
+      { name: "Axes", color: "", visible: true, rename: "A" },
+      { name: "C", color: "", visible: true }]);
+    assert.equal(layersFromPanel({ name0: "B" }, layers), null);
+  });
+});

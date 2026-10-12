@@ -513,6 +513,40 @@ export function endpointDirection(entity, point) {
   return null;
 }
 
+/** Couleurs proposées pour un calque ([valeur, libellé]) ; "" : la
+ *  couleur d'état habituelle. */
+export const LAYER_COLORS = [
+  ["", "Couleur d'état"], ["#e05252", "Rouge"], ["#e0a052", "Orange"],
+  ["#d4c64a", "Jaune"], ["#52b06a", "Vert"], ["#4fb8a8", "Turquoise"],
+  ["#5288e0", "Bleu"], ["#a062d0", "Violet"], ["#c0c4cc", "Gris"],
+];
+
+/** Entités masquées par un calque invisible (ids). */
+export function hiddenByLayers(entities, layers) {
+  const off = new Set((layers ?? []).filter((l) => !l.visible)
+    .map((l) => l.name));
+  return new Set((entities ?? []).filter((e) => e.layer && off.has(e.layer))
+    .map((e) => e.id));
+}
+
+/** Panneau Calques → nouvelle liste (renommages notés) ; null si un nom
+ *  manque ou revient deux fois. */
+export function layersFromPanel(v, layers) {
+  const out = [];
+  (layers ?? []).forEach((layer, i) => {
+    if (v[`delete${i}`]) return;
+    const name = String(v[`name${i}`] ?? layer.name).trim();
+    out.push({ name, color: v[`color${i}`] ?? layer.color ?? "",
+               visible: v[`visible${i}`] ?? layer.visible,
+               ...(name !== layer.name ? { rename: layer.name } : {}) });
+  });
+  const fresh = String(v.newName ?? "").trim();
+  if (fresh) out.push({ name: fresh, color: "", visible: true });
+  const names = out.map((l) => l.name);
+  if (names.some((n) => !n) || new Set(names).size !== names.length) return null;
+  return out;
+}
+
 /** Pas de grille rond (1, 2 ou 5 × 10ⁿ) pour une vue de hauteur `view`. */
 export function gridStep(view) {
   const raw = Math.max(view, 1e-6) / 40;

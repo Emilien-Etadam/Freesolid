@@ -272,6 +272,12 @@ class SketchMixin:
             list(getattr(sk, "RedundantConstraints", []) or []))
         for entity, state in zip(entities, status):
             entity["status"] = state
+        # Calques : le nom du calque de chaque entité qui en a un.
+        layer_data = self._layer_data(sk)
+        for entity in entities:
+            name = self._layer_of(sk, layer_data, entity["id"])
+            if name:
+                entity["layer"] = name
         # Références externes (liées à la pièce) : GeoId -3, -4…
         from engine.sketchref import FIRST_EXTERNAL, external_count
         for k in range(external_count(sk)):
@@ -306,6 +312,7 @@ class SketchMixin:
             "dof": dof,
             "fullyConstrained": bool(getattr(sk, "FullyConstrained", False)),
             "definition": sketch_definition(status, solver_code),
+            "layers": layer_data["layers"],
             "placement": [float(v) for v in matrix],
         }
 

@@ -215,6 +215,7 @@
     display: flex; flex: 0 0 auto;
     padding: 0 var(--space-1);
     border-right: 1px solid var(--line);
+    position: relative;
   }
   .ribbon-group:last-child { border-right: none; }
   .ribbon-group-btns {
@@ -226,7 +227,10 @@
   /* Le nom du groupe reste dans le DOM (recherche, lecteurs d'écran) ;
      les séparateurs suffisent à l'œil. */
   .ribbon-group-label {
-    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    /* Ancré dans son groupe : sinon, au bout d'un ruban qui défile, il
+       dépasse de la fenêtre et fait défiler toute la page. */
+    position: absolute; left: 0; top: 0;
+    width: 1px; height: 1px; overflow: hidden;
     clip-path: inset(50%); white-space: nowrap;
   }
   .ribbon-group-btns button {
@@ -1219,7 +1223,7 @@
         <div class="ribbon-group-label">Contours</div>
       </div>
       <div class="ribbon-group">
-        <div class="ribbon-group-btns">
+        <div class="ribbon-group-btns rows-3">
           <button data-tool="skfillet" title="Congé d'esquisse — cliquez deux lignes près du coin"><img data-icon="sketch_fillet" alt=""></button>
           <button data-tool="trim" title="Ajuster (T) — cliquez le tronçon à supprimer"><img data-icon="trim" alt=""></button>
           <button data-tool="skchamfer" title="Chanfrein d'esquisse — cliquez deux lignes près du coin"><img data-icon="sk_chamfer" alt=""></button>
@@ -1248,7 +1252,7 @@
         <div class="ribbon-group-label">Outils</div>
       </div>
       <div class="ribbon-group">
-        <div class="ribbon-group-btns">
+        <div class="ribbon-group-btns rows-3">
           <button id="sk-c-horizontal" title="Relation horizontale"><img data-icon="rel_horizontal" alt=""></button>
           <button id="sk-c-vertical" title="Relation verticale"><img data-icon="rel_vertical" alt=""></button>
           <button id="sk-c-coincident" title="Relation coïncidente — deux points"><img data-icon="rel_coincident" alt=""></button>
@@ -1276,6 +1280,7 @@
           <button id="sk-relations" title="Relations de l'entité sélectionnée — voir et supprimer"><img data-icon="relations" alt=""></button>
           <button id="sk-repair" title="Réparer l'esquisse — relations en trop et conflits retirés, extrémités presque jointes soudées"><img data-icon="sk_repair" alt=""></button>
           <button id="sk-define" title="Définir entièrement — les cotes qui manquent sont ajoutées"><img data-icon="sk_define" alt=""></button>
+          <button id="sk-layers" title="Calques d'esquisse — ranger, colorer, masquer des entités"><img data-icon="sk_layers" alt=""></button>
           <button id="sk-grid" title="Accrochage à la grille — un pas rond qui suit le zoom"><img data-icon="sk_grid" alt=""></button>
           <button id="sk-comb" title="Peigne de courbure — voir où les courbes se tendent"><img data-icon="sk_comb" alt=""></button>
           <button id="sk-block-save" title="Créer un bloc — la sélection rangée sous un nom"><img data-icon="sk_block" alt=""></button>

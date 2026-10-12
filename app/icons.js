@@ -173,6 +173,7 @@ export const ICONS = {
   sk_extend: "fs_sk_extend.svg",
   sk_g2: "fs_sk_g2.svg",
   sk_grid: "fs_sk_grid.svg",
+  sk_layers: "fs_sk_layers.svg",
   sk_move: "fs_sk_move.svg",
   sk_parabola: "fs_sk_parabola.svg",
   sk_parallelogram: "fs_sk_parallelogram.svg",

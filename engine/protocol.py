@@ -380,6 +380,9 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_match_curvature": _Req(
         ("sketch", str), ("geo1", int), ("point1", int), ("geo2", int),
         ("point2", int)),              # G2 au raccord de deux splines
+    "sketch_layers": _Req(("sketch", str)),  # optional: layers (remplace)
+    "sketch_set_layer": _Req(("sketch", str), ("geos", list)),
+                                       # optional: layer ("" : par défaut)
     "sketch_blocks": (),
     "sketch_block_save": _Req(
         ("sketch", str), ("geos", list), ("name", str)),

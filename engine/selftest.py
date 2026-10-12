@@ -3613,6 +3613,33 @@ class SelftestMixin:
                 and abs(filled - (12000 + math.pi * 16 * 20)) < 1e-3
                 and abs(grown - (12000 + math.pi * 36 * 20)) < 1e-3)
 
+            mark("p52: calques d'esquisse")
+            self.new_part("Pièce calques")
+            st = self.sketch_start(plane="XY")
+            lay = st["sketch"]
+            self.sketch_add_line(lay, -30, 40, 30, 40)       # 0 : à supprimer
+            self.sketch_add_rectangle(lay, -20, -15, 20, 15)  # 1..4
+            self.sketch_add_line(lay, 0, -30, 0, 30, construction=True)
+            self.sketch_layers(lay, [{"name": "Profil", "color": "#5288e0"},
+                                     {"name": "Axes", "visible": False}])
+            self.sketch_set_layer(lay, [1, 2, 3, 4], "Profil")
+            self.sketch_set_layer(lay, [5], "Axes")
+            # Une suppression décale les numéros : le calque suit l'entité.
+            self.sketch_delete_geo(lay, 0)
+            state = self.sketch_layers(lay, [
+                {"name": "Contour", "color": "#5288e0", "rename": "Profil"},
+                {"name": "Axes", "visible": False}])
+            on = {e["id"]: e.get("layer", "") for e in state["entities"]}
+            self.sketch_finish(lay)
+            self.add_pad(5, sketch=lay)
+            report["p52_calques"] = (
+                on == {0: "Contour", 1: "Contour", 2: "Contour", 3: "Contour",
+                       4: "Axes"}
+                and [l["name"] for l in state["layers"]] == ["Contour", "Axes"]
+                and state["layers"][1]["visible"] is False
+                and abs(self._require_body().Shape.Volume - 40 * 30 * 5)
+                < 1e-6)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

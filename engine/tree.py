@@ -571,6 +571,8 @@ class TreeMixin:
                 "error": "Invalid" in (obj.State or ()),
                 "order": order_of.get(obj.Name, -1),
             }
+            if getattr(obj, "Suppressed", False):
+                item["suppressed"] = True
             if obj.TypeId == "PartDesign::Plane":
                 # Le client dessine le plan de référence dans le viewport.
                 item["placement"] = [

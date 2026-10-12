@@ -1217,5 +1217,7 @@
  "Tout sélectionnable": "Everything selectable",
  "Filtre de sélection : {k}": "Selection filter: {k}",
  "Filtre de sélection : tout": "Selection filter: everything",
- "rien": "nothing"
+ "rien": "nothing",
+ "Désactiver": "Suppress",
+ "Réactiver": "Unsuppress"
 }

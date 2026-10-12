@@ -15,6 +15,14 @@ export function isBodyMenuTarget(feature) {
   return feature != null && typeof feature.active === "boolean";
 }
 
+/** Fonction de volume (PartDesign, hors plan de référence) : elle se
+ *  désactive sans être supprimée. */
+export function isSuppressibleTarget(feature) {
+  const type = feature?.type ?? "";
+  return type.startsWith("PartDesign::") && type !== "PartDesign::Plane"
+    && type !== "PartDesign::Body" && !isBodyMenuTarget(feature);
+}
+
 /** Corps, ou surface du premier niveau : ce qu'on masque et affiche. */
 export function isHideableTarget(feature) {
   if (!feature?.name || typeof feature.grounded === "boolean") return false;
@@ -77,6 +85,9 @@ export function installContextMenu(ctx) {
     document.getElementById("ctx-color").hidden = !onBody;
     document.getElementById("ctx-color-reset").hidden = !onBody;
     document.getElementById("ctx-comment").hidden = onBody || onComponent;
+    const suppress = document.getElementById("ctx-suppress");
+    suppress.hidden = !isSuppressibleTarget(feature) || !!ctx.assemblyState;
+    suppress.textContent = t(feature.suppressed ? "Réactiver" : "Désactiver");
     const hide = document.getElementById("ctx-hide");
     hide.hidden = !isHideableTarget(feature);
     hide.textContent = t(feature.hidden ? "Afficher" : "Masquer");
@@ -118,6 +129,12 @@ export function installContextMenu(ctx) {
       onApply: (v) => refreshAny(call("set_comment",
         { feature: feature.name, text: String(v.text ?? "") })),
     });
+  });
+
+  document.getElementById("ctx-suppress").addEventListener("click", () => {
+    if (!menuFeature || !isSuppressibleTarget(menuFeature)) return;
+    refresh(call("set_suppressed",
+      { features: [menuFeature.name], suppressed: !menuFeature.suppressed }));
   });
 
   document.getElementById("ctx-hide").addEventListener("click", () => {

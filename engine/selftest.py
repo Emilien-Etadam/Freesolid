@@ -3695,6 +3695,24 @@ class SelftestMixin:
                 and flags == {first: True, second: True}
                 and bool(back["groups"]) and len(back["other_bodies"]) == 1)
 
+            mark("p55: désactiver une fonction")
+            self.new_part("Pièce désactivée")
+            self.add_rect_sketch(20, 10)
+            self.add_pad(10)
+            whole = self._require_body().Shape.Volume
+            self.add_fillet(2, edges=[0])
+            rounded = self._require_body().Shape.Volume
+            fillet = self.get_tree()["features"][-1]["name"]
+            off = self.set_suppressed([fillet])
+            plain = self._require_body().Shape.Volume
+            self.set_suppressed([fillet], suppressed=False)
+            report["p55_desactiver"] = (
+                rounded < whole - 1
+                and abs(plain - whole) < 1e-6
+                and off["features"][-1].get("suppressed") is True
+                and abs(self._require_body().Shape.Volume - rounded) < 1e-6
+                and "suppressed" not in self.get_tree()["features"][-1])
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

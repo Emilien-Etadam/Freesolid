@@ -523,5 +523,7 @@
  "calque inconnu : {}": "unknown layer: {}",
  "sélectionnez les entités à ranger": "select the entities to put on a layer",
  "corps ou surface inconnu : {}": "unknown body or surface: {}",
- "choisissez un corps ou une surface": "choose a body or a surface"
+ "choisissez un corps ou une surface": "choose a body or a surface",
+ "seule une fonction de volume se désactive : {}": "only a solid feature can be suppressed: {}",
+ "choisissez une fonction": "choose a feature"
 }

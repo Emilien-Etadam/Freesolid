@@ -1,5 +1,5 @@
 """Commentaires des fonctions, propriétés du fichier, historique
-d'annulation, corps et surfaces masqués.
+d'annulation, corps et surfaces masqués, fonctions désactivées.
 
 Un commentaire est une note libre posée sur une fonction (propriété
 cachée ``FreeSolidComment``) : l'arbre la montre en infobulle. Les
@@ -113,6 +113,28 @@ class DocPropsMixin:
                                 "FreeSolid")
                 obj.setEditorMode("FreeSolidHidden", 2)
             obj.FreeSolidHidden = bool(hidden)
+        return self._current_tree()
+
+    def set_suppressed(self, features, suppressed=True):
+        """Désactive (ou réactive) des fonctions : elles restent dans
+        l'arbre avec leurs réglages, la pièce se calcule sans elles. Une
+        fonction qui s'appuyait sur une fonction désactivée passe en
+        erreur jusqu'à sa réactivation."""
+        from engine.kernel import KernelError
+        doc = self._require_doc()
+        targets = []
+        for name in features or ():
+            obj = doc.getObject(str(name))
+            if obj is None or "Suppressed" not in obj.PropertiesList:
+                raise KernelError(
+                    "seule une fonction de volume se désactive : {}".format(
+                        getattr(obj, "Label", name)))
+            targets.append(obj)
+        if not targets:
+            raise KernelError("choisissez une fonction")
+        for obj in targets:
+            obj.Suppressed = bool(suppressed)
+        self._recompute()
         return self._current_tree()
 
     def undo_history(self):

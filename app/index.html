@@ -166,6 +166,7 @@
     font-size: 11px; }
   #tree .tree-note { color: var(--muted); }
   #tree li.hidden-object { opacity: .5; font-style: italic; }
+  #tree li.suppressed { opacity: .45; text-decoration: line-through; }
   #topbar {
     height: 28px; display: flex; align-items: flex-end; gap: 2px;
     padding: 0 var(--space-2);
@@ -1420,6 +1421,7 @@
     <div id="ctx-rename">Renommer</div>
     <div id="ctx-comment">Commentaire…</div>
     <div id="ctx-hide" hidden>Masquer</div>
+    <div id="ctx-suppress" hidden>Désactiver</div>
     <div id="ctx-ground" hidden>Fixer</div>
     <div id="ctx-color" hidden>Couleur…</div>
     <div id="ctx-color-reset" hidden>Couleur par défaut</div>

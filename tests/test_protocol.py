@@ -586,6 +586,7 @@ def test_ops_snapshot_keys():
         "set_param",
         "set_params",
         "set_profile_contours",
+        "set_suppressed",
         "set_tip",
         "set_variable",
         "sketch_add_arc",

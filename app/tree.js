@@ -1037,6 +1037,7 @@ export function installTree(ctx) {
     row.dataset.hist = feature.name;
     if (feature.error) row.classList.add("error");
     if (rolledBack) row.classList.add("rolled-back");
+    if (feature.suppressed) row.classList.add("suppressed");
     if (ctx.selectedFeatureName === feature.name) row.classList.add("sel");
     const hasChildren = !!feature.children?.length;
     const arrow = document.createElement("span");

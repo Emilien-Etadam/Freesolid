@@ -55,6 +55,7 @@ from engine.sketchshare import SketchShareMixin
 from engine.sketchlayers import SketchLayersMixin
 from engine.docprops import DocPropsMixin
 from engine.vertexchamfer import VertexChamferMixin
+from engine.selectchain import SelectChainMixin
 from engine.solids import SolidsMixin
 from engine.tree import TreeMixin
 
@@ -268,7 +269,7 @@ def _format_mm(value):
     return text.replace(".", ",") or "0"
 
 
-class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
+class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
     """Owns one FreeCAD document and executes protocol operations."""
 
     def __init__(self):

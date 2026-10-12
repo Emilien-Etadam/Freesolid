@@ -1066,7 +1066,9 @@ Object.assign(ctx, {
 const {
   raycaster, pointer, setPointerFromEvent,
   repaintGroups, repaintSurfaces, findFeatureInTree, clearFeatureDims,
+  selectEdgeIds,
 } = installPicking(ctx);
+ctx.selectEdgeIds = selectEdgeIds;
 ctx.raycaster = raycaster;
 
 // ---------- vues standard et boîte d'orientation ----------

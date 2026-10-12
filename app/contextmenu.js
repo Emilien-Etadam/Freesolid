@@ -269,6 +269,22 @@ export function installContextMenu(ctx) {
     clickButton(buttonId);
   }
 
+  // Boucle : un second appel sur la même arête prend l'autre face.
+  let loopCycle = { edge: null, face: 0 };
+  async function selectChain(edge, mode) {
+    const again = mode === "loop" && loopCycle.edge === edge;
+    loopCycle = { edge: mode === "loop" ? edge : null,
+                  face: again ? loopCycle.face + 1 : 0 };
+    const result = await call("edge_chain",
+      { edge, mode, face: loopCycle.face }).catch((error) => {
+      ctx.say(String(error.message ?? error), true);
+      return null;
+    });
+    if (!result) return;
+    ctx.selectEdgeIds(result.edges);
+    ctx.say(t("{n} arête(s) sélectionnée(s)", { n: result.edges.length }));
+  }
+
   const VIEW_MENU_ACTIONS = {
     "zoom-fit": () => frameView(null, null),
     orient: () => openOrientBox(),
@@ -288,6 +304,8 @@ export function installContextMenu(ctx) {
           type: "Sketcher::SketchObject" }
       : hit.feature.sketchItem),
     rollback: (hit) => refresh(call("set_tip", { feature: hit.feature.name })),
+    "select-tangent": (hit) => selectChain(hit.edge, "tangent"),
+    "select-loop": (hit) => selectChain(hit.edge, "loop"),
     "delete-feature": (hit) => {
       if (confirm(t("Supprimer « {f} » ?", { f: hit.feature.label }))) {
         refreshAny(call("delete_feature", { feature: hit.feature.name }));

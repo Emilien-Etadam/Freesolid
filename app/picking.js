@@ -129,6 +129,56 @@ export function installPicking(ctx) {
   // recalcule d'abord, sinon le clic viserait l'ancien survol.
   let hoverAt = null;
 
+  // Faces traversées par le rayon du clic, de la plus proche à la plus
+  // lointaine ; Alt+clic les parcourt.
+  let faceCycle = null;
+  function cycleFaceUnderPointer(event) {
+    raycaster.setFromCamera(pointer, camera);
+    // Les faces de derrière tournent le dos à la caméra : le rayon les
+    // traverse des deux côtés le temps de ce lancer.
+    const materials = [ctx.partMesh.material].flat();
+    const sides = materials.map((m) => m.side);
+    for (const m of materials) m.side = THREE.DoubleSide;
+    const hits = raycaster.intersectObject(ctx.partMesh);
+    materials.forEach((m, i) => { m.side = sides[i]; });
+    const seen = new Set();
+    const layers = [];
+    for (const hit of hits) {
+      const at = hit.faceIndex * 3;
+      const group = ctx.meshGroups.findIndex(
+        (g) => at >= g.start && at < g.start + g.count);
+      const faceId = ctx.meshGroups[group]?.faceId;
+      if (group < 0 || seen.has(faceId)) continue;
+      seen.add(faceId);
+      layers.push({ group, hit });
+    }
+    if (layers.length < 2) {
+      say(t("Rien derrière : une seule face sous le pointeur"));
+      return layers[0] ?? null;
+    }
+    const same = faceCycle && Math.hypot(faceCycle.x - event.clientX,
+      faceCycle.y - event.clientY) < 4;
+    const index = same ? (faceCycle.index + 1) % layers.length : 1;
+    faceCycle = { x: event.clientX, y: event.clientY, index };
+    say(t("Face {i} sur {n} sous le pointeur — Alt+clic : la suivante",
+      { i: index + 1, n: layers.length }));
+    return layers[index];
+  }
+
+  /** Sélectionne ces arêtes (chaîne tangente, boucle…), comme un clic. */
+  function selectEdgeIds(ids, additive = false) {
+    ctx.selectedEdges = additive ? new Set([...ctx.selectedEdges, ...ids])
+      : new Set(ids);
+    ctx.selectedFaceId = null;
+    ctx.cancelPendingSurfaceClick();
+    ctx.clearSketchSelection({ quiet: true });
+    ctx.clearSurfaceSelection({ quiet: true });
+    repaintGroups();
+    repaintEdges();
+    if (ctx.lastTree) ctx.renderTree(ctx.lastTree);
+    panel.notifyPick("edges", { kind: "edges", edges: [...ctx.selectedEdges] });
+  }
+
   /** Sommet du solide le plus proche du clic, à l'écran (30 px au plus). */
   function nearestVertex(event) {
     let best = null;
@@ -495,6 +545,18 @@ export function installPicking(ctx) {
       return;
     }
 
+    // Alt+clic : la face suivante sous le pointeur (celle de derrière),
+    // un nouvel Alt+clic au même endroit passe à la suivante.
+    let otherHit = null;
+    if (event.altKey && ctx.partMesh
+        && (ctx.hoveredGroup >= 0 || ctx.hoveredEdgeGroup >= 0)) {
+      otherHit = cycleFaceUnderPointer(event);
+      if (otherHit) {
+        ctx.hoveredEdgeGroup = -1;
+        ctx.hoveredGroup = otherHit.group;
+      }
+    }
+
     if (ctx.hoveredEdgeGroup >= 0) {
       const id = ctx.edgeGroups[ctx.hoveredEdgeGroup].edgeId;
       // Remplissage : une arête du solide devient un bord du contour.
@@ -533,8 +595,8 @@ export function installPicking(ctx) {
     if (ctx.selectedFaceId !== null) {
       clearPlaneChoice();
       raycaster.setFromCamera(pointer, camera);
-      const faceHit = ctx.partMesh
-        ? raycaster.intersectObject(ctx.partMesh)[0] : null;
+      const faceHit = otherHit?.hit ?? (ctx.partMesh
+        ? raycaster.intersectObject(ctx.partMesh)[0] : null);
       if (faceHit) {
         // La normale sert à « Normal à » (Ctrl+8).
         const normal = faceHit.face
@@ -763,5 +825,6 @@ export function installPicking(ctx) {
   return {
     raycaster, pointer, setPointerFromEvent,
     repaintGroups, repaintSurfaces, findFeatureInTree, clearFeatureDims,
+    selectEdgeIds,
   };
 }

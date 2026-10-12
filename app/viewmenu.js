@@ -43,6 +43,8 @@ const MENU_ICONS = {
   revolve: "revolve",
   "edit-surface": "edit",
   rollback: "rollback",
+  "select-tangent": "sel_tangent",
+  "select-loop": "sel_loop",
   "delete-feature": "delete",
   "zoom-fit": "zoom_fit",
   orient: "orient",
@@ -171,7 +173,11 @@ export function viewMenuItems(ctx = {}) {
       ...featureSection(hit.feature),
     ];
   } else if (hit?.kind === "edge") {
-    items = [{ bar: ["fillet", "chamfer", "measure"] }];
+    items = [
+      { bar: ["fillet", "chamfer", "measure"] },
+      { key: "select-tangent", label: "Sélectionner la chaîne tangente" },
+      { key: "select-loop", label: "Sélectionner la boucle (encore : l'autre face)" },
+    ];
   } else if (hit?.kind === "sketch") {
     items = [
       { header: hit.label ?? "Esquisse" },

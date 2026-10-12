@@ -199,6 +199,7 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_vertex_chamfer": _Req(("distances", list), optional={
         "point": list, "vertex": int}),
     "edit_vertex_chamfer": _Req(("feature", str), ("distances", list)),
+    "edge_chain": _Req(("edge", int), optional={"mode": str, "face": int}),
     "sketch_set_plane": _Req(("sketch", str), optional={
         "plane": str, "datum": str, "face": int}),
     "set_suppressed": _Req(("features", list),

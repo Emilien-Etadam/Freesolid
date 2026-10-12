@@ -539,5 +539,7 @@
  "cliquez un coin de la pièce": "click a corner of the part",
  "un chanfrein de sommet demande un solide": "a vertex chamfer needs a solid",
  "chanfrein de sommet inconnu : {}": "unknown vertex chamfer: {}",
- "chanfrein incomplet — la forme est absente": "incomplete chamfer — the shape is missing"
+ "chanfrein incomplet — la forme est absente": "incomplete chamfer — the shape is missing",
+ "cette arête ne borde aucune face": "this edge bounds no face",
+ "sélection inconnue : {}": "unknown selection: {}"
 }

@@ -3760,6 +3760,31 @@ class SelftestMixin:
                 == [5.0, 5.0, 5.0]
                 and abs(grown - (40 * 30 * 20 - 4)) < 1e-6)
 
+            mark("p58: chaîne tangente, boucle")
+            self.new_part("Pièce chaîne")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            body = self._require_body()
+            upright = [i for i, e in enumerate(body.Shape.Edges)
+                       if abs(e.BoundBox.ZLength - 10) < 1e-6]
+            self.add_fillet(5, edges=upright)
+            shape = body.Shape
+            # Un bord droit du dessus : sa chaîne tangente fait le tour
+            # (4 droites + 4 arcs) ; la boucle prend le dessus (8 arêtes)
+            # ou le flanc (4 arêtes).
+            line = next(i for i, e in enumerate(shape.Edges)
+                        if abs(e.BoundBox.ZMin - 10) < 1e-6
+                        and abs(e.BoundBox.ZMax - 10) < 1e-6
+                        and e.Curve.TypeId == "Part::GeomLine")
+            chain = self.edge_chain(line)["edges"]
+            loop = self.edge_chain(line, mode="loop")
+            other = self.edge_chain(line, mode="loop", face=1)
+            report["p58_chaine"] = (
+                len(upright) == 4 and len(chain) == 8
+                and loop["faces"] == 2
+                and sorted([len(loop["edges"]), len(other["edges"])]) == [4, 8]
+                and line in loop["edges"] and line in other["edges"])
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

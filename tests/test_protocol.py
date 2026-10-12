@@ -542,6 +542,7 @@ def test_ops_snapshot_keys():
         "delete_variable",
         "document_properties",
         "document_status",
+        "edge_chain",
         "edit_curve3d",
         "edit_graph_feature",
         "edit_repeat_feature",

@@ -1235,5 +1235,10 @@
  "Distance 2": "Distance 2",
  "Distance 3": "Distance 3",
  "Cliquez plus près d'un coin de la pièce": "Click closer to a corner of the part",
- "Sommet ({x} ; {y} ; {z})": "Vertex ({x}; {y}; {z})"
+ "Sommet ({x} ; {y} ; {z})": "Vertex ({x}; {y}; {z})",
+ "Sélectionner la chaîne tangente": "Select tangent chain",
+ "Sélectionner la boucle (encore : l'autre face)": "Select loop (again: the other face)",
+ "{n} arête(s) sélectionnée(s)": "{n} edge(s) selected",
+ "Rien derrière : une seule face sous le pointeur": "Nothing behind: only one face under the pointer",
+ "Face {i} sur {n} sous le pointeur — Alt+clic : la suivante": "Face {i} of {n} under the pointer — Alt+click: the next one"
 }

@@ -155,6 +155,8 @@ export const ICONS = {
   revolve: "fs_revolve.svg",
   rollback: "fs_rollback.svg",
   save: "fs_save.svg",
+  sel_loop: "fs_sel_loop.svg",
+  sel_tangent: "fs_sel_tangent.svg",
   select: "fs_select.svg",
   select_filter: "fs_select_filter.svg",
   settings: "fs_settings.svg",

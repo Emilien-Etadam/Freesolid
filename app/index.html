@@ -1369,6 +1369,17 @@
         </div>
       </div>
       <div class="view-drop">
+        <button type="button" id="btn-select-filter" title="Filtre de sélection — ce que le clic peut viser"><img data-icon="select_filter" alt=""></button>
+        <div id="filter-menu" class="view-menu" hidden>
+          <label><input type="checkbox" data-filter="faces"> Faces</label>
+          <label><input type="checkbox" data-filter="edges"> Arêtes</label>
+          <label><input type="checkbox" data-filter="sketches"> Esquisses</label>
+          <label><input type="checkbox" data-filter="surfaces"> Surfaces et courbes</label>
+          <hr>
+          <button type="button" data-filter-all>Tout sélectionnable</button>
+        </div>
+      </div>
+      <div class="view-drop">
         <button type="button" id="btn-visibility" title="Masquer / afficher"><img data-icon="FreeSolid_Visibility" alt=""></button>
         <div id="visibility-menu" class="view-menu" hidden>
           <label><input type="checkbox" data-vis="planes"> Plans de référence</label>

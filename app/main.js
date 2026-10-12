@@ -38,9 +38,14 @@ import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
 import { installWelcome, rememberRecent } from "./welcome.js";
 import {
-  boxMode, coverBounds, isDrag, middleAction, normalizeRect, nudgeView,
-  pickInBox, readReverseWheel, writeReverseWheel, zoomSpeedFor,
+  SELECT_KINDS, boxMode, coverBounds, filterActive, isDrag, middleAction,
+  normalizeRect, nudgeView, pickInBox, readReverseWheel, readSelectFilter,
+  writeReverseWheel, writeSelectFilter, zoomSpeedFor,
 } from "./navigation.js";
+
+// Noms des types du filtre de sélection (barre d'état).
+const FILTER_NAMES = { faces: "Faces", edges: "Arêtes", sketches: "Esquisses",
+                       surfaces: "Surfaces et courbes" };
 import { currentLang, setLang, t, translateDom } from "./i18n.js";
 import { applyStaticIcons } from "./icons.js";
 // La langue avant tout rendu : ruban, panneaux et messages passent par t().
@@ -731,7 +736,7 @@ function applyDisplay() {
 }
 
 function closeViewMenus() {
-  const menus = ["style-menu", "visibility-menu", "undo-menu"]
+  const menus = ["style-menu", "visibility-menu", "undo-menu", "filter-menu"]
     .map((id) => document.getElementById(id)).filter(Boolean);
   const open = menus.some((menu) => !menu.hidden);
   for (const menu of menus) menu.hidden = true;
@@ -805,6 +810,46 @@ function setDisplay(patch) {
     else setDisplay({ [key]: input.checked });
   });
   visibilityMenu?.addEventListener("click", (event) => event.stopPropagation());
+
+  // Filtre de sélection : gardé d'une session à l'autre.
+  const filterButton = document.getElementById("btn-select-filter");
+  const filterMenu = document.getElementById("filter-menu");
+  ctx.selectFilter = readSelectFilter(localStore);
+  const syncFilter = () => {
+    for (const input of filterMenu.querySelectorAll("[data-filter]")) {
+      input.checked = ctx.selectFilter[input.dataset.filter] !== false;
+    }
+    filterButton.classList.toggle("on", filterActive(ctx.selectFilter));
+  };
+  const setFilter = (next) => {
+    ctx.selectFilter = next;
+    writeSelectFilter(localStore, next);
+    syncFilter();
+    say(filterActive(next)
+      ? t("Filtre de sélection : {k}", { k: SELECT_KINDS
+        .filter((kind) => next[kind] !== false)
+        .map((kind) => t(FILTER_NAMES[kind])).join(", ") || t("rien") })
+      : t("Filtre de sélection : tout"));
+  };
+  filterButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const open = filterMenu.hidden;
+    closeViewMenus();
+    filterMenu.hidden = !open;
+    syncFilter();
+  });
+  filterMenu.addEventListener("change", (event) => {
+    const input = event.target.closest("[data-filter]");
+    if (input) setFilter({ ...ctx.selectFilter, [input.dataset.filter]: input.checked });
+  });
+  filterMenu.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (event.target.closest("[data-filter-all]")) {
+      setFilter(readSelectFilter(null));
+      closeViewMenus();
+    }
+  });
+  syncFilter();
   document.addEventListener("click", () => closeViewMenus());
   syncStyleMenu();
   syncVisibilityMenu();

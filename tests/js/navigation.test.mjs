@@ -4,13 +4,16 @@ import assert from "node:assert/strict";
 import {
   boxMode,
   coverBounds,
+  filterActive,
   isDrag,
   middleAction,
   normalizeRect,
   pickInBox,
   pushView,
   readReverseWheel,
+  readSelectFilter,
   segmentHitsRect,
+  writeSelectFilter,
   nudgeView,
   sketchLocalPoints,
   writeReverseWheel,
@@ -190,6 +193,34 @@ describe("pushView", () => {
     assert.deepEqual(stack.map((e) => e.state), ["avant"]);
     stack = pushView(stack, "après", 2000);
     assert.deepEqual(stack.map((e) => e.state), ["avant", "après"]);
+  });
+});
+
+describe("filtre de sélection", () => {
+  const store = () => {
+    const data = new Map();
+    return { getItem: (k) => data.get(k) ?? null,
+             setItem: (k, v) => data.set(k, v) };
+  };
+
+  it("tout est permis par défaut et après une valeur illisible", () => {
+    const all = { faces: true, edges: true, sketches: true, surfaces: true };
+    assert.deepEqual(readSelectFilter(null), all);
+    const s = store();
+    s.setItem("freesolid.selectFilter", "{oups");
+    assert.deepEqual(readSelectFilter(s), all);
+    assert.equal(filterActive(all), false);
+  });
+
+  it("garde les types écartés", () => {
+    const s = store();
+    writeSelectFilter(s, { faces: false, edges: true, sketches: true,
+                           surfaces: false });
+    const back = readSelectFilter(s);
+    assert.equal(back.faces, false);
+    assert.equal(back.surfaces, false);
+    assert.equal(back.edges, true);
+    assert.equal(filterActive(back), true);
   });
 });
 

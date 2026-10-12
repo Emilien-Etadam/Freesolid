@@ -151,9 +151,13 @@ export function installPicking(ctx) {
     }
     raycaster.setFromCamera(pointer, camera);
 
+    // Filtre de sélection : un type écarté n'est plus visé. La face reste
+    // calculée pour cacher ce qui est derrière elle.
+    const allow = ctx.selectFilter ?? {};
+
     // L'esquisse libre gagne sur la face (et l'arête) derrière elle :
     // le geste vise le profil, pas le solide. Priorité en pixels, inchangée.
-    const sketchHit = pickHoveredSketch();
+    const sketchHit = allow.sketches === false ? null : pickHoveredSketch();
 
     let edgeGroupIndex = -1;
     let groupIndex = -1;
@@ -163,7 +167,7 @@ export function installPicking(ctx) {
       const faceHit = ctx.partMesh
         ? raycaster.intersectObject(ctx.partMesh)[0] : undefined;
       let edgeHit;
-      if (ctx.partMesh && ctx.partEdges) {
+      if (ctx.partMesh && ctx.partEdges && allow.edges !== false) {
         const { radius } = ctx.partCenterRadius();
         raycaster.params.Line.threshold = linePickThreshold();
         edgeHit = raycaster.intersectObject(ctx.partEdges)[0];
@@ -174,14 +178,15 @@ export function installPicking(ctx) {
                 && edgeHit.index < g.start + g.count);
         }
       }
-      if (edgeGroupIndex < 0 && faceHit) {
+      if (edgeGroupIndex < 0 && faceHit && allow.faces !== false) {
         const indexPosition = faceHit.faceIndex * 3;
         groupIndex = ctx.meshGroups.findIndex(
           (g) => indexPosition >= g.start && indexPosition < g.start + g.count);
       }
       // Un panneau qui attend une face du solide voit à travers les
       // surfaces (remplacer une face recouverte par sa surface).
-      const throughSurfaces = panel.needs("face") && (faceHit || edgeHit);
+      const throughSurfaces = allow.surfaces === false
+        || (panel.needs("face") && (faceHit || edgeHit));
       const surfHit = throughSurfaces ? null : pickHoveredSurfaceHit();
       let pointHit = edgeGroupIndex >= 0 ? edgeHit : faceHit;
       if (surfHit) {

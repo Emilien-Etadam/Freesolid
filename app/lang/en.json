@@ -1211,5 +1211,11 @@
  "Afficher": "Show",
  "masqué": "hidden",
  "Rien n'est masqué": "Nothing is hidden",
- "Tab : survolez un corps ou une surface à masquer (Maj+Tab : tout afficher)": "Tab: hover a body or a surface to hide (Shift+Tab: show all)"
+ "Tab : survolez un corps ou une surface à masquer (Maj+Tab : tout afficher)": "Tab: hover a body or a surface to hide (Shift+Tab: show all)",
+ "Filtre de sélection — ce que le clic peut viser": "Selection filter — what a click can pick",
+ "Surfaces et courbes": "Surfaces and curves",
+ "Tout sélectionnable": "Everything selectable",
+ "Filtre de sélection : {k}": "Selection filter: {k}",
+ "Filtre de sélection : tout": "Selection filter: everything",
+ "rien": "nothing"
 }

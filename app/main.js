@@ -377,6 +377,7 @@ let partMesh = null;
 let partEdges = null;
 let othersMeshes = []; // corps non actifs, un mesh chacun
 let partBaseMaterial = null; // clone possédé — couleur du corps actif
+let partFaceMaterials = []; // clones possédés — faces colorées
 let meshGroups = [];
 let edgeGroups = [];
 let edgeSnaps = []; // centres de cercles et sommets (clics de position)
@@ -564,8 +565,23 @@ function showMesh(mesh) {
   geometry.computeBoundingSphere(); // les vues standard cadrent dessus
 
   partBaseMaterial = ownedMaterial(baseMaterial, hexColor(mesh.color));
-  partMesh = new THREE.Mesh(geometry,
-    [partBaseMaterial, hoverMaterial, selectedMaterial]);
+  // Faces colorées : une matière par couleur, après survol et sélection.
+  const materials = [partBaseMaterial, hoverMaterial, selectedMaterial];
+  const byColor = new Map();
+  partFaceMaterials = [];
+  mesh.groups.forEach((g, i) => {
+    const color = hexColor(g.color);
+    if (!color) return;
+    if (!byColor.has(color)) {
+      const material = ownedMaterial(baseMaterial, color);
+      byColor.set(color, materials.length);
+      materials.push(material);
+      partFaceMaterials.push(material);
+    }
+    g.baseIndex = byColor.get(color);
+    geometry.groups[i].materialIndex = g.baseIndex;
+  });
+  partMesh = new THREE.Mesh(geometry, materials);
   volumesGroup.add(partMesh);
   applyVolumeVisibility();
   rebuildPlanes(); // les plans de base suivent la taille de la pièce
@@ -881,6 +897,7 @@ function clearGhost() {
   }
   baseMaterial.opacity = 1;
   if (partBaseMaterial) partBaseMaterial.opacity = 1;
+  for (const material of partFaceMaterials) material.opacity = 1;
   hoverMaterial.opacity = selectedMaterial.opacity = 1;
 }
 
@@ -930,6 +947,7 @@ function showGhost(mesh, { bothSides = false } = {}) {
   applyVolumeVisibility();
   baseMaterial.opacity = 0.15; // la pièce s'efface derrière le résultat
   if (partBaseMaterial) partBaseMaterial.opacity = 0.15;
+  for (const material of partFaceMaterials) material.opacity = 0.15;
   hoverMaterial.opacity = selectedMaterial.opacity = 0.3;
 }
 

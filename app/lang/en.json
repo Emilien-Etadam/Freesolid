@@ -1257,5 +1257,14 @@
  "Ctrl+Maj+E": "Ctrl+Shift+E",
  "Dans la pièce, hors esquisse. Les touches de vue (F, Z, Ctrl+1…) et du navigateur restent réservées.": "In the part, outside sketches. View keys (F, Z, Ctrl+1…) and browser keys stay reserved.",
  "{c} : {k} (retiré de {o})": "{c}: {k} (removed from {o})",
- "{c} : {k}": "{c}: {k}"
+ "{c} : {k}": "{c}: {k}",
+ "Matière…": "Material…",
+ "Matière — {b}": "Material — {b}",
+ "(aucune)": "(none)",
+ "Personnalisée…": "Custom…",
+ "Masse volumique": "Density",
+ "La masse (Évaluer) suit la matière ; sa teinte devient la couleur du corps, sauf couleur choisie.": "Mass (Evaluate) follows the material; its tint becomes the body color, unless a color was chosen.",
+ "Masse : {m} g ({n}, {d} g/cm³)": "Mass: {m} g ({n}, {d} g/cm³)",
+ "Couleur de la face…": "Face color…",
+ "Couleur de face par défaut": "Default face color"
 }

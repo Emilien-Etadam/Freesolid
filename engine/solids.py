@@ -61,6 +61,8 @@ class SolidsMixin:
             obj.addProperty("App::PropertyString", "FreeSolidColor",
                             "FreeSolid", "Couleur d'affichage")
         obj.FreeSolidColor = value
+        if "FreeSolidTinted" in obj.PropertiesList:
+            obj.FreeSolidTinted = False  # choisie : la matière n'y touche plus
         return self.get_tree()
 
     def add_boolean(self, tool, type="cut"):

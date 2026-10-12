@@ -56,6 +56,7 @@ from engine.sketchlayers import SketchLayersMixin
 from engine.docprops import DocPropsMixin
 from engine.vertexchamfer import VertexChamferMixin
 from engine.selectchain import SelectChainMixin
+from engine.materials import MaterialsMixin
 from engine.solids import SolidsMixin
 from engine.tree import TreeMixin
 
@@ -269,7 +270,7 @@ def _format_mm(value):
     return text.replace(".", ",") or "0"
 
 
-class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
+class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, MaterialsMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
     """Owns one FreeCAD document and executes protocol operations."""
 
     def __init__(self):
@@ -652,10 +653,14 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
 
     # -- phase E : évaluer ------------------------------------------------
 
-    def mass_properties(self, density=1.24):
-        """Volume, masse (densité en g/cm³ — PLA par défaut), surface,
-        centre de gravité, encombrement — l'onglet Évaluer."""
+    def mass_properties(self, density=None):
+        """Volume, masse (densité en g/cm³ : celle donnée, sinon la
+        matière du corps, sinon le PLA), surface, centre de gravité,
+        encombrement — l'onglet Évaluer."""
         body = self._require_body()
+        material = self._material_of(body)
+        if density is None:
+            density = material["density"] if material else 1.24
         shape = getattr(body, "Shape", None)
         if shape is None:
             raise KernelError("pas de solide à évaluer")
@@ -681,6 +686,7 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
             "mass_g": volume / 1000.0 * float(density),
             "center_of_mass": [com_x, com_y, com_z],
             "bounding_box": [box.XLength, box.YLength, box.ZLength],
+            "material": material["name"] if material else None,
         }
 
     def measure(self, a_kind, a_id, b_kind, b_id):
@@ -864,7 +870,7 @@ _TRANSACTIONAL = frozenset({
     "sketch_block_insert", "sketch_picture",
     "set_component_grounded", "reorder_feature", "set_comment",
     "set_suppressed", "sketch_set_plane", "add_vertex_chamfer",
-    "edit_vertex_chamfer",
+    "edit_vertex_chamfer", "set_body_material", "set_face_color",
 })
 
 

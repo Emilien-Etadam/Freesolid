@@ -547,6 +547,7 @@ export function installTree(ctx) {
       : (bodyInfo.active ? ""
         : " — " + t("{n} élément(s)", { n: bodyInfo.count }));
     bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix
+      + (bodyInfo.material ? ` · ${bodyInfo.material.name}` : "")
       + (bodyInfo.hidden ? " — " + t("masqué") : "")));
     if (bodyInfo.name) {
       bodyItem.dataset.feat = bodyInfo.name;

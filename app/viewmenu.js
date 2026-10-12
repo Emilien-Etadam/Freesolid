@@ -26,6 +26,7 @@ const ACTION_LABELS = {
   pad: "Extrusion",
   pocket: "Enlèvement extrudé",
   revolve: "Révolution",
+  "face-color": "Couleur de la face…",
 };
 
 /** Rôle d'icône de chaque action (table de icons.js). */
@@ -44,6 +45,8 @@ const MENU_ICONS = {
   "edit-surface": "edit",
   rollback: "rollback",
   "select-tangent": "sel_tangent",
+  "face-color": "face_color",
+  "face-color-reset": "face_color",
   "select-loop": "sel_loop",
   "delete-feature": "delete",
   "zoom-fit": "zoom_fit",
@@ -169,7 +172,9 @@ export function viewMenuItems(ctx = {}) {
   let items = [];
   if (hit?.kind === "face") {
     items = [
-      { bar: ["sketch-on-face", "normal-to", "fillet", "chamfer", "shell", "measure"] },
+      { bar: ["sketch-on-face", "normal-to", "fillet", "chamfer", "shell",
+        "measure", "face-color"] },
+      ...(hit.colored ? [{ key: "face-color-reset", label: "Couleur de face par défaut" }] : []),
       ...featureSection(hit.feature),
     ];
   } else if (hit?.kind === "edge") {

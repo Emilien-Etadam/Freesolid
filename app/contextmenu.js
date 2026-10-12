@@ -83,6 +83,7 @@ export function installContextMenu(ctx) {
     const onComponent = !!ctx.assemblyState && typeof feature.grounded === "boolean";
     document.getElementById("ctx-modify").hidden = !canModifyMenuTarget(feature);
     document.getElementById("ctx-color").hidden = !onBody;
+    document.getElementById("ctx-material").hidden = !onBody;
     document.getElementById("ctx-color-reset").hidden = !onBody;
     document.getElementById("ctx-comment").hidden = onBody || onComponent;
     document.getElementById("ctx-sketch-plane").hidden =
@@ -187,6 +188,38 @@ export function installContextMenu(ctx) {
       { objects: [menuFeature.name], hidden: !menuFeature.hidden }));
   });
 
+  // Matière d'un corps : la bibliothèque, ou une masse volumique propre.
+  document.getElementById("ctx-material").addEventListener("click", async () => {
+    if (!menuFeature) return;
+    const body = menuFeature;
+    const library = await call("material_library").catch(() => null);
+    if (!library) return;
+    const current = body.material;
+    panel.open({
+      icon: "material",
+      title: t("Matière — {b}", { b: body.label }),
+      groups: [{ label: t("Matière"), rows: [
+        { type: "select", key: "material", value: current?.id ?? "",
+          options: [
+            ["", t("(aucune)")],
+            ...library.materials.map((m) => [m.id,
+              `${m.name} — ${m.density} g/cm³`]),
+            ["custom", t("Personnalisée…")],
+          ] },
+        { type: "number", key: "density", label: t("Masse volumique"),
+          unit: "g/cm³", min: 0.001,
+          value: current?.id === "custom" ? current.density : 1,
+          showIf: (v) => v.material === "custom" },
+      ] }],
+      note: t("La masse (Évaluer) suit la matière ; sa teinte devient la "
+        + "couleur du corps, sauf couleur choisie."),
+      onApply: (v) => refresh(call("set_body_material", {
+        body: body.name, material: String(v.material ?? ""),
+        ...(v.material === "custom" ? { density: Number(v.density) } : {}),
+      })),
+    });
+  });
+
   document.getElementById("ctx-color").addEventListener("click", () => {
     if (!menuFeature) return;
     const bodyName = menuFeature.name;
@@ -247,6 +280,7 @@ export function installContextMenu(ctx) {
       hit = {
         kind: "face",
         face: group.faceId,
+        colored: !!group.color,
         feature: feature ? {
           name: feature.name, label: feature.label, sketch: sketch?.name,
           item: feature, sketchItem: sketch,
@@ -305,6 +339,17 @@ export function installContextMenu(ctx) {
       : hit.feature.sketchItem),
     rollback: (hit) => refresh(call("set_tip", { feature: hit.feature.name })),
     "select-tangent": (hit) => selectChain(hit.edge, "tangent"),
+    "face-color": (hit) => {
+      const picker = document.getElementById("body-color-picker");
+      const group = ctx.meshGroups.find((g) => g.faceId === hit.face);
+      picker.value = hexColor(group?.color) || cssHex(sceneTheme.part);
+      picker.addEventListener("change", () => {
+        refresh(call("set_face_color", { faces: [hit.face], color: picker.value }));
+      }, { once: true });
+      picker.click();
+    },
+    "face-color-reset": (hit) =>
+      refresh(call("set_face_color", { faces: [hit.face], color: null })),
     "select-loop": (hit) => selectChain(hit.edge, "loop"),
     "delete-feature": (hit) => {
       if (confirm(t("Supprimer « {f} » ?", { f: hit.feature.label }))) {

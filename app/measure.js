@@ -20,13 +20,16 @@ export function measurePick(hoveredEdgeGroup, edgeGroups, hoveredGroup, meshGrou
  *  quand la mesure est en cours. */
 export function installMeasure(ctx) {
   const { call, say, panel } = ctx;
-  let lastDensity = 1.24; // PLA — le défaut d'un atelier d'impression 3D
+  // Densité saisie dans Évaluer ; null : celle de la matière du corps
+  // (sinon le PLA, le défaut d'un atelier d'impression 3D).
+  let lastDensity = null;
   let measureFirst = null;
 
   async function openEvaluatePanel() {
     let props;
     try {
-      props = await call("mass_properties", { density: lastDensity });
+      props = await call("mass_properties",
+        lastDensity == null ? {} : { density: lastDensity });
     } catch (error) {
       say(error.message, true);
       return;
@@ -40,8 +43,11 @@ export function installMeasure(ctx) {
           rows: [{ type: "list", items: [
             { label: t("Volume : {v} cm³",
               { v: fixed(props.volume_mm3 / 1000, 2) }) },
-            { label: t("Masse : {m} g (à {d} g/cm³)",
-              { m: fixed(props.mass_g), d: props.density }) },
+            { label: props.material && lastDensity == null
+              ? t("Masse : {m} g ({n}, {d} g/cm³)", { m: fixed(props.mass_g),
+                n: props.material, d: props.density })
+              : t("Masse : {m} g (à {d} g/cm³)",
+                { m: fixed(props.mass_g), d: props.density }) },
             { label: t("Surface : {s} cm²", { s: fixed(props.area_mm2 / 100) }) },
             { label: t("Centre de gravité : ")
                      + props.center_of_mass.map((v) => fixed(v)).join(", ") },
@@ -51,14 +57,14 @@ export function installMeasure(ctx) {
           ] }] },
         { label: t("Matière"),
           rows: [{ type: "number", key: "density", label: t("Densité"),
-                   value: lastDensity, unit: "g/cm³", min: 0.001 }] },
+                   value: props.density, unit: "g/cm³", min: 0.001 }] },
       ],
       note: t("PLA ≈ 1,24 · PETG ≈ 1,27 · ABS ≈ 1,04 · Alu ≈ 2,70 · " +
             "Acier ≈ 7,85 — OK recalcule avec la densité saisie"),
       onApply: (v) => {
         const density = num(v.density);
         if (density > 0) {
-          lastDensity = density;
+          lastDensity = density === props.density ? lastDensity : density;
           openEvaluatePanel();
         }
       },

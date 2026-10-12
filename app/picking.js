@@ -310,7 +310,8 @@ export function installPicking(ctx) {
     if (ctx.partMesh) {
       ctx.partMesh.geometry.groups.forEach((g, i) => {
         const isSelected = ctx.meshGroups[i].faceId === ctx.selectedFaceId;
-        g.materialIndex = isSelected ? 2 : (i === ctx.hoveredGroup ? 1 : 0);
+        g.materialIndex = isSelected ? 2 : (i === ctx.hoveredGroup ? 1
+          : (ctx.meshGroups[i].baseIndex ?? 0));
       });
     }
     const parts = [];

@@ -704,6 +704,7 @@ class TreeMixin:
                 "color": getattr(obj, "FreeSolidColor", "") or None,
                 "has_solid": self._body_has_solid(obj),
                 "hidden": self._is_hidden(obj),
+                "material": self._material_of(obj),
             })
         consumed = self._consumed_surfaces()
         surfaces = [self._surface_tree_entry(o, order_of, known_names,
@@ -770,9 +771,13 @@ class TreeMixin:
                 splines.append(spline)
         mesh = protocol.pack_mesh(faces)
         producers = self._face_producers()
+        face_colors = self._face_colors(body)
         for group, spline in zip(mesh.get("groups") or [], splines):
             if spline:
                 group["spline"] = True
+            tint = face_colors.get(str(group.get("faceId")))
+            if tint:
+                group["color"] = tint
             feature = producers.get(group.get("faceId"))
             if feature:
                 group["feature"] = self._thin_owner(

@@ -3785,6 +3785,30 @@ class SelftestMixin:
                 and sorted([len(loop["edges"]), len(other["edges"])]) == [4, 8]
                 and line in loop["edges"] and line in other["edges"])
 
+            mark("p59: matières, couleur de face")
+            self.new_part("Pièce matière")
+            self.add_rect_sketch(10, 10)
+            self.add_pad(10)
+            body = self._require_body()
+            plain = self.mass_properties()["mass_g"]
+            tree = self.set_body_material(body.Name, "steel")
+            steel = self.mass_properties()
+            self.set_body_color(body.Name, "#112233")
+            self.set_body_material(body.Name, "custom", density=2.0)
+            custom = self.mass_properties()["mass_g"]
+            self.set_face_color([0, 2], "#ff0000")
+            self.set_face_color([2], None)
+            groups = self.tessellate()["groups"]
+            tinted = [g["faceId"] for g in groups if g.get("color")]
+            report["p59_matieres"] = (
+                abs(plain - 1.24) < 1e-9
+                and abs(steel["mass_g"] - 7.85) < 1e-9
+                and tree["bodies"][0]["material"]["id"] == "steel"
+                and tree["bodies"][0]["color"] == "#8c939b"
+                and abs(custom - 2.0) < 1e-9
+                and body.FreeSolidColor == "#112233"
+                and tinted == [0])
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

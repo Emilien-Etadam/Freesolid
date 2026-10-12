@@ -108,7 +108,7 @@ ordre.
 | 52 | Changer le plan d'une esquisse | P2 | fait : clic droit → Changer de plan… (plan d'origine, plan de référence, face d'une fonction antérieure) |
 | 53 | Chanfrein sur un sommet | P3 | fait : bouton « Chanfrein de sommet » (clic près du coin, aimanté au sommet), distance égale ou une par arête, aperçu, réédition au double-clic ; recalculé quand la pièce change. Le sommet est repéré par son numéro : une fonction d’avant qui change la topologie peut le déplacer |
 | 54 | Sélection : choisir parmi les éléments superposés, chaîne tangente | P2 | fait : Alt+clic = la face de derrière (Alt+clic encore : la suivante) ; clic droit sur une arête → chaîne tangente, ou boucle (encore : la boucle de l’autre face) |
-| 55 | Infobulles enrichies, raccourcis personnalisables | P3 | à faire |
+| 55 | Infobulles enrichies, raccourcis personnalisables | P3 | fait : infobulle des barres (nom, détail, touches) ; Outils → Raccourcis clavier… (une commande du ruban par combinaison, touches réservées refusées, gardés dans le navigateur) |
 | 56 | Matières : bibliothèque, couleur par face | P2 | à faire |
 | 57 | Liste des erreurs de reconstruction | P2 | à faire |
 | 58 | Axe, point et repère de référence | P2 | à faire |

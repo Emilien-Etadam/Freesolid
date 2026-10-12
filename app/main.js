@@ -32,7 +32,11 @@ import {
 } from "./statusbar.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, ISSUES_URL, readLang } from "./settings.js";
-import { installMenuBar, menuBarModel } from "./menubar.js";
+import { insertionItems, installMenuBar, menuBarModel } from "./menubar.js";
+import {
+  assignShortcut, comboLabel, comboOf, installRichTips, readShortcuts,
+  writeShortcuts,
+} from "./shortcuts.js";
 import { undoStepLabel } from "./history.js";
 import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
@@ -1182,6 +1186,18 @@ document.addEventListener("keydown", (event) => {
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
   if (applyViewNudge(event)) return;
   if (event.key !== "Escape" && pluginRuntime?.dispatchKey(event)) return;
+  // Raccourcis personnels : une commande du ruban par combinaison.
+  const combo = event.repeat ? null : comboOf(event);
+  const customId = combo && Object.keys(userShortcuts)
+    .find((id) => userShortcuts[id] === combo);
+  if (customId) {
+    const button = document.getElementById(customId);
+    if (button && !button.disabled) {
+      event.preventDefault();
+      button.click();
+      return;
+    }
+  }
   if (event.key === " " && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     if (orientBoxOpen()) closeOrientBox();
@@ -1264,6 +1280,8 @@ installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
       saveScreenshot();
     } else if (name === "properties") {
       openDocumentProperties();
+    } else if (name === "shortcuts") {
+      openShortcutPanel();
     }
   },
 });
@@ -1836,6 +1854,62 @@ document.getElementById("btn-undo-list").addEventListener("click", async (event)
   });
   menu.hidden = false;
 });
+
+// Raccourcis personnels (Outils → Raccourcis clavier…), gardés dans le
+// navigateur ; les infobulles des barres les montrent.
+let userShortcuts = readShortcuts(localStore);
+installRichTips(document, {
+  selector: "[id^=\"ribbon-\"] button, #viewbar button, #quickbar button, #sketchbar button",
+  shortcutFor: (id) => userShortcuts[id] ?? null,
+});
+
+function openShortcutPanel() {
+  const commands = insertionItems(RIBBON_LAYOUT).filter((item) => item.click);
+  const labelOf = (id) => t(commands.find((c) => c.click === id)?.label ?? id);
+  panel.open({
+    icon: "shortcuts",
+    title: t("Raccourcis clavier"),
+    groups: [
+      { label: t("Raccourcis attribués"), rows: [{
+        type: "list",
+        empty: t("Aucun pour l'instant"),
+        items: Object.entries(userShortcuts).map(([id, combo]) => ({
+          label: `${labelOf(id)} — ${comboLabel(combo)}`,
+          onDelete: () => {
+            const { [id]: _removed, ...rest } = userShortcuts;
+            userShortcuts = rest;
+            writeShortcuts(localStore, userShortcuts);
+            openShortcutPanel();
+          },
+        })),
+      }] },
+      { label: t("Nouveau raccourci"), rows: [
+        { type: "select", key: "command", label: t("Commande"),
+          value: commands[0]?.click,
+          options: commands.map((c) => [c.click, t(c.label)]) },
+        { type: "text", key: "keys", label: t("Touches"), value: "",
+          placeholder: t("Ctrl+Maj+E") },
+      ] },
+    ],
+    note: t("Dans la pièce, hors esquisse. Les touches de vue (F, Z, Ctrl+1…) "
+      + "et du navigateur restent réservées."),
+    onApply: (v) => {
+      if (!String(v.keys ?? "").trim()) return;
+      const result = assignShortcut(userShortcuts, v.command, v.keys);
+      if (result.error) {
+        say(t(result.error), true);
+        return;
+      }
+      userShortcuts = result.map;
+      writeShortcuts(localStore, userShortcuts);
+      say(result.replaced
+        ? t("{c} : {k} (retiré de {o})", { c: labelOf(v.command),
+          k: comboLabel(userShortcuts[v.command]), o: labelOf(result.replaced) })
+        : t("{c} : {k}", { c: labelOf(v.command),
+          k: comboLabel(userShortcuts[v.command]) }));
+    },
+  });
+}
 
 /** Propriétés du fichier : auteur, société, description, propriétés
  *  libres (une ligne par nom ; valeur vide : retirée). */

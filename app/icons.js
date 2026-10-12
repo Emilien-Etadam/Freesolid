@@ -161,6 +161,7 @@ export const ICONS = {
   select_filter: "fs_select_filter.svg",
   settings: "fs_settings.svg",
   sew: "fs_sew.svg",
+  shortcuts: "fs_shortcuts.svg",
   sk_arc_slot: "fs_sk_arc_slot.svg",
   sk_arc_slot3: "fs_sk_arc_slot3.svg",
   sk_block: "fs_sk_block.svg",

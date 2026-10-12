@@ -1240,5 +1240,22 @@
  "Sélectionner la boucle (encore : l'autre face)": "Select loop (again: the other face)",
  "{n} arête(s) sélectionnée(s)": "{n} edge(s) selected",
  "Rien derrière : une seule face sous le pointeur": "Nothing behind: only one face under the pointer",
- "Face {i} sur {n} sous le pointeur — Alt+clic : la suivante": "Face {i} of {n} under the pointer — Alt+click: the next one"
+ "Face {i} sur {n} sous le pointeur — Alt+clic : la suivante": "Face {i} of {n} under the pointer — Alt+click: the next one",
+ "Maj": "Shift",
+ "Échap": "Esc",
+ "Entrée": "Enter",
+ "Suppr": "Del",
+ "Raccourci illisible — exemple : Ctrl+Maj+E": "Unreadable shortcut — example: Ctrl+Shift+E",
+ "Ce raccourci est déjà pris par FreeSolid ou le navigateur": "This shortcut is already used by FreeSolid or the browser",
+ "Raccourcis clavier": "Keyboard shortcuts",
+ "Raccourcis clavier…": "Keyboard shortcuts…",
+ "Raccourcis attribués": "Assigned shortcuts",
+ "Aucun pour l'instant": "None yet",
+ "Nouveau raccourci": "New shortcut",
+ "Commande": "Command",
+ "Touches": "Keys",
+ "Ctrl+Maj+E": "Ctrl+Shift+E",
+ "Dans la pièce, hors esquisse. Les touches de vue (F, Z, Ctrl+1…) et du navigateur restent réservées.": "In the part, outside sketches. View keys (F, Z, Ctrl+1…) and browser keys stay reserved.",
+ "{c} : {k} (retiré de {o})": "{c}: {k} (removed from {o})",
+ "{c} : {k}": "{c}: {k}"
 }

@@ -200,10 +200,11 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_rect_sketch": _Req(("width", float), ("height", float)),
                                        # optional: face (id) to attach
     # Conditions de fin : engine/extrude.py. Sans length : jusqu'à…
-    "add_pad": _Req(optional={"length": float, **_EXTRUDE_OPTIONAL}),
+    "add_pad": _Req(optional={"length": float, "contours": list,
+                              **_EXTRUDE_OPTIONAL}),
     # Sans profondeur ni condition = à travers tout.
     "add_pocket": _Req(optional={"length": float, "through": bool,
-                                 **_EXTRUDE_OPTIONAL}),
+                                 "contours": list, **_EXTRUDE_OPTIONAL}),
     "add_fillet": _Req(("radius", float)),  # face OU edges (liste d'ids)
     "add_chamfer": _Req(("size", float), optional={
         "size2": float,          # deux distances
@@ -217,13 +218,18 @@ OPS: dict[str, tuple[str, ...]] = {
         "axis": str,             # vertical | horizontal | line:<id> | X | Y | Z
         "reversed": bool,
         "midplane": bool,
+        "contours": list,        # index des contours de l'esquisse pris
     }),                                # sketch reste libre (nom d'esquisse)
     "add_groove": _Req(optional={
         "angle": float,
         "axis": str,
         "reversed": bool,
         "midplane": bool,
+        "contours": list,
     }),
+    "set_profile_contours": _Req(("feature", str), ("contours", list)),
+                                       # [] : toute l'esquisse
+    "sketch_contours": _Req(("sketch", str)),  # lecture
     "add_mirror": _Req(optional={"features": list}),
                                        # optional: plane (XY|XZ|YZ), features
     "add_linear_pattern": _Req(("length", float), ("count", int),

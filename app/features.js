@@ -106,6 +106,44 @@ export function shellBuild(v) {
            params: { faces, thickness, outward: !!v.outward } };
 }
 
+/** Libellé d'un contour : son numéro et sa taille. */
+export function contourLabel(index, size) {
+  const [w, h] = size ?? [0, 0];
+  return t("Contour {n} — {w} × {h} mm", {
+    n: index + 1, w: plainNumber(w), h: plainNumber(h) });
+}
+
+/** Rangées « un contour, une case » pour une esquisse à plusieurs
+ *  contours ; `used` : ceux déjà pris (tous si absent). */
+export function contourRows(sizes, used = null) {
+  return (sizes ?? []).map((size, i) => ({
+    type: "check", key: `contour${i}`, label: contourLabel(i, size),
+    value: used ? used.includes(i) : true }));
+}
+
+/** Contours cochés → liste d'index, `null` si tous (le profil entier),
+ *  `[]` si aucun. */
+export function checkedContours(v, count) {
+  const chosen = [];
+  for (let i = 0; i < count; i++) {
+    if (v[`contour${i}`] !== false) chosen.push(i);
+  }
+  return chosen.length === count ? null : chosen;
+}
+
+/** Ligne d'arbre de l'esquisse choisie comme profil. */
+function profileSketchEntry(ctx) {
+  const profile = resolveProfileSketch(ctx);
+  if (!profile) return null;
+  const stack = [...(ctx.lastTree?.features ?? [])];
+  while (stack.length) {
+    const item = stack.pop();
+    if (item.name === profile.name) return item;
+    if (item.children) stack.push(...item.children);
+  }
+  return null;
+}
+
 /** Fonctions à profil d'esquisse : ligne « Profil : … », params.sketch
  *  si présélection, garde si aucune esquisse disponible. */
 function withSketchProfile(entry) {
@@ -116,10 +154,13 @@ function withSketchProfile(entry) {
       const profile = resolveProfileSketch(ctx);
       const groups = typeof entry.groups === "function"
         ? entry.groups(ctx) : entry.groups;
+      const sizes = profileSketchEntry(ctx)?.contours;
       return [
         { label: "Profil",
           rows: [{ type: "note",
             text: t("Profil : {p}", { p: profile ? profile.label : "—" }) }] },
+        ...(sizes?.length > 1
+          ? [{ label: "Contours", rows: contourRows(sizes) }] : []),
         ...groups,
       ];
     },
@@ -128,6 +169,12 @@ function withSketchProfile(entry) {
       if (!built) return null;
       if (ctx.selectedSketch?.name) {
         built.params = { ...built.params, sketch: ctx.selectedSketch.name };
+      }
+      const sizes = profileSketchEntry(ctx)?.contours;
+      if (sizes?.length > 1) {
+        const contours = checkedContours(v, sizes.length);
+        if (contours && !contours.length) return null;
+        if (contours) built.params = { ...built.params, contours };
       }
       return built;
     },

@@ -1132,5 +1132,8 @@
  "Égaliser la courbure — deux splines se raccordent sans cassure de courbure": "Equal curvature — two splines join without a curvature break",
  "Courbure : cliquez le bout d'une spline": "Curvature: click the end of a spline",
  "Courbure : cliquez le bout de la spline à raccorder": "Curvature: click the end of the spline to join",
- "Courbure : cliquez le bout de la spline de référence": "Curvature: click the end of the reference spline"
+ "Courbure : cliquez le bout de la spline de référence": "Curvature: click the end of the reference spline",
+ "Contour {n} — {w} × {h} mm": "Contour {n} — {w} × {h} mm",
+ "Esquisse partagée — aussi utilisée par : {f}": "Shared sketch — also used by: {f}",
+ "Contours : cochez au moins un contour": "Contours: tick at least one contour"
 }

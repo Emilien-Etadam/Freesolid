@@ -96,7 +96,8 @@ class TreeMixin:
             if source is not None:
                 linked = source
             if linked is not None:
-                consumed[linked.Name] = obj.Name
+                # Esquisse partagée : elle voyage avec sa première fonction.
+                consumed.setdefault(linked.Name, obj.Name)
         for obj in self._doc.Objects:
             if not self._is_surface_obj(obj):
                 continue
@@ -578,6 +579,14 @@ class TreeMixin:
             if obj.TypeId == "Sketcher::SketchObject":
                 item["rolled_back"] = self._is_rolled_back(obj)
                 item["definition"] = self._sketch_definition(obj)
+                try:
+                    wires = self._sketch_wires(obj)
+                except Exception:  # noqa: BLE001
+                    wires = []
+                if len(wires) > 1:
+                    # Plusieurs contours : une fonction peut n'en prendre
+                    # qu'une partie.
+                    item["contours"] = [w["size"] for w in wires]
                 lines = self._sketch_line_axes(obj)
                 if lines:
                     item["lines"] = lines
@@ -588,6 +597,11 @@ class TreeMixin:
                 item["thin"] = thin
             if obj.TypeId in ("PartDesign::Revolution", "PartDesign::Groove"):
                 item["revolution"] = self._revolution_state(obj)
+            if obj.TypeId in ("PartDesign::Pad", "PartDesign::Pocket",
+                              "PartDesign::Revolution", "PartDesign::Groove"):
+                profile = self._profile_entry(obj)
+                if profile is not None:
+                    item["profile"] = profile
             if "FreeSolidTextString" in obj.PropertiesList:
                 # Gravure rééditable : le panneau client édite ces valeurs.
                 item["text"] = {
@@ -623,6 +637,8 @@ class TreeMixin:
             self._annotate_tree_links(item, obj, known_names)
             return item
 
+        users = self._sketch_consumers()
+        labels = {o.Name: o.Label for o in body.Group}
         items = []
         for obj in body.Group:
             if (getattr(obj, "FreeSolidAxisTool", False)
@@ -632,9 +648,19 @@ class TreeMixin:
                     and obj.Name in consumed) or self._is_thin_helper(obj):
                 continue
             item = entry(obj)
-            children = [entry(o) for o in body.Group
-                        if o.TypeId == "Sketcher::SketchObject"
-                        and consumed.get(o.Name) == obj.Name]
+            children = []
+            for o in body.Group:
+                if o.TypeId != "Sketcher::SketchObject":
+                    continue
+                owners = users.get(o.Name, [])
+                if consumed.get(o.Name) != obj.Name and obj.Name not in owners:
+                    continue
+                child = entry(o)
+                if len(owners) > 1:
+                    # Esquisse partagée : affichée sous chaque fonction.
+                    child["shared"] = [labels.get(n, n) for n in owners
+                                       if n != obj.Name]
+                children.append(child)
             if children:
                 item["children"] = children
             items.append(item)

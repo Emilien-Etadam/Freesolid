@@ -286,7 +286,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_state": _Req(("sketch", str)),
     "sketch_add_line": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
-        ("x2", float), ("y2", float)),
+        ("x2", float), ("y2", float), optional={"construction": bool}),
+                                       # construction : ligne d'axe
     "sketch_add_rectangle": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float), optional={"center": bool}),
@@ -314,6 +315,72 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_offset": _Req(
         ("sketch", str), ("geos", list), ("distance", float)),
                                        # optional: reversed, construction
+    # Tracés complémentaires (engine/sketchdraw.py).
+    "sketch_add_point": _Req(("sketch", str), ("x", float), ("y", float)),
+    "sketch_add_tangent_arc": _Req(
+        ("sketch", str), ("geo", int), ("point", int),
+        ("x", float), ("y", float)),   # part d'une extrémité (1|2)
+    "sketch_add_rect3": _Req(
+        ("sketch", str), ("x1", float), ("y1", float), ("x2", float),
+        ("y2", float), ("x3", float), ("y3", float),
+        optional={"parallelogram": bool}),
+    "sketch_add_ellipse_arc": _Req(
+        ("sketch", str), ("cx", float), ("cy", float), ("rx", float),
+        ("ry", float), ("a1", float), ("a2", float)),  # optional: angle (°)
+    "sketch_add_parabola": _Req(
+        ("sketch", str), ("vx", float), ("vy", float), ("fx", float),
+        ("fy", float), ("x1", float), ("y1", float), ("x2", float),
+        ("y2", float)),                # sommet, foyer, deux bouts
+    "sketch_add_conic": _Req(
+        ("sketch", str), ("x1", float), ("y1", float), ("x2", float),
+        ("y2", float), ("ax", float), ("ay", float)),  # optional: rho
+    "sketch_add_spline_poles": _Req(("sketch", str), ("points", list)),
+    "sketch_add_arc_slot": _Req(
+        ("sketch", str), ("cx", float), ("cy", float), ("r", float),
+        ("a1", float), ("a2", float), ("width", float)),
+    # Édition (engine/sketchedit.py).
+    "sketch_chamfer": _Req(
+        ("sketch", str), ("geo1", int), ("geo2", int), ("x1", float),
+        ("y1", float), ("x2", float), ("y2", float), ("distance", float)),
+                                       # optional: distance2
+    "sketch_extend": _Req(
+        ("sketch", str), ("geo", int), ("x", float), ("y", float)),
+    "sketch_split": _Req(
+        ("sketch", str), ("geo", int), ("x", float), ("y", float)),
+    "sketch_transform": _Req(("sketch", str), ("geos", list)),
+                                       # optional: dx, dy, angle (°), cx, cy,
+                                       # scale, copy
+    "sketch_polar_array": _Req(
+        ("sketch", str), ("geos", list), ("cx", float), ("cy", float),
+        ("count", int)),               # optional: angle (°, 360)
+    "sketch_silhouette": _Req(("sketch", str)),  # arêtes vues, bloquées
+    "sketch_reference": _Req(("sketch", str)),
+                                       # optional: mode (edges | intersection
+                                       # | pierce), defining — liées à la pièce
+    # Compléments (engine/sketchmore.py).
+    "sketch_add_text": _Req(("sketch", str), ("text", str)),
+                                       # optional: x, y, size, angle, font
+    "sketch_corner": _Req(
+        ("sketch", str), ("geo1", int), ("geo2", int), ("x1", float),
+        ("y1", float), ("x2", float), ("y2", float)),
+    "sketch_add_equation": _Req(
+        ("sketch", str), ("x", str), ("y", str), ("t0", float),
+        ("t1", float)),                # optional: count
+    "sketch_repair": _Req(("sketch", str)),
+    "sketch_fully_define": _Req(("sketch", str)),
+    "sketch_spline": _Req(
+        ("sketch", str), ("geo", int), ("action", str)),
+                                       # convert | knot | degree ; x, y
+    "sketch_match_curvature": _Req(
+        ("sketch", str), ("geo1", int), ("point1", int), ("geo2", int),
+        ("point2", int)),              # G2 au raccord de deux splines
+    "sketch_blocks": (),
+    "sketch_block_save": _Req(
+        ("sketch", str), ("geos", list), ("name", str)),
+    "sketch_block_insert": _Req(
+        ("sketch", str), ("name", str), ("x", float), ("y", float)),
+                                       # optional: angle, scale
+    "sketch_picture": _Req(("sketch", str)),  # optional: picture
     "sketch_add_slot": _Req(
         ("sketch", str), ("x1", float), ("y1", float),
         ("x2", float), ("y2", float), ("width", float)),

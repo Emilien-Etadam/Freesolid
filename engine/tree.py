@@ -625,8 +625,9 @@ class TreeMixin:
 
         items = []
         for obj in body.Group:
-            if getattr(obj, "FreeSolidAxisTool", False):
-                continue
+            if (getattr(obj, "FreeSolidAxisTool", False)
+                    or getattr(obj, "FreeSolidPierce", "")):
+                continue  # axe, lieur de percée : outils, hors arbre
             if (obj.TypeId == "Sketcher::SketchObject"
                     and obj.Name in consumed) or self._is_thin_helper(obj):
                 continue

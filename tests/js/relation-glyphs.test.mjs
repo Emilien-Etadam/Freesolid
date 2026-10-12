@@ -44,3 +44,15 @@ describe("relationGlyphs", () => {
       [line(0, [0, 0], [10, 0])]).length, 1);
   });
 });
+
+describe("ancres des entités bloquées", () => {
+  it("disparaissent quand elles sont trop nombreuses", async () => {
+    const { MAX_BLOCK_GLYPHS, relationGlyphs: glyphs } =
+      await import("../../app/geom2d.js");
+    const lines = Array.from({ length: MAX_BLOCK_GLYPHS + 1 }, (_, i) =>
+      ({ id: i, type: "line", p1: [0, i], p2: [5, i] }));
+    const blocks = lines.map((l) => ({ type: "Block", geos: [l.id] }));
+    assert.equal(glyphs(blocks.slice(0, 2), lines).length, 2);
+    assert.equal(glyphs(blocks, lines).length, 0);
+  });
+});

@@ -220,8 +220,17 @@ export function sketchPreviewPoints(tool, pending, cursor) {
   }
   if (tool === "polygon") {
     if (!pending.c || pending.sides == null) return [];
-    return polygonPoints(
-      pending.c.x, pending.c.y, cursor.x, cursor.y, pending.sides);
+    let vx = cursor.x, vy = cursor.y;
+    if (pending.inscribed) {
+      // Le curseur est au milieu d'un côté : le sommet est un demi-pas
+      // plus loin, à la distance apothème / cos(π/n).
+      const a = Math.PI / pending.sides;
+      const dx = cursor.x - pending.c.x, dy = cursor.y - pending.c.y;
+      const k = 1 / Math.cos(a);
+      vx = pending.c.x + k * (dx * Math.cos(a) - dy * Math.sin(a));
+      vy = pending.c.y + k * (dx * Math.sin(a) + dy * Math.cos(a));
+    }
+    return polygonPoints(pending.c.x, pending.c.y, vx, vy, pending.sides);
   }
   return [];
 }
@@ -232,6 +241,9 @@ export function sketchPreviewPoints(tool, pending, cursor) {
 // ⚓ fixe, ≡ colinéaire, M milieu, S symétrique, ◎ concentrique.
 // Les coïncidences, trop nombreuses, ne sont pas marquées (comme les
 // points d'extrémité partagés qui les montrent déjà).
+
+/** Au-delà, les ancres des entités bloquées ne sont plus dessinées. */
+export const MAX_BLOCK_GLYPHS = 8;
 
 const RELATION_GLYPHS = {
   Horizontal: "H", Vertical: "V", Parallel: "∥", Perpendicular: "⊥",
@@ -265,9 +277,12 @@ export function relationGlyphs(constraints, entities, offset = 2) {
   const byId = new Map((entities ?? []).map((e) => [e.id, e]));
   const count = new Map();
   const glyphs = [];
+  // Beaucoup d'entités bloquées (texte, contour importé) : la couleur
+  // « définie » suffit, une ancre par contour noierait le dessin.
+  const blocks = (constraints ?? []).filter((c) => c.type === "Block").length;
   for (const c of constraints ?? []) {
     const text = RELATION_GLYPHS[c.type];
-    if (!text) continue;
+    if (!text || (c.type === "Block" && blocks > MAX_BLOCK_GLYPHS)) continue;
     // Une relation entre un point et une ligne (milieu, sur l'objet…)
     // ne se marque pas ; une relation entre deux courbes se marque sur
     // chacune.
@@ -377,12 +392,20 @@ export function applicableRelations(selection, entities) {
     if (count("line") === 2) {
       out.push("parallel", "perpendicular", "equal", "collinear");
     }
-    if (count("round") === 2) out.push("equal", "concentric", "tangent");
+    if (count("round") === 2) {
+      out.push("equal", "concentric", "tangent", "coradial");
+    }
     if (count("line") === 1 && count("round") === 1) out.push("tangent");
     if (count("point") === 1 && count("line") === 1) out.push("midpoint");
+    if (count("point") === 1 && kinds.some((k) => k !== "point")) {
+      out.push("onobject");
+    }
   } else if (kinds.length === 3 && kinds[0] === "point"
              && kinds[1] === "point" && kinds[2] === "line") {
     out.push("symmetric");
+  } else if (kinds.length === 3 && kinds[0] === "point"
+             && kinds[1] !== "point" && kinds[2] !== "point") {
+    out.push("intersection");
   }
   return out;
 }

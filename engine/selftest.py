@@ -3292,6 +3292,294 @@ class SelftestMixin:
                 and tree["features"][-1]["type"] == "PartDesign::Hole"
                 and len(tree["features"]) == 2)
 
+            mark("p51: esquisse — tracés complémentaires")
+            import math
+            self.new_part("Pièce tracés")
+            st = self.sketch_start(plane="XY")
+            sk_name = st["sketch"]
+            self.sketch_add_point(sk_name, 5, 5)
+            self.sketch_add_line(sk_name, -30, 0, -30, 30, construction=True)
+            self.sketch_add_line(sk_name, 0, 0, 20, 0)
+            line_id = len(self.sketch_state(sk_name)["entities"]) - 1
+            state = self.sketch_add_tangent_arc(sk_name, line_id, 2, 20, 20)
+            arc = state["entities"][-1]
+            tangent_ok = any(c["type"] == "Tangent" and line_id in c["geos"]
+                             for c in state["constraints"])
+            state = self.sketch_add_ellipse_arc(sk_name, 60, 0, 10, 5, 0,
+                                                math.pi / 2)
+            ell = state["entities"][-1]
+            state = self.sketch_add_parabola(sk_name, 0, 50, 0, 55,
+                                             -10, 60, 10, 60)
+            par = state["entities"][-1]["points"]
+            state = self.sketch_add_conic(sk_name, 40, 40, 60, 40, 50, 50,
+                                          rho=0.4)
+            con = state["entities"][-1]["points"]
+            state = self.sketch_add_spline_poles(
+                sk_name, [[80, 0], [90, 10], [100, 0], [110, 10]])
+            spl = state["entities"][-1]
+            ents = state["entities"]
+            report["p51_traces"] = (
+                ents[0]["type"] == "point"
+                and ents[1]["construction"] is True
+                and arc["type"] == "arc" and abs(arc["r"] - 10) < 1e-6
+                and tangent_ok
+                and ell.get("kind") == "ellipse"
+                and abs(ell["points"][0][0] - 70) < 1e-6
+                and abs(ell["points"][-1][1] - 5) < 1e-6
+                and sorted(round(p[0], 6) for p in (par[0], par[-1]))
+                == [-10, 10] and abs(par[0][1] - 55) < 1e-6
+                and abs(con[0][0] - 40) < 1e-6 and abs(con[-1][0] - 60) < 1e-6
+                and spl.get("kind") == "spline" and spl.get("npoints") == 4
+                and state["definition"] != "over")
+            self.sketch_finish(sk_name)
+            # Contours fermés extrudés : l'aire dit que la forme est juste.
+            areas = {}
+            for key, draw in (
+                    ("rect3", lambda n: self.sketch_add_rect3(
+                        n, 0, 0, 30, 40, 14, 52)),
+                    ("para", lambda n: self.sketch_add_rect3(
+                        n, 0, 0, 30, 0, 40, 20, parallelogram=True)),
+                    ("slot", lambda n: self.sketch_add_arc_slot(
+                        n, 0, 0, 20, 0, math.pi / 2, 4))):
+                self.new_part("Pièce " + key)
+                st = self.sketch_start(plane="XY")
+                draw(st["sketch"])
+                definition = self.sketch_state(st["sketch"])["definition"]
+                self.sketch_finish(st["sketch"])
+                self.add_pad(5, sketch=st["sketch"])
+                areas[key] = (self._require_body().Shape.Volume / 5,
+                              definition)
+            report["p51_contours"] = (
+                abs(areas["rect3"][0] - 1000) < 1e-3
+                and abs(areas["para"][0] - 600) < 1e-3
+                and abs(areas["slot"][0] - 44 * math.pi) < 1e-3
+                and all(d != "over" for _, d in areas.values()))
+
+            mark("p51: esquisse — outils d'édition")
+            import math
+            self.new_part("Pièce édition")
+            st = self.sketch_start(plane="XY")
+            sk_name = st["sketch"]
+            sko = self._get_sketch(sk_name)
+            self.sketch_add_rectangle(sk_name, 0, 0, 40, 30)
+            state = self.sketch_chamfer(sk_name, 0, 1, 35, 0, 40, 5, 5)
+            bevel = state["entities"][-1]
+            chamfer_ok = (bevel["type"] == "line"
+                          and abs(math.dist(bevel["p1"], bevel["p2"])
+                                  - 5 * math.sqrt(2)) < 1e-6
+                          and state["definition"] != "over")
+            self.sketch_add_line(sk_name, 0, 50, 10, 50)
+            self.sketch_add_line(sk_name, 30, 40, 30, 70)
+            lid = len(self.sketch_state(sk_name)["entities"]) - 2
+            state = self.sketch_extend(sk_name, lid, 9, 50)
+            extend_ok = state["entities"][lid]["p2"] == [30.0, 50.0]
+            count = len(state["entities"])
+            state = self.sketch_split(sk_name, lid + 1, 30, 55)
+            split_ok = len(state["entities"]) == count + 1
+            self.sketch_add_circle(sk_name, 60, 0, 5)
+            cid = len(self.sketch_state(sk_name)["entities"]) - 1
+            state = self.sketch_transform(sk_name, [cid], dx=10)
+            move_ok = state["entities"][cid]["c"] == [70.0, 0.0]
+            state = self.sketch_transform(sk_name, [cid], angle=90, copy=True)
+            rot = state["entities"][-1]["c"]
+            state = self.sketch_polar_array(sk_name, [cid], 0, 0, 4)
+            polar = [e["c"] for e in state["entities"][-3:]]
+            state = self.sketch_transform(sk_name, [cid], scale=2, cx=70,
+                                          cy=0)
+            scaled = state["entities"][-1]
+            report["p51_edition"] = (
+                chamfer_ok and extend_ok and split_ok and move_ok
+                and abs(rot[0]) < 1e-6 and abs(rot[1] - 70) < 1e-6
+                and abs(polar[1][0] + 70) < 1e-6
+                and scaled["type"] == "circle" and abs(scaled["r"] - 10) < 1e-6
+                and not list(sko.ConflictingConstraints)
+                and not list(sko.RedundantConstraints))
+            self.sketch_finish(sk_name)
+
+            mark("p51: esquisse — relations et cotes")
+            import math
+            self.new_part("Pièce relations")
+            st = self.sketch_start(plane="XY")
+            sk_name = st["sketch"]
+            sko = self._get_sketch(sk_name)
+            self.sketch_add_line(sk_name, 0, 0, 40, 0)
+            self.sketch_add_line(sk_name, 0, 0, 30, 30)
+            self.sketch_add_point(sk_name, 20, 5)
+            # Point sur la première ligne, puis à l'intersection des deux.
+            self.sketch_constrain(sk_name, "onobject", 2, point1=1, geo2=0)
+            on_line = abs(self.sketch_state(sk_name)["entities"][2]["p1"][1]) < 1e-6
+            self.sketch_add_point(sk_name, 3, 4)
+            state = self.sketch_constrain(sk_name, "intersection", 3,
+                                          point1=1, geo2=0, geo3=1)
+            crossing = state["entities"][3]["p1"]
+            self.sketch_add_circle(sk_name, 80, 0, 5)
+            self.sketch_add_circle(sk_name, 90, 10, 8)
+            state = self.sketch_constrain(sk_name, "coradial", 4, geo2=5)
+            c4, c5 = state["entities"][4], state["entities"][5]
+            coradial_ok = (abs(c4["r"] - c5["r"]) < 1e-6
+                           and math.dist(c4["c"], c5["c"]) < 1e-6)
+            # Cotes : longueur d'arc, angle à l'axe, diamètre d'arc,
+            # ordonnée, puis une cote de référence qui ne pilote plus.
+            self.sketch_add_arc(sk_name, 0, 60, 10, 0, math.pi / 2)
+            arc_id = len(self.sketch_state(sk_name)["entities"]) - 1
+            state = self.sketch_dim(sk_name, arc_id, value=20,
+                                    measure="arc_length")
+            arc = state["entities"][arc_id]
+            a1 = math.atan2(arc["p1"][1] - arc["c"][1], arc["p1"][0] - arc["c"][0])
+            a2 = math.atan2(arc["p2"][1] - arc["c"][1], arc["p2"][0] - arc["c"][0])
+            sweep = (a2 - a1) % (2 * math.pi)
+            arc_len_ok = (abs(arc["r"] * sweep - 20) < 1e-4
+                          and state["dims"][-1]["kind"] == "arc_length")
+            state = self.sketch_dim(sk_name, 1, value=math.radians(30),
+                                    measure="axis_angle")
+            l1 = state["entities"][1]
+            axis_ok = abs(math.degrees(math.atan2(
+                l1["p2"][1] - l1["p1"][1], l1["p2"][0] - l1["p1"][0])) - 30) < 1e-6
+            state = self.sketch_dim(sk_name, arc_id, value=30,
+                                    measure="diameter")
+            dia_ok = abs(state["entities"][arc_id]["r"] - 15) < 1e-6
+            state = self.sketch_dim(sk_name, 0, point=1, geo2=0, point2=2,
+                                    axis="x")
+            ordinate = state["dims"][-1]
+            state = self.sketch_set_dim(sk_name, ordinate["id"],
+                                        driving=False)
+            driven = next(d for d in state["dims"]
+                          if d["id"] == ordinate["id"])
+            report["p51_relations_cotes"] = (
+                on_line and abs(crossing[0]) < 1e-6 and abs(crossing[1]) < 1e-6
+                and coradial_ok and arc_len_ok and axis_ok and dia_ok
+                and ordinate["type"] == "DistanceX"
+                and driven["driving"] is False
+                and not list(sko.ConflictingConstraints)
+                and not list(sko.RedundantConstraints))
+            self.sketch_finish(sk_name)
+
+            mark("p51: esquisse — références liées à la pièce")
+            self.new_part("Pièce références")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if abs(f.CenterOfMass.z - 10) < 1e-6)
+            st = self.sketch_start(face=top)
+            ref_sk = st["sketch"]
+            state = self.sketch_reference(ref_sk, mode="edges")
+            refs = [e for e in state["entities"] if e.get("external")]
+            self.sketch_finish(ref_sk)
+            # Le contour lié suit la pièce : le profil de base passe à 50.
+            base_sk = next(o for o in body.Group
+                           if o.TypeId == "Sketcher::SketchObject")
+            width = next(i for i, c in enumerate(base_sk.Constraints)
+                         if c.Type in ("DistanceX", "Distance")
+                         and abs(c.Value - 40) < 1e-6)
+            base_sk.setDatum(width, 50)
+            self._recompute()
+            state = self.sketch_state(ref_sk)
+            xs = [abs(p[0]) for e in state["entities"] if e.get("external")
+                  for p in (e["p1"], e["p2"])]
+            follows = abs(max(xs) - 25) < 1e-6
+            st = self.sketch_start(plane="XZ")
+            cut_sk = st["sketch"]
+            inter = self.sketch_reference(cut_sk, mode="intersection")
+            self.sketch_finish(cut_sk)
+            self.curve_helix(5, 20, 10)
+            st = self.sketch_start(plane="XY")
+            pierce_sk = st["sketch"]
+            pierced = self.sketch_reference(pierce_sk, mode="pierce")
+            pts = [e for e in pierced["entities"] if e.get("external")]
+            state = self.sketch_delete_geo(pierce_sk, pts[0]["id"])
+            self.sketch_finish(pierce_sk)
+            st = self.sketch_start(plane="XZ")
+            sil = self.sketch_silhouette(st["sketch"])
+            sil_pts = [p for e in sil["entities"] if e["type"] == "line"
+                       for p in (e["p1"], e["p2"])]
+            silhouette_ok = (abs(max(p[0] for p in sil_pts)
+                                 - min(p[0] for p in sil_pts) - 50) < 1e-6
+                             and abs(max(p[1] for p in sil_pts) - 10) < 1e-6)
+            self.sketch_finish(st["sketch"])
+            report["p51_references"] = (
+                silhouette_ok
+                and len(refs) == 4 and follows and inter["referenced"] == 4
+                and pierced["referenced"] >= 1 and pts[0]["type"] == "point"
+                and not any(e.get("external") for e in state["entities"])
+                and "Percee" not in [f["label"] for f
+                                     in self.get_tree()["features"]])
+
+            mark("p51: esquisse — texte, coin, équation, blocs, définition")
+            import math
+            self.new_part("Pièce compléments")
+            st = self.sketch_start(plane="XY")
+            sk_name = st["sketch"]
+            sko = self._get_sketch(sk_name)
+            state = self.sketch_add_text(sk_name, "Ab", 0, 50, 10)
+            text_ok = len(state["entities"]) > 4 and all(
+                any(c["type"] == "Block" and c["geos"][0] == e["id"]
+                    for c in state["constraints"]) for e in state["entities"])
+            self.sketch_add_line(sk_name, 0, 0, 20, 0)
+            self.sketch_add_line(sk_name, 30, 5, 30, 30)
+            nb = len(self.sketch_state(sk_name)["entities"])
+            state = self.sketch_corner(sk_name, nb - 2, nb - 1, 10, 0, 30, 20)
+            corner_ok = (state["entities"][nb - 2]["p2"] == [30.0, 0.0]
+                         and state["entities"][nb - 1]["p1"] == [30.0, 0.0])
+            state = self.sketch_add_equation(sk_name, "t", "10*sin(t)", 0,
+                                             2 * math.pi)
+            wave = state["entities"][-1]["points"]
+            equation_ok = (abs(max(p[1] for p in wave) - 10) < 0.5
+                           and abs(wave[-1][0] - 2 * math.pi) < 1e-6)
+            try:
+                self.sketch_add_equation(sk_name, "t", "__import__('os')", 0, 1)
+                equation_ok = False
+            except KernelError:
+                pass
+            self.sketch_add_circle(sk_name, 80, 0, 5)
+            cid = len(self.sketch_state(sk_name)["entities"]) - 1
+            self.sketch_spline(sk_name, cid, "convert")
+            state = self.sketch_spline(sk_name, cid, "degree")
+            spline_ok = state["entities"][cid].get("kind") == "spline"
+            self.sketch_block_save(sk_name, [cid], "rond")
+            count = len(self.sketch_state(sk_name)["entities"])
+            state = self.sketch_block_insert(sk_name, "rond", 100, 0, scale=2)
+            inserted = state["entities"][-1]
+            block_ok = (len(state["entities"]) == count + 1
+                        and abs(max(p[0] for p in inserted["points"]) - 110)
+                        < 0.2)
+            self.sketch_picture(sk_name, {"data": "data:image/png;base64,AA",
+                                          "x": 1, "y": 2, "width": 50})
+            picture_ok = self.sketch_picture(sk_name)["picture"]["width"] == 50
+            self.sketch_finish(sk_name)
+            st = self.sketch_start(plane="XY")
+            def_sk = st["sketch"]
+            self.sketch_add_rectangle(def_sk, 10, 10, 50, 40)
+            self.sketch_add_circle(def_sk, 30, 25, 5)
+            defined = self.sketch_fully_define(def_sk)
+            self.sketch_add_line(def_sk, 60, 0, 70, 0)
+            self.sketch_add_line(def_sk, 70.0005, 0, 80, 10)
+            repaired = self.sketch_repair(def_sk)
+            self.sketch_finish(def_sk)
+            st = self.sketch_start(plane="XY")
+            g2_sk = st["sketch"]
+            self.sketch_add_spline_poles(g2_sk, [[0, 0], [10, 10], [20, 10],
+                                                 [30, 0]])
+            self.sketch_add_spline_poles(g2_sk, [[30, 0], [40, -5], [50, 5],
+                                                 [60, 0]])
+            self.sketch_match_curvature(g2_sk, 0, 2, 1, 1)
+            g2o = self._get_sketch(g2_sk)
+            sa, sb = g2o.Geometry[0], g2o.Geometry[1]
+            g2_ok = (abs(self._signed_curvature(sa, sa.LastParameter)
+                         - self._signed_curvature(sb, sb.FirstParameter))
+                     < 1e-6
+                     and (sa.value(sa.LastParameter)
+                          - sb.value(sb.FirstParameter)).Length < 1e-7
+                     and not list(g2o.ConflictingConstraints))
+            self.sketch_finish(g2_sk)
+            report["p51_complements"] = g2_ok and (
+                text_ok and corner_ok and equation_ok and spline_ok
+                and block_ok and picture_ok
+                and defined["definition"] == "full" and defined["added"] == 7
+                and repaired["repair"]["joined"] == 1
+                and "Bloc" not in [f["label"] for f
+                                   in self.get_tree()["features"]])
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

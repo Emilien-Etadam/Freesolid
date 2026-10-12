@@ -7,6 +7,8 @@ les méthodes importent le noyau à l'appel, pour éviter un cycle.
 #: Le point racine de Sketcher : l'origine de l'esquisse (point 1).
 ROOT_GEO = -1
 
+from engine.sketchref import geo_of, is_geo  # noqa: E402
+
 
 class SketchMixin:
     # -- esquisse ---------------------------------------------------------
@@ -190,40 +192,7 @@ class SketchMixin:
         sk = self._get_sketch(sketch)
         entities = []
         for gid, geo in enumerate(sk.Geometry):
-            if geo.TypeId == "Part::GeomPoint":
-                # Point d'esquisse (coin gardé d'un congé…) : point 1.
-                entity = {"id": gid, "type": "point",
-                          "p1": [geo.X, geo.Y]}
-            elif geo.TypeId == "Part::GeomLineSegment":
-                entity = {
-                    "id": gid, "type": "line",
-                    "p1": [geo.StartPoint.x, geo.StartPoint.y],
-                    "p2": [geo.EndPoint.x, geo.EndPoint.y]}
-            elif geo.TypeId == "Part::GeomCircle":
-                entity = {
-                    "id": gid, "type": "circle",
-                    "c": [geo.Center.x, geo.Center.y],
-                    "r": float(geo.Radius)}
-            elif geo.TypeId == "Part::GeomArcOfCircle":
-                entity = {
-                    "id": gid, "type": "arc",
-                    "c": [geo.Center.x, geo.Center.y],
-                    "r": float(geo.Radius),
-                    "p1": [geo.StartPoint.x, geo.StartPoint.y],
-                    "p2": [geo.EndPoint.x, geo.EndPoint.y]}
-            else:
-                type_id = geo.TypeId
-                entity = {"id": gid, "type": "other", "kind": type_id}
-                try:
-                    # Splines, ellipses, coniques : une polyligne suffit
-                    # au client pour afficher et viser n'importe quelle
-                    # courbe.
-                    points = geo.toShape().discretize(Number=24)
-                    entity["type"] = "poly"
-                    entity["points"] = [[p.x, p.y] for p in points]
-                except Exception:
-                    pass
-                self._enrich_poly_entity(entity, geo, type_id)
+            entity = self._entity_of(gid, geo)
             entity["construction"] = self._is_construction(sk, gid, geo)
             entities.append(entity)
         import re
@@ -251,7 +220,20 @@ class SketchMixin:
                                              0.0)), 9))
                 if label != self._DEFAULT_LABEL:
                     entry_offset = label[0]
+                second = getattr(constraint, "Second", -2000)
+                single = second is None or second <= -2000
+                kind = ""
+                first = constraint.First
+                on_arc = (0 <= first < len(sk.Geometry) and sk.Geometry[
+                    first].TypeId == "Part::GeomArcOfCircle")
+                if single and constraint.Type == "Distance" and on_arc:
+                    kind = "arc_length"
+                elif single and constraint.Type == "Angle":
+                    kind = "axis_angle"
                 dims.append({"id": cid, "type": constraint.Type,
+                             "kind": kind,
+                             "driving": bool(getattr(constraint, "Driving",
+                                                     True)),
                              "offset": entry_offset,
                              "value": value,
                              "name": constraint.Name or "",
@@ -290,6 +272,18 @@ class SketchMixin:
             list(getattr(sk, "RedundantConstraints", []) or []))
         for entity, state in zip(entities, status):
             entity["status"] = state
+        # Références externes (liées à la pièce) : GeoId -3, -4…
+        from engine.sketchref import FIRST_EXTERNAL, external_count
+        for k in range(external_count(sk)):
+            gid = FIRST_EXTERNAL - k
+            try:
+                entity = self._entity_of(gid, sk.ExternalGeo[k + 2])
+            except Exception:  # noqa: BLE001
+                continue
+            entity["external"] = True
+            entity["construction"] = False
+            entity["status"] = "full"
+            entities.append(entity)
         dof = None
         try:
             dof = int(sk.getLastDoF())
@@ -314,6 +308,44 @@ class SketchMixin:
             "definition": sketch_definition(status, solver_code),
             "placement": [float(v) for v in matrix],
         }
+
+    def _entity_of(self, gid, geo):
+        """Ce que le client dessine d'une géométrie (entité ou référence)."""
+        if geo.TypeId == "Part::GeomPoint":
+            # Point d'esquisse (coin gardé d'un congé…) : point 1.
+            entity = {"id": gid, "type": "point",
+                      "p1": [geo.X, geo.Y]}
+        elif geo.TypeId == "Part::GeomLineSegment":
+            entity = {
+                "id": gid, "type": "line",
+                "p1": [geo.StartPoint.x, geo.StartPoint.y],
+                "p2": [geo.EndPoint.x, geo.EndPoint.y]}
+        elif geo.TypeId == "Part::GeomCircle":
+            entity = {
+                "id": gid, "type": "circle",
+                "c": [geo.Center.x, geo.Center.y],
+                "r": float(geo.Radius)}
+        elif geo.TypeId == "Part::GeomArcOfCircle":
+            entity = {
+                "id": gid, "type": "arc",
+                "c": [geo.Center.x, geo.Center.y],
+                "r": float(geo.Radius),
+                "p1": [geo.StartPoint.x, geo.StartPoint.y],
+                "p2": [geo.EndPoint.x, geo.EndPoint.y]}
+        else:
+            type_id = geo.TypeId
+            entity = {"id": gid, "type": "other", "kind": type_id}
+            try:
+                # Splines, ellipses, coniques : une polyligne suffit
+                # au client pour afficher et viser n'importe quelle
+                # courbe.
+                points = geo.toShape().discretize(Number=24)
+                entity["type"] = "poly"
+                entity["points"] = [[p.x, p.y] for p in points]
+            except Exception:
+                pass
+            self._enrich_poly_entity(entity, geo, type_id)
+        return entity
 
     @staticmethod
     def _sketch_definition(sk):
@@ -427,7 +459,7 @@ class SketchMixin:
             elif dx < self._SNAP_TOL:
                 sk.addConstraint(C("Vertical", gid))
 
-    def sketch_add_line(self, sketch, x1, y1, x2, y2):
+    def sketch_add_line(self, sketch, x1, y1, x2, y2, construction=False):
         from engine.kernel import KernelError
         import Part
         sk = self._get_sketch(sketch)
@@ -436,7 +468,8 @@ class SketchMixin:
                 "segment de longueur nulle — les deux points coïncident")
         V = self._app().Vector
         gid = sk.addGeometry(Part.LineSegment(
-            V(float(x1), float(y1), 0), V(float(x2), float(y2), 0)), False)
+            V(float(x1), float(y1), 0), V(float(x2), float(y2), 0)),
+            bool(construction))
         self._auto_constrain(sk, gid)
         return self.sketch_state(sketch)
 
@@ -896,20 +929,20 @@ class SketchMixin:
             return C("Coincident", g1, int(point1), g2, int(point2))
         if kind == "concentric":
             for g in (g1, g2):
-                if sk.Geometry[g].TypeId not in round_types:
+                if geo_of(sk, g).TypeId not in round_types:
                     raise KernelError("concentrique : deux cercles ou arcs")
             return C("Coincident", g1, 3, g2, 3)
         if kind == "collinear":
             for g in (g1, g2):
-                if sk.Geometry[g].TypeId != line:
+                if geo_of(sk, g).TypeId != line:
                     raise KernelError("colinéaire : deux lignes")
             return C("Tangent", g1, g2)
         if kind == "midpoint":
             # point (souvent un centre) au milieu d'une ligne — dans un
             # ordre ou l'autre.
-            if sk.Geometry[g1].TypeId == line and point2 is not None:
+            if geo_of(sk, g1).TypeId == line and point2 is not None:
                 return C("Symmetric", g1, 1, g1, 2, g2, int(point2))
-            if sk.Geometry[g2].TypeId == line and point1 is not None:
+            if geo_of(sk, g2).TypeId == line and point1 is not None:
                 return C("Symmetric", g2, 1, g2, 2, g1, int(point1))
             raise KernelError("milieu : un point et une ligne")
         if kind == "symmetric":
@@ -917,18 +950,36 @@ class SketchMixin:
                 raise KernelError(
                     "symétrique : deux points puis la ligne d'axe")
             g3 = int(geo3)
-            if sk.Geometry[g3].TypeId != line:
+            if geo_of(sk, g3).TypeId != line:
                 raise KernelError("symétrique : le 3e élément doit être "
                                   "une ligne (l'axe)")
             return C("Symmetric", g1, int(point1), g2, int(point2), g3)
+        if kind == "onobject":
+            # Un point posé sur une courbe (ligne prolongée, cercle…).
+            if point1 is not None and point2 is None:
+                return C("PointOnObject", g1, int(point1), g2)
+            if point2 is not None and point1 is None:
+                return C("PointOnObject", g2, int(point2), g1)
+            raise KernelError("sur l'entité : un point et une courbe")
+        if kind == "coradial":
+            for g in (g1, g2):
+                if geo_of(sk, g).TypeId not in round_types:
+                    raise KernelError("corradiale : deux cercles ou arcs")
+            return [C("Coincident", g1, 3, g2, 3), C("Equal", g1, g2)]
+        if kind == "intersection":
+            if point1 is None or geo3 is None:
+                raise KernelError("intersection : un point puis deux "
+                                  "courbes")
+            return [C("PointOnObject", g1, int(point1), g2),
+                    C("PointOnObject", g1, int(point1), int(geo3))]
         if kind in ("parallel", "perpendicular", "equal", "tangent"):
             names = {"parallel": "Parallel", "perpendicular": "Perpendicular",
                      "equal": "Equal", "tangent": "Tangent"}
             return C(names[kind], g1, g2)
-        raise KernelError(
-            "contrainte inconnue « {} » — attendu : horizontal, vertical, "
-            "coincident, parallel, perpendicular, equal, tangent, "
-            "concentric, collinear, midpoint, symmetric, fixed".format(kind))
+        raise KernelError("contrainte inconnue « {} » — attendu : {}".format(
+            kind, "horizontal, vertical, coincident, parallel, perpendicular, "
+            "equal, tangent, concentric, collinear, midpoint, symmetric, "
+            "fixed, onobject, coradial, intersection"))
 
     def sketch_constrain(self, sketch, kind, geo1, point1=None,
                          geo2=None, point2=None, geo3=None):
@@ -942,7 +993,9 @@ class SketchMixin:
         try:
             constraint = self._constraint_for(
                 sk, str(kind), geo1, point1, geo2, point2, geo3)
-            sk.addConstraint(constraint)
+            for item in (constraint if isinstance(constraint, list)
+                         else [constraint]):
+                sk.addConstraint(item)
         except KernelError:
             raise
         except Exception as exc:  # noqa: BLE001 - over-constrained, mostly
@@ -1045,14 +1098,14 @@ class SketchMixin:
             point2 = 1
         # Un cercle ou un arc coté contre un point se prend par son centre.
         if (point is None and point2 is not None
-                and sk.Geometry[g1].TypeId in round_types):
+                and geo_of(sk, g1).TypeId in round_types):
             point = 3
         if (point2 is None and point is not None and g2 != ROOT_GEO
-                and sk.Geometry[g2].TypeId in round_types):
+                and geo_of(sk, g2).TypeId in round_types):
             point2 = 3
         if point is None and point2 is None and g2 != ROOT_GEO:
-            round1 = sk.Geometry[g1].TypeId in round_types
-            round2 = sk.Geometry[g2].TypeId in round_types
+            round1 = geo_of(sk, g1).TypeId in round_types
+            round2 = geo_of(sk, g2).TypeId in round_types
             if round1 and round2:
                 point = point2 = 3          # deux cercles : entre centres
             elif round1:
@@ -1063,8 +1116,8 @@ class SketchMixin:
             # Normalize "line then point" to "point then line".
             g1, g2 = g2, g1
             point, point2 = point2, None
-        e1 = sk.Geometry[g1]
-        e2 = None if g2 == ROOT_GEO else sk.Geometry[g2]
+        e1 = geo_of(sk, g1)
+        e2 = None if g2 == ROOT_GEO else geo_of(sk, g2)
         if point is not None and point2 is not None:
             v1 = self._point_of(e1, int(point))
             v2 = self._point_of(e2, int(point2))
@@ -1158,7 +1211,7 @@ class SketchMixin:
     def _angle_corner(sk, c):
         """Point de rencontre des deux lignes d'une cote d'angle."""
         try:
-            l1, l2 = sk.Geometry[c.First], sk.Geometry[c.Second]
+            l1, l2 = geo_of(sk, c.First), geo_of(sk, c.Second)
             p, r = l1.StartPoint, l1.EndPoint - l1.StartPoint
             q, s = l2.StartPoint, l2.EndPoint - l2.StartPoint
             den = r.x * s.y - r.y * s.x
@@ -1175,19 +1228,19 @@ class SketchMixin:
         first, second = c.First, c.Second
         pos1 = int(getattr(c.FirstPos, "value", c.FirstPos) or 0)
         pos2 = int(getattr(c.SecondPos, "value", c.SecondPos) or 0)
-        geo1 = None if first == ROOT_GEO else sk.Geometry[first]
+        geo1 = None if first == ROOT_GEO else geo_of(sk, first)
         if second is None or second <= undefined:
             if geo1 is None or geo1.TypeId != "Part::GeomLineSegment":
                 return None, None
             return geo1.StartPoint, geo1.EndPoint
         if not pos1 or not pos2:
             return None, None
-        geo2 = None if second == ROOT_GEO else sk.Geometry[second]
+        geo2 = None if second == ROOT_GEO else geo_of(sk, second)
         return self._point_of(geo1, pos1), self._point_of(geo2, pos2)
 
     def sketch_dim(self, sketch, geo, value=None,
                    geo2=None, point=None, point2=None, axis=None, at=None,
-                   radius=False):
+                   radius=False, measure=None):
         """Smart dimension: length on a line, diameter on a circle,
         radius on an arc, distance/angle between two entities.
 
@@ -1202,15 +1255,15 @@ class SketchMixin:
         sk = self._get_sketch(sketch)
         gid = int(geo)
         # L'origine (point racine) ne se cote que contre une autre entité.
-        if ((gid < 0 and not (gid == ROOT_GEO and geo2 is not None))
-                or gid >= len(sk.Geometry)):
+        if not ((gid == ROOT_GEO and geo2 is not None)
+                or (gid != ROOT_GEO and is_geo(sk, gid))):
             raise KernelError("géométrie inconnue : {}".format(geo))
         try:
             if geo2 is not None:
                 g2 = int(geo2)
                 # La même entité deux fois : seulement par deux de ses
                 # points (longueur projetée d'une ligne).
-                if ((g2 < 0 and g2 != ROOT_GEO) or g2 >= len(sk.Geometry)
+                if ((g2 != ROOT_GEO and not is_geo(sk, g2))
                         or (g2 == gid and (point is None or point2 is None
                                            or point == point2))):
                     raise KernelError("géométrie inconnue : {}".format(geo2))
@@ -1219,7 +1272,12 @@ class SketchMixin:
                     axis=str(axis).lower() if axis else None))
                 self._place_dim(sk, index, at)
                 return self.sketch_state(sketch)
-            target = sk.Geometry[gid]
+            target = geo_of(sk, gid)
+            if measure:
+                index = self._dim_measure(sk, gid, target, str(measure),
+                                          value)
+                self._place_dim(sk, index, at)
+                return self.sketch_state(sketch)
             if target.TypeId == "Part::GeomLineSegment":
                 length = (value if value is not None
                           else target.StartPoint.distanceToPoint(
@@ -1250,6 +1308,34 @@ class SketchMixin:
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
+    @staticmethod
+    def _dim_measure(sk, gid, target, measure, value):
+        """Cotes à une entité au-delà de la cote « intelligente » :
+        longueur d'arc, diamètre d'arc, angle d'une ligne à l'axe X."""
+        from engine.kernel import KernelError
+        import math
+        import Sketcher
+        C = Sketcher.Constraint
+        if measure == "arc_length":
+            if target.TypeId != "Part::GeomArcOfCircle":
+                raise KernelError("longueur d'arc : cliquez un arc")
+            length = (value if value is not None else target.Radius
+                      * (target.LastParameter - target.FirstParameter))
+            return sk.addConstraint(C("Distance", gid, float(length)))
+        if measure == "diameter":
+            if target.TypeId not in ("Part::GeomArcOfCircle",
+                                     "Part::GeomCircle"):
+                raise KernelError("diamètre : cliquez un cercle ou un arc")
+            diameter = value if value is not None else 2 * target.Radius
+            return sk.addConstraint(C("Diameter", gid, float(diameter)))
+        if measure == "axis_angle":
+            if target.TypeId != "Part::GeomLineSegment":
+                raise KernelError("angle à l'axe : cliquez une ligne")
+            d = target.EndPoint - target.StartPoint
+            angle = value if value is not None else math.atan2(d.y, d.x)
+            return sk.addConstraint(C("Angle", gid, float(angle)))
+        raise KernelError("cote inconnue : {}".format(measure))
+
     def sketch_place_dim(self, sketch, dim, offset):
         """Déplace une cote posée : nouveau décalage de sa ligne (même
         convention que la pose, voir ``_place_dim``). La valeur ne change
@@ -1262,7 +1348,8 @@ class SketchMixin:
         self._set_dim_offset(sk, idx, float(offset))
         return self.sketch_state(sketch)
 
-    def sketch_set_dim(self, sketch, dim, value=None, name=None, expr=None):
+    def sketch_set_dim(self, sketch, dim, value=None, name=None, expr=None,
+                       driving=None):
         """Edit a dimension — the double-click-a-dim gesture, complete:
         value, **name** (``largeur``) and **expression** (``largeur/2``).
 
@@ -1286,6 +1373,10 @@ class SketchMixin:
                         "nom invalide « {} » — lettres, chiffres et _ "
                         "seulement".format(name))
                 sk.renameConstraint(idx, name)
+            if driving is not None and bool(driving) != bool(
+                    getattr(sk.Constraints[idx], "Driving", True)):
+                # Cote de référence : elle mesure, elle ne pilote plus.
+                sk.setDriving(idx, bool(driving))
             path = "Constraints[{}]".format(idx)
             if expr is not None and str(expr).strip():
                 sk.setExpression(path, self._user_expression(expr))
@@ -1392,6 +1483,10 @@ class SketchMixin:
         )
         sk = self._get_sketch(sketch)
         try:
+            if int(geo) <= -3:
+                sk.delExternal(-int(geo) - 3)
+                self._require_doc().recompute()
+                return self.sketch_state(sketch)
             sk.delGeometry(int(geo))
         except Exception as exc:  # noqa: BLE001
             raise KernelError(_explain(exc))

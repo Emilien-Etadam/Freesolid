@@ -3671,6 +3671,30 @@ class SelftestMixin:
                 and props["author"] == "Atelier"
                 and props["custom"] == {"Référence": "FS-001"})
 
+            mark("p54: masquer un corps, une surface")
+            self.new_part("Pièce masquée")
+            self.add_rect_sketch(20, 20)
+            self.add_pad(5)
+            first = self._require_body().Name
+            self.add_body()
+            self.add_rect_sketch(10, 10)
+            self.add_pad(30)
+            second = self._require_body().Name
+            self.set_hidden([first])
+            hid_other = "other_bodies" not in self.tessellate()
+            self.set_hidden([second])
+            mesh = self.tessellate()
+            hid_active = (not mesh["groups"]
+                          and not self.tessellate_edges()["groups"])
+            flags = {b["name"]: b["hidden"]
+                     for b in self.get_tree()["bodies"]}
+            self.set_hidden([first, second], hidden=False)
+            back = self.tessellate()
+            report["p54_masquer"] = (
+                hid_other and hid_active
+                and flags == {first: True, second: True}
+                and bool(back["groups"]) and len(back["other_bodies"]) == 1)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

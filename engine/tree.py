@@ -695,6 +695,7 @@ class TreeMixin:
                               and not self._is_thin_helper(o)]),
                 "color": getattr(obj, "FreeSolidColor", "") or None,
                 "has_solid": self._body_has_solid(obj),
+                "hidden": self._is_hidden(obj),
             })
         consumed = self._consumed_surfaces()
         surfaces = [self._surface_tree_entry(o, order_of, known_names,
@@ -708,6 +709,9 @@ class TreeMixin:
         # dossier Équations sans round-trip list_variables.
         self._annotate_comments(items)
         self._annotate_comments(surfaces)
+        for entry in surfaces:
+            if self._is_hidden(self._doc.getObject(entry["name"])):
+                entry["hidden"] = True
         tree = {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,
                 "surfaces": surfaces,
@@ -747,6 +751,8 @@ class TreeMixin:
         body = self._require_body()
         self._report_progress("Maillage")
         shape = getattr(body, "Shape", None)
+        if self._is_hidden(body):
+            shape = None  # masqué : ni dessiné, ni visé
         faces = []
         splines = []
         if shape is not None and shape.Faces:
@@ -777,7 +783,8 @@ class TreeMixin:
         for obj in self._doc.Objects:
             if (obj.TypeId != "PartDesign::Body" or obj is body
                     or getattr(obj, "Shape", None) is None
-                    or self._is_internal_tool(obj)):
+                    or self._is_internal_tool(obj)
+                    or self._is_hidden(obj)):
                 continue
             other_faces = []
             for face in obj.Shape.Faces:
@@ -813,7 +820,7 @@ class TreeMixin:
             if not self._is_surface_obj(obj):
                 continue
             if (self._is_rolled_back(obj) or self._is_internal_tool(obj)
-                    or obj.Name in consumed):
+                    or obj.Name in consumed or self._is_hidden(obj)):
                 continue
             shape = getattr(obj, "Shape", None)
             if shape is None:
@@ -904,7 +911,7 @@ class TreeMixin:
         from . import protocol
         body = self._require_body()
         shape = getattr(body, "Shape", None)
-        if shape is None or not shape.Edges:
+        if shape is None or not shape.Edges or self._is_hidden(body):
             return protocol.pack_edges([])
         seams = self._seam_edge_ids(shape)
         lines = []

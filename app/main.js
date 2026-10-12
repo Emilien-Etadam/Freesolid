@@ -1040,6 +1040,33 @@ const {
   openOrientBox, closeOrientBox, orientBoxOpen,
 } = installViewCube(ctx);
 
+// Tab : masque ce qui est sous le pointeur (la surface visée, sinon le
+// corps actif) ; Maj+Tab : affiche tout ce qui est masqué.
+let pointerInView = false;
+container.addEventListener("pointerenter", () => { pointerInView = true; });
+container.addEventListener("pointerleave", () => { pointerInView = false; });
+
+function hideUnderPointer(showAll) {
+  if (showAll) {
+    const hidden = [...(lastTree?.bodies ?? []), ...(lastTree?.surfaces ?? [])]
+      .filter((entry) => entry.hidden).map((entry) => entry.name);
+    if (!hidden.length) {
+      say(t("Rien n'est masqué"));
+      return;
+    }
+    refreshAny(call("set_hidden", { objects: hidden, hidden: false }));
+    return;
+  }
+  const target = hoveredSurface?.name
+    ?? (hoveredGroup >= 0
+      ? lastTree?.bodies?.find((body) => body.active)?.name : null);
+  if (!target) {
+    say(t("Tab : survolez un corps ou une surface à masquer (Maj+Tab : tout afficher)"));
+    return;
+  }
+  refreshAny(call("set_hidden", { objects: [target], hidden: true }));
+}
+
 function goPreviousView() {
   if (!previousView()) say(t("Vue précédente : aucune vue à reprendre"));
 }
@@ -1119,6 +1146,12 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape" && closeViewMenus()) return;
+  if (event.key === "Tab" && pointerInView && !ctx.assemblyState
+      && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    hideUnderPointer(event.shiftKey);
+    return;
+  }
   if ((event.key === "f" || event.key === "F")
       && !event.ctrlKey && !event.metaKey && !event.altKey) {
     frameView(null, null);

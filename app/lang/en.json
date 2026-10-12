@@ -1206,5 +1206,10 @@
  "Référence, matière, client…": "Part number, material, customer…",
  "Enregistrées dans le fichier .FCStd ; une valeur vide retire la propriété.": "Saved in the .FCStd file; an empty value removes the property.",
  "Propriétés du fichier enregistrées": "File properties saved",
- "Propriétés…": "Properties…"
+ "Propriétés…": "Properties…",
+ "Masquer": "Hide",
+ "Afficher": "Show",
+ "masqué": "hidden",
+ "Rien n'est masqué": "Nothing is hidden",
+ "Tab : survolez un corps ou une surface à masquer (Maj+Tab : tout afficher)": "Tab: hover a body or a surface to hide (Shift+Tab: show all)"
 }

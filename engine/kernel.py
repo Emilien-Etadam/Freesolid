@@ -868,7 +868,7 @@ _TRANSACTIONAL = frozenset({
 _CLEAN_OPS = frozenset({"new_part", "new_assembly", "open_part", "save_part"})
 #: Ops qui changent le document hors transaction.
 _DIRTY_OPS = frozenset({"undo", "redo", "sketch_move",
-                        "set_document_properties"})
+                        "set_document_properties", "set_hidden"})
 
 
 def _track_modified(kernel, op):

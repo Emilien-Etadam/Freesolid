@@ -533,7 +533,8 @@ export function installTree(ctx) {
     const empty = bodyInfo.has_solid !== true;
     bodyItem.className = "body in-folder"
       + (bodyInfo.active ? " active" : "")
-      + (empty ? " empty" : "");
+      + (empty ? " empty" : "")
+      + (bodyInfo.hidden ? " hidden-object" : "");
     bodyItem.appendChild(treeIcon("body"));
     if (hexColor(bodyInfo.color)) {
       const swatch = document.createElement("span");
@@ -545,7 +546,8 @@ export function installTree(ctx) {
       ? " — " + t("vide")
       : (bodyInfo.active ? ""
         : " — " + t("{n} élément(s)", { n: bodyInfo.count }));
-    bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix));
+    bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix
+      + (bodyInfo.hidden ? " — " + t("masqué") : "")));
     if (bodyInfo.name) {
       bodyItem.dataset.feat = bodyInfo.name;
       if (!bodyInfo.active) bodyItem.title = t("Clic : activer ce corps");
@@ -576,7 +578,8 @@ export function installTree(ctx) {
     const item = document.createElement("li");
     item.className = "surface" + (inFolder ? " in-folder" : "")
       + (ctx.selectedSurface?.name === surface.name ? " sel" : "")
-      + (rolledBack ? " rolled-back" : "");
+      + (rolledBack ? " rolled-back" : "")
+      + (surface.hidden ? " hidden-object" : "");
     if (!inFolder) item.dataset.hist = surface.name;
     item.dataset.feat = surface.name;
     const children = surface.children ?? [];

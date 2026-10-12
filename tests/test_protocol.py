@@ -582,6 +582,7 @@ def test_ops_snapshot_keys():
         "set_comment",
         "set_component_grounded",
         "set_document_properties",
+        "set_hidden",
         "set_param",
         "set_params",
         "set_profile_contours",

@@ -15,6 +15,13 @@ export function isBodyMenuTarget(feature) {
   return feature != null && typeof feature.active === "boolean";
 }
 
+/** Corps, ou surface du premier niveau : ce qu'on masque et affiche. */
+export function isHideableTarget(feature) {
+  if (!feature?.name || typeof feature.grounded === "boolean") return false;
+  return isBodyMenuTarget(feature)
+    || /^(Part|Surface)::/.test(feature.type ?? "");
+}
+
 export function isFrozenSurface(feature) {
   if (isGraphFeature(feature) || isRepeatFeature(feature)) return false;
   return !!(feature?.static || feature?.type === "Part::Feature");
@@ -69,6 +76,10 @@ export function installContextMenu(ctx) {
     document.getElementById("ctx-modify").hidden = !canModifyMenuTarget(feature);
     document.getElementById("ctx-color").hidden = !onBody;
     document.getElementById("ctx-color-reset").hidden = !onBody;
+    document.getElementById("ctx-comment").hidden = onBody || onComponent;
+    const hide = document.getElementById("ctx-hide");
+    hide.hidden = !isHideableTarget(feature);
+    hide.textContent = t(feature.hidden ? "Afficher" : "Masquer");
     const ground = document.getElementById("ctx-ground");
     ground.hidden = !onComponent;
     ground.textContent = t(feature.grounded ? "Libérer" : "Fixer");
@@ -107,6 +118,12 @@ export function installContextMenu(ctx) {
       onApply: (v) => refreshAny(call("set_comment",
         { feature: feature.name, text: String(v.text ?? "") })),
     });
+  });
+
+  document.getElementById("ctx-hide").addEventListener("click", () => {
+    if (!menuFeature || !isHideableTarget(menuFeature)) return;
+    refreshAny(call("set_hidden",
+      { objects: [menuFeature.name], hidden: !menuFeature.hidden }));
   });
 
   document.getElementById("ctx-color").addEventListener("click", () => {

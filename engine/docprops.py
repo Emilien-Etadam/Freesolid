@@ -1,5 +1,5 @@
 """Commentaires des fonctions, propriétés du fichier, historique
-d'annulation.
+d'annulation, corps et surfaces masqués.
 
 Un commentaire est une note libre posée sur une fonction (propriété
 cachée ``FreeSolidComment``) : l'arbre la montre en infobulle. Les
@@ -85,6 +85,35 @@ class DocPropsMixin:
         if "custom" in values:
             doc.Meta = clean_meta(values["custom"])
         return self.document_properties()
+
+    @staticmethod
+    def _is_hidden(obj):
+        return bool(getattr(obj, "FreeSolidHidden", False))
+
+    def set_hidden(self, objects, hidden=True):
+        """Masque (ou affiche) des corps ou des surfaces : ils restent dans
+        la pièce et dans l'arbre, la vue ne les dessine plus. Enregistré
+        dans le fichier."""
+        from engine.kernel import KernelError
+        doc = self._require_doc()
+        targets = []
+        for name in objects or ():
+            obj = doc.getObject(str(name))
+            if obj is None or not (obj.TypeId == "PartDesign::Body"
+                                   or self._is_surface_obj(obj)):
+                raise KernelError("corps ou surface inconnu : {}".format(name))
+            targets.append(obj)
+        if not targets:
+            raise KernelError("choisissez un corps ou une surface")
+        for obj in targets:
+            if "FreeSolidHidden" not in obj.PropertiesList:
+                if not hidden:
+                    continue
+                obj.addProperty("App::PropertyBool", "FreeSolidHidden",
+                                "FreeSolid")
+                obj.setEditorMode("FreeSolidHidden", 2)
+            obj.FreeSolidHidden = bool(hidden)
+        return self._current_tree()
 
     def undo_history(self):
         """Ce que Ctrl+Z et Ctrl+Y défont, du plus proche au plus loin."""

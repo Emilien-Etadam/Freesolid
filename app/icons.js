@@ -240,7 +240,9 @@ export const ICONS = {
   "view-right": "view-right.svg",
   "view-top": "view-top.svg",
   "zoom-fit-best": "zoom-fit-best.svg",
+  view_prev: "fs_view_prev.svg",
   zoom_fit: "fs_zoom_fit.svg",
+  zoom_sel: "fs_zoom_sel.svg",
 };
 
 /** URL "icons/…" d'un rôle, ou "" si la table ne le connaît pas.

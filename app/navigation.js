@@ -156,6 +156,17 @@ export function sketchLocalPoints(entities) {
   return points;
 }
 
+/** Historique des vues : `stack` de {state, at}. Les gestes rapprochés
+ *  (crans de molette, glisser repris) ne comptent qu'une fois : la vue
+ *  gardée est celle d'avant le premier. Renvoie une nouvelle pile. */
+export function pushView(stack, state, now, { max = 20, merge = 800 } = {}) {
+  const last = stack[stack.length - 1];
+  if (last && now - last.at < merge) {
+    return [...stack.slice(0, -1), { state: last.state, at: now }];
+  }
+  return [...stack, { state, at: now }].slice(-max);
+}
+
 /** Sphère couvrant des points [x,y,z] et des sphères {center, radius}.
  *  null s'il n'y a rien à cadrer. */
 export function coverBounds(points, spheres = []) {

@@ -8,6 +8,7 @@ import {
   middleAction,
   normalizeRect,
   pickInBox,
+  pushView,
   readReverseWheel,
   segmentHitsRect,
   nudgeView,
@@ -169,6 +170,26 @@ describe("flèches de la vue", () => {
     const next = nudgeView(
       { ...view, key: "ArrowRight", ctrl: true }, { rotateLocked: true });
     closeTo(next.position, [10, -10, 0]);
+  });
+});
+
+describe("pushView", () => {
+  it("garde la vue d'avant chaque geste, bornée", () => {
+    let stack = [];
+    stack = pushView(stack, "A", 0);
+    stack = pushView(stack, "B", 5000);
+    assert.deepEqual(stack.map((e) => e.state), ["A", "B"]);
+    for (let i = 0; i < 30; i++) stack = pushView(stack, i, 10000 + i * 1000);
+    assert.equal(stack.length, 20);
+  });
+
+  it("les crans rapprochés ne comptent qu'une fois", () => {
+    let stack = pushView([], "avant", 0);
+    stack = pushView(stack, "pendant", 300);
+    stack = pushView(stack, "encore", 900);
+    assert.deepEqual(stack.map((e) => e.state), ["avant"]);
+    stack = pushView(stack, "après", 2000);
+    assert.deepEqual(stack.map((e) => e.state), ["avant", "après"]);
   });
 });
 

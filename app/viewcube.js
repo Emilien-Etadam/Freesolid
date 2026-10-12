@@ -1,6 +1,7 @@
 // Vues standard et boîte d'orientation. Le cadrage et le placement de
 // la boîte sont purs ; le reste relie la caméra et les boutons.
 
+import { t } from "./i18n.js";
 import { coverBounds } from "./navigation.js";
 
 /** Zoom orthographique pour qu'une sphère de ce rayon tienne dans la vue,
@@ -75,6 +76,7 @@ export function installViewCube(ctx) {
   // direction = d'où l'on regarde ; null = garder l'angle actuel (zoom au mieux).
   // bounds, s'il est donné, remplace la sphère de la pièce (esquisse).
   function frameView(direction, up, bounds = null) {
+    ctx.rememberView?.();
     const { center, radius } = bounds ?? partCenterRadius();
     if (up) camera.up.set(...up);
     const dir = direction
@@ -97,6 +99,45 @@ export function installViewCube(ctx) {
     if (!partMesh.geometry.boundingSphere) return null;
     const { center, radius } = partCenterRadius();
     return { center: [center.x, center.y, center.z], radius };
+  }
+
+  /** Points (monde) des triangles ou segments des groupes retenus. */
+  function groupPoints(object, keep, out) {
+    const geometry = object?.geometry;
+    const position = geometry?.getAttribute("position");
+    if (!position) return;
+    object.updateMatrixWorld();
+    const index = geometry.index;
+    const v = new THREE.Vector3();
+    geometry.groups.forEach((group, i) => {
+      if (!keep(i)) return;
+      for (let k = group.start; k < group.start + group.count; k++) {
+        v.fromBufferAttribute(position, index ? index.getX(k) : k)
+          .applyMatrix4(object.matrixWorld);
+        out.push([v.x, v.y, v.z]);
+      }
+    });
+  }
+
+  /** Zoom sur la sélection : la face ou les arêtes choisies remplissent
+   *  la vue, sans la tourner. */
+  function zoomToSelection() {
+    const points = [];
+    if (ctx.selectedFaceId !== null && ctx.selectedFaceId !== undefined) {
+      groupPoints(ctx.partMesh,
+        (i) => ctx.meshGroups[i]?.faceId === ctx.selectedFaceId, points);
+    }
+    if (ctx.selectedEdges?.size) {
+      groupPoints(ctx.partEdges,
+        (i) => ctx.selectedEdges.has(ctx.edgeGroups[i]?.edgeId), points);
+    }
+    const covered = coverBounds(points);
+    if (!covered) {
+      say(t("Zoom sur la sélection : sélectionnez une face ou des arêtes."));
+      return;
+    }
+    frameView(null, null, { center: new THREE.Vector3(...covered.center),
+                            radius: covered.radius });
   }
 
   /** En esquisse : cadrer la géométrie et la pièce visible, sans tourner. */
@@ -193,7 +234,7 @@ export function installViewCube(ctx) {
   });
 
   return {
-    partCenterRadius, frameView, frameSketch, viewNormalTo,
+    partCenterRadius, frameView, frameSketch, viewNormalTo, zoomToSelection,
     openOrientBox, closeOrientBox, orientBoxOpen,
   };
 }

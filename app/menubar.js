@@ -50,6 +50,7 @@ export function menuBarModel(ribbon) {
       item("Enregistrer", { click: "btn-save" }),
       item("Exporter", { click: "btn-export" }),
       item("Mise en plan", { click: "btn-drawing" }),
+      item("Capture d'écran", { action: "screenshot" }),
     ] },
     { id: "edit", label: "Édition", items: [
       item("Annuler", { click: "btn-undo", shortcut: "Ctrl+Z" }),
@@ -66,6 +67,8 @@ export function menuBarModel(ribbon) {
       item("Dessous", { view: "view-bottom", shortcut: "Ctrl+6" }),
       item("Iso", { click: "view-iso", shortcut: "Ctrl+7" }),
       item("Zoom au mieux", { click: "view-fit", shortcut: "F" }),
+      item("Zoom sur la sélection", { click: "view-zoom-sel" }),
+      item("Vue précédente", { click: "view-prev", shortcut: "Ctrl+Maj+Z" }),
       { sep: true },
       item("Boîte d'orientation", { action: "orient", shortcut: "Espace" }),
       item("Origine", { action: "origin" }),

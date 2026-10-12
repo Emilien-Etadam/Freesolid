@@ -204,7 +204,9 @@ const {
   setReverseWheel, setLayout, rebuildPlanes, rebuildOrigin,
   toggleOrigin, setOriginShown, updatePlaneVisibility,
   startPlanePick, cancelPlanePick, pickPlane, rotationPivot,
+  rememberView, previousView, captureImage,
 } = installViewport(ctx);
+ctx.rememberView = rememberView;
 
 
 // Maillages volumiques (corps, autres corps, surfaces, arêtes, aperçu).
@@ -1034,9 +1036,27 @@ Object.assign(ctx, {
   THREE, camera, controls, viewSize, ORTHO_HEIGHT, say, setLayout, container,
 });
 const {
-  partCenterRadius, frameView, frameSketch, viewNormalTo,
+  partCenterRadius, frameView, frameSketch, viewNormalTo, zoomToSelection,
   openOrientBox, closeOrientBox, orientBoxOpen,
 } = installViewCube(ctx);
+
+function goPreviousView() {
+  if (!previousView()) say(t("Vue précédente : aucune vue à reprendre"));
+}
+
+/** Enregistre la vue en PNG (le fond et l'éclairage de l'écran). */
+function saveScreenshot() {
+  const link = document.createElement("a");
+  link.href = captureImage();
+  link.download = "freesolid.png";
+  link.click();
+  say(t("Capture enregistrée : freesolid.png"));
+}
+
+document.getElementById("view-prev").addEventListener("click", goPreviousView);
+document.getElementById("view-zoom-sel").addEventListener("click", () => {
+  if (!sketchMode.active) zoomToSelection();
+});
 ctx.frameView = frameView;
 
 function applyViewNudge(event) {
@@ -1069,7 +1089,11 @@ document.addEventListener("keydown", (event) => {
   if (sketchMode.active) {
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
     if (applyViewNudge(event)) return;
-    if ((event.key === "f" || event.key === "F")
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey
+        && (event.key === "z" || event.key === "Z")) {
+      event.preventDefault();
+      goPreviousView();
+    } else if ((event.key === "f" || event.key === "F")
         && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       frameSketch();
@@ -1103,6 +1127,10 @@ document.addEventListener("keydown", (event) => {
     // Z : zoom arrière, Maj+Z : zoom avant, autour du centre de la vue.
     camera.zoom *= event.shiftKey ? 1.25 : 0.8;
     camera.updateProjectionMatrix();
+  } else if ((event.ctrlKey || event.metaKey) && event.shiftKey
+             && (event.key === "z" || event.key === "Z")) {
+    event.preventDefault();
+    goPreviousView();
   } else if ((event.ctrlKey || event.metaKey) && event.key === "8") {
     event.preventDefault();
     viewNormalTo();
@@ -1152,6 +1180,8 @@ installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
       welcomeApi?.showWelcome();
     } else if (name === "create") {
       welcomeApi?.showNew();
+    } else if (name === "screenshot") {
+      saveScreenshot();
     }
   },
 });

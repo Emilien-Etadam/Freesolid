@@ -1159,5 +1159,14 @@
  "Violet": "Purple",
  "Gris": "Grey",
  "Le nouveau calque": "The new layer",
- "Calques : donnez un nom au nouveau calque": "Layers: name the new layer"
+ "Calques : donnez un nom au nouveau calque": "Layers: name the new layer",
+ "Zoom sur la sélection — la face ou les arêtes choisies": "Zoom to selection — the chosen face or edges",
+ "Vue précédente (Ctrl+Maj+Z)": "Previous view (Ctrl+Shift+Z)",
+ "Zoom sur la sélection : sélectionnez une face ou des arêtes.": "Zoom to selection: select a face or edges.",
+ "Vue précédente : aucune vue à reprendre": "Previous view: no view to go back to",
+ "Capture enregistrée : freesolid.png": "Screenshot saved: freesolid.png",
+ "Capture d'écran": "Screenshot",
+ "Zoom sur la sélection": "Zoom to selection",
+ "Vue précédente": "Previous view",
+ "Ctrl+Maj+Z": "Ctrl+Shift+Z"
 }

@@ -3713,6 +3713,29 @@ class SelftestMixin:
                 and abs(self._require_body().Shape.Volume - rounded) < 1e-6
                 and "suppressed" not in self.get_tree()["features"][-1])
 
+            mark("p56: changer le plan d'une esquisse")
+            self.new_part("Pièce replacée")
+            st = self.sketch_start(plane="XY")
+            moved = st["sketch"]
+            self.sketch_add_rectangle(moved, -20, -15, 20, 15)
+            self.sketch_finish(moved)
+            self.add_pad(10, sketch=moved)
+            body = self._require_body()
+            flat = body.Shape.BoundBox
+            self.sketch_set_plane(moved, plane="XZ")
+            upright = body.Shape.BoundBox
+            refused = False
+            try:
+                self.sketch_set_plane(moved, face=0)
+            except KernelError:
+                refused = True
+            report["p56_plan_esquisse"] = (
+                abs(flat.ZLength - 10) < 1e-6 and abs(flat.YLength - 30) < 1e-6
+                and abs(upright.ZLength - 30) < 1e-6
+                and abs(upright.YLength - 10) < 1e-6
+                and abs(body.Shape.Volume - 40 * 30 * 10) < 1e-6
+                and refused)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

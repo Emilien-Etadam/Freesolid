@@ -639,6 +639,7 @@ def test_ops_snapshot_keys():
         "sketch_repair",
         "sketch_set_dim",
         "sketch_set_layer",
+        "sketch_set_plane",
         "sketch_silhouette",
         "sketch_spline",
         "sketch_split",

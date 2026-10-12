@@ -1219,5 +1219,11 @@
  "Filtre de sélection : tout": "Selection filter: everything",
  "rien": "nothing",
  "Désactiver": "Suppress",
- "Réactiver": "Unsuppress"
+ "Réactiver": "Unsuppress",
+ "Changer de plan…": "Change plane…",
+ "Plan de l'esquisse — {s}": "Sketch plane — {s}",
+ "Nouveau plan": "New plane",
+ "Face d'accueil": "Target face",
+ "Cliquez la face d'accueil": "Click the target face",
+ "Les entités gardent leurs coordonnées dans l'esquisse ; les fonctions qui l'utilisent suivent le nouveau plan.": "Entities keep their sketch coordinates; features that use the sketch follow the new plane."
 }

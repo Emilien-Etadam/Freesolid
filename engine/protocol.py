@@ -196,6 +196,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "undo_history": (),                # lecture : pas à défaire / refaire
     "set_comment": _Req(("feature", str), optional={"text": str}),
     "set_hidden": _Req(("objects", list), optional={"hidden": bool}),
+    "sketch_set_plane": _Req(("sketch", str), optional={
+        "plane": str, "datum": str, "face": int}),
     "set_suppressed": _Req(("features", list),
                            optional={"suppressed": bool}),
     "document_properties": (),         # lecture : auteur, société, libres

@@ -525,5 +525,7 @@
  "corps ou surface inconnu : {}": "unknown body or surface: {}",
  "choisissez un corps ou une surface": "choose a body or a surface",
  "seule une fonction de volume se désactive : {}": "only a solid feature can be suppressed: {}",
- "choisissez une fonction": "choose a feature"
+ "choisissez une fonction": "choose a feature",
+ "cette face dépend de l'esquisse elle-même — choisissez un plan ou la face d'une fonction antérieure": "this face depends on the sketch itself — choose a plane or a face of an earlier feature",
+ "choisissez le nouveau plan de l'esquisse": "choose the sketch's new plane"
 }

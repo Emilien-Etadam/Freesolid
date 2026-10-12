@@ -861,7 +861,7 @@ _TRANSACTIONAL = frozenset({
     "sketch_set_layer",
     "sketch_block_insert", "sketch_picture",
     "set_component_grounded", "reorder_feature", "set_comment",
-    "set_suppressed",
+    "set_suppressed", "sketch_set_plane",
 })
 
 

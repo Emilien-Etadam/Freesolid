@@ -85,6 +85,9 @@ export function installContextMenu(ctx) {
     document.getElementById("ctx-color").hidden = !onBody;
     document.getElementById("ctx-color-reset").hidden = !onBody;
     document.getElementById("ctx-comment").hidden = onBody || onComponent;
+    document.getElementById("ctx-sketch-plane").hidden =
+      feature.type !== "Sketcher::SketchObject" || !!ctx.assemblyState
+      || ctx.sketchMode.active;
     const suppress = document.getElementById("ctx-suppress");
     suppress.hidden = !isSuppressibleTarget(feature) || !!ctx.assemblyState;
     suppress.textContent = t(feature.suppressed ? "Réactiver" : "Désactiver");
@@ -128,6 +131,47 @@ export function installContextMenu(ctx) {
       note: t("Visible en survolant la fonction dans l'arbre ; vide : retiré."),
       onApply: (v) => refreshAny(call("set_comment",
         { feature: feature.name, text: String(v.text ?? "") })),
+    });
+  });
+
+  // Changer de plan : un plan d'origine, un plan de référence ou une
+  // face cliquée dans la vue.
+  document.getElementById("ctx-sketch-plane").addEventListener("click", () => {
+    if (!menuFeature || menuFeature.type !== "Sketcher::SketchObject") return;
+    const sketch = menuFeature;
+    const tree = ctx.lastTree ?? {};
+    const datums = (tree.features ?? [])
+      .filter((f) => f.type === "PartDesign::Plane");
+    panel.open({
+      icon: "sketch",
+      title: t("Plan de l'esquisse — {s}", { s: sketch.label }),
+      groups: [{ label: t("Nouveau plan"), rows: [
+        { type: "select", key: "support", value: "XY", options: [
+          ...(tree.planes ?? []).map((p) => [p.id, p.label]),
+          ...datums.map((d) => [`datum:${d.name}`, d.label]),
+          ["face", t("Face du solide")],
+        ] },
+        { type: "selection", key: "face", accepts: ["face"],
+          label: t("Face d'accueil"), hint: t("Cliquez la face d'accueil"),
+          showIf: (v) => v.support === "face" },
+      ] }],
+      note: t("Les entités gardent leurs coordonnées dans l'esquisse ; "
+        + "les fonctions qui l'utilisent suivent le nouveau plan."),
+      onApply: (v) => {
+        const params = { sketch: sketch.name };
+        if (v.support === "face") {
+          if (v.face?.face == null) {
+            ctx.say(t("Cliquez la face d'accueil"), true);
+            return;
+          }
+          params.face = v.face.face;
+        } else if (String(v.support).startsWith("datum:")) {
+          params.datum = String(v.support).slice(6);
+        } else {
+          params.plane = v.support;
+        }
+        refresh(call("sketch_set_plane", params));
+      },
     });
   });
 

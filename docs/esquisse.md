@@ -99,10 +99,13 @@ Un outil est **fait** quand :
 | Définir entièrement (cotes ajoutées jusqu'à zéro degré de liberté) | ✅ | `p51_complements` |
 | Esquisse 3D | ✅ | voir [surfacique.md](surfacique.md) (`p46_esquisse3d_*`) |
 
-## Hors périmètre (assumé)
+## Organisation
 
-- **Calques d'esquisse, esquisses partagées entre fonctions** :
-  organisation du document plutôt qu'outil d'esquisse.
+| Fonction | État | Op moteur | Test |
+|---|---|---|---|
+| Calques d'esquisse : nom, couleur, visibilité, entités rangées (suivent les suppressions et les renommages) | ✅ | `sketch_layers`, `sketch_set_layer` | `p52_calques`, `test_sketchlayers`, `sketchtools` |
+| Esquisse partagée entre plusieurs fonctions (affichée sous chacune, modifiée une fois) | ✅ | profil commun (`sketch` des fonctions à profil) | `p52_esquisse_partagee` |
+| Contours choisis : une fonction ne prend qu'une partie des contours, à la création et en réédition | ✅ | `contours`, `set_profile_contours`, `sketch_contours` | `p52_esquisse_partagee`, `contours` |
 
 ## Comportements à connaître
 
@@ -118,5 +121,10 @@ Un outil est **fait** quand :
   tient le raccord. Le solveur de FreeCAD n'a pas de relation G2
   permanente : si l'on déforme ensuite la spline de référence, on
   réapplique l'outil.
+- **Calque masqué** : ses entités disparaissent de l'écran (avec leurs
+  symboles et leurs cotes) et ne se visent plus ; elles restent dans
+  l'esquisse et dans le profil.
+- **Esquisse partagée** : elle voyage avec la première fonction qui
+  l'utilise (réordonner) ; ⇄ la marque dans l'arbre sous chaque fonction.
 - **Image** : enregistrée avec l'esquisse jusqu'à 5 Mo ; au-delà, calque
   de travail pour la séance.

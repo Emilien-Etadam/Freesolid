@@ -7,8 +7,9 @@
 import * as THREE from "three";
 import { t } from "./i18n.js";
 import { createLocalSolver } from "./solver.js";
-import { CLICK_TOOLS, OPEN_TOOLS, curvatureComb, endpointDirection,
-  gridStep, polygonVertexFromApothem } from "./sketchtools.js";
+import { CLICK_TOOLS, LAYER_COLORS, OPEN_TOOLS, curvatureComb,
+  endpointDirection, gridStep, hiddenByLayers, layersFromPanel,
+  polygonVertexFromApothem } from "./sketchtools.js";
 import {
   applicableRelations, arcAngles, chainClickAction, distanceToEntity,
   numericDrawTarget, numericFields, relationGlyphs,
@@ -128,6 +129,15 @@ export function createSketchMode(deps) {
   // la pièce et ne se déplacent pas à la main.
   const externalMaterial = new THREE.LineBasicMaterial(
     { color: sceneTheme.curve, ...ON_TOP });
+  // Une matière par couleur de calque, gardée (jamais disposée).
+  const layerMaterials = new Map();
+  function layerMaterial(color) {
+    if (!layerMaterials.has(color)) {
+      layerMaterials.set(color, new THREE.LineBasicMaterial(
+        { color: new THREE.Color(color), ...ON_TOP }));
+    }
+    return layerMaterials.get(color);
+  }
   const combMaterial = new THREE.LineBasicMaterial(
     { color: sceneTheme.accent, transparent: true, opacity: 0.55,
       depthTest: false });
@@ -251,8 +261,15 @@ export function createSketchMode(deps) {
     return (camera.top - camera.bottom) / (camera.zoom || 1) * 0.02;
   }
 
+  /** Entités sur un calque masqué : invisibles et hors d'atteinte. */
+  function hiddenIds() {
+    return hiddenByLayers(mode.state?.entities, mode.state?.layers);
+  }
+
   function* endpoints() {
+    const hidden = hiddenIds();
     for (const entity of mode.state?.entities ?? []) {
+      if (hidden.has(entity.id)) continue;
       if (entity.type === "point") {
         yield { geo: entity.id, point: 1, x: entity.p1[0], y: entity.p1[1] };
       }
@@ -657,13 +674,18 @@ export function createSketchMode(deps) {
     if (!mode.state) return;
 
     const points = [];
+    const hidden = hiddenIds();
+    const layerColor = new Map((mode.state.layers ?? [])
+      .filter((l) => l.color).map((l) => [l.name, l.color]));
     for (const entity of mode.state.entities) {
+      if (hidden.has(entity.id)) continue;
       const isSelected = mode.selection.some((s) => s.geo === entity.id);
       const status = STATUS_COLORS[entity.status] ? entity.status : "under";
+      const tint = layerColor.get(entity.layer);
       const material = isSelected ? selectedMaterial
         : entity.external ? externalMaterial
           : entity.construction ? constructionMaterials[status]
-            : lineMaterials[status];
+            : tint ? layerMaterial(tint) : lineMaterials[status];
       if (entity.type === "arc") {
         const { a1, a2 } = arcAngles(entity);
         const segments = [];
@@ -769,8 +791,10 @@ export function createSketchMode(deps) {
       group.add(cloud);
     }
 
+    // Calques masqués : ni symboles, ni cotes de leurs entités.
+    const shown = mode.state.entities.filter((e) => !hidden.has(e.id));
     for (const glyph of relationGlyphs(mode.state.constraints,
-      mode.state.entities, span * 0.025)) {
+      shown, span * 0.025)) {
       const sprite = createGlyphSprite(glyph.text);
       sprite.position.set(glyph.x, glyph.y, 0.01);
       sprite.scale.set(span * 0.028, span * 0.028, 1);
@@ -785,6 +809,7 @@ export function createSketchMode(deps) {
     for (const dim of mode.state.dims) {
       const constraint = (mode.state.constraints ?? [])
         .find((c) => c.id === dim.id);
+      if ((constraint?.geos ?? [dim.geo]).some((g) => hidden.has(g))) continue;
       const shape = dimGeometry(dim, constraint, mode.state.entities, dimSize);
       if (!shape) continue;
       const segments = shape.segments;
@@ -1591,7 +1616,9 @@ export function createSketchMode(deps) {
     const local = toLocal(event);
     if (!local) return null;
     let best = null, bestDistance = 18;
+    const hidden = hiddenIds();
     for (const entity of mode.state.entities) {
+      if (hidden.has(entity.id)) continue;
       const distLocal = distanceToEntity(local.x, local.y, entity);
       if (!Number.isFinite(distLocal)) continue;
       // Convertir en pixels via un voisinage local (dérivée approx.).
@@ -2724,6 +2751,64 @@ export function createSketchMode(deps) {
       redraw();
     });
   }
+
+  document.getElementById("sk-layers").addEventListener("click", () => {
+    if (!mode.state) return;
+    const layers = mode.state.layers ?? [];
+    const geos = [...new Set(entityPicks().map((s) => s.geo))]
+      .filter((g) => g >= 0);
+    abandonEntityPanel();
+    const colors = LAYER_COLORS.map(([value, label]) => [value, t(label)]);
+    panel.open({
+      icon: "sk_layers",
+      title: t("Calques d'esquisse"),
+      groups: [
+        ...layers.map((layer, i) => ({ label: layer.name, rows: [
+          { type: "text", key: `name${i}`, label: t("Nom"), value: layer.name },
+          { type: "select", key: `color${i}`, label: t("Couleur"),
+            options: colors, value: layer.color ?? "" },
+          { type: "check", key: `visible${i}`, label: t("Visible"),
+            value: layer.visible !== false },
+          { type: "check", key: `delete${i}`, label: t("Supprimer ce calque"),
+            value: false },
+        ] })),
+        { label: t("Nouveau calque"), rows: [
+          { type: "text", key: "newName", label: t("Nom"), value: "",
+            placeholder: t("Cotes, axes, contours…") },
+        ] },
+        ...(geos.length ? [{ label: t("Sélection ({n} entité(s))", { n: geos.length }),
+          rows: [{ type: "select", key: "assign", label: t("Ranger sur"),
+            options: [["", t("(ne rien changer)")],
+                      ["@new", t("Le nouveau calque")],
+                      ["@default", t("Calque par défaut")],
+                      ...layers.map((l) => [l.name, l.name])],
+            value: "" }] }] : []),
+      ],
+      note: t("Un calque masqué cache ses entités à l'écran ; elles restent "
+        + "dans l'esquisse et dans le profil."),
+      onApply: async (v) => {
+        const next = layersFromPanel(v, layers);
+        if (!next) {
+          say(t("Calques : chaque calque a un nom, différent des autres"), true);
+          return;
+        }
+        const sketch = mode.state.sketch;
+        await safe(call("sketch_layers", { sketch, layers: next }));
+        if (v.assign && geos.length) {
+          const renamed = next.find((l) => l.rename === v.assign);
+          const fresh = String(v.newName ?? "").trim();
+          if (v.assign === "@new" && !fresh) {
+            say(t("Calques : donnez un nom au nouveau calque"), true);
+            return;
+          }
+          const layer = v.assign === "@default" ? ""
+            : v.assign === "@new" ? fresh
+              : (renamed ? renamed.name : v.assign);
+          await safe(call("sketch_set_layer", { sketch, geos, layer }));
+        }
+      },
+    });
+  });
 
   document.getElementById("sk-text").addEventListener("click", () => {
     if (!mode.state) return;

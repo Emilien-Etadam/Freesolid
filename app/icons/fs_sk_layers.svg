@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><defs>
+<linearGradient id="gT" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e4f0fc"/><stop offset="1" stop-color="#a9c3ee"/></linearGradient>
+<linearGradient id="gL" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a7c0f0"/><stop offset="1" stop-color="#6380cf"/></linearGradient>
+<linearGradient id="gR" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7d97dc"/><stop offset="1" stop-color="#3e58a8"/></linearGradient>
+<linearGradient id="gC" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6c88d4"/><stop offset=".35" stop-color="#c8e0f9"/><stop offset="1" stop-color="#4560b0"/></linearGradient>
+<linearGradient id="gM" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f5f7"/><stop offset="1" stop-color="#8d939b"/></linearGradient>
+<linearGradient id="gP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c8e0f9" stop-opacity=".85"/><stop offset="1" stop-color="#637dca" stop-opacity=".55"/></linearGradient>
+<linearGradient id="gG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b5ecc9"/><stop offset="1" stop-color="#2f9a5a"/></linearGradient>
+<radialGradient id="gRed" cx=".35" cy=".35" r=".7"><stop offset="0" stop-color="#ff8a7d"/><stop offset="1" stop-color="#c40f08"/></radialGradient>
+</defs><path d="M4,20 L16,26 L28,20 L16,14 Z" fill="none" stroke="#1b2230" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity=".75"/><path d="M4,20 L16,26 L28,20 L16,14 Z" fill="none" stroke="#f4f7fb" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4,14 L16,20 L28,14 L16,8 Z" fill="none" stroke="#1b2230" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity=".75"/><path d="M4,14 L16,20 L28,14 L16,8 Z" fill="none" stroke="#f4f7fb" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4,8 L16,14 L28,8 L16,2 Z" fill="#4fb8a8" fill-opacity=".55" stroke="#f4f7fb" stroke-width="1.2" stroke-linejoin="round"/></svg>

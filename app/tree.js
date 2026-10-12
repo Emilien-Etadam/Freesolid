@@ -10,6 +10,7 @@ import { renameClickAction } from "./rename.js";
 import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
   revolutionGroups, revolutionEditValues, revolutionProblem,
+  checkedContours, contourRows,
 } from "./features.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
 import { readScene } from "./theme.js";
@@ -1118,6 +1119,12 @@ export function installTree(ctx) {
         if (ctx.sketchMode.editing === child.name) childRow.classList.add("editing");
         childRow.title = `${child.kind} — `
           + t("double-clic : modifier l'esquisse · clic droit : modifier");
+        if (child.shared?.length) {
+          childRow.classList.add("shared");
+          childRow.appendChild(document.createTextNode(" ⇄"));
+          childRow.title = t("Esquisse partagée — aussi utilisée par : {f}",
+            { f: child.shared.join(", ") }) + " · " + childRow.title;
+        }
         childRow.addEventListener("dblclick", () => onSketchRowDblClick(child));
         childRow.addEventListener("contextmenu", (event) => ctx.openMenu(event, child));
         childRow.addEventListener("click", (event) => {
@@ -1374,12 +1381,12 @@ export function installTree(ctx) {
     panel.open({
       icon: TREE_ICONS[feature.type] ?? "revolve",
       title: feature.label,
-      groups: revolutionGroups(sketch, {
+      groups: [...revolutionGroups(sketch, {
         angle: chamferFieldValue(feature.params, "Angle", spec.angle),
         axis: spec.axis,
         reversed: spec.reversed,
         midplane: spec.midplane,
-      }),
+      }), ...contourGroups(feature)],
       onChange: (v) => {
         const values = revolutionEditValues(v, spec, feature.params);
         schedulePreview(values && Object.keys(values).length
@@ -1393,8 +1400,7 @@ export function installTree(ctx) {
           say(revolutionProblem(), true);
           return;
         }
-        if (!Object.keys(values).length) return;
-        refresh(call("set_params", { feature: feature.name, values }));
+        applyEdit(feature, v, values);
       },
     });
   }
@@ -1431,6 +1437,45 @@ export function installTree(ctx) {
         refresh(call("set_params", { feature: feature.name, values }));
       },
     });
+  }
+
+  /** Groupe « Contours » d'une fonction dont l'esquisse en a plusieurs. */
+  function contourGroups(feature) {
+    const profile = feature.profile;
+    if (!(profile?.count > 1)) return [];
+    return [{ label: t("Contours"),
+              rows: contourRows(profile.sizes, profile.used) }];
+  }
+
+  /** OK d'une réédition : les paramètres, puis les contours s'ils ont
+   *  changé — chacun son appel, l'arbre suit. */
+  function applyEdit(feature, v, values) {
+    const profile = feature.profile;
+    let contours = null;
+    if (profile?.count > 1) {
+      const chosen = checkedContours(v, profile.count)
+        ?? [...Array(profile.count).keys()];
+      if (!chosen.length) {
+        say(t("Contours : cochez au moins un contour"), true);
+        return;
+      }
+      const same = chosen.length === profile.used.length
+        && chosen.every((i) => profile.used.includes(i));
+      if (!same) contours = chosen.length === profile.count ? [] : chosen;
+    }
+    const hasValues = Object.keys(values ?? {}).length > 0;
+    if (!hasValues && contours === null) return;
+    refresh((async () => {
+      let tree = null;
+      if (hasValues) {
+        tree = await call("set_params", { feature: feature.name, values });
+      }
+      if (contours !== null) {
+        tree = await call("set_profile_contours",
+          { feature: feature.name, contours });
+      }
+      return tree;
+    })());
   }
 
   async function editFeature(feature) {
@@ -1515,7 +1560,7 @@ export function installTree(ctx) {
                      label: (p.expr ? "Σ " : "") + label, unit,
                      value: String(p.expr ?? p.value) };
           }),
-        }],
+        }, ...contourGroups(feature)],
         // L'édition profite du même aperçu jaune que la création.
         onChange: (v) => {
           const values = collectChanged(v);
@@ -1524,12 +1569,7 @@ export function installTree(ctx) {
                 params: { feature: feature.name, values } }
             : null);
         },
-        onApply: (v) => {
-          const values = collectChanged(v);
-          if (!Object.keys(values).length) return;
-          refresh(call("set_params",
-            { feature: feature.name, values }));
-        },
+        onApply: (v) => applyEdit(feature, v, collectChanged(v)),
       });
     } catch (error) {
       say(error.message, true);

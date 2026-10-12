@@ -512,5 +512,14 @@
  "courbure : deux extrémités de splines différentes": "curvature: two ends of different splines",
  "courbure : cliquez les bouts de deux splines": "curvature: click the ends of two splines",
  "courbure : la seconde spline n'a pas assez de pôles": "curvature: the second spline has too few poles",
- "courbure : impossible d'égaler la courbure avec cette spline": "curvature: cannot match the curvature with this spline"
+ "courbure : impossible d'égaler la courbure avec cette spline": "curvature: cannot match the curvature with this spline",
+ "cette fonction n'a pas d'esquisse pour profil": "this feature has no sketch profile",
+ "contour inconnu dans l'esquisse": "unknown contour in the sketch",
+ "ces contours ne donnent pas de profil valide pour cette fonction": "these contours do not make a valid profile for this feature",
+ "calque invalide": "invalid layer",
+ "un calque a besoin d'un nom": "a layer needs a name",
+ "deux calques portent le même nom : {}": "two layers share the name: {}",
+ "couleur invalide : {}": "invalid color: {}",
+ "calque inconnu : {}": "unknown layer: {}",
+ "sélectionnez les entités à ranger": "select the entities to put on a layer"
 }

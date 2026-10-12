@@ -3580,6 +3580,66 @@ class SelftestMixin:
                 and "Bloc" not in [f["label"] for f
                                    in self.get_tree()["features"]])
 
+            mark("p52: esquisse partagée, contours choisis")
+            import math
+            self.new_part("Pièce partage")
+            st = self.sketch_start(plane="XY")
+            shared = st["sketch"]
+            self.sketch_add_rectangle(shared, -20, -15, 20, 15)
+            self.sketch_add_circle(shared, 0, 0, 5)
+            self.sketch_add_circle(shared, 40, 0, 4)
+            self.sketch_finish(shared)
+            body = self._require_body()
+            self.add_pad(10, sketch=shared, contours=[0, 1])
+            plate = body.Shape.Volume
+            self.add_pad(20, sketch=shared, contours=[2])
+            boss = body.Shape.Volume - plate
+            tree = self.get_tree()
+            pads = [f for f in tree["features"]
+                    if f["type"] == "PartDesign::Pad"]
+            under = [[c["name"] for c in f.get("children", [])] for f in pads]
+            self.set_profile_contours(pads[0]["name"], [0])
+            filled = body.Shape.Volume
+            # L'esquisse change : les deux fonctions suivent.
+            self.sketch_dim(shared, 5, value=12)  # le petit cercle : Ø 12
+            self._recompute()
+            grown = body.Shape.Volume
+            report["p52_esquisse_partagee"] = (
+                abs(plate - (40 * 30 * 10 - math.pi * 25 * 10)) < 1e-3
+                and abs(boss - math.pi * 16 * 20) < 1e-3
+                and under == [[shared], [shared]]
+                and pads[0]["profile"]["used"] == [0, 1]
+                and pads[1]["profile"]["used"] == [2]
+                and abs(filled - (12000 + math.pi * 16 * 20)) < 1e-3
+                and abs(grown - (12000 + math.pi * 36 * 20)) < 1e-3)
+
+            mark("p52: calques d'esquisse")
+            self.new_part("Pièce calques")
+            st = self.sketch_start(plane="XY")
+            lay = st["sketch"]
+            self.sketch_add_line(lay, -30, 40, 30, 40)       # 0 : à supprimer
+            self.sketch_add_rectangle(lay, -20, -15, 20, 15)  # 1..4
+            self.sketch_add_line(lay, 0, -30, 0, 30, construction=True)
+            self.sketch_layers(lay, [{"name": "Profil", "color": "#5288e0"},
+                                     {"name": "Axes", "visible": False}])
+            self.sketch_set_layer(lay, [1, 2, 3, 4], "Profil")
+            self.sketch_set_layer(lay, [5], "Axes")
+            # Une suppression décale les numéros : le calque suit l'entité.
+            self.sketch_delete_geo(lay, 0)
+            state = self.sketch_layers(lay, [
+                {"name": "Contour", "color": "#5288e0", "rename": "Profil"},
+                {"name": "Axes", "visible": False}])
+            on = {e["id"]: e.get("layer", "") for e in state["entities"]}
+            self.sketch_finish(lay)
+            self.add_pad(5, sketch=lay)
+            report["p52_calques"] = (
+                on == {0: "Contour", 1: "Contour", 2: "Contour", 3: "Contour",
+                       4: "Axes"}
+                and [l["name"] for l in state["layers"]] == ["Contour", "Axes"]
+                and state["layers"][1]["visible"] is False
+                and abs(self._require_body().Shape.Volume - 40 * 30 * 5)
+                < 1e-6)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

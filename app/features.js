@@ -633,6 +633,14 @@ export function patternDirectionRows(defaultAxis) {
   ];
 }
 
+/** Deuxième direction d'un réseau linéaire → params, null si invalide. */
+export function linearSecondDirection(v) {
+  const length2 = num(v.length2);
+  const count2 = parseInt(v.count2, 10);
+  if (!(length2 > 0) || !(count2 >= 2)) return null;
+  return { axis2: v.axis2 || "Y", length2, count2, reversed2: !!v.reversed2 };
+}
+
 export function patternDirectionParams(v) {
   const params = { reversed: !!v.reversed };
   const edge = v.edge?.edges?.[0];
@@ -1157,14 +1165,31 @@ export const FEATURES = [
             value: 3, min: 2, step: 1 },
         ],
       },
+      {
+        label: "Direction 2",
+        rows: [
+          { type: "check", key: "dir2", label: "Deuxième direction",
+            value: false },
+          { type: "select", key: "axis2", value: "Y",
+            options: [["X", "Axe X"], ["Y", "Axe Y"], ["Z", "Axe Z"]],
+            showIf: (v) => v.dir2 },
+          { type: "check", key: "reversed2", label: "Inverser la direction",
+            value: false, showIf: (v) => v.dir2 },
+          { type: "number", key: "length2", label: "Distance",
+            value: 20, unit: "mm", min: 0.01, showIf: (v) => v.dir2 },
+          { type: "number", key: "count2", label: "Nombre d'occurrences",
+            value: 2, min: 2, step: 1, showIf: (v) => v.dir2 },
+        ],
+      },
     ],
     build: (v) => {
       const length = num(v.length);
       const count = parseInt(v.count, 10);
-      return length && count >= 2
+      const second = v.dir2 ? linearSecondDirection(v) : {};
+      return length && count >= 2 && second
         ? { op: "add_linear_pattern",
             params: { ...patternDirectionParams(v), length, count,
-                      spacing: v.mode === "spacing",
+                      spacing: v.mode === "spacing", ...second,
                       ...patternFeaturesParams(v) } }
         : null;
     },

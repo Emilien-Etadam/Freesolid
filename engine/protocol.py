@@ -259,7 +259,10 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_linear_pattern": _Req(("length", float), ("count", int),
                                optional={"features": list, "axis": str,
                                          "edge": int, "spacing": bool,
-                                         "reversed": bool}),
+                                         "reversed": bool,
+                                         "length2": float, "count2": int,
+                                         "axis2": str, "edge2": int,
+                                         "reversed2": bool}),
                                        # optional: axis (X|Y|Z), features
     "add_polar_pattern": _Req(("count", int),
                               optional={"features": list, "axis": str,

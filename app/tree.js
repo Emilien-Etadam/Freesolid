@@ -86,6 +86,7 @@ export const PROP_LABELS = {
   CapThickness: ["Épaisseur des extrémités", "mm"],
   Value: ["Épaisseur", "mm"],
   Occurrences: ["Nombre d'occurrences", ""],
+  Occurrences2: ["Occurrences (direction 2)", ""],
   Diameter: ["Diamètre", "mm"],
   Depth: ["Profondeur", "mm"],
   HoleCutDiameter: ["Ø lamage/fraisage", "mm"],

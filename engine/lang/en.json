@@ -576,5 +576,6 @@
  "donnez un sommet, un cercle ou trois coordonnées": "give a vertex, a circle or three coordinates",
  "donnez un sommet ou trois coordonnées": "give a vertex or three coordinates",
  "seules une esquisse ou une fonction à esquisse se collent": "only a sketch or a sketch-based feature can be pasted",
- "choisissez la face ou le plan où coller": "choose the face or plane to paste on"
+ "choisissez la face ou le plan où coller": "choose the face or plane to paste on",
+ "indiquez la distance de la direction 2": "give the distance of direction 2"
 }

@@ -3897,6 +3897,27 @@ class SelftestMixin:
                 and len(pasted.get("children") or []) == 1
                 and body.Shape.BoundBox.ZMin < -4.9 and refused)
 
+            mark("p63: répétition dans deux directions")
+            self.new_part("Pièce quadrillée")
+            self.add_rect_sketch(100, 100)
+            self.add_pad(5)
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if f.normalAt(0, 0).z > 0.9)
+            self.add_rect_sketch(10, 10, face=top)
+            self.add_pad(5)
+            tree = self.add_linear_pattern(20, 3, axis="X", spacing=True,
+                                           length2=25, count2=2, axis2="Y")
+            grid = tree["features"][-1]["name"]
+            six = body.Shape.Volume
+            self.set_params(grid, {"Occurrences2": 3})
+            nine = body.Shape.Volume
+            props = [p["prop"] for p in self.get_params(grid)["params"]]
+            report["p63_deux_directions"] = (
+                abs(six - (100 * 100 * 5 + 6 * 500)) < 1e-6
+                and abs(nine - (100 * 100 * 5 + 9 * 500)) < 1e-6
+                and "Occurrences2" in props)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

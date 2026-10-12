@@ -974,19 +974,29 @@ class SolidsMixin:
         return (self._origin_axis(axis), [""])
 
     def add_linear_pattern(self, length, count, axis="X", features=None,
-                           edge=None, spacing=False, reversed=False):
+                           edge=None, spacing=False, reversed=False,
+                           length2=None, count2=None, axis2=None, edge2=None,
+                           reversed2=False):
         """Réseau linéaire d'une ou plusieurs fonctions le long d'un axe
-        ou d'une arête droite.
+        ou d'une arête droite — et, avec ``count2``, d'une deuxième
+        direction (``axis2`` ou ``edge2``, ``length2``) : un quadrillage.
 
         ``length`` : longueur totale (par défaut) ou, avec ``spacing``,
-        pas entre deux occurrences. ``features`` : noms des fonctions à
-        répéter. Absent : la dernière fonction additive ou soustractive.
+        pas entre deux occurrences (de même pour ``length2``).
+        ``features`` : noms des fonctions à répéter. Absent : la dernière
+        fonction additive ou soustractive.
         """
         from engine.kernel import KernelError
         direction = self._pattern_direction(axis, edge)
         occurrences = int(count)
         if occurrences < 2:
             raise KernelError("au moins 2 occurrences")
+        second = None
+        if count2 is not None and int(count2) > 1:
+            if length2 is None or float(length2) <= 0:
+                raise KernelError("indiquez la distance de la direction 2")
+            second = (self._pattern_direction(axis2 or "Y", edge2),
+                      int(count2), float(length2))
 
         def configure(feature):
             feature.Direction = direction
@@ -1000,6 +1010,21 @@ class SolidsMixin:
             feature.Occurrences = occurrences
             if reversed:
                 feature.Reversed = True
+            if second is not None:
+                link, count_2, extent = second
+                feature.Direction2 = link
+                # Longueur totale toujours : en mode « pas », FreeCAD ne
+                # recalcule pas la liste des écarts quand le nombre change
+                # par script (une rangée se superpose). Le pas est gardé
+                # pour la réédition du nombre.
+                feature.Occurrences2 = count_2
+                if spacing:
+                    feature.Length2 = extent * (count_2 - 1)
+                    self._stamp(feature, pitch2=extent)
+                else:
+                    feature.Length2 = extent
+                if reversed2:
+                    feature.Reversed2 = True
         return self._transform("PartDesign::LinearPattern", configure,
                                features=features)
 

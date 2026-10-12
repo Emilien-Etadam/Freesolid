@@ -62,6 +62,18 @@ class EquationsMixin:
             editable = editable + ("Size2", "ChamferType", "FlipDirection")
         if revolved:
             editable = editable + ("Reversed", "Midplane", "axis")
+        if obj.TypeId == "PartDesign::LinearPattern":
+            editable = editable + ("Occurrences2",)
+            pitch2 = float(getattr(obj, "FreeSolidPitch2", 0) or 0)
+            if pitch2 and "Occurrences2" in values:
+                try:
+                    rows = int(float(values["Occurrences2"]))
+                except (TypeError, ValueError):
+                    rows = 0
+                if rows > 1:
+                    # Même pas, nouveau nombre : la longueur totale suit.
+                    values = {**values, "Length2": pitch2 * (rows - 1)}
+                    editable = editable + ("Length2",)
         for prop, value in values.items():
             prop = str(prop)
             if prop not in editable:
@@ -202,6 +214,10 @@ class EquationsMixin:
     def _editable_props(self, obj):
         """Cotes proposées à l'édition. Le chanfrein ne montre que celles
         du type en cours : une distance, deux distances, ou distance et angle."""
+        if getattr(obj, "TypeId", "") == "PartDesign::LinearPattern":
+            # La deuxième direction n'apparaît que si elle sert.
+            two = int(getattr(obj, "Occurrences2", 1) or 1) > 1
+            return self._EDITABLE_PROPS + (("Occurrences2",) if two else ())
         if getattr(obj, "TypeId", "") != "PartDesign::Chamfer":
             return self._EDITABLE_PROPS
         kind = self._chamfer_kind(obj)

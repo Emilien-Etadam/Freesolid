@@ -187,6 +187,8 @@ export const ICONS = {
   sk_repair: "fs_sk_repair.svg",
   sk_rotate: "fs_sk_rotate.svg",
   sk_scale: "fs_sk_scale.svg",
+  sk_show_dims: "fs_sk_show_dims.svg",
+  sk_show_rel: "fs_sk_show_rel.svg",
   sk_silhouette: "fs_sk_silhouette.svg",
   sk_slot_center: "fs_sk_slot_center.svg",
   sk_spline_convert: "fs_sk_spline_convert.svg",

@@ -791,10 +791,12 @@ export function createSketchMode(deps) {
       group.add(cloud);
     }
 
-    // Calques masqués : ni symboles, ni cotes de leurs entités.
+    // Calques masqués : ni symboles, ni cotes de leurs entités. Les
+    // boutons de la barre masquent tous les symboles, ou toutes les cotes.
     const shown = mode.state.entities.filter((e) => !hidden.has(e.id));
-    for (const glyph of relationGlyphs(mode.state.constraints,
-      shown, span * 0.025)) {
+    const glyphs = mode.showRelations === false ? []
+      : relationGlyphs(mode.state.constraints, shown, span * 0.025);
+    for (const glyph of glyphs) {
       const sprite = createGlyphSprite(glyph.text);
       sprite.position.set(glyph.x, glyph.y, 0.01);
       sprite.scale.set(span * 0.028, span * 0.028, 1);
@@ -806,7 +808,7 @@ export function createSketchMode(deps) {
     const dimSize = dimDrawSize();
     // Un pixel d'écran, en unités de l'esquisse.
     const px = span / Math.max(renderer.domElement.clientHeight, 1);
-    for (const dim of mode.state.dims) {
+    for (const dim of mode.showDims === false ? [] : mode.state.dims) {
       const constraint = (mode.state.constraints ?? [])
         .find((c) => c.id === dim.id);
       if ((constraint?.geos ?? [dim.geo]).some((g) => hidden.has(g))) continue;
@@ -2746,6 +2748,22 @@ export function createSketchMode(deps) {
     const button = document.getElementById(id);
     button.addEventListener("click", () => {
       mode[key] = !mode[key];
+      button.classList.toggle("on", mode[key]);
+      say(t(mode[key] ? on : off));
+      redraw();
+    });
+  }
+
+  // Affichés par défaut : le bouton enfoncé montre, relâché masque.
+  for (const [id, key, on, off] of [
+    ["sk-show-rel", "showRelations", "Symboles de relation affichés",
+     "Symboles de relation masqués"],
+    ["sk-show-dims", "showDims", "Cotes affichées", "Cotes masquées"],
+  ]) {
+    const button = document.getElementById(id);
+    button.classList.add("on");
+    button.addEventListener("click", () => {
+      mode[key] = mode[key] === false;
       button.classList.toggle("on", mode[key]);
       say(t(mode[key] ? on : off));
       redraw();

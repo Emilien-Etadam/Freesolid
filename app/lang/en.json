@@ -1168,5 +1168,11 @@
  "Capture d'écran": "Screenshot",
  "Zoom sur la sélection": "Zoom to selection",
  "Vue précédente": "Previous view",
- "Ctrl+Maj+Z": "Ctrl+Shift+Z"
+ "Ctrl+Maj+Z": "Ctrl+Shift+Z",
+ "Afficher les symboles de relation": "Show relation symbols",
+ "Afficher les cotes": "Show dimensions",
+ "Symboles de relation affichés": "Relation symbols shown",
+ "Symboles de relation masqués": "Relation symbols hidden",
+ "Cotes affichées": "Dimensions shown",
+ "Cotes masquées": "Dimensions hidden"
 }

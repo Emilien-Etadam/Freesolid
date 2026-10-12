@@ -574,5 +574,7 @@
  "choisissez une arête droite ou circulaire": "choose a straight or circular edge",
  "le centre demande une arête circulaire": "the center needs a circular edge",
  "donnez un sommet, un cercle ou trois coordonnées": "give a vertex, a circle or three coordinates",
- "donnez un sommet ou trois coordonnées": "give a vertex or three coordinates"
+ "donnez un sommet ou trois coordonnées": "give a vertex or three coordinates",
+ "seules une esquisse ou une fonction à esquisse se collent": "only a sketch or a sketch-based feature can be pasted",
+ "choisissez la face ou le plan où coller": "choose the face or plane to paste on"
 }

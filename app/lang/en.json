@@ -1285,5 +1285,12 @@
  "Coordonnées": "Coordinates",
  "Cliquez une arête droite ou circulaire": "Click a straight or circular edge",
  "Cliquez une arête circulaire": "Click a circular edge",
- "Choisissez d'abord ce qui porte l'élément": "First choose what carries the element"
+ "Choisissez d'abord ce qui porte l'élément": "First choose what carries the element",
+ "Copier la fonction": "Copy feature",
+ "Coller sur la sélection": "Paste on selection",
+ "Coller": "Paste",
+ "« {f} » copiée — sélectionnez une face ou un plan, puis Ctrl+V": "“{f}” copied — select a face or a plane, then Ctrl+V",
+ "Copier : cliquez d'abord une fonction à esquisse dans l'arbre": "Copy: first click a sketch-based feature in the tree",
+ "Coller : rien n'a été copié": "Paste: nothing was copied",
+ "Coller : sélectionnez la face ou le plan d'accueil": "Paste: select the target face or plane"
 }

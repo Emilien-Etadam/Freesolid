@@ -38,6 +38,7 @@ const STEP_LABELS = {
   delete_feature: "Supprimer",
   reorder_feature: "Réordonner",
   set_comment: "Commentaire",
+  paste_feature: "Coller",
   sketch_start: "Nouvelle esquisse",
   sketch_finish: "Fermer l'esquisse",
   insert_component: "Insérer un composant",

@@ -574,6 +574,7 @@ def test_ops_snapshot_keys():
         "new_assembly",
         "new_part",
         "open_part",
+        "paste_feature",
         "ping",
         "preview",
         "progress",

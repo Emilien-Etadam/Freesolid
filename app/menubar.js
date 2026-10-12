@@ -57,6 +57,10 @@ export function menuBarModel(ribbon) {
       item("Annuler", { click: "btn-undo", shortcut: "Ctrl+Z" }),
       item("Rétablir", { click: "btn-redo", shortcut: "Ctrl+Y" }),
       item("Reconstruire", { click: "btn-rebuild" }),
+      { sep: true },
+      item("Copier la fonction", { action: "copy", shortcut: "Ctrl+C" }),
+      item("Coller sur la sélection", { action: "paste", shortcut: "Ctrl+V" }),
+      { sep: true },
       item("Supprimer", { action: "delete" }),
     ] },
     { id: "view", label: "Affichage", items: [

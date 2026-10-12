@@ -3870,6 +3870,33 @@ class SelftestMixin:
                 and base(refs[4]) == [-10, -5, 0]
                 and refs[0]["kind"] == "Axe de référence")
 
+            mark("p62: copier-coller une fonction")
+            self.new_part("Pièce collée")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if f.normalAt(0, 0).z > 0.9)
+            self.add_rect_sketch(10, 10, face=top)
+            self.add_pad(5)
+            boss = body.Tip.Name
+            before = body.Shape.Volume
+            bottom = next(i for i, f in enumerate(body.Shape.Faces)
+                          if f.normalAt(0, 0).z < -0.9)
+            tree = self.paste_feature(boss, face=bottom)
+            pasted = tree["features"][-1]
+            refused = False
+            try:
+                self.paste_feature(boss)
+            except KernelError:
+                refused = True
+            report["p62_coller"] = (
+                abs(body.Shape.Volume - before - 500) < 1e-6
+                and pasted["type"] == "PartDesign::Pad"
+                and pasted["name"] != boss
+                and len(pasted.get("children") or []) == 1
+                and body.Shape.BoundBox.ZMin < -4.9 and refused)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

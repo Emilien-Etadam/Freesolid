@@ -86,6 +86,7 @@ export function installContextMenu(ctx) {
     document.getElementById("ctx-material").hidden = !onBody;
     document.getElementById("ctx-color-reset").hidden = !onBody;
     document.getElementById("ctx-comment").hidden = onBody || onComponent;
+    document.getElementById("ctx-copy").hidden = !ctx.canCopyFeature(feature);
     document.getElementById("ctx-sketch-plane").hidden =
       feature.type !== "Sketcher::SketchObject" || !!ctx.assemblyState
       || ctx.sketchMode.active;
@@ -116,6 +117,10 @@ export function installContextMenu(ctx) {
     const row = treeRowFor(menuFeature.name);
     if (!row) return;
     beginInlineRename(row, menuFeature);
+  });
+
+  document.getElementById("ctx-copy").addEventListener("click", () => {
+    if (menuFeature) ctx.copyFeature(menuFeature);
   });
 
   document.getElementById("ctx-comment").addEventListener("click", () => {

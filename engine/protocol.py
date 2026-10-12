@@ -170,6 +170,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_datum_point": _Req(optional={"point": list, "vertex": list,
                                       "edge": int}),
     "add_datum_cs": _Req(optional={"point": list, "vertex": list}),
+    "paste_feature": _Req(("feature", str), optional={
+        "face": int, "plane": str, "datum": str}),
     "set_body_material": _Req(("body", str), optional={
         "material": str, "density": float}),
     "set_face_color": _Req(("faces", list), "color"),

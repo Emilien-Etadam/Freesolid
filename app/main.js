@@ -1253,6 +1253,15 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     frameView(VIEWS[VIEW_KEYS[event.key]].direction,
               VIEWS[VIEW_KEYS[event.key]].up);
+  } else if ((event.ctrlKey || event.metaKey) && !event.shiftKey
+             && !event.altKey && (event.key === "c" || event.key === "C")) {
+    if (copySelectedFeature({ quiet: true })) event.preventDefault();
+  } else if ((event.ctrlKey || event.metaKey) && !event.shiftKey
+             && !event.altKey && (event.key === "v" || event.key === "V")) {
+    if (copiedFeature) {
+      event.preventDefault();
+      pasteFeature();
+    }
   } else if ((event.ctrlKey || event.metaKey)
              && (event.key === "z" || event.key === "y")) {
     event.preventDefault();
@@ -1301,6 +1310,10 @@ installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
       openDocumentProperties();
     } else if (name === "shortcuts") {
       openShortcutPanel();
+    } else if (name === "copy") {
+      copySelectedFeature();
+    } else if (name === "paste") {
+      pasteFeature();
     }
   },
 });
@@ -1912,6 +1925,43 @@ errorsBadge.addEventListener("click", async () => {
     noApply: true,
   });
 });
+
+// Copier-coller de fonctions : Ctrl+C sur une fonction à esquisse (ou une
+// esquisse), Ctrl+V sur une face, un plan ou un plan de référence.
+let copiedFeature = null;
+ctx.canCopyFeature = (feature) => feature?.type === "Sketcher::SketchObject"
+  || (feature?.children ?? []).some((c) => c.type === "Sketcher::SketchObject");
+ctx.copyFeature = (feature) => {
+  copiedFeature = { name: feature.name, label: feature.label };
+  say(t("« {f} » copiée — sélectionnez une face ou un plan, puis Ctrl+V",
+    { f: feature.label }));
+};
+
+function copySelectedFeature({ quiet = false } = {}) {
+  const feature = findFeatureInTree(lastTree, selectedFeatureName)
+    ?? (selectedSketch ? findFeatureInTree(lastTree, selectedSketch.name) : null);
+  if (!feature || !ctx.canCopyFeature(feature)) {
+    if (!quiet) say(t("Copier : cliquez d'abord une fonction à esquisse dans l'arbre"));
+    return false;
+  }
+  ctx.copyFeature(feature);
+  return true;
+}
+
+function pasteFeature() {
+  if (!copiedFeature) {
+    say(t("Coller : rien n'a été copié"));
+    return;
+  }
+  const target = selectedFaceId !== null ? { face: selectedFaceId }
+    : selectedDatumFeature ? { datum: selectedDatumFeature.name }
+      : selectedPlane !== null ? { plane: selectedPlane } : null;
+  if (!target) {
+    say(t("Coller : sélectionnez la face ou le plan d'accueil"), true);
+    return;
+  }
+  refresh(call("paste_feature", { feature: copiedFeature.name, ...target }));
+}
 
 // Raccourcis personnels (Outils → Raccourcis clavier…), gardés dans le
 // navigateur ; les infobulles des barres les montrent.

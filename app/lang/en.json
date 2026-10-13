@@ -1293,5 +1293,6 @@
  "Copier : cliquez d'abord une fonction à esquisse dans l'arbre": "Copy: first click a sketch-based feature in the tree",
  "Coller : rien n'a été copié": "Paste: nothing was copied",
  "Coller : sélectionnez la face ou le plan d'accueil": "Paste: select the target face or plane",
- "Occurrences (direction 2)": "Occurrences (direction 2)"
+ "Occurrences (direction 2)": "Occurrences (direction 2)",
+ "Esquisse — ouvrir une esquisse sur un plan ou une face (ou fermer celle en cours)": "Sketch — open a sketch on a plane or a face (or close the current one)"
 }

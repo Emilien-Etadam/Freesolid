@@ -2345,10 +2345,26 @@ export function createSketchMode(deps) {
     syncEntityPanel();
   }
 
+  // Hors esquisse, un outil du ruban Esquisse fait comme dans les
+  // modeleurs courants : choisir le plan (ou la face sélectionnée), puis
+  // l'esquisse s'ouvre avec cet outil.
+  let pendingTool = null;
   bar.addEventListener("click", (event) => {
-    if (!mode.active) return; // le ruban Esquisse est visible mais inerte
-    const tool = event.target.dataset?.tool;
-    if (tool) setTool(tool);
+    const tool = event.target.closest?.("button[data-tool]")?.dataset.tool;
+    if (!tool) return;
+    if (mode.active) {
+      setTool(tool);
+      return;
+    }
+    pendingTool = tool;
+    document.getElementById("btn-sketch")?.click();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !mode.active) pendingTool = null;
+  });
+  document.getElementById("sk-start").addEventListener("click", () => {
+    if (mode.active) exit(true);
+    else document.getElementById("btn-sketch")?.click();
   });
 
   /** La sélection sans l'origine : ce qu'on peut symétriser, répéter… */
@@ -3095,7 +3111,8 @@ export function createSketchMode(deps) {
       document.addEventListener("keydown", onKey);
       // Le ruban bascule sur l'onglet Esquisse (main.js écoute).
       document.dispatchEvent(new Event("freesolid:sketch-enter"));
-      setTool("line");
+      setTool(pendingTool ?? "line");
+      pendingTool = null;
       call("sketch_picture", { sketch: state.sketch }).then(({ picture }) => {
         if (picture?.data && mode.active && mode.state?.sketch === state.sketch) {
           const { data, fileName, ...params } = picture;

@@ -39,6 +39,7 @@ import {
 } from "./shortcuts.js";
 import { countTreeErrors, undoStepLabel } from "./history.js";
 import { installRefGeometry } from "./refgeom.js";
+import { installGestures } from "./gestures.js";
 import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
 import { installWelcome, rememberRecent } from "./welcome.js";
@@ -1897,6 +1898,9 @@ ctx.treeHooks = [(tree) => {
   errorsBadge.hidden = count === 0;
   errorsBadge.textContent = t("⚠ {n} erreur(s)", { n: count });
 }];
+
+// Gestes de la souris : glisser au bouton droit dans la vue.
+installGestures(ctx);
 
 // Axes, points et repères : panneaux du ruban, dessin à chaque arbre.
 Object.assign(ctx, { currentSelection, featureCommand });

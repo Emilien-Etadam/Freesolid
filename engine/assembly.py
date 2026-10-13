@@ -206,6 +206,11 @@ class AssemblyMixin:
         import JointObject
         doc = self._require_assembly()
         asm = self._assembly_object()
+        if str(type).lower() == "auto":
+            # Contrainte rapide (Alt+glisser une face sur une autre) : deux
+            # cylindres se centrent, le reste se plaque.
+            type = self._auto_joint_type(doc, component1, sub1,
+                                         component2, sub2)
         target = self._JOINT_TYPES.get(str(type).lower())
         if target is None:
             raise KernelError(
@@ -323,6 +328,22 @@ class AssemblyMixin:
         self._solve_assembly()
         self._require_assembly().recompute()
         return self.assembly_tree()
+
+    @staticmethod
+    def _auto_joint_type(doc, component1, sub1, component2, sub2):
+        """« concentrique » si les deux faces sont des cylindres (ou des
+        cônes), sinon « coincidente »."""
+        kinds = []
+        for name, sub in ((component1, sub1), (component2, sub2)):
+            obj = doc.getObject(str(name))
+            try:
+                face = obj.Shape.getElement(str(sub))
+                kinds.append(face.Surface.TypeId)
+            except Exception:  # noqa: BLE001
+                kinds.append("")
+        round_ = ("Part::GeomCylinder", "Part::GeomCone")
+        return ("concentrique" if all(k in round_ for k in kinds)
+                else "coincidente")
 
     def move_component(self, component, x=0.0, y=0.0, z=0.0,
                        yaw=0.0, pitch=0.0, roll=0.0):

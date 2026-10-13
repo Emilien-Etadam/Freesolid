@@ -3948,6 +3948,37 @@ class SelftestMixin:
                 else:
                     os.environ["FREESOLID_DATA_DIR"] = saved_dir
 
+            mark("p65: contrainte rapide (type auto)")
+            import os
+            import tempfile
+            self.new_part("Goupille")
+            st = self.sketch_start(plane="XY")
+            self.sketch_add_circle(st["sketch"], 0, 0, 4)
+            self.sketch_finish(st["sketch"])
+            self.add_pad(20)
+            faces = self._require_body().Shape.Faces
+            side = next(i for i, f in enumerate(faces)
+                        if f.Surface.TypeId == "Part::GeomCylinder")
+            flat = next(i for i, f in enumerate(faces)
+                        if f.Surface.TypeId == "Part::GeomPlane")
+            pin = os.path.join(tempfile.gettempdir(),
+                               "freesolid-selftest-pin.FCStd")
+            self.save_part(pin)
+            self.new_assembly()
+            self.insert_component(pin)
+            tree = self.insert_component(pin)
+            a, b = [c["name"] for c in tree["components"]]
+            round_ = self.add_joint(a, b, type="auto",
+                                    sub1="Face%d" % (side + 1),
+                                    sub2="Face%d" % (side + 1))
+            plain = self.add_joint(a, b, type="auto",
+                                   sub1="Face%d" % (flat + 1),
+                                   sub2="Face%d" % (flat + 1))
+            types = [j["type"] for j in plain.get("joints", ())]
+            report["p65_contrainte_rapide"] = (
+                "Cylindrical" in [j["type"] for j in round_["joints"]]
+                and "Distance" in types)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

@@ -1300,5 +1300,6 @@
  "Gabarit : ouvrez d'abord une pièce": "Template: open a part first",
  "Nom du gabarit :": "Template name:",
  "Gabarit « {n} » enregistré — Nouveau le propose": "Template “{n}” saved — New offers it",
- "Enregistrer comme gabarit…": "Save as template…"
+ "Enregistrer comme gabarit…": "Save as template…",
+ "Contrainte rapide : lâchez sur une face d'un autre composant": "Quick mate: drop on a face of another component"
 }

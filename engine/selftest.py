@@ -3640,6 +3640,431 @@ class SelftestMixin:
                 and abs(self._require_body().Shape.Volume - 40 * 30 * 5)
                 < 1e-6)
 
+            mark("p53: commentaires, propriétés, historique")
+            self.new_part("Pièce notes")
+
+            def run(op, **params):
+                out = dispatch(self, op, params)
+                if not out["ok"]:
+                    raise KernelError(out["error"])
+                return out["result"]
+            run("add_rect_sketch", width=30, height=20)
+            run("add_pad", length=5)
+            pad = self.get_tree()["features"][-1]["name"]
+            noted = run("set_comment", feature=pad,
+                        text="  épaisseur de la tôle  ")
+            history = run("undo_history")
+            run("rename", feature=pad, label="Plaque")  # puis deux pas défaits
+            run("undo", steps=2)
+            after = self.get_tree()
+            props = run("set_document_properties", values={
+                "author": "Atelier", "description": "Support",
+                "custom": {"Référence": "FS-001", "Vide": ""}})
+            report["p53_notes"] = (
+                noted["features"][-1].get("comment") == "épaisseur de la tôle"
+                and history["undo"][:2] == ["set_comment", "add_pad"]
+                and history["redo"] == []
+                and after["features"][-1]["label"] != "Plaque"
+                and "comment" not in after["features"][-1]
+                and run("undo_history")["redo"][:2] == ["set_comment",
+                                                        "rename"]
+                and props["author"] == "Atelier"
+                and props["custom"] == {"Référence": "FS-001"})
+
+            mark("p54: masquer un corps, une surface")
+            self.new_part("Pièce masquée")
+            self.add_rect_sketch(20, 20)
+            self.add_pad(5)
+            first = self._require_body().Name
+            self.add_body()
+            self.add_rect_sketch(10, 10)
+            self.add_pad(30)
+            second = self._require_body().Name
+            self.set_hidden([first])
+            hid_other = "other_bodies" not in self.tessellate()
+            self.set_hidden([second])
+            mesh = self.tessellate()
+            hid_active = (not mesh["groups"]
+                          and not self.tessellate_edges()["groups"])
+            flags = {b["name"]: b["hidden"]
+                     for b in self.get_tree()["bodies"]}
+            self.set_hidden([first, second], hidden=False)
+            back = self.tessellate()
+            report["p54_masquer"] = (
+                hid_other and hid_active
+                and flags == {first: True, second: True}
+                and bool(back["groups"]) and len(back["other_bodies"]) == 1)
+
+            mark("p55: désactiver une fonction")
+            self.new_part("Pièce désactivée")
+            self.add_rect_sketch(20, 10)
+            self.add_pad(10)
+            whole = self._require_body().Shape.Volume
+            self.add_fillet(2, edges=[0])
+            rounded = self._require_body().Shape.Volume
+            fillet = self.get_tree()["features"][-1]["name"]
+            off = self.set_suppressed([fillet])
+            plain = self._require_body().Shape.Volume
+            self.set_suppressed([fillet], suppressed=False)
+            report["p55_desactiver"] = (
+                rounded < whole - 1
+                and abs(plain - whole) < 1e-6
+                and off["features"][-1].get("suppressed") is True
+                and abs(self._require_body().Shape.Volume - rounded) < 1e-6
+                and "suppressed" not in self.get_tree()["features"][-1])
+
+            mark("p56: changer le plan d'une esquisse")
+            self.new_part("Pièce replacée")
+            st = self.sketch_start(plane="XY")
+            moved = st["sketch"]
+            self.sketch_add_rectangle(moved, -20, -15, 20, 15)
+            self.sketch_finish(moved)
+            self.add_pad(10, sketch=moved)
+            body = self._require_body()
+            flat = body.Shape.BoundBox
+            self.sketch_set_plane(moved, plane="XZ")
+            upright = body.Shape.BoundBox
+            refused = False
+            try:
+                self.sketch_set_plane(moved, face=0)
+            except KernelError:
+                refused = True
+            report["p56_plan_esquisse"] = (
+                abs(flat.ZLength - 10) < 1e-6 and abs(flat.YLength - 30) < 1e-6
+                and abs(upright.ZLength - 30) < 1e-6
+                and abs(upright.YLength - 10) < 1e-6
+                and abs(body.Shape.Volume - 40 * 30 * 10) < 1e-6
+                and refused)
+
+            mark("p57: chanfrein de sommet")
+            self.new_part("Pièce coin")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            body = self._require_body()
+            box = body.Shape.Volume
+            corner = body.Shape.BoundBox
+            self.add_vertex_chamfer([5], point=[corner.XMax, corner.YMax,
+                                                corner.ZMax])
+            equal = box - body.Shape.Volume
+            cham = self.get_tree()["features"][-1]
+            self.edit_vertex_chamfer(cham["name"], [2, 3, 4])
+            three = box - body.Shape.Volume
+            # La pièce grandit : le chanfrein suit la fonction d'avant.
+            pad = self.get_tree()["features"][0]["name"]
+            self.set_params(pad, {"Length": 20})
+            grown = body.Shape.Volume
+            report["p57_chanfrein_sommet"] = (
+                abs(equal - 125 / 6) < 1e-6
+                and abs(three - 24 / 6) < 1e-6
+                and cham.get("vertex_chamfer", {}).get("distances")
+                == [5.0, 5.0, 5.0]
+                and abs(grown - (40 * 30 * 20 - 4)) < 1e-6)
+
+            mark("p58: chaîne tangente, boucle")
+            self.new_part("Pièce chaîne")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            body = self._require_body()
+            upright = [i for i, e in enumerate(body.Shape.Edges)
+                       if abs(e.BoundBox.ZLength - 10) < 1e-6]
+            self.add_fillet(5, edges=upright)
+            shape = body.Shape
+            # Un bord droit du dessus : sa chaîne tangente fait le tour
+            # (4 droites + 4 arcs) ; la boucle prend le dessus (8 arêtes)
+            # ou le flanc (4 arêtes).
+            line = next(i for i, e in enumerate(shape.Edges)
+                        if abs(e.BoundBox.ZMin - 10) < 1e-6
+                        and abs(e.BoundBox.ZMax - 10) < 1e-6
+                        and e.Curve.TypeId == "Part::GeomLine")
+            chain = self.edge_chain(line)["edges"]
+            loop = self.edge_chain(line, mode="loop")
+            other = self.edge_chain(line, mode="loop", face=1)
+            report["p58_chaine"] = (
+                len(upright) == 4 and len(chain) == 8
+                and loop["faces"] == 2
+                and sorted([len(loop["edges"]), len(other["edges"])]) == [4, 8]
+                and line in loop["edges"] and line in other["edges"])
+
+            mark("p59: matières, couleur de face")
+            self.new_part("Pièce matière")
+            self.add_rect_sketch(10, 10)
+            self.add_pad(10)
+            body = self._require_body()
+            plain = self.mass_properties()["mass_g"]
+            tree = self.set_body_material(body.Name, "steel")
+            steel = self.mass_properties()
+            self.set_body_color(body.Name, "#112233")
+            self.set_body_material(body.Name, "custom", density=2.0)
+            custom = self.mass_properties()["mass_g"]
+            self.set_face_color([0, 2], "#ff0000")
+            self.set_face_color([2], None)
+            groups = self.tessellate()["groups"]
+            tinted = [g["faceId"] for g in groups if g.get("color")]
+            report["p59_matieres"] = (
+                abs(plain - 1.24) < 1e-9
+                and abs(steel["mass_g"] - 7.85) < 1e-9
+                and tree["bodies"][0]["material"]["id"] == "steel"
+                and tree["bodies"][0]["color"] == "#8c939b"
+                and abs(custom - 2.0) < 1e-9
+                and body.FreeSolidColor == "#112233"
+                and tinted == [0])
+
+            mark("p60: liste des erreurs")
+            self.new_part("Pièce en erreur")
+            self.add_rect_sketch(20, 10)
+            self.add_pad(5)
+            clean = self.rebuild_errors()["errors"]
+            self.add_fillet(1, edges=[0])
+            fillet = self.get_tree()["features"][-1]["name"]
+            self._require_doc().getObject(fillet).Radius = 50  # trop grand
+            self._require_doc().recompute()  # sans lever : l'erreur reste
+            errors = self.rebuild_errors()["errors"]
+            self._require_doc().getObject(fillet).Radius = 1
+            self._require_doc().recompute()
+            # Désactiver la fonction d'appui : le congé passe en erreur,
+            # la désactivation est gardée.
+            pad = self.get_tree()["features"][0]["name"]
+            self.set_suppressed([pad])
+            orphan = [e["name"] for e in self.rebuild_errors()["errors"]]
+            kept = self.get_tree()["features"][0].get("suppressed") is True
+            self.set_suppressed([pad], suppressed=False)
+            report["p60_erreurs"] = (
+                clean == [] and [e["name"] for e in errors] == [fillet]
+                and bool(errors[0]["message"])
+                and orphan == [fillet] and kept
+                and self.rebuild_errors()["errors"] == [])
+
+            mark("p61: axe, point, repère de référence")
+            self.new_part("Pièce repères")
+            self.add_rect_sketch(20, 10)
+            self.add_pad(5)
+            body = self._require_body()
+            upright = next(i for i, e in enumerate(body.Shape.Edges)
+                           if abs(e.BoundBox.ZLength - 5) < 1e-6)
+            self.add_datum_axis(axis="X")
+            self.add_datum_axis(edge=upright)
+            self.add_datum_point(vertex=[10, 5, 5])
+            self.add_datum_point(point=[1, 2, 3])
+            tree = self.add_datum_cs(vertex=[-10, -5, 0])
+            refs = [f for f in tree["features"] if f["type"] in (
+                "PartDesign::Line", "PartDesign::Point",
+                "PartDesign::CoordinateSystem")]
+            doc = self._require_doc()
+
+            def base(item):
+                p = doc.getObject(item["name"]).Placement
+                return [round(p.Base.x, 6), round(p.Base.y, 6),
+                        round(p.Base.z, 6)]
+
+            def along(item):
+                v = doc.getObject(item["name"]).Placement.Rotation.multVec(
+                    self._app().Vector(0, 0, 1))
+                return [round(abs(v.x), 6), round(abs(v.y), 6),
+                        round(abs(v.z), 6)]
+            report["p61_reference"] = (
+                [r["type"].split("::")[1] for r in refs]
+                == ["Line", "Line", "Point", "Point", "CoordinateSystem"]
+                and all(len(r.get("placement") or []) == 16 for r in refs)
+                and along(refs[0]) == [1, 0, 0] and along(refs[1]) == [0, 0, 1]
+                and base(refs[2]) == [10, 5, 5] and base(refs[3]) == [1, 2, 3]
+                and base(refs[4]) == [-10, -5, 0]
+                and refs[0]["kind"] == "Axe de référence")
+
+            mark("p62: copier-coller une fonction")
+            self.new_part("Pièce collée")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if f.normalAt(0, 0).z > 0.9)
+            self.add_rect_sketch(10, 10, face=top)
+            self.add_pad(5)
+            boss = body.Tip.Name
+            before = body.Shape.Volume
+            bottom = next(i for i, f in enumerate(body.Shape.Faces)
+                          if f.normalAt(0, 0).z < -0.9)
+            tree = self.paste_feature(boss, face=bottom)
+            pasted = tree["features"][-1]
+            refused = False
+            try:
+                self.paste_feature(boss)
+            except KernelError:
+                refused = True
+            report["p62_coller"] = (
+                abs(body.Shape.Volume - before - 500) < 1e-6
+                and pasted["type"] == "PartDesign::Pad"
+                and pasted["name"] != boss
+                and len(pasted.get("children") or []) == 1
+                and body.Shape.BoundBox.ZMin < -4.9 and refused)
+
+            mark("p63: répétition dans deux directions")
+            self.new_part("Pièce quadrillée")
+            self.add_rect_sketch(100, 100)
+            self.add_pad(5)
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if f.normalAt(0, 0).z > 0.9)
+            self.add_rect_sketch(10, 10, face=top)
+            self.add_pad(5)
+            tree = self.add_linear_pattern(20, 3, axis="X", spacing=True,
+                                           length2=25, count2=2, axis2="Y")
+            grid = tree["features"][-1]["name"]
+            six = body.Shape.Volume
+            self.set_params(grid, {"Occurrences2": 3})
+            nine = body.Shape.Volume
+            props = [p["prop"] for p in self.get_params(grid)["params"]]
+            report["p63_deux_directions"] = (
+                abs(six - (100 * 100 * 5 + 6 * 500)) < 1e-6
+                and abs(nine - (100 * 100 * 5 + 9 * 500)) < 1e-6
+                and "Occurrences2" in props)
+
+            mark("p64: gabarits de pièce")
+            import os
+            import tempfile
+            saved_dir = os.environ.get("FREESOLID_DATA_DIR")
+            os.environ["FREESOLID_DATA_DIR"] = tempfile.mkdtemp(
+                prefix="freesolid-gabarits-")
+            try:
+                self.new_part("Pièce gabarit")
+                self.add_rect_sketch(30, 20)
+                self.add_pad(4)
+                self.set_body_material(self._require_body().Name, "aluminium")
+                listed = self.save_template("Tôle alu")["templates"]
+                self.new_part("Autre")
+                out = dispatch(self, "new_from_template",
+                               {"name": "Tôle alu"})
+                tree = out["result"]
+                bad = False
+                try:
+                    self.save_template("../évasion")
+                except KernelError:
+                    bad = True
+                report["p64_gabarits"] = (
+                    listed == ["Tôle alu"]
+                    and len(tree["features"]) == 1
+                    and tree["bodies"][0]["material"]["id"] == "aluminium"
+                    and bad and not self._modified)
+            finally:
+                if saved_dir is None:
+                    os.environ.pop("FREESOLID_DATA_DIR", None)
+                else:
+                    os.environ["FREESOLID_DATA_DIR"] = saved_dir
+
+            mark("p65: contrainte rapide (type auto)")
+            import os
+            import tempfile
+            self.new_part("Goupille")
+            st = self.sketch_start(plane="XY")
+            self.sketch_add_circle(st["sketch"], 0, 0, 4)
+            self.sketch_finish(st["sketch"])
+            self.add_pad(20)
+            faces = self._require_body().Shape.Faces
+            side = next(i for i, f in enumerate(faces)
+                        if f.Surface.TypeId == "Part::GeomCylinder")
+            flat = next(i for i, f in enumerate(faces)
+                        if f.Surface.TypeId == "Part::GeomPlane")
+            pin = os.path.join(tempfile.gettempdir(),
+                               "freesolid-selftest-pin.FCStd")
+            self.save_part(pin)
+            self.new_assembly()
+            self.insert_component(pin)
+            tree = self.insert_component(pin)
+            a, b = [c["name"] for c in tree["components"]]
+            round_ = self.add_joint(a, b, type="auto",
+                                    sub1="Face%d" % (side + 1),
+                                    sub2="Face%d" % (side + 1))
+            plain = self.add_joint(a, b, type="auto",
+                                   sub1="Face%d" % (flat + 1),
+                                   sub2="Face%d" % (flat + 1))
+            types = [j["type"] for j in plain.get("joints", ())]
+            report["p65_contrainte_rapide"] = (
+                "Cylindrical" in [j["type"] for j in round_["joints"]]
+                and "Distance" in types)
+
+            mark("p66: dossiers, parents et enfants")
+            self.new_part("Pièce rangée")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            pad = self.get_tree()["features"][-1]
+            self.add_fillet(2, edges=[0])
+            fillet = self.get_tree()["features"][-1]["name"]
+            tree = self.set_folder([pad["name"], fillet], "Base")
+            folders = [f.get("folder") for f in tree["features"]]
+            rel = self.feature_relations(pad["name"])
+            renamed = self.rename_folder("Base", "Socle")
+            gone = self.rename_folder("Socle", "")
+            report["p66_dossiers"] = (
+                folders == ["Base", "Base"]
+                and [p["name"] for p in rel["parents"]]
+                == [pad["children"][0]["name"]]
+                and [c["name"] for c in rel["children"]] == [fillet]
+                and renamed["features"][0].get("folder") == "Socle"
+                and "folder" not in gone["features"][0])
+
+            mark("p67: tirer la face du bout")
+            self.new_part("Pièce tirée")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(20)
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if f.normalAt(0, 0).z > 0.9)
+            side = next(i for i, f in enumerate(body.Shape.Faces)
+                        if abs(f.normalAt(0, 0).z) < 0.1)
+            cap = self.face_drag_info(top)["drag"]
+            wall = self.face_drag_info(side)["drag"]
+            self.add_rect_sketch(10, 10, face=top)
+            self.add_pocket(5)
+            floor = next(i for i, f in enumerate(body.Shape.Faces)
+                         if f.normalAt(0, 0).z > 0.9
+                         and abs(f.CenterOfMass.z - 15) < 1e-6)
+            hole = self.face_drag_info(floor)["drag"]
+            report["p67_tirer_face"] = (
+                cap is not None and cap["factor"] == 1 and cap["value"] == 20
+                and wall is None
+                and hole is not None and hole["factor"] == -1
+                and abs(hole["value"] - 5) < 1e-9)
+
+            mark("p68: configurations")
+            import math
+            self.new_part("Pièce configurée")
+            self.add_rect_sketch(20, 10)
+            self.add_pad(10)
+            body = self._require_body()
+            pad = self.get_tree()["features"][-1]["name"]
+            st = self.sketch_start(plane="XY")
+            self.sketch_add_circle(st["sketch"], 0, 0, 2)
+            self.sketch_finish(st["sketch"])
+            self.add_pocket(through=True, reversed=True,
+                            sketch=st["sketch"])
+            fillet = self.get_tree()["features"][-1]["name"]  # le trou
+            self.add_configuration("Court")
+            self.add_configuration("Long")
+            self.set_params(pad, {"Length": 30})
+            self.set_suppressed([fillet])
+            long_volume = body.Shape.Volume
+            self.activate_configuration("Court")
+            short_volume = body.Shape.Volume
+            short_fillet = self._require_doc().getObject(fillet).Suppressed
+            tree = self.activate_configuration("Long")
+            table = self.configuration_table()
+            depth = next(r for r in table["rows"]
+                         if r["key"] == "prop:%s.Length" % pad)
+            self.set_configuration_values({"Court": {depth["key"]: 15}})
+            court_after = self.configuration_table()
+            report["p68_tableau"] = (
+                depth["values"] == {"Court": 10.0, "Long": 30.0}
+                and next(r for r in court_after["rows"]
+                         if r["key"] == depth["key"])["values"]["Court"]
+                == 15.0
+                and abs(body.Shape.Volume - long_volume) < 1e-6)
+            report["p68_configurations"] = (
+                abs(long_volume - 20 * 10 * 30) < 1e-6
+                and abs(short_volume - (2000 - math.pi * 4 * 10)) < 1e-6
+                and not short_fillet
+                and abs(body.Shape.Volume - long_volume) < 1e-6
+                and tree["configurations"] == {"active": "Long",
+                                               "names": ["Court", "Long"]})
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

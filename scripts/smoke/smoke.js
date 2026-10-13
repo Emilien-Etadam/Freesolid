@@ -127,6 +127,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-chamfer", tab: "features" },
     { id: "btn-shell", tab: "features" },
     { id: "btn-draft", tab: "features" },
+    { id: "btn-vertex-chamfer", tab: "features" },
     { id: "btn-linpattern", tab: "features" },
     { id: "btn-polpattern", tab: "features" },
     { id: "btn-mirror", tab: "features" },
@@ -1025,7 +1026,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // Le compte du NOYAU seul. La palette vient de `graphPaletteItems(FEATURES)`
   // et un plugin y ajoute les siennes : avec bijouterie installée, c'est 25.
   // Ajouter une fonction au noyau doit faire bouger ce nombre — c'est le but.
-  const PALETTE_NOYAU = 46;
+  const PALETTE_NOYAU = 47;
   if (paletteState.count !== PALETTE_NOYAU) {
     errors.push("N005 : palette " + paletteState.count
       + " items (attendu " + PALETTE_NOYAU + " sans plugin)");

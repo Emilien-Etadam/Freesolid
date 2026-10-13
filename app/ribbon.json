@@ -9,7 +9,10 @@
           "boutons": [
             {"id": "btn-sketch", "titre": "Esquisse", "taille": "large", "icon": "sketch", "libelle": "Esquisse"},
             {"id": "btn-body", "titre": "Nouveau corps — pièce multi-corps", "icon": "body", "libelle": "Corps"},
-            {"id": "btn-datum", "titre": "Plan de référence — décalé d'un plan ou d'une face", "icon": "plane", "libelle": "Plan de référence"}
+            {"id": "btn-datum", "titre": "Plan de référence — décalé d'un plan ou d'une face", "icon": "plane", "libelle": "Plan de référence"},
+            {"id": "btn-datum-axis", "titre": "Axe de référence — sur un axe d'origine ou une arête", "icon": "datum_axis", "libelle": "Axe"},
+            {"id": "btn-datum-point", "titre": "Point de référence — sur un sommet, un centre ou des coordonnées", "icon": "datum_point", "libelle": "Point"},
+            {"id": "btn-datum-cs", "titre": "Repère — sur un sommet ou des coordonnées", "icon": "datum_cs", "libelle": "Repère"}
           ]
         },
         {
@@ -34,7 +37,8 @@
             {"id": "btn-fillet", "titre": "Congé", "taille": "large", "icon": "fillet", "libelle": "Congé"},
             {"id": "btn-chamfer", "titre": "Chanfrein", "taille": "large", "icon": "chamfer", "libelle": "Chanfrein"},
             {"id": "btn-shell", "titre": "Coque — les faces cliquées deviennent des ouvertures", "icon": "shell", "libelle": "Coque", "taille": "large"},
-            {"id": "btn-draft", "titre": "Dépouille de la face cliquée (plan neutre : Plan de dessus)", "icon": "draft", "libelle": "Dépouille"}
+            {"id": "btn-draft", "titre": "Dépouille de la face cliquée (plan neutre : Plan de dessus)", "icon": "draft", "libelle": "Dépouille"},
+            {"id": "btn-vertex-chamfer", "titre": "Chanfrein de sommet — coupe le coin cliqué", "icon": "vertex_chamfer", "libelle": "Chanfrein de sommet"}
           ]
         },
         {

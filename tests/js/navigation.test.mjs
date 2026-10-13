@@ -4,12 +4,16 @@ import assert from "node:assert/strict";
 import {
   boxMode,
   coverBounds,
+  filterActive,
   isDrag,
   middleAction,
   normalizeRect,
   pickInBox,
+  pushView,
   readReverseWheel,
+  readSelectFilter,
   segmentHitsRect,
+  writeSelectFilter,
   nudgeView,
   sketchLocalPoints,
   writeReverseWheel,
@@ -169,6 +173,54 @@ describe("flèches de la vue", () => {
     const next = nudgeView(
       { ...view, key: "ArrowRight", ctrl: true }, { rotateLocked: true });
     closeTo(next.position, [10, -10, 0]);
+  });
+});
+
+describe("pushView", () => {
+  it("garde la vue d'avant chaque geste, bornée", () => {
+    let stack = [];
+    stack = pushView(stack, "A", 0);
+    stack = pushView(stack, "B", 5000);
+    assert.deepEqual(stack.map((e) => e.state), ["A", "B"]);
+    for (let i = 0; i < 30; i++) stack = pushView(stack, i, 10000 + i * 1000);
+    assert.equal(stack.length, 20);
+  });
+
+  it("les crans rapprochés ne comptent qu'une fois", () => {
+    let stack = pushView([], "avant", 0);
+    stack = pushView(stack, "pendant", 300);
+    stack = pushView(stack, "encore", 900);
+    assert.deepEqual(stack.map((e) => e.state), ["avant"]);
+    stack = pushView(stack, "après", 2000);
+    assert.deepEqual(stack.map((e) => e.state), ["avant", "après"]);
+  });
+});
+
+describe("filtre de sélection", () => {
+  const store = () => {
+    const data = new Map();
+    return { getItem: (k) => data.get(k) ?? null,
+             setItem: (k, v) => data.set(k, v) };
+  };
+
+  it("tout est permis par défaut et après une valeur illisible", () => {
+    const all = { faces: true, edges: true, sketches: true, surfaces: true };
+    assert.deepEqual(readSelectFilter(null), all);
+    const s = store();
+    s.setItem("freesolid.selectFilter", "{oups");
+    assert.deepEqual(readSelectFilter(s), all);
+    assert.equal(filterActive(all), false);
+  });
+
+  it("garde les types écartés", () => {
+    const s = store();
+    writeSelectFilter(s, { faces: false, edges: true, sketches: true,
+                           surfaces: false });
+    const back = readSelectFilter(s);
+    assert.equal(back.faces, false);
+    assert.equal(back.surfaces, false);
+    assert.equal(back.edges, true);
+    assert.equal(filterActive(back), true);
   });
 });
 

@@ -11,8 +11,8 @@ import { t } from "./i18n.js";
 import { eventToNdc } from "./screen.js";
 import { VIEWS } from "./viewcube.js";
 import {
-  boxMode, middleAction, normalizeRect, readReverseWheel, writeReverseWheel,
-  zoomSpeedFor,
+  boxMode, middleAction, normalizeRect, pushView, readReverseWheel,
+  writeReverseWheel, zoomSpeedFor,
 } from "./navigation.js";
 
 export function installViewport(ctx) {
@@ -190,6 +190,7 @@ export function installViewport(ctx) {
       custom: !!rotationPivot && controls.enableRotate
         && !event.ctrlKey && !event.metaKey && !event.shiftKey };
     if (pivotDrag.custom) {
+      rememberView();
       controls.enabled = false;
       pivotDrag.last = { x: event.clientX, y: event.clientY };
     }
@@ -454,6 +455,27 @@ export function installViewport(ctx) {
     return view;
   }
 
+  // Vue précédente : la caméra d'avant chaque geste ou cadrage.
+  let viewHistory = [];
+  function rememberView() {
+    viewHistory = pushView(viewHistory, cameraState(), performance.now());
+  }
+  controls.addEventListener("start", rememberView);
+
+  /** Revient à la vue d'avant le dernier geste ; faux s'il n'y en a pas. */
+  function previousView() {
+    const last = viewHistory.pop();
+    if (!last) return false;
+    applyCameraState(last.state);
+    return true;
+  }
+
+  /** Image PNG de la vue (data URL). */
+  function captureImage() {
+    renderer.render(scene, camera);
+    return renderer.domElement.toDataURL("image/png");
+  }
+
   function cameraState() {
     return { position: camera.position.clone(), up: camera.up.clone(),
              zoom: camera.zoom, target: controls.target.clone() };
@@ -540,6 +562,7 @@ export function installViewport(ctx) {
     setReverseWheel, setLayout, rebuildPlanes, rebuildOrigin,
     toggleOrigin, setOriginShown, updatePlaneVisibility,
     startPlanePick, cancelPlanePick, pickPlane,
+    rememberView, previousView, captureImage,
     /** Centre de rotation posé au clic milieu, ou null. */
     rotationPivot: () => rotationPivot,
   };

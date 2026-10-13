@@ -26,6 +26,7 @@ const ACTION_LABELS = {
   pad: "Extrusion",
   pocket: "Enlèvement extrudé",
   revolve: "Révolution",
+  "face-color": "Couleur de la face…",
 };
 
 /** Rôle d'icône de chaque action (table de icons.js). */
@@ -43,6 +44,10 @@ const MENU_ICONS = {
   revolve: "revolve",
   "edit-surface": "edit",
   rollback: "rollback",
+  "select-tangent": "sel_tangent",
+  "face-color": "face_color",
+  "face-color-reset": "face_color",
+  "select-loop": "sel_loop",
   "delete-feature": "delete",
   "zoom-fit": "zoom_fit",
   orient: "orient",
@@ -167,11 +172,17 @@ export function viewMenuItems(ctx = {}) {
   let items = [];
   if (hit?.kind === "face") {
     items = [
-      { bar: ["sketch-on-face", "normal-to", "fillet", "chamfer", "shell", "measure"] },
+      { bar: ["sketch-on-face", "normal-to", "fillet", "chamfer", "shell",
+        "measure", "face-color"] },
+      ...(hit.colored ? [{ key: "face-color-reset", label: "Couleur de face par défaut" }] : []),
       ...featureSection(hit.feature),
     ];
   } else if (hit?.kind === "edge") {
-    items = [{ bar: ["fillet", "chamfer", "measure"] }];
+    items = [
+      { bar: ["fillet", "chamfer", "measure"] },
+      { key: "select-tangent", label: "Sélectionner la chaîne tangente" },
+      { key: "select-loop", label: "Sélectionner la boucle (encore : l'autre face)" },
+    ];
   } else if (hit?.kind === "sketch") {
     items = [
       { header: hit.label ?? "Esquisse" },

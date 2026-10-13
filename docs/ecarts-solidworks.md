@@ -89,6 +89,40 @@ moteur, vont à Cursor (T28 à T33 dans [`taches-cursor.md`](taches-cursor.md)).
 | 40 | Esquisse : saisie numérique pendant le tracé | P3 | fait : taper un chiffre pendant le tracé ouvre les cotes près du curseur — ligne (longueur, angle), cercle (rayon), rectangle (largeur, hauteur) ; Tab, Entrée, Échap |
 | 41 | Étiquettes des plans superposées ; « MMGS » ; textes français en anglais | P3 | fait (c6b0694, écart 27) |
 
+**Lot « comportements d'utilisation »** (relevé du 2026-10-12, à partir du
+code) — classé du plus simple au plus complexe à réaliser, traité dans cet
+ordre.
+
+| # | Écart | Prio | État |
+|---|---|---|---|
+| 42 | Zoom sur la sélection | P2 | fait : la face ou les arêtes sélectionnées remplissent la vue (barre de vue, menu Affichage) |
+| 43 | Vue précédente | P2 | fait : Ctrl+Maj+Z, aussi en esquisse ; un geste (crans de molette compris) = un pas, 20 pas gardés |
+| 44 | Capture d'écran | P3 | fait : Fichier → Capture d'écran, PNG de la vue |
+| 45 | Esquisse : masquer les symboles de relation, les cotes | P3 | fait : deux boutons de la barre Esquisse |
+| 46 | Commentaire sur une fonction | P3 | fait : clic droit → Commentaire…, ✎ dans l'arbre, texte en infobulle, enregistré dans le fichier |
+| 47 | Propriétés du fichier | P3 | fait : Fichier → Propriétés… (auteur, société, description, propriétés libres), enregistrées dans le .FCStd |
+| 48 | Historique d'annulation | P3 | fait : ▾ à côté d'Annuler, un clic défait tout jusqu'au pas choisi |
+| 49 | Masquer / afficher un corps ou une surface | P1 | fait : clic droit dans l'arbre, Tab sur ce qu'on survole, Maj+Tab = tout afficher ; enregistré dans le fichier |
+| 50 | Filtres de sélection | P1 | fait : faces, arêtes, esquisses, surfaces (entonnoir de la barre de vue, mémorisé) |
+| 51 | Désactiver / réactiver une fonction | P1 | fait : clic droit → Désactiver ; la fonction reste dans l'arbre (barrée), la pièce se calcule sans elle ; une fonction qui s'appuyait sur elle passe en erreur |
+| 52 | Changer le plan d'une esquisse | P2 | fait : clic droit → Changer de plan… (plan d'origine, plan de référence, face d'une fonction antérieure) |
+| 53 | Chanfrein sur un sommet | P3 | fait : bouton « Chanfrein de sommet » (clic près du coin, aimanté au sommet), distance égale ou une par arête, aperçu, réédition au double-clic ; recalculé quand la pièce change. Le sommet est repéré par son numéro : une fonction d’avant qui change la topologie peut le déplacer |
+| 54 | Sélection : choisir parmi les éléments superposés, chaîne tangente | P2 | fait : Alt+clic = la face de derrière (Alt+clic encore : la suivante) ; clic droit sur une arête → chaîne tangente, ou boucle (encore : la boucle de l’autre face) |
+| 55 | Infobulles enrichies, raccourcis personnalisables | P3 | fait : infobulle des barres (nom, détail, touches) ; Outils → Raccourcis clavier… (une commande du ruban par combinaison, touches réservées refusées, gardés dans le navigateur) |
+| 56 | Matières : bibliothèque, couleur par face | P2 | fait : clic droit sur un corps → Matière… (14 matières usuelles ou masse volumique personnalisée) ; Évaluer prend la matière du corps ; la teinte devient la couleur du corps sauf couleur choisie ; couleur d’une face depuis la rangée d’icônes du clic droit (enregistrée dans le fichier) |
+| 57 | Liste des erreurs de reconstruction | P2 | fait : « ⚠ n erreur(s) » dans la barre d’état, la liste au clic (message traduit, un clic ouvre la fonction) ; réactiver une fonction d’appui rend leurs arêtes aux fonctions qui l’utilisaient |
+| 58 | Axe, point et repère de référence | P2 | fait : boutons Axe, Point, Repère (onglet Fonctions) ; axe sur un axe d’origine, une arête droite ou circulaire ; point sur un sommet, un centre de cercle ou des coordonnées ; repère sur un sommet ou des coordonnées ; dessinés dans la vue, ils suivent la pièce |
+| 59 | Copier-coller de fonctions | P1 | fait : Ctrl+C sur une fonction à esquisse (ou une esquisse), Ctrl+V sur une face, un plan ou un plan de référence ; aussi dans le menu Édition et le clic droit de l’arbre. La copie est indépendante et se pose à l’origine de la face (pas sous le clic) ; Ctrl+glisser non fait |
+| 60 | Variantes : coque à épaisseurs par face, exemplaires sautés, congé variable / de face / arrondi complet | P3 | en partie : réseau linéaire dans deux directions (quadrillage, nombre rééditable à pas constant). Restent, sans équivalent natif dans FreeCAD 1.1 : exemplaires sautés, congé variable, de face, arrondi complet, coque à épaisseurs par face (reste mis de côté le 2026-10-13) |
+| 61 | Unités et gabarits | P3 | en partie : gabarits — Fichier → Enregistrer comme gabarit…, Nouveau les propose (dossier ~/FreeSolid/Gabarits). Reste : unités et précision d’affichage (mm partout aujourd’hui) (reste mis de côté le 2026-10-13) |
+| 62 | Assemblage : rotation à la souris, contrainte rapide Alt+glisser, présélection reprise | P2 | fait en partie : glisser au bouton droit tourne un composant libre autour de son centre ; Alt+glisser une face sur une face d’un autre composant pose une contrainte (concentrique pour deux cylindres, coïncidente sinon). Reste : présélection reprise par le panneau de contrainte (reste mis de côté le 2026-10-13) |
+| 63 | Arbre : dossiers, vue parents / enfants | P3 | fait : clic droit → Ranger dans un dossier… / Sortir du dossier (dossier repliable, clic droit pour le renommer ou le défaire) ; clic droit → Parents et enfants… (un clic ouvre la fonction) |
+| 64 | Gestes de la souris | P3 | fait : glisser au bouton droit dans la vue → couronne de 4 commandes (pièce : Esquisse, Vue de dessus, Zoom au mieux, Vue isométrique ; esquisse : Ligne, Rectangle, Cercle, Cotation) ; clic droit sans glisser = menu contextuel |
+| 65 | Manipulation directe : coupe déplaçable, poignées, cotes et faces à glisser, manipulateur trois axes | P1 | fait en partie : flèche sur la face du bout d’une extrusion ou d’un enlèvement sélectionnée (la tirer change la profondeur, aperçu jaune, pas de 0,5 mm) ; flèche de profondeur dans les panneaux Extrusion et Enlèvement ; flèche du plan de coupe (déplacement en direct) ; manipulateur X/Y/Z sur le composant libre sélectionné d’un assemblage. Reste : glisser une cote d’esquisse pour changer sa valeur (reste mis de côté le 2026-10-13) |
+| 66 | Assemblage : vue éclatée par étapes, collisions pendant le glisser, sous-assemblages | P2 | mis de côté (décision du 2026-10-13) |
+| 67 | Configurations | P2 | fait : dossier Configurations de l’arbre (+ Nouvelle configuration…, clic = activer, clic droit = renommer ou supprimer) ; une configuration relève les cotes, les fonctions désactivées et les variables, ce qu’on change pendant qu’elle est active lui appartient ; Outils → Tableau des configurations… (une ligne par cote, une colonne par configuration). Les cotes pilotées par une équation suivent leurs variables |
+| 68 | Export PDF / IGES, impression | P3 | mis de côté (décision du 2026-10-13) |
+
 ### Questions de conception en attente
 
 - **Q1 — Volumes pendant l'esquisse.** SolidWorks laisse la pièce visible

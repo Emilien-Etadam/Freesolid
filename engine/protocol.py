@@ -165,6 +165,31 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # la partie suivante
     # Phase E — évaluer + mise en plan.
     "mass_properties": (),             # optional: density (g/cm³)
+    "material_library": (),            # lecture : matières proposées
+    "list_templates": (),              # lecture : gabarits de pièce
+    "set_folder": _Req(("features", list), optional={"folder": str}),
+    "rename_folder": _Req(("folder", str), optional={"name": str}),
+    "feature_relations": _Req(("feature", str)),  # lecture : parents, enfants
+    "face_drag_info": _Req(("face", int)),  # lecture : la face se tire-t-elle
+    "sketch_frame": _Req(("sketch", str)),  # lecture : centre et normale
+    "list_configurations": (),         # lecture : noms, active
+    "add_configuration": _Req(("name", str)),
+    "activate_configuration": _Req(("name", str)),
+    "rename_configuration": _Req(("name", str), ("new_name", str)),
+    "delete_configuration": _Req(("name", str)),
+    "configuration_table": (),         # lecture : cotes par configuration
+    "set_configuration_values": _Req(("values", dict)),
+    "save_template": _Req(("name", str)),
+    "new_from_template": _Req(("name", str)),
+    "add_datum_axis": _Req(optional={"axis": str, "edge": int}),
+    "add_datum_point": _Req(optional={"point": list, "vertex": list,
+                                      "edge": int}),
+    "add_datum_cs": _Req(optional={"point": list, "vertex": list}),
+    "paste_feature": _Req(("feature", str), optional={
+        "face": int, "plane": str, "datum": str}),
+    "set_body_material": _Req(("body", str), optional={
+        "material": str, "density": float}),
+    "set_face_color": _Req(("faces", list), "color"),
     "measure": _Req(("a_kind", str), ("a_id", int),
                     ("b_kind", str), ("b_id", int)),  # face|edge + id
     "make_drawing": _Req(("path", str)),
@@ -191,8 +216,22 @@ OPS: dict[str, tuple[str, ...]] = {
     "script_trust_status": (),          # lecture : Python autorisé ce document / session
     "authorize_scripts": (),            # consentement : jamais persisté dans le .FCStd
     "check_interference": (),          # assemblage : volumes communs par paires
-    "undo": (),                        # une transaction = un Ctrl+Z
-    "redo": (),
+    "undo": _Req(optional={"steps": int}),  # une transaction = un Ctrl+Z
+    "redo": _Req(optional={"steps": int}),
+    "undo_history": (),                # lecture : pas à défaire / refaire
+    "rebuild_errors": (),              # lecture : fonctions en erreur
+    "set_comment": _Req(("feature", str), optional={"text": str}),
+    "set_hidden": _Req(("objects", list), optional={"hidden": bool}),
+    "add_vertex_chamfer": _Req(("distances", list), optional={
+        "point": list, "vertex": int}),
+    "edit_vertex_chamfer": _Req(("feature", str), ("distances", list)),
+    "edge_chain": _Req(("edge", int), optional={"mode": str, "face": int}),
+    "sketch_set_plane": _Req(("sketch", str), optional={
+        "plane": str, "datum": str, "face": int}),
+    "set_suppressed": _Req(("features", list),
+                           optional={"suppressed": bool}),
+    "document_properties": (),         # lecture : auteur, société, libres
+    "set_document_properties": _Req(("values", dict)),
     "export_part": _Req(("path", str)),  # .stl ou .step selon l'extension
     "preview": _Req(("op", str), ("params", dict)),
                                        # aperçu jaune : op exécutée puis annulée
@@ -235,7 +274,10 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_linear_pattern": _Req(("length", float), ("count", int),
                                optional={"features": list, "axis": str,
                                          "edge": int, "spacing": bool,
-                                         "reversed": bool}),
+                                         "reversed": bool,
+                                         "length2": float, "count2": int,
+                                         "axis2": str, "edge2": int,
+                                         "reversed2": bool}),
                                        # optional: axis (X|Y|Z), features
     "add_polar_pattern": _Req(("count", int),
                               optional={"features": list, "axis": str,

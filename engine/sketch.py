@@ -147,6 +147,38 @@ class SketchMixin:
         doc.recompute()  # resolves the placement before the client reads it
         return self.sketch_state(sketch.Name)
 
+    def sketch_set_plane(self, sketch, plane=None, datum=None, face=None):
+        """Pose une esquisse existante sur un autre plan (origine, plan de
+        référence ou face du solide) ; ses entités gardent leurs
+        coordonnées dans l'esquisse, les fonctions qui l'utilisent suivent."""
+        from engine.kernel import KernelError
+        doc = self._require_doc()
+        sk = self._get_sketch(sketch)
+        if face is not None:
+            tip = getattr(self._require_body(), "Tip", None)
+            if tip is not None and (tip is sk
+                                    or sk in tip.OutListRecursive):
+                raise KernelError(
+                    "cette face dépend de l'esquisse elle-même — choisissez "
+                    "un plan ou la face d'une fonction antérieure")
+            self._attach_to_face(sk, face)
+        elif datum is not None:
+            target = doc.getObject(str(datum))
+            if target is None or target.TypeId != "PartDesign::Plane":
+                raise KernelError(
+                    "plan de référence inconnu : {}".format(datum))
+            self._attach_to_support(sk, [(target, ("",))])
+        elif plane is not None:
+            role = self._PLANE_ROLES.get(str(plane).upper())
+            if role is None:
+                raise KernelError(
+                    "plan inconnu « {} » — attendu XY, XZ ou YZ".format(plane))
+            self._attach_to_support(sk, [(self._origin_feature(role), ("",))])
+        else:
+            raise KernelError("choisissez le nouveau plan de l'esquisse")
+        self._recompute()
+        return self._current_tree()
+
     def sketch_edit(self, feature):
         """Re-enter an existing sketch."""
         sk = self._get_sketch(feature)

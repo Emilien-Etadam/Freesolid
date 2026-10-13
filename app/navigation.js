@@ -156,6 +156,45 @@ export function sketchLocalPoints(entities) {
   return points;
 }
 
+/** Filtre de sélection : ce que le clic peut viser dans la vue. */
+export const SELECT_KINDS = ["faces", "edges", "sketches", "surfaces"];
+const FILTER_KEY = "freesolid.selectFilter";
+
+/** Filtre lu (tout permis par défaut, ou si la valeur est illisible). */
+export function readSelectFilter(storage) {
+  const all = Object.fromEntries(SELECT_KINDS.map((kind) => [kind, true]));
+  try {
+    const saved = JSON.parse(storage?.getItem(FILTER_KEY) ?? "null");
+    if (!saved || typeof saved !== "object") return all;
+    for (const kind of SELECT_KINDS) {
+      if (saved[kind] === false) all[kind] = false;
+    }
+  } catch { /* valeur illisible : tout permis */ }
+  return all;
+}
+
+export function writeSelectFilter(storage, filter) {
+  try {
+    storage?.setItem(FILTER_KEY, JSON.stringify(filter));
+  } catch { /* stockage refusé : le filtre vaut pour la session */ }
+}
+
+/** Vrai si au moins un type est écarté (le bouton s'allume). */
+export function filterActive(filter) {
+  return SELECT_KINDS.some((kind) => filter?.[kind] === false);
+}
+
+/** Historique des vues : `stack` de {state, at}. Les gestes rapprochés
+ *  (crans de molette, glisser repris) ne comptent qu'une fois : la vue
+ *  gardée est celle d'avant le premier. Renvoie une nouvelle pile. */
+export function pushView(stack, state, now, { max = 20, merge = 800 } = {}) {
+  const last = stack[stack.length - 1];
+  if (last && now - last.at < merge) {
+    return [...stack.slice(0, -1), { state: last.state, at: now }];
+  }
+  return [...stack, { state, at: now }].slice(-max);
+}
+
 /** Sphère couvrant des points [x,y,z] et des sphères {center, radius}.
  *  null s'il n'y a rien à cadrer. */
 export function coverBounds(points, spheres = []) {

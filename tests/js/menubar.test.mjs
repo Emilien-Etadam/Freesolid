@@ -59,9 +59,10 @@ describe("contenu", () => {
     assert.equal(byId.file.items[0].action, "create");
     assert.equal(byId.file.items[0].shortcut, "Ctrl+N");
     assert.equal(byId.file.items[1].action, "home");
-    assert.deepEqual(byId.file.items.slice(2).map((entry) => entry.click), [
+    assert.deepEqual(byId.file.items.slice(2, 6).map((entry) => entry.click), [
       "btn-open", "btn-save", "btn-export", "btn-drawing",
     ]);
+    assert.equal(byId.file.items[6].action, "screenshot");
     assert.equal(byId.tools.items.find((entry) => entry.label === "Mesurer").click,
       "btn-measure");
     assert.equal(byId.help.items.find((entry) => entry.label === "À propos").click,

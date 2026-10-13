@@ -633,6 +633,14 @@ export function patternDirectionRows(defaultAxis) {
   ];
 }
 
+/** Deuxième direction d'un réseau linéaire → params, null si invalide. */
+export function linearSecondDirection(v) {
+  const length2 = num(v.length2);
+  const count2 = parseInt(v.count2, 10);
+  if (!(length2 > 0) || !(count2 >= 2)) return null;
+  return { axis2: v.axis2 || "Y", length2, count2, reversed2: !!v.reversed2 };
+}
+
 export function patternDirectionParams(v) {
   const params = { reversed: !!v.reversed };
   const edge = v.edge?.edges?.[0];
@@ -681,6 +689,28 @@ export function chamferFieldValue(params, prop, fallback) {
   if (found?.expr) return found.expr;
   if (found && found.value != null) return found.value;
   return fallback;
+}
+
+/** Chanfrein de sommet : une distance égale, ou une par arête. */
+export function vertexChamferRows({ distances = [2, 2, 2] } = {}) {
+  const same = distances.every((d) => d === distances[0]);
+  return [
+    { type: "select", key: "vkind", value: same ? "egale" : "trois",
+      options: [["egale", "Distance égale"], ["trois", "Une par arête"]] },
+    { type: "number", key: "d1", label: "Distance", value: distances[0],
+      unit: "mm", min: 0.01 },
+    { type: "number", key: "d2", label: "Distance 2", value: distances[1],
+      unit: "mm", min: 0.01, showIf: (v) => v.vkind === "trois" },
+    { type: "number", key: "d3", label: "Distance 3", value: distances[2],
+      unit: "mm", min: 0.01, showIf: (v) => v.vkind === "trois" },
+  ];
+}
+
+/** Distances du panneau → [d] ou [d1, d2, d3] ; null si l'une est fausse. */
+export function vertexChamferDistances(v) {
+  const keys = v.vkind === "trois" ? ["d1", "d2", "d3"] : ["d1"];
+  const values = keys.map((key) => num(v[key]));
+  return values.every((d) => d > 0) ? values : null;
 }
 
 /** Params `add_chamfer`, ou null si les champs visibles sont invalides. */
@@ -1048,6 +1078,27 @@ export const FEATURES = [
     invalid: (v) => chamferProblem(v),
   }),
   {
+    button: "btn-vertex-chamfer",
+    icon: "vertex_chamfer", title: "Chanfrein de sommet",
+    groups: () => [
+      { label: "Sommet",
+        rows: [{ type: "selection", key: "pos", accepts: ["vertex"],
+                 hint: "Cliquez près d'un coin de la pièce" }] },
+      { label: "Distances", rows: vertexChamferRows() },
+    ],
+    build: (v) => {
+      const item = v.pos?.kind === "vertex" ? v.pos : null;
+      const distances = vertexChamferDistances(v);
+      return item && distances
+        ? { op: "add_vertex_chamfer",
+            params: { point: [item.x, item.y, item.z], distances } }
+        : null;
+    },
+    invalid: (v) => (v.pos ? "Distance de chanfrein invalide"
+      : "Cliquez près d'un coin de la pièce"),
+    refresh: "part",
+  },
+  {
     button: "btn-shell",
     icon: "shell", title: "Coque",
     dressup: true,
@@ -1114,14 +1165,31 @@ export const FEATURES = [
             value: 3, min: 2, step: 1 },
         ],
       },
+      {
+        label: "Direction 2",
+        rows: [
+          { type: "check", key: "dir2", label: "Deuxième direction",
+            value: false },
+          { type: "select", key: "axis2", value: "Y",
+            options: [["X", "Axe X"], ["Y", "Axe Y"], ["Z", "Axe Z"]],
+            showIf: (v) => v.dir2 },
+          { type: "check", key: "reversed2", label: "Inverser la direction",
+            value: false, showIf: (v) => v.dir2 },
+          { type: "number", key: "length2", label: "Distance",
+            value: 20, unit: "mm", min: 0.01, showIf: (v) => v.dir2 },
+          { type: "number", key: "count2", label: "Nombre d'occurrences",
+            value: 2, min: 2, step: 1, showIf: (v) => v.dir2 },
+        ],
+      },
     ],
     build: (v) => {
       const length = num(v.length);
       const count = parseInt(v.count, 10);
-      return length && count >= 2
+      const second = v.dir2 ? linearSecondDirection(v) : {};
+      return length && count >= 2 && second
         ? { op: "add_linear_pattern",
             params: { ...patternDirectionParams(v), length, count,
-                      spacing: v.mode === "spacing",
+                      spacing: v.mode === "spacing", ...second,
                       ...patternFeaturesParams(v) } }
         : null;
     },

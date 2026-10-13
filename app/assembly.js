@@ -37,6 +37,7 @@ export function installAssembly(ctx) {
     }
     ctx.assemblyState = null;
     selectedComponent = null;
+    ctx.handles?.hide();
   }
 
   function showAssemblyMeshes(data) {
@@ -67,6 +68,7 @@ export function installAssembly(ctx) {
     }
     scene.add(ctx.asmGroup);
     computeExplodeDirs(); // la vue éclatée survit aux reconstructions
+    if (selectedComponent) showTriad(selectedComponent);
   }
 
   function selectComponent(name) {
@@ -78,10 +80,51 @@ export function installAssembly(ctx) {
       }
     }
     if (ctx.assemblyState) renderAssemblyTree(ctx.assemblyState);
+    showTriad(name);
     pickEl.textContent = name
       ? t("sél. {s}", { s: ctx.assemblyState?.components.find(
           (c) => c.name === name)?.label ?? name })
       : "";
+  }
+
+  // Manipulateur à trois axes sur le composant libre sélectionné : tirer
+  // une flèche le déplace le long de X, Y ou Z ; le lâcher l'applique.
+  const TRIAD = [
+    { dir: [1, 0, 0], color: 0xd9534f },
+    { dir: [0, 1, 0], color: 0x5cb85c },
+    { dir: [0, 0, 1], color: 0x4a90d9 },
+  ];
+  function showTriad(name) {
+    const comp = ctx.assemblyState?.components.find((c) => c.name === name);
+    const mesh = ctx.asmGroup?.children.find(
+      (m) => m.userData.component === name);
+    if (!comp || !mesh || comp.grounded || !ctx.handles) {
+      ctx.handles?.hide();
+      return;
+    }
+    const box = new THREE.Box3().setFromObject(mesh);
+    const size = Math.max(box.getSize(new THREE.Vector3()).length() * 0.35, 12);
+    ctx.handles.show({
+      origin: box.getCenter(new THREE.Vector3()).toArray(), axes: TRIAD, size,
+      onDrag: (d, axis) => {
+        mesh.position.set(...TRIAD[axis].dir.map((c) => c * d));
+        say(t("{c} : {d} mm le long de {a}", { c: comp.label,
+          d: Math.round(d * 10) / 10, a: "XYZ"[axis] }));
+      },
+      onEnd: (d, axis) => {
+        const step = Math.round(d * 10) / 10;
+        if (!step) {
+          mesh.position.set(0, 0, 0);
+          showTriad(name);
+          return;
+        }
+        const [x, y, z] = comp.position.map(
+          (c, i) => c + TRIAD[axis].dir[i] * step);
+        const [yaw, pitch, roll] = comp.rotation;
+        refreshAssembly(call("move_component",
+          { component: comp.name, x, y, z, yaw, pitch, roll }));
+      },
+    });
   }
 
   async function refreshAssembly(treePromise) {
@@ -257,6 +300,7 @@ export function installAssembly(ctx) {
 
   renderer.domElement.addEventListener("pointerdown", (event) => {
     if (!ctx.assemblyState || !ctx.asmGroup || event.button !== 0 || panel.active) return;
+    if (event.altKey) return; // Alt+glisser : contrainte rapide (plus bas)
     raycaster.setFromCamera(pointer, camera);
     const hit = raycaster.intersectObjects(ctx.asmGroup.children, false)[0];
     if (!hit) return;
@@ -295,6 +339,99 @@ export function installAssembly(ctx) {
     refreshAssembly(call("move_component", {
       component: drag.comp.name,
       x: x + d.x, y: y + d.y, z: z + d.z, yaw, pitch, roll,
+    }));
+  });
+
+  /** Composant et face sous le pointeur, ou null. */
+  function componentFaceAt(event) {
+    setPointerFromEvent(event);
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects(ctx.asmGroup?.children ?? [], false)[0];
+    if (!hit) return null;
+    const at = hit.faceIndex * 3;
+    const group = (hit.object.userData.groups ?? []).find(
+      (g) => at >= g.start && at < g.start + g.count);
+    return { hit, component: hit.object.userData.component,
+             face: group ? group.faceId : null };
+  }
+
+  // Contrainte rapide : Alt+glisser une face d'un composant sur une face
+  // d'un autre. Deux cylindres se centrent, le reste se plaque.
+  let asmMate = null;
+  renderer.domElement.addEventListener("pointerdown", (event) => {
+    if (!ctx.assemblyState || event.button !== 0 || !event.altKey
+        || panel.active) return;
+    const from = componentFaceAt(event);
+    if (!from || from.face == null) return;
+    asmMate = from;
+    renderer.domElement.style.cursor = "copy";
+    say(t("Contrainte rapide : lâchez sur une face d'un autre composant"));
+  });
+  renderer.domElement.addEventListener("pointerup", (event) => {
+    if (!asmMate || event.button !== 0) return;
+    const from = asmMate;
+    asmMate = null;
+    renderer.domElement.style.cursor = "";
+    const to = componentFaceAt(event);
+    if (!to || to.face == null || to.component === from.component) {
+      say(t("Contrainte rapide : lâchez sur une face d'un autre composant"), true);
+      return;
+    }
+    refreshAssembly(call("add_joint", {
+      component1: from.component, component2: to.component,
+      sub1: `Face${from.face + 1}`, sub2: `Face${to.face + 1}`, type: "auto",
+    }));
+  });
+
+  // Tourner un composant libre : glisser au bouton droit. Horizontal :
+  // autour de Z ; vertical : autour de l'horizontale de l'écran. Le
+  // centre de rotation est le milieu du composant.
+  let asmTurn = null;
+  renderer.domElement.addEventListener("pointerdown", (event) => {
+    if (!ctx.assemblyState || event.button !== 2 || panel.active) return;
+    const at = componentFaceAt(event);
+    const comp = at && ctx.assemblyState.components.find(
+      (c) => c.name === at.component);
+    if (!comp || comp.grounded) return;
+    const box = new THREE.Box3().setFromObject(at.hit.object);
+    asmTurn = { comp, mesh: at.hit.object,
+                center: box.getCenter(new THREE.Vector3()),
+                start: { x: event.clientX, y: event.clientY },
+                turn: new THREE.Quaternion(), moved: false };
+  });
+  renderer.domElement.addEventListener("pointermove", (event) => {
+    if (!asmTurn) return;
+    const dx = event.clientX - asmTurn.start.x;
+    const dy = event.clientY - asmTurn.start.y;
+    if (Math.hypot(dx, dy) > 5) asmTurn.moved = true;
+    if (!asmTurn.moved) return;
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    asmTurn.turn = new THREE.Quaternion()
+      .setFromAxisAngle(right, dy * 0.01)
+      .multiply(new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 0, 1), dx * 0.01));
+    const c = asmTurn.center;
+    asmTurn.mesh.quaternion.copy(asmTurn.turn);
+    asmTurn.mesh.position.copy(c.clone().sub(c.clone().applyQuaternion(asmTurn.turn)));
+  });
+  window.addEventListener("pointerup", (event) => {
+    if (!asmTurn || event.button !== 2) return;
+    const turn = asmTurn;
+    asmTurn = null;
+    if (!turn.moved) return;
+    const [yaw, pitch, roll] = turn.comp.rotation;
+    const deg = Math.PI / 180;
+    // Rotation du moteur : lacet (Z), tangage (Y), roulis (X).
+    const before = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(roll * deg, pitch * deg, yaw * deg, "ZYX"));
+    const after = turn.turn.clone().multiply(before);
+    const euler = new THREE.Euler().setFromQuaternion(after, "ZYX");
+    const base = new THREE.Vector3(...turn.comp.position);
+    const c = turn.center;
+    const moved = c.clone().add(base.sub(c).applyQuaternion(turn.turn));
+    refreshAssembly(call("move_component", {
+      component: turn.comp.name, x: moved.x, y: moved.y, z: moved.z,
+      yaw: euler.z / deg, pitch: euler.y / deg, roll: euler.x / deg,
     }));
   });
 

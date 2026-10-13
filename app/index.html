@@ -156,6 +156,18 @@
     background: var(--panel-2); border-color: var(--line);
   }
   #quickbar .sep { height: 16px; margin: 0 var(--space-1); }
+  #quickbar .drop-arrow { width: 14px; font-size: 10px; color: var(--muted); }
+  #undo-menu { left: 0; right: auto; max-height: 60vh; overflow-y: auto; }
+  #quickbar #undo-menu button {
+    width: 100%; height: auto; justify-content: flex-start;
+    white-space: nowrap;
+  }
+  #undo-menu .menu-head { padding: 4px var(--space-2); color: var(--muted);
+    font-size: 11px; }
+  #tree .tree-note { color: var(--muted); }
+  #tree li.hidden-object { opacity: .5; font-style: italic; }
+  #tree li.suppressed { opacity: .45; text-decoration: line-through; }
+  #tree li.add-config { color: var(--ink-2); cursor: pointer; }
   #topbar {
     height: 28px; display: flex; align-items: flex-end; gap: 2px;
     padding: 0 var(--space-2);
@@ -971,6 +983,11 @@
   footer #status { flex: 0 1 auto; min-width: 0; }
   footer > span:not(#status) { flex: none; }
   footer .err { color: var(--error); }
+  #errors-badge {
+    flex: none; padding: 0 8px; border: none; border-radius: var(--radius-s);
+    background: none; color: var(--error); cursor: pointer; font: inherit;
+  }
+  #errors-badge:hover { background: var(--hover); }
   footer .err.sticky { cursor: pointer; }
   footer .push { margin-left: auto; }
   footer .coords { font-variant-numeric: tabular-nums; min-width: 17em; text-align: right; }
@@ -1004,6 +1021,27 @@
     min-width: 190px; padding: var(--space-1);
   }
   #view-menu { overflow-y: auto; }
+  #rich-tip {
+    position: fixed; z-index: 60; max-width: 300px; pointer-events: none;
+    padding: 6px 9px; background: var(--panel); color: var(--ink);
+    border: 1px solid var(--line); border-radius: var(--radius-s);
+    box-shadow: 0 4px 14px rgba(0,0,0,.35); font-size: 12px;
+  }
+  #rich-tip[hidden] { display: none; }
+  #gesture-ring { position: fixed; z-index: 55; width: 0; height: 0; pointer-events: none; }
+  #gesture-ring[hidden] { display: none; }
+  #gesture-ring span {
+    position: absolute; transform: translate(-50%, -50%); white-space: nowrap;
+    padding: 3px 8px; border-radius: var(--radius-s); font-size: 12px;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+    box-shadow: 0 3px 10px rgba(0,0,0,.35);
+  }
+  #gesture-ring span.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #rich-tip kbd {
+    margin-left: 8px; padding: 0 4px; border: 1px solid var(--line);
+    border-radius: 3px; font: 11px var(--mono, monospace); color: var(--ink-2);
+  }
+  #rich-tip p { margin: 4px 0 0; color: var(--ink-2); }
   #param-pick { min-width: 240px; }
   #ctxmenu div, #view-menu div, #graph-edge-menu div,
   #param-pick .menu-item, #graph-palette .menu-item {
@@ -1161,6 +1199,10 @@
         <button id="btn-save" title="Enregistrer (.FCStd)"><img data-icon="save" alt=""></button>
         <div class="sep"></div>
         <button id="btn-undo" title="Annuler (Ctrl+Z)"><img data-icon="undo" alt=""></button>
+        <div class="view-drop">
+          <button id="btn-undo-list" class="drop-arrow" title="Historique — annuler plusieurs pas d'un coup">▾</button>
+          <div id="undo-menu" class="view-menu" hidden></div>
+        </div>
         <button id="btn-redo" title="Rétablir (Ctrl+Y)"><img data-icon="redo" alt=""></button>
         <button id="btn-rebuild" title="Reconstruire — recalcul forcé de tout l'arbre"><img data-icon="rebuild" alt=""></button>
       </div>
@@ -1192,6 +1234,11 @@
     <!-- Les bandeaux features/surfaces/assembly sont rendus depuis
          ribbon.json et insérés ici, avant #sketchbar (voir ribbon.js). -->
     <div id="sketchbar" class="ribbon">
+      <div class="ribbon-group">
+        <div class="ribbon-group-btns">
+          <button id="sk-start" class="large" title="Esquisse — ouvrir une esquisse sur un plan ou une face (ou fermer celle en cours)"><img data-icon="sketch" alt="">Esquisse</button>
+        </div>
+      </div>
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
           <button data-tool="select" data-label="Sélectionner" title="Sélectionner — glisser un point, cliquer des entités"><img data-icon="select" alt="">Sélectionner</button>
@@ -1282,6 +1329,8 @@
           <button id="sk-define" title="Définir entièrement — les cotes qui manquent sont ajoutées"><img data-icon="sk_define" alt=""></button>
           <button id="sk-layers" title="Calques d'esquisse — ranger, colorer, masquer des entités"><img data-icon="sk_layers" alt=""></button>
           <button id="sk-grid" title="Accrochage à la grille — un pas rond qui suit le zoom"><img data-icon="sk_grid" alt=""></button>
+          <button id="sk-show-rel" title="Afficher les symboles de relation"><img data-icon="sk_show_rel" alt=""></button>
+          <button id="sk-show-dims" title="Afficher les cotes"><img data-icon="sk_show_dims" alt=""></button>
           <button id="sk-comb" title="Peigne de courbure — voir où les courbes se tendent"><img data-icon="sk_comb" alt=""></button>
           <button id="sk-block-save" title="Créer un bloc — la sélection rangée sous un nom"><img data-icon="sk_block" alt=""></button>
           <button id="sk-block-insert" title="Insérer un bloc"><img data-icon="sk_block_insert" alt=""></button>
@@ -1353,6 +1402,17 @@
         </div>
       </div>
       <div class="view-drop">
+        <button type="button" id="btn-select-filter" title="Filtre de sélection — ce que le clic peut viser"><img data-icon="select_filter" alt=""></button>
+        <div id="filter-menu" class="view-menu" hidden>
+          <label><input type="checkbox" data-filter="faces"> Faces</label>
+          <label><input type="checkbox" data-filter="edges"> Arêtes</label>
+          <label><input type="checkbox" data-filter="sketches"> Esquisses</label>
+          <label><input type="checkbox" data-filter="surfaces"> Surfaces et courbes</label>
+          <hr>
+          <button type="button" data-filter-all>Tout sélectionnable</button>
+        </div>
+      </div>
+      <div class="view-drop">
         <button type="button" id="btn-visibility" title="Masquer / afficher"><img data-icon="FreeSolid_Visibility" alt=""></button>
         <div id="visibility-menu" class="view-menu" hidden>
           <label><input type="checkbox" data-vis="planes"> Plans de référence</label>
@@ -1366,6 +1426,8 @@
       <button id="view-top" title="Vue de dessus (Ctrl+5)"><img data-icon="view-top" alt=""></button>
       <button id="view-right" title="Vue de droite (Ctrl+4)"><img data-icon="view-right" alt=""></button>
       <button id="view-fit" title="Zoom au mieux (F)"><img data-icon="zoom-fit-best" alt=""></button>
+      <button id="view-zoom-sel" title="Zoom sur la sélection — la face ou les arêtes choisies"><img data-icon="zoom_sel" alt=""></button>
+      <button id="view-prev" title="Vue précédente (Ctrl+Maj+Z)"><img data-icon="view_prev" alt=""></button>
       <button id="btn-clip" title="Plan de coupe visuel — voir l'intérieur sans couper la pièce"><img data-icon="Std_ToggleClipPlane" alt=""></button>
       <button id="btn-graph" title="Vue en graphe — dépendances des fonctions"><img data-icon="Geoassembly" alt=""></button>
     </div>
@@ -1389,7 +1451,16 @@
   <div id="ctxmenu">
     <div id="ctx-modify" hidden>Modifier</div>
     <div id="ctx-rename">Renommer</div>
+    <div id="ctx-copy" hidden>Copier</div>
+    <div id="ctx-comment">Commentaire…</div>
+    <div id="ctx-folder" hidden>Ranger dans un dossier…</div>
+    <div id="ctx-unfolder" hidden>Sortir du dossier</div>
+    <div id="ctx-relations" hidden>Parents et enfants…</div>
+    <div id="ctx-hide" hidden>Masquer</div>
+    <div id="ctx-suppress" hidden>Désactiver</div>
+    <div id="ctx-sketch-plane" hidden>Changer de plan…</div>
     <div id="ctx-ground" hidden>Fixer</div>
+    <div id="ctx-material" hidden>Matière…</div>
     <div id="ctx-color" hidden>Couleur…</div>
     <div id="ctx-color-reset" hidden>Couleur par défaut</div>
     <div id="ctx-rollback">Amener la barre de retour ici</div>
@@ -1439,6 +1510,8 @@
         <button type="button" data-new="assembly">Assemblage</button>
         <button type="button" data-new="cancel">Annuler (Échap)</button>
       </div>
+      <h3>Gabarits</h3>
+      <div id="new-templates" class="new-actions"></div>
     </div>
   </div>
   <div id="file-dialog" hidden></div>
@@ -1453,6 +1526,7 @@
 
   <footer>
     <span id="status">Moteur : en attente…</span>
+    <button type="button" id="errors-badge" hidden title="Erreurs de reconstruction — cliquer pour la liste"></button>
     <span id="pick" class="push"></span>
     <span id="measure"></span>
     <span id="coords" class="coords"></span>

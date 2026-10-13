@@ -56,6 +56,7 @@ export function fileTitle(path) {
 /** Accueil et dialogue Nouveau. `hasDocument` décide si Échap peut fermer. */
 export function installWelcome(doc, {
   storage, onPart, onAssembly, onOpen, onRecent, hasDocument,
+  listTemplates, onTemplate,
 } = {}) {
   const welcome = doc.getElementById("welcome");
   const chooser = doc.getElementById("new-dialog");
@@ -95,7 +96,31 @@ export function installWelcome(doc, {
   }
 
   function showNew() {
-    if (chooser) chooser.hidden = false;
+    if (!chooser) return;
+    chooser.hidden = false;
+    renderTemplates();
+  }
+
+  /** Gabarits du dossier de l'utilisateur, un bouton chacun. */
+  async function renderTemplates() {
+    const box = doc.getElementById("new-templates");
+    if (!box || !listTemplates) return;
+    const names = await listTemplates().catch(() => []);
+    box.replaceChildren();
+    if (!names.length) {
+      const empty = doc.createElement("p");
+      empty.className = "welcome-empty";
+      empty.textContent = t("Aucun gabarit — Fichier → Enregistrer comme gabarit…");
+      box.appendChild(empty);
+      return;
+    }
+    for (const name of names) {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.textContent = name;
+      button.addEventListener("click", () => { hideNew(); onTemplate?.(name); });
+      box.appendChild(button);
+    }
   }
 
   function hideNew() {

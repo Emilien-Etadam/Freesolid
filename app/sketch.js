@@ -791,10 +791,12 @@ export function createSketchMode(deps) {
       group.add(cloud);
     }
 
-    // Calques masqués : ni symboles, ni cotes de leurs entités.
+    // Calques masqués : ni symboles, ni cotes de leurs entités. Les
+    // boutons de la barre masquent tous les symboles, ou toutes les cotes.
     const shown = mode.state.entities.filter((e) => !hidden.has(e.id));
-    for (const glyph of relationGlyphs(mode.state.constraints,
-      shown, span * 0.025)) {
+    const glyphs = mode.showRelations === false ? []
+      : relationGlyphs(mode.state.constraints, shown, span * 0.025);
+    for (const glyph of glyphs) {
       const sprite = createGlyphSprite(glyph.text);
       sprite.position.set(glyph.x, glyph.y, 0.01);
       sprite.scale.set(span * 0.028, span * 0.028, 1);
@@ -806,7 +808,7 @@ export function createSketchMode(deps) {
     const dimSize = dimDrawSize();
     // Un pixel d'écran, en unités de l'esquisse.
     const px = span / Math.max(renderer.domElement.clientHeight, 1);
-    for (const dim of mode.state.dims) {
+    for (const dim of mode.showDims === false ? [] : mode.state.dims) {
       const constraint = (mode.state.constraints ?? [])
         .find((c) => c.id === dim.id);
       if ((constraint?.geos ?? [dim.geo]).some((g) => hidden.has(g))) continue;
@@ -2343,10 +2345,26 @@ export function createSketchMode(deps) {
     syncEntityPanel();
   }
 
+  // Hors esquisse, un outil du ruban Esquisse fait comme dans les
+  // modeleurs courants : choisir le plan (ou la face sélectionnée), puis
+  // l'esquisse s'ouvre avec cet outil.
+  let pendingTool = null;
   bar.addEventListener("click", (event) => {
-    if (!mode.active) return; // le ruban Esquisse est visible mais inerte
-    const tool = event.target.dataset?.tool;
-    if (tool) setTool(tool);
+    const tool = event.target.closest?.("button[data-tool]")?.dataset.tool;
+    if (!tool) return;
+    if (mode.active) {
+      setTool(tool);
+      return;
+    }
+    pendingTool = tool;
+    document.getElementById("btn-sketch")?.click();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !mode.active) pendingTool = null;
+  });
+  document.getElementById("sk-start").addEventListener("click", () => {
+    if (mode.active) exit(true);
+    else document.getElementById("btn-sketch")?.click();
   });
 
   /** La sélection sans l'origine : ce qu'on peut symétriser, répéter… */
@@ -2752,6 +2770,22 @@ export function createSketchMode(deps) {
     });
   }
 
+  // Affichés par défaut : le bouton enfoncé montre, relâché masque.
+  for (const [id, key, on, off] of [
+    ["sk-show-rel", "showRelations", "Symboles de relation affichés",
+     "Symboles de relation masqués"],
+    ["sk-show-dims", "showDims", "Cotes affichées", "Cotes masquées"],
+  ]) {
+    const button = document.getElementById(id);
+    button.classList.add("on");
+    button.addEventListener("click", () => {
+      mode[key] = mode[key] === false;
+      button.classList.toggle("on", mode[key]);
+      say(t(mode[key] ? on : off));
+      redraw();
+    });
+  }
+
   document.getElementById("sk-layers").addEventListener("click", () => {
     if (!mode.state) return;
     const layers = mode.state.layers ?? [];
@@ -3077,7 +3111,8 @@ export function createSketchMode(deps) {
       document.addEventListener("keydown", onKey);
       // Le ruban bascule sur l'onglet Esquisse (main.js écoute).
       document.dispatchEvent(new Event("freesolid:sketch-enter"));
-      setTool("line");
+      setTool(pendingTool ?? "line");
+      pendingTool = null;
       call("sketch_picture", { sketch: state.sketch }).then(({ picture }) => {
         if (picture?.data && mode.active && mode.state?.sketch === state.sketch) {
           const { data, fileName, ...params } = picture;

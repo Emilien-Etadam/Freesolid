@@ -10,7 +10,7 @@ import { renameClickAction } from "./rename.js";
 import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
   revolutionGroups, revolutionEditValues, revolutionProblem,
-  checkedContours, contourRows,
+  checkedContours, contourRows, vertexChamferDistances, vertexChamferRows,
 } from "./features.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
 import { readScene } from "./theme.js";
@@ -34,6 +34,9 @@ export const TREE_ICONS = {
   "PartDesign::Draft": "draft",
   "PartDesign::Hole": "hole",
   "PartDesign::Plane": "plane",
+  "PartDesign::Line": "datum_axis",
+  "PartDesign::Point": "datum_point",
+  "PartDesign::CoordinateSystem": "datum_cs",
   "PartDesign::AdditiveLoft": "loft",
   "PartDesign::SubtractiveLoft": "loft",
   "PartDesign::AdditivePipe": "sweep",
@@ -83,6 +86,7 @@ export const PROP_LABELS = {
   CapThickness: ["Épaisseur des extrémités", "mm"],
   Value: ["Épaisseur", "mm"],
   Occurrences: ["Nombre d'occurrences", ""],
+  Occurrences2: ["Occurrences (direction 2)", ""],
   Diameter: ["Diamètre", "mm"],
   Depth: ["Profondeur", "mm"],
   HoleCutDiameter: ["Ø lamage/fraisage", "mm"],
@@ -533,7 +537,8 @@ export function installTree(ctx) {
     const empty = bodyInfo.has_solid !== true;
     bodyItem.className = "body in-folder"
       + (bodyInfo.active ? " active" : "")
-      + (empty ? " empty" : "");
+      + (empty ? " empty" : "")
+      + (bodyInfo.hidden ? " hidden-object" : "");
     bodyItem.appendChild(treeIcon("body"));
     if (hexColor(bodyInfo.color)) {
       const swatch = document.createElement("span");
@@ -545,7 +550,9 @@ export function installTree(ctx) {
       ? " — " + t("vide")
       : (bodyInfo.active ? ""
         : " — " + t("{n} élément(s)", { n: bodyInfo.count }));
-    bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix));
+    bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix
+      + (bodyInfo.material ? ` · ${bodyInfo.material.name}` : "")
+      + (bodyInfo.hidden ? " — " + t("masqué") : "")));
     if (bodyInfo.name) {
       bodyItem.dataset.feat = bodyInfo.name;
       if (!bodyInfo.active) bodyItem.title = t("Clic : activer ce corps");
@@ -576,7 +583,8 @@ export function installTree(ctx) {
     const item = document.createElement("li");
     item.className = "surface" + (inFolder ? " in-folder" : "")
       + (ctx.selectedSurface?.name === surface.name ? " sel" : "")
-      + (rolledBack ? " rolled-back" : "");
+      + (rolledBack ? " rolled-back" : "")
+      + (surface.hidden ? " hidden-object" : "");
     if (!inFolder) item.dataset.hist = surface.name;
     item.dataset.feat = surface.name;
     const children = surface.children ?? [];
@@ -912,6 +920,7 @@ export function installTree(ctx) {
     clearAssemblyView(); // un arbre de pièce = le mode assemblage s'efface
     dropRolledBackSelection(tree);
     ctx.lastTree = tree;
+    for (const hook of ctx.treeHooks ?? []) hook(tree);
     updateEditMode();
     ctx.treeHoverPlane = null;
     treeEl.innerHTML = "";
@@ -967,11 +976,56 @@ export function installTree(ctx) {
       }
     }
 
+    appendConfigurations(tree.configurations ?? { names: [] });
     renderActiveBodyContents(tree);
     ctx.pluginRuntime?.renderTreeRows(tree, {
       treeIcon, openMenu: ctx.openMenu, append: (row) => treeEl.appendChild(row),
     });
     syncGraphFromTree();
+  }
+
+  /** Dossier Configurations : un clic active, clic droit renomme ou
+   *  supprime, la dernière ligne en ajoute une (copie de l'état courant). */
+  function appendConfigurations(configs) {
+    const names = configs.names ?? [];
+    const open = appendFolder("configurations", t("Configurations"),
+      names.length, "configurations", false,
+      { title: t("Variantes de la pièce — clic : déplier, double-clic : tableau"),
+        onDblClick: () => ctx.openConfigTable?.() });
+    if (!open) return;
+    for (const name of names) {
+      const row = document.createElement("li");
+      const active = name === configs.active;
+      row.className = "in-folder" + (active ? " sel" : "");
+      row.appendChild(treeIcon("configurations"));
+      row.appendChild(document.createTextNode(active ? `${name} ✓` : name));
+      row.title = active ? t("Configuration active — clic droit : renommer, supprimer")
+        : t("Clic : activer — clic droit : renommer, supprimer");
+      row.addEventListener("click", () => {
+        if (!active) refresh(call("activate_configuration", { name }));
+      });
+      row.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        const next = ctx.promptText(
+          "Renommer la configuration (vide : la supprimer) :", name);
+        if (next === null) return;
+        refresh(next.trim()
+          ? call("rename_configuration", { name, new_name: next.trim() })
+          : call("delete_configuration", { name }));
+      });
+      treeEl.appendChild(row);
+    }
+    const add = document.createElement("li");
+    add.className = "in-folder add-config";
+    add.textContent = t("+ Nouvelle configuration…");
+    add.title = t("Copie de l'état actuel ; les cotes changées ensuite lui appartiennent");
+    add.addEventListener("click", () => {
+      const name = ctx.promptText("Nom de la configuration :",
+        names.length ? t("Variante {n}", { n: names.length + 1 }) : t("Défaut"));
+      if (name === null || !name.trim()) return;
+      refresh(call("add_configuration", { name: name.trim() }));
+    });
+    treeEl.appendChild(add);
   }
 
   function renderActiveBodyContents(tree) {
@@ -1005,35 +1059,57 @@ export function installTree(ctx) {
     const features = tree.features ?? [];
     const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip);
     if (split.bar !== "none") {
-      for (const row of split.before) {
-        if (row.surface) {
-          appendSurfaceRow(row.item, {
-            inFolder: false, rolledBack: !!row.item.rolled_back,
-          });
-        } else {
-          appendFeatureHistoryRow(row.item, false);
-        }
-      }
+      appendHistoryRows(split.before, false);
       appendRollbackBar(tree);
-      for (const row of split.after) {
-        if (row.surface) {
-          appendSurfaceRow(row.item, {
-            inFolder: false, rolledBack: true,
-          });
-        } else {
-          appendFeatureHistoryRow(row.item, true);
-        }
-      }
+      appendHistoryRows(split.after, true);
     }
   }
 
-  function appendFeatureHistoryRow(feature, rolledBack) {
+  /** Lignes d'historique ; les fonctions rangées dans un même dossier
+   *  (qui se suivent) passent sous une ligne de dossier repliable. */
+  function appendHistoryRows(rows, rolledBack) {
+    let current = null;
+    let open = true;
+    rows.forEach((row, i) => {
+      const folder = row.surface ? null : row.item.folder ?? null;
+      if (folder !== current) {
+        current = folder;
+        open = true;
+        if (folder) {
+          let count = 0;
+          for (let j = i; j < rows.length; j++) {
+            if (rows[j].surface || rows[j].item.folder !== folder) break;
+            count++;
+          }
+          open = appendFolder(`user:${folder}`, folder, count, "folder", false,
+            { title: t("Dossier — clic droit : renommer, défaire") });
+          treeEl.lastElementChild.classList.add("user-folder");
+          treeEl.lastElementChild.addEventListener("contextmenu", (event) => {
+            event.preventDefault();
+            ctx.onFolderMenu?.(folder);
+          });
+        }
+      }
+      if (!open) return;
+      if (row.surface) {
+        appendSurfaceRow(row.item, {
+          inFolder: false, rolledBack: rolledBack || !!row.item.rolled_back,
+        });
+      } else {
+        appendFeatureHistoryRow(row.item, rolledBack, !!folder);
+      }
+    });
+  }
+
+  function appendFeatureHistoryRow(feature, rolledBack, inUserFolder = false) {
     const row = document.createElement("li");
+    if (inUserFolder) row.classList.add("in-folder");
     row.classList.add("feat");
     row.dataset.feat = feature.name;
     row.dataset.hist = feature.name;
     if (feature.error) row.classList.add("error");
     if (rolledBack) row.classList.add("rolled-back");
+    if (feature.suppressed) row.classList.add("suppressed");
     if (ctx.selectedFeatureName === feature.name) row.classList.add("sel");
     const hasChildren = !!feature.children?.length;
     const arrow = document.createElement("span");
@@ -1055,6 +1131,7 @@ export function installTree(ctx) {
       : isRepeatFeature(feature)
         ? "linear_pattern"
         : feature.surface_cut ? "surface_cut"
+          : feature.vertex_chamfer ? "vertex_chamfer"
           : feature.delete_face ? "surface_delete_face"
             : feature.replace_face ? "replace_face"
             : TREE_ICONS[feature.type];
@@ -1066,6 +1143,13 @@ export function installTree(ctx) {
     if (ctx.sketchMode.editing === feature.name) row.classList.add("editing");
     row.title = `${feature.kind} — `
       + t("double-clic : modifier · clic droit : modifier, barre de retour, supprimer · glisser : réordonner");
+    if (feature.comment) {
+      const note = document.createElement("span");
+      note.className = "tree-note";
+      note.textContent = " ✎";
+      row.appendChild(note);
+      row.title = `${feature.comment}\n\n${row.title}`;
+    }
     row.addEventListener("dblclick", () => {
       if (feature.type === "Sketcher::SketchObject") {
         onSketchRowDblClick(feature);
@@ -1486,6 +1570,24 @@ export function installTree(ctx) {
     if (feature.type === "Sketcher::SketchObject") {
       closeGraph();
       ctx.sketchMode.enter(call("sketch_edit", { feature: feature.name }));
+      return;
+    }
+    if (feature.vertex_chamfer) {
+      panel.open({
+        icon: "vertex_chamfer",
+        title: feature.label,
+        groups: [{ label: t("Distances"),
+          rows: vertexChamferRows(feature.vertex_chamfer) }],
+        onApply: (v) => {
+          const distances = vertexChamferDistances(v);
+          if (!distances) {
+            say(t("Distance de chanfrein invalide"), true);
+            return;
+          }
+          refresh(call("edit_vertex_chamfer",
+            { feature: feature.name, distances }));
+        },
+      });
       return;
     }
     if (feature.text) {

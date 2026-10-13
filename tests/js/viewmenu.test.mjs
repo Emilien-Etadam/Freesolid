@@ -23,7 +23,8 @@ describe("viewMenuItems", () => {
     });
     assert.ok(items[0].bar, "la rangée d'icônes vient en tête");
     assert.deepEqual(bar(items),
-      ["sketch-on-face", "normal-to", "fillet", "chamfer", "shell", "measure"]);
+      ["sketch-on-face", "normal-to", "fillet", "chamfer", "shell", "measure",
+        "face-color"]);
     assert.deepEqual(keys(items), ["edit-feature", "edit-sketch", "rollback",
       "delete-feature", "zoom-fit", "orient", "origin"]);
     assert.ok(items.some((i) => i.header === "Extrusion"));

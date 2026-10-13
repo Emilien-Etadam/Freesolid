@@ -15,6 +15,21 @@ export function isBodyMenuTarget(feature) {
   return feature != null && typeof feature.active === "boolean";
 }
 
+/** Fonction de volume (PartDesign, hors plan de référence) : elle se
+ *  désactive sans être supprimée. */
+export function isSuppressibleTarget(feature) {
+  const type = feature?.type ?? "";
+  return type.startsWith("PartDesign::") && type !== "PartDesign::Plane"
+    && type !== "PartDesign::Body" && !isBodyMenuTarget(feature);
+}
+
+/** Corps, ou surface du premier niveau : ce qu'on masque et affiche. */
+export function isHideableTarget(feature) {
+  if (!feature?.name || typeof feature.grounded === "boolean") return false;
+  return isBodyMenuTarget(feature)
+    || /^(Part|Surface)::/.test(feature.type ?? "");
+}
+
 export function isFrozenSurface(feature) {
   if (isGraphFeature(feature) || isRepeatFeature(feature)) return false;
   return !!(feature?.static || feature?.type === "Part::Feature");
@@ -68,7 +83,24 @@ export function installContextMenu(ctx) {
     const onComponent = !!ctx.assemblyState && typeof feature.grounded === "boolean";
     document.getElementById("ctx-modify").hidden = !canModifyMenuTarget(feature);
     document.getElementById("ctx-color").hidden = !onBody;
+    document.getElementById("ctx-material").hidden = !onBody;
     document.getElementById("ctx-color-reset").hidden = !onBody;
+    document.getElementById("ctx-comment").hidden = onBody || onComponent;
+    document.getElementById("ctx-copy").hidden = !ctx.canCopyFeature(feature);
+    const isFeature = !onBody && !onComponent && !!feature.type
+      && !/^(Part|Surface)::/.test(feature.type);
+    document.getElementById("ctx-folder").hidden = !isFeature;
+    document.getElementById("ctx-unfolder").hidden = !isFeature || !feature.folder;
+    document.getElementById("ctx-relations").hidden = !isFeature;
+    document.getElementById("ctx-sketch-plane").hidden =
+      feature.type !== "Sketcher::SketchObject" || !!ctx.assemblyState
+      || ctx.sketchMode.active;
+    const suppress = document.getElementById("ctx-suppress");
+    suppress.hidden = !isSuppressibleTarget(feature) || !!ctx.assemblyState;
+    suppress.textContent = t(feature.suppressed ? "Réactiver" : "Désactiver");
+    const hide = document.getElementById("ctx-hide");
+    hide.hidden = !isHideableTarget(feature);
+    hide.textContent = t(feature.hidden ? "Afficher" : "Masquer");
     const ground = document.getElementById("ctx-ground");
     ground.hidden = !onComponent;
     ground.textContent = t(feature.grounded ? "Libérer" : "Fixer");
@@ -90,6 +122,152 @@ export function installContextMenu(ctx) {
     const row = treeRowFor(menuFeature.name);
     if (!row) return;
     beginInlineRename(row, menuFeature);
+  });
+
+  document.getElementById("ctx-folder").addEventListener("click", () => {
+    if (!menuFeature) return;
+    const name = ctx.promptText("Nom du dossier :", menuFeature.folder || "Dossier");
+    if (name === null || !name.trim()) return;
+    refresh(call("set_folder", { features: [menuFeature.name], folder: name.trim() }));
+  });
+
+  document.getElementById("ctx-unfolder").addEventListener("click", () => {
+    if (menuFeature) {
+      refresh(call("set_folder", { features: [menuFeature.name], folder: "" }));
+    }
+  });
+
+  // Parents et enfants : un clic sur une ligne ouvre la fonction.
+  document.getElementById("ctx-relations").addEventListener("click", async () => {
+    if (!menuFeature) return;
+    const feature = menuFeature;
+    const rel = await call("feature_relations", { feature: feature.name })
+      .catch((error) => { ctx.say(String(error.message ?? error), true); return null; });
+    if (!rel) return;
+    const rows = (list) => list.map((item) => ({
+      label: item.label === item.kind ? item.label : `${item.label} — ${item.kind}`,
+      onEdit: () => {
+        const target = findFeatureInTree(ctx.lastTree, item.name);
+        if (target) modifyMenuTarget(target);
+      },
+    }));
+    panel.open({
+      icon: "relations",
+      title: t("Parents et enfants — {f}", { f: feature.label }),
+      groups: [
+        { label: t("Parents (elle s'appuie sur…)"), rows: [{ type: "list",
+          empty: t("Aucun"), items: rows(rel.parents) }] },
+        { label: t("Enfants (s'appuient sur elle)"), rows: [{ type: "list",
+          empty: t("Aucun"), items: rows(rel.children) }] },
+      ],
+      noApply: true,
+    });
+  });
+
+  document.getElementById("ctx-copy").addEventListener("click", () => {
+    if (menuFeature) ctx.copyFeature(menuFeature);
+  });
+
+  document.getElementById("ctx-comment").addEventListener("click", () => {
+    if (!menuFeature) return;
+    const feature = menuFeature;
+    panel.open({
+      icon: "comment",
+      title: t("Commentaire — {f}", { f: feature.label }),
+      groups: [{ label: t("Note"), rows: [
+        { type: "text", key: "text", label: t("Commentaire"),
+          value: feature.comment ?? "",
+          placeholder: t("Pourquoi cette cote, ce qu'il reste à faire…") },
+      ] }],
+      note: t("Visible en survolant la fonction dans l'arbre ; vide : retiré."),
+      onApply: (v) => refreshAny(call("set_comment",
+        { feature: feature.name, text: String(v.text ?? "") })),
+    });
+  });
+
+  // Changer de plan : un plan d'origine, un plan de référence ou une
+  // face cliquée dans la vue.
+  document.getElementById("ctx-sketch-plane").addEventListener("click", () => {
+    if (!menuFeature || menuFeature.type !== "Sketcher::SketchObject") return;
+    const sketch = menuFeature;
+    const tree = ctx.lastTree ?? {};
+    const datums = (tree.features ?? [])
+      .filter((f) => f.type === "PartDesign::Plane");
+    panel.open({
+      icon: "sketch",
+      title: t("Plan de l'esquisse — {s}", { s: sketch.label }),
+      groups: [{ label: t("Nouveau plan"), rows: [
+        { type: "select", key: "support", value: "XY", options: [
+          ...(tree.planes ?? []).map((p) => [p.id, p.label]),
+          ...datums.map((d) => [`datum:${d.name}`, d.label]),
+          ["face", t("Face du solide")],
+        ] },
+        { type: "selection", key: "face", accepts: ["face"],
+          label: t("Face d'accueil"), hint: t("Cliquez la face d'accueil"),
+          showIf: (v) => v.support === "face" },
+      ] }],
+      note: t("Les entités gardent leurs coordonnées dans l'esquisse ; "
+        + "les fonctions qui l'utilisent suivent le nouveau plan."),
+      onApply: (v) => {
+        const params = { sketch: sketch.name };
+        if (v.support === "face") {
+          if (v.face?.face == null) {
+            ctx.say(t("Cliquez la face d'accueil"), true);
+            return;
+          }
+          params.face = v.face.face;
+        } else if (String(v.support).startsWith("datum:")) {
+          params.datum = String(v.support).slice(6);
+        } else {
+          params.plane = v.support;
+        }
+        refresh(call("sketch_set_plane", params));
+      },
+    });
+  });
+
+  document.getElementById("ctx-suppress").addEventListener("click", () => {
+    if (!menuFeature || !isSuppressibleTarget(menuFeature)) return;
+    refresh(call("set_suppressed",
+      { features: [menuFeature.name], suppressed: !menuFeature.suppressed }));
+  });
+
+  document.getElementById("ctx-hide").addEventListener("click", () => {
+    if (!menuFeature || !isHideableTarget(menuFeature)) return;
+    refreshAny(call("set_hidden",
+      { objects: [menuFeature.name], hidden: !menuFeature.hidden }));
+  });
+
+  // Matière d'un corps : la bibliothèque, ou une masse volumique propre.
+  document.getElementById("ctx-material").addEventListener("click", async () => {
+    if (!menuFeature) return;
+    const body = menuFeature;
+    const library = await call("material_library").catch(() => null);
+    if (!library) return;
+    const current = body.material;
+    panel.open({
+      icon: "material",
+      title: t("Matière — {b}", { b: body.label }),
+      groups: [{ label: t("Matière"), rows: [
+        { type: "select", key: "material", value: current?.id ?? "",
+          options: [
+            ["", t("(aucune)")],
+            ...library.materials.map((m) => [m.id,
+              `${m.name} — ${m.density} g/cm³`]),
+            ["custom", t("Personnalisée…")],
+          ] },
+        { type: "number", key: "density", label: t("Masse volumique"),
+          unit: "g/cm³", min: 0.001,
+          value: current?.id === "custom" ? current.density : 1,
+          showIf: (v) => v.material === "custom" },
+      ] }],
+      note: t("La masse (Évaluer) suit la matière ; sa teinte devient la "
+        + "couleur du corps, sauf couleur choisie."),
+      onApply: (v) => refresh(call("set_body_material", {
+        body: body.name, material: String(v.material ?? ""),
+        ...(v.material === "custom" ? { density: Number(v.density) } : {}),
+      })),
+    });
   });
 
   document.getElementById("ctx-color").addEventListener("click", () => {
@@ -152,6 +330,7 @@ export function installContextMenu(ctx) {
       hit = {
         kind: "face",
         face: group.faceId,
+        colored: !!group.color,
         feature: feature ? {
           name: feature.name, label: feature.label, sketch: sketch?.name,
           item: feature, sketchItem: sketch,
@@ -174,6 +353,22 @@ export function installContextMenu(ctx) {
     clickButton(buttonId);
   }
 
+  // Boucle : un second appel sur la même arête prend l'autre face.
+  let loopCycle = { edge: null, face: 0 };
+  async function selectChain(edge, mode) {
+    const again = mode === "loop" && loopCycle.edge === edge;
+    loopCycle = { edge: mode === "loop" ? edge : null,
+                  face: again ? loopCycle.face + 1 : 0 };
+    const result = await call("edge_chain",
+      { edge, mode, face: loopCycle.face }).catch((error) => {
+      ctx.say(String(error.message ?? error), true);
+      return null;
+    });
+    if (!result) return;
+    ctx.selectEdgeIds(result.edges);
+    ctx.say(t("{n} arête(s) sélectionnée(s)", { n: result.edges.length }));
+  }
+
   const VIEW_MENU_ACTIONS = {
     "zoom-fit": () => frameView(null, null),
     orient: () => openOrientBox(),
@@ -193,6 +388,19 @@ export function installContextMenu(ctx) {
           type: "Sketcher::SketchObject" }
       : hit.feature.sketchItem),
     rollback: (hit) => refresh(call("set_tip", { feature: hit.feature.name })),
+    "select-tangent": (hit) => selectChain(hit.edge, "tangent"),
+    "face-color": (hit) => {
+      const picker = document.getElementById("body-color-picker");
+      const group = ctx.meshGroups.find((g) => g.faceId === hit.face);
+      picker.value = hexColor(group?.color) || cssHex(sceneTheme.part);
+      picker.addEventListener("change", () => {
+        refresh(call("set_face_color", { faces: [hit.face], color: picker.value }));
+      }, { once: true });
+      picker.click();
+    },
+    "face-color-reset": (hit) =>
+      refresh(call("set_face_color", { faces: [hit.face], color: null })),
+    "select-loop": (hit) => selectChain(hit.edge, "loop"),
     "delete-feature": (hit) => {
       if (confirm(t("Supprimer « {f} » ?", { f: hit.feature.label }))) {
         refreshAny(call("delete_feature", { feature: hit.feature.name }));

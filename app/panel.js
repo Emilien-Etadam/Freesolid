@@ -474,6 +474,10 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
         box.textContent = boundaryText(value.items, t);
       } else if (value.kind === "boundary") {
         box.textContent = boundaryText([value], t);
+      } else if (value.kind === "vertex") {
+        box.textContent = t("Sommet ({x} ; {y} ; {z})", {
+          x: +value.x.toFixed(2), y: +value.y.toFixed(2),
+          z: +value.z.toFixed(2) });
       } else if (value.kind === "surfpoint") {
         box.textContent = t("{s} — partie cliquée", { s: value.label });
       } else if (value.items && value.items.every((i) => i.kind === "feature")) {

@@ -85,7 +85,7 @@ def test_specific_fragment_wins_over_the_feature_phrase():
 
 def test_unexplained_status_is_left_alone():
     assert failure_message(
-        "Congé", "Base feature's TopoShape is invalid",
+        "Congé", "Something unexpected happened",
         "PartDesign::Fillet") is None
     assert failure_message(
         "Autre", "BRep_API: command not done", "Part::Box") is None
@@ -120,3 +120,13 @@ def test_messages_translate_to_english():
         "form a closed loop to produce a solid. Close the outline or "
         "delete the extra segments.")
     assert translate("attente : rien", "en") == "attente : rien"
+
+
+def test_suppressed_base_and_lost_links_are_explained():
+    base = failure_message("Congé", "Base feature's TopoShape is invalid",
+                           "PartDesign::Fillet")
+    assert base.startswith("Congé : ") and "désactivée" in base
+    lost = failure_message(
+        "Congé", "Invalid edge link: ;#2f:2;:G;XTR;:H1:7,E.Edge1",
+        "PartDesign::Fillet")
+    assert "arête" in lost

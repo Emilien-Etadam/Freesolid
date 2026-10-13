@@ -13,7 +13,7 @@ import { readScene } from "./theme.js";
 import {
   readDisplay, writeDisplay, displayEffects,
 } from "./display.js";
-import { FEATURES } from "./features.js";
+import { FEATURES, resolveProfileSketch } from "./features.js";
 import {
   formatProgressStatus,
   noteProgressForCalibration,
@@ -32,14 +32,27 @@ import {
 } from "./statusbar.js";
 import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, ISSUES_URL, readLang } from "./settings.js";
-import { installMenuBar, menuBarModel } from "./menubar.js";
+import { insertionItems, installMenuBar, menuBarModel } from "./menubar.js";
+import {
+  assignShortcut, comboLabel, comboOf, installRichTips, readShortcuts,
+  writeShortcuts,
+} from "./shortcuts.js";
+import { countTreeErrors, undoStepLabel } from "./history.js";
+import { installRefGeometry } from "./refgeom.js";
+import { installGestures } from "./gestures.js";
+import { installHandles } from "./handles.js";
 import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
 import { installWelcome, rememberRecent } from "./welcome.js";
 import {
-  boxMode, coverBounds, isDrag, middleAction, normalizeRect, nudgeView,
-  pickInBox, readReverseWheel, writeReverseWheel, zoomSpeedFor,
+  SELECT_KINDS, boxMode, coverBounds, filterActive, isDrag, middleAction,
+  normalizeRect, nudgeView, pickInBox, readReverseWheel, readSelectFilter,
+  writeReverseWheel, writeSelectFilter, zoomSpeedFor,
 } from "./navigation.js";
+
+// Noms des types du filtre de sélection (barre d'état).
+const FILTER_NAMES = { faces: "Faces", edges: "Arêtes", sketches: "Esquisses",
+                       surfaces: "Surfaces et courbes" };
 import { currentLang, setLang, t, translateDom } from "./i18n.js";
 import { applyStaticIcons } from "./icons.js";
 // La langue avant tout rendu : ruban, panneaux et messages passent par t().
@@ -204,7 +217,9 @@ const {
   setReverseWheel, setLayout, rebuildPlanes, rebuildOrigin,
   toggleOrigin, setOriginShown, updatePlaneVisibility,
   startPlanePick, cancelPlanePick, pickPlane, rotationPivot,
+  rememberView, previousView, captureImage,
 } = installViewport(ctx);
+ctx.rememberView = rememberView;
 
 
 // Maillages volumiques (corps, autres corps, surfaces, arêtes, aperçu).
@@ -365,6 +380,7 @@ let partMesh = null;
 let partEdges = null;
 let othersMeshes = []; // corps non actifs, un mesh chacun
 let partBaseMaterial = null; // clone possédé — couleur du corps actif
+let partFaceMaterials = []; // clones possédés — faces colorées
 let meshGroups = [];
 let edgeGroups = [];
 let edgeSnaps = []; // centres de cercles et sommets (clics de position)
@@ -459,6 +475,7 @@ function detachSurfaceMeshes() {
 let lastClearedSelections = false;
 
 function showMesh(mesh) {
+  ctx.handles?.hide(); // la géométrie change : la poignée ne vaut plus
   detachMesh(partMesh);
   for (const extra of othersMeshes) detachMesh(extra);
   othersMeshes = [];
@@ -552,8 +569,23 @@ function showMesh(mesh) {
   geometry.computeBoundingSphere(); // les vues standard cadrent dessus
 
   partBaseMaterial = ownedMaterial(baseMaterial, hexColor(mesh.color));
-  partMesh = new THREE.Mesh(geometry,
-    [partBaseMaterial, hoverMaterial, selectedMaterial]);
+  // Faces colorées : une matière par couleur, après survol et sélection.
+  const materials = [partBaseMaterial, hoverMaterial, selectedMaterial];
+  const byColor = new Map();
+  partFaceMaterials = [];
+  mesh.groups.forEach((g, i) => {
+    const color = hexColor(g.color);
+    if (!color) return;
+    if (!byColor.has(color)) {
+      const material = ownedMaterial(baseMaterial, color);
+      byColor.set(color, materials.length);
+      materials.push(material);
+      partFaceMaterials.push(material);
+    }
+    g.baseIndex = byColor.get(color);
+    geometry.groups[i].materialIndex = g.baseIndex;
+  });
+  partMesh = new THREE.Mesh(geometry, materials);
   volumesGroup.add(partMesh);
   applyVolumeVisibility();
   rebuildPlanes(); // les plans de base suivent la taille de la pièce
@@ -728,11 +760,10 @@ function applyDisplay() {
 }
 
 function closeViewMenus() {
-  const style = document.getElementById("style-menu");
-  const visibility = document.getElementById("visibility-menu");
-  const open = (style && !style.hidden) || (visibility && !visibility.hidden);
-  if (style) style.hidden = true;
-  if (visibility) visibility.hidden = true;
+  const menus = ["style-menu", "visibility-menu", "undo-menu", "filter-menu"]
+    .map((id) => document.getElementById(id)).filter(Boolean);
+  const open = menus.some((menu) => !menu.hidden);
+  for (const menu of menus) menu.hidden = true;
   return open;
 }
 
@@ -803,6 +834,46 @@ function setDisplay(patch) {
     else setDisplay({ [key]: input.checked });
   });
   visibilityMenu?.addEventListener("click", (event) => event.stopPropagation());
+
+  // Filtre de sélection : gardé d'une session à l'autre.
+  const filterButton = document.getElementById("btn-select-filter");
+  const filterMenu = document.getElementById("filter-menu");
+  ctx.selectFilter = readSelectFilter(localStore);
+  const syncFilter = () => {
+    for (const input of filterMenu.querySelectorAll("[data-filter]")) {
+      input.checked = ctx.selectFilter[input.dataset.filter] !== false;
+    }
+    filterButton.classList.toggle("on", filterActive(ctx.selectFilter));
+  };
+  const setFilter = (next) => {
+    ctx.selectFilter = next;
+    writeSelectFilter(localStore, next);
+    syncFilter();
+    say(filterActive(next)
+      ? t("Filtre de sélection : {k}", { k: SELECT_KINDS
+        .filter((kind) => next[kind] !== false)
+        .map((kind) => t(FILTER_NAMES[kind])).join(", ") || t("rien") })
+      : t("Filtre de sélection : tout"));
+  };
+  filterButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const open = filterMenu.hidden;
+    closeViewMenus();
+    filterMenu.hidden = !open;
+    syncFilter();
+  });
+  filterMenu.addEventListener("change", (event) => {
+    const input = event.target.closest("[data-filter]");
+    if (input) setFilter({ ...ctx.selectFilter, [input.dataset.filter]: input.checked });
+  });
+  filterMenu.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (event.target.closest("[data-filter-all]")) {
+      setFilter(readSelectFilter(null));
+      closeViewMenus();
+    }
+  });
+  syncFilter();
   document.addEventListener("click", () => closeViewMenus());
   syncStyleMenu();
   syncVisibilityMenu();
@@ -830,6 +901,7 @@ function clearGhost() {
   }
   baseMaterial.opacity = 1;
   if (partBaseMaterial) partBaseMaterial.opacity = 1;
+  for (const material of partFaceMaterials) material.opacity = 1;
   hoverMaterial.opacity = selectedMaterial.opacity = 1;
 }
 
@@ -879,6 +951,7 @@ function showGhost(mesh, { bothSides = false } = {}) {
   applyVolumeVisibility();
   baseMaterial.opacity = 0.15; // la pièce s'efface derrière le résultat
   if (partBaseMaterial) partBaseMaterial.opacity = 0.15;
+  for (const material of partFaceMaterials) material.opacity = 0.15;
   hoverMaterial.opacity = selectedMaterial.opacity = 0.3;
 }
 
@@ -1019,7 +1092,9 @@ Object.assign(ctx, {
 const {
   raycaster, pointer, setPointerFromEvent,
   repaintGroups, repaintSurfaces, findFeatureInTree, clearFeatureDims,
+  selectEdgeIds,
 } = installPicking(ctx);
+ctx.selectEdgeIds = selectEdgeIds;
 ctx.raycaster = raycaster;
 
 // ---------- vues standard et boîte d'orientation ----------
@@ -1034,9 +1109,54 @@ Object.assign(ctx, {
   THREE, camera, controls, viewSize, ORTHO_HEIGHT, say, setLayout, container,
 });
 const {
-  partCenterRadius, frameView, frameSketch, viewNormalTo,
+  partCenterRadius, frameView, frameSketch, viewNormalTo, zoomToSelection,
   openOrientBox, closeOrientBox, orientBoxOpen,
 } = installViewCube(ctx);
+
+// Tab : masque ce qui est sous le pointeur (la surface visée, sinon le
+// corps actif) ; Maj+Tab : affiche tout ce qui est masqué.
+let pointerInView = false;
+container.addEventListener("pointerenter", () => { pointerInView = true; });
+container.addEventListener("pointerleave", () => { pointerInView = false; });
+
+function hideUnderPointer(showAll) {
+  if (showAll) {
+    const hidden = [...(lastTree?.bodies ?? []), ...(lastTree?.surfaces ?? [])]
+      .filter((entry) => entry.hidden).map((entry) => entry.name);
+    if (!hidden.length) {
+      say(t("Rien n'est masqué"));
+      return;
+    }
+    refreshAny(call("set_hidden", { objects: hidden, hidden: false }));
+    return;
+  }
+  const target = hoveredSurface?.name
+    ?? (hoveredGroup >= 0
+      ? lastTree?.bodies?.find((body) => body.active)?.name : null);
+  if (!target) {
+    say(t("Tab : survolez un corps ou une surface à masquer (Maj+Tab : tout afficher)"));
+    return;
+  }
+  refreshAny(call("set_hidden", { objects: [target], hidden: true }));
+}
+
+function goPreviousView() {
+  if (!previousView()) say(t("Vue précédente : aucune vue à reprendre"));
+}
+
+/** Enregistre la vue en PNG (le fond et l'éclairage de l'écran). */
+function saveScreenshot() {
+  const link = document.createElement("a");
+  link.href = captureImage();
+  link.download = "freesolid.png";
+  link.click();
+  say(t("Capture enregistrée : freesolid.png"));
+}
+
+document.getElementById("view-prev").addEventListener("click", goPreviousView);
+document.getElementById("view-zoom-sel").addEventListener("click", () => {
+  if (!sketchMode.active) zoomToSelection();
+});
 ctx.frameView = frameView;
 
 function applyViewNudge(event) {
@@ -1069,7 +1189,11 @@ document.addEventListener("keydown", (event) => {
   if (sketchMode.active) {
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
     if (applyViewNudge(event)) return;
-    if ((event.key === "f" || event.key === "F")
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey
+        && (event.key === "z" || event.key === "Z")) {
+      event.preventDefault();
+      goPreviousView();
+    } else if ((event.key === "f" || event.key === "F")
         && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       frameSketch();
@@ -1084,6 +1208,18 @@ document.addEventListener("keydown", (event) => {
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
   if (applyViewNudge(event)) return;
   if (event.key !== "Escape" && pluginRuntime?.dispatchKey(event)) return;
+  // Raccourcis personnels : une commande du ruban par combinaison.
+  const combo = event.repeat ? null : comboOf(event);
+  const customId = combo && Object.keys(userShortcuts)
+    .find((id) => userShortcuts[id] === combo);
+  if (customId) {
+    const button = document.getElementById(customId);
+    if (button && !button.disabled) {
+      event.preventDefault();
+      button.click();
+      return;
+    }
+  }
   if (event.key === " " && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     if (orientBoxOpen()) closeOrientBox();
@@ -1095,6 +1231,12 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape" && closeViewMenus()) return;
+  if (event.key === "Tab" && pointerInView && !ctx.assemblyState
+      && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    hideUnderPointer(event.shiftKey);
+    return;
+  }
   if ((event.key === "f" || event.key === "F")
       && !event.ctrlKey && !event.metaKey && !event.altKey) {
     frameView(null, null);
@@ -1103,6 +1245,10 @@ document.addEventListener("keydown", (event) => {
     // Z : zoom arrière, Maj+Z : zoom avant, autour du centre de la vue.
     camera.zoom *= event.shiftKey ? 1.25 : 0.8;
     camera.updateProjectionMatrix();
+  } else if ((event.ctrlKey || event.metaKey) && event.shiftKey
+             && (event.key === "z" || event.key === "Z")) {
+    event.preventDefault();
+    goPreviousView();
   } else if ((event.ctrlKey || event.metaKey) && event.key === "8") {
     event.preventDefault();
     viewNormalTo();
@@ -1110,6 +1256,15 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     frameView(VIEWS[VIEW_KEYS[event.key]].direction,
               VIEWS[VIEW_KEYS[event.key]].up);
+  } else if ((event.ctrlKey || event.metaKey) && !event.shiftKey
+             && !event.altKey && (event.key === "c" || event.key === "C")) {
+    if (copySelectedFeature({ quiet: true })) event.preventDefault();
+  } else if ((event.ctrlKey || event.metaKey) && !event.shiftKey
+             && !event.altKey && (event.key === "v" || event.key === "V")) {
+    if (copiedFeature) {
+      event.preventDefault();
+      pasteFeature();
+    }
   } else if ((event.ctrlKey || event.metaKey)
              && (event.key === "z" || event.key === "y")) {
     event.preventDefault();
@@ -1152,6 +1307,20 @@ installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
       welcomeApi?.showWelcome();
     } else if (name === "create") {
       welcomeApi?.showNew();
+    } else if (name === "screenshot") {
+      saveScreenshot();
+    } else if (name === "properties") {
+      openDocumentProperties();
+    } else if (name === "shortcuts") {
+      openShortcutPanel();
+    } else if (name === "config-table") {
+      openConfigTable();
+    } else if (name === "save-template") {
+      saveAsTemplate();
+    } else if (name === "copy") {
+      copySelectedFeature();
+    } else if (name === "paste") {
+      pasteFeature();
     }
   },
 });
@@ -1429,12 +1598,18 @@ async function featureCommand(openPanel) {
 
 // ---------- plan de coupe visuel ----------
 
-function setClip(axis, position, flip) {
+let clipState = null; // { axis, position, flip } de la coupe visuelle
+
+function setClip(axis, position, flip, { handle = true } = {}) {
   if (!axis || axis === "off") {
     renderer.clippingPlanes = [];
+    clipState = null;
+    ctx.handles?.hide();
     say("Plan de coupe désactivé.");
     return;
   }
+  clipState = { axis, position, flip };
+  if (handle) showClipHandle();
   const normals = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] };
   const n = new THREE.Vector3(...normals[axis]);
   if (flip) n.negate();
@@ -1442,6 +1617,61 @@ function setClip(axis, position, flip) {
     new THREE.Plane(n, flip ? position : -position)];
   say(t("Coupe {axis} à {position} mm — purement visuelle.", { axis, position }));
 }
+
+/** Poignée du plan de coupe : la tirer déplace la coupe en direct. */
+function showClipHandle() {
+  if (!clipState || !ctx.handles) return;
+  const { axis, position, flip } = clipState;
+  const index = { X: 0, Y: 1, Z: 2 }[axis];
+  const dir = [0, 0, 0];
+  dir[index] = 1;
+  const origin = partCenterRadius().center.toArray();
+  origin[index] = position;
+  ctx.handles.show({
+    origin, dir,
+    onDrag: (d) => setClip(axis, Math.round((position + d) * 10) / 10, flip,
+      { handle: false }),
+    onEnd: () => showClipHandle(),
+  });
+}
+
+// Tirer la face du bout d'une extrusion ou d'un enlèvement : sa
+// profondeur suit, l'aperçu jaune montre le résultat, le lâcher l'applique.
+ctx.onFacePicked = async (face) => {
+  if (face === null || sketchMode.active || panel.active || assemblyState) {
+    if (ctx.handles?.active) ctx.handles.hide();
+    if (face === null) showClipHandle();
+    return;
+  }
+  const info = await call("face_drag_info", { face }).catch(() => null);
+  const drag = info?.drag;
+  if (!drag || selectedFaceId !== face) return;
+  const valueAt = (d) => Math.round((drag.value + drag.factor * d) * 2) / 2;
+  ctx.handles.show({
+    origin: drag.point, dir: drag.normal,
+    onDrag: (d) => {
+      const value = valueAt(d);
+      say(t("{f} : profondeur {v} mm — relâchez pour appliquer",
+        { f: drag.label, v: value }));
+      if (value > 0) {
+        schedulePreview({ op: "set_params", params: {
+          feature: drag.feature, values: { [drag.prop]: value } } });
+      }
+    },
+    onEnd: (d) => {
+      clearGhost();
+      const value = valueAt(d);
+      if (value === drag.value) return;
+      if (!(value > 0)) {
+        say(t("La profondeur doit rester positive"), true);
+        ctx.onFacePicked(face);
+        return;
+      }
+      refresh(call("set_params", { feature: drag.feature,
+                                   values: { [drag.prop]: value } }));
+    },
+  });
+};
 
 document.getElementById("btn-clip").addEventListener("click", () => {
   const active = renderer.clippingPlanes.length > 0;
@@ -1697,6 +1927,276 @@ document.getElementById("btn-new").addEventListener("click", async () => {
 
 document.getElementById("btn-undo").addEventListener("click", () =>
   refreshAny(call("undo")));
+
+// Liste de l'historique : un clic sur un pas défait tout jusqu'à lui.
+document.getElementById("btn-undo-list").addEventListener("click", async (event) => {
+  event.stopPropagation();
+  const menu = document.getElementById("undo-menu");
+  const wasOpen = !menu.hidden;
+  closeViewMenus();
+  if (wasOpen) return;
+  const history = await call("undo_history").catch(() => null);
+  menu.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "menu-head";
+  head.textContent = history?.undo?.length
+    ? t("Annuler jusqu'à…") : t("Rien à annuler");
+  menu.appendChild(head);
+  (history?.undo ?? []).slice(0, 30).forEach((op, i) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = t(undoStepLabel(op));
+    button.addEventListener("click", () => {
+      closeViewMenus();
+      refreshAny(call("undo", { steps: i + 1 }));
+    });
+    menu.appendChild(button);
+  });
+  menu.hidden = false;
+});
+
+// Erreurs de reconstruction : le compte dans la barre d'état, la liste
+// (avec le message du modeleur) au clic ; une ligne ouvre la fonction.
+const errorsBadge = document.getElementById("errors-badge");
+ctx.treeHooks = [(tree) => {
+  const count = countTreeErrors(tree);
+  errorsBadge.hidden = count === 0;
+  errorsBadge.textContent = t("⚠ {n} erreur(s)", { n: count });
+}];
+
+// Gestes de la souris : glisser au bouton droit dans la vue.
+installGestures(ctx);
+ctx.handles = installHandles(ctx);
+
+// Axes, points et repères : panneaux du ruban, dessin à chaque arbre.
+Object.assign(ctx, { currentSelection, featureCommand });
+const refGeometry = installRefGeometry(ctx);
+ctx.treeHooks.push((tree) => refGeometry.draw(tree));
+errorsBadge.addEventListener("click", async () => {
+  const result = await call("rebuild_errors").catch((error) => {
+    say(String(error.message ?? error), true);
+    return null;
+  });
+  if (!result) return;
+  panel.open({
+    icon: "rebuild",
+    title: t("Erreurs de reconstruction"),
+    groups: [{ label: t("Fonctions en erreur"), rows: [{
+      type: "list",
+      empty: t("Aucune erreur"),
+      items: result.errors.map((error) => ({
+        label: error.message,
+        onEdit: () => {
+          const feature = findFeatureInTree(lastTree, error.name);
+          if (feature) editFeature(feature);
+        },
+      })),
+    }] }],
+    note: t("Un clic ouvre la fonction. Corrigez d'abord la première : "
+      + "les suivantes en dépendent souvent."),
+    noApply: true,
+  });
+});
+
+/** La pièce en cours devient un gabarit, proposé ensuite par Nouveau. */
+async function saveAsTemplate() {
+  if (!lastTree) {
+    say(t("Gabarit : ouvrez d'abord une pièce"), true);
+    return;
+  }
+  const name = prompt("Nom du gabarit :", "Pièce");
+  if (name === null || !name.trim()) return;
+  try {
+    await call("save_template", { name: name.trim() });
+    say(t("Gabarit « {n} » enregistré — Nouveau le propose", { n: name.trim() }));
+  } catch (error) {
+    say(String(error.message ?? error), true);
+  }
+}
+
+// Copier-coller de fonctions : Ctrl+C sur une fonction à esquisse (ou une
+// esquisse), Ctrl+V sur une face, un plan ou un plan de référence.
+let copiedFeature = null;
+/** Tableau des configurations : une ligne par cote, une valeur par
+ *  configuration ; OK enregistre les valeurs changées. */
+async function openConfigTable() {
+  const table = await call("configuration_table").catch((error) => {
+    say(String(error.message ?? error), true);
+    return null;
+  });
+  if (!table) return;
+  if (!table.names.length) {
+    say(t("Ajoutez d'abord une configuration (dossier Configurations de l'arbre)"));
+    return;
+  }
+  panel.open({
+    icon: "configurations",
+    title: t("Tableau des configurations"),
+    groups: table.rows.map((row, i) => ({
+      label: row.prop
+        ? `${row.label} · ${t(PROP_LABELS[row.prop]?.[0] ?? row.prop)}` : row.label,
+      rows: table.names.map((name) => ({
+        type: "number", key: `${i}|${name}`,
+        label: name === table.active ? `${name} ✓` : name,
+        value: row.values[name] ?? 0,
+      })),
+    })),
+    note: t("Une ligne par cote ; la configuration active (✓) s'applique tout de suite."),
+    onApply: (v) => {
+      const values = {};
+      table.rows.forEach((row, i) => {
+        for (const name of table.names) {
+          const next = num(v[`${i}|${name}`]);
+          if (next == null || next === row.values[name]) continue;
+          (values[name] ??= {})[row.key] = next;
+        }
+      });
+      if (Object.keys(values).length) {
+        refresh(call("set_configuration_values", { values }));
+      }
+    },
+  });
+}
+ctx.openConfigTable = openConfigTable;
+
+// Dossier de l'arbre : clic droit pour le renommer (vide : le défaire).
+ctx.promptText = prompt;
+ctx.onFolderMenu = (folder) => {
+  const name = prompt("Renommer le dossier (vide : le défaire) :", folder);
+  if (name === null) return;
+  refresh(call("rename_folder", { folder, name: name.trim() }));
+};
+ctx.canCopyFeature = (feature) => feature?.type === "Sketcher::SketchObject"
+  || (feature?.children ?? []).some((c) => c.type === "Sketcher::SketchObject");
+ctx.copyFeature = (feature) => {
+  copiedFeature = { name: feature.name, label: feature.label };
+  say(t("« {f} » copiée — sélectionnez une face ou un plan, puis Ctrl+V",
+    { f: feature.label }));
+};
+
+function copySelectedFeature({ quiet = false } = {}) {
+  const feature = findFeatureInTree(lastTree, selectedFeatureName)
+    ?? (selectedSketch ? findFeatureInTree(lastTree, selectedSketch.name) : null);
+  if (!feature || !ctx.canCopyFeature(feature)) {
+    if (!quiet) say(t("Copier : cliquez d'abord une fonction à esquisse dans l'arbre"));
+    return false;
+  }
+  ctx.copyFeature(feature);
+  return true;
+}
+
+function pasteFeature() {
+  if (!copiedFeature) {
+    say(t("Coller : rien n'a été copié"));
+    return;
+  }
+  const target = selectedFaceId !== null ? { face: selectedFaceId }
+    : selectedDatumFeature ? { datum: selectedDatumFeature.name }
+      : selectedPlane !== null ? { plane: selectedPlane } : null;
+  if (!target) {
+    say(t("Coller : sélectionnez la face ou le plan d'accueil"), true);
+    return;
+  }
+  refresh(call("paste_feature", { feature: copiedFeature.name, ...target }));
+}
+
+// Raccourcis personnels (Outils → Raccourcis clavier…), gardés dans le
+// navigateur ; les infobulles des barres les montrent.
+let userShortcuts = readShortcuts(localStore);
+installRichTips(document, {
+  selector: "[id^=\"ribbon-\"] button, #viewbar button, #quickbar button, #sketchbar button",
+  shortcutFor: (id) => userShortcuts[id] ?? null,
+});
+
+function openShortcutPanel() {
+  const commands = insertionItems(RIBBON_LAYOUT).filter((item) => item.click);
+  const labelOf = (id) => t(commands.find((c) => c.click === id)?.label ?? id);
+  panel.open({
+    icon: "shortcuts",
+    title: t("Raccourcis clavier"),
+    groups: [
+      { label: t("Raccourcis attribués"), rows: [{
+        type: "list",
+        empty: t("Aucun pour l'instant"),
+        items: Object.entries(userShortcuts).map(([id, combo]) => ({
+          label: `${labelOf(id)} — ${comboLabel(combo)}`,
+          onDelete: () => {
+            const { [id]: _removed, ...rest } = userShortcuts;
+            userShortcuts = rest;
+            writeShortcuts(localStore, userShortcuts);
+            openShortcutPanel();
+          },
+        })),
+      }] },
+      { label: t("Nouveau raccourci"), rows: [
+        { type: "select", key: "command", label: t("Commande"),
+          value: commands[0]?.click,
+          options: commands.map((c) => [c.click, t(c.label)]) },
+        { type: "text", key: "keys", label: t("Touches"), value: "",
+          placeholder: t("Ctrl+Maj+E") },
+      ] },
+    ],
+    note: t("Dans la pièce, hors esquisse. Les touches de vue (F, Z, Ctrl+1…) "
+      + "et du navigateur restent réservées."),
+    onApply: (v) => {
+      if (!String(v.keys ?? "").trim()) return;
+      const result = assignShortcut(userShortcuts, v.command, v.keys);
+      if (result.error) {
+        say(t(result.error), true);
+        return;
+      }
+      userShortcuts = result.map;
+      writeShortcuts(localStore, userShortcuts);
+      say(result.replaced
+        ? t("{c} : {k} (retiré de {o})", { c: labelOf(v.command),
+          k: comboLabel(userShortcuts[v.command]), o: labelOf(result.replaced) })
+        : t("{c} : {k}", { c: labelOf(v.command),
+          k: comboLabel(userShortcuts[v.command]) }));
+    },
+  });
+}
+
+/** Propriétés du fichier : auteur, société, description, propriétés
+ *  libres (une ligne par nom ; valeur vide : retirée). */
+async function openDocumentProperties() {
+  const props = await call("document_properties").catch((error) => {
+    say(String(error.message ?? error), true);
+    return null;
+  });
+  if (!props) return;
+  const custom = Object.entries(props.custom ?? {});
+  panel.open({
+    icon: "doc_props",
+    title: t("Propriétés du fichier"),
+    groups: [
+      { label: t("Résumé"), rows: [
+        { type: "text", key: "author", label: t("Auteur"), value: props.author },
+        { type: "text", key: "company", label: t("Société"), value: props.company },
+        { type: "text", key: "description", label: t("Description"),
+          value: props.description },
+      ] },
+      { label: t("Propriétés libres"), rows: [
+        ...custom.map(([name, value], i) => ({
+          type: "text", key: `custom${i}`, label: name, value })),
+        { type: "text", key: "newName", label: t("Nouvelle propriété"),
+          value: "", placeholder: t("Référence, matière, client…") },
+        { type: "text", key: "newValue", label: t("Valeur"), value: "" },
+      ] },
+    ],
+    note: t("Enregistrées dans le fichier .FCStd ; une valeur vide retire la propriété."),
+    onApply: async (v) => {
+      const next = {};
+      custom.forEach(([name], i) => { next[name] = String(v[`custom${i}`] ?? ""); });
+      const fresh = String(v.newName ?? "").trim();
+      if (fresh) next[fresh] = String(v.newValue ?? "");
+      await call("set_document_properties", { values: {
+        author: String(v.author ?? ""), company: String(v.company ?? ""),
+        description: String(v.description ?? ""), custom: next } })
+        .then(() => say(t("Propriétés du fichier enregistrées")))
+        .catch((error) => say(String(error.message ?? error), true));
+    },
+  });
+}
 document.getElementById("btn-redo").addEventListener("click", () =>
   refreshAny(call("redo")));
 document.getElementById("btn-rebuild").addEventListener("click", () => {
@@ -1901,10 +2401,14 @@ function openFeaturePanel(entry, sketchOverride) {
       }
     },
   };
+  const depthHandle = ["btn-pad", "btn-pocket"].includes(entry.button)
+    ? extrudeDepthHandle(entry, ctx) : null;
+  if (depthHandle) spec.onClose = () => depthHandle.close();
   if (entry.preview !== false) {
     spec.onChange = (v) => {
       schedulePreview(entry.build(v, ctx));
       if (entry.button === "btn-fillet") updateFilletRadiusBubble(v);
+      depthHandle?.update(v);
     };
     // Œil de l'en-tête : couper l'aperçu (fonction lourde), le rallumer.
     spec.onPreview = (on, v) =>
@@ -1915,6 +2419,55 @@ function openFeaturePanel(entry, sketchOverride) {
     : typeof entry.invalid === "function" ? entry.invalid(v, ctx)
       : entry.invalid ?? null);
   panel.open(spec);
+}
+
+/** Flèche au bout de l'extrusion (ou de l'enlèvement) : la tirer change
+ *  la profondeur du panneau, l'aperçu suit. Profondeur « borgne » ou
+ *  « plan milieu » seulement. */
+function extrudeDepthHandle(entry, featureCtx) {
+  const pocket = entry.button === "btn-pocket";
+  const sketch = resolveProfileSketch(featureCtx)?.name;
+  let frame = null;
+  let dragging = false;
+  let closed = false;
+  let last = null;
+
+  function show(v) {
+    last = v;
+    if (closed || !frame || dragging) return;
+    const length = num(v.length);
+    if (!(length > 0) || (v.cond !== "borgne" && v.cond !== "milieu")) {
+      ctx.handles?.hide();
+      return;
+    }
+    const half = v.cond === "milieu";
+    const sign = (pocket ? -1 : 1) * (v.reversed && !half ? -1 : 1);
+    const dir = frame.normal.map((c) => c * sign);
+    const reach = half ? length / 2 : length;
+    ctx.handles.show({
+      origin: frame.center.map((c, i) => c + dir[i] * reach), dir,
+      onDrag: (d) => {
+        dragging = true;
+        const next = Math.max(0.5, Math.round((length + d * (half ? 2 : 1)) * 2) / 2);
+        panel.restore({ length: next });
+      },
+      onEnd: () => {
+        dragging = false;
+        show(last);
+      },
+    });
+  }
+
+  if (sketch) {
+    call("sketch_frame", { sketch }).then((result) => {
+      frame = result;
+      if (last) show(last);
+    }).catch(() => {});
+  }
+  return {
+    update: (v) => show(v),
+    close: () => { closed = true; ctx.handles?.hide(); },
+  };
 }
 
 function bindFeature(entry) {
@@ -2122,6 +2675,12 @@ welcomeApi = installWelcome(document, {
   onAssembly: () => document.getElementById("btn-newasm").click(),
   onOpen: () => document.getElementById("btn-open").click(),
   onRecent: (path) => openDocument(path),
+  listTemplates: () => call("list_templates").then((r) => r.templates),
+  onTemplate: async (name) => {
+    if (!(await mayDiscard())) return;
+    clearFeatureDims();
+    refresh(call("new_from_template", { name }));
+  },
 });
 
 call("ping")

@@ -1318,5 +1318,6 @@
  "Rectangle": "Rectangle",
  "Cotation": "Dimension",
  "{f} : profondeur {v} mm — relâchez pour appliquer": "{f}: depth {v} mm — release to apply",
- "La profondeur doit rester positive": "The depth must stay positive"
+ "La profondeur doit rester positive": "The depth must stay positive",
+ "{c} : {d} mm le long de {a}": "{c}: {d} mm along {a}"
 }

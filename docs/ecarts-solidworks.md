@@ -118,7 +118,7 @@ ordre.
 | 62 | Assemblage : rotation à la souris, contrainte rapide Alt+glisser, présélection reprise | P2 | fait en partie : glisser au bouton droit tourne un composant libre autour de son centre ; Alt+glisser une face sur une face d’un autre composant pose une contrainte (concentrique pour deux cylindres, coïncidente sinon). Reste : présélection reprise par le panneau de contrainte |
 | 63 | Arbre : dossiers, vue parents / enfants | P3 | fait : clic droit → Ranger dans un dossier… / Sortir du dossier (dossier repliable, clic droit pour le renommer ou le défaire) ; clic droit → Parents et enfants… (un clic ouvre la fonction) |
 | 64 | Gestes de la souris | P3 | fait : glisser au bouton droit dans la vue → couronne de 4 commandes (pièce : Esquisse, Vue de dessus, Zoom au mieux, Vue isométrique ; esquisse : Ligne, Rectangle, Cercle, Cotation) ; clic droit sans glisser = menu contextuel |
-| 65 | Manipulation directe : coupe déplaçable, poignées, cotes et faces à glisser, manipulateur trois axes | P1 | à faire |
+| 65 | Manipulation directe : coupe déplaçable, poignées, cotes et faces à glisser, manipulateur trois axes | P1 | fait en partie : flèche sur la face du bout d’une extrusion ou d’un enlèvement sélectionnée (la tirer change la profondeur, aperçu jaune, pas de 0,5 mm) ; flèche de profondeur dans les panneaux Extrusion et Enlèvement ; flèche du plan de coupe (déplacement en direct) ; manipulateur X/Y/Z sur le composant libre sélectionné d’un assemblage. Reste : glisser une cote d’esquisse pour changer sa valeur |
 | 66 | Assemblage : vue éclatée par étapes, collisions pendant le glisser, sous-assemblages | P2 | à faire |
 | 67 | Configurations | P2 | à faire |
 | 68 | Export PDF / IGES, impression | P3 | à faire |

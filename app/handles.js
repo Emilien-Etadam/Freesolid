@@ -36,40 +36,40 @@ export function installHandles(ctx) {
     return raycaster.ray;
   }
 
-  function paramAt(event) {
+  function paramAt(event, axis) {
     const ray = rayAt(event);
     return axisParam(ray.origin.toArray(), ray.direction.toArray(),
-      handle.origin.toArray(), handle.dir.toArray());
+      handle.origin.toArray(), handle.axes[axis].dir.toArray());
   }
 
-  function hits(event) {
-    if (!handle) return false;
+  /** Index de la flèche sous le pointeur, ou -1. */
+  function hitAxis(event) {
+    if (!handle) return -1;
     rayAt(event);
-    return raycaster.intersectObject(handle.group, true).length > 0;
+    const hit = raycaster.intersectObject(handle.root, true)[0];
+    return hit ? hit.object.userData.axis ?? -1 : -1;
   }
 
   function hide() {
     if (!handle) return;
-    handle.group.traverse((obj) => {
+    handle.root.traverse((obj) => {
       obj.geometry?.dispose();
       obj.material?.dispose();
     });
-    scene.remove(handle.group);
+    scene.remove(handle.root);
     handle = null;
     drag = null;
+    controls.enabled = true;
     canvas.style.cursor = "";
   }
 
   function place() {
-    const { group, origin, dir, offset } = handle;
-    group.position.copy(origin).addScaledVector(dir, offset);
-    group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    const { root, origin, axes, offset, active } = handle;
+    root.position.copy(origin);
+    if (active >= 0) root.position.addScaledVector(axes[active].dir, offset);
   }
 
-  function show(spec) {
-    hide();
-    const size = Math.max(ctx.partCenterRadius().radius * 0.5, 15);
-    const color = ctx.sceneTheme.accent ?? 0x3d8bfd;
+  function arrow(dir, color, size, axis) {
     const group = new THREE.Group();
     const material = () => new THREE.MeshBasicMaterial({
       color, depthTest: false, transparent: true, opacity: 0.95 });
@@ -79,48 +79,67 @@ export function installHandles(ctx) {
     const cone = new THREE.Mesh(
       new THREE.ConeGeometry(size * 0.16, size * 0.36, 18), material());
     cone.position.y = size + size * 0.18;
+    for (const part of [shaft, cone]) {
+      part.renderOrder = 40;
+      part.userData.axis = axis;
+    }
     group.add(shaft, cone);
-    group.renderOrder = 40;
-    shaft.renderOrder = cone.renderOrder = 40;
-    scene.add(group);
-    handle = { group, spec, offset: 0,
-               origin: new THREE.Vector3(...spec.origin),
-               dir: new THREE.Vector3(...spec.dir).normalize() };
+    group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    return group;
+  }
+
+  /** Pose une poignée : une flèche (`dir`, `onDrag(d)`, `onEnd(d)`) ou
+   *  plusieurs (`axes: [{ dir, color }]`, `onDrag(d, i)`, `onEnd(d, i)`). */
+  function show(spec) {
+    hide();
+    const size = spec.size ?? Math.max(ctx.partCenterRadius().radius * 0.5, 15);
+    const accent = ctx.sceneTheme.accent ?? 0x3d8bfd;
+    const axes = (spec.axes ?? [{ dir: spec.dir, color: accent }]).map((a) => ({
+      dir: new THREE.Vector3(...a.dir).normalize(), color: a.color ?? accent }));
+    const root = new THREE.Group();
+    axes.forEach((a, i) => root.add(arrow(a.dir, a.color, size, i)));
+    scene.add(root);
+    handle = { root, spec, axes, offset: 0, active: -1,
+               origin: new THREE.Vector3(...spec.origin) };
     place();
   }
 
   // Avant la sélection et la navigation : la poignée prend le geste.
   window.addEventListener("pointerdown", (event) => {
-    if (event.target !== canvas || event.button !== 0 || !hits(event)) return;
-    const t0 = paramAt(event);
+    if (event.target !== canvas || event.button !== 0) return;
+    const axis = hitAxis(event);
+    if (axis < 0) return;
+    const t0 = paramAt(event, axis);
     if (t0 === null) return;
     event.stopImmediatePropagation();
     event.preventDefault();
-    drag = { t0 };
+    drag = { t0, axis };
+    handle.active = axis;
+    handle.offset = 0;
     controls.enabled = false;
   }, true);
 
   window.addEventListener("pointermove", (event) => {
     if (!handle) return;
     if (!drag) {
-      if (event.target === canvas) canvas.style.cursor = hits(event) ? "grab" : canvas.style.cursor;
+      if (event.target === canvas && hitAxis(event) >= 0) canvas.style.cursor = "grab";
       return;
     }
-    const t = paramAt(event);
+    const t = paramAt(event, drag.axis);
     if (t === null) return;
     handle.offset = t - drag.t0;
     place();
-    handle.spec.onDrag?.(handle.offset);
+    handle.spec.onDrag?.(handle.offset, drag.axis);
   }, true);
 
   window.addEventListener("pointerup", (event) => {
     if (!drag || event.button !== 0) return;
     event.stopImmediatePropagation();
+    const { axis } = drag;
     const offset = handle.offset;
     drag = null;
     controls.enabled = true;
-    const spec = handle.spec;
-    spec.onEnd?.(offset);
+    handle.spec.onEnd?.(offset, axis);
   }, true);
 
   return { show, hide, get active() { return handle !== null; } };

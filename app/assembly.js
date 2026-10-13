@@ -37,6 +37,7 @@ export function installAssembly(ctx) {
     }
     ctx.assemblyState = null;
     selectedComponent = null;
+    ctx.handles?.hide();
   }
 
   function showAssemblyMeshes(data) {
@@ -67,6 +68,7 @@ export function installAssembly(ctx) {
     }
     scene.add(ctx.asmGroup);
     computeExplodeDirs(); // la vue éclatée survit aux reconstructions
+    if (selectedComponent) showTriad(selectedComponent);
   }
 
   function selectComponent(name) {
@@ -78,10 +80,51 @@ export function installAssembly(ctx) {
       }
     }
     if (ctx.assemblyState) renderAssemblyTree(ctx.assemblyState);
+    showTriad(name);
     pickEl.textContent = name
       ? t("sél. {s}", { s: ctx.assemblyState?.components.find(
           (c) => c.name === name)?.label ?? name })
       : "";
+  }
+
+  // Manipulateur à trois axes sur le composant libre sélectionné : tirer
+  // une flèche le déplace le long de X, Y ou Z ; le lâcher l'applique.
+  const TRIAD = [
+    { dir: [1, 0, 0], color: 0xd9534f },
+    { dir: [0, 1, 0], color: 0x5cb85c },
+    { dir: [0, 0, 1], color: 0x4a90d9 },
+  ];
+  function showTriad(name) {
+    const comp = ctx.assemblyState?.components.find((c) => c.name === name);
+    const mesh = ctx.asmGroup?.children.find(
+      (m) => m.userData.component === name);
+    if (!comp || !mesh || comp.grounded || !ctx.handles) {
+      ctx.handles?.hide();
+      return;
+    }
+    const box = new THREE.Box3().setFromObject(mesh);
+    const size = Math.max(box.getSize(new THREE.Vector3()).length() * 0.35, 12);
+    ctx.handles.show({
+      origin: box.getCenter(new THREE.Vector3()).toArray(), axes: TRIAD, size,
+      onDrag: (d, axis) => {
+        mesh.position.set(...TRIAD[axis].dir.map((c) => c * d));
+        say(t("{c} : {d} mm le long de {a}", { c: comp.label,
+          d: Math.round(d * 10) / 10, a: "XYZ"[axis] }));
+      },
+      onEnd: (d, axis) => {
+        const step = Math.round(d * 10) / 10;
+        if (!step) {
+          mesh.position.set(0, 0, 0);
+          showTriad(name);
+          return;
+        }
+        const [x, y, z] = comp.position.map(
+          (c, i) => c + TRIAD[axis].dir[i] * step);
+        const [yaw, pitch, roll] = comp.rotation;
+        refreshAssembly(call("move_component",
+          { component: comp.name, x, y, z, yaw, pitch, roll }));
+      },
+    });
   }
 
   async function refreshAssembly(treePromise) {

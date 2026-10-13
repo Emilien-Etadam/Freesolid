@@ -297,6 +297,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type",
                          _CONTENT_TYPES.get(ext, "application/octet-stream"))
         self.send_header("Content-Length", str(len(body)))
+        # Toujours revalider : après une mise à jour, une page en cache
+        # mêlée aux nouveaux modules casse l'interface au chargement.
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 

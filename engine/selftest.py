@@ -4001,6 +4001,29 @@ class SelftestMixin:
                 and renamed["features"][0].get("folder") == "Socle"
                 and "folder" not in gone["features"][0])
 
+            mark("p67: tirer la face du bout")
+            self.new_part("Pièce tirée")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(20)
+            body = self._require_body()
+            top = next(i for i, f in enumerate(body.Shape.Faces)
+                       if f.normalAt(0, 0).z > 0.9)
+            side = next(i for i, f in enumerate(body.Shape.Faces)
+                        if abs(f.normalAt(0, 0).z) < 0.1)
+            cap = self.face_drag_info(top)["drag"]
+            wall = self.face_drag_info(side)["drag"]
+            self.add_rect_sketch(10, 10, face=top)
+            self.add_pocket(5)
+            floor = next(i for i, f in enumerate(body.Shape.Faces)
+                         if f.normalAt(0, 0).z > 0.9
+                         and abs(f.CenterOfMass.z - 15) < 1e-6)
+            hole = self.face_drag_info(floor)["drag"]
+            report["p67_tirer_face"] = (
+                cap is not None and cap["factor"] == 1 and cap["value"] == 20
+                and wall is None
+                and hole is not None and hole["factor"] == -1
+                and abs(hole["value"] - 5) < 1e-9)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

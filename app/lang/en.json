@@ -1316,5 +1316,7 @@
  "Vue de dessus": "Top view",
  "Vue isométrique": "Isometric view",
  "Rectangle": "Rectangle",
- "Cotation": "Dimension"
+ "Cotation": "Dimension",
+ "{f} : profondeur {v} mm — relâchez pour appliquer": "{f}: depth {v} mm — release to apply",
+ "La profondeur doit rester positive": "The depth must stay positive"
 }

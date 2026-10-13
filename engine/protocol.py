@@ -170,6 +170,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "set_folder": _Req(("features", list), optional={"folder": str}),
     "rename_folder": _Req(("folder", str), optional={"name": str}),
     "feature_relations": _Req(("feature", str)),  # lecture : parents, enfants
+    "face_drag_info": _Req(("face", int)),  # lecture : la face se tire-t-elle
+    "sketch_frame": _Req(("sketch", str)),  # lecture : centre et normale
     "save_template": _Req(("name", str)),
     "new_from_template": _Req(("name", str)),
     "add_datum_axis": _Req(optional={"axis": str, "edge": int}),

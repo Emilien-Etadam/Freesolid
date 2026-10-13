@@ -627,7 +627,9 @@ export function installPicking(ctx) {
         panel.notifyPick("face", { kind: "face", face: ctx.selectedFaceId });
       }
       if (event.button === 0) ctx.showContextToolbar(event);
+      ctx.onFacePicked?.(ctx.selectedFaceId);
     } else {
+      ctx.onFacePicked?.(null);
       ctx.lastFaceHit = null;
       clearPlaneChoice();
       clearFeatureDims();

@@ -13,7 +13,7 @@ import { readScene } from "./theme.js";
 import {
   readDisplay, writeDisplay, displayEffects,
 } from "./display.js";
-import { FEATURES } from "./features.js";
+import { FEATURES, resolveProfileSketch } from "./features.js";
 import {
   formatProgressStatus,
   noteProgressForCalibration,
@@ -40,6 +40,7 @@ import {
 import { countTreeErrors, undoStepLabel } from "./history.js";
 import { installRefGeometry } from "./refgeom.js";
 import { installGestures } from "./gestures.js";
+import { installHandles } from "./handles.js";
 import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
 import { installWelcome, rememberRecent } from "./welcome.js";
@@ -474,6 +475,7 @@ function detachSurfaceMeshes() {
 let lastClearedSelections = false;
 
 function showMesh(mesh) {
+  ctx.handles?.hide(); // la géométrie change : la poignée ne vaut plus
   detachMesh(partMesh);
   for (const extra of othersMeshes) detachMesh(extra);
   othersMeshes = [];
@@ -1594,12 +1596,18 @@ async function featureCommand(openPanel) {
 
 // ---------- plan de coupe visuel ----------
 
-function setClip(axis, position, flip) {
+let clipState = null; // { axis, position, flip } de la coupe visuelle
+
+function setClip(axis, position, flip, { handle = true } = {}) {
   if (!axis || axis === "off") {
     renderer.clippingPlanes = [];
+    clipState = null;
+    ctx.handles?.hide();
     say("Plan de coupe désactivé.");
     return;
   }
+  clipState = { axis, position, flip };
+  if (handle) showClipHandle();
   const normals = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] };
   const n = new THREE.Vector3(...normals[axis]);
   if (flip) n.negate();
@@ -1607,6 +1615,61 @@ function setClip(axis, position, flip) {
     new THREE.Plane(n, flip ? position : -position)];
   say(t("Coupe {axis} à {position} mm — purement visuelle.", { axis, position }));
 }
+
+/** Poignée du plan de coupe : la tirer déplace la coupe en direct. */
+function showClipHandle() {
+  if (!clipState || !ctx.handles) return;
+  const { axis, position, flip } = clipState;
+  const index = { X: 0, Y: 1, Z: 2 }[axis];
+  const dir = [0, 0, 0];
+  dir[index] = 1;
+  const origin = partCenterRadius().center.toArray();
+  origin[index] = position;
+  ctx.handles.show({
+    origin, dir,
+    onDrag: (d) => setClip(axis, Math.round((position + d) * 10) / 10, flip,
+      { handle: false }),
+    onEnd: () => showClipHandle(),
+  });
+}
+
+// Tirer la face du bout d'une extrusion ou d'un enlèvement : sa
+// profondeur suit, l'aperçu jaune montre le résultat, le lâcher l'applique.
+ctx.onFacePicked = async (face) => {
+  if (face === null || sketchMode.active || panel.active || assemblyState) {
+    if (ctx.handles?.active) ctx.handles.hide();
+    if (face === null) showClipHandle();
+    return;
+  }
+  const info = await call("face_drag_info", { face }).catch(() => null);
+  const drag = info?.drag;
+  if (!drag || selectedFaceId !== face) return;
+  const valueAt = (d) => Math.round((drag.value + drag.factor * d) * 2) / 2;
+  ctx.handles.show({
+    origin: drag.point, dir: drag.normal,
+    onDrag: (d) => {
+      const value = valueAt(d);
+      say(t("{f} : profondeur {v} mm — relâchez pour appliquer",
+        { f: drag.label, v: value }));
+      if (value > 0) {
+        schedulePreview({ op: "set_params", params: {
+          feature: drag.feature, values: { [drag.prop]: value } } });
+      }
+    },
+    onEnd: (d) => {
+      clearGhost();
+      const value = valueAt(d);
+      if (value === drag.value) return;
+      if (!(value > 0)) {
+        say(t("La profondeur doit rester positive"), true);
+        ctx.onFacePicked(face);
+        return;
+      }
+      refresh(call("set_params", { feature: drag.feature,
+                                   values: { [drag.prop]: value } }));
+    },
+  });
+};
 
 document.getElementById("btn-clip").addEventListener("click", () => {
   const active = renderer.clippingPlanes.length > 0;
@@ -1901,6 +1964,7 @@ ctx.treeHooks = [(tree) => {
 
 // Gestes de la souris : glisser au bouton droit dans la vue.
 installGestures(ctx);
+ctx.handles = installHandles(ctx);
 
 // Axes, points et repères : panneaux du ruban, dessin à chaque arbre.
 Object.assign(ctx, { currentSelection, featureCommand });
@@ -2293,10 +2357,14 @@ function openFeaturePanel(entry, sketchOverride) {
       }
     },
   };
+  const depthHandle = ["btn-pad", "btn-pocket"].includes(entry.button)
+    ? extrudeDepthHandle(entry, ctx) : null;
+  if (depthHandle) spec.onClose = () => depthHandle.close();
   if (entry.preview !== false) {
     spec.onChange = (v) => {
       schedulePreview(entry.build(v, ctx));
       if (entry.button === "btn-fillet") updateFilletRadiusBubble(v);
+      depthHandle?.update(v);
     };
     // Œil de l'en-tête : couper l'aperçu (fonction lourde), le rallumer.
     spec.onPreview = (on, v) =>
@@ -2307,6 +2375,55 @@ function openFeaturePanel(entry, sketchOverride) {
     : typeof entry.invalid === "function" ? entry.invalid(v, ctx)
       : entry.invalid ?? null);
   panel.open(spec);
+}
+
+/** Flèche au bout de l'extrusion (ou de l'enlèvement) : la tirer change
+ *  la profondeur du panneau, l'aperçu suit. Profondeur « borgne » ou
+ *  « plan milieu » seulement. */
+function extrudeDepthHandle(entry, featureCtx) {
+  const pocket = entry.button === "btn-pocket";
+  const sketch = resolveProfileSketch(featureCtx)?.name;
+  let frame = null;
+  let dragging = false;
+  let closed = false;
+  let last = null;
+
+  function show(v) {
+    last = v;
+    if (closed || !frame || dragging) return;
+    const length = num(v.length);
+    if (!(length > 0) || (v.cond !== "borgne" && v.cond !== "milieu")) {
+      ctx.handles?.hide();
+      return;
+    }
+    const half = v.cond === "milieu";
+    const sign = (pocket ? -1 : 1) * (v.reversed && !half ? -1 : 1);
+    const dir = frame.normal.map((c) => c * sign);
+    const reach = half ? length / 2 : length;
+    ctx.handles.show({
+      origin: frame.center.map((c, i) => c + dir[i] * reach), dir,
+      onDrag: (d) => {
+        dragging = true;
+        const next = Math.max(0.5, Math.round((length + d * (half ? 2 : 1)) * 2) / 2);
+        panel.restore({ length: next });
+      },
+      onEnd: () => {
+        dragging = false;
+        show(last);
+      },
+    });
+  }
+
+  if (sketch) {
+    call("sketch_frame", { sketch }).then((result) => {
+      frame = result;
+      if (last) show(last);
+    }).catch(() => {});
+  }
+  return {
+    update: (v) => show(v),
+    close: () => { closed = true; ctx.handles?.hide(); },
+  };
 }
 
 function bindFeature(entry) {

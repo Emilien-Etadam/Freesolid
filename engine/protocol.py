@@ -166,6 +166,9 @@ OPS: dict[str, tuple[str, ...]] = {
     # Phase E — évaluer + mise en plan.
     "mass_properties": (),             # optional: density (g/cm³)
     "material_library": (),            # lecture : matières proposées
+    "list_templates": (),              # lecture : gabarits de pièce
+    "save_template": _Req(("name", str)),
+    "new_from_template": _Req(("name", str)),
     "add_datum_axis": _Req(optional={"axis": str, "edge": int}),
     "add_datum_point": _Req(optional={"point": list, "vertex": list,
                                       "edge": int}),

@@ -1294,5 +1294,11 @@
  "Coller : rien n'a été copié": "Paste: nothing was copied",
  "Coller : sélectionnez la face ou le plan d'accueil": "Paste: select the target face or plane",
  "Occurrences (direction 2)": "Occurrences (direction 2)",
- "Esquisse — ouvrir une esquisse sur un plan ou une face (ou fermer celle en cours)": "Sketch — open a sketch on a plane or a face (or close the current one)"
+ "Esquisse — ouvrir une esquisse sur un plan ou une face (ou fermer celle en cours)": "Sketch — open a sketch on a plane or a face (or close the current one)",
+ "Gabarits": "Templates",
+ "Aucun gabarit — Fichier → Enregistrer comme gabarit…": "No template — File → Save as template…",
+ "Gabarit : ouvrez d'abord une pièce": "Template: open a part first",
+ "Nom du gabarit :": "Template name:",
+ "Gabarit « {n} » enregistré — Nouveau le propose": "Template “{n}” saved — New offers it",
+ "Enregistrer comme gabarit…": "Save as template…"
 }

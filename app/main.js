@@ -1310,6 +1310,8 @@ installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
       openDocumentProperties();
     } else if (name === "shortcuts") {
       openShortcutPanel();
+    } else if (name === "save-template") {
+      saveAsTemplate();
     } else if (name === "copy") {
       copySelectedFeature();
     } else if (name === "paste") {
@@ -1926,6 +1928,22 @@ errorsBadge.addEventListener("click", async () => {
   });
 });
 
+/** La pièce en cours devient un gabarit, proposé ensuite par Nouveau. */
+async function saveAsTemplate() {
+  if (!lastTree) {
+    say(t("Gabarit : ouvrez d'abord une pièce"), true);
+    return;
+  }
+  const name = prompt("Nom du gabarit :", "Pièce");
+  if (name === null || !name.trim()) return;
+  try {
+    await call("save_template", { name: name.trim() });
+    say(t("Gabarit « {n} » enregistré — Nouveau le propose", { n: name.trim() }));
+  } catch (error) {
+    say(String(error.message ?? error), true);
+  }
+}
+
 // Copier-coller de fonctions : Ctrl+C sur une fonction à esquisse (ou une
 // esquisse), Ctrl+V sur une face, un plan ou un plan de référence.
 let copiedFeature = null;
@@ -2485,6 +2503,12 @@ welcomeApi = installWelcome(document, {
   onAssembly: () => document.getElementById("btn-newasm").click(),
   onOpen: () => document.getElementById("btn-open").click(),
   onRecent: (path) => openDocument(path),
+  listTemplates: () => call("list_templates").then((r) => r.templates),
+  onTemplate: async (name) => {
+    if (!(await mayDiscard())) return;
+    clearFeatureDims();
+    refresh(call("new_from_template", { name }));
+  },
 });
 
 call("ping")

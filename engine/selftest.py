@@ -3918,6 +3918,36 @@ class SelftestMixin:
                 and abs(nine - (100 * 100 * 5 + 9 * 500)) < 1e-6
                 and "Occurrences2" in props)
 
+            mark("p64: gabarits de pièce")
+            import os
+            import tempfile
+            saved_dir = os.environ.get("FREESOLID_DATA_DIR")
+            os.environ["FREESOLID_DATA_DIR"] = tempfile.mkdtemp(
+                prefix="freesolid-gabarits-")
+            try:
+                self.new_part("Pièce gabarit")
+                self.add_rect_sketch(30, 20)
+                self.add_pad(4)
+                self.set_body_material(self._require_body().Name, "aluminium")
+                listed = self.save_template("Tôle alu")["templates"]
+                self.new_part("Autre")
+                tree = self.new_from_template("Tôle alu")
+                bad = False
+                try:
+                    self.save_template("../évasion")
+                except KernelError:
+                    bad = True
+                report["p64_gabarits"] = (
+                    listed == ["Tôle alu"]
+                    and len(tree["features"]) == 1
+                    and tree["bodies"][0]["material"]["id"] == "aluminium"
+                    and bad and not self._modified)
+            finally:
+                if saved_dir is None:
+                    os.environ.pop("FREESOLID_DATA_DIR", None)
+                else:
+                    os.environ["FREESOLID_DATA_DIR"] = saved_dir
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

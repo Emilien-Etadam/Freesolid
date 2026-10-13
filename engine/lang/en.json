@@ -577,5 +577,8 @@
  "donnez un sommet ou trois coordonnées": "give a vertex or three coordinates",
  "seules une esquisse ou une fonction à esquisse se collent": "only a sketch or a sketch-based feature can be pasted",
  "choisissez la face ou le plan où coller": "choose the face or plane to paste on",
- "indiquez la distance de la direction 2": "give the distance of direction 2"
+ "indiquez la distance de la direction 2": "give the distance of direction 2",
+ "nom de gabarit invalide — lettres, chiffres, espaces et tirets": "invalid template name — letters, digits, spaces and dashes",
+ "un gabarit se fait depuis une pièce": "a template is made from a part",
+ "gabarit introuvable : {}": "template not found: {}"
 }

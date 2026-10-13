@@ -114,7 +114,7 @@ ordre.
 | 58 | Axe, point et repère de référence | P2 | fait : boutons Axe, Point, Repère (onglet Fonctions) ; axe sur un axe d’origine, une arête droite ou circulaire ; point sur un sommet, un centre de cercle ou des coordonnées ; repère sur un sommet ou des coordonnées ; dessinés dans la vue, ils suivent la pièce |
 | 59 | Copier-coller de fonctions | P1 | fait : Ctrl+C sur une fonction à esquisse (ou une esquisse), Ctrl+V sur une face, un plan ou un plan de référence ; aussi dans le menu Édition et le clic droit de l’arbre. La copie est indépendante et se pose à l’origine de la face (pas sous le clic) ; Ctrl+glisser non fait |
 | 60 | Variantes : coque à épaisseurs par face, exemplaires sautés, congé variable / de face / arrondi complet | P3 | en partie : réseau linéaire dans deux directions (quadrillage, nombre rééditable à pas constant). Restent, sans équivalent natif dans FreeCAD 1.1 : exemplaires sautés, congé variable, de face, arrondi complet, coque à épaisseurs par face |
-| 61 | Unités et gabarits | P3 | à faire |
+| 61 | Unités et gabarits | P3 | en partie : gabarits — Fichier → Enregistrer comme gabarit…, Nouveau les propose (dossier ~/FreeSolid/Gabarits). Reste : unités et précision d’affichage (mm partout aujourd’hui) |
 | 62 | Assemblage : rotation à la souris, contrainte rapide Alt+glisser, présélection reprise | P2 | à faire |
 | 63 | Arbre : dossiers, vue parents / enfants | P3 | à faire |
 | 64 | Gestes de la souris | P3 | à faire |

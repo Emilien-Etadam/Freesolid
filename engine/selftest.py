@@ -3931,7 +3931,9 @@ class SelftestMixin:
                 self.set_body_material(self._require_body().Name, "aluminium")
                 listed = self.save_template("Tôle alu")["templates"]
                 self.new_part("Autre")
-                tree = self.new_from_template("Tôle alu")
+                out = dispatch(self, "new_from_template",
+                               {"name": "Tôle alu"})
+                tree = out["result"]
                 bad = False
                 try:
                     self.save_template("../évasion")

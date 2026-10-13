@@ -167,6 +167,9 @@ OPS: dict[str, tuple[str, ...]] = {
     "mass_properties": (),             # optional: density (g/cm³)
     "material_library": (),            # lecture : matières proposées
     "list_templates": (),              # lecture : gabarits de pièce
+    "set_folder": _Req(("features", list), optional={"folder": str}),
+    "rename_folder": _Req(("folder", str), optional={"name": str}),
+    "feature_relations": _Req(("feature", str)),  # lecture : parents, enfants
     "save_template": _Req(("name", str)),
     "new_from_template": _Req(("name", str)),
     "add_datum_axis": _Req(optional={"axis": str, "edge": int}),

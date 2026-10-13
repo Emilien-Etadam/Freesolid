@@ -39,6 +39,7 @@ const STEP_LABELS = {
   reorder_feature: "Réordonner",
   set_comment: "Commentaire",
   paste_feature: "Coller",
+  set_folder: "Dossier", rename_folder: "Dossier",
   sketch_start: "Nouvelle esquisse",
   sketch_finish: "Fermer l'esquisse",
   insert_component: "Insérer un composant",

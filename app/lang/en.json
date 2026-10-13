@@ -1301,5 +1301,16 @@
  "Nom du gabarit :": "Template name:",
  "Gabarit « {n} » enregistré — Nouveau le propose": "Template “{n}” saved — New offers it",
  "Enregistrer comme gabarit…": "Save as template…",
- "Contrainte rapide : lâchez sur une face d'un autre composant": "Quick mate: drop on a face of another component"
+ "Contrainte rapide : lâchez sur une face d'un autre composant": "Quick mate: drop on a face of another component",
+ "Dossier — clic droit : renommer, défaire": "Folder — right-click: rename, remove",
+ "Ranger dans un dossier…": "Put in a folder…",
+ "Sortir du dossier": "Take out of folder",
+ "Parents et enfants…": "Parents and children…",
+ "Nom du dossier :": "Folder name:",
+ "Parents et enfants — {f}": "Parents and children — {f}",
+ "Parents (elle s'appuie sur…)": "Parents (it relies on…)",
+ "Enfants (s'appuient sur elle)": "Children (rely on it)",
+ "Aucun": "None",
+ "Renommer le dossier (vide : le défaire) :": "Rename folder (empty: remove it):",
+ "Dossier": "Folder"
 }

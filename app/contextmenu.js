@@ -87,6 +87,11 @@ export function installContextMenu(ctx) {
     document.getElementById("ctx-color-reset").hidden = !onBody;
     document.getElementById("ctx-comment").hidden = onBody || onComponent;
     document.getElementById("ctx-copy").hidden = !ctx.canCopyFeature(feature);
+    const isFeature = !onBody && !onComponent && !!feature.type
+      && !/^(Part|Surface)::/.test(feature.type);
+    document.getElementById("ctx-folder").hidden = !isFeature;
+    document.getElementById("ctx-unfolder").hidden = !isFeature || !feature.folder;
+    document.getElementById("ctx-relations").hidden = !isFeature;
     document.getElementById("ctx-sketch-plane").hidden =
       feature.type !== "Sketcher::SketchObject" || !!ctx.assemblyState
       || ctx.sketchMode.active;
@@ -117,6 +122,46 @@ export function installContextMenu(ctx) {
     const row = treeRowFor(menuFeature.name);
     if (!row) return;
     beginInlineRename(row, menuFeature);
+  });
+
+  document.getElementById("ctx-folder").addEventListener("click", () => {
+    if (!menuFeature) return;
+    const name = ctx.promptText("Nom du dossier :", menuFeature.folder || "Dossier");
+    if (name === null || !name.trim()) return;
+    refresh(call("set_folder", { features: [menuFeature.name], folder: name.trim() }));
+  });
+
+  document.getElementById("ctx-unfolder").addEventListener("click", () => {
+    if (menuFeature) {
+      refresh(call("set_folder", { features: [menuFeature.name], folder: "" }));
+    }
+  });
+
+  // Parents et enfants : un clic sur une ligne ouvre la fonction.
+  document.getElementById("ctx-relations").addEventListener("click", async () => {
+    if (!menuFeature) return;
+    const feature = menuFeature;
+    const rel = await call("feature_relations", { feature: feature.name })
+      .catch((error) => { ctx.say(String(error.message ?? error), true); return null; });
+    if (!rel) return;
+    const rows = (list) => list.map((item) => ({
+      label: item.label === item.kind ? item.label : `${item.label} — ${item.kind}`,
+      onEdit: () => {
+        const target = findFeatureInTree(ctx.lastTree, item.name);
+        if (target) modifyMenuTarget(target);
+      },
+    }));
+    panel.open({
+      icon: "relations",
+      title: t("Parents et enfants — {f}", { f: feature.label }),
+      groups: [
+        { label: t("Parents (elle s'appuie sur…)"), rows: [{ type: "list",
+          empty: t("Aucun"), items: rows(rel.parents) }] },
+        { label: t("Enfants (s'appuient sur elle)"), rows: [{ type: "list",
+          empty: t("Aucun"), items: rows(rel.children) }] },
+      ],
+      noApply: true,
+    });
   });
 
   document.getElementById("ctx-copy").addEventListener("click", () => {

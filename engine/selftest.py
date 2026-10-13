@@ -3979,6 +3979,26 @@ class SelftestMixin:
                 "Cylindrical" in [j["type"] for j in round_["joints"]]
                 and "Distance" in types)
 
+            mark("p66: dossiers, parents et enfants")
+            self.new_part("Pièce rangée")
+            self.add_rect_sketch(40, 30)
+            self.add_pad(10)
+            pad = self.get_tree()["features"][-1]
+            self.add_fillet(2, edges=[0])
+            fillet = self.get_tree()["features"][-1]["name"]
+            tree = self.set_folder([pad["name"], fillet], "Base")
+            folders = [f.get("folder") for f in tree["features"]]
+            rel = self.feature_relations(pad["name"])
+            renamed = self.rename_folder("Base", "Socle")
+            gone = self.rename_folder("Socle", "")
+            report["p66_dossiers"] = (
+                folders == ["Base", "Base"]
+                and [p["name"] for p in rel["parents"]]
+                == [pad["children"][0]["name"]]
+                and [c["name"] for c in rel["children"]] == [fillet]
+                and renamed["features"][0].get("folder") == "Socle"
+                and "folder" not in gone["features"][0])
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

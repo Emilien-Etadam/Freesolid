@@ -116,7 +116,7 @@ ordre.
 | 60 | Variantes : coque à épaisseurs par face, exemplaires sautés, congé variable / de face / arrondi complet | P3 | en partie : réseau linéaire dans deux directions (quadrillage, nombre rééditable à pas constant). Restent, sans équivalent natif dans FreeCAD 1.1 : exemplaires sautés, congé variable, de face, arrondi complet, coque à épaisseurs par face |
 | 61 | Unités et gabarits | P3 | en partie : gabarits — Fichier → Enregistrer comme gabarit…, Nouveau les propose (dossier ~/FreeSolid/Gabarits). Reste : unités et précision d’affichage (mm partout aujourd’hui) |
 | 62 | Assemblage : rotation à la souris, contrainte rapide Alt+glisser, présélection reprise | P2 | fait en partie : glisser au bouton droit tourne un composant libre autour de son centre ; Alt+glisser une face sur une face d’un autre composant pose une contrainte (concentrique pour deux cylindres, coïncidente sinon). Reste : présélection reprise par le panneau de contrainte |
-| 63 | Arbre : dossiers, vue parents / enfants | P3 | à faire |
+| 63 | Arbre : dossiers, vue parents / enfants | P3 | fait : clic droit → Ranger dans un dossier… / Sortir du dossier (dossier repliable, clic droit pour le renommer ou le défaire) ; clic droit → Parents et enfants… (un clic ouvre la fonction) |
 | 64 | Gestes de la souris | P3 | à faire |
 | 65 | Manipulation directe : coupe déplaçable, poignées, cotes et faces à glisser, manipulateur trois axes | P1 | à faire |
 | 66 | Assemblage : vue éclatée par étapes, collisions pendant le glisser, sous-assemblages | P2 | à faire |

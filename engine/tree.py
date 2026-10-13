@@ -720,6 +720,7 @@ class TreeMixin:
         # dossier Équations sans round-trip list_variables.
         self._annotate_comments(items)
         self._annotate_comments(surfaces)
+        self._annotate_folders(items)
         for entry in surfaces:
             if self._is_hidden(self._doc.getObject(entry["name"])):
                 entry["hidden"] = True

@@ -1014,30 +1014,51 @@ export function installTree(ctx) {
     const features = tree.features ?? [];
     const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip);
     if (split.bar !== "none") {
-      for (const row of split.before) {
-        if (row.surface) {
-          appendSurfaceRow(row.item, {
-            inFolder: false, rolledBack: !!row.item.rolled_back,
-          });
-        } else {
-          appendFeatureHistoryRow(row.item, false);
-        }
-      }
+      appendHistoryRows(split.before, false);
       appendRollbackBar(tree);
-      for (const row of split.after) {
-        if (row.surface) {
-          appendSurfaceRow(row.item, {
-            inFolder: false, rolledBack: true,
-          });
-        } else {
-          appendFeatureHistoryRow(row.item, true);
-        }
-      }
+      appendHistoryRows(split.after, true);
     }
   }
 
-  function appendFeatureHistoryRow(feature, rolledBack) {
+  /** Lignes d'historique ; les fonctions rangées dans un même dossier
+   *  (qui se suivent) passent sous une ligne de dossier repliable. */
+  function appendHistoryRows(rows, rolledBack) {
+    let current = null;
+    let open = true;
+    rows.forEach((row, i) => {
+      const folder = row.surface ? null : row.item.folder ?? null;
+      if (folder !== current) {
+        current = folder;
+        open = true;
+        if (folder) {
+          let count = 0;
+          for (let j = i; j < rows.length; j++) {
+            if (rows[j].surface || rows[j].item.folder !== folder) break;
+            count++;
+          }
+          open = appendFolder(`user:${folder}`, folder, count, "folder", false,
+            { title: t("Dossier — clic droit : renommer, défaire") });
+          treeEl.lastElementChild.classList.add("user-folder");
+          treeEl.lastElementChild.addEventListener("contextmenu", (event) => {
+            event.preventDefault();
+            ctx.onFolderMenu?.(folder);
+          });
+        }
+      }
+      if (!open) return;
+      if (row.surface) {
+        appendSurfaceRow(row.item, {
+          inFolder: false, rolledBack: rolledBack || !!row.item.rolled_back,
+        });
+      } else {
+        appendFeatureHistoryRow(row.item, rolledBack, !!folder);
+      }
+    });
+  }
+
+  function appendFeatureHistoryRow(feature, rolledBack, inUserFolder = false) {
     const row = document.createElement("li");
+    if (inUserFolder) row.classList.add("in-folder");
     row.classList.add("feat");
     row.dataset.feat = feature.name;
     row.dataset.hist = feature.name;

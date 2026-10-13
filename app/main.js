@@ -1947,6 +1947,13 @@ async function saveAsTemplate() {
 // Copier-coller de fonctions : Ctrl+C sur une fonction à esquisse (ou une
 // esquisse), Ctrl+V sur une face, un plan ou un plan de référence.
 let copiedFeature = null;
+// Dossier de l'arbre : clic droit pour le renommer (vide : le défaire).
+ctx.promptText = prompt;
+ctx.onFolderMenu = (folder) => {
+  const name = prompt("Renommer le dossier (vide : le défaire) :", folder);
+  if (name === null) return;
+  refresh(call("rename_folder", { folder, name: name.trim() }));
+};
 ctx.canCopyFeature = (feature) => feature?.type === "Sketcher::SketchObject"
   || (feature?.children ?? []).some((c) => c.type === "Sketcher::SketchObject");
 ctx.copyFeature = (feature) => {

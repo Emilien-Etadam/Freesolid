@@ -65,6 +65,7 @@ export const ICONS = {
   explode: "fs_explode.svg",
   face_color: "fs_face_color.svg",
   fillet: "fs_fillet.svg",
+  folder: "fs_folder.svg",
   graph_feature: "fs_graph_feature.svg",
   groove: "fs_groove.svg",
   hole: "fs_hole.svg",

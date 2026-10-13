@@ -41,6 +41,7 @@ export const ICONS = {
   chamfer: "fs_chamfer.svg",
   comment: "fs_comment.svg",
   component_array: "fs_component_array.svg",
+  configurations: "fs_configurations.svg",
   construction: "fs_construction.svg",
   curve_composite: "fs_curve_composite.svg",
   curve_intersection: "fs_curve_intersection.svg",

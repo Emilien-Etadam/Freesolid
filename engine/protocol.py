@@ -172,6 +172,13 @@ OPS: dict[str, tuple[str, ...]] = {
     "feature_relations": _Req(("feature", str)),  # lecture : parents, enfants
     "face_drag_info": _Req(("face", int)),  # lecture : la face se tire-t-elle
     "sketch_frame": _Req(("sketch", str)),  # lecture : centre et normale
+    "list_configurations": (),         # lecture : noms, active
+    "add_configuration": _Req(("name", str)),
+    "activate_configuration": _Req(("name", str)),
+    "rename_configuration": _Req(("name", str), ("new_name", str)),
+    "delete_configuration": _Req(("name", str)),
+    "configuration_table": (),         # lecture : cotes par configuration
+    "set_configuration_values": _Req(("values", dict)),
     "save_template": _Req(("name", str)),
     "new_from_template": _Req(("name", str)),
     "add_datum_axis": _Req(optional={"axis": str, "edge": int}),

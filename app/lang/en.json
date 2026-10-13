@@ -1319,5 +1319,20 @@
  "Cotation": "Dimension",
  "{f} : profondeur {v} mm — relâchez pour appliquer": "{f}: depth {v} mm — release to apply",
  "La profondeur doit rester positive": "The depth must stay positive",
- "{c} : {d} mm le long de {a}": "{c}: {d} mm along {a}"
+ "{c} : {d} mm le long de {a}": "{c}: {d} mm along {a}",
+ "Configurations": "Configurations",
+ "Variantes de la pièce — clic : déplier, double-clic : tableau": "Part variants — click: expand, double-click: table",
+ "Configuration active — clic droit : renommer, supprimer": "Active configuration — right-click: rename, delete",
+ "Clic : activer — clic droit : renommer, supprimer": "Click: activate — right-click: rename, delete",
+ "Renommer la configuration (vide : la supprimer) :": "Rename configuration (empty: delete it):",
+ "+ Nouvelle configuration…": "+ New configuration…",
+ "Copie de l'état actuel ; les cotes changées ensuite lui appartiennent": "Copy of the current state; dimensions changed afterwards belong to it",
+ "Nom de la configuration :": "Configuration name:",
+ "Configuration": "Configuration",
+ "Variante {n}": "Variant {n}",
+ "Défaut": "Default",
+ "Tableau des configurations": "Configuration table",
+ "Tableau des configurations…": "Configuration table…",
+ "Ajoutez d'abord une configuration (dossier Configurations de l'arbre)": "Add a configuration first (Configurations folder in the tree)",
+ "Une ligne par cote ; la configuration active (✓) s'applique tout de suite.": "One row per dimension; the active configuration (✓) applies right away."
 }

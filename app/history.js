@@ -40,6 +40,8 @@ const STEP_LABELS = {
   set_comment: "Commentaire",
   paste_feature: "Coller",
   set_folder: "Dossier", rename_folder: "Dossier",
+  add_configuration: "Configuration", activate_configuration: "Configuration",
+  rename_configuration: "Configuration", delete_configuration: "Configuration",
   sketch_start: "Nouvelle esquisse",
   sketch_finish: "Fermer l'esquisse",
   insert_component: "Insérer un composant",

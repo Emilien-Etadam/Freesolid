@@ -976,11 +976,56 @@ export function installTree(ctx) {
       }
     }
 
+    appendConfigurations(tree.configurations ?? { names: [] });
     renderActiveBodyContents(tree);
     ctx.pluginRuntime?.renderTreeRows(tree, {
       treeIcon, openMenu: ctx.openMenu, append: (row) => treeEl.appendChild(row),
     });
     syncGraphFromTree();
+  }
+
+  /** Dossier Configurations : un clic active, clic droit renomme ou
+   *  supprime, la dernière ligne en ajoute une (copie de l'état courant). */
+  function appendConfigurations(configs) {
+    const names = configs.names ?? [];
+    const open = appendFolder("configurations", t("Configurations"),
+      names.length, "configurations", false,
+      { title: t("Variantes de la pièce — clic : déplier, double-clic : tableau"),
+        onDblClick: () => ctx.openConfigTable?.() });
+    if (!open) return;
+    for (const name of names) {
+      const row = document.createElement("li");
+      const active = name === configs.active;
+      row.className = "in-folder" + (active ? " sel" : "");
+      row.appendChild(treeIcon("configurations"));
+      row.appendChild(document.createTextNode(active ? `${name} ✓` : name));
+      row.title = active ? t("Configuration active — clic droit : renommer, supprimer")
+        : t("Clic : activer — clic droit : renommer, supprimer");
+      row.addEventListener("click", () => {
+        if (!active) refresh(call("activate_configuration", { name }));
+      });
+      row.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        const next = ctx.promptText(
+          "Renommer la configuration (vide : la supprimer) :", name);
+        if (next === null) return;
+        refresh(next.trim()
+          ? call("rename_configuration", { name, new_name: next.trim() })
+          : call("delete_configuration", { name }));
+      });
+      treeEl.appendChild(row);
+    }
+    const add = document.createElement("li");
+    add.className = "in-folder add-config";
+    add.textContent = t("+ Nouvelle configuration…");
+    add.title = t("Copie de l'état actuel ; les cotes changées ensuite lui appartiennent");
+    add.addEventListener("click", () => {
+      const name = ctx.promptText("Nom de la configuration :",
+        names.length ? t("Variante {n}", { n: names.length + 1 }) : t("Défaut"));
+      if (name === null || !name.trim()) return;
+      refresh(call("add_configuration", { name: name.trim() }));
+    });
+    treeEl.appendChild(add);
   }
 
   function renderActiveBodyContents(tree) {

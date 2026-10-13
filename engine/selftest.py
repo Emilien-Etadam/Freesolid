@@ -4024,6 +4024,47 @@ class SelftestMixin:
                 and hole is not None and hole["factor"] == -1
                 and abs(hole["value"] - 5) < 1e-9)
 
+            mark("p68: configurations")
+            import math
+            self.new_part("Pièce configurée")
+            self.add_rect_sketch(20, 10)
+            self.add_pad(10)
+            body = self._require_body()
+            pad = self.get_tree()["features"][-1]["name"]
+            st = self.sketch_start(plane="XY")
+            self.sketch_add_circle(st["sketch"], 0, 0, 2)
+            self.sketch_finish(st["sketch"])
+            self.add_pocket(through=True, reversed=True,
+                            sketch=st["sketch"])
+            fillet = self.get_tree()["features"][-1]["name"]  # le trou
+            self.add_configuration("Court")
+            self.add_configuration("Long")
+            self.set_params(pad, {"Length": 30})
+            self.set_suppressed([fillet])
+            long_volume = body.Shape.Volume
+            self.activate_configuration("Court")
+            short_volume = body.Shape.Volume
+            short_fillet = self._require_doc().getObject(fillet).Suppressed
+            tree = self.activate_configuration("Long")
+            table = self.configuration_table()
+            depth = next(r for r in table["rows"]
+                         if r["key"] == "prop:%s.Length" % pad)
+            self.set_configuration_values({"Court": {depth["key"]: 15}})
+            court_after = self.configuration_table()
+            report["p68_tableau"] = (
+                depth["values"] == {"Court": 10.0, "Long": 30.0}
+                and next(r for r in court_after["rows"]
+                         if r["key"] == depth["key"])["values"]["Court"]
+                == 15.0
+                and abs(body.Shape.Volume - long_volume) < 1e-6)
+            report["p68_configurations"] = (
+                abs(long_volume - 20 * 10 * 30) < 1e-6
+                and abs(short_volume - (2000 - math.pi * 4 * 10)) < 1e-6
+                and not short_fillet
+                and abs(body.Shape.Volume - long_volume) < 1e-6
+                and tree["configurations"] == {"active": "Long",
+                                               "names": ["Court", "Long"]})
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

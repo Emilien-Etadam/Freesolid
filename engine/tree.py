@@ -727,7 +727,8 @@ class TreeMixin:
         tree = {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,
                 "surfaces": surfaces,
-                "variables": self.list_variables()["variables"]}
+                "variables": self.list_variables()["variables"],
+                "configurations": self.list_configurations()}
         self._plugins.contribute_tree(self, tree)
         return tree
 

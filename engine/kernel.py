@@ -62,6 +62,7 @@ from engine.clipboard import ClipboardMixin
 from engine.templates import TemplatesMixin
 from engine.treeorg import TreeOrgMixin
 from engine.directedit import DirectEditMixin
+from engine.configs import ConfigsMixin
 from engine.solids import SolidsMixin
 from engine.tree import TreeMixin
 
@@ -275,7 +276,7 @@ def _format_mm(value):
     return text.replace(".", ",") or "0"
 
 
-class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, MaterialsMixin, RefGeomMixin, ClipboardMixin, TemplatesMixin, TreeOrgMixin, DirectEditMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
+class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, MaterialsMixin, RefGeomMixin, ClipboardMixin, TemplatesMixin, TreeOrgMixin, DirectEditMixin, ConfigsMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
     """Owns one FreeCAD document and executes protocol operations."""
 
     def __init__(self):
@@ -877,7 +878,9 @@ _TRANSACTIONAL = frozenset({
     "set_suppressed", "sketch_set_plane", "add_vertex_chamfer",
     "edit_vertex_chamfer", "set_body_material", "set_face_color",
     "add_datum_axis", "add_datum_point", "add_datum_cs", "paste_feature",
-    "set_folder", "rename_folder",
+    "set_folder", "rename_folder", "add_configuration",
+    "activate_configuration", "rename_configuration", "delete_configuration",
+    "set_configuration_values",
 })
 
 

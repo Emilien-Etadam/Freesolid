@@ -84,6 +84,7 @@ export function menuBarModel(ribbon) {
       item("Mesurer", { click: "btn-measure" }),
       item("Évaluer", { click: "btn-evaluate" }),
       item("Équations", { click: "btn-equations" }),
+      item("Tableau des configurations…", { action: "config-table" }),
       item("Raccourcis clavier…", { action: "shortcuts" }),
       item("Paramètres", { click: "btn-settings" }),
     ] },

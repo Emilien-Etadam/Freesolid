@@ -1313,6 +1313,8 @@ installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
       openDocumentProperties();
     } else if (name === "shortcuts") {
       openShortcutPanel();
+    } else if (name === "config-table") {
+      openConfigTable();
     } else if (name === "save-template") {
       saveAsTemplate();
     } else if (name === "copy") {
@@ -2015,6 +2017,48 @@ async function saveAsTemplate() {
 // Copier-coller de fonctions : Ctrl+C sur une fonction à esquisse (ou une
 // esquisse), Ctrl+V sur une face, un plan ou un plan de référence.
 let copiedFeature = null;
+/** Tableau des configurations : une ligne par cote, une valeur par
+ *  configuration ; OK enregistre les valeurs changées. */
+async function openConfigTable() {
+  const table = await call("configuration_table").catch((error) => {
+    say(String(error.message ?? error), true);
+    return null;
+  });
+  if (!table) return;
+  if (!table.names.length) {
+    say(t("Ajoutez d'abord une configuration (dossier Configurations de l'arbre)"));
+    return;
+  }
+  panel.open({
+    icon: "configurations",
+    title: t("Tableau des configurations"),
+    groups: table.rows.map((row, i) => ({
+      label: row.prop
+        ? `${row.label} · ${t(PROP_LABELS[row.prop]?.[0] ?? row.prop)}` : row.label,
+      rows: table.names.map((name) => ({
+        type: "number", key: `${i}|${name}`,
+        label: name === table.active ? `${name} ✓` : name,
+        value: row.values[name] ?? 0,
+      })),
+    })),
+    note: t("Une ligne par cote ; la configuration active (✓) s'applique tout de suite."),
+    onApply: (v) => {
+      const values = {};
+      table.rows.forEach((row, i) => {
+        for (const name of table.names) {
+          const next = num(v[`${i}|${name}`]);
+          if (next == null || next === row.values[name]) continue;
+          (values[name] ??= {})[row.key] = next;
+        }
+      });
+      if (Object.keys(values).length) {
+        refresh(call("set_configuration_values", { values }));
+      }
+    },
+  });
+}
+ctx.openConfigTable = openConfigTable;
+
 // Dossier de l'arbre : clic droit pour le renommer (vide : le défaire).
 ctx.promptText = prompt;
 ctx.onFolderMenu = (folder) => {

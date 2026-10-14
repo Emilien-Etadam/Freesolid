@@ -64,6 +64,7 @@ Une commande est **faite** quand les six points tiennent :
 | Commande | État | Op moteur | Selftest |
 |---|---|---|---|
 | Esquisse 3D (spline ou polyligne, règles axe / angle / longueur, solveur global, points liés) | ✅ | `add_curve3d`, `edit_curve3d` | `p46_spline_points`, `p46_esquisse3d_*` |
+| Éditer la spline 3D dans la vue : tirer ses points (plan de clic), poignées de tangente (Alt : un seul côté ; longueurs en %), Ctrl+clic pour un point de plus (forme gardée), Suppr, polygone de contrôle (pôles à tirer), peigne de courbure, simplifier, lisser, libérer les poignées | ✅ | `edit_curve3d` (`tangents`), `curve_poles`, `curve_move_pole` | `p69_poignees`, `p69_poles` |
 | Courbe par coordonnées XYZ | ✅ | `add_curve3d` — coordonnées tapées dans le panneau | `p46_spline_points` |
 | Courbe par points de la pièce | ✅ | `add_curve3d` — points liés (⛓) à des sommets ou centres | `p46_esquisse3d_angle_lien` |
 | Hélice et spirale | ✅ | `curve_helix` | `p50_helice` |

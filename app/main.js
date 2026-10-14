@@ -343,6 +343,8 @@ window.__freesolidDebug = {
     return ndcToScreen(p.x, p.y, rect);
   },
   get selectedFeatureName() { return selectedFeatureName; },
+  /** Spline 3D ouverte : points et tracé à l'écran. */
+  get curve3dScreen() { return ctx.curveTool?.screen() ?? null; },
   refresh: () => refresh(call("get_tree")),
   get graphFeatureActive() { return graphFn.active; },
   get graphFeatureKind() { return graphFn.kind; },

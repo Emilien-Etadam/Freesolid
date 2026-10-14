@@ -2,8 +2,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { alongAxis, clickPlane, curveProblem, nextPlane, rayPlane,
-  solveRules } from "../../app/curve3d.js";
+import {
+  alongAxis, clickPlane, curveProblem, nextPlane, rayPlane, solveRules, handleFields, tangentsFromFields,
+} from "../../app/curve3d.js";
 
 const dist = (a, b) => Math.hypot(...a.map((v, k) => v - b[k]));
 import { boundaryText, samePick } from "../../app/panel.js";
@@ -198,5 +199,30 @@ describe("couper avec une surface", () => {
     assert.equal(surfaceCutParams({ surface: { name: "S" }, thick: true,
       thickness: 0 }), null);
     assert.equal(surfaceCutParams({ surface: null }), null);
+  });
+});
+
+describe("spline 3D : champs de la poignée", () => {
+  const base = { points: [[0, 0, 0], [10, 5, 0], [20, 0, 0], [30, 5, 0]], spline: true,
+                 closed: false, tangents: [], selected: 1 };
+
+  it("donnent l'état de la poignée du point choisi", () => {
+    const f = handleFields(base);
+    assert.equal(f.handleDriven, false);
+    assert.ok(f.handleIn > 0 && f.handleIn === f.handleOut);
+    assert.equal(handleFields({ ...base, selected: null }), null);
+    assert.equal(handleFields({ ...base, spline: false }), null);
+  });
+
+  it("une longueur tapée pilote la poignée, décocher la libère", () => {
+    const f = handleFields(base);
+    const typed = tangentsFromFields({ ...base, ...f, handleOut: 150 }, f);
+    assert.equal(typed[1].out, 1.5);
+    assert.ok(Math.abs(typed[1].in - f.handleIn / 100) < 1e-9);
+    const driven = { ...base, tangents: typed };
+    const g = handleFields(driven);
+    const freed = tangentsFromFields({ ...driven, ...g, handleDriven: false }, g);
+    assert.equal(freed[1], null);
+    assert.equal(tangentsFromFields({ ...base, ...f }, f), null);
   });
 });

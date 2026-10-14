@@ -4065,6 +4065,86 @@ class SelftestMixin:
                 and tree["configurations"] == {"active": "Long",
                                                "names": ["Court", "Long"]})
 
+            mark("p69: spline 3D — poignées, pôles")
+            self.new_part("Pièce courbes")
+            App = self._app()
+            pts = [[0, 0, 0], [20, 10, 5], [40, 0, 10], [60, 15, 0]]
+            tans = [None, {"dir": [1, 0, 0], "in": 0.5, "out": 2.0},
+                    None, None]
+            tree = self.add_curve3d(pts, tangents=tans)
+            entry = tree["surfaces"][-1]
+            obj = self._require_doc().getObject(entry["name"])
+            edge = obj.Shape.Edges[0]
+            curve = edge.Curve
+            # La courbe passe par les points ; au point 2, la pente vaut
+            # la poignée de chaque côté (paramètre = longueur de corde).
+            knots = curve.getKnots()
+            through = all(
+                (curve.value(u) - App.Vector(*p)).Length < 1e-7
+                for u, p in zip(knots, pts))
+            d_in = curve.getD1(knots[1] - 1e-9)[1]
+            d_out = curve.getD1(knots[1] + 1e-9)[1]
+            stored = entry["curve"]["tangents"]
+            report["p69_poignees"] = (
+                through and len(knots) == 4
+                and abs(d_in.x - 0.5) < 1e-5 and abs(d_out.x - 2.0) < 1e-5
+                and abs(d_in.y) < 1e-6 and abs(d_out.y) < 1e-6
+                and stored[1] == {"dir": [1.0, 0.0, 0.0], "in": 0.5,
+                                  "out": 2.0}
+                and stored[0] is None)
+            # Réédition sans tangentes, même nombre de points : les poignées
+            # restent ; un point de plus : toutes libres.
+            self.edit_curve3d(entry["name"], [[0, 0, 0], [20, 12, 5],
+                                              [40, 0, 10], [60, 15, 0]])
+            kept = self._curve_spec(obj)["tangents"][1] is not None
+            poles = self.curve_poles(pts, tangents=tans)["poles"]
+            moved = self.curve_move_pole(pts, 2, [
+                poles[2][0], poles[2][1] + 8, poles[2][2]], tangents=tans)
+            rebuilt = self.curve_poles(moved["points"],
+                                       tangents=moved["tangents"])["poles"]
+            report["p69_poles"] = (
+                kept and len(moved["points"]) == 4
+                and moved["points"][0] == [0.0, 0.0, 0.0]
+                and all(abs(a - b) < 1e-6 for p, q in zip(rebuilt,
+                                                         moved["poles"])
+                        for a, b in zip(p, q))
+                and abs(rebuilt[2][1] - (poles[2][1] + 8)) < 1e-6)
+
+            # Esquisse : la spline se relit en points et poignées, se
+            # redessine à sa place et garde ses relations.
+            st = self.sketch_start(plane="XY")
+            sk_name = st["sketch"]
+            self.sketch_add_line(sk_name, -20, 0, 0, 0)
+            state = self.sketch_add_spline(
+                sk_name, [[0, 0], [10, 8], [20, 0], [30, 6]])
+            spline = next(e for e in state["entities"]
+                          if e.get("kind") == "spline")
+            read = spline.get("spline") or {}
+            sk_obj = self._require_doc().getObject(sk_name)
+            import Sketcher
+            sk_obj.addConstraint(Sketcher.Constraint(
+                "Coincident", 0, 2, spline["id"], 1))
+            sk_obj.setConstruction(spline["id"], True)
+            count = len(sk_obj.Constraints)
+            state = self.sketch_set_spline(
+                sk_name, spline["id"], [[0, 0], [10, 12], [20, 0], [30, 6]],
+                tangents=[None, {"dir": [1, 0], "in": 1, "out": 1.5},
+                          None, None])
+            again = next(e for e in state["entities"]
+                         if e["id"] == spline["id"])
+            geo = sk_obj.Geometry[spline["id"]]
+            report["p69_esquisse"] = (
+                read.get("points") == [[0.0, 0.0], [10.0, 8.0], [20.0, 0.0],
+                                       [30.0, 6.0]]
+                and not any(read.get("tangents") or [1])
+                and len(sk_obj.Constraints) == count
+                and bool(sk_obj.getConstruction(spline["id"]))
+                and (geo.value(geo.getKnots()[1])
+                     - App.Vector(10, 12, 0)).Length < 1e-6
+                and again["spline"]["tangents"][1] is not None
+                and abs(again["spline"]["tangents"][1]["out"] - 1.5) < 1e-6)
+            self.sketch_finish(sk_name)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

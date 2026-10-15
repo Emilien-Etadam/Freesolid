@@ -78,6 +78,7 @@ import {
 import { edgeSnapPoints } from "./pointsnap.js";
 import { installCurve3d } from "./curve3d.js";
 import { installBreadcrumbs } from "./breadcrumbs.js";
+import { installManagerTabs } from "./managertabs.js";
 import { installPoles } from "./poles.js";
 
 const sceneTheme = readScene();
@@ -202,6 +203,7 @@ const panel = createPropertyPanel({
   onToggle: () => {
     updateConfirmCorner();
     updateTreeFlyout();
+    ctx.managerTabs?.sync();
     // La barre d'icônes du clic précédent n'a plus lieu d'être.
     ctx.hideContextToolbar?.();
   },
@@ -1977,6 +1979,9 @@ const refGeometry = installRefGeometry(ctx);
 ctx.treeHooks.push((tree) => refGeometry.draw(tree));
 // Fil de la sélection : pièce › fonction › esquisse › face.
 installBreadcrumbs(ctx);
+// Gestionnaire à onglets : arbre, propriétés, configurations, affichage.
+ctx.updateTreeFlyout = updateTreeFlyout;
+ctx.managerTabs = installManagerTabs(ctx);
 errorsBadge.addEventListener("click", async () => {
   const result = await call("rebuild_errors").catch((error) => {
     say(String(error.message ?? error), true);

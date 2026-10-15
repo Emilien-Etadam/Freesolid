@@ -34,7 +34,7 @@ au choix dans les paramètres, mêmes jetons.
 | 2 | Barre de commandes : onglets sous les boutons, légende sous chaque groupe, grandes icônes | fait |
 | 3 | Barre de vue en pilule au centre de la vue, coin de validation en haut à droite | fait |
 | 4 | Fil d'Ariane de la sélection en haut à gauche de la vue (pièce › fonction › esquisse › face) | fait — clic : choisir dans l'arbre, double-clic : modifier ; sous la barre de vue |
-| 5 | Gestionnaire à onglets : arbre, propriétés, configurations, affichage | à faire |
+| 5 | Gestionnaire à onglets : arbre, propriétés, configurations, affichage | fait — Propriétés s’allume à l’ouverture d’une commande ; Arbre remontre l’arbre pendant la commande ; Configurations (activer, ajouter, tableau) ; Affichage (style, corps à masquer) |
 | 6 | Arbre volant dans la vue quand un panneau remplace l'arbre | existait déjà (`#tree-flyout`) |
 | 7 | Cube d'orientation cliquable en haut à droite, trièdre en bas à gauche | à faire |
 | 8 | Volet de ressources replié à droite (matériaux, gabarits, aide) | à faire |

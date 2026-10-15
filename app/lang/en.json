@@ -1364,5 +1364,17 @@
  "Cliquez un point de la spline pour sa poignée ; Ctrl+clic sur la courbe ajoute un point.": "Click a spline point for its handle; Ctrl+click on the curve adds a point.",
  "Fil de la sélection": "Selection trail",
  "Clic : choisir dans l'arbre · double-clic : modifier": "Click: select in the tree · double-click: edit",
- "Clic : choisir l'esquisse · double-clic : la modifier": "Click: select the sketch · double-click: edit it"
+ "Clic : choisir l'esquisse · double-clic : la modifier": "Click: select the sketch · double-click: edit it",
+ "Gestionnaire": "Manager",
+ "Une seule variante pour l'instant : ajoutez une configuration pour en créer d'autres.": "A single variant for now: add a configuration to create others.",
+ "Configuration active": "Active configuration",
+ "Activer cette configuration": "Activate this configuration",
+ "Ajouter…": "Add…",
+ "Nom de la configuration": "Configuration name",
+ "Nouvelle configuration, relevée sur l'état actuel": "New configuration, taken from the current state",
+ "Tableau…": "Table…",
+ "Les cotes de chaque configuration, côte à côte": "The dimensions of each configuration, side by side",
+ "— aucun corps —": "— no body —",
+ "Afficher {n}": "Show {n}",
+ "Masquer {n}": "Hide {n}"
 }

@@ -39,6 +39,7 @@
     --success-wash: #243328;
     --ok: #46c37b;
     --hover: var(--panel-2);
+    --surface: #2a2f36;
     --selection: #d9924a;
     --space-1: 4px;
     --space-2: 8px;
@@ -104,6 +105,7 @@
     --success-wash: #e8f5ee;
     --ok: #2e8b57;
     --hover: #e3e9ef;
+    --surface: #ffffff;
     --selection: #e8892b;
     --scene-bg-top: #fbfcfe;
     --scene-bg-bottom: #c7d1dc;
@@ -860,6 +862,67 @@
   aside.panel-open h2, aside.panel-open #tree { display: none; }
   #panel { display: none; }
   aside.panel-open #panel { display: block; }
+
+  /* Gestionnaire à onglets (managertabs.js). L'onglet Arbre, pendant une
+     commande, remontre l'arbre ; le panneau attend derrière. */
+  #manager-tabs {
+    position: sticky; top: 0; z-index: 2;
+    display: flex; gap: var(--space-1); padding: 6px var(--space-2);
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  #manager-tabs button {
+    width: 36px; height: 30px; padding: 0; justify-content: center;
+    display: inline-flex; align-items: center;
+    border: 0; background: transparent; border-radius: 5px; color: var(--ink-2);
+  }
+  #manager-tabs button:hover { background: var(--hover); color: var(--ink); }
+  #manager-tabs button.on {
+    background: var(--surface); color: var(--accent);
+    box-shadow: 0 0 0 1px var(--line);
+  }
+  #manager-tabs button:disabled { opacity: 0.35; }
+  .mgr-pane { display: none; padding-bottom: var(--space-3); }
+  aside[data-mgr="configs"] #mgr-configs,
+  aside[data-mgr="display"] #mgr-display { display: block; }
+  aside[data-mgr="configs"] > h2, aside[data-mgr="configs"] > #tree,
+  aside[data-mgr="configs"] > #panel,
+  aside[data-mgr="display"] > h2, aside[data-mgr="display"] > #tree,
+  aside[data-mgr="display"] > #panel { display: none; }
+  aside.panel-open[data-mgr="tree"] > h2,
+  aside.panel-open[data-mgr="tree"] > #tree { display: block; }
+  aside.panel-open[data-mgr="tree"] > #panel { display: none; }
+  .mgr-list { list-style: none; padding: 0 var(--space-2); }
+  .mgr-item {
+    width: 100%; text-align: left; justify-content: flex-start;
+    background: none; border: 1px solid transparent; border-radius: var(--radius-s);
+    padding: var(--space-1) var(--space-2);
+  }
+  .mgr-item:hover { background: var(--hover); }
+  .mgr-item.on {
+    background: var(--accent-wash); color: var(--accent-2); font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .mgr-empty { color: var(--ink-2); font-size: var(--text-s); padding: var(--space-1) var(--space-2); }
+  .mgr-actions {
+    display: flex; flex-wrap: wrap; gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+  }
+  .mgr-action { padding: 3px var(--space-2); font-size: var(--text-s); background: var(--surface); }
+  .mgr-row {
+    display: flex; align-items: center; gap: var(--space-2);
+    padding: 2px var(--space-2); font-size: var(--text-s);
+  }
+  .mgr-row.hidden-object { opacity: 0.55; font-style: italic; }
+  .mgr-eye {
+    width: 24px; height: 22px; padding: 0; justify-content: center;
+    background: none; border: 1px solid transparent; color: var(--accent);
+  }
+  .mgr-eye:hover { border-color: var(--line); }
+  .mgr-swatch {
+    width: 12px; height: 12px; border-radius: 3px;
+    background: var(--scene-part); border: 1px solid var(--line);
+  }
+  .mgr-swatch.surface { background: var(--scene-curve); }
   #panel .phead-main {
     display: flex; align-items: center; gap: var(--space-2);
     padding: var(--space-2) 10px;

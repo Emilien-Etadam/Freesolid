@@ -211,6 +211,7 @@ export const ICONS = {
   sk_split: "fs_sk_split.svg",
   sk_tangent_arc: "fs_sk_tangent_arc.svg",
   sk_text: "fs_sk_text.svg",
+  sketch3d: "fs_sketch3d.svg",
   spline3d: "fs_spline3d.svg",
   shell: "fs_shell.svg",
   sketch: "fs_sketch.svg",

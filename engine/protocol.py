@@ -109,6 +109,9 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_curve3d": _Req(("points", list)),  # optional: spline, closed,
                                        # rules [{axis, length}] par segment,
                                        # links, tangents [{dir, in, out}|None]
+    "add_sketch3d": _Req(("spec", dict)),  # points, links, entities,
+                                       # dims, relations (sketch3dmath)
+    "edit_sketch3d": _Req(("sketch3d", str), ("spec", dict)),
     "sketch_set_spline": _Req(("sketch", str), ("geo", int),
                               ("points", list)),  # optional: tangents,
                                        # closed — points de passage 2D

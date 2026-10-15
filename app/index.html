@@ -893,6 +893,24 @@
   .ppoint.chosen { background: var(--accent-wash); }
   .ppoint.chosen .ppoint-name { color: var(--accent); font-weight: 600; }
   .pbuttons { flex-wrap: wrap; gap: var(--space-1); }
+  .sk3d-edit {
+    position: fixed; z-index: 60; transform: translate(-50%, -50%);
+    display: flex; align-items: center; gap: 4px;
+    background: var(--panel, var(--bg)); border: 1px solid var(--accent);
+    border-radius: var(--radius-s); padding: 3px 4px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .35); font-size: var(--text-s);
+  }
+  .sk3d-edit input {
+    width: 72px; background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: var(--radius-s);
+    padding: 2px 4px; font: inherit; font-variant-numeric: tabular-nums;
+  }
+  .sk3d-edit input.bad { border-color: var(--error); }
+  .sk3d-edit span { color: var(--ink-2); }
+  .sk3d-edit button {
+    background: none; border: none; color: var(--success, #6fcf97);
+    cursor: pointer; font-size: 15px; padding: 0 2px;
+  }
   .pbuttons .pbtn {
     background: var(--bg); color: var(--ink); border: 1px solid var(--line);
     border-radius: var(--radius-s); padding: 3px var(--space-2);
@@ -1248,6 +1266,7 @@
       <div class="ribbon-group">
         <div class="ribbon-group-btns">
           <button id="sk-start" class="large" title="Esquisse — ouvrir une esquisse sur un plan ou une face (ou fermer celle en cours)"><img data-icon="sketch" alt="">Esquisse</button>
+          <button id="sk-start3d" class="large" title="Esquisse 3D — lignes, splines et points dans l'espace, cotes et relations d'axe"><img data-icon="sketch3d" alt="">Esquisse 3D</button>
         </div>
       </div>
       <div class="ribbon-group">

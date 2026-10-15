@@ -98,7 +98,7 @@ Un outil est **fait** quand :
 | Couleur par état (libre, définie, en trop), degrés de liberté, (-)/(+) dans l'arbre | ✅ | `test_sketch_status` |
 | Réparer (redondances, conflits, extrémités presque jointes) | ✅ | `p51_complements` |
 | Définir entièrement (cotes ajoutées jusqu'à zéro degré de liberté) | ✅ | `p51_complements` |
-| Esquisse 3D | ✅ | voir [surfacique.md](surfacique.md) (`p46_esquisse3d_*`) |
+| Esquisse 3D (mode d'édition : lignes, splines, points, cotes, relations d'axe) | ✅ | voir [surfacique.md](surfacique.md) (`p70_*`, `p46_esquisse3d_*`) |
 
 ## Organisation
 

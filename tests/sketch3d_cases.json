@@ -1,0 +1,339 @@
+[
+ {
+  "name": "ligne le long de X, longueur 50",
+  "spec": {
+   "points": [
+    [
+     0,
+     0,
+     0
+    ],
+    [
+     40,
+     3,
+     -2
+    ]
+   ],
+   "entities": [
+    {
+     "type": "line",
+     "a": 0,
+     "b": 1
+    }
+   ],
+   "relations": [
+    {
+     "type": "axis",
+     "entity": 0,
+     "axis": "X"
+    }
+   ],
+   "dims": [
+    {
+     "type": "length",
+     "entity": 0,
+     "value": 50
+    }
+   ]
+  },
+  "fixed": [
+   0
+  ],
+  "expected": {
+   "points": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     50.00000000005599,
+     -9.226165757263332e-22,
+     2.095248491596819e-21
+    ]
+   ],
+   "ok": true
+  }
+ },
+ {
+  "name": "équerre : angle 90° et deux longueurs",
+  "spec": {
+   "points": [
+    [
+     0,
+     0,
+     0
+    ],
+    [
+     30,
+     0,
+     0
+    ],
+    [
+     25,
+     20,
+     5
+    ]
+   ],
+   "entities": [
+    {
+     "type": "line",
+     "a": 0,
+     "b": 1
+    },
+    {
+     "type": "line",
+     "a": 1,
+     "b": 2
+    }
+   ],
+   "dims": [
+    {
+     "type": "angle",
+     "e1": 0,
+     "e2": 1,
+     "value": 90
+    },
+    {
+     "type": "length",
+     "entity": 0,
+     "value": 30
+    },
+    {
+     "type": "length",
+     "entity": 1,
+     "value": 20
+    }
+   ]
+  },
+  "fixed": [
+   0
+  ],
+  "expected": {
+   "points": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     29.950059127049666,
+     1.6786432440056334,
+     0.4196607505868176
+    ],
+    [
+     28.79652190302401,
+     21.04919338612495,
+     5.262298364989575
+    ]
+   ],
+   "ok": true
+  }
+ },
+ {
+  "name": "chaîne d'axes X puis Z puis Y",
+  "spec": {
+   "points": [
+    [
+     0,
+     0,
+     0
+    ],
+    [
+     20,
+     1,
+     1
+    ],
+    [
+     21,
+     2,
+     15
+    ],
+    [
+     22,
+     12,
+     16
+    ]
+   ],
+   "entities": [
+    {
+     "type": "line",
+     "a": 0,
+     "b": 1
+    },
+    {
+     "type": "line",
+     "a": 1,
+     "b": 2
+    },
+    {
+     "type": "line",
+     "a": 2,
+     "b": 3
+    }
+   ],
+   "relations": [
+    {
+     "type": "axis",
+     "entity": 0,
+     "axis": "X"
+    },
+    {
+     "type": "axis",
+     "entity": 1,
+     "axis": "Z"
+    },
+    {
+     "type": "axis",
+     "entity": 2,
+     "axis": "Y"
+    }
+   ],
+   "dims": [
+    {
+     "type": "distance",
+     "p1": 0,
+     "p2": 3,
+     "value": 30
+    }
+   ]
+  },
+  "fixed": [
+   0
+  ],
+  "expected": {
+   "points": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     21.63299557238275,
+     4.2605181488491383e-32,
+     5.2820133357588996e-33
+    ],
+    [
+     21.63299557238275,
+     6.923116296964492e-32,
+     16.19023798922184
+    ],
+    [
+     21.63299557238275,
+     13.034174174746562,
+     16.19023798922184
+    ]
+   ],
+   "ok": true
+  }
+ },
+ {
+  "name": "point lié qui ne bouge pas",
+  "spec": {
+   "points": [
+    [
+     0,
+     0,
+     0
+    ],
+    [
+     10,
+     0,
+     0
+    ]
+   ],
+   "entities": [
+    {
+     "type": "line",
+     "a": 0,
+     "b": 1
+    }
+   ],
+   "links": [
+    {
+     "object": "Body",
+     "kind": "vertex",
+     "index": 0
+    },
+    null
+   ],
+   "dims": [
+    {
+     "type": "length",
+     "entity": 0,
+     "value": 25
+    }
+   ]
+  },
+  "fixed": [],
+  "expected": {
+   "points": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     25.0,
+     0.0,
+     0.0
+    ]
+   ],
+   "ok": true
+  }
+ },
+ {
+  "name": "conflit : deux longueurs sur la même ligne",
+  "spec": {
+   "points": [
+    [
+     0,
+     0,
+     0
+    ],
+    [
+     10,
+     0,
+     0
+    ]
+   ],
+   "entities": [
+    {
+     "type": "line",
+     "a": 0,
+     "b": 1
+    }
+   ],
+   "dims": [
+    {
+     "type": "length",
+     "entity": 0,
+     "value": 20
+    },
+    {
+     "type": "length",
+     "entity": 0,
+     "value": 30
+    }
+   ]
+  },
+  "fixed": [
+   0
+  ],
+  "expected": {
+   "points": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     25.0,
+     0.0,
+     0.0
+    ]
+   ],
+   "ok": false
+  }
+ }
+]

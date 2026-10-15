@@ -65,7 +65,7 @@
           "libelle": "Courbes",
           "lignes": 3,
           "boutons": [
-            {"id": "btn-curve3d", "titre": "Spline 3D — cliquez des points sur la pièce ou dans l'espace : trajectoire de balayage, bord de surface", "taille": "large", "icon": "spline3d", "libelle": "Spline 3D"},
+            {"id": "btn-sketch3d", "titre": "Esquisse 3D — lignes, splines et points dans l'espace, cotes et relations d'axe", "taille": "large", "icon": "sketch3d", "libelle": "Esquisse 3D"}, {"id": "btn-curve3d", "titre": "Spline 3D — cliquez des points sur la pièce ou dans l'espace : trajectoire de balayage, bord de surface", "taille": "large", "icon": "spline3d", "libelle": "Spline 3D"},
             {"id": "btn-curve-helix", "titre": "Hélice ou spirale — une courbe autour d'un axe d'origine", "icon": "nodes_helix", "libelle": "Hélice"},
             {"id": "btn-curve-composite", "titre": "Courbe composite — des courbes et arêtes bout à bout en une trajectoire", "icon": "curve_composite", "libelle": "Composite"},
             {"id": "btn-curve-project", "titre": "Courbe projetée — une esquisse projetée sur une face de surface", "icon": "curve_project", "libelle": "Projetée"},

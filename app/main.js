@@ -77,6 +77,7 @@ import {
 } from "./graph.js";
 import { edgeSnapPoints } from "./pointsnap.js";
 import { installCurve3d } from "./curve3d.js";
+import { installSketch3d } from "./sketch3d.js";
 import { installPoles } from "./poles.js";
 
 const sceneTheme = readScene();
@@ -345,6 +346,8 @@ window.__freesolidDebug = {
   get selectedFeatureName() { return selectedFeatureName; },
   /** Spline 3D ouverte : points et tracé à l'écran. */
   get curve3dScreen() { return ctx.curveTool?.screen() ?? null; },
+  /** Esquisse 3D ouverte : outil, définition, points et cotes à l'écran. */
+  get sketch3dScreen() { return ctx.sketch3dTool?.screen() ?? null; },
   refresh: () => refresh(call("get_tree")),
   get graphFeatureActive() { return graphFn.active; },
   get graphFeatureKind() { return graphFn.kind; },
@@ -1766,6 +1769,21 @@ ctx.curveTool = curveTool;
 ctx.openCurve3d = (curve) => curveTool.open(curve);
 document.getElementById("btn-curve3d").addEventListener("click", () =>
   featureCommand(() => curveTool.open()));
+
+// Esquisse 3D : un mode d'édition (lignes, splines, points, cotes).
+const sketch3dTool = installSketch3d(ctx);
+ctx.sketch3dTool = sketch3dTool;
+ctx.openSketch3d = (entry = null) => {
+  if (sketchMode.active) {
+    say(t("Fermez d'abord l'esquisse 2D en cours."), true);
+    return;
+  }
+  sketch3dTool.open(entry);
+};
+for (const id of ["sk-start3d", "btn-sketch3d"]) {
+  document.getElementById(id)?.addEventListener("click", () =>
+    featureCommand(() => ctx.openSketch3d()));
+}
 
 // Points de contrôle : la grille de pôles d'une surface, déplacés un à un.
 const polesTool = installPoles(ctx);

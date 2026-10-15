@@ -59,7 +59,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const errors = [];
   page.on("console", (m) => {
-    if (m.type() === "error") errors.push("console: " + m.text());
+    if (m.type() !== "error") return;
+    // Une ressource absente : la console ne donne son adresse que là.
+    const where = /Failed to load resource/.test(m.text()) && m.location()?.url;
+    errors.push("console: " + m.text() + (where ? " — " + where : ""));
   });
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 
@@ -225,9 +228,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     document.body.classList.contains("ribbon-icons-only")
     && localStorage.getItem("freesolid.ribbonLabels") === "icons-only");
   if (!iconsOnly) errors.push("Icônes seules : classe ou localStorage absent");
-  // En-tête compact : les noms de groupe sont masqués à l'œil (les
-  // séparateurs suffisent) mais restent dans le DOM, pour la recherche et
-  // les lecteurs d'écran ; le ruban garde sa hauteur sur une rangée.
+  // En-tête Atelier : chaque groupe porte sa légende sous ses boutons ; le
+  // ruban tient sur une rangée (boutons + légende, 88 px).
   const groupNames = await page.$$eval(
     "#ribbon-features .ribbon-group-label", (els) => els.map((e) => e.textContent));
   if (groupNames.some((name) => !name)) {
@@ -235,7 +237,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   const ribbonHeight = await page.$eval("#ribbon-features",
     (el) => Math.round(el.getBoundingClientRect().height));
-  if (ribbonHeight > 70) {
+  if (ribbonHeight > 92) {
     errors.push("ruban sur plus d'une rangée en icônes seules : " + ribbonHeight + " px");
   }
   // Chaque bouton du ruban doit englober son icône : en icônes seules,

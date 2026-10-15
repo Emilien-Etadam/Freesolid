@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- FreeSolid own art (LGPL-2.1-or-later): origin — two axes from a point. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <g stroke-width="6" stroke-linecap="round" fill="none">
+    <polyline points="10,54 54,54" stroke="#e06666"/>
+    <polyline points="44,46 54,54 44,62" stroke="#e06666"/>
+    <polyline points="10,54 10,10" stroke="#6aa84f"/>
+    <polyline points="2,20 10,10 18,20" stroke="#6aa84f"/>
+  </g>
+  <circle cx="10" cy="54" r="6" fill="#4b9bd5"/>
+</svg>

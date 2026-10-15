@@ -27,3 +27,9 @@ sont conservés, pour retrouver la source d'un grep dans leur dépôt. Les
 deux PNG de leur interface Qt (`nodes_default.png`, `nodes_status_icon.png`)
 ne sont pas repris ; un nœud qui n'avait qu'un PNG s'affiche ici avec
 `nodes_wb_icon.svg` ou `nodes_math.svg`.
+
+Les fichiers `fs_*.svg` sont des brouillons dessinés pour FreeSolid
+(`scripts/make_icons.py`), à redessiner. Règle : une commande garde
+l'icône de FreeCAD ou de Nodes qu'elle avait ; un brouillon ne sert que là
+où il n'y en a pas. Le choix tient dans `app/icons.js` (rôle de la commande
+→ fichier) — voir `docs/icones-a-dessiner.md`.

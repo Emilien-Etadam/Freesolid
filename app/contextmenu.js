@@ -194,7 +194,7 @@ export function installContextMenu(ctx) {
     const datums = (tree.features ?? [])
       .filter((f) => f.type === "PartDesign::Plane");
     panel.open({
-      icon: "sketch",
+      icon: "Sketcher_Sketch",
       title: t("Plan de l'esquisse — {s}", { s: sketch.label }),
       groups: [{ label: t("Nouveau plan"), rows: [
         { type: "select", key: "support", value: "XY", options: [

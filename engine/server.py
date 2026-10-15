@@ -144,6 +144,7 @@ _CONTENT_TYPES = {
     ".json": "application/json; charset=utf-8",
     ".svg": "image/svg+xml",
     ".wasm": "application/wasm",
+    ".woff2": "font/woff2",  # police de l'interface (app/fonts)
 }
 
 

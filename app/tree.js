@@ -20,7 +20,7 @@ const sceneTheme = readScene();
 // Rôles de la table icons.js : même rôle que la commande qui crée
 // l'élément. Le graphe garde, lui, les fichiers d'avant.
 export const TREE_ICONS = {
-  "Sketcher::SketchObject": "sketch",
+  "Sketcher::SketchObject": "Sketcher_Sketch",
   "PartDesign::Pad": "nodes_extrude",
   "PartDesign::Pocket": "pocket",
   "PartDesign::Fillet": "fillet",
@@ -38,9 +38,9 @@ export const TREE_ICONS = {
   "PartDesign::Point": "datum_point",
   "PartDesign::CoordinateSystem": "datum_cs",
   "PartDesign::AdditiveLoft": "loft",
-  "PartDesign::SubtractiveLoft": "loft",
+  "PartDesign::SubtractiveLoft": "PartDesign_SubtractiveLoft",
   "PartDesign::AdditivePipe": "sweep",
-  "PartDesign::SubtractivePipe": "sweep",
+  "PartDesign::SubtractivePipe": "PartDesign_SubtractivePipe",
   "PartDesign::AdditiveHelix": "nodes_helix",
   "PartDesign::Boolean": "boolean",
   "PartDesign::Body": "body",
@@ -395,7 +395,7 @@ export function installTree(ctx) {
         : t("état inconnu");
     ctx.sketchInfoOpen = true;
     panel.open({
-      icon: "sketch",
+      icon: "Sketcher_Sketch",
       title: state.label || feature.label,
       noApply: true,
       groups: [{
@@ -628,7 +628,7 @@ export function installTree(ctx) {
           + (child.error ? " error" : "")
           + (rolledBack ? " rolled-back" : "");
         row.dataset.feat = child.name;
-        row.appendChild(treeIcon("sketch"));
+        row.appendChild(treeIcon("Sketcher_Sketch"));
         row.appendChild(document.createTextNode(child.label));
         row.title = `${child.kind} — `
           + t("double-clic : modifier l'esquisse · clic droit : modifier");
@@ -1198,7 +1198,7 @@ export function installTree(ctx) {
         childRow.dataset.feat = child.name;
         if (rolledBack) childRow.classList.add("rolled-back");
         if (ctx.selectedSketch?.name === child.name) childRow.classList.add("sel");
-        childRow.appendChild(treeIcon("sketch"));
+        childRow.appendChild(treeIcon("Sketcher_Sketch"));
         childRow.appendChild(document.createTextNode(
           sketchTreeLabel(child.label, sketchDefinitionOf(child))));
         if (ctx.sketchMode.editing === child.name) childRow.classList.add("editing");

@@ -131,10 +131,11 @@ describe("thème", () => {
     return { getItem: (k) => data[k] ?? null, setItem: (k, v) => { data[k] = v; }, data };
   };
 
-  it("sombre par défaut, valeur inconnue ignorée", () => {
-    assert.equal(readTheme(store()), "dark");
-    assert.equal(readTheme(store({ [THEME_KEY]: "violet" })), "dark");
-    assert.equal(readTheme(null), "dark");
+  it("clair par défaut, valeur inconnue ignorée", () => {
+    assert.equal(readTheme(store()), "light");
+    assert.equal(readTheme(store({ [THEME_KEY]: "violet" })), "light");
+    assert.equal(readTheme(null), "light");
+    assert.equal(readTheme(store({ [THEME_KEY]: "dark" })), "dark");
   });
 
   it("enregistre un thème connu seulement", () => {

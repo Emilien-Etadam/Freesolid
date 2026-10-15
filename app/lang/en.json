@@ -1378,5 +1378,22 @@
  "Afficher {n}": "Show {n}",
  "Masquer {n}": "Hide {n}",
  "Cube d'orientation": "Orientation cube",
- "Vue {v}": "{v} view"
+ "Vue {v}": "{v} view",
+ "Matières": "Materials",
+ "Barre de raccourcis sous le pointeur (S encore : chercher)": "Shortcut bar under the pointer (S again: search)",
+ "Cadrer la pièce": "Fit the part",
+ "Ctrl+1 … 7": "Ctrl+1 … 7",
+ "Vues standard (face, arrière, gauche, droite, dessus, dessous, iso)": "Standard views (front, back, left, right, top, bottom, iso)",
+ "Normal à la face choisie": "Normal to the selected face",
+ "Masquer ce qui est sous le pointeur": "Hide what is under the pointer",
+ "Clic droit glissé": "Right-drag",
+ "Geste : huit commandes autour du pointeur": "Gesture: eight commands around the pointer",
+ "Entrée / Échap": "Enter / Esc",
+ "Valider / annuler la commande en cours": "Confirm / cancel the current command",
+ "Volet de ressources": "Resources pane",
+ "Ouvrez une pièce : la matière s'applique au corps actif.": "Open a part: the material applies to the active body.",
+ "Corps actif : {b}": "Active body: {b}",
+ "Appliquer à {b}": "Apply to {b}",
+ "Aucun gabarit : Fichier → Enregistrer comme gabarit… en crée un depuis la pièce ouverte.": "No template: File → Save as template… creates one from the open part.",
+ "Nouvelle pièce depuis ce gabarit": "New part from this template"
 }

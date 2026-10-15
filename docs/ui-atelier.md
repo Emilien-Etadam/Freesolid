@@ -37,5 +37,5 @@ au choix dans les paramètres, mêmes jetons.
 | 5 | Gestionnaire à onglets : arbre, propriétés, configurations, affichage | fait — Propriétés s’allume à l’ouverture d’une commande ; Arbre remontre l’arbre pendant la commande ; Configurations (activer, ajouter, tableau) ; Affichage (style, corps à masquer) |
 | 6 | Arbre volant dans la vue quand un panneau remplace l'arbre | existait déjà (`#tree-flyout`) |
 | 7 | Cube d'orientation cliquable en haut à droite, trièdre en bas à gauche | fait — cube en CSS 3D (clic sur une face : vue standard, bouton iso), coin de validation sous le cube |
-| 8 | Volet de ressources replié à droite (matériaux, gabarits, aide) | à faire |
+| 8 | Volet de ressources replié à droite (matériaux, gabarits, aide) | fait — matières appliquées au corps actif, gabarits (nouvelle pièce), aide des gestes et touches |
 | 9 | Police IBM Plex embarquée (fichiers de police OFL dans l'application) | à faire |

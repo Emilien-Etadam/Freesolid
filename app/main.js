@@ -80,6 +80,7 @@ import { installCurve3d } from "./curve3d.js";
 import { installBreadcrumbs } from "./breadcrumbs.js";
 import { installManagerTabs } from "./managertabs.js";
 import { installOrientCube } from "./orientcube.js";
+import { installTaskPane } from "./taskpane.js";
 import { installPoles } from "./poles.js";
 
 const sceneTheme = readScene();
@@ -1985,6 +1986,9 @@ ctx.updateTreeFlyout = updateTreeFlyout;
 ctx.managerTabs = installManagerTabs(ctx);
 // Cube d'orientation (haut droite) et trièdre (bas gauche).
 installOrientCube(ctx);
+// Volet de ressources (bord droit) : matières, gabarits, aide.
+ctx.openShortcutPanel = () => openShortcutPanel();
+installTaskPane(ctx);
 errorsBadge.addEventListener("click", async () => {
   const result = await call("rebuild_errors").catch((error) => {
     say(String(error.message ?? error), true);
@@ -2681,6 +2685,13 @@ pluginRuntime = createPluginApi({
 
 // ---------- boot ----------
 
+// Nouvelle pièce depuis un gabarit (accueil, volet de ressources).
+ctx.openTemplate = async (name) => {
+  if (!(await mayDiscard())) return;
+  clearFeatureDims();
+  refresh(call("new_from_template", { name }));
+};
+
 welcomeApi = installWelcome(document, {
   storage: localStore,
   hasDocument: () => Boolean(lastTree || assemblyState),
@@ -2689,11 +2700,7 @@ welcomeApi = installWelcome(document, {
   onOpen: () => document.getElementById("btn-open").click(),
   onRecent: (path) => openDocument(path),
   listTemplates: () => call("list_templates").then((r) => r.templates),
-  onTemplate: async (name) => {
-    if (!(await mayDiscard())) return;
-    clearFeatureDims();
-    refresh(call("new_from_template", { name }));
-  },
+  onTemplate: (name) => ctx.openTemplate(name),
 });
 
 call("ping")

@@ -138,8 +138,8 @@
     font: var(--text-m)/1.45 var(--font-ui);
     display: grid;
     grid-template-rows: auto 1fr 26px;
-    grid-template-columns: 260px 1fr;
-    grid-template-areas: "top top" "tree viewport" "status status";
+    grid-template-columns: 260px 1fr 40px;
+    grid-template-areas: "top top top" "tree viewport res" "status status status";
     overflow: hidden;
   }
 
@@ -1129,6 +1129,66 @@
      hors écran. Le canvas suit la cellule ; renderer.setSize dimensionne
      le tampon de rendu sans toucher au style (main.js). */
   main { grid-area: viewport; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+
+  /* Volet de ressources (taskpane.js) : une colonne d'icônes au bord
+     droit ; le volet ouvert passe par-dessus la vue. */
+  #taskpane {
+    grid-area: res; position: relative; z-index: 6;
+    background: var(--panel-2); border-left: 1px solid var(--line);
+  }
+  #taskpane .taskpane-strip {
+    display: flex; flex-direction: column; align-items: center;
+    gap: var(--space-1); padding: var(--space-2) 0;
+  }
+  #taskpane .taskpane-strip button {
+    width: 32px; height: 32px; padding: 0; justify-content: center;
+    display: inline-flex; align-items: center;
+    border: 0; background: transparent; border-radius: var(--radius-m);
+    color: var(--ink-2);
+  }
+  #taskpane .taskpane-strip button:hover { background: var(--hover); color: var(--accent); }
+  #taskpane .taskpane-strip button.on {
+    background: var(--surface); color: var(--accent); box-shadow: 0 0 0 1px var(--line);
+  }
+  #taskpane .taskpane-panel {
+    position: absolute; top: 0; bottom: 0; right: 100%;
+    width: 280px; overflow-y: auto;
+    background: var(--panel); border-left: 1px solid var(--line);
+    box-shadow: -6px 0 18px rgba(29, 39, 51, 0.14);
+    padding-bottom: var(--space-3);
+  }
+  #taskpane .taskpane-panel[hidden] { display: none; }
+  #taskpane h2 {
+    font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-2); padding: 10px var(--space-3) 6px;
+  }
+  .taskpane-note { color: var(--ink-2); font-size: var(--text-s); padding: 0 var(--space-3) var(--space-2); }
+  .taskpane-list { list-style: none; padding: 0 var(--space-2); }
+  .taskpane-list button {
+    width: 100%; display: flex; align-items: center; gap: var(--space-2);
+    justify-content: flex-start; text-align: left;
+    background: none; border: 1px solid transparent; border-radius: var(--radius-s);
+    padding: var(--space-1) var(--space-2); font-size: var(--text-s);
+  }
+  .taskpane-list button:hover { background: var(--hover); }
+  .taskpane-list button.on { background: var(--accent-wash); box-shadow: inset 2px 0 0 var(--accent); }
+  .taskpane-swatch {
+    width: 14px; height: 14px; border-radius: 3px; flex: none;
+    border: 1px solid var(--line); background: var(--scene-part);
+  }
+  .taskpane-name { flex: 1; }
+  .taskpane-meta { color: var(--ink-2); font-family: var(--font-mono); font-size: var(--text-xs); }
+  .taskpane-keys {
+    display: grid; grid-template-columns: auto 1fr; gap: 6px var(--space-2);
+    padding: 0 var(--space-3); font-size: var(--text-s);
+  }
+  .taskpane-keys dt { white-space: nowrap; }
+  .taskpane-keys kbd {
+    font: 500 var(--text-xs) var(--font-mono); padding: 1px 5px;
+    border: 1px solid var(--line); border-radius: 3px; background: var(--surface);
+  }
+  .taskpane-keys dd { margin: 0; color: var(--ink); }
+  .taskpane-more { margin: var(--space-3) var(--space-3) 0; font-size: var(--text-s); }
   main canvas { display: block; }
   main canvas:not(.fs-pane) { width: 100% !important; height: 100% !important; }
   /* Fenêtres multiples : chaque canvas à sa place (main.js, layouts.js). */

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- FreeSolid own art (LGPL-2.1-or-later): collinear relation — two
+     segments on one line. FreeCAD has no dedicated icon for it. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <g stroke="#4b9bd5" stroke-width="7" stroke-linecap="round">
+    <line x1="6" y1="46" x2="26" y2="30"/>
+    <line x1="38" y1="21" x2="58" y2="5"/>
+  </g>
+  <line x1="2" y1="52" x2="62" y2="4" stroke="#8b939d" stroke-width="2" stroke-dasharray="4 4"/>
+</svg>

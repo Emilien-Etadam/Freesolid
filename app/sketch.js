@@ -525,7 +525,7 @@ export function createSketchMode(deps) {
     };
     abandonEntityPanel();
     panel.open({
-      icon: "sketch",
+      icon: "Sketcher_Sketch",
       title: t("Image d'esquisse"),
       groups: [
         {

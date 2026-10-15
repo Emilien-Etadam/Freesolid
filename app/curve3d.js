@@ -12,7 +12,7 @@
 import { t } from "./i18n.js";
 import { snapFacePoint } from "./pointsnap.js";
 import {
-  sample, curvatureComb, maxCurvature, handleTips, dragTip, pinTangent,
+  sample, curvatureComb, maxCurvature, allHandleTips, preferPoint, dragTip, pinTangent,
   insertPoint, removePoint, simplify, relax, nearestOnCurve, cleanTangents,
   solve,
 } from "./splinemath.js";
@@ -253,6 +253,10 @@ export function installCurve3d(ctx) {
   const handleMaterial = new THREE.LineBasicMaterial({ color: theme.selection, depthTest: false });
   const tipMaterial = new THREE.PointsMaterial({
     color: theme.selection, size: 9, sizeAttenuation: false, depthTest: false });
+  const handleSoftMaterial = new THREE.LineBasicMaterial({
+    color: theme.accent, depthTest: false, transparent: true, opacity: 0.7 });
+  const tipSoftMaterial = new THREE.PointsMaterial({
+    color: theme.accent, size: 7, sizeAttenuation: false, depthTest: false });
   const combMaterial = new THREE.LineBasicMaterial({
     color: theme.dim, depthTest: false, transparent: true, opacity: 0.7 });
   const polygonMaterial = new THREE.LineDashedMaterial({
@@ -310,16 +314,19 @@ export function installCurve3d(ctx) {
     if (path.length >= 2) addLine(path, lineMaterial);
     addDots(list, dotMaterial);
     const sel = tool.values.selected;
-    if (sel != null && list[sel]) {
-      addDots([list[sel]], chosenMaterial);
-      if (isSpline() && list.length >= 2) {
-        try {
-          const tips = handleTips(list, closed(), tangents(), sel);
-          addLine([tips.in, list[sel], tips.out].filter(Boolean), handleMaterial);
-          addDots([tips.in, tips.out].filter(Boolean), tipMaterial);
-        } catch { /* rien à montrer */ }
-      }
+    // Poignées de tous les points, comme dans les modeleurs courants ;
+    // celle du point choisi ressort.
+    if (isSpline() && list.length >= 2) {
+      try {
+        allHandleTips(list, closed(), tangents()).forEach((tips, i) => {
+          const chosen = i === sel;
+          addLine([tips.in, list[i], tips.out].filter(Boolean),
+            chosen ? handleMaterial : handleSoftMaterial);
+          addDots([tips.in, tips.out].filter(Boolean), chosen ? tipMaterial : tipSoftMaterial);
+        });
+      } catch { /* rien à montrer */ }
     }
+    if (sel != null && list[sel]) addDots([list[sel]], chosenMaterial);
     if (isSpline() && list.length >= 2 && tool.values.comb) {
       try {
         const peak = maxCurvature(list, opts) || 1;
@@ -377,23 +384,31 @@ export function installCurve3d(ctx) {
   /** Ce qu'il y a sous le pointeur : bout de poignée, point, pôle. */
   function hitAt(event) {
     const list = points();
-    const sel = tool.values.selected;
+    const nearest = (candidates) => {
+      let best = null;
+      for (const [p, hit] of candidates) {
+        if (!p) continue;
+        const d = pixels(p, event);
+        if (d < PICK_PX && (!best || d < best.d)) best = { d, hit };
+      }
+      return best;
+    };
+    let tips = [];
+    if (isSpline() && list.length >= 2) {
+      try {
+        tips = allHandleTips(list, closed(), tangents()).flatMap((tip, i) => [
+          [tip.in, { kind: "tip", index: i, side: "in", at: tip.in }],
+          [tip.out, { kind: "tip", index: i, side: "out", at: tip.out }]]);
+      } catch { /* pas de poignée */ }
+    }
+    const found = preferPoint(nearest(list.map((p, i) => [p, { kind: "point", index: i, at: p }])),
+      nearest(tips));
+    if (found) return found.hit;
     const best = { d: PICK_PX, hit: null };
     const consider = (p, hit) => {
-      if (!p) return;
       const d = pixels(p, event);
       if (d < best.d) { best.d = d; best.hit = hit; }
     };
-    if (sel != null && list[sel] && isSpline() && list.length >= 2) {
-      try {
-        const tips = handleTips(list, closed(), tangents(), sel);
-        consider(tips.in, { kind: "tip", index: sel, side: "in", at: tips.in });
-        consider(tips.out, { kind: "tip", index: sel, side: "out", at: tips.out });
-      } catch { /* pas de poignée */ }
-    }
-    if (best.hit) return best.hit;
-    list.forEach((p, i) => consider(p, { kind: "point", index: i, at: p }));
-    if (best.hit) return best.hit;
     if (isSpline() && tool.values.polygon && tool.poles && tool.polesKey === curveKey()) {
       tool.poles.forEach((p, i) => consider(p, { kind: "pole", index: i, at: p }));
     }

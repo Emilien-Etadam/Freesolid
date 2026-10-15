@@ -1402,5 +1402,7 @@
  "— rien encore : choisissez Ligne, Spline ou Point —": "— nothing yet: choose Line, Spline or Point —",
  "⛓ Lié à la pièce : il la suit.": "⛓ Linked to the part: it follows it.",
  "Esquisse 3D — lignes, splines et points dans l'espace, cotes et relations d'axe": "3D Sketch — lines, splines and points in space, dimensions and axis relations",
- "Esquisse 3D : modifications abandonnées.": "3D sketch: changes discarded."
+ "Esquisse 3D : modifications abandonnées.": "3D sketch: changes discarded.",
+ "Tirez les bouts des poignées (Alt : un seul côté) ; cliquez un point pour ses longueurs.": "Drag the handle ends (Alt: one side only); click a point for its lengths.",
+ "Poignée libérée.": "Handle released."
 }

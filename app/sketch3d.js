@@ -14,7 +14,9 @@
 import { t } from "./i18n.js";
 import { snapFacePoint } from "./pointsnap.js";
 import { CLICK_PLANES, clickPlane, nextPlane, rayPlane } from "./curve3d.js";
-import { sample } from "./splinemath.js";
+import {
+  sample, allHandleTips, preferPoint, dragTip, pinTangent, cleanTangents, solve as solveSpline,
+} from "./splinemath.js";
 import { createDimSprite } from "./sketch.js";
 import {
   AXES, cleanSpec, solve, measure, inferAxis, onAxis, removeItems,
@@ -63,6 +65,10 @@ export function installSketch3d(ctx) {
     pointSel: new THREE.PointsMaterial({ color: theme.selection, size: 11, sizeAttenuation: false,
       depthTest: false }),
     pointHover: new THREE.PointsMaterial({ color: theme.accent, size: 11, sizeAttenuation: false,
+      depthTest: false }),
+    handleSoft: new THREE.LineBasicMaterial({ color: theme.accent, depthTest: false,
+      transparent: true, opacity: 0.7 }),
+    tipSoft: new THREE.PointsMaterial({ color: theme.accent, size: 7, sizeAttenuation: false,
       depthTest: false }),
     axis: AXES.split("").map((_, k) => new THREE.LineBasicMaterial({
       color: [theme.axisX, theme.axisY, theme.axisZ][k], depthTest: false,
@@ -154,6 +160,49 @@ export function installSketch3d(ctx) {
   const copy = () => JSON.parse(JSON.stringify(spec()));
 
   // ---------- viser ----------
+
+  /** Spline dont on montre les poignées : la spline choisie, ou celle du
+   *  point choisi. { entity, k } (k : rang du point choisi, ou null). */
+  function activeSpline() {
+    const sel = session.selection;
+    const s = spec();
+    if (sel?.kind === "entity" && s.entities[sel.index]?.type === "spline") {
+      return { entity: sel.index, k: null };
+    }
+    if (sel?.kind === "point") {
+      const e = s.entities.findIndex((en) => en.type === "spline" && en.pts.includes(sel.index));
+      if (e >= 0) return { entity: e, k: s.entities[e].pts.indexOf(sel.index) };
+    }
+    return null;
+  }
+
+  /** Points de passage, fermeture et poignées d'une spline de l'esquisse. */
+  function splineData(entityIndex, s = spec()) {
+    const e = s.entities[entityIndex];
+    return { points: e.pts.map((p) => s.points[p]), closed: !!e.closed,
+             tangents: cleanTangents(e.tangents, e.pts.length) };
+  }
+
+  /** Bout de poignée sous le pointeur : { d, hit } ou null. */
+  function tipAt(event) {
+    const active = activeSpline();
+    if (!active) return null;
+    let best = null;
+    try {
+      const data = splineData(active.entity);
+      allHandleTips(data.points, data.closed, data.tangents).forEach((tips, k) => {
+        for (const side of ["in", "out"]) {
+          const at = tips[side];
+          if (!at) continue;
+          const d = pixels(at, event);
+          if (d < PICK_PX && (!best || d < best.d)) {
+            best = { d, hit: { kind: "tip", entity: active.entity, k, side, at } };
+          }
+        }
+      });
+    } catch { /* pas de poignée */ }
+    return best;
+  }
 
   /** Point de l'esquisse sous le pointeur, ou -1. */
   function pointAt(event, skip = -1) {
@@ -350,6 +399,18 @@ export function installSketch3d(ctx) {
       if (e?.type === "point") dots([pts[e.p]], mats.pointSel);
     }
     if (hov?.kind === "point" && pts[hov.index]) dots([pts[hov.index]], mats.pointHover);
+    const active = activeSpline();
+    if (active) {
+      try {
+        const data = splineData(active.entity);
+        allHandleTips(data.points, data.closed, data.tangents).forEach((tips, k) => {
+          const chosen = k === active.k;
+          line([tips.in, data.points[k], tips.out].filter(Boolean),
+            chosen ? mats.selected : mats.handleSoft);
+          dots([tips.in, tips.out].filter(Boolean), chosen ? mats.pointSel : mats.tipSoft);
+        });
+      } catch { /* pas de poignée */ }
+    }
     drawDraft();
     scaleSprites();
   }
@@ -396,6 +457,8 @@ export function installSketch3d(ctx) {
     session.dimPicks = [];
     session.tool = tool;
     session.cursor = null;
+    // Le bouton cliqué rend le clavier à la vue.
+    if (document.activeElement?.closest?.("aside, #sketchbar")) document.activeElement.blur();
     renderer.domElement.style.cursor = tool === "select" ? "" : "crosshair";
     say(t(TOOL_HELP[tool]));
     draw();
@@ -581,9 +644,14 @@ export function installSketch3d(ctx) {
     return true;
   }
 
-  function beginDrag(index, event) {
-    session.drag = { index, moved: false, start: { x: event.clientX, y: event.clientY },
-      origin: [...spec().points[index]], undo: spec() };
+  function beginDrag(hit, event) {
+    const origin = hit.kind === "tip" ? [...hit.at] : [...spec().points[hit.index]];
+    session.drag = { ...hit, moved: false, start: { x: event.clientX, y: event.clientY },
+      origin, undo: spec() };
+    if (hit.kind === "tip") {
+      // La poignée tirée : son point devient le point choisi.
+      session.selection = { kind: "point", index: spec().entities[hit.entity].pts[hit.k] };
+    }
     ctx.controls.enabled = false;
   }
 
@@ -593,6 +661,19 @@ export function installSketch3d(ctx) {
     drag.moved = true;
     setRay(event);
     const { origin, direction } = raycaster.ray;
+    if (drag.kind === "tip") {
+      // Bout de poignée : face à l'écran ; Alt ne change que ce côté.
+      const target = rayPlane(origin.toArray(), direction.toArray(),
+        { normal: camera.getWorldDirection(new THREE.Vector3()).toArray(), point: drag.origin });
+      if (!target) return;
+      const data = splineData(drag.entity);
+      const draft = copy();
+      draft.entities[drag.entity].tangents = dragTip(data.points, data.closed, data.tangents,
+        drag.k, drag.side, target, { alone: event.altKey });
+      session.spec = cleanSpec(draft);
+      draw();
+      return;
+    }
     const point = rayPlane(origin.toArray(), direction.toArray(),
       clickPlane(session.plane, drag.origin))
       ?? rayPlane(origin.toArray(), direction.toArray(),
@@ -622,18 +703,24 @@ export function installSketch3d(ctx) {
 
   // ---------- événements ----------
 
+  /** Une frappe pour un champ (saisie, liste, case de cote) : pas pour
+   *  le mode. Un bouton du panneau qui garde le focus ne compte pas —
+   *  sinon Entrée validerait l'esquisse au lieu de finir la spline. */
   function inPanel(event) {
-    return !!event.target?.closest?.("aside, input, select, textarea, button, .sk3d-edit");
+    return !!event.target?.closest?.("input, select, textarea, .sk3d-edit");
   }
 
   function onCaptureDown(event) {
     if (!session || event.button !== 0 || event.target !== renderer.domElement) return;
     if (session.tool !== "select") return;
     const p = pointAt(event);
-    if (p < 0) return;
+    const pointHit = p >= 0 ? { d: pixels(spec().points[p], event), hit: { kind: "point", index: p } }
+      : null;
+    const found = preferPoint(pointHit, tipAt(event));
+    if (!found) return;
     event.stopImmediatePropagation();
     event.preventDefault();
-    beginDrag(p, event);
+    beginDrag(found.hit, event);
   }
 
   function onCaptureMove(event) {
@@ -646,8 +733,11 @@ export function installSketch3d(ctx) {
     if (!session?.drag || event.button !== 0) return;
     event.stopImmediatePropagation();
     const drag = endDrag();
-    if (!drag.moved) {
+    if (!drag.moved && drag.kind === "point") {
       session.selection = { kind: "point", index: drag.index };
+      draw();
+      reopenPanel();
+    } else if (!drag.moved) {
       draw();
       reopenPanel();
     }
@@ -703,8 +793,9 @@ export function installSketch3d(ctx) {
       const d = session.tool === "select" ? dimAt(event) : -1;
       session.hover = d >= 0 ? { kind: "dim", index: d } : pickAt(event);
     }
+    const overTip = session.tool === "select" && tipAt(event);
     renderer.domElement.style.cursor = session.tool === "select"
-      ? (session.hover?.kind === "point" ? "grab" : session.hover ? "pointer" : "")
+      ? (session.hover?.kind === "point" || overTip ? "grab" : session.hover ? "pointer" : "")
       : "crosshair";
     draw();
   }
@@ -800,7 +891,18 @@ export function installSketch3d(ctx) {
       if (s.links[sel.index]) {
         rows.push({ type: "note", readonly: true, text: t("⛓ Lié à la pièce : il la suit.") });
       }
+      const handle = handleState();
+      if (handle) {
+        rows.push(
+          { type: "check", key: "handleDriven", label: t("Tangente pilotée"), value: handle.handleDriven },
+          { type: "number", key: "handleIn", label: t("Longueur avant"), unit: "%", min: 1, step: 5,
+            lazy: true, value: handle.handleIn },
+          { type: "number", key: "handleOut", label: t("Longueur après"), unit: "%", min: 1, step: 5,
+            lazy: true, value: handle.handleOut },
+        );
+      }
       rows.push({ type: "buttons", items: [
+        ...(handle ? [{ label: t("Libérer la poignée"), onClick: () => releaseHandles(true) }] : []),
         ...(s.links[sel.index] ? [{ label: t("Délier"), onClick: () => {
           const draft = copy();
           draft.links[sel.index] = null;
@@ -823,7 +925,13 @@ export function installSketch3d(ctx) {
             options: [["", "—"], ["X", "X"], ["Y", "Y"], ["Z", "Z"]] },
         );
       } else if (e.type === "spline") {
-        rows.push({ type: "check", key: "selClosed", label: t("Fermée"), value: e.closed });
+        rows.push(
+          { type: "check", key: "selClosed", label: t("Fermée"), value: e.closed },
+          { type: "note", readonly: true,
+            text: t("Tirez les bouts des poignées (Alt : un seul côté) ; cliquez un point pour ses longueurs.") },
+          { type: "buttons", items: [
+            { label: t("Libérer toutes les poignées"), onClick: () => releaseHandles(false) }] },
+        );
       }
       if (e.type !== "point") {
         rows.push({ type: "check", key: "selConstruction", label: t("Construction"), value: !!e.construction });
@@ -847,6 +955,57 @@ export function installSketch3d(ctx) {
     return null;
   }
 
+  /** Poignée du point choisi (s'il est sur une spline) : pilotée ?,
+   *  longueurs en %. */
+  function handleState() {
+    const active = activeSpline();
+    if (!active || active.k == null) return null;
+    const data = splineData(active.entity);
+    let slopes;
+    try { slopes = solveSpline(data.points, data.closed, data.tangents); } catch { return null; }
+    const pct = (v) => Math.round(Math.hypot(...v) * 1000) / 10;
+    return { handleDriven: !!data.tangents[active.k],
+             handleIn: pct(slopes.mIn[active.k]), handleOut: pct(slopes.mOut[active.k]) };
+  }
+
+  /** Saisie dans les champs de poignée : vrai si la tangente a changé. */
+  function applyHandleFields(values) {
+    const active = activeSpline();
+    const was = handleState();
+    if (!active || !was || !("handleDriven" in values)) return false;
+    const typed = ["handleIn", "handleOut"].some((k) => String(values[k]) !== String(was[k]))
+      && Number(values.handleIn) > 0 && Number(values.handleOut) > 0;
+    const toggled = !!values.handleDriven !== was.handleDriven;
+    if (!typed && !toggled) return false;
+    const data = splineData(active.entity);
+    const tangents = [...data.tangents];
+    if (typed || values.handleDriven) {
+      const pinned = tangents[active.k] ?? pinTangent(data.points, data.closed, tangents, active.k)[active.k];
+      tangents[active.k] = { dir: pinned.dir, in: Number(values.handleIn) / 100,
+                             out: Number(values.handleOut) / 100 };
+    } else {
+      tangents[active.k] = null;
+    }
+    const draft = copy();
+    draft.entities[active.entity].tangents = tangents;
+    apply(draft);
+    return true;
+  }
+
+  /** Libère la poignée du point choisi (`one`) ou toutes celles de la
+   *  spline. */
+  function releaseHandles(one) {
+    const active = activeSpline();
+    if (!active) return;
+    const draft = copy();
+    const e = draft.entities[active.entity];
+    const tangents = cleanTangents(e.tangents, e.pts.length);
+    if (one && active.k != null) tangents[active.k] = null;
+    else tangents.fill(null);
+    e.tangents = tangents;
+    apply(draft, { message: one ? t("Poignée libérée.") : t("Toutes les poignées sont libérées.") });
+  }
+
   /** Une valeur du groupe de sélection a changé. */
   function onPanelChange(values) {
     if (!session || reopening) return;
@@ -859,6 +1018,7 @@ export function installSketch3d(ctx) {
     if (!sel) return;
     const draft = copy();
     if (sel.kind === "point") {
+      if (applyHandleFields(values)) return;
       const p = s.points[sel.index];
       const next = ["X", "Y", "Z"].map((axis, k) => Number(String(values[`sel${axis}`]).replace(",", ".")));
       if (next.some((v) => !Number.isFinite(v)) || next.every((v, k) => Math.abs(v - p[k]) < 1e-9)) return;

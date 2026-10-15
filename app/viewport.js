@@ -99,7 +99,8 @@ export function installViewport(ctx) {
 
   const controls = new OrbitControls(camera, renderer.domElement);
   camera.focus = controls.target;
-  controls.enableDamping = true;
+  // Pas d'inertie : la vue s'arrête dès qu'on lâche la souris.
+  controls.enableDamping = false;
 
   // Navigation (navigation.js) : le milieu tourne, Ctrl + milieu déplace,
   // Maj + milieu zoome, la molette zoome vers le curseur ; le bouton gauche

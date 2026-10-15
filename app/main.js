@@ -77,6 +77,7 @@ import {
 } from "./graph.js";
 import { edgeSnapPoints } from "./pointsnap.js";
 import { installCurve3d } from "./curve3d.js";
+import { installBreadcrumbs } from "./breadcrumbs.js";
 import { installPoles } from "./poles.js";
 
 const sceneTheme = readScene();
@@ -1974,6 +1975,8 @@ ctx.handles = installHandles(ctx);
 Object.assign(ctx, { currentSelection, featureCommand });
 const refGeometry = installRefGeometry(ctx);
 ctx.treeHooks.push((tree) => refGeometry.draw(tree));
+// Fil de la sélection : pièce › fonction › esquisse › face.
+installBreadcrumbs(ctx);
 errorsBadge.addEventListener("click", async () => {
   const result = await call("rebuild_errors").catch((error) => {
     say(String(error.message ?? error), true);

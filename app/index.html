@@ -7,12 +7,13 @@
 <script>
   // Thème avant le premier rendu et avant que la scène lise ses
   // couleurs (même calcul que resolveTheme dans settings.js).
+  let light = true; // « Atelier », le thème clair, par défaut
   try {
     const pref = localStorage.getItem("freesolid.theme");
-    const light = pref === "light" || (pref === "system"
-      && matchMedia("(prefers-color-scheme: light)").matches);
-    if (light) document.documentElement.dataset.theme = "light";
-  } catch { /* stockage indisponible : thème sombre */ }
+    light = pref !== "dark" && (pref !== "system"
+      || matchMedia("(prefers-color-scheme: light)").matches);
+  } catch { /* stockage indisponible : thème par défaut */ }
+  if (light) document.documentElement.dataset.theme = "light";
 </script>
 <style>
   :root {
@@ -50,6 +51,8 @@
     --text-s: 12px;
     --text-m: 13px;
     --text-l: 16px;
+    --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", Consolas, "Cascadia Mono", monospace;
     --scene-bg-top: #2c323a;
     --scene-bg-bottom: #121417;
     --scene-sky: #e4eaf1;
@@ -74,58 +77,63 @@
     --scene-dim: #7fc4ff;
   }
 
-  /* Thème clair (Q11) : mêmes jetons, autres valeurs. Le choix est posé
-     sur <html data-theme> par le script en tête de page. */
+  /* Thème clair « Atelier » (docs/ui-atelier.md), le thème par défaut :
+     mêmes jetons que le sombre, autres valeurs. Le choix est posé sur
+     <html data-theme> par le script en tête de page. */
   :root[data-theme="light"] {
     color-scheme: light;
-    --bg: #eceef1;
-    --panel: #f8f9fa;
-    --panel-2: #e6e9ed;
-    --line: #cdd2d8;
-    --ink: #1d2126;
-    --ink-2: #5b636d;
-    --accent: #2f6fc0;
-    --accent-2: #1f5aa6;
-    --accent-wash: #dbe7f6;
-    --error: #c0392b;
+    --bg: #e9edf1;
+    --panel: #f4f6f8;
+    --panel-2: #eef1f4;
+    --line: #c9d1da;
+    --ink: #1d2733;
+    --ink-2: #5a6573;
+    --accent: #1f6fb2;
+    --accent-2: #174f80;
+    --accent-wash: #d6e6f6;
+    --error: #c8372d;
     --error-deep: #e8b4ae;
-    --danger: #d63031;
+    --danger: #c8372d;
     --warn: #b7791f;
     --warn-ink: #7a4f0e;
     --caution: #9a7b12;
     --success: #2e8b57;
-    --success-2: #23744a;
+    --success-2: #237047;
     --success-deep: #a6d3b8;
     --success-soft: #2f9e5f;
-    --success-wash: #dff1e6;
-    --ok: #23934f;
-    --selection: #d9822b;
-    --scene-bg-top: #f4f6f8;
-    --scene-bg-bottom: #c9d0d8;
+    --success-wash: #e8f5ee;
+    --ok: #2e8b57;
+    --hover: #e3e9ef;
+    --selection: #e8892b;
+    --scene-bg-top: #fbfcfe;
+    --scene-bg-bottom: #c7d1dc;
     --scene-sky: #ffffff;
     --scene-ground: #8f969f;
     --scene-light: #ffffff;
-    --scene-grid: #b9c0c9;
-    --scene-grid-major: #a0a8b2;
+    --scene-grid: #c3ccd6;
+    --scene-grid-major: #a9b4c0;
     --scene-grid-axis: #7f8894;
-    --scene-part: #9fb1c4;
+    --scene-part: #a9bbcd;
     --scene-part-muted: #9aa4af;
     --scene-curve: #16806f;
     --scene-sketch: #2f5d9a;
-    --scene-edge: #161a20;
-    --scene-edge-faint: #8a929c;
+    --scene-edge: #2a3a4c;
+    --scene-edge-faint: #8a94a1;
     --scene-edge-on-bg: #242a31;
-    --scene-ghost: #d6a100;
-    --scene-under: #1f6fd1;
-    --scene-defined: #1d2126;
-    --scene-dim: #1f6fbf;
+    --scene-ghost: #e6b422;
+    --scene-axis-x: #c8372d;
+    --scene-axis-y: #2e8b57;
+    --scene-axis-z: #1f6fb2;
+    --scene-under: #1f6fb2;
+    --scene-defined: #1d2733;
+    --scene-dim: #1f6fb2;
   }
   * { margin: 0; box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     background: var(--bg);
     color: var(--ink);
-    font: var(--text-m)/1.45 system-ui, "Segoe UI", sans-serif;
+    font: var(--text-m)/1.45 var(--font-ui);
     display: grid;
     grid-template-rows: auto 1fr 26px;
     grid-template-columns: 260px 1fr;
@@ -133,14 +141,19 @@
     overflow: hidden;
   }
 
-  /* En-tête compact (docs/maquettes/entete.html) : 32 + 28 + 70 px.
-     Ligne 1 : marque, menus, accès rapide, recherche. Ligne 2 : onglets.
-     Ligne 3 : le ruban de l'onglet actif, sur une seule rangée. */
+  /* En-tête « Atelier » (docs/ui-atelier.md) : 32 + 88 + 26 px.
+     Ligne 1 : marque, menus, accès rapide, recherche. Ligne 2 : la barre
+     de commandes de l'onglet actif, une légende sous chaque groupe.
+     Ligne 3 : les onglets, sous les boutons. */
   header {
     grid-area: top;
+    display: flex; flex-direction: column;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
   }
+  #titlebar { order: 0; }
+  header .ribbon { order: 1; }
+  #topbar { order: 2; }
   #titlebar {
     height: 32px; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-2);
     padding: 0 var(--space-2);
@@ -169,8 +182,9 @@
   #tree li.suppressed { opacity: .45; text-decoration: line-through; }
   #tree li.add-config { color: var(--ink-2); cursor: pointer; }
   #topbar {
-    height: 28px; display: flex; align-items: flex-end; gap: 2px;
+    height: 26px; display: flex; align-items: flex-start; gap: 2px;
     padding: 0 var(--space-2);
+    background: var(--bg);
   }
   #topbar .push { margin-left: auto; }
   #command-search { position: relative; display: flex; align-items: center; }
@@ -201,73 +215,80 @@
   }
   #command-results button:hover:not(:disabled) { background: var(--hover); }
   #command-results .cmd-tab { color: var(--ink-2); font-size: var(--text-xs); }
+  /* Les onglets pendent sous la barre : l'actif la prolonge. */
   header .tab {
     background: none; border: none;
-    border-radius: var(--radius-s) var(--radius-s) 0 0;
-    padding: 5px var(--space-3);
-    color: var(--ink-2); font-weight: 600; font-size: var(--text-s);
+    border-radius: 0 0 var(--radius-m) var(--radius-m);
+    padding: 4px var(--space-3) 5px;
+    color: var(--ink-2); font-weight: 500; font-size: var(--text-s);
   }
-  header .tab:hover { color: var(--ink); }
+  header .tab:hover { color: var(--ink); background: var(--hover); }
   header .tab.active {
-    color: var(--ink); background: var(--panel-2);
-    box-shadow: inset 0 2px 0 var(--accent);
+    color: var(--accent-2); background: var(--panel-2); font-weight: 600;
+    box-shadow: inset 0 -2px 0 var(--accent);
   }
   /* Le ruban : une rangée de groupes, deux lignes de 28 px. Les commandes
      de tête (taille "large" dans ribbon.json) occupent les deux lignes,
      icône au-dessus du libellé ; les autres s'empilent deux par deux. */
   .ribbon {
     display: none; align-items: stretch;
-    height: 69px; box-sizing: border-box;
-    padding: var(--space-1) var(--space-1);
+    /* Hauteur au contenu : la barre de défilement (fenêtre étroite)
+       s'ajoute sous les légendes au lieu de les couvrir. */
+    min-height: 88px; box-sizing: border-box;
+    padding: var(--space-1) var(--space-1) 0;
     background: var(--panel-2);
+    border-top: 1px solid var(--line);
     overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
   }
   .ribbon.active { display: flex; }
   .ribbon-group {
-    display: flex; flex: 0 0 auto;
+    display: flex; flex-direction: column; flex: 0 0 auto;
+    min-height: 83px;
     padding: 0 var(--space-1);
     border-right: 1px solid var(--line);
     position: relative;
   }
   .ribbon-group:last-child { border-right: none; }
   .ribbon-group-btns {
+    flex: 1;
     display: grid; grid-auto-flow: column;
-    grid-template-rows: repeat(2, 28px);
+    grid-template-rows: repeat(2, 30px);
     align-content: center; align-items: center;
     gap: 2px;
   }
-  /* Le nom du groupe reste dans le DOM (recherche, lecteurs d'écran) ;
-     les séparateurs suffisent à l'œil. */
+  /* La légende du groupe, sous ses boutons (« Ajouter de la matière »). */
   .ribbon-group-label {
-    /* Ancré dans son groupe : sinon, au bout d'un ruban qui défile, il
-       dépasse de la fenêtre et fait défiler toute la page. */
-    position: absolute; left: 0; top: 0;
-    width: 1px; height: 1px; overflow: hidden;
-    clip-path: inset(50%); white-space: nowrap;
+    min-height: 16px; box-sizing: border-box;
+    margin-top: 2px; padding: 1px var(--space-1) 2px;
+    border-top: 1px solid var(--line);
+    font-size: 10.5px; line-height: 13px; color: var(--ink-2);
+    text-align: center; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; max-width: 100%;
   }
+  .ribbon-group-label:empty { border-top-color: transparent; }
   .ribbon-group-btns button {
-    height: 28px; padding: 0 var(--space-2) 0 var(--space-1);
+    height: 30px; padding: 0 var(--space-2) 0 var(--space-1);
     background: none; border-color: transparent; border-radius: var(--radius-s);
     font-size: var(--text-xs); white-space: nowrap;
   }
   .ribbon-group-btns button:not(:has(> img)) { padding: 0 var(--space-2); }
   .ribbon-group-btns button:has(> img):not(:has(> :not(img))) { justify-content: center; }
-  .ribbon-group-btns.rows-3 { grid-template-rows: repeat(3, 19px); gap: 1px; }
-  .ribbon-group-btns.rows-3 button { height: 19px; }
-  .ribbon-group-btns.rows-3 button img { width: 15px; height: 15px; }
-  .ribbon-group-btns.rows-3 button.large { grid-row: span 3; height: 59px; }
-  .ribbon-group-btns.rows-3 button.large img { width: 24px; height: 24px; }
+  .ribbon-group-btns.rows-3 { grid-template-rows: repeat(3, 20px); gap: 1px; }
+  .ribbon-group-btns.rows-3 button { height: 20px; }
+  .ribbon-group-btns.rows-3 button img { width: 16px; height: 16px; }
+  .ribbon-group-btns.rows-3 button.large { grid-row: span 3; height: 62px; }
+  .ribbon-group-btns.rows-3 button.large img { width: 28px; height: 28px; }
   .ribbon-group-btns button:hover {
     background: var(--panel); border-color: var(--line);
   }
   .ribbon button.large {
-    grid-row: span 2; height: 58px; width: 60px;
+    grid-row: span 2; height: 62px; width: 64px;
     flex-direction: column; justify-content: center;
     gap: 3px; padding: 2px;
     white-space: normal; text-align: center; line-height: 1.15;
     border-radius: var(--radius-m);
   }
-  .ribbon button.large img { width: 24px; height: 24px; }
+  .ribbon button.large img { width: 28px; height: 28px; }
   .ribbon-group-btns .sep {
     grid-row: span 2; align-self: stretch; width: 1px; height: auto;
     margin: var(--space-1) var(--space-1);
@@ -338,14 +359,20 @@
   }
   header button[hidden] { display: none; }
 
+  /* Barre de vue : une pilule flottante au centre, en haut de la vue. */
   #viewbar {
-    position: absolute; top: 10px; right: 10px;
-    display: flex; gap: 2px; z-index: 4;
-    background: var(--panel);
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 1px; z-index: 4;
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
     border: 1px solid var(--line);
-    border-radius: var(--radius-l); padding: var(--space-1);
+    border-radius: 10px; padding: 3px 5px;
+    box-shadow: 0 2px 6px rgba(29, 39, 51, 0.10);
   }
-  #viewbar button { padding: var(--space-1); border: none; background: none; }
+  #viewbar button {
+    padding: 0; width: 30px; height: 30px; justify-content: center;
+    border: none; background: none; border-radius: var(--radius-m);
+  }
+  #viewbar button img { width: 18px; height: 18px; }
   #viewbar button:hover { background: var(--hover); }
   #viewbar button.on { color: var(--accent); }
   .view-drop { position: relative; display: flex; }
@@ -497,20 +524,50 @@
   .dim-modify .ok { color: var(--ok); }
   .dim-modify .no { color: var(--danger); }
 
-  /* Coin de confirmation : sous la barre de vue, en haut à droite. */
+  /* Fil de la sélection (breadcrumbs.js) : en haut à gauche de la vue,
+     sous la ligne de la barre de vue pour ne jamais la chevaucher. */
+  #breadcrumbs {
+    position: absolute; top: 52px; left: 12px; z-index: 4;
+    display: flex; align-items: center; gap: 4px; max-width: 60%;
+    flex-wrap: wrap;
+  }
+  #breadcrumbs[hidden], aside.panel-open ~ main #breadcrumbs { display: none; }
+  #breadcrumbs .crumb {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; font-size: var(--text-xs);
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--line); border-radius: var(--radius-s);
+    color: var(--ink);
+  }
+  #breadcrumbs .crumb img { width: 14px; height: 14px; }
+  #breadcrumbs .crumb:hover { border-color: var(--accent); }
+  #breadcrumbs .crumb-face {
+    border-color: var(--selection); cursor: default;
+    background: color-mix(in srgb, var(--selection) 14%, var(--panel));
+  }
+  #breadcrumbs .crumb-sep { color: var(--ink-2); font-size: var(--text-xs); }
+
+  /* Coin de validation : en haut à droite de la vue. */
   #confirm-corner {
-    position: absolute; top: 52px; right: 10px; z-index: 4;
-    display: flex; flex-direction: column; gap: var(--space-1);
+    position: absolute; top: 10px; right: 12px; z-index: 4;
+    display: flex; flex-direction: column; gap: 6px;
   }
   #confirm-corner[hidden] { display: none; }
   #confirm-corner button {
-    width: 40px; height: 40px; font-size: 24px; line-height: 1;
-    border-radius: var(--radius-l); border: 1px solid var(--line);
-    background: var(--panel); cursor: pointer;
+    width: 44px; height: 44px; font-size: 24px; line-height: 1;
+    justify-content: center; padding: 0;
+    border-radius: 10px; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(29, 39, 51, 0.12);
   }
-  #confirm-corner .ok { color: var(--ok); }
-  #confirm-corner .no { color: var(--danger); }
-  #confirm-corner button:hover { background: var(--hover); }
+  #confirm-corner .ok {
+    color: var(--ok); border: 1px solid var(--ok);
+    background: color-mix(in srgb, var(--success-wash) 92%, transparent);
+  }
+  #confirm-corner .no {
+    color: var(--danger); border: 1px solid var(--danger);
+    background: color-mix(in srgb, var(--danger) 10%, var(--panel));
+  }
+  #confirm-corner button:hover { filter: brightness(0.97); }
 
   /* Cadre de sélection : plein en fenêtre, tirets en capture. */
   #box-select {
@@ -602,17 +659,17 @@
   .graph-node.drop-no { opacity: 0.32; cursor: not-allowed; }
   .graph-node.wiring-from .shape { stroke: var(--success); }
   .graph-node text {
-    fill: var(--ink); font: var(--text-xs)/1 system-ui, "Segoe UI", sans-serif;
+    fill: var(--ink); font: var(--text-xs)/1 var(--font-ui);
     pointer-events: none;
   }
   .graph-node text.graph-literal { pointer-events: auto; cursor: text; }
   .graph-node text.graph-param {
-    fill: var(--ink-2); font: var(--text-xs)/1 system-ui, "Segoe UI", sans-serif;
+    fill: var(--ink-2); font: var(--text-xs)/1 var(--font-ui);
     pointer-events: auto; cursor: pointer;
   }
   .graph-node text.graph-param.driven { fill: var(--success); }
   .graph-edge-sub {
-    fill: var(--ink-2); font: var(--text-xs)/1 system-ui, "Segoe UI", sans-serif;
+    fill: var(--ink-2); font: var(--text-xs)/1 var(--font-ui);
     pointer-events: none;
   }
   .graph-node image { pointer-events: none; }
@@ -688,11 +745,11 @@
   .graph-port.drop-ok { stroke: var(--success); stroke-width: 2; }
   .graph-port.drop-hover { fill: var(--success-2); }
   .graph-literal {
-    fill: var(--ink-2); font: var(--text-xs)/1 system-ui, "Segoe UI", sans-serif;
+    fill: var(--ink-2); font: var(--text-xs)/1 var(--font-ui);
     pointer-events: none;
   }
   .graph-port-label {
-    fill: var(--ink-2); font: var(--text-xs)/1 system-ui, "Segoe UI", sans-serif;
+    fill: var(--ink-2); font: var(--text-xs)/1 var(--font-ui);
     pointer-events: none;
   }
   .graph-edge.data .graph-edge-line { stroke: var(--success); }

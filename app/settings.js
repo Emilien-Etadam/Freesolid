@@ -45,7 +45,7 @@ export const THEME_KEY = "freesolid.theme";
 /** Thèmes proposés : id, libellé (traduit à l'affichage). */
 const THEMES = [["dark", "Sombre"], ["light", "Clair"], ["system", "Selon le système"]];
 
-/** Le thème choisi ; sombre par défaut. */
+/** Le thème choisi ; clair (« Atelier ») par défaut. */
 export function readTheme(storage) {
   try {
     const stored = storage?.getItem(THEME_KEY);
@@ -53,7 +53,7 @@ export function readTheme(storage) {
   } catch {
     // stockage indisponible : thème par défaut.
   }
-  return "dark";
+  return "light";
 }
 
 export function writeTheme(storage, theme) {

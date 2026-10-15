@@ -1361,5 +1361,8 @@
  "Libérer toutes les poignées": "Release all handles",
  "Cliquez sur la pièce, une surface ou une courbe — sommets et centres aimantent — ou dans le vide : le point se pose sur le plan de clic, qui passe par le dernier point. Tab change de plan, Maj garde le segment parallèle à un axe. Tirez un point pour le déplacer ; cliquez-le pour sa poignée de tangente (Alt : un seul côté). Ctrl+clic sur la courbe ajoute un point, Suppr retire le point choisi.": "Click on the part, a surface or a curve — vertices and centres snap — or in empty space: the point lands on the click plane, which passes through the last point. Tab changes plane, Shift keeps the segment parallel to an axis. Drag a point to move it; click it for its tangent handle (Alt: one side only). Ctrl+click on the curve adds a point, Delete removes the selected point.",
  "Point P{n}": "Point P{n}",
- "Cliquez un point de la spline pour sa poignée ; Ctrl+clic sur la courbe ajoute un point.": "Click a spline point for its handle; Ctrl+click on the curve adds a point."
+ "Cliquez un point de la spline pour sa poignée ; Ctrl+clic sur la courbe ajoute un point.": "Click a spline point for its handle; Ctrl+click on the curve adds a point.",
+ "Fil de la sélection": "Selection trail",
+ "Clic : choisir dans l'arbre · double-clic : modifier": "Click: select in the tree · double-click: edit",
+ "Clic : choisir l'esquisse · double-clic : la modifier": "Click: select the sketch · double-click: edit it"
 }

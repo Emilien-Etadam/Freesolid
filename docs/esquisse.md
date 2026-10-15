@@ -63,6 +63,7 @@ Un outil est **fait** quand :
 | Image d'esquisse (gardée avec l'esquisse) | ✅ | `sketch_picture` | `p51_complements` |
 | Splines : convertir en spline, insérer un nœud, augmenter le degré | ✅ | `sketch_spline` | `p51_complements` |
 | Égaliser la courbure (G2) au raccord de deux splines | ✅ | `sketch_match_curvature` | `p51_complements` |
+| Éditer une spline dans la vue : tirer ses points, poignée de tangente (direction et longueurs, Alt : un seul côté, longueurs en %), Ctrl+clic pour un point de plus (forme gardée), Suppr pour en retirer un, polygone de contrôle (pôles à tirer), peigne de courbure, simplifier (tolérance), lisser, libérer les poignées — les relations de la spline tiennent | ✅ | `sketch_set_spline`, `curve_poles`, `curve_move_pole` ; calcul `splinemath` (moteur et client) | `p69_esquisse`, `test_splinemath`, `splinemath.test` |
 | Peigne de courbure, accrochage à la grille | ✅ | client (`curvatureComb`, `gridStep`) | `sketchtools` |
 
 ## Relations
@@ -108,6 +109,16 @@ Un outil est **fait** quand :
 | Contours choisis : une fonction ne prend qu'une partie des contours, à la création et en réédition | ✅ | `contours`, `set_profile_contours`, `sketch_contours` | `p52_esquisse_partagee`, `contours` |
 
 ## Comportements à connaître
+
+- **Splines** : une spline passe par ses points ; entre deux points, un arc
+  cubique. Une pente libre garde la courbe lisse (et, aux bouts, les deux
+  premiers ou derniers arcs ne forment qu'une cubique, comme
+  l'interpolation de FreeCAD) ; une pente pilotée a une direction et deux
+  longueurs. Ajouter un point par Ctrl+clic garde la forme exacte : le
+  nouveau point et ses voisins prennent alors des pentes pilotées quand
+  c'est nécessaire. Une spline de degré supérieur à 3 (après « augmenter
+  le degré ») n’a plus de points de passage : elle ne s’édite pas dans la
+  vue.
 
 - **Blocs** : un bloc est un modèle ; l'insérer en copie les entités et
   leurs relations internes. Modifier le bloc ensuite ne met pas à jour

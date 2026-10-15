@@ -15,10 +15,13 @@
 //     noApply?: boolean,   // panneau info : pas de bouton OK
 //     autoFocus?: boolean, // false : ne pas voler le focus clavier
 //     actions?: [{ label, title?, className?, onClick(values) }],
+//     values?: {…} — valeurs de départ (y compris des clés sans ligne),
 //     onApply(values), onCancel?(), onChange?(values),
 //     onClose?() — à chaque fermeture (OK, annuler, panneau remplacé)
 //   }
-// Rows: { type: "number", key, label, value, unit?, min?, step?, showIf? }
+// Rows: { type: "number", key, label, value, unit?, min?, step?, showIf?,
+//         lazy? — la valeur ne part qu'à la validation du champ (Entrée,
+//         sortie), pas à chaque frappe }
 //       { type: "select", key, options: [[value, label]…], value, label? }
 //       { type: "check",  key, label, value }
 //       { type: "selection", key, label?, hint?, value?, accepts?, multiple? }
@@ -31,6 +34,11 @@
 //       { type: "segments", key, pointsKey } — une règle par segment entre
 //         points consécutifs : axe imposé (X/Y/Z), angle avec le segment
 //         d'avant, longueur cotée
+//       { type: "buttons", items: [{ label, title?, onClick(values) }] } —
+//         boutons dans le panneau (qui reste ouvert)
+//       points : tangentsKey? — autre liste parallèle (retirée avec le
+//         point) ; selectKey? — index du point choisi (ligne surlignée,
+//         un clic sur le nom le choisit)
 //       points : linksKey? — liste parallèle ; un point lié porte ⛓ et se
 //         délie dès qu'on retape une de ses coordonnées ; head: n — les n
 //         premières valeurs nomment la ligne (lecture seule, headText(p)
@@ -156,12 +164,14 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     // doit survivre, ex. esquisse → Extrusion). Fermer/Échap passent par
     // close(false) qui appelle onCancel.
     if (active) close(false, { silent: true });
-    active = { spec, values: {} };
+    active = { spec, values: { ...(spec.values ?? {}) } };
     editedInput = null;
     previewOn = true;
     for (const group of spec.groups) {
       for (const row of group.rows ?? []) {
-        if (row.key !== undefined) active.values[row.key] = row.value ?? null;
+        if (row.key !== undefined) {
+          active.values[row.key] = row.value ?? spec.values?.[row.key] ?? null;
+        }
       }
     }
     render();
@@ -446,6 +456,16 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     }
 
     if (row.type === "points") return renderPoints(row);
+    if (row.type === "buttons") {
+      const wrap = el("div", "prow pbuttons");
+      for (const item of row.items) {
+        const btn = el("button", "pbtn", item.label);
+        if (item.title) btn.title = t(item.title);
+        btn.addEventListener("click", () => item.onClick?.({ ...active.values }));
+        wrap.append(btn);
+      }
+      return wrap;
+    }
     if (row.type === "segments") return renderSegments(row);
 
     if (row.type === "selection") {
@@ -526,7 +546,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       input.step = row.step ?? "any";
       input.dataset.key = row.key;
       if (row.min !== undefined) input.min = row.min;
-      input.addEventListener("input", () => {
+      input.addEventListener(row.lazy ? "change" : "input", () => {
         values[row.key] = input.value;
         changed();
       });
@@ -574,13 +594,22 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
         row.empty ?? "Cliquez des points dans la zone graphique"));
     }
     list.forEach((point, index) => {
-      const line = el("div", "plist-item ppoint");
+      const chosen = row.selectKey && active.values[row.selectKey] === index;
+      const line = el("div", chosen ? "plist-item ppoint chosen" : "plist-item ppoint");
       const linked = row.linksKey && (active.values[row.linksKey] ?? [])[index];
       const head = row.head ?? 0;
       const name = el("span", "ppoint-name", head
         ? (row.headText?.(point) ?? point.slice(0, head).join(", "))
         : linked ? `P${index + 1}⛓` : `P${index + 1}`);
       if (linked) name.title = t("Lié à la géométrie — suit la pièce");
+      if (row.selectKey) {
+        name.classList.add("pick");
+        name.addEventListener("click", () => {
+          active.values[row.selectKey] = chosen ? null : index;
+          render();
+          changed();
+        });
+      }
       line.append(name);
       point.forEach((coord, axis) => {
         if (axis < head) return;
@@ -616,11 +645,13 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
         const next = [...(active.values[row.key] ?? [])];
         next.splice(index, 1);
         active.values[row.key] = next;
-        if (row.linksKey) {
-          const links = [...(active.values[row.linksKey] ?? [])];
-          links.splice(index, 1);
-          active.values[row.linksKey] = links;
+        for (const key of [row.linksKey, row.tangentsKey]) {
+          if (!key) continue;
+          const parallel = [...(active.values[key] ?? [])];
+          parallel.splice(index, 1);
+          active.values[key] = parallel;
         }
+        if (row.selectKey) active.values[row.selectKey] = null;
         render();
         changed();
       });
@@ -733,6 +764,13 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     apply: () => { if (active && !active.spec.noApply) close(true); },
     notifyPick,
     invalidateSelections,
+    /** Change des valeurs sans redessiner le panneau (pendant un glisser
+     *  dans la vue, ou pour une valeur cachée) : onChange suit. */
+    assign(values) {
+      if (!active) return;
+      active.values = { ...active.values, ...values };
+      changed();
+    },
     /** Remet des valeurs dans le panneau ouvert (après un refus du moteur). */
     restore(values) {
       if (!active) return;

@@ -1950,7 +1950,8 @@ class SurfaceMixin:
                                                            curve["points"])
                        for a, b in zip(p, q)):
                     vectors, shape = self._curve_shape(
-                        points, curve["spline"], curve["closed"])
+                        points, curve["spline"], curve["closed"],
+                        curve.get("tangents"))
                     self._store_curve(obj, vectors, curve["spline"],
                                       curve["closed"])
                     obj.Shape = shape
@@ -2219,27 +2220,30 @@ class SurfaceMixin:
             "Part::Offset", "Épaississement", configure)
 
     def add_curve3d(self, points, spline=True, closed=False, rules=None,
-                    links=None):
+                    links=None, tangents=None):
         """Spline 3D par points — l'esquisse 3D de FreeSolid : une
         trajectoire de balayage ou un bord de surface (B-spline qui passe
         par les points, ou polyligne). Les points restent rangés sur
         l'objet : la courbe se réédite (``edit_curve3d``). ``rules`` :
         une règle par segment, ``{"axis": "X"|"Y"|"Z"|"", "length": mm}``
-        — appliquées en chaîne, elles restent attachées à la courbe."""
+        — appliquées en chaîne, elles restent attachées à la courbe.
+        ``tangents`` : une poignée par point, None (pente libre) ou
+        ``{"dir", "in", "out"}`` (voir ``splinemath``)."""
         points, links = self._resolve_links(points, links)
         points = self.solve_curve_rules(
             points, rules, [i for i, l in enumerate(links) if l])
-        vectors, shape = self._curve_shape(points, spline, closed)
+        vectors, shape = self._curve_shape(points, spline, closed, tangents)
         doc = self._require_doc()
         feature = doc.addObject("Part::Feature", "Surface")
         feature.Label = self._t("Spline 3D" if spline else "Polyligne 3D")
-        self._store_curve(feature, vectors, spline, closed, rules, links)
+        self._store_curve(feature, vectors, spline, closed, rules, links,
+                          tangents)
         feature.Shape = shape
         doc.recompute()
         return self.get_tree()
 
     def edit_curve3d(self, curve, points, spline=True, closed=False,
-                     rules=None, links=None):
+                     rules=None, links=None, tangents=None):
         """Rééditer une spline 3D : nouveaux points, les surfaces et
         balayages qui l'utilisent suivent."""
         from engine.kernel import KernelError
@@ -2251,11 +2255,14 @@ class SurfaceMixin:
             rules = spec.get("rules")
         if links is None:
             links = spec.get("links")
+        if tangents is None and len(points) == len(spec["points"]):
+            tangents = spec.get("tangents")
         points, links = self._resolve_links(points, links)
         points = self.solve_curve_rules(
             points, rules, [i for i, l in enumerate(links) if l])
-        vectors, shape = self._curve_shape(points, spline, closed)
-        self._store_curve(obj, vectors, spline, closed, rules, links)
+        vectors, shape = self._curve_shape(points, spline, closed, tangents)
+        self._store_curve(obj, vectors, spline, closed, rules, links,
+                          tangents if tangents is not None else [])
         obj.Shape = shape
         for dependent in obj.InList:
             dependent.touch()
@@ -2263,13 +2270,13 @@ class SurfaceMixin:
         return self.get_tree()
 
     def curve3d_preview(self, points, spline=True, closed=False,
-                        rules=None, links=None):
+                        rules=None, links=None, tangents=None):
         """Aperçu exact d'une spline 3D : la polyligne de la courbe que
         ``add_curve3d`` créerait, sans rien ajouter au document."""
         points, links = self._resolve_links(points, links)
         points = self.solve_curve_rules(
             points, rules, [i for i, l in enumerate(links) if l])
-        _, shape = self._curve_shape(points, spline, closed)
+        _, shape = self._curve_shape(points, spline, closed, tangents)
         out = []
         for edge in shape.Edges:
             try:
@@ -2283,7 +2290,7 @@ class SurfaceMixin:
             out.extend(pts)
         return {"points": out}
 
-    def _curve_shape(self, points, spline, closed):
+    def _curve_shape(self, points, spline, closed, tangents=None):
         from engine.kernel import (
             KernelError,
             _explain,
@@ -2304,9 +2311,18 @@ class SurfaceMixin:
         for a, b in zip(vectors, vectors[1:]):
             if (a - b).Length < 1e-6:
                 raise KernelError("deux points consécutifs sont confondus")
+        from engine import splinemath
+        from engine.splineedit import build_bspline
+        tangents = splinemath.clean_tangents(tangents, len(vectors))
         try:
-            shape = self._wire_through_points(
-                vectors, spline=bool(spline), closed=bool(closed))
+            if spline and (len(vectors) >= 3 or any(tangents)):
+                import Part
+                # Courbe FreeSolid : points de passage et poignées.
+                curve = build_bspline(points, bool(closed), tangents)
+                shape = Part.Wire([curve.toShape()])
+            else:
+                shape = self._wire_through_points(
+                    vectors, spline=False, closed=bool(closed))
         except KernelError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -2534,7 +2550,7 @@ class SurfaceMixin:
             return None
 
     def _store_curve(self, obj, vectors, spline, closed, rules=None,
-                     links=None):
+                     links=None, tangents=None):
         if self._CURVE_POINTS not in obj.PropertiesList:
             obj.addProperty("App::PropertyVectorList", self._CURVE_POINTS,
                             "FreeSolid")
@@ -2556,6 +2572,11 @@ class SurfaceMixin:
             import json
             self._stamp(obj, links=json.dumps(
                 [l if isinstance(l, dict) else None for l in links]))
+        if tangents is not None:
+            import json
+            from engine.splinemath import clean_tangents
+            self._stamp(obj, tangents=json.dumps(
+                clean_tangents(tangents, len(vectors))))
 
     def _curve_spec(self, obj):
         """Points d'une spline 3D FreeSolid, ou None."""
@@ -2568,7 +2589,18 @@ class SurfaceMixin:
             "closed": bool(obj.FreeSolidClosed),
             "rules": self._curve_rules(obj),
             "links": self._curve_links(obj),
+            "tangents": self._curve_tangents(obj),
         }
+
+    def _curve_tangents(self, obj):
+        import json
+        from engine.splinemath import clean_tangents
+        try:
+            raw = json.loads(getattr(obj, "FreeSolidTangents", "") or "[]")
+        except ValueError:
+            raw = []
+        count = len(getattr(obj, self._CURVE_POINTS))
+        return clean_tangents(raw if isinstance(raw, list) else [], count)
 
     @staticmethod
     def _curve_links(obj):

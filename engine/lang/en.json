@@ -585,5 +585,9 @@
  "donnez un nom à la configuration": "give the configuration a name",
  "la configuration « {} » existe déjà": "the configuration “{}” already exists",
  "configuration inconnue : {}": "unknown configuration: {}",
- "les configurations demandent une pièce": "configurations need a part"
+ "les configurations demandent une pièce": "configurations need a part",
+ "spline : cliquez une spline": "spline: click a spline",
+ "une spline garde au moins deux points": "a spline keeps at least two points",
+ "pôle inconnu : {}": "unknown pole: {}",
+ "ce pôle ne se déplace pas": "this pole cannot be moved"
 }

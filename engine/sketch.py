@@ -378,7 +378,11 @@ class SketchMixin:
                 # Splines, ellipses, coniques : une polyligne suffit
                 # au client pour afficher et viser n'importe quelle
                 # courbe.
-                points = geo.toShape().discretize(Number=24)
+                count = 24
+                if "BSpline" in type_id:
+                    # Une spline : assez de pas par arc pour rester lisse.
+                    count = min(400, 24 * max(1, len(geo.getKnots()) - 1))
+                points = geo.toShape().discretize(Number=count)
                 entity["type"] = "poly"
                 entity["points"] = [[p.x, p.y] for p in points]
             except Exception:
@@ -449,6 +453,23 @@ class SketchMixin:
                 npoints = len(entity["points"])
             if npoints is not None:
                 entity["npoints"] = npoints
+            if "BSpline" in type_id:
+                # Points de passage et poignées : l'édition dans la vue.
+                from engine.splineedit import spec_from_bspline
+                try:
+                    spec = spec_from_bspline(geo)
+                    entity["poles"] = [[p.x, p.y] for p in geo.getPoles()]
+                except Exception:  # noqa: BLE001
+                    spec = None
+                if spec is not None:
+                    points, closed, tangents = spec
+                    entity["spline"] = {
+                        "points": [[round(p[0], 9) + 0.0,
+                                    round(p[1], 9) + 0.0] for p in points],
+                        "closed": closed,
+                        "tangents": [None if t is None else {
+                            "dir": t["dir"][:2], "in": t["in"],
+                            "out": t["out"]} for t in tangents]}
             return
         if entity.get("points"):
             entity["npoints"] = len(entity["points"])
@@ -581,8 +602,10 @@ class SketchMixin:
                     "consécutifs coïncident")
             vectors.append(App.Vector(x, y, 0))
         try:
-            curve = Part.BSplineCurve()
-            curve.interpolate(vectors)
+            # Même courbe que l'édition dans la vue (splinemath) : un nœud
+            # par point cliqué, pentes libres.
+            from engine.splineedit import build_bspline
+            curve = build_bspline([[v.x, v.y, 0.0] for v in vectors])
             sk.addGeometry(curve, False)
         except Exception as exc:  # noqa: BLE001
             raise KernelError(_explain(exc))

@@ -888,6 +888,17 @@
   .plist-item.readonly { color: var(--ink-2); cursor: default; }
   .ppoint { justify-content: flex-start; padding: 2px var(--space-2); }
   .ppoint-name { color: var(--ink-2); min-width: 22px; }
+  .ppoint-name.pick { cursor: pointer; }
+  .ppoint-name.pick:hover { color: var(--accent); }
+  .ppoint.chosen { background: var(--accent-wash); }
+  .ppoint.chosen .ppoint-name { color: var(--accent); font-weight: 600; }
+  .pbuttons { flex-wrap: wrap; gap: var(--space-1); }
+  .pbuttons .pbtn {
+    background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+    border-radius: var(--radius-s); padding: 3px var(--space-2);
+    font: inherit; font-size: var(--text-s); cursor: pointer;
+  }
+  .pbuttons .pbtn:hover { background: var(--hover); border-color: var(--accent); }
   .ppoint .ppoint-coord {
     width: 0; flex: 1; min-width: 0; background: var(--bg); color: var(--ink);
     border: 1px solid var(--line); border-radius: var(--radius-s);

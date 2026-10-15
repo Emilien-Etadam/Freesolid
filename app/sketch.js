@@ -19,6 +19,7 @@ import {
 import { fmtMm, num } from "./num.js";
 import { eventToNdc, ndcToScreen } from "./screen.js";
 import { cssHex, cssRgba, readScene } from "./theme.js";
+import { createSplineEditor2d } from "./splineedit2d.js";
 import {
   boxMode, isDrag, normalizeRect, pickInBox, sketchLocalPoints,
 } from "./navigation.js";
@@ -209,6 +210,21 @@ export function createSketchMode(deps) {
   let entityPanelOpen = false;
   let entityPanelGeo = null;
   let entityPanelGen = 0;
+
+  // Spline sélectionnée : points de passage, poignées, pôles dans la vue.
+  const splineEdit = createSplineEditor2d({
+    THREE, theme: sceneTheme, toScreen, toLocal, call, say, controls,
+    getState: () => mode.state,
+    selectedSpline: () => {
+      const geos = mode.active ? uniqueSelectionGeos() : [];
+      return geos.length === 1
+        ? mode.state?.entities.find((e) => e.id === geos[0]) ?? null : null;
+    },
+    applyState: (state, opts) => applyState(state, opts),
+    redraw: () => redraw(),
+    setCursor: (name) => setCursor(name),
+  });
+  splineEdit.onChosen = () => syncEntityPanel({ refresh: true });
 
   // M3 : le solveur planegcs (WASM) côté client. Pendant un drag, la
   // résolution est locale (60 fps, zéro réseau) ; le serveur réconcilie
@@ -857,6 +873,8 @@ export function createSketchMode(deps) {
       sprite.renderOrder = 22;
       group.add(sprite);
     }
+
+    splineEdit.draw(group);
 
     const dof = mode.state.dof;
     const definition = mode.state.definition
@@ -1644,6 +1662,11 @@ export function createSketchMode(deps) {
 
   function onPointerDown(event) {
     if (event.button !== 0 || mode.tool !== "select" || !mode.state) return;
+    // Spline sélectionnée : ses points, poignées et pôles d'abord.
+    if (splineEdit.pointerDown(event)) {
+      mode.justDragged = true; // le click qui suit garde la sélection
+      return;
+    }
     // Étiquette de cote : on la glisse pour déplacer la cote.
     const dim = dimLabelAt(event);
     const grab = dim && grabDelta(dim, event);
@@ -1828,6 +1851,7 @@ export function createSketchMode(deps) {
       if (isDrag(mode.box, here)) boxOverlay?.show(mode.box, here);
       return;
     }
+    if (mode.tool === "select" && splineEdit.pointerMove(event)) return;
     if (mode.dimDrag) {
       const drag = mode.dimDrag;
       if (Math.hypot(event.clientX - drag.screen.x,
@@ -1987,6 +2011,10 @@ export function createSketchMode(deps) {
   }
 
   function onPointerUp(event) {
+    if (splineEdit.pointerUp(event)) {
+      mode.justDragged = true;
+      return;
+    }
     if (mode.dimDrag) {
       const { dim, moved, offset } = mode.dimDrag;
       mode.dimDrag = null;
@@ -2252,6 +2280,8 @@ export function createSketchMode(deps) {
       } else {
         say("Spline : au moins 3 points avant Entrée", true);
       }
+    } else if (event.key === "Delete" && splineEdit.deleteKey()) {
+      // Point choisi d'une spline : il part, la spline reste.
     } else if (event.key === "Delete") {
       const target = mode.lastMouse ? nearestEntity(mode.lastMouse) : null;
       if (target !== null) {
@@ -2455,13 +2485,16 @@ export function createSketchMode(deps) {
     const hasDriving = constraints.some(isDrivingConstraint);
     entityPanelOpen = true;
     entityPanelGeo = geo;
+    const splineGroup = splineEdit.panelGroup();
     panel.open({
       icon: ENTITY_ICONS[title] ?? ENTITY_ICONS.Entité,
       title,
       noApply: true,
       autoFocus: false,
+      onChange: splineGroup ? (values) => splineEdit.panelChange(values) : undefined,
       groups: [
         { label: t("Propriétés"), rows: propRows },
+        ...(splineGroup ? [splineGroup] : []),
         {
           label: t("Relations"),
           rows: [{

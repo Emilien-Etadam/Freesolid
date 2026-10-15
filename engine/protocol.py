@@ -107,11 +107,21 @@ OPS: dict[str, tuple[str, ...]] = {
     "surface_sew": _Req(("surfaces", list)),  # coudre ; solidifie si fermé
     "surface_thicken": _Req(("surface", str), ("thickness", float)),
     "add_curve3d": _Req(("points", list)),  # optional: spline, closed,
-                                       # rules [{axis, length}] par segment
+                                       # rules [{axis, length}] par segment,
+                                       # links, tangents [{dir, in, out}|None]
+    "sketch_set_spline": _Req(("sketch", str), ("geo", int),
+                              ("points", list)),  # optional: tangents,
+                                       # closed — points de passage 2D
+    "curve_poles": _Req(("points", list)),  # lecture : polygone de contrôle
+                                       # optional: closed, tangents
+    "curve_move_pole": _Req(("points", list), ("index", int),
+                            ("point", list)),  # lecture : points et
+                                       # poignées après avoir tiré un pôle
     "curve3d_preview": _Req(("points", list)),
                                        # optional: spline, closed — lecture seule
     "edit_curve3d": _Req(("curve", str), ("points", list)),
-                                       # optional: spline, closed
+                                       # optional: spline, closed, rules,
+                                       # links, tangents
     "surface_planar": (),              # optional: sketch — contour fermé
     "surface_sweep": _Req(("profile", str), ("spine", str)),
     "surface_offset": _Req(("surface", str), ("distance", float)),

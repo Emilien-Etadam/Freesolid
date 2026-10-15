@@ -549,9 +549,53 @@
   }
   #breadcrumbs .crumb-sep { color: var(--ink-2); font-size: var(--text-xs); }
 
-  /* Coin de validation : en haut à droite de la vue. */
+  /* Cube d'orientation (orientcube.js) : en haut à droite ; un clic sur
+     une face cadre la vue. Les faces de dos se cachent. */
+  #orient-cube {
+    position: absolute; top: 12px; right: 18px; z-index: 4;
+    width: 76px; height: 76px;
+  }
+  #orient-cube .cube-face {
+    position: absolute; left: 50%; top: 50%;
+    width: 56px; height: 56px; margin: -28px 0 0 -28px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 500; line-height: 1; color: var(--ink);
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border: 1px solid var(--line); border-radius: 3px;
+    backface-visibility: hidden;
+  }
+  #orient-cube .cube-face.back { visibility: hidden; pointer-events: none; }
+  /* Un léger ombrage par orientation donne le relief. */
+  #orient-cube .cube-face[data-view="view-top"],
+  #orient-cube .cube-face[data-view="view-bottom"] {
+    background: color-mix(in srgb, var(--accent-wash) 80%, var(--surface));
+  }
+  #orient-cube .cube-face[data-view="view-right"],
+  #orient-cube .cube-face[data-view="view-left"] {
+    background: color-mix(in srgb, var(--panel-2) 85%, var(--line));
+  }
+  #orient-cube .cube-face:hover {
+    background: var(--accent-wash); color: var(--accent-2); border-color: var(--accent);
+  }
+  #orient-cube .cube-home {
+    position: absolute; left: -10px; top: -6px;
+    width: 22px; height: 22px; padding: 0; justify-content: center;
+    display: inline-flex; align-items: center;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 50%;
+    color: var(--ink-2);
+  }
+  #orient-cube .cube-home:hover { color: var(--accent); border-color: var(--accent); }
+  /* Trièdre : les axes du monde, en bas à gauche, sans clic. */
+  #triad {
+    position: absolute; left: 12px; bottom: 12px; z-index: 3;
+    width: 64px; height: 64px; pointer-events: none;
+  }
+  #triad line { stroke-width: 2.2; stroke-linecap: round; }
+  #triad .axis-label { font: 600 9px var(--font-ui); text-anchor: middle; }
+
+  /* Coin de validation : en haut à droite de la vue, sous le cube. */
   #confirm-corner {
-    position: absolute; top: 10px; right: 12px; z-index: 4;
+    position: absolute; top: 100px; right: 22px; z-index: 4;
     display: flex; flex-direction: column; gap: 6px;
   }
   #confirm-corner[hidden] { display: none; }

@@ -1376,5 +1376,7 @@
  "Les cotes de chaque configuration, côte à côte": "The dimensions of each configuration, side by side",
  "— aucun corps —": "— no body —",
  "Afficher {n}": "Show {n}",
- "Masquer {n}": "Hide {n}"
+ "Masquer {n}": "Hide {n}",
+ "Cube d'orientation": "Orientation cube",
+ "Vue {v}": "{v} view"
 }

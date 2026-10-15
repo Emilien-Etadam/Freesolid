@@ -79,6 +79,7 @@ import { edgeSnapPoints } from "./pointsnap.js";
 import { installCurve3d } from "./curve3d.js";
 import { installBreadcrumbs } from "./breadcrumbs.js";
 import { installManagerTabs } from "./managertabs.js";
+import { installOrientCube } from "./orientcube.js";
 import { installPoles } from "./poles.js";
 
 const sceneTheme = readScene();
@@ -1982,6 +1983,8 @@ installBreadcrumbs(ctx);
 // Gestionnaire à onglets : arbre, propriétés, configurations, affichage.
 ctx.updateTreeFlyout = updateTreeFlyout;
 ctx.managerTabs = installManagerTabs(ctx);
+// Cube d'orientation (haut droite) et trièdre (bas gauche).
+installOrientCube(ctx);
 errorsBadge.addEventListener("click", async () => {
   const result = await call("rebuild_errors").catch((error) => {
     say(String(error.message ?? error), true);

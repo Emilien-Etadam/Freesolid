@@ -589,5 +589,10 @@
  "spline : cliquez une spline": "spline: click a spline",
  "une spline garde au moins deux points": "a spline keeps at least two points",
  "pôle inconnu : {}": "unknown pole: {}",
- "ce pôle ne se déplace pas": "this pole cannot be moved"
+ "ce pôle ne se déplace pas": "this pole cannot be moved",
+ "Esquisse 3D": "3D Sketch",
+ "esquisse 3D : des cotes ou des relations se contredisent (écart {} mm)": "3D sketch: dimensions or relations conflict (deviation {} mm)",
+ "esquisse 3D : une ligne a une longueur nulle": "3D sketch: a line has zero length",
+ "esquisse 3D vide : tracez au moins une ligne, une spline ou un point": "empty 3D sketch: draw at least a line, a spline or a point",
+ "esquisse 3D inconnue : {}": "unknown 3D sketch: {}"
 }

@@ -4145,6 +4145,67 @@ class SelftestMixin:
                 and abs(again["spline"]["tangents"][1]["out"] - 1.5) < 1e-6)
             self.sketch_finish(sk_name)
 
+            mark("p70: esquisse 3D — lignes, spline, cotes, relations")
+            self.new_part("Pièce esquisse 3D")
+            App = self._app()
+            self.add_rect_sketch(20, 20)
+            self.add_pad(10)
+            body = self._require_body()
+            corner = next(v.Point for v in body.Shape.Vertexes
+                          if v.Point.z > 9 and v.Point.x > 9
+                          and v.Point.y > 9)
+            line = lambda a, b: {"type": "line", "a": a, "b": b}
+            spec = {
+                "points": [[corner.x, corner.y, corner.z], [40, 11, 9],
+                           [41, 10, 35], [41, 30, 36], [60, 40, 40]],
+                "links": [True, None, None, None, None],
+                "entities": [line(0, 1), line(1, 2),
+                             {"type": "spline", "pts": [2, 3, 4]},
+                             {"type": "point", "p": 4}],
+                "relations": [{"type": "axis", "entity": 0, "axis": "X"},
+                              {"type": "axis", "entity": 1, "axis": "Z"}],
+                "dims": [{"type": "length", "entity": 0, "value": 30},
+                         {"type": "length", "entity": 1, "value": 25}],
+            }
+            tree = self.add_sketch3d(spec)
+            entry = tree["surfaces"][-1]
+            obj = self._require_doc().getObject(entry["name"])
+            stored = entry.get("sketch3d") or {}
+            p0, p1, p2 = (App.Vector(*stored["points"][i]) for i in range(3))
+            report["p70_esquisse3d"] = (
+                stored["links"][0] is not None
+                and (p0 - corner).Length < 1e-6
+                and abs((p1 - p0).Length - 30) < 1e-6
+                and abs(p1.y - p0.y) < 1e-6 and abs(p1.z - p0.z) < 1e-6
+                and abs((p2 - p1).Length - 25) < 1e-6
+                and abs(p2.x - p1.x) < 1e-6 and abs(p2.y - p1.y) < 1e-6
+                and len(obj.Shape.Wires) == 1
+                and len(obj.Shape.Edges) == 3
+                and len(obj.Shape.Vertexes) >= 4)
+            # La pièce grandit : le point lié suit, la chaîne avec lui.
+            pad = self.get_tree()["features"][-1]["name"]
+            self.set_params(pad, {"Length": 16})
+            moved = self._sketch3d_spec(obj)["points"][0]
+            # Une cote en conflit est refusée, l'esquisse reste telle quelle.
+            bad = dict(stored, dims=stored["dims"] + [
+                {"type": "length", "entity": 0, "value": 12}])
+            try:
+                self.edit_sketch3d(entry["name"], bad)
+                refused = False
+            except KernelError:
+                refused = True
+            # Balayage le long de l'esquisse 3D.
+            st = self.sketch_start(plane="YZ")
+            self.sketch_add_circle(st["sketch"], 0, 0, 1)
+            self.sketch_finish(st["sketch"])
+            swept = self.surface_sweep(st["sketch"], entry["name"])
+            sweep_obj = self._require_doc().getObject(
+                swept["surfaces"][-1]["name"])
+            report["p70_suit_et_balaie"] = (
+                abs(moved[2] - 16) < 1e-6 and refused
+                and len(self._sketch3d_spec(obj)["dims"]) == 2
+                and sweep_obj.Shape.Area > 0)
+
             mark("p19b: paroi mince à extrémités fermées")
             self.new_part("Pièce paroi fermée")
             self.add_rect_sketch(40, 20)

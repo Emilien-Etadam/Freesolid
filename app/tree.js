@@ -571,6 +571,7 @@ export function installTree(ctx) {
   function surfaceIcon(surface) {
     if (isGraphFeature(surface)) return "graph_feature";
     if (surface.curve) return "spline3d";
+    if (surface.sketch3d) return "sketch3d";
     if (surface.surface?.kind === "untrim") return "surface_untrim";
     if (surface.surface?.kind === "deleteface") return "surface_delete_face";
     if (surface.surface?.kind === "split") return "surface_split";
@@ -1238,6 +1239,10 @@ export function installTree(ctx) {
     }
     if (surface.curve) {
       ctx.openCurve3d(surface);
+      return;
+    }
+    if (surface.sketch3d) {
+      ctx.openSketch3d?.(surface);
       return;
     }
     if (surface.surface?.kind === "extend") {

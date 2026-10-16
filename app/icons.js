@@ -229,6 +229,7 @@ export const ICONS = {
   sk_split: "fs_sk_split.svg",
   sk_tangent_arc: "fs_sk_tangent_arc.svg",
   sk_text: "fs_sk_text.svg",
+  sketch3d: "fs_sketch3d.svg",
   sketch: "Sketcher_NewSketch.svg",
   sketch_array: "Sketcher_RectangularArray.svg",
   sketch_cancel: "Sketcher_CancelSketch.svg",

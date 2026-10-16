@@ -472,3 +472,22 @@ export function relax(points, closed, amount = 0.5, keep = []) {
     return add(p, mul(sub(target, p), amount));
   });
 }
+
+/** Bouts des poignées de tous les points : [{ in, out }, …] (null au bout
+ *  d'une courbe ouverte) — un seul calcul pour toute la courbe. */
+export function allHandleTips(points, closed, tangents) {
+  const spans = controls(points, closed, tangents);
+  const n = points.length;
+  return points.map((_, i) => ({
+    in: closed || i > 0 ? spans[(i - 1 + n) % n][2] : null,
+    out: closed || i < n - 1 ? spans[i][1] : null,
+  }));
+}
+
+/** Choix sous le pointeur entre un point et un bout de poignée : le point
+ *  gagne s'il est presque aussi proche (une poignée courte le recouvre). */
+export function preferPoint(pointHit, tipHit, bias = 2) {
+  if (!pointHit) return tipHit;
+  if (!tipHit) return pointHit;
+  return pointHit.d <= tipHit.d + bias ? pointHit : tipHit;
+}

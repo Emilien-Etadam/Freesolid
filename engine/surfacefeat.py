@@ -150,6 +150,9 @@ class SurfaceMixin:
         if curve is not None:
             # Spline 3D : figée pour set_params, rééditable par ses points.
             entry["curve"] = curve
+        sketch3d = self._sketch3d_spec(obj)
+        if sketch3d is not None:
+            entry["sketch3d"] = sketch3d
         spec = self._surface_spec(obj)
         if spec is not None:
             entry["surface"] = spec
@@ -1936,6 +1939,9 @@ class SurfaceMixin:
         doc = self._require_doc()
         changed = False
         for obj in doc.Objects:
+            if self._sketch3d_spec(obj) is not None:
+                changed = self._refresh_sketch3d(obj) or changed
+                continue
             curve = self._curve_spec(obj)
             if curve is not None and any(curve.get("links") or ()):
                 try:
@@ -2515,7 +2521,8 @@ class SurfaceMixin:
             out.append((body.Name, shape))
         for obj in self._require_doc().Objects:
             if (self._is_surface_obj(obj) and not self._is_internal_tool(obj)
-                    and self._curve_spec(obj) is None):
+                    and self._curve_spec(obj) is None
+                    and self._sketch3d_spec(obj) is None):
                 shape = getattr(obj, "Shape", None)
                 if shape is not None and not shape.isNull():
                     out.append((obj.Name, shape))

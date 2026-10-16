@@ -10,7 +10,7 @@
 
 import { t } from "./i18n.js";
 import {
-  sample, curvatureComb, maxCurvature, handleTips, dragTip, pinTangent,
+  sample, curvatureComb, maxCurvature, allHandleTips, preferPoint, dragTip, pinTangent,
   insertPoint, removePoint, simplify, relax, nearestOnCurve, cleanTangents,
   solve,
 } from "./splinemath.js";
@@ -63,6 +63,10 @@ export function createSplineEditor2d(deps) {
       sizeAttenuation: false, depthTest: false, transparent: true }),
     handle: new THREE.LineBasicMaterial({ color: theme.selection, depthTest: false,
       transparent: true }),
+    handleSoft: new THREE.LineBasicMaterial({ color: theme.accent, depthTest: false,
+      transparent: true, opacity: 0.7 }),
+    tipSoft: new THREE.PointsMaterial({ color: theme.accent, size: 7, sizeAttenuation: false,
+      depthTest: false, transparent: true }),
     comb: new THREE.LineBasicMaterial({ color: theme.dim, depthTest: false,
       transparent: true, opacity: 0.7 }),
     polygon: new THREE.LineDashedMaterial({ color: theme.ink2, dashSize: 1.5, gapSize: 1,
@@ -130,14 +134,16 @@ export function createSplineEditor2d(deps) {
     if (!s) return;
     const n = s.points.length;
     group.add(dots(s.points, mat.dot));
-    if (chosen != null && chosen < n) {
-      group.add(dots([s.points[chosen]], mat.chosen));
-      try {
-        const tips = handleTips(s.points, s.closed, s.tangents, chosen);
-        group.add(line([tips.in, s.points[chosen], tips.out].filter(Boolean), mat.handle));
-        group.add(dots([tips.in, tips.out].filter(Boolean), mat.chosen));
-      } catch { /* pas de poignée */ }
-    }
+    // Poignées de tous les points ; celle du point choisi ressort.
+    try {
+      allHandleTips(s.points, s.closed, s.tangents).forEach((tips, i) => {
+        const isChosen = i === chosen;
+        group.add(line([tips.in, s.points[i], tips.out].filter(Boolean),
+          isChosen ? mat.handle : mat.handleSoft));
+        group.add(dots([tips.in, tips.out].filter(Boolean), isChosen ? mat.chosen : mat.tipSoft));
+      });
+    } catch { /* pas de poignée */ }
+    if (chosen != null && chosen < n) group.add(dots([s.points[chosen]], mat.chosen));
     if (view.comb) {
       try {
         const opts = { closed: s.closed, tangents: s.tangents };
@@ -170,22 +176,29 @@ export function createSplineEditor2d(deps) {
   function hitAt(event) {
     const s = spec();
     if (!s) return null;
+    const nearest = (candidates) => {
+      let best = null;
+      for (const [p, hit] of candidates) {
+        if (!p) continue;
+        const d = pixels(p, event);
+        if (d < PICK_PX && (!best || d < best.d)) best = { d, hit };
+      }
+      return best;
+    };
+    let tips = [];
+    try {
+      tips = allHandleTips(s.points, s.closed, s.tangents).flatMap((tip, i) => [
+        [tip.in, { kind: "tip", index: i, side: "in" }],
+        [tip.out, { kind: "tip", index: i, side: "out" }]]);
+    } catch { /* pas de poignée */ }
+    const found = preferPoint(nearest(s.points.map((p, i) => [p, { kind: "point", index: i }])),
+      nearest(tips));
+    if (found) return found.hit;
     const best = { d: PICK_PX, hit: null };
     const consider = (p, hit) => {
-      if (!p) return;
       const d = pixels(p, event);
       if (d < best.d) { best.d = d; best.hit = hit; }
     };
-    if (chosen != null && chosen < s.points.length) {
-      try {
-        const tips = handleTips(s.points, s.closed, s.tangents, chosen);
-        consider(tips.in, { kind: "tip", index: chosen, side: "in" });
-        consider(tips.out, { kind: "tip", index: chosen, side: "out" });
-      } catch { /* pas de poignée */ }
-    }
-    if (best.hit) return best.hit;
-    s.points.forEach((p, i) => consider(p, { kind: "point", index: i }));
-    if (best.hit) return best.hit;
     if (view.polygon && poles && polesKey === keyOf(s)) {
       poles.forEach((p, i) => consider(p, { kind: "pole", index: i }));
     }

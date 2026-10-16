@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   controls, sample, curvatureComb, fromBeziers, handleTips, dragTip,
   insertPoint, removePoint, simplify, relax, nearestOnCurve, deviation,
-  pinTangent,
+  pinTangent, allHandleTips, preferPoint,
 } from "../../app/splinemath.js";
 
 const CASES = JSON.parse(readFileSync(new URL("../splinemath_cases.json", import.meta.url)));
@@ -96,5 +96,27 @@ describe("spline : édition", () => {
   it("point le plus proche sur la courbe", () => {
     const hit = nearestOnCurve(pts, false, null, pts[2]);
     assert.ok(hit.dist < 1e-6);
+  });
+});
+
+describe("spline : toutes les poignées", () => {
+  const pts = CASES[3].points;
+  it("donne les bouts de chaque point, comme un à un", () => {
+    const all = allHandleTips(pts, false, null);
+    assert.equal(all.length, pts.length);
+    all.forEach((tips, i) => {
+      const one = handleTips(pts, false, null, i);
+      assert.deepEqual(tips, one);
+    });
+    assert.equal(all[0].in, null);
+    assert.equal(all.at(-1).out, null);
+  });
+
+  it("préfère le point quand la poignée le recouvre", () => {
+    const point = { d: 3, hit: "point" };
+    assert.equal(preferPoint(point, { d: 2, hit: "tip" }).hit, "point");
+    assert.equal(preferPoint(point, { d: 0.5, hit: "tip" }).hit, "tip");
+    assert.equal(preferPoint(null, { d: 2, hit: "tip" }).hit, "tip");
+    assert.equal(preferPoint(point, null).hit, "point");
   });
 });

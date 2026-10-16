@@ -188,7 +188,8 @@ describe("l'organisation transposée", () => {
     assert.deepEqual(larges, [
       "btn-sketch", "btn-pad", "btn-revolution", "btn-pocket", "btn-groove",
       "btn-hole", "btn-fillet", "btn-chamfer", "btn-shell",
-      "btn-linpattern", "btn-curve3d", "ribbon-mass", "btn-newasm",
+      "btn-linpattern", "btn-sketch3d", "btn-curve3d", "ribbon-mass",
+      "btn-newasm",
     ]);
     for (const bouton of layoutButtons()) {
       if (bouton.taille !== undefined) assert.equal(bouton.taille, "large");

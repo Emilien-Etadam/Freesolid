@@ -3,7 +3,7 @@
 A modern mechanical CAD interface on top of an untouched, headless FreeCAD
 engine. Your files stay standard `.FCStd` documents that open in FreeCAD.
 
-> **Early prototype (v0.3.0).** Usable for simple parts; some features are
+> **Early prototype.** Usable for simple parts; some features are
 > missing or may break, and files may not reopen across versions. Feedback
 > is welcome in the [issues](https://github.com/Emilien-Etadam/Freesolid/issues).
 
@@ -68,7 +68,7 @@ cd Freesolid
 ~/squashfs-root/usr/bin/freecadcmd engine/server.py
 ```
 
-When the terminal prints “FreeSolid engine prêt”, open
+When the terminal prints “FreeSolid engine ready”, open
 **<http://localhost:8787>** in your browser.
 
 - To stop: `Ctrl+C` in the terminal.
@@ -85,16 +85,16 @@ When the terminal prints “FreeSolid engine prêt”, open
 
 ### Windows, step by step
 
-1. Install FreeCAD 1.0 from
-   [freecad.org/downloads](https://www.freecad.org/downloads.php)
-   (standard installer, default options).
+1. Install FreeCAD 1.1.3 from
+   [its release page](https://github.com/FreeCAD/FreeCAD/releases/tag/1.1.3)
+   (Windows installer `.exe`, default options).
 2. On the project's GitHub page: **Code → Download ZIP**, then right-click
    the ZIP → **Extract All** into your `Documents` folder.
 3. Open PowerShell (Start menu → type “PowerShell”) and paste:
 
    ```powershell
    cd $env:USERPROFILE\Documents\Freesolid-main
-   & "C:\Program Files\FreeCAD 1.0\bin\freecadcmd.exe" engine\server.py
+   & "C:\Program Files\FreeCAD 1.1\bin\freecadcmd.exe" engine\server.py
    ```
 
    (If FreeCAD is installed elsewhere, adjust the path — look for

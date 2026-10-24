@@ -323,13 +323,13 @@ def main():
     try:
         server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError as exc:
-        print("FreeSolid engine : impossible d'ouvrir le port {} ({})".format(
+        print("FreeSolid engine: cannot open port {} ({})".format(
             PORT, exc))
-        print("Un autre serveur tourne peut-être déjà — fermez-le ou "
-              "réessayez.")
+        print("Another server may already be running — close it or "
+              "try again.")
         return
-    print("FreeSolid engine prêt : http://localhost:{}".format(PORT))
-    print("(Ctrl+C pour arrêter)")
+    print("FreeSolid engine ready: http://localhost:{}".format(PORT))
+    print("(Ctrl+C to stop)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

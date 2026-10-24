@@ -5,6 +5,9 @@ les noms définis dans ``kernel.py`` sont importés au début de l'appel,
 pour ne pas charger ce module au démarrage du serveur.
 """
 
+from types import SimpleNamespace
+
+
 class SelftestMixin:
     def selftest(self):
         """Run the whole flow end to end; return stats worth pasting back.
@@ -26,7 +29,9 @@ class SelftestMixin:
             selftest_summary,
             version_status,
         )
+        from engine.selftest import mise_en_plan
         report = {"steps": []}
+        etat = SimpleNamespace()
 
         def mark(name):
             report["steps"].append(name)
@@ -967,19 +972,7 @@ class SelftestMixin:
                 and any(s.get("name") == free_sk
                         for s in mesh.get("sketches") or []))
 
-            mark("p13: mise en plan DXF (3 vues, cotes, coupe)")
-            self.new_part("Pièce plan")
-            self.add_rect_sketch(30, 20)
-            self.add_pad(10)
-            dxf = os.path.join(tempfile.gettempdir(),
-                               "freesolid-selftest.dxf")
-            drawing = self.make_drawing(dxf, dims=True, section="Y")
-            report["p13_drawing_ok"] = drawing["size"] > 0
-            report["p13_dims_ok"] = drawing.get("dims_ok") is True
-            report["p13_section_ok"] = drawing.get("section_ok") is True
-            report["p13_drawing_clean_ok"] = not any(
-                o.TypeId.startswith("TechDraw::")
-                for o in self._require_doc().Objects)
+            mise_en_plan.p13_mise_en_plan_dxf(self, mark, report, etat)
 
             mark("p14: convertir les entités (contour de face)")
             self.new_part("Pièce conversion")

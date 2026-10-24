@@ -1202,7 +1202,61 @@ class SolidsMixin:
         except KernelError:
             self._drop_failed_feature(body, doc, feature, tip)
             raise
+        self._refuse_invalid_dressup(body, doc, feature, tip)
         return self.get_tree()
+
+    def _invalid_dressup_message(self, feature):
+        """Refus d'un congé ou d'un chanfrein de forme invalide, ou None.
+
+        Le modeleur peut marquer la fonction à jour avec une forme cassée
+        (fil qui se recoupe, volume faux) : ``isValid()`` le voit, l'état
+        non.
+        """
+        from engine.guard import invalid_dressup_message
+        shape = feature.Shape
+        if not shape.isNull() and shape.isValid():
+            return None
+        base, subs = feature.Base
+        return invalid_dressup_message(
+            feature.TypeId, self._dressup_flush(base, subs))
+
+    def _dressup_flush(self, base, subs):
+        """Une arête choisie, arc ou cercle, bute-t-elle sur un cylindre de
+        même cercle porteur qui affleure ? Sert au message, rien d'autre."""
+        from engine.guard import flush_cylinder
+        try:
+            shape = base.Shape
+            edges = [edge for sub in subs
+                     for edge in shape.getElement(str(sub)).Edges]
+            cylinders = []
+            for face in shape.Faces:
+                surface = face.Surface
+                if surface.TypeId != "Part::GeomCylinder":
+                    continue
+                v0, v1 = face.ParameterRange[2:]  # le long de l'axe
+                cylinders.append((tuple(surface.Center + surface.Axis * v0),
+                                  tuple(surface.Center + surface.Axis * v1),
+                                  surface.Radius))
+            return any(
+                flush_cylinder(tuple(edge.Curve.Center),
+                               tuple(edge.Curve.Axis), edge.Curve.Radius,
+                               cylinders)
+                for edge in edges if edge.Curve.TypeId == "Part::GeomCircle")
+        except Exception:  # noqa: BLE001 - l'indice ne masque pas le refus
+            return False
+
+    def _refuse_invalid_dressup(self, body, doc, feature, tip):
+        """Retire et refuse un congé ou un chanfrein de forme invalide."""
+        from engine.kernel import KernelError
+        message = self._invalid_dressup_message(feature)
+        if message is None:
+            return
+        # Sous aperçu, l'abort de la transaction restaure tout (voir
+        # add_draft) : pas de removeObject d'une fonction recalculée.
+        if not getattr(self, "_previewing", False):
+            self._drop_failed_feature(body, doc, feature, tip)
+            self._recompute()
+        raise KernelError(message)
 
     def add_fillet(self, radius, face=None, edges=None):
         return self._dressup("PartDesign::Fillet",
@@ -1298,6 +1352,7 @@ class SolidsMixin:
         except KernelError:
             self._drop_failed_feature(body, doc, feature, tip)
             raise
+        self._refuse_invalid_dressup(body, doc, feature, tip)
         return self.get_tree()
 
     def add_hole(self, diameter, depth=None, through=False, cut="none",

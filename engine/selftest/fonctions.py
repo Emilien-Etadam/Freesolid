@@ -5,6 +5,7 @@ Une fonction par étape, dans l'ordre d'exécution ;
 ``engine/selftest/__init__.py`` fixe l'ordre global.
 """
 
+import math
 import os
 
 from engine.kernel import KernelError
@@ -374,6 +375,94 @@ def q1_conge_coque_trop_grands(self, mark, report, etat):
     report["q1_coque_valide_apres_refus"] = (
         not any(f.get("error") for f in tree["features"])
         and abs(float(self._require_body().Shape.Volume) - 5040) < 1e-2)
+
+
+def _plaque_cylindre_affleurant(self, rayon):
+    """Plaque en rainure conique (R12 en (0, 0), R25 en (70, 0), tangentes
+    extérieures, 10 mm) et cylindre de rayon ``rayon`` centré en (70, 0),
+    posé dessus (22 mm). Rend l'indice de l'arc commun au cylindre et au
+    dessus de la plaque, côté plaque."""
+    self.new_part("Pièce affleurante")
+    sk = self.sketch_start(plane="XY")["sketch"]
+    phi = math.acos((12.0 - 25.0) / 70.0)
+    haut1 = (12 * math.cos(phi), 12 * math.sin(phi))
+    haut2 = (70 + 25 * math.cos(phi), 25 * math.sin(phi))
+    self.sketch_add_arc(sk, 70, 0, 25, -phi, phi)
+    self.sketch_add_line(sk, haut2[0], haut2[1], haut1[0], haut1[1])
+    self.sketch_add_arc(sk, 0, 0, 12, phi, 2 * math.pi - phi)
+    self.sketch_add_line(sk, haut1[0], -haut1[1], haut2[0], -haut2[1])
+    self.sketch_finish(sk)
+    self.add_pad(10)
+    sk = self.sketch_start(face=self._top_face_id())["sketch"]
+    centre = self._get_sketch(sk).Placement.inverse().multVec(
+        self._app().Vector(70, 0, 10))
+    self.sketch_add_circle(sk, centre.x, centre.y, rayon)
+    self.sketch_finish(sk)
+    self.add_pad(22)
+    for i, edge in enumerate(self._require_body().Shape.Edges):
+        curve = edge.Curve
+        milieu = edge.valueAt((edge.FirstParameter + edge.LastParameter) / 2)
+        if (curve.TypeId == "Part::GeomCircle"
+                and abs(curve.Radius - rayon) < 1e-9
+                and abs(curve.Center.x - 70) < 1e-6
+                and abs(curve.Center.z - 10) < 1e-6 and milieu.x < 70):
+            return i
+    raise KernelError("arc commun cylindre / plaque introuvable")
+
+
+def q2_conge_cylindre_affleurant(self, mark, report, etat):
+    mark("q2: congé sur un cylindre qui affleure")
+    # Cylindre R25 au ras de l'arrondi R25 : le modeleur rend un congé « à
+    # jour » de forme invalide. Il est refusé, avec l'indice.
+    arete = _plaque_cylindre_affleurant(self, 25.0)
+    body = self._require_body()
+    pointe = body.Tip
+    avant = [f["name"] for f in self.get_tree()["features"]]
+
+    def refuse(appel):
+        try:
+            appel()
+        except KernelError as exc:
+            texte = str(exc)
+            tree = self.get_tree()
+            return ("pièce invalide" in texte
+                    and "affleure exactement" in texte
+                    and [f["name"] for f in tree["features"]] == avant
+                    and not any(f.get("error") for f in tree["features"])
+                    and body.Tip is pointe and body.Shape.isValid())
+        return False
+
+    report["q2_conge_affleurant_refuse"] = refuse(
+        lambda: self.add_fillet(3, edges=[arete]))
+    report["q2_chanfrein_affleurant_refuse"] = refuse(
+        lambda: self.add_chamfer(3, edges=[arete]))
+    report["q2_apercu_affleurant_refuse"] = refuse(
+        lambda: self.preview("add_fillet", {"radius": 3, "edges": [arete]}))
+    # Un congé cassé déjà là (fichier d'avant la garde) : la réédition de
+    # son rayon est refusée et le rayon reste.
+    conge = body.newObject("PartDesign::Fillet", "Fillet")
+    conge.Base = (pointe, ["Edge{}".format(arete + 1)])
+    conge.Radius = 3.0
+    self._require_doc().recompute()
+    try:
+        self.set_params(conge.Name, {"Radius": 2})
+        report["q2_reedition_affleurant_refusee"] = False
+    except KernelError as exc:
+        texte = str(exc)
+        report["q2_reedition_affleurant_refusee"] = (
+            "affleure exactement" in texte
+            and "la pièce n'a pas été modifiée" in texte
+            and abs(self._prop_float(conge, "Radius") - 3.0) < 1e-9)
+    # Cylindre élargi de 0,001 mm : le même congé passe, forme valide.
+    arete = _plaque_cylindre_affleurant(self, 25.001)
+    body = self._require_body()
+    volume = float(body.Shape.Volume)
+    tree = self.add_fillet(3, edges=[arete])
+    report["q2_conge_elargi_valide"] = (
+        body.Tip.TypeId == "PartDesign::Fillet"
+        and body.Tip.Shape.isValid()
+        and float(body.Shape.Volume) > volume
+        and not any(f.get("error") for f in tree["features"]))
 
 
 def p6_assistant_percage(self, mark, report, etat):

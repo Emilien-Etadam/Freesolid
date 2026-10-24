@@ -2,7 +2,10 @@
 
 import pytest
 
-from engine.guard import failure_message, friendly_error, shell_too_thick_message
+from engine.guard import (
+    failure_message, flush_cylinder, friendly_error, invalid_dressup_message,
+    shell_too_thick_message,
+)
 from engine.i18n import translate
 
 _FORBIDDEN = (
@@ -130,3 +133,73 @@ def test_suppressed_base_and_lost_links_are_explained():
         "Congé", "Invalid edge link: ;#2f:2;:G;XTR;:H1:7,E.Edge1",
         "PartDesign::Fillet")
     assert "arête" in lost
+
+
+def test_invalid_dressup_is_refused_in_both_languages():
+    fillet = invalid_dressup_message("PartDesign::Fillet")
+    assert fillet == (
+        "congé impossible sur cette sélection : le résultat serait une "
+        "pièce invalide — essayez un rayon plus petit ou d'autres arêtes")
+    assert translate(fillet, "en") == (
+        "fillet impossible on this selection: the result would be an "
+        "invalid part — try a smaller radius or other edges")
+    chamfer = invalid_dressup_message("PartDesign::Chamfer", flush=True)
+    assert chamfer.startswith("chanfrein impossible sur cette sélection")
+    assert chamfer.endswith(
+        "le cylindre affleure exactement une autre face de même rayon ; "
+        "élargir l'un des deux de 0,001 mm suffit en général")
+    assert translate(chamfer, "en") == (
+        "chamfer impossible on this selection: the result would be an "
+        "invalid part — try a smaller distance or other edges — the "
+        "cylinder is exactly flush with another face of the same radius; "
+        "widening one of them by 0.001 mm is usually enough")
+    # Réédition refusée : set_params ajoute sa fin de phrase.
+    edit = fillet + " — la pièce n'a pas été modifiée"
+    assert translate(edit, "en").endswith("other edges — the part was not modified")
+    for text in (fillet, chamfer):
+        for word in _FORBIDDEN:
+            assert word not in text.lower()
+
+
+# Arête : arc R25 centré en (70, 0), à z = 10, axe Z. Faces : les deux
+# bouts de leur axe, et leur rayon.
+_EDGE = ((70.0, 0.0, 10.0), (0.0, 0.0, 1.0), 25.0)
+
+
+@pytest.mark.parametrize("cylinders", [
+    # Une seule face, fusionnée : la paroi traverse le plan de l'arête.
+    [((70, 0, 0), (70, 0, 32), 25.0)],
+    # Deux faces jointives, de part et d'autre ; axe de face inversé.
+    [((70, 0, 10), (70, 0, 0), 25.0), ((70, 0, 32), (70, 0, 10), 25.0)],
+    # Même rayon à 1e-7 près.
+    [((70, 0, 0), (70, 0, 10), 25.0000001), ((70, 0, 10), (70, 0, 32), 25.0)],
+])
+def test_flush_cylinder_is_detected(cylinders):
+    assert flush_cylinder(*_EDGE, cylinders)
+    # L'axe de l'arête peut pointer dans l'autre sens.
+    center, axis, radius = _EDGE
+    assert flush_cylinder(center, tuple(-a for a in axis), radius, cylinders)
+
+
+@pytest.mark.parametrize("cylinders", [
+    # Cylindre élargi de 0,001 mm : l'arrondi de la plaque n'affleure plus.
+    [((70, 0, 0), (70, 0, 10), 25.0), ((70, 0, 10), (70, 0, 32), 25.001)],
+    # Bossage seul, au-dessus de l'arête.
+    [((70, 0, 10), (70, 0, 32), 25.0)],
+    # Trou seul, sous l'arête.
+    [((70, 0, 0), (70, 0, 10), 25.0)],
+    # Gorge : même rayon de part et d'autre, mais loin de l'arête.
+    [((70, 0, 0), (70, 0, 10), 25.0), ((70, 0, 14), (70, 0, 32), 25.0)],
+    # Même rayon, axe décalé.
+    [((70, 0.01, 0), (70, 0.01, 32), 25.0)],
+    # Même rayon, axe incliné.
+    [((70, 0, 0), (71, 0, 32), 25.0)],
+    [],
+])
+def test_flush_cylinder_rejects_other_cases(cylinders):
+    assert not flush_cylinder(*_EDGE, cylinders)
+
+
+def test_flush_cylinder_needs_an_axis():
+    assert not flush_cylinder(
+        (70, 0, 10), (0, 0, 0), 25.0, [((70, 0, 0), (70, 0, 32), 25.0)])

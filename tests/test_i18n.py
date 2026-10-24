@@ -63,8 +63,15 @@ def test_fillet_label_follows_the_language(monkeypatch):
     anglais. Le corps FreeCAD est remplacé par un faux."""
     from engine.kernel import Kernel
 
+    class ValidShape:
+        def isNull(self):
+            return False
+
+        def isValid(self):
+            return True
+
     class Feature:
-        pass
+        Shape = ValidShape()
 
     class Body:
         Tip = object()

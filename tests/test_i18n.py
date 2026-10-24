@@ -58,16 +58,32 @@ def test_labels_follow_the_language():
 
 
 def test_fillet_label_follows_the_language(monkeypatch):
-    """Le congé se nomme dans la langue de l'interface, comme le chanfrein
-    (« Congé » restait posé en dur, même en anglais)."""
+    """Le congé se nomme dans la langue de l'interface (``label_for_type``),
+    comme les autres fonctions : « Congé » restait posé en dur, même en
+    anglais. Le corps FreeCAD est remplacé par un faux."""
     from engine.kernel import Kernel
+
+    class Feature:
+        pass
+
+    class Body:
+        Tip = object()
+
+        def newObject(self, type_id, name):
+            self.made = Feature()
+            return self.made
+
     labels = []
     for lang in ("fr", "en"):
         kernel = Kernel()
         kernel.lang = lang
-        monkeypatch.setattr(kernel, "_dressup",
-                            lambda type_id, label, *a, **kw: labels.append(label))
+        body = Body()
+        monkeypatch.setattr(kernel, "_require_body", lambda: body)
+        monkeypatch.setattr(kernel, "_require_doc", lambda: None)
+        monkeypatch.setattr(kernel, "_recompute", lambda: None)
+        monkeypatch.setattr(kernel, "get_tree", lambda: None)
         kernel.add_fillet(2, face=0)
+        labels.append(body.made.Label)
     assert labels == ["Congé", "Fillet"]
 
 

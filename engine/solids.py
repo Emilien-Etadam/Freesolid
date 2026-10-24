@@ -1172,7 +1172,7 @@ class SolidsMixin:
                 "plan neutre — choisissez un autre plan neutre ou une autre face")
         return self.get_tree()
 
-    def _dressup(self, type_id, label, prop, value, face=None, edges=None):
+    def _dressup(self, type_id, prop, value, face=None, edges=None):
         """Fillet/chamfer share everything but the property they drive.
 
         The dress-up references the picked face or edges on the Tip
@@ -1180,7 +1180,7 @@ class SolidsMixin:
         matches by construction. A face means every edge of that face;
         an edge list is the precise edge selection.
         """
-        from engine.kernel import KernelError
+        from engine.kernel import KernelError, label_for_type
         body = self._require_body()
         doc = self._require_doc()
         tip = getattr(body, "Tip", None)
@@ -1196,7 +1196,7 @@ class SolidsMixin:
         feature = body.newObject(type_id, type_id.split("::")[-1])
         feature.Base = (tip, subs)
         setattr(feature, prop, float(value))
-        feature.Label = label
+        feature.Label = label_for_type(type_id, self.lang)
         try:
             self._recompute()
         except KernelError:
@@ -1205,7 +1205,7 @@ class SolidsMixin:
         return self.get_tree()
 
     def add_fillet(self, radius, face=None, edges=None):
-        return self._dressup("PartDesign::Fillet", self._t("Congé"),
+        return self._dressup("PartDesign::Fillet",
                              "Radius", radius, face=face, edges=edges)
 
     #: Jeton du panneau → énumération FreeCAD ``ChamferType``.

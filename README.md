@@ -9,7 +9,10 @@
 Interface de CAO mécanique moderne sur un moteur FreeCAD headless intact — les fichiers restent des `.FCStd`
 standard, ouvrables dans FreeCAD.
 
-![FreeSolid — pièce après le smoke navigateur](docs/img/smoke.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/apercu-sombre.png">
+  <img alt="FreeSolid — une équerre avec congé, chanfreins, perçages et lumière" src="docs/img/apercu-clair.png">
+</picture>
 
 ## Démarrage
 

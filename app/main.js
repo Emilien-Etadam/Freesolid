@@ -2061,7 +2061,7 @@ async function openConfigTable() {
   });
   if (!table) return;
   if (!table.names.length) {
-    say(t("Ajoutez d'abord une configuration (dossier Configurations de l'arbre)"));
+    say(t("Ajoutez d'abord une configuration (onglet Configurations du gestionnaire)"));
     return;
   }
   panel.open({

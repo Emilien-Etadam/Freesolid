@@ -69,9 +69,9 @@ class SolidsMixin:
         """Combiner deux corps — Soustraire / Ajouter / Intersection.
 
         S'applique au corps actif. Un ``PartDesign::Body`` outil est
-        absorbé (comportement PartDesign). Un semis de pierres n'est
-        pas absorbé : le corps outil est dérivé, le compound se relit
-        depuis ``PlacementList`` à chaque recompute.
+        absorbé (comportement PartDesign). Un outil qu'un plugin réclame
+        (``boolean_tool``) ne l'est pas : le plugin rend un corps outil
+        dérivé, qu'il tient à jour lui-même.
         """
         from engine.kernel import KernelError
         body = self._require_body()

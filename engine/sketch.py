@@ -1460,8 +1460,8 @@ class SketchMixin:
         if self._assembly:
             self._require_doc().recompute()
         else:
-            # _recompute applique aussi PlacementList des semis : sans le
-            # second passage, la cote change et l'écran ne suit pas.
+            # _recompute passe aussi les crochets after_recompute des
+            # plugins : sans lui, la cote change et l'écran ne suit pas.
             self._recompute()
         return self.sketch_state(sketch)
 

@@ -7,7 +7,7 @@
 import { t } from "./i18n.js";
 import { num, plainNumber } from "./num.js";
 import { minimalGraphCurve, minimalGraphFeature, minimalRepeatGraph } from "./graph.js";
-import { combineConfirmMessage } from "./progress.js";
+import { combineConfirm, combineToolOptions } from "./combine.js";
 
 /** Message moteur quand aucune esquisse libre n'est disponible (d'un
  *  seul tenant : c'est aussi la clé de traduction). */
@@ -24,16 +24,6 @@ export function availableSketches(tree) {
 function latestAvailableSketch(tree) {
   const sketches = availableSketches(tree);
   return sketches.length ? sketches[sketches.length - 1] : null;
-}
-
-/** Corps inactifs + semis non vides : les outils que Combiner accepte. */
-function booleanToolOptions(ctx) {
-  const others = (ctx.lastTree?.bodies ?? []).filter((b) => !b.active);
-  const gems = (ctx.lastTree?.gems ?? []).filter((g) => (g.count || 0) > 0);
-  return [
-    ...others.map((b) => [b.name, b.label]),
-    ...gems.map((g) => [g.name, g.label]),
-  ];
 }
 
 /** Profil affiché / utilisé : sélection d'arbre sinon dernière libre. */
@@ -408,18 +398,19 @@ function surface({ button, icon, title, groups, note, build, invalid }) {
   };
 }
 
-/** Combiner : même panneau sous `btn-boolean` (groupe Corps) et
- *  `btn-gem-combine` (onglet Bijouterie). Un seul objet, deux ids. */
+/** Combiner : corps outils du noyau, plus ceux des plugins
+ *  (`combine.js`). Un plugin peut aussi poser ce panneau sous un bouton
+ *  de son onglet (`api.featureButton`). */
 const COMBINE_FEATURE = {
   icon: "boolean",
   title: "Combiner",
   guard: (ctx) => {
-    const options = booleanToolOptions(ctx);
+    const options = combineToolOptions(ctx.lastTree);
     return options.length ? null
-      : "Combiner : créez d'abord un second corps, ou posez un semis de pierres";
+      : "Combiner : créez d'abord un second corps";
   },
   groups: (ctx) => {
-    const options = booleanToolOptions(ctx);
+    const options = combineToolOptions(ctx.lastTree);
     return [{
       label: "Opération",
       rows: [
@@ -432,13 +423,11 @@ const COMBINE_FEATURE = {
       ],
     }];
   },
-  note: "S'applique au corps actif. Un second corps est absorbé ; "
-        + "un semis de pierres reste dans l'arbre, et l'empreinte "
-        + "se recalcule à chaque reconstruction.",
-  // Un booléen de semis peut durer des dizaines de secondes : l'aperçu
-  // jaune le lancerait à l'ouverture du panneau, avant la confirmation.
+  note: "S'applique au corps actif. Un second corps est absorbé.",
+  // Un booléen peut durer des dizaines de secondes : l'aperçu jaune le
+  // lancerait à l'ouverture du panneau, avant la confirmation.
   preview: false,
-  confirm: (v, ctx) => combineConfirmMessage(ctx.lastTree, v.tool),
+  confirm: (v, ctx) => combineConfirm(ctx.lastTree, v.tool),
   build: (v) => ({ op: "add_boolean",
     params: { tool: v.tool, type: v.type } }),
   refresh: "part",
@@ -1246,7 +1235,6 @@ export const FEATURES = [
   },
   {
     button: "btn-boolean",
-    buttons: ["btn-boolean", "btn-gem-combine"],
     ...COMBINE_FEATURE,
   },
   surface({

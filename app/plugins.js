@@ -60,6 +60,8 @@ export async function loadClientPlugins(call, api, importer = (url) => import(ur
  *   controls?: object,
  *   addRibbon?: Function,
  *   addFeature?: Function,
+ *   addFeatureButton?: Function,
+ *   addCombineTools?: Function,
  *   addHud?: Function,
  * }} host
  */
@@ -68,6 +70,7 @@ export function createPluginApi(host) {
   const treeRows = [];
   const viewports = [];
   const pointers = [];
+  const progressWatchers = [];
   let viewportObjects = [];
 
   const api = {
@@ -87,6 +90,20 @@ export function createPluginApi(host) {
     feature(entry) {
       if (!entry || typeof entry !== "object") return;
       host.addFeature?.(entry);
+    },
+    /** Pose le bouton `id` du plugin sur la fonction du noyau `coreButton`. */
+    featureButton(id, coreButton) {
+      if (typeof id !== "string" || typeof coreButton !== "string") return;
+      host.addFeatureButton?.(id, coreButton);
+    },
+    /** Outils proposés par Combiner — voir `combine.js`. */
+    combineTools(hooks) {
+      if (!hooks || typeof hooks.options !== "function") return;
+      host.addCombineTools?.(hooks);
+    },
+    /** handler(progress, nowSeconds) à chaque sondage d'une op longue. */
+    progress(handler) {
+      if (typeof handler === "function") progressWatchers.push(handler);
     },
     hud(node) {
       if (node) host.addHud?.(node);
@@ -110,6 +127,11 @@ export function createPluginApi(host) {
 
   return {
     api,
+    dispatchProgress(progress, nowSeconds) {
+      for (const handler of progressWatchers) {
+        try { handler(progress, nowSeconds); } catch { /* un plugin cassé n'empêche pas */ }
+      }
+    },
     dispatchKey(event) {
       for (const handler of keys) {
         if (handler(event) === true) return true;

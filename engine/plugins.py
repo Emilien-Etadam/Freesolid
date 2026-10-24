@@ -14,11 +14,11 @@ a délibérément posé dans ``plugins/``. Le geste d'installation *est* le
 consentement, comme pour n'importe quel paquet.
 
 Un manifeste est une **entrée**, pas une confidence : ``module`` et
-``statique`` sont jailés, même discipline que ``sanitize_gemme``.
+``statique`` sont jailés, comme les chemins servis par ``server.py``.
 
 Surface kernel qu'un plugin a le droit d'appeler
 ------------------------------------------------
-Mesurée sur le bloc bijouterie, pas supposée. Un plugin hors dépôt
+Mesurée sur un plugin réel, pas supposée. Un plugin hors dépôt
 n'appelle que ces neuf membres privés :
 
     _app  _body  _doc  _face_mesh  _recompute
@@ -47,7 +47,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEFAULT_ROOT = os.path.join(_REPO_ROOT, "plugins")
 
 # ``plugins/`` est un chemin d'import dès que ce module vit — pas
-# seulement au premier Kernel. Les tests voient alors ``bijouterie``.
+# seulement au premier Kernel. Les tests voient alors les plugins posés.
 if os.path.isdir(_DEFAULT_ROOT) and _DEFAULT_ROOT not in sys.path:
     sys.path.insert(0, _DEFAULT_ROOT)
 
@@ -55,7 +55,8 @@ _MODULE_RE = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$")
 _DIR_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 _NOM_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _OP_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
-_KINDS = frozenset({"int", "float", "str", "list", "dict", "bool"})
+#: ``nom`` : une chaîne non vide — un nom d'objet, comme ``feature`` du noyau.
+_KINDS = frozenset({"int", "float", "str", "nom", "list", "dict", "bool"})
 
 _LOADED = None
 
@@ -146,7 +147,7 @@ def _parse_op_spec(name, spec):
             if kind not in _KINDS:
                 raise PluginError(
                     "type « {} » inconnu pour {} de « {} » — "
-                    "attendu int, float, str, list, dict ou bool".format(
+                    "attendu int, float, str, nom, list, dict ou bool".format(
                         kind, param, name))
     transactionnel = spec.get("transactionnel", False)
     if transactionnel not in (True, False):
@@ -256,6 +257,8 @@ class Registry:
         self._tolerates_invalid = []
         self._boolean_tool = []
         self._deletes_feature = []
+        self._internal_object = []
+        self._tree_node = []
         self._state = {}
 
     def after_recompute(self, fn):
@@ -290,6 +293,15 @@ class Registry:
         """fn(kernel, obj) -> True si le plugin a pris en charge la suppression."""
         self._deletes_feature.append((self.nom, fn))
 
+    def internal_object(self, fn):
+        """fn(kernel, obj) -> True = objet interne du plugin, hors de l'arbre."""
+        self._internal_object.append((self.nom, fn))
+
+    def tree_node(self, fn):
+        """fn(kernel, obj) -> True = nœud que le plugin montre dans sa section
+        de ``get_tree`` : une arête de dépendance peut y aboutir."""
+        self._tree_node.append((self.nom, fn))
+
     def state(self, nom):
         """Dict d'état pour ce plugin, dans le document courant.
 
@@ -316,6 +328,8 @@ class Registry:
         self._tolerates_invalid.extend(other._tolerates_invalid)
         self._boolean_tool.extend(other._boolean_tool)
         self._deletes_feature.extend(other._deletes_feature)
+        self._internal_object.extend(other._internal_object)
+        self._tree_node.extend(other._tree_node)
         self.manifests.extend(other.manifests)
         self.transactional.update(other.transactional)
         self.errors.extend(other.errors)
@@ -383,6 +397,20 @@ class Registry:
     def run_deletes_feature(self, kernel, obj):
         """True dès qu'un plugin a pris en charge. Personne → False, chemin par défaut."""
         for _nom, fn in self._deletes_feature:
+            if fn(kernel, obj):
+                return True
+        return False
+
+    def run_internal_object(self, kernel, obj):
+        """True dès qu'un plugin réclame l'objet comme interne. Personne → False."""
+        for _nom, fn in self._internal_object:
+            if fn(kernel, obj):
+                return True
+        return False
+
+    def run_tree_node(self, kernel, obj):
+        """True dès qu'un plugin montre l'objet dans l'arbre. Personne → False."""
+        for _nom, fn in self._tree_node:
             if fn(kernel, obj):
                 return True
         return False

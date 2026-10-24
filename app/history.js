@@ -2,7 +2,7 @@
 // Module pur — testable en Node, sans DOM.
 
 // Pas d'annulation (op du moteur) → libellé de la liste d'historique.
-const STEP_LABELS = {
+export const STEP_LABELS = {
   add_rect_sketch: "Esquisse rectangle",
   add_pad: "Extrusion",
   add_pocket: "Enlèvement extrudé",
@@ -47,13 +47,38 @@ const STEP_LABELS = {
   insert_component: "Insérer un composant",
   move_component: "Déplacer un composant",
   add_joint: "Contrainte d'assemblage",
+  // Ces ops tombaient sur le repli générique : même texte, désormais
+  // explicite (tests/js/coherence.test.mjs). Un libellé précis viendra.
+  add_curve3d: "Fonction", add_delete_face: "Fonction",
+  add_graph_feature: "Fonction", add_repeat_feature: "Fonction",
+  add_replace_face: "Fonction", add_sketch3d: "Fonction",
+  add_surface_cut: "Fonction", add_vertex_chamfer: "Fonction",
+  array_component: "Modification", edit_curve3d: "Modification",
+  edit_graph_feature: "Modification", edit_repeat_feature: "Modification",
+  edit_sketch3d: "Modification", edit_surface_cut: "Modification",
+  edit_surface_extend: "Modification", edit_surface_fillet: "Modification",
+  edit_surface_freeform: "Modification", edit_surface_trim: "Modification",
+  edit_text: "Modification", edit_vertex_chamfer: "Modification",
+  make_drawing: "Modification", set_body_material: "Modification",
+  set_component_grounded: "Modification",
+  set_configuration_values: "Modification", set_face_color: "Modification",
+  set_suppressed: "Modification", solve_assembly: "Modification",
 };
+
+/** Familles d'ops nommées par préfixe : une ligne commune suffit. */
+export const STEP_PREFIXES = [
+  ["sketch_", "Modification d'esquisse"],
+  ["surface_", "Surface"],
+  ["curve_", "Surface"],
+];
 
 /** Libellé (français, traduit à l'affichage) d'un pas d'annulation. */
 export function undoStepLabel(op) {
   if (STEP_LABELS[op]) return STEP_LABELS[op];
-  if (op.startsWith("sketch_")) return "Modification d'esquisse";
-  if (op.startsWith("surface_") || op.startsWith("curve_")) return "Surface";
+  const family = STEP_PREFIXES.find(([prefix]) => op.startsWith(prefix));
+  if (family) return family[1];
+  // Repli des ops hors catalogue (plugins) ; une op du noyau n'y tombe
+  // pas (tests/js/coherence.test.mjs).
   if (op.startsWith("add_")) return "Fonction";
   return "Modification";
 }

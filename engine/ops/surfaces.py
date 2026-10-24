@@ -1,6 +1,6 @@
 """Surfaces et courbes : construction, retouche, passage au solide.
 
-Méthodes : surfacefeat.py, splineedit.py.
+Méthodes : surfacefeat/, splineedit.py.
 """
 
 from engine.ops._base import Op, Req

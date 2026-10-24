@@ -51,23 +51,6 @@ OPS: dict[str, tuple[str, ...]] = {
     # paste-me-the-report loop that debugged the Qt addon.
     "selftest": (),
     "new_part": (),                    # optional: name
-    # Phase C — assemblage v1 (placements directs, sans solveur).
-    "new_assembly": (),                # optional: name
-    "insert_component": _Req(("path", str)),  # .FCStd — App::Link vers son corps
-    "move_component": _Req(("component", str)),  # optional: x, y, z, yaw, pitch, roll
-    "set_component_grounded": _Req(("component", str),
-                                   optional={"grounded": bool}),
-    "array_component": _Req(("component", str), ("count", int)),  # optional: dx, dy, dz
-    "assembly_tree": (),
-    "tessellate_assembly": (),         # optional: deviation
-    # Phase C3 — contraintes d'assemblage (joints natifs + solveur MbD).
-    "add_joint": _Req(("component1", str), ("component2", str),
-                      optional={"angle": float, "flip": bool}),
-                                       # optional: type (fixe|pivot|
-                                       # cylindrique|glissiere|rotule|
-                                       # distance), sub1, sub2, distance
-    "solve_assembly": (),
-    "spike_assembly": (),              # rapport : joints Assembly headless ?
     # Phase E — évaluer + mise en plan.
     "mass_properties": (),             # optional: density (g/cm³)
     "material_library": (),            # lecture : matières proposées
@@ -94,22 +77,6 @@ OPS: dict[str, tuple[str, ...]] = {
     "make_drawing": _Req(("path", str)),
                                        # optional: scale, dims (bool, défaut True),
                                        # section ("X"|"Y"|"Z") — 3 vues + cotes + coupe, export DXF
-    "add_graph_feature": _Req(("graph", dict), optional={"mode": str}),
-                                       # mode : fuse | cut pour un solide ;
-                                       # absent pour une courbe / surface
-    "edit_graph_feature": _Req(("feature", str), ("graph", dict)),
-    "get_graph_feature": _Req(("feature", str)),
-    "add_repeat_feature": _Req(("features", list), ("mode", str),
-                               optional={"instances": list, "graph": dict}),
-                                       # exactement un de instances | graph
-    "edit_repeat_feature": _Req(("feature", str),
-                                optional={"instances": list, "graph": dict}),
-                                       # exactement un de instances | graph
-    "get_repeat_feature": _Req(("feature", str)),
-    "graph_vocabulary": (),             # lecture : types, libellés, ports
-    "script_trust_status": (),          # lecture : Python autorisé ce document / session
-    "authorize_scripts": (),            # consentement : jamais persisté dans le .FCStd
-    "check_interference": (),          # assemblage : volumes communs par paires
     "undo": _Req(optional={"steps": int}),  # une transaction = un Ctrl+Z
     "redo": _Req(optional={"steps": int}),
     "undo_history": (),                # lecture : pas à défaire / refaire

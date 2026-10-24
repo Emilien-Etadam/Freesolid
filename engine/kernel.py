@@ -832,14 +832,11 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
 #: Dérivé du catalogue (``undo=True``), plus les ops pas encore décrites
 #: dans engine/ops/.
 _TRANSACTIONAL = TRANSACTIONAL | frozenset({
-    "insert_component", "move_component", "add_joint", "solve_assembly",
-    "add_graph_feature", "edit_graph_feature",
-    "add_repeat_feature", "edit_repeat_feature", "make_drawing",
+    "make_drawing",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable",
     "set_tip", "tip_to_end", "delete_feature",
-    "array_component",
-    "set_component_grounded", "reorder_feature", "set_comment",
+    "reorder_feature", "set_comment",
     "set_suppressed",
     "set_body_material", "set_face_color",
     "paste_feature",

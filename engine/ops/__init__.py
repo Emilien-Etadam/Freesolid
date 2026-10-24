@@ -5,7 +5,8 @@ méthode dans le mixin du même domaine. Tout ce qui suit en est dérivé.
 """
 
 from engine.ops import (
-    esquisse, habillage, references, repetitions, surfaces, volumes,
+    assemblage, esquisse, habillage, noeuds, references, repetitions,
+    surfaces, volumes,
 )
 
 #: Toutes les ops du noyau. L'ordre n'a pas de sens pour le protocole.
@@ -16,6 +17,8 @@ CORE_OPS = (
     + references.OPS
     + surfaces.OPS
     + esquisse.OPS
+    + assemblage.OPS
+    + noeuds.OPS
 )
 
 #: Nom → descripteur. Un nom en double est une erreur de catalogue.

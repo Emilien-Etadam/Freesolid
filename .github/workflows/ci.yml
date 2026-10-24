@@ -85,6 +85,7 @@ jobs:
       - name: Syntax check
         run: |
           node --check app/main.js
+          for f in app/main/*.js; do node --check "$f"; done
           node --check app/plugins.js
           node --check app/ribbon.js
           node --check app/graph.js

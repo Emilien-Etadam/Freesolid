@@ -87,6 +87,26 @@ def test_fillet_label_follows_the_language(monkeypatch):
     assert labels == ["Congé", "Fillet"]
 
 
+def test_graph_and_pattern_labels_follow_the_language():
+    """Fonction graphe et réseau variable : même règle que le congé."""
+    from engine.kernel import Kernel
+    kernel = Kernel()
+    circle = [{"shape": "cercle", "rayon": 10}]
+    plane = [{"shape": "plan", "longueur": 20, "largeur": 10}]
+    labels = []
+    for lang in ("fr", "en"):
+        kernel.lang = lang
+        labels.append([kernel._repeat_label("fuse"), kernel._repeat_label("cut"),
+                       kernel._graph_surface_label(circle),
+                       kernel._graph_surface_label(plane)])
+    assert labels == [
+        ["Réseau variable — Ajout", "Réseau variable — Enlèvement",
+         "Fonction graphe — Courbe", "Fonction graphe — Surface"],
+        ["Variable pattern — Add", "Variable pattern — Cut",
+         "Graph feature — Curve", "Graph feature — Surface"],
+    ]
+
+
 def test_unknown_language_has_no_catalog():
     assert i18n.catalog("klingon") == []
     assert i18n.catalog("fr") == []

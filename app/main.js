@@ -14,7 +14,6 @@ import {
   readDisplay, writeDisplay, displayEffects,
 } from "./display.js";
 import { FEATURES, resolveProfileSketch } from "./features.js";
-import { formatProgressStatus } from "./progress.js";
 import { addCombineTools, combineFinished } from "./combine.js";
 import { installContextMenu } from "./contextmenu.js";
 import { installMeasure } from "./measure.js";
@@ -24,6 +23,7 @@ import { installGraphView } from "./graphview.js";
 import { PROP_LABELS, installTree } from "./tree.js";
 import { installPicking } from "./picking.js";
 import { installViewport } from "./viewport.js";
+import { installApi } from "./main/api.js";
 import { installDebug } from "./main/debug.js";
 import {
   coordsText, editModeText, measureText, sketchEntityLength,
@@ -96,99 +96,19 @@ const coordsEl = document.getElementById("coords");
 const editModeEl = document.getElementById("edit-mode");
 const treeEl = document.getElementById("tree");
 
+// État partagé des modules. Les accesseurs lisent la variable actuelle,
+// y compris celles déclarées plus bas.
+const ctx = {};
+
 // ---------- api ----------
+// Le corps est dans main/api.js.
 
-async function call(op, params = {}) {
-  const response = await fetch("/api", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    // La langue de l'interface part avec chaque requête : le moteur nomme
-    // ce qu'il crée et rédige ses erreurs dans cette langue.
-    body: JSON.stringify({ op, params, lang: currentLang() }),
-  });
-  const text = await response.text();
-  let payload = null;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    payload = null;
-  }
-  // {ok:false} (HTTP 200 ou 4xx protocole) : message moteur / protocole.
-  if (payload && payload.ok === false) {
-    throw new Error(payload.error + (payload.hint ? ` (${payload.hint})` : ""));
-  }
-  if (!response.ok || !payload || payload.ok !== true) {
-    const excerpt = text.slice(0, 180).replace(/\s+/g, " ").trim();
-    throw new Error(
-      `HTTP ${response.status}${excerpt ? ` — ${excerpt}` : ""}`);
-  }
-  return payload.result;
-}
-
-const PROGRESS_MS = 300;
-let progressTimer = null;
-let progressWatchers = 0;
-let progressGen = 0;
 let statusSticky = false;
-
-async function pollProgressOnce(gen) {
-  if (gen !== progressGen || statusSticky) return;
-  try {
-    const progress = await call("progress");
-    if (gen !== progressGen || statusSticky) return;
-    const now = Date.now() / 1000;
-    pluginRuntime?.dispatchProgress(progress, now);
-    const text = formatProgressStatus(progress, now);
-    if (text) say(text);
-  } catch {
-    // Le sondage ne doit jamais masquer l'op en cours ni son erreur.
-  }
-}
-
-function startProgressWatch() {
-  progressWatchers += 1;
-  if (progressWatchers > 1) return;
-  const gen = ++progressGen;
-  document.body.classList.add("op-en-cours");
-  document.body.setAttribute("aria-busy", "true");
-  pollProgressOnce(gen);
-  progressTimer = setInterval(() => pollProgressOnce(gen), PROGRESS_MS);
-}
-
-function stopProgressWatch() {
-  progressWatchers = Math.max(0, progressWatchers - 1);
-  if (progressWatchers > 0) return;
-  progressGen += 1;
-  if (progressTimer != null) {
-    clearInterval(progressTimer);
-    progressTimer = null;
-  }
-  document.body.classList.remove("op-en-cours");
-  document.body.removeAttribute("aria-busy");
-}
-
-function say(text, isError = false) {
-  if (statusSticky && !isError) return;
-  if (!isError) statusSticky = false;
-  statusEl.textContent = t(text);
-  statusEl.className = isError ? "err" : "";
-  if (statusSticky) statusEl.classList.add("sticky");
-  // Le texte entier en infobulle : la barre l'abrège s'il est trop long.
-  statusEl.title = statusSticky ? t("Cliquer pour fermer") : statusEl.textContent;
-}
-
-/** Erreur qui reste jusqu'à ce que l'utilisateur clique la barre d'état. */
-function sayUntilAck(text) {
-  statusSticky = true;
-  say(text, true);
-}
-
-statusEl.addEventListener("click", () => {
-  if (!statusSticky) return;
-  statusSticky = false;
-  statusEl.classList.remove("sticky");
-  statusEl.title = "";
-});
+expose("statusSticky", () => statusSticky, (v) => { statusSticky = v; });
+Object.assign(ctx, { statusEl });
+const {
+  call, startProgressWatch, stopProgressWatch, say, sayUntilAck,
+} = installApi(ctx);
 
 // Side property panel — feature options live there, not in
 // prompt() dialogs. See panel.js for its anatomy. Closing the
@@ -209,10 +129,6 @@ const panel = createPropertyPanel({
     ctx.hideContextToolbar?.();
   },
 });
-
-// État partagé des modules. Les accesseurs lisent la variable actuelle,
-// y compris celles déclarées plus bas.
-const ctx = {};
 
 Object.assign(ctx, { THREE, sceneTheme, say, call, disposeSubtree, syncVisibilityMenu });
 const {

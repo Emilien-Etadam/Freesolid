@@ -6,15 +6,14 @@ import { createSketchMode, createDimSprite } from "./sketch.js";
 import {
   dimEditPayload, dimLabel, filletRadiusLabel, openDimEditor, sketchDimAnchor,
 } from "./dims.js";
-import { createPropertyPanel, panelNotice } from "./panel.js";
+import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
 import { eventToNdc, ndcToScreen } from "./screen.js";
 import { readScene } from "./theme.js";
 import {
   readDisplay, writeDisplay, displayEffects,
 } from "./display.js";
-import { FEATURES, resolveProfileSketch } from "./features.js";
-import { combineFinished } from "./combine.js";
+import { FEATURES } from "./features.js";
 import { installContextMenu } from "./contextmenu.js";
 import { installMeasure } from "./measure.js";
 import { VIEW_KEYS, VIEWS, installViewCube } from "./viewcube.js";
@@ -25,6 +24,7 @@ import { installPicking } from "./picking.js";
 import { installViewport } from "./viewport.js";
 import { installApi } from "./main/api.js";
 import { installDebug } from "./main/debug.js";
+import { installFeaturePanel } from "./main/featurepanel.js";
 import { installPluginHost } from "./main/pluginhost.js";
 import {
   coordsText, editModeText, measureText, sketchEntityLength,
@@ -70,7 +70,6 @@ import RIBBON_LAYOUT from "./ribbon.json" with { type: "json" };
 import {
   isGraphFeature,
   isRepeatFeature,
-  latestGraphOrRepeat,
 } from "./graph.js";
 import { edgeSnapPoints } from "./pointsnap.js";
 import { installCurve3d } from "./curve3d.js";
@@ -1480,6 +1479,18 @@ document.getElementById("btn-clip").addEventListener("click", () => {
   });
 });
 
+// ---------- panneaux des fonctions (FEATURES) ----------
+// Le corps est dans main/featurepanel.js. Installé ici : la vue en graphe
+// et la géométrie de référence le lisent dès leur branchement ; les
+// boutons du ruban sont liés plus bas, à leur place d'origine.
+
+Object.assign(ctx, {
+  panel, confirm, call, say, refresh, updateFilletRadiusBubble,
+  schedulePreview, findFeatureInTree, refreshAny, enterGraphFeature,
+  featureCommand,
+});
+const { currentSelection, openFeaturePanel, bindFeature } = installFeaturePanel(ctx);
+
 // ---------- vue en graphe ----------
 // Relais : ces noms sont appelés avant cette ligne (clavier, arbre, menu).
 // Le corps est dans graphview.js, branché juste en dessous.
@@ -2113,181 +2124,7 @@ document.getElementById("btn-sketch").addEventListener("click", () =>
     }
   }));
 
-// Habillages : la zone de sélection du panneau absorbe les clics de la
-// zone graphique (arêtes ou face selon la commande) — on peut ouvrir la
-// commande d'abord et cliquer ensuite, comme dans les modeleurs courants.
-function currentSelection(accepts) {
-  if (accepts.includes("edges") && selectedEdges.size) {
-    return { kind: "edges", edges: [...selectedEdges] };
-  }
-  if (accepts.includes("face") && selectedFaceId !== null) {
-    return { kind: "face", face: selectedFaceId };
-  }
-  // Surface cliquée avant la commande (décaler, prolonger, ajuster).
-  if (accepts.includes("surface") && selectedSurface) {
-    return { kind: "surface", name: selectedSurface.name,
-             label: selectedSurface.label };
-  }
-  // Fonction cliquée dans l'arbre avant la commande (répétitions,
-  // symétrie) : elle remplit d'emblée la case, comme une face présélectionnée.
-  const feature = accepts.includes("feature")
-    && findFeatureInTree(lastTree, selectedFeatureName);
-  if (feature && feature.type !== "Sketcher::SketchObject") {
-    return { kind: "feature", items: [
-      { kind: "feature", name: feature.name, label: feature.label }] };
-  }
-  return null;
-}
-
-// Registry : un bind unique pour tous les panneaux « ouvrir → éditer →
-// aperçu → OK ». Les panneaux bespoke (équations, assemblage, datum…)
-// restent plus bas.
-/** Panneau d'une fonction de `FEATURES` — ruban et palette du graphe.
- *  `sketchOverride` : profil imposé par la palette, sinon la sélection. */
-function openFeaturePanel(entry, sketchOverride) {
-  const ctx = {
-    lastTree,
-    selection: currentSelection,
-    selectedSketch: sketchOverride ?? selectedSketch,
-  };
-  Object.defineProperty(ctx, "lastFaceHit", {
-    get: () => lastFaceHit,
-  });
-  const blocked = entry.guard?.(ctx);
-  if (blocked) { say(blocked, true); return; }
-  const spline = selectedFaceId != null && meshGroups.some(
-    (g) => g.faceId === selectedFaceId && g.spline);
-  const spec = {
-    icon: entry.icon,
-    title: entry.title,
-    groups: entry.groups(ctx),
-    note: typeof entry.noteFn === "function"
-      ? entry.noteFn(ctx, { spline })
-      : entry.note,
-    onApply: (v) => {
-      const built = entry.build(v, ctx);
-      if (!built) {
-        const raw = typeof entry.invalid === "function"
-          ? entry.invalid(v, ctx)
-          : (entry.invalid ?? "Valeurs invalides");
-        const notice = panelNotice(raw);
-        if (notice) say(notice.text, notice.tone === "error");
-        return;
-      }
-      if (typeof entry.confirm === "function") {
-        const question = entry.confirm(v, ctx);
-        if (question && !confirm(question)) return;
-      }
-      const run = entry.refresh === "any" ? refreshAny : refresh;
-      const before = ctx.lastTree;
-      const started = Date.now();
-      const promise = call(built.op, built.params).then((tree) => {
-        if (built.op === "add_boolean") {
-          combineFinished(before, built.params?.tool,
-                          (Date.now() - started) / 1000);
-        }
-        return tree;
-      });
-      // Refus du moteur : le panneau revient avec les valeurs saisies, au
-      // lieu de les perdre (le message reste dans la barre d'état).
-      promise.catch(() => {
-        if (panel.active) return;
-        openFeaturePanel(entry, sketchOverride);
-        panel.restore(v);
-      });
-      if (entry.openGraphEditor) {
-        run(promise.then((tree) => {
-          queueMicrotask(() => {
-            const created = latestGraphOrRepeat(tree);
-            if (created) enterGraphFeature(created);
-          });
-          return tree;
-        }));
-      } else {
-        run(promise);
-      }
-    },
-  };
-  const depthHandle = ["btn-pad", "btn-pocket"].includes(entry.button)
-    ? extrudeDepthHandle(entry, ctx) : null;
-  if (depthHandle) spec.onClose = () => depthHandle.close();
-  if (entry.preview !== false) {
-    spec.onChange = (v) => {
-      schedulePreview(entry.build(v, ctx));
-      if (entry.button === "btn-fillet") updateFilletRadiusBubble(v);
-      depthHandle?.update(v);
-    };
-    // Œil de l'en-tête : couper l'aperçu (fonction lourde), le rallumer.
-    spec.onPreview = (on, v) =>
-      schedulePreview(on ? entry.build(v, ctx) : null);
-  }
-  // Tant que la saisie est incomplète, le panneau dit ce qui manque.
-  spec.hint = (v) => (entry.build(v, ctx) ? null
-    : typeof entry.invalid === "function" ? entry.invalid(v, ctx)
-      : entry.invalid ?? null);
-  panel.open(spec);
-}
-
-/** Flèche au bout de l'extrusion (ou de l'enlèvement) : la tirer change
- *  la profondeur du panneau, l'aperçu suit. Profondeur « borgne » ou
- *  « plan milieu » seulement. */
-function extrudeDepthHandle(entry, featureCtx) {
-  const pocket = entry.button === "btn-pocket";
-  const sketch = resolveProfileSketch(featureCtx)?.name;
-  let frame = null;
-  let dragging = false;
-  let closed = false;
-  let last = null;
-
-  function show(v) {
-    last = v;
-    if (closed || !frame || dragging) return;
-    const length = num(v.length);
-    if (!(length > 0) || (v.cond !== "borgne" && v.cond !== "milieu")) {
-      ctx.handles?.hide();
-      return;
-    }
-    const half = v.cond === "milieu";
-    const sign = (pocket ? -1 : 1) * (v.reversed && !half ? -1 : 1);
-    const dir = frame.normal.map((c) => c * sign);
-    const reach = half ? length / 2 : length;
-    ctx.handles.show({
-      origin: frame.center.map((c, i) => c + dir[i] * reach), dir,
-      onDrag: (d) => {
-        dragging = true;
-        const next = Math.max(0.5, Math.round((length + d * (half ? 2 : 1)) * 2) / 2);
-        panel.restore({ length: next });
-      },
-      onEnd: () => {
-        dragging = false;
-        show(last);
-      },
-    });
-  }
-
-  if (sketch) {
-    call("sketch_frame", { sketch }).then((result) => {
-      frame = result;
-      if (last) show(last);
-    }).catch(() => {});
-  }
-  return {
-    update: (v) => show(v),
-    close: () => { closed = true; ctx.handles?.hide(); },
-  };
-}
-
-function bindFeature(entry) {
-  const ids = entry.buttons ?? [entry.button];
-  for (const id of ids) {
-    const el = document.getElementById(id);
-    if (!el || el.dataset.boundFeature) continue;
-    el.dataset.boundFeature = "1";
-    el.addEventListener("click", () =>
-      featureCommand(() => openFeaturePanel(entry)));
-  }
-}
-
+// Chaque entrée de FEATURES ouvre son panneau (main/featurepanel.js).
 for (const entry of FEATURES) bindFeature(entry);
 
 document.getElementById("btn-body").addEventListener("click", () =>

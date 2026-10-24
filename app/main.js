@@ -23,13 +23,13 @@ import { PROP_LABELS, installTree } from "./tree.js";
 import { installPicking } from "./picking.js";
 import { installViewport } from "./viewport.js";
 import { installApi } from "./main/api.js";
+import { installBoot } from "./main/boot.js";
 import { installDebug } from "./main/debug.js";
 import { installFeaturePanel } from "./main/featurepanel.js";
 import { installPluginHost } from "./main/pluginhost.js";
 import {
   coordsText, editModeText, measureText, sketchEntityLength,
 } from "./statusbar.js";
-import { loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, ISSUES_URL, readLang } from "./settings.js";
 import { insertionItems, installMenuBar, menuBarModel } from "./menubar.js";
 import {
@@ -42,7 +42,7 @@ import { installGestures } from "./gestures.js";
 import { installHandles } from "./handles.js";
 import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
-import { installWelcome, rememberRecent } from "./welcome.js";
+import { rememberRecent } from "./welcome.js";
 import {
   SELECT_KINDS, boxMode, coverBounds, filterActive, isDrag, middleAction,
   normalizeRect, nudgeView, pickInBox, readReverseWheel, readSelectFilter,
@@ -2309,54 +2309,10 @@ Object.assign(ctx, {
 installPluginHost(ctx);
 
 // ---------- boot ----------
-
-// Nouvelle pièce depuis un gabarit (accueil, volet de ressources).
-ctx.openTemplate = async (name) => {
-  if (!(await mayDiscard())) return;
-  clearFeatureDims();
-  refresh(call("new_from_template", { name }));
-};
-
-welcomeApi = installWelcome(document, {
-  storage: localStore,
-  hasDocument: () => Boolean(lastTree || assemblyState),
-  onPart: () => document.getElementById("btn-new").click(),
-  onAssembly: () => document.getElementById("btn-newasm").click(),
-  onOpen: () => document.getElementById("btn-open").click(),
-  onRecent: (path) => openDocument(path),
-  listTemplates: () => call("list_templates").then((r) => r.templates),
-  onTemplate: (name) => ctx.openTemplate(name),
+// Le corps est dans main/boot.js.
+Object.assign(ctx, {
+  call, say, localStore, refresh, updateViewport, renderTree, clearFeatureDims,
+  openDocument, showTab, bindFeature, showAssemblyMeshes, renderAssemblyTree,
+  mayDiscard,
 });
-
-call("ping")
-  .then(async (info) => {
-    await loadClientPlugins(call, pluginRuntime.api);
-    for (const entry of FEATURES) bindFeature(entry);
-    say(t("Moteur prêt — FreeCAD {v}", { v: info.freecad }));
-    // Resynchronise avec le moteur : après un rechargement de la page,
-    // la pièce en cours réapparaît au lieu d'être écrasée au premier
-    // clic sur Esquisse.
-    try {
-      const gen = ++viewGen;
-      const tree = await call("get_tree");
-      if (gen !== viewGen) return;
-      renderTree(tree);
-      await updateViewport(gen);
-    } catch {
-      try {
-        // Peut-être un assemblage en cours dans le moteur.
-        const gen = ++viewGen;
-        assemblyState = await call("assembly_tree");
-        if (gen !== viewGen) return;
-        renderAssemblyTree(assemblyState);
-        const meshes = await call("tessellate_assembly");
-        if (gen !== viewGen) return;
-        showAssemblyMeshes(meshes);
-        showTab("assembly");
-      } catch {
-        // pas encore de document — l'accueil propose d'en créer un
-        welcomeApi?.showWelcome();
-      }
-    }
-  })
-  .catch(() => say("Moteur injoignable — lancez engine/server.py avec freecadcmd", true));
+installBoot(ctx);

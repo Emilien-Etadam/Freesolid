@@ -37,8 +37,10 @@ Transport : HTTP JSON en localhost, zéro dépendance des deux côtés
 streaming le justifiera (M2 : aperçus pendant le drag).
 
 Opérations M0 : `ping`, `selftest`, `new_part`, `add_rect_sketch`,
-`add_pad`, `set_param`, `get_tree`, `tessellate`. Schémas dans
-`engine/protocol.py`, seule source de vérité, testée sans FreeCAD.
+`add_pad`, `set_param`, `get_tree`, `tessellate`. Schémas dans le
+catalogue `engine/ops/` — un descripteur `Op` par opération, dont
+`engine/protocol.py` dérive `OPS` — seule source de vérité, testée sans
+FreeCAD.
 
 ## Les deux risques identifiés — et leur traitement
 

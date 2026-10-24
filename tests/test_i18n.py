@@ -65,7 +65,9 @@ def test_unknown_language_has_no_catalog():
 
 def _engine_sources() -> str:
     text = []
-    for path in (_ROOT / "engine").glob("*.py"):
+    # Récursif : un message qui part dans un sous-paquet (engine/ops/…)
+    # reste une clé utilisée, pas une entrée orpheline.
+    for path in sorted((_ROOT / "engine").rglob("*.py")):
         text.append(path.read_text(encoding="utf-8"))
     joined = "\n".join(text)
     # Littéraux coupés par « " \n  " » (concaténation implicite) : recollés.

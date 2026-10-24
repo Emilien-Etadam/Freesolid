@@ -770,11 +770,8 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
                 return feature
         raise KernelError("élément d'origine introuvable : {}".format(role))
 
-    #: Dérivé du catalogue (``preview=True``), plus les ops pas encore
-    #: décrites dans engine/ops/.
-    _PREVIEWABLE = PREVIEWABLE | frozenset({
-        "set_params",
-    })
+    #: Ops à aperçu jaune — dérivé du catalogue engine/ops/ (``preview=True``).
+    _PREVIEWABLE = PREVIEWABLE
 
     def preview(self, op, params):
         """Aperçu jaune : exécute la fonction, tesselle, puis annule tout.
@@ -829,21 +826,9 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
 #: lifecycle (new/open), read-only ops, undo/redo themselves, and
 #: sketch_move — a drag streaming at ~20 Hz would shred the undo stack
 #: into per-frame steps.
-#: Dérivé du catalogue (``undo=True``), plus les ops pas encore décrites
-#: dans engine/ops/.
-_TRANSACTIONAL = TRANSACTIONAL | frozenset({
-    "make_drawing",
-    "set_param", "set_params", "rename",
-    "set_variable", "delete_variable",
-    "set_tip", "tip_to_end", "delete_feature",
-    "reorder_feature", "set_comment",
-    "set_suppressed",
-    "set_body_material", "set_face_color",
-    "paste_feature",
-    "set_folder", "rename_folder", "add_configuration",
-    "activate_configuration", "rename_configuration", "delete_configuration",
-    "set_configuration_values",
-})
+#: Dérivé du catalogue engine/ops/ (``undo=True``). Le nom reste : des
+#: plugins l'importent.
+_TRANSACTIONAL = TRANSACTIONAL
 
 
 #: Ops qui laissent un document « propre » : neuf, ouvert ou enregistré.

@@ -11,10 +11,8 @@ from engine.ops import INDEXED, REPLAYERS
 
 
 #: Ce que ``get_params`` + le profil suffisent à reconstituer — dérivé du
-#: catalogue (``replay=``), plus les fonctions pas encore décrites.
-REPLAYABLE_TYPES = {}
-REPLAYABLE_TYPES.update(
-    {type_id: op.name for type_id, op in REPLAYERS.items()})
+#: catalogue engine/ops/ (``replay=``).
+REPLAYABLE_TYPES = {type_id: op.name for type_id, op in REPLAYERS.items()}
 
 #: Le tableau du spike N009 tel qu'il sort dans ``n9_spike_rapport`` : figé,
 #: ordre compris. Il ne suit pas le catalogue — c'est une mesure datée.
@@ -55,9 +53,8 @@ UNREPLAYABLE_OPS = {
 }
 
 #: Fonctions qui portent un indice d'arête ou de face — la garde s'applique.
-#: Dérivé du catalogue (``indexed=True``), plus les fonctions pas encore
-#: décrites.
-INDEXED_TYPES = INDEXED | frozenset()
+#: Dérivé du catalogue engine/ops/ (``indexed=True``).
+INDEXED_TYPES = INDEXED
 
 #: Plafond d'instances d'une répétition variable — mesuré jusqu'à 200
 #: par le spike ; 500 laisse de la marge sans attente illimitée.

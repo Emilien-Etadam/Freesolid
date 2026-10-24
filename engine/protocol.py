@@ -1,7 +1,8 @@
 """Wire protocol between the web UI and the headless engine.
 
-Single source of truth for operation names, request validation and payload
-shapes. Pure Python — no FreeCAD, no networking — so every rule here is
+Single source of truth for request validation and payload shapes; the
+operation names and their params come from the catalogue ``engine/ops/``
+(``OPS`` below is derived from it). Pure Python — no FreeCAD, no networking — so every rule here is
 unit-tested in CI, and both sides (server dispatch, JS client) are written
 against the same contract.
 
@@ -40,91 +41,13 @@ _TYPE_LABELS = {
     bool: "booléen",
 }
 
-#: Every operation the engine accepts, with the params it requires.
+#: Every operation the engine accepts, with the params it requires —
+#: dérivé du catalogue ``engine/ops/``, un descripteur ``Op`` par op.
 #: Values stay name-tuples; typed specs use ``(name, type)``. Optional
 #: params are documented in the kernel docstrings and are not typed here.
-OPS: dict[str, tuple[str, ...]] = {
-    "ping": (),
-    "document_status": (),             # ouvert, modifié depuis l'enregistrement
-    "list_plugins": (),            # nom + point d'entrée JS de chaque plugin chargé
-    # Runs the full flow headless and returns stats — the same
-    # paste-me-the-report loop that debugged the Qt addon.
-    "selftest": (),
-    "new_part": (),                    # optional: name
-    # Phase E — évaluer + mise en plan.
-    "mass_properties": (),             # optional: density (g/cm³)
-    "material_library": (),            # lecture : matières proposées
-    "list_templates": (),              # lecture : gabarits de pièce
-    "set_folder": _Req(("features", list), optional={"folder": str}),
-    "rename_folder": _Req(("folder", str), optional={"name": str}),
-    "feature_relations": _Req(("feature", str)),  # lecture : parents, enfants
-    "list_configurations": (),         # lecture : noms, active
-    "add_configuration": _Req(("name", str)),
-    "activate_configuration": _Req(("name", str)),
-    "rename_configuration": _Req(("name", str), ("new_name", str)),
-    "delete_configuration": _Req(("name", str)),
-    "configuration_table": (),         # lecture : cotes par configuration
-    "set_configuration_values": _Req(("values", dict)),
-    "save_template": _Req(("name", str)),
-    "new_from_template": _Req(("name", str)),
-    "paste_feature": _Req(("feature", str), optional={
-        "face": int, "plane": str, "datum": str}),
-    "set_body_material": _Req(("body", str), optional={
-        "material": str, "density": float}),
-    "set_face_color": _Req(("faces", list), "color"),
-    "measure": _Req(("a_kind", str), ("a_id", int),
-                    ("b_kind", str), ("b_id", int)),  # face|edge + id
-    "make_drawing": _Req(("path", str)),
-                                       # optional: scale, dims (bool, défaut True),
-                                       # section ("X"|"Y"|"Z") — 3 vues + cotes + coupe, export DXF
-    "undo": _Req(optional={"steps": int}),  # une transaction = un Ctrl+Z
-    "redo": _Req(optional={"steps": int}),
-    "undo_history": (),                # lecture : pas à défaire / refaire
-    "rebuild_errors": (),              # lecture : fonctions en erreur
-    "set_comment": _Req(("feature", str), optional={"text": str}),
-    "set_hidden": _Req(("objects", list), optional={"hidden": bool}),
-    "edge_chain": _Req(("edge", int), optional={"mode": str, "face": int}),
-    "set_suppressed": _Req(("features", list),
-                           optional={"suppressed": bool}),
-    "document_properties": (),         # lecture : auteur, société, libres
-    "set_document_properties": _Req(("values", dict)),
-    "export_part": _Req(("path", str)),  # .stl ou .step selon l'extension
-    "preview": _Req(("op", str), ("params", dict)),
-                                       # aperçu jaune : op exécutée puis annulée
-    "progress": (),                    # avancement hors noyau — jamais de verrou
-    "set_param": _Req(("feature", str), ("prop", str), "value"),
-    "set_params": _Req(("feature", str), ("values", dict)),
-                                       # valeur numérique OU expression
-    # Paramétrique — variables globales (App::VarSet) et équations.
-    "list_variables": (),
-    "set_variable": _Req(("name", str), "value"),
-    "delete_variable": _Req(("name", str)),
-    "rename": _Req(("feature", str), ("label", str)),
-    "get_params": _Req(("feature", str)),  # editable numeric properties
-    "set_tip": (),                     # optional: feature — nom d'une
-                                       # ligne d'historique (fonction,
-                                       # esquisse libre, surface).
-                                       # Absent = barre avant la première
-    "tip_to_end": (),                  # back to the final state
-    "delete_feature": _Req(("feature", str)),
-    "reorder_feature": _Req(("feature", str), ("target", str),
-                            optional={"after": bool}),
-    "save_part": _Req(("path", str)),
-    "open_part": _Req(("path", str)),
-    "list_dir": _Req(optional={"path": str}),  # dossier ; absent = dossier personnel
-    "get_tree": (),
-    "rebuild": (),                     # recalcul forcé de tout l'arbre
-    "tessellate": (),                  # optional: deviation
-    "tessellate_edges": (),            # optional: deviation — picking d'arêtes
-    # Les ops des plugins viennent de leur manifeste : fusionnées dans
-    # OPS au chargement. Un plugin ne peut pas redéfinir une op du noyau.
-}
-
-# Migration vers le catalogue engine/ops/ : les familles décrites
-# rejoignent les ops encore déclarées ci-dessus.
-for _op in CORE_OPS:
-    assert _op.name not in OPS, _op.name
-    OPS[_op.name] = _op.req
+#: Les ops des plugins viennent de leur manifeste : fusionnées dans
+#: OPS au chargement. Un plugin ne peut pas redéfinir une op du noyau.
+OPS: dict[str, tuple[str, ...]] = {op.name: op.req for op in CORE_OPS}
 
 #: Ops du noyau, avant fusion des plugins. Un plugin ne peut pas les redéfinir.
 CORE_OP_NAMES = frozenset(OPS)

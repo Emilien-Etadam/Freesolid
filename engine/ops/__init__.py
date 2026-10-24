@@ -5,13 +5,14 @@ méthode dans le mixin du même domaine. Tout ce qui suit en est dérivé.
 """
 
 from engine.ops import (
-    assemblage, esquisse, habillage, noeuds, references, repetitions,
-    surfaces, volumes,
+    assemblage, document, esquisse, habillage, noeuds, references,
+    repetitions, surfaces, volumes,
 )
 
 #: Toutes les ops du noyau. L'ordre n'a pas de sens pour le protocole.
 CORE_OPS = (
-    volumes.OPS
+    document.OPS
+    + volumes.OPS
     + habillage.OPS
     + repetitions.OPS
     + references.OPS

@@ -40,10 +40,10 @@ function clickFirst(title) {
   };
 }
 
-export function dressup({ button, icon, title, selectionLabel, group, rows, build,
-                   accepts = ["face"], hint, note, noteFn, invalid }) {
+export function dressup({ button, op, icon, title, selectionLabel, group, rows,
+                   build, accepts = ["face"], hint, note, noteFn, invalid }) {
   return {
-    button, icon, title,
+    button, op, icon, title,
     dressup: true,
     note,
     noteFn,

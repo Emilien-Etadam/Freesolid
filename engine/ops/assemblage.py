@@ -21,7 +21,8 @@ OPS = (
     Op("tessellate_assembly"),         # optional: deviation
     # Phase C3 — contraintes d'assemblage (joints natifs + solveur MbD).
     Op("add_joint", Req(("component1", str), ("component2", str),
-                        optional={"angle": float, "flip": bool}), undo=True),
+                        optional={"angle": float, "flip": bool}), undo=True,
+       no_replay="assemblage"),
                                        # optional: type (fixe|pivot|
                                        # cylindrique|glissiere|rotule|
                                        # distance), sub1, sub2, distance

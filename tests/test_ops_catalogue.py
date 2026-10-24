@@ -31,3 +31,23 @@ def test_une_op_rejouable_dit_ce_qu_elle_cree():
 def test_un_typeid_n_est_recree_que_par_une_op():
     createurs = [op.creates for op in ops.CORE_OPS if op.replay is not None]
     assert len(createurs) == len(set(createurs))
+
+
+def test_chaque_add_se_rejoue_ou_dit_pourquoi():
+    """Une op ``add_*`` crée une fonction ou un objet de l'arbre : elle a
+    ``replay=`` ou ``no_replay="raison"``, jamais les deux, jamais aucun."""
+    incomplets = [op.name for op in ops.CORE_OPS if op.name.startswith("add_")
+                  and (op.replay is None) == (not op.no_replay)]
+    assert incomplets == []
+    hors_add = [op.name for op in ops.CORE_OPS
+                if op.no_replay and not op.name.startswith("add_")]
+    assert hors_add == []
+
+
+def test_raisons_d_accord_avec_le_tableau_fige_du_rejeu():
+    """``replay.UNREPLAYABLE_OPS`` reste figé (il sort dans le selftest,
+    ``n9_spike_rapport``) ; le catalogue en reprend les raisons mot pour
+    mot et n'en contredit aucune."""
+    from engine import replay
+    for name, raison in replay.UNREPLAYABLE_OPS.items():
+        assert ops.NO_REPLAY.get(name) == raison, name

@@ -40,6 +40,7 @@ const COMBINE_FEATURE = {
 export const COMBINER = [
   {
     button: "btn-boolean",
+    op: "add_boolean",
     ...COMBINE_FEATURE,
   },
 ];

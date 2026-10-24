@@ -27,7 +27,8 @@ OPS = (
     Op("feature_relations", Req(("feature", str))),
                                        # lecture : parents, enfants
     Op("list_configurations"),         # lecture : noms, active
-    Op("add_configuration", Req(("name", str)), undo=True),
+    Op("add_configuration", Req(("name", str)), undo=True,
+       no_replay="pas une fonction du groupe"),
     Op("activate_configuration", Req(("name", str)), undo=True),
     Op("rename_configuration", Req(("name", str), ("new_name", str)),
        undo=True),

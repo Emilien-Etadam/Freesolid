@@ -5,6 +5,7 @@ import { minimalGraphCurve, minimalGraphFeature, minimalRepeatGraph } from "../g
 export const NOEUDS = [
   {
     button: "btn-graph-feature",
+    op: "add_graph_feature",
     icon: "graph_feature",
     title: "Fonction graphe",
     preview: false,
@@ -40,6 +41,7 @@ export const NOEUDS = [
   },
   {
     button: "btn-repeat-variable",
+    op: "add_repeat_feature",
     icon: "variable_pattern",
     title: "Réseau variable",
     preview: false,

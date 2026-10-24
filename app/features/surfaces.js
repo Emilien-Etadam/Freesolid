@@ -104,9 +104,9 @@ export function extendParams(target, distance) {
   return { surface: target.name, distance };
 }
 
-function surface({ button, icon, title, groups, note, build, invalid }) {
+function surface({ button, op, icon, title, groups, note, build, invalid }) {
   return {
-    button, icon, title,
+    button, op, icon, title,
     groups: typeof groups === "function" ? groups : () => groups,
     note,
     build,
@@ -123,6 +123,7 @@ function surface({ button, icon, title, groups, note, build, invalid }) {
 export const SURFACES = [
   surface({
     button: "btn-surf-extrude",
+    op: "surface_extrude",
     icon: "surface_extrude", title: "Surface extrudée",
     groups: [{ label: "Paramètres", rows: [
       { type: "number", key: "length", label: "Longueur", value: 20,
@@ -136,6 +137,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-revolve",
+    op: "surface_revolve",
     icon: "surface_revolve", title: "Surface de révolution",
     groups: [{ label: "Paramètres", rows: [
       { type: "number", key: "angle", label: "Angle", value: 360,
@@ -149,6 +151,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-loft",
+    op: "surface_loft",
     icon: "surface_loft",
     title: "Surface lissée",
     groups: [{ label: "Profils",
@@ -165,6 +168,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-sew",
+    op: "surface_sew",
     icon: "sew",
     title: "Coudre",
     groups: [{ label: "Surfaces",
@@ -182,6 +186,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-thicken",
+    op: "surface_thicken",
     icon: "thicken",
     title: "Épaissir",
     groups: [
@@ -202,6 +207,7 @@ export const SURFACES = [
   }),
   {
     button: "btn-surf-cut",
+    op: "add_surface_cut",
     icon: "surface_cut",
     title: "Couper avec une surface",
     groups: (ctx) => [
@@ -229,6 +235,7 @@ export const SURFACES = [
   },
   surface({
     button: "btn-surf-planar",
+    op: "surface_planar",
     icon: "surface_planar",
     title: "Surface plane",
     groups: (ctx) => [{ label: "Contour", rows: [sketchRow(ctx, "profile",
@@ -240,6 +247,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-sweep",
+    op: "surface_sweep",
     icon: "surface_sweep",
     title: "Surface balayée",
     groups: (ctx) => [
@@ -262,6 +270,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-offset",
+    op: "surface_offset",
     icon: "surface_offset",
     title: "Surface décalée",
     groups: (ctx) => [
@@ -288,6 +297,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-fill",
+    op: "surface_fill",
     icon: "surface_fill",
     title: "Surface de remplissage",
     groups: [{ label: "Contour",
@@ -310,6 +320,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-boundary",
+    op: "surface_boundary",
     icon: "surface_boundary",
     title: "Surface frontière",
     groups: [{ label: "Courbes",
@@ -327,6 +338,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-radiate",
+    op: "surface_radiate",
     icon: "surface_radiate",
     title: "Surface radiée",
     groups: [
@@ -356,6 +368,7 @@ export const SURFACES = [
   }),
   {
     button: "btn-surf-mid",
+    op: "surface_mid",
     icon: "surface_mid",
     title: "Surface médiane",
     preview: false,
@@ -379,6 +392,7 @@ export const SURFACES = [
   },
   surface({
     button: "btn-surf-ruled",
+    op: "surface_ruled",
     icon: "surface_ruled",
     title: "Surface réglée",
     groups: [{ label: "Courbes",
@@ -396,6 +410,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-split",
+    op: "surface_split",
     icon: "surface_split",
     title: "Ligne de séparation",
     groups: (ctx) => [
@@ -419,6 +434,7 @@ export const SURFACES = [
   }),
   {
     button: "btn-replace-face",
+    op: "add_replace_face",
     icon: "replace_face",
     title: "Remplacer la face",
     groups: (ctx) => [
@@ -440,6 +456,7 @@ export const SURFACES = [
   },
   {
     button: "btn-surf-delete-face",
+    op: ["add_delete_face", "surface_delete_faces"],
     icon: "surface_delete_face",
     title: "Supprimer des faces",
     groups: () => [{ label: "Faces",
@@ -457,6 +474,7 @@ export const SURFACES = [
   },
   surface({
     button: "btn-surf-untrim",
+    op: "surface_untrim",
     icon: "surface_untrim",
     title: "Désajuster la surface",
     groups: (ctx) => [{ label: "Face",
@@ -472,6 +490,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-fillet",
+    op: "surface_fillet",
     icon: "surface_fillet",
     title: "Congé de surface",
     groups: [
@@ -492,6 +511,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-curve-intersection",
+    op: "curve_intersection",
     icon: "curve_intersection",
     title: "Courbe d'intersection",
     groups: (ctx) => [
@@ -521,6 +541,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-curve-project",
+    op: "curve_project",
     icon: "curve_project",
     title: "Courbe projetée",
     groups: (ctx) => [
@@ -541,6 +562,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-curve-helix",
+    op: "curve_helix",
     icon: "nodes_helix",
     title: "Hélice",
     groups: [{ label: "Paramètres", rows: [
@@ -569,6 +591,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-curve-composite",
+    op: "curve_composite",
     icon: "curve_composite",
     title: "Courbe composite",
     groups: [{ label: "Courbes et arêtes",
@@ -586,6 +609,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-flatten",
+    op: "surface_flatten",
     icon: "surface_flatten",
     title: "Aplatir la surface",
     groups: (ctx) => [{ label: "Face",
@@ -602,6 +626,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-freeform",
+    op: "surface_freeform",
     icon: "surface_freeform",
     title: "Forme libre",
     groups: (ctx) => [
@@ -629,6 +654,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-extend",
+    op: "surface_extend",
     icon: "surface_extend",
     title: "Prolonger la surface",
     groups: (ctx) => [
@@ -650,6 +676,7 @@ export const SURFACES = [
   }),
   surface({
     button: "btn-surf-trim",
+    op: "surface_trim",
     icon: "surface_trim",
     title: "Ajuster la surface",
     groups: (ctx) => [

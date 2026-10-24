@@ -59,11 +59,13 @@ def _rejouer_percage(kernel, feat, sketch, cote):
 
 OPS = (
     # Phase C — multi-corps.
-    Op("add_body", undo=True),         # optional: name — devient le corps actif
+    Op("add_body", undo=True,          # optional: name — devient le corps actif
+       no_replay="pas une fonction du groupe"),
     Op("set_active_body", Req(("body", str))),
     Op("set_body_color", Req(("body", str), "color"), undo=True),
                                        # "#rrggbb" | null | "" (défaut)
-    Op("add_boolean", Req(("tool", str)), undo=True, preview=True),
+    Op("add_boolean", Req(("tool", str)), undo=True, preview=True,
+       no_replay="corps outil, pas un profil"),
                                        # optional: type (cut|fuse|common)
     # Conditions de fin : engine/extrude.py. Sans length : jusqu'à…
     Op("add_pad", Req(optional={"length": float, "contours": list,
@@ -97,12 +99,15 @@ OPS = (
     Op("set_profile_contours", Req(("feature", str), ("contours", list)),
        undo=True),
                                        # [] : toute l'esquisse
-    Op("add_loft", Req(("sketches", list)), undo=True, preview=True),
+    Op("add_loft", Req(("sketches", list)), undo=True, preview=True,
+       no_replay="plusieurs profils (Sections), pas get_params"),
                                        # optional: subtractive, ruled, closed
     Op("add_sweep", Req(("profile", str), ("spine", str)),
-       undo=True, preview=True),  # optional: subtractive
+       undo=True, preview=True,
+       no_replay="Profile + Spine, pas get_params"),  # optional: subtractive
     Op("add_helix", Req(("pitch", float), ("height", float)),
-       undo=True, preview=True),  # optional: sketch
+       undo=True, preview=True,
+       no_replay="Pitch/Height hors whitelist get_params"),  # optional: sketch
     Op("add_hole", Req(("diameter", float), optional={"face": int, "points": list}),
        undo=True, preview=True, creates="PartDesign::Hole",
        replay=_rejouer_percage),
@@ -110,7 +115,8 @@ OPS = (
                                        # (none|lamage|fraisage), cut_diameter,
                                        # cut_depth, cut_angle ; face + points :
                                        # les centres cliqués sur la face
-    Op("add_text", Req(("text", str), ("face", int)), undo=True, preview=True),
+    Op("add_text", Req(("text", str), ("face", int)), undo=True, preview=True,
+       no_replay="propriétés FreeSolid* hors get_params"),
                                        # optional: size, depth, x, y, emboss, font
     Op("edit_text", Req(("feature", str)), undo=True),
                                        # optional: text, size, depth, x, y

@@ -40,3 +40,6 @@ REPLAYERS = {op.creates: op for op in CORE_OPS if op.replay is not None}
 
 #: TypeId des fonctions à indices d'arête ou de face.
 INDEXED = frozenset(op.creates for op in CORE_OPS if op.indexed)
+
+#: Op ``add_*`` → pourquoi elle ne se rejoue pas.
+NO_REPLAY = {op.name: op.no_replay for op in CORE_OPS if op.no_replay}

@@ -7,7 +7,8 @@ from engine.ops._base import Op, Req
 
 
 OPS = (
-    Op("add_sketch3d", Req(("spec", dict)), undo=True),
+    Op("add_sketch3d", Req(("spec", dict)), undo=True,
+       no_replay="spécification 3D (points, liens), pas un profil"),
                                        # points, links, entities,
                                        # dims, relations (sketch3dmath)
     Op("edit_sketch3d", Req(("sketch3d", str), ("spec", dict)), undo=True),
@@ -18,7 +19,8 @@ OPS = (
     Op("sketch_frame", Req(("sketch", str))),  # lecture : centre et normale
     Op("sketch_set_plane", Req(("sketch", str), optional={
         "plane": str, "datum": str, "face": int}), undo=True),
-    Op("add_rect_sketch", Req(("width", float), ("height", float)), undo=True),
+    Op("add_rect_sketch", Req(("width", float), ("height", float)), undo=True,
+       no_replay="l'esquisse se copie, elle ne se reconstitue pas"),
                                        # optional: face (id) to attach
     Op("sketch_contours", Req(("sketch", str))),  # lecture
     # M2 — sketch editing. Geometry travels in sketch-local 2D; the state

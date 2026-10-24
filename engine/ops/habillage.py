@@ -57,7 +57,8 @@ def _rejouer_depouille(kernel, feat, sketch, cote):
             "dépouille sans face : {}".format(feat["name"]))
     kernel.add_draft(
         face=feat["faces"][0],
-        angle=cote("Angle"))
+        angle=cote("Angle"),
+        neutral=feat.get("neutral", "XY"))
 
 
 OPS = (

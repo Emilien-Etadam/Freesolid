@@ -93,6 +93,7 @@ jobs:
           node --check app/features.js
           for f in app/features/*.js; do node --check "$f"; done
           node --check app/sketch.js
+          for f in app/sketch/*.js; do node --check "$f"; done
           node --check app/panel.js
           node --check app/solver.js
           node --check app/geom2d.js

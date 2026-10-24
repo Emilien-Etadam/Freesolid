@@ -7,18 +7,16 @@
 import * as THREE from "three";
 import { t } from "./i18n.js";
 import { createLocalSolver } from "./solver.js";
-import { CLICK_TOOLS, LAYER_COLORS, OPEN_TOOLS, curvatureComb,
-  endpointDirection, gridStep, hiddenByLayers, layersFromPanel,
+import { CLICK_TOOLS, OPEN_TOOLS, curvatureComb,
+  endpointDirection, gridStep, hiddenByLayers,
   polygonVertexFromApothem } from "./sketchtools.js";
 import {
-  applicableRelations, arcAngles, chainClickAction, distanceToEntity,
-  numericDrawTarget, numericFields, relationGlyphs,
-  entityKindTitle, entityPropertyLines,
-  isDrivingConstraint, sketchPreviewPoints,
+  arcAngles, chainClickAction, distanceToEntity,
+  relationGlyphs,
+  sketchPreviewPoints,
 } from "./geom2d.js";
-import { fmtMm, num } from "./num.js";
+import { fmtMm } from "./num.js";
 import { eventToNdc, ndcToScreen } from "./screen.js";
-import { cssHex, cssRgba, readScene } from "./theme.js";
 import { createSplineEditor2d } from "./splineedit2d.js";
 import {
   boxMode, isDrag, normalizeRect, pickInBox, sketchLocalPoints,
@@ -27,79 +25,35 @@ import {
   arrowTriangle, dimEditPayload, dimGeometry, dimLabel, dimOffsetAt,
   openDimEditor, pointPairDimKind, pointPairDimPath,
 } from "./dims.js";
+import { ORIGIN_GEO, sceneTheme } from "./sketch/commun.js";
+import {
+  DIM_LABEL_RATIO, DIM_TEXT_PX, createDimSprite, createGlyphSprite,
+} from "./sketch/dimsprite.js";
+import { installCommandes } from "./sketch/commandes.js";
+import { installRelations } from "./sketch/relations.js";
+import { installEntites } from "./sketch/entites.js";
+import { installImage } from "./sketch/image.js";
+import { installPanneauOutil } from "./sketch/panneauoutil.js";
+import { installSaisie } from "./sketch/saisie.js";
+import { installBoiteCote } from "./sketch/boitecote.js";
 
-const sceneTheme = readScene();
-
-/** Hauteur du texte d'une cote à l'écran, en pixels CSS. */
-export const DIM_TEXT_PX = 12;
-// Le canevas est dessiné 4 fois plus grand : texte net une fois réduit.
-const DIM_TEXT_OVERSAMPLE = 4;
-/** Hauteur de l'étiquette (texte + marge) rapportée à celle du texte. */
-const DIM_LABEL_RATIO = 1.4;
-
-/** Étiquette de cote : le texte seul, à sa longueur, cerné d'un halo de la
- *  couleur du fond pour rester lisible sur un trait ou une face — pas de
- *  pavé. `userData.aspect` : largeur / hauteur, pour la mise à l'échelle. */
-export function createDimSprite(text, x, y, z = 0.01, color = cssHex(sceneTheme.dim)) {
-  const k = DIM_TEXT_OVERSAMPLE;
-  const font = `500 ${DIM_TEXT_PX * k}px system-ui, sans-serif`;
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  ctx.font = font;
-  const pad = 4 * k;
-  canvas.width = Math.ceil(ctx.measureText(text).width) + pad * 2;
-  canvas.height = Math.round(DIM_TEXT_PX * DIM_LABEL_RATIO * k);
-  ctx.font = font; // un canevas redimensionné oublie sa police
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.lineJoin = "round";
-  ctx.lineWidth = 3 * k;
-  ctx.strokeStyle = cssRgba(sceneTheme.bg, 0.75);
-  ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
-  ctx.fillStyle = color;
-  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.minFilter = THREE.LinearFilter;
-  texture.generateMipmaps = false;
-  const material = new THREE.SpriteMaterial({ map: texture, depthTest: false });
-  material.userData.own = true;
-  const sprite = new THREE.Sprite(material);
-  sprite.userData.aspect = canvas.width / canvas.height;
-  sprite.position.set(x, y, z);
-  // Cotes de fonction en 3D : hauteur en unités du modèle.
-  sprite.scale.set(3.2 * sprite.userData.aspect, 3.2, 1);
-  return sprite;
-}
-
-/** Petit symbole de relation (H, V, ∥…) : pastille ronde lisible. */
-function createGlyphSprite(text) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 48; canvas.height = 48;
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = cssRgba(sceneTheme.bg, 0.85);
-  ctx.beginPath();
-  ctx.arc(24, 24, 22, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = cssHex(sceneTheme.successSoft);
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.font = "bold 26px system-ui";
-  ctx.fillStyle = cssHex(sceneTheme.successSoft);
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, 24, 26);
-  const material = new THREE.SpriteMaterial({
-    map: new THREE.CanvasTexture(canvas), depthTest: false });
-  material.userData.own = true;
-  return new THREE.Sprite(material);
-}
-
-/** Le point racine du moteur : l'origine de l'esquisse (point 1). */
-const ORIGIN_GEO = -1;
+export { DIM_TEXT_PX, createDimSprite };
 
 export function createSketchMode(deps) {
   const { scene, camera, renderer, controls, call, say, refresh, panel,
     boxOverlay, hideContextToolbar } = deps;
+
+  // Session partagée avec les modules de app/sketch/ : ils lisent les
+  // fonctions et const de cette fermeture une fois, à l'installation, et
+  // les `let` (ou redraw, réaffectée plus bas) à l'usage, par `sk.x` —
+  // le patron de main.js et ctx.
+  const sk = {};
+  function expose(name, get, set) {
+    Object.defineProperty(sk, name, {
+      get, set, enumerable: true, configurable: true,
+    });
+  }
+  expose("redraw", () => redraw);
 
   const group = new THREE.Group();
   scene.add(group);
@@ -197,19 +151,12 @@ export function createSketchMode(deps) {
   const DRAG_CLICK_PX = 3; // en-dessous : clic, pas un drag
   let building = false; // construction multi-appels (rectangle) en cours
 
-  const ENTITY_ICONS = {
-    Ligne: "nodes_line",
-    Cercle: "nodes_circle",
-    Arc: "nodes_arc",
-    Spline: "nodes_bspline",
-    Ellipse: "ellipse",
-    Polyligne: "nodes_line",
-    Entité: "sketch",
-  };
-
   let entityPanelOpen = false;
   let entityPanelGeo = null;
   let entityPanelGen = 0;
+  expose("entityPanelOpen", () => entityPanelOpen, (v) => { entityPanelOpen = v; });
+  expose("entityPanelGeo", () => entityPanelGeo, (v) => { entityPanelGeo = v; });
+  expose("entityPanelGen", () => entityPanelGen, (v) => { entityPanelGen = v; });
 
   // Spline sélectionnée : points de passage, poignées, pôles dans la vue.
   const splineEdit = createSplineEditor2d({
@@ -225,6 +172,15 @@ export function createSketchMode(deps) {
     setCursor: (name) => setCursor(name),
   });
   splineEdit.onChosen = () => syncEntityPanel({ refresh: true });
+
+  // Le corps est dans sketch/entites.js.
+  Object.assign(sk, {
+    call, say, panel, mode, splineEdit, applyState, safe, editListedDim,
+  });
+  const {
+    entityPicks, uniqueSelectionGeos, abandonEntityPanel, closeEntityPanel,
+    syncEntityPanel, openEntityPanel,
+  } = installEntites(sk);
 
   // M3 : le solveur planegcs (WASM) côté client. Pendant un drag, la
   // résolution est locale (60 fps, zéro réseau) ; le serveur réconcilie
@@ -458,211 +414,18 @@ export function createSketchMode(deps) {
   // ---------- drawing ----------
 
   let previewLine = null;
+  expose("previewLine", () => previewLine);
 
-  // Calque d'image d'esquisse : mesh + texture alloués ici. Une seule
-  // image à la fois ; enregistrée avec l'esquisse (jusqu'à 5 Mo), elle
-  // revient à la réouverture.
-  const MAX_SKETCH_IMAGE_BYTES = 25 * 1024 * 1024;
-  const MAX_SAVED_IMAGE_BYTES = 5 * 1024 * 1024;
-  let imageSaveTimer = null;
-
-  /** Enregistre l'image (ou l'efface) avec l'esquisse ouverte. */
-  function saveImageLayer() {
-    if (!mode.state) return;
-    clearTimeout(imageSaveTimer);
-    const sketch = mode.state.sketch;
-    const picture = imageLayer?.data
-      ? { data: imageLayer.data, fileName: imageLayer.fileName,
-          ...imageLayer.params }
-      : {};
-    imageSaveTimer = setTimeout(() => {
-      call("sketch_picture", { sketch, picture }).catch((error) =>
-        say(error.message, true));
-    }, 400);
-  }
   let imageLayer = null; // { mesh, aspect, fileName, params }
-  let pendingImageUrl = null;
   let imageLoadGen = 0;
+  expose("imageLayer", () => imageLayer, (v) => { imageLayer = v; });
+  expose("imageLoadGen", () => imageLoadGen, (v) => { imageLoadGen = v; });
 
-  function revokePendingImageUrl() {
-    if (!pendingImageUrl) return;
-    URL.revokeObjectURL(pendingImageUrl);
-    pendingImageUrl = null;
-  }
-
-  function disposeImageLayer() {
-    if (!imageLayer) return;
-    const mesh = imageLayer.mesh;
-    if (mesh) {
-      group.remove(mesh);
-      mesh.geometry?.dispose();
-      const mat = mesh.material;
-      if (mat?.userData?.own) { mat.map?.dispose(); mat.dispose(); }
-    }
-    imageLayer = null;
-  }
-
-  function applyImageLayer(values) {
-    if (!imageLayer?.mesh) return;
-    const width = Math.max(0.01, num(values.width) ?? 100);
-    const height = width / (imageLayer.aspect || 1);
-    const x = num(values.x) ?? 0;
-    const y = num(values.y) ?? 0;
-    const deg = num(values.rotation) ?? 0;
-    let opacity = num(values.opacity);
-    if (opacity === null) opacity = 0.5;
-    opacity = Math.min(1, Math.max(0.1, opacity));
-    imageLayer.mesh.position.set(x, y, 0);
-    imageLayer.mesh.rotation.set(0, 0, deg * Math.PI / 180);
-    imageLayer.mesh.scale.set(width, height, 1);
-    imageLayer.mesh.material.opacity = opacity;
-    imageLayer.params = { width, x, y, rotation: deg, opacity };
-  }
-
-  function openImagePanel() {
-    const params = imageLayer?.params ?? {
-      width: 100, x: 0, y: 0, rotation: 0, opacity: 0.5,
-    };
-    abandonEntityPanel();
-    panel.open({
-      icon: "Sketcher_Sketch",
-      title: t("Image d'esquisse"),
-      groups: [
-        {
-          label: t("Placement"),
-          rows: [
-            { type: "number", key: "width", label: t("Largeur"),
-              value: params.width, unit: "mm", min: 0.01 },
-            { type: "number", key: "x", label: t("X"),
-              value: params.x, unit: "mm" },
-            { type: "number", key: "y", label: t("Y"),
-              value: params.y, unit: "mm" },
-            { type: "number", key: "rotation", label: t("Rotation"),
-              value: params.rotation, unit: "°" },
-            { type: "number", key: "opacity", label: t("Opacité"),
-              value: params.opacity, min: 0.1, step: 0.05 },
-          ],
-        },
-        {
-          label: t("Calque"),
-          rows: [{
-            type: "list",
-            items: [{
-              label: imageLayer?.fileName || "image",
-              onDelete: () => {
-                disposeImageLayer();
-                saveImageLayer();
-                say("Image d'esquisse supprimée.");
-                document.querySelector("#panel .pcancel")?.click();
-              },
-            }],
-          }],
-        },
-      ],
-      note: imageLayer?.data
-        ? t("L'image est enregistrée avec l'esquisse.")
-        : t("Image de plus de 5 Mo : calque de travail, non enregistré."),
-      onChange: (v) => {
-        applyImageLayer(v);
-        if (imageLayer?.data) saveImageLayer();
-      },
-      onApply: () => {},
-    });
-  }
-
-  function loadSketchImage(file) {
-    if (!mode.active) return;
-    if (file.size > MAX_SKETCH_IMAGE_BYTES) {
-      say("Image trop lourde (max 25 Mo).", true);
-      return;
-    }
-    const type = file.type || "";
-    const name = file.name || "";
-    const okType = type.startsWith("image/")
-      || /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
-    if (!okType) {
-      say("Fichier non reconnu comme image (PNG, JPEG, SVG…).", true);
-      return;
-    }
-
-    if (file.size <= MAX_SAVED_IMAGE_BYTES) {
-      // Petite image : lue en data: URL, elle part avec l'esquisse.
-      const reader = new FileReader();
-      const gen = ++imageLoadGen;
-      reader.onload = () => {
-        if (gen !== imageLoadGen || !mode.active) return;
-        showImage(String(reader.result), name || "image", null, true);
-      };
-      reader.readAsDataURL(file);
-      return;
-    }
-    revokePendingImageUrl();
-    const url = URL.createObjectURL(file);
-    pendingImageUrl = url;
-    showImage(url, name || "image", null, false);
-  }
-
-  /** Pose le calque ; `data` (data: URL) est gardé pour l'enregistrer,
-   *  `params` replace une image relue. */
-  function showImage(url, name, params, persist) {
-    const gen = ++imageLoadGen;
-    const img = new Image();
-    img.onload = () => {
-      if (pendingImageUrl === url) {
-        URL.revokeObjectURL(url);
-        pendingImageUrl = null;
-      }
-      if (gen !== imageLoadGen || !mode.active) return;
-      const w = img.naturalWidth || img.width;
-      const h = img.naturalHeight || img.height;
-      if (!w || !h) {
-        say("Impossible de lire l'image (dimensions nulles).", true);
-        return;
-      }
-      const texture = new THREE.Texture(img);
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.needsUpdate = true;
-      disposeImageLayer();
-      const material = new THREE.MeshBasicMaterial({
-        map: texture,
-        transparent: true,
-        opacity: 0.5,
-        depthTest: false,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      });
-      material.userData.own = true;
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
-      mesh.renderOrder = 0;
-      // Décor : ni snap, ni sélection, ni drag. nearestEntity() ne
-      // parcourt que les entités serveur ; ce no-op protège un
-      // éventuel raycast du groupe.
-      mesh.raycast = () => {};
-      imageLayer = {
-        mesh,
-        aspect: w / h,
-        fileName: name || "image",
-        data: url.startsWith("data:") ? url : null,
-        params: params ?? { width: 100, x: 0, y: 0, rotation: 0, opacity: 0.5 },
-      };
-      applyImageLayer(imageLayer.params);
-      group.add(mesh);
-      if (params) return; // image relue à l'ouverture : pas de panneau
-      openImagePanel();
-      if (persist) saveImageLayer();
-      say(persist ? t("Image d'esquisse posée — enregistrée avec l'esquisse.")
-        : t("Image d'esquisse posée — calque de travail, non enregistré."));
-    };
-    img.onerror = () => {
-      if (pendingImageUrl === url) {
-        URL.revokeObjectURL(url);
-        pendingImageUrl = null;
-      }
-      if (gen !== imageLoadGen) return;
-      say("Impossible de charger l'image.", true);
-    };
-    img.src = url;
-  }
+  // Le corps est dans sketch/image.js.
+  Object.assign(sk, { call, say, panel, group, mode, abandonEntityPanel });
+  const {
+    revokePendingImageUrl, disposeImageLayer, loadSketchImage, showImage,
+  } = installImage(sk);
 
   // Qui alloue dispose. Matériaux partagés (lineMaterial, etc.) : pas
   // de flag, jamais disposés. Sprites de cotes : userData.own = true.
@@ -981,73 +744,12 @@ export function createSketchMode(deps) {
     return null;
   }
 
-  // Saisie numérique : taper un chiffre pendant le tracé ouvre, près du
-  // curseur, les cotes de l'entité (longueur et angle, rayon, largeur et
-  // hauteur). Tab passe au champ suivant, Entrée pose, Échap renonce.
-  let numericBox = null;
-
-  function closeNumericEntry() {
-    numericBox?.remove();
-    numericBox = null;
-  }
-
-  function openNumericEntry(firstKey) {
-    const pending = pendingDrawPoint();
-    const labels = numericFields(mode.tool);
-    if (!pending || !labels.length) return;
-    closeNumericEntry();
-    const host = renderer.domElement.parentElement;
-    const box = document.createElement("div");
-    box.className = "dim-modify sk-numeric";
-    box.dataset.ownKeys = "";
-    const inputs = labels.map((label, index) => {
-      const field = document.createElement("label");
-      field.append(t(label) + " ");
-      const input = document.createElement("input");
-      input.type = "text";
-      input.inputMode = "decimal";
-      if (index === 0) input.value = firstKey;
-      field.append(input);
-      box.append(field);
-      return input;
-    });
-    const rect = host.getBoundingClientRect();
-    const at = mode.lastMouse ?? { clientX: rect.left + rect.width / 2,
-                                   clientY: rect.top + rect.height / 2 };
-    box.style.left = `${at.clientX - rect.left + 16}px`;
-    box.style.top = `${at.clientY - rect.top + 18}px`;
-    host.appendChild(box);
-    numericBox = box;
-    const tool = mode.tool;
-    const apply = async () => {
-      const [a, b] = inputs.map((input) => num(input.value) ?? NaN);
-      const target = numericDrawTarget(tool, pendingDrawPoint(),
-        mode.lastLocal, a, b);
-      closeNumericEntry();
-      if (!target) {
-        say("Saisie numérique : valeur invalide", true);
-        return;
-      }
-      if (mode.tool !== tool) return;
-      clearInference();
-      if (previewLine) previewLine.visible = false;
-      const before = new Set((mode.state?.entities ?? []).map((e) => e.id));
-      await placeDrawPoint({ ...target, onPoint: false });
-      await dimTyped(tool, before, a, b);
-    };
-    box.addEventListener("keydown", (event) => {
-      event.stopPropagation();
-      if (event.key === "Enter") {
-        event.preventDefault();
-        apply();
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        closeNumericEntry();
-      }
-    });
-    inputs[0].focus();
-    inputs[0].setSelectionRange(firstKey.length, firstKey.length);
-  }
+  // Le corps est dans sketch/saisie.js.
+  Object.assign(sk, {
+    renderer, say, mode, clearInference, placeDrawPoint, pendingDrawPoint,
+    dimTyped,
+  });
+  const { closeNumericEntry, openNumericEntry } = installSaisie(sk);
 
   /** Les valeurs tapées deviennent des cotes de l'entité tracée : on a
    *  donné la dimension exacte, l'esquisse la garde. */
@@ -1541,79 +1243,9 @@ export function createSketchMode(deps) {
     return p ? { x: p[0], y: p[1] } : null;
   }
 
-  // Panneau d'outil : la valeur de l'outil (rayon du congé, nombre de
-  // côtés) se règle à gauche, l'outil reste actif pour plusieurs clics.
-  let toolPanelOpen = null;
-
-  function openToolPanel(tool) {
-    abandonEntityPanel();
-    toolPanelOpen = tool;
-    if (tool === "skchamfer") {
-      panel.open({
-        icon: "sk_chamfer",
-        title: t("Chanfrein d'esquisse"),
-        groups: [{
-          label: t("Paramètres"),
-          rows: [
-            { type: "number", key: "distance", label: t("Distance"),
-              value: mode.chamfer.distance, unit: "mm", min: 0.01 },
-            { type: "number", key: "distance2",
-              label: t("Seconde distance (vide = égale)"),
-              value: mode.chamfer.distance2 ?? "", unit: "mm", min: 0.01 },
-          ],
-        }],
-        note: t("Cliquez deux lignes près du coin à chanfreiner."),
-        onChange: (v) => {
-          const d = num(v.distance);
-          if (d > 0) mode.chamfer.distance = d;
-          const d2 = num(v.distance2);
-          mode.chamfer.distance2 = d2 > 0 ? d2 : null;
-        },
-        onApply: () => { toolPanelOpen = null; setTool("select"); },
-        onCancel: () => { toolPanelOpen = null; setTool("select"); },
-      });
-      return;
-    }
-    const fillet = tool === "skfillet";
-    panel.open({
-      icon: fillet ? "sketch_fillet" : "polygon",
-      title: fillet ? t("Congé d'esquisse") : t("Polygone"),
-      groups: [{
-        label: t("Paramètres"),
-        rows: [fillet
-          ? { type: "number", key: "value", label: t("Rayon"),
-              value: mode.filletRadius, unit: "mm", min: 0.01 }
-          : { type: "number", key: "value", label: t("Nombre de côtés"),
-              value: mode.polygonSides, min: 3, step: 1 },
-          ...(fillet ? [] : [{ type: "check", key: "inscribed",
-            label: t("Par le cercle inscrit (clic au milieu d'un côté)"),
-            value: !!mode.polygonInscribed }])],
-      }],
-      note: fillet ? t("Cliquez deux lignes près du coin à arrondir.")
-        : t("Cliquez le centre, puis un sommet (ou le milieu d'un côté)."),
-      onChange: (v) => {
-        if (fillet) {
-          const radius = num(v.value);
-          if (radius > 0) mode.filletRadius = radius;
-        } else {
-          mode.polygonInscribed = !!v.inscribed;
-          const sides = parseInt(v.value, 10);
-          if (sides >= 3) {
-            mode.polygonSides = sides;
-            if (mode.pendingPoly) mode.pendingPoly.sides = sides;
-          }
-        }
-      },
-      onApply: () => { toolPanelOpen = null; setTool("select"); },
-      onCancel: () => { toolPanelOpen = null; setTool("select"); },
-    });
-  }
-
-  function closeToolPanel() {
-    if (!toolPanelOpen) return;
-    toolPanelOpen = null;
-    if (panel.active) panel.close({ silent: true });
-  }
+  // Le corps est dans sketch/panneauoutil.js.
+  Object.assign(sk, { panel, mode, abandonEntityPanel, setTool });
+  const { openToolPanel, closeToolPanel } = installPanneauOutil(sk);
 
   async function addRectangle(name, a, b, center = false) {
     // Une seule opération (un seul Ctrl+Z) : le moteur enchaîne les quatre
@@ -2161,88 +1793,9 @@ export function createSketchMode(deps) {
   }
 
   // ---------- boîte de saisie d'une cote ----------
-  // Petite boîte flottante près de la cote : la valeur mesurée est
-  // sélectionnée, on tape la nouvelle (ou une expression), Entrée applique,
-  // Échap garde la valeur mesurée. « … » ouvre le panneau complet (nom).
-
-  let modifyBox = null;
-
-  function closeModifyBox() {
-    modifyBox?.remove();
-    modifyBox = null;
-  }
-
-  function openModifyBox(dim, at) {
-    closeModifyBox();
-    const host = renderer.domElement.parentElement;
-    const rect = host.getBoundingClientRect();
-    const sketchDim = { ...dim, kind: "sketch" };
-    const isSketchAngle = dim.type === "Angle";
-    const shown = dim.expr
-      || (isSketchAngle
-        ? (dim.value * 180 / Math.PI).toFixed(2)
-        : String(+Number(dim.value).toFixed(4)));
-    const box = document.createElement("div");
-    box.className = "dim-modify";
-    box.dataset.ownKeys = "1"; // le panneau ne capte pas Entrée / Échap ici
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = shown;
-    input.title = t("Valeur ou expression — Entrée pour appliquer, Échap pour garder la valeur mesurée");
-    const unitEl = document.createElement("span");
-    unitEl.textContent = isSketchAngle ? "°" : "mm";
-    const ok = document.createElement("button");
-    ok.className = "ok";
-    ok.textContent = "✓";
-    ok.title = t("Appliquer (Entrée)");
-    const cancel = document.createElement("button");
-    cancel.className = "no";
-    cancel.textContent = "✗";
-    cancel.title = t("Garder la valeur mesurée (Échap)");
-    const more = document.createElement("button");
-    more.textContent = "…";
-    more.title = t("Nom et expression de la cote");
-    box.append(input, unitEl, ok, cancel, more);
-    host.appendChild(box);
-    const left = Math.min(Math.max(at.x - rect.left + 12, 4),
-      rect.width - box.offsetWidth - 4);
-    const top = Math.min(Math.max(at.y - rect.top - box.offsetHeight - 12, 4),
-      rect.height - box.offsetHeight - 4);
-    box.style.left = `${left}px`;
-    box.style.top = `${top}px`;
-    modifyBox = box;
-
-    const apply = () => {
-      const extra = dimEditPayload({ value: input.value, name: dim.name ?? "" },
-        sketchDim, { shown, isSketchAngle });
-      closeModifyBox();
-      if (extra.value === undefined && extra.expr === undefined) return;
-      const params = { sketch: mode.state.sketch, dim: dim.id, ...extra };
-      safe((async () => {
-        const state = await call("sketch_set_dim", params);
-        await refresh(call("get_tree"));
-        return state;
-      })(), { keepSelection: true });
-    };
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        apply();
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        closeModifyBox();
-      }
-      event.stopPropagation();
-    });
-    ok.addEventListener("click", apply);
-    cancel.addEventListener("click", closeModifyBox);
-    more.addEventListener("click", () => {
-      closeModifyBox();
-      editDim(dim);
-    });
-    input.focus();
-    input.select();
-  }
+  // Le corps est dans sketch/boitecote.js.
+  Object.assign(sk, { renderer, call, refresh, mode, safe, editDim });
+  const { closeModifyBox, openModifyBox } = installBoiteCote(sk);
 
   function onKey(event) {
     if (!mode.active) return;
@@ -2397,701 +1950,20 @@ export function createSketchMode(deps) {
     else document.getElementById("btn-sketch")?.click();
   });
 
-  /** La sélection sans l'origine : ce qu'on peut symétriser, répéter… */
-  function entityPicks() {
-    return mode.selection.filter((pick) => pick.geo !== ORIGIN_GEO);
-  }
-
-  function uniqueSelectionGeos() {
-    const seen = [];
-    for (const pick of mode.selection) {
-      if (!seen.includes(pick.geo)) seen.push(pick.geo);
-    }
-    return seen;
-  }
-
-  function abandonEntityPanel() {
-    entityPanelOpen = false;
-    entityPanelGeo = null;
-    entityPanelGen += 1;
-  }
-
-  function closeEntityPanel() {
-    entityPanelGen += 1;
-    if (!entityPanelOpen) return;
-    entityPanelOpen = false;
-    entityPanelGeo = null;
-    if (panel.active) panel.close({ silent: true });
-  }
-
-  function constraintItemLabel(constraint) {
-    return constraint.label
-      + (constraint.name ? ` « ${constraint.name} »` : "")
-      + (constraint.value !== undefined
-         ? " = " + (constraint.type === "Angle"
-             ? (constraint.value * 180 / Math.PI).toFixed(1) + "°"
-             : constraint.value.toFixed(2))
-         : "");
-  }
-
-  function syncEntityPanel({ refresh = false } = {}) {
-    if (!mode.active || mode.drag) return;
-    const geos = uniqueSelectionGeos();
-    // Barre d'état : la longueur de ce qui est sélectionné.
-    document.dispatchEvent(new CustomEvent("freesolid:sketch-selection", {
-      detail: geos.map((id) => mode.state?.entities.find((e) => e.id === id))
-        .filter(Boolean) }));
-    if (geos.length !== 1) {
-      closeEntityPanel();
-      return;
-    }
-    const geo = geos[0];
-    if (entityPanelOpen && entityPanelGeo === geo && !refresh) return;
-    openEntityPanel(geo);
-  }
-
-  async function openEntityPanel(geo) {
-    const gen = ++entityPanelGen;
-    const entity = mode.state?.entities.find((e) => e.id === geo);
-    if (!entity || !mode.state) {
-      closeEntityPanel();
-      return;
-    }
-    let listed = { constraints: [] };
-    try {
-      listed = await call("sketch_constraints",
-        { sketch: mode.state.sketch, geo });
-    } catch (error) {
-      say(error.message, true);
-    }
-    if (gen !== entityPanelGen || !mode.active) return;
-    if (uniqueSelectionGeos()[0] !== geo) return;
-
-    const title = entityKindTitle(entity);
-    const propRows = entityPropertyLines(entity).map((text) => ({
-      type: "note",
-      text,
-      readonly: true,
-      onClick: () => say(
-        "Cette valeur est informative — coter l'entité (D) pour la piloter."),
-    }));
-    propRows.push({
-      type: "note",
-      text: t("Construction : {v}",
-        { v: entity.construction ? t("oui") : t("non") }),
-      readonly: true,
-    });
-    const constraints = listed.constraints ?? [];
-    const hasDriving = constraints.some(isDrivingConstraint);
-    entityPanelOpen = true;
-    entityPanelGeo = geo;
-    const splineGroup = splineEdit.panelGroup();
-    panel.open({
-      icon: ENTITY_ICONS[title] ?? ENTITY_ICONS.Entité,
-      title,
-      noApply: true,
-      autoFocus: false,
-      onChange: splineGroup ? (values) => splineEdit.panelChange(values) : undefined,
-      groups: [
-        { label: t("Propriétés"), rows: propRows },
-        ...(splineGroup ? [splineGroup] : []),
-        {
-          label: t("Relations"),
-          rows: [{
-            type: "list",
-            empty: t("— aucune relation sur cette entité —"),
-            items: constraints.map((c) => {
-              const driving = isDrivingConstraint(c);
-              return {
-                label: constraintItemLabel(c),
-                editable: driving,
-                onEdit: driving ? () => editListedDim(c, geo) : undefined,
-                onDelete: async () => {
-                  try {
-                    applyState(await call("sketch_delete_constraint", {
-                      sketch: mode.state.sketch, constraint: c.id,
-                    }), { keepSelection: true });
-                  } catch (error) {
-                    say(error.message, true);
-                  }
-                },
-              };
-            }),
-          }],
-        },
-      ],
-      note: hasDriving
-        ? "Cliquez une cote dans Relations pour la modifier."
-        : "Pour piloter une valeur : Cotation (D).",
-      actions: [
-        {
-          label: t("Construction"),
-          title: entity.construction
-            ? "Géométrie de construction — cliquer pour basculer en réelle"
-            : "Géométrie réelle — cliquer pour basculer en construction",
-          className: "paction",
-          onClick: () => {
-            safe(call("sketch_toggle_construction",
-              { sketch: mode.state.sketch, geo }),
-            { keepSelection: true });
-          },
-        },
-        {
-          label: t("Supprimer"),
-          title: t("Supprimer l'entité (Suppr)"),
-          className: "paction",
-          onClick: () => {
-            safe(call("sketch_delete_geo",
-              { sketch: mode.state.sketch, geo }));
-          },
-        },
-      ],
-      onCancel: () => {
-        abandonEntityPanel();
-        if (mode.selection.length) {
-          mode.selection = [];
-          redraw();
-        }
-      },
-    });
-  }
-
   // ---------- relations manuelles ----------
 
-  //: relation -> nombre d'entités attendues. symmetric : 2 points + l'axe.
-  const CONSTRAINT_NEEDS = {
-    horizontal: 1, vertical: 1, fixed: 1,
-    parallel: 2, perpendicular: 2, equal: 2, tangent: 2,
-    coincident: 2, concentric: 2, collinear: 2, midpoint: 2,
-    onobject: 2, coradial: 2,
-    symmetric: 3, intersection: 3,
-  };
-
-  function applyConstraint(kind) {
-    if (!mode.state) return;
-    let needed = CONSTRAINT_NEEDS[kind];
-    // Horizontale / verticale : une ligne, ou deux points alignés.
-    const lastTwo = mode.selection.slice(-2);
-    if ((kind === "horizontal" || kind === "vertical") && lastTwo.length === 2
-        && lastTwo.every((pick) => pick.point != null)) {
-      needed = 2;
-    }
-    if (mode.selection.length < needed) {
-      say(t("Relation : sélectionnez d'abord {n} entité(s) avec l'outil Sélectionner",
-        { n: needed }), true);
-      return;
-    }
-    const selection = mode.selection.slice(-needed);
-    const params = { sketch: mode.state.sketch, kind,
-                     geo1: selection[0].geo };
-    if (selection[0].point != null) params.point1 = selection[0].point;
-    if (selection[1]) {
-      params.geo2 = selection[1].geo;
-      if (selection[1].point != null) params.point2 = selection[1].point;
-    }
-    if (needed >= 3 && selection[2]) params.geo3 = selection[2].geo;
-    safe(call("sketch_constrain", params));
-  }
-
-  for (const kind of Object.keys(CONSTRAINT_NEEDS)) {
-    document.getElementById("sk-c-" + kind)
-      .addEventListener("click", () => applyConstraint(kind));
-  }
-
-  /** Avec une sélection, seules les relations qu'elle permet restent
-   *  actives (et sont mises en avant) ; sans sélection, toutes. */
-  function updateRelationButtons() {
-    const selection = mode.active ? mode.selection : [];
-    const possible = selection.length
-      ? applicableRelations(selection, mode.state?.entities) : null;
-    for (const kind of Object.keys(CONSTRAINT_NEEDS)) {
-      const button = document.getElementById("sk-c-" + kind);
-      if (!button) continue;
-      button.disabled = !!possible && !possible.includes(kind);
-      button.classList.toggle("suggest", !!possible?.includes(kind));
-    }
-  }
-
-  // ---------- panneau Relations (voir et supprimer) ----------
-
-  async function openRelationsPanel() {
-    if (!mode.state) return;
-    if (uniqueSelectionGeos().length !== 1) {
-      say("Relations : sélectionnez d'abord UNE entité " +
-          "(outil Sélectionner)", true);
-      return;
-    }
-    await openEntityPanel(uniqueSelectionGeos()[0]);
-  }
-
-  document.getElementById("sk-relations")
-    .addEventListener("click", openRelationsPanel);
-
-  // Symétrie d'entités : la sélection SAUF la dernière est symétrisée,
-  // la dernière entité sélectionnée est l'axe.
-  document.getElementById("sk-mirror").addEventListener("click", () => {
-    if (!mode.state) return;
-    const picks = entityPicks();
-    if (picks.length < 2) {
-      say("Symétrie : sélectionnez les entités PUIS la ligne d'axe " +
-          "en dernier", true);
-      return;
-    }
-    const geos = picks.slice(0, -1).map((s) => s.geo);
-    const axis = picks[picks.length - 1]?.geo;
-    safe(call("sketch_mirror",
-      { sketch: mode.state.sketch, geos, axis }));
+  // Le corps est dans sketch/relations.js.
+  Object.assign(sk, {
+    call, say, mode, safe, uniqueSelectionGeos, openEntityPanel,
   });
+  const { updateRelationButtons } = installRelations(sk);
 
-  document.getElementById("sk-array").addEventListener("click", () => {
-    if (!mode.state) return;
-    if (!entityPicks().length) {
-      say("Répétition : sélectionnez d'abord des entités", true);
-      return;
-    }
-    const geos = entityPicks().map((s) => s.geo);
-    abandonEntityPanel();
-    panel.open({
-      icon: "sketch_array",
-      title: t("Réseau d'esquisse"),
-      groups: [{
-        label: t("Paramètres"),
-        rows: [
-          { type: "number", key: "dx", label: t("Pas X"), value: 15,
-            unit: "mm" },
-          { type: "number", key: "dy", label: t("Pas Y"), value: 0,
-            unit: "mm" },
-          { type: "number", key: "cols", label: t("Colonnes"), value: 3,
-            min: 1, step: 1 },
-          { type: "number", key: "rows", label: t("Lignes"), value: 1,
-            min: 1, step: 1 },
-        ],
-      }],
-      note: t("Le pas est piloté par des lignes de construction — " +
-            "cotables ensuite."),
-      onApply: (v) => safe(call("sketch_array", {
-        sketch: mode.state.sketch, geos,
-        dx: num(v.dx) ?? 0, dy: num(v.dy) ?? 0,
-        cols: parseInt(v.cols, 10) || 1,
-        rows: parseInt(v.rows, 10) || 1 })),
-    });
+  // Le corps est dans sketch/commandes.js.
+  Object.assign(sk, {
+    call, say, panel, mode, loadSketchImage, applyState, safe, entityPicks,
+    abandonEntityPanel, exit,
   });
-
-  // Déplacer, copier, tourner, mettre à l'échelle : un panneau par
-  // geste, le même moteur (sketch_transform).
-  const TRANSFORMS = {
-    "sk-move": { icon: "sk_move", title: "Déplacer", copy: false,
-      rows: [["dx", "Déplacement X", 10], ["dy", "Déplacement Y", 0]] },
-    "sk-copy": { icon: "sk_copy", title: "Copier", copy: true,
-      rows: [["dx", "Déplacement X", 10], ["dy", "Déplacement Y", 0]] },
-    "sk-rotate": { icon: "sk_rotate", title: "Tourner", copy: false,
-      rows: [["angle", "Angle (°)", 90], ["cx", "Centre X", 0],
-             ["cy", "Centre Y", 0]], copyOption: true },
-    "sk-scale": { icon: "sk_scale", title: "Échelle", copy: false,
-      rows: [["scale", "Facteur", 2], ["cx", "Centre X", 0],
-             ["cy", "Centre Y", 0]], copyOption: true },
-  };
-  for (const [id, spec] of Object.entries(TRANSFORMS)) {
-    document.getElementById(id).addEventListener("click", () => {
-      if (!mode.state) return;
-      if (!entityPicks().length) {
-        say(t("{title} : sélectionnez d'abord des entités",
-          { title: t(spec.title) }), true);
-        return;
-      }
-      const geos = [...new Set(entityPicks().map((s) => s.geo))];
-      abandonEntityPanel();
-      const rows = spec.rows.map(([key, label, value]) => ({
-        type: "number", key, label: t(label), value,
-        ...(key === "scale" ? { min: 0.001 } : {}),
-        ...(key === "angle" ? {} : { unit: key === "scale" ? "" : "mm" }) }));
-      if (spec.copyOption) {
-        rows.push({ type: "check", key: "copy", label: t("Garder l'original (copie)"),
-                    value: false });
-      }
-      panel.open({
-        icon: spec.icon,
-        title: t(spec.title),
-        groups: [{ label: t("Paramètres"), rows }],
-        note: t("Les relations internes à la sélection suivent ; celles "
-          + "vers le reste de l'esquisse tombent en tournant ou en "
-          + "changeant d'échelle."),
-        onApply: (v) => safe(call("sketch_transform", {
-          sketch: mode.state.sketch, geos,
-          dx: num(v.dx) ?? 0, dy: num(v.dy) ?? 0, angle: num(v.angle) ?? 0,
-          cx: num(v.cx) ?? 0, cy: num(v.cy) ?? 0, scale: num(v.scale) ?? 1,
-          copy: spec.copy || !!v.copy })),
-      });
-    });
-  }
-
-  document.getElementById("sk-polar").addEventListener("click", () => {
-    if (!mode.state) return;
-    if (!entityPicks().length) {
-      say("Répétition circulaire : sélectionnez d'abord des entités", true);
-      return;
-    }
-    const geos = [...new Set(entityPicks().map((s) => s.geo))];
-    abandonEntityPanel();
-    panel.open({
-      icon: "sk_polar",
-      title: t("Répétition circulaire"),
-      groups: [{
-        label: t("Paramètres"),
-        rows: [
-          { type: "number", key: "count", label: t("Exemplaires"), value: 6,
-            min: 2, step: 1 },
-          { type: "number", key: "angle", label: t("Angle total (°)"),
-            value: 360 },
-          { type: "number", key: "cx", label: t("Centre X"), value: 0,
-            unit: "mm" },
-          { type: "number", key: "cy", label: t("Centre Y"), value: 0,
-            unit: "mm" },
-        ],
-      }],
-      note: t("Les exemplaires (l'original compris) sont répartis sur "
-        + "l'angle ; 360° : un tour complet."),
-      onApply: (v) => safe(call("sketch_polar_array", {
-        sketch: mode.state.sketch, geos,
-        count: parseInt(v.count, 10) || 2, angle: num(v.angle) ?? 360,
-        cx: num(v.cx) ?? 0, cy: num(v.cy) ?? 0 })),
-    });
-  });
-
-  // Références liées : arêtes de la face porteuse, intersection du plan
-  // avec le solide, percée des courbes 3D.
-  document.getElementById("sk-silhouette").addEventListener("click", async () => {
-    if (!mode.state) return;
-    const request = call("sketch_silhouette", { sketch: mode.state.sketch });
-    await safe(request);
-    const state = await request.catch(() => null);
-    if (state?.referenced != null) {
-      say(t("Silhouette : {n} arête(s) projetée(s)", { n: state.referenced }));
-    }
-  });
-
-  for (const [id, mode_, done] of [
-    ["sk-ref-edges", "edges", "Arêtes liées : {n} — elles suivent la pièce"],
-    ["sk-ref-intersection", "intersection",
-     "Courbe d'intersection : {n} arête(s) liée(s)"],
-    ["sk-ref-pierce", "pierce", "Points de percée : {n}"],
-  ]) {
-    document.getElementById(id).addEventListener("click", async () => {
-      if (!mode.state) return;
-      const request = call("sketch_reference",
-        { sketch: mode.state.sketch, mode: mode_ });
-      await safe(request);
-      const state = await request.catch(() => null);
-      if (state?.referenced != null) {
-        say(t(done, { n: state.referenced }));
-      }
-    });
-  }
-
-  for (const [id, key, on, off] of [
-    ["sk-grid", "gridSnap", "Accrochage à la grille : actif",
-     "Accrochage à la grille : coupé"],
-    ["sk-comb", "showComb", "Peigne de courbure affiché",
-     "Peigne de courbure masqué"],
-  ]) {
-    const button = document.getElementById(id);
-    button.addEventListener("click", () => {
-      mode[key] = !mode[key];
-      button.classList.toggle("on", mode[key]);
-      say(t(mode[key] ? on : off));
-      redraw();
-    });
-  }
-
-  // Affichés par défaut : le bouton enfoncé montre, relâché masque.
-  for (const [id, key, on, off] of [
-    ["sk-show-rel", "showRelations", "Symboles de relation affichés",
-     "Symboles de relation masqués"],
-    ["sk-show-dims", "showDims", "Cotes affichées", "Cotes masquées"],
-  ]) {
-    const button = document.getElementById(id);
-    button.classList.add("on");
-    button.addEventListener("click", () => {
-      mode[key] = mode[key] === false;
-      button.classList.toggle("on", mode[key]);
-      say(t(mode[key] ? on : off));
-      redraw();
-    });
-  }
-
-  document.getElementById("sk-layers").addEventListener("click", () => {
-    if (!mode.state) return;
-    const layers = mode.state.layers ?? [];
-    const geos = [...new Set(entityPicks().map((s) => s.geo))]
-      .filter((g) => g >= 0);
-    abandonEntityPanel();
-    const colors = LAYER_COLORS.map(([value, label]) => [value, t(label)]);
-    panel.open({
-      icon: "sk_layers",
-      title: t("Calques d'esquisse"),
-      groups: [
-        ...layers.map((layer, i) => ({ label: layer.name, rows: [
-          { type: "text", key: `name${i}`, label: t("Nom"), value: layer.name },
-          { type: "select", key: `color${i}`, label: t("Couleur"),
-            options: colors, value: layer.color ?? "" },
-          { type: "check", key: `visible${i}`, label: t("Visible"),
-            value: layer.visible !== false },
-          { type: "check", key: `delete${i}`, label: t("Supprimer ce calque"),
-            value: false },
-        ] })),
-        { label: t("Nouveau calque"), rows: [
-          { type: "text", key: "newName", label: t("Nom"), value: "",
-            placeholder: t("Cotes, axes, contours…") },
-        ] },
-        ...(geos.length ? [{ label: t("Sélection ({n} entité(s))", { n: geos.length }),
-          rows: [{ type: "select", key: "assign", label: t("Ranger sur"),
-            options: [["", t("(ne rien changer)")],
-                      ["@new", t("Le nouveau calque")],
-                      ["@default", t("Calque par défaut")],
-                      ...layers.map((l) => [l.name, l.name])],
-            value: "" }] }] : []),
-      ],
-      note: t("Un calque masqué cache ses entités à l'écran ; elles restent "
-        + "dans l'esquisse et dans le profil."),
-      onApply: async (v) => {
-        const next = layersFromPanel(v, layers);
-        if (!next) {
-          say(t("Calques : chaque calque a un nom, différent des autres"), true);
-          return;
-        }
-        const sketch = mode.state.sketch;
-        await safe(call("sketch_layers", { sketch, layers: next }));
-        if (v.assign && geos.length) {
-          const renamed = next.find((l) => l.rename === v.assign);
-          const fresh = String(v.newName ?? "").trim();
-          if (v.assign === "@new" && !fresh) {
-            say(t("Calques : donnez un nom au nouveau calque"), true);
-            return;
-          }
-          const layer = v.assign === "@default" ? ""
-            : v.assign === "@new" ? fresh
-              : (renamed ? renamed.name : v.assign);
-          await safe(call("sketch_set_layer", { sketch, geos, layer }));
-        }
-      },
-    });
-  });
-
-  document.getElementById("sk-text").addEventListener("click", () => {
-    if (!mode.state) return;
-    abandonEntityPanel();
-    panel.open({
-      icon: "sk_text",
-      title: t("Texte d'esquisse"),
-      groups: [{ label: t("Paramètres"), rows: [
-        { type: "text", key: "text", label: t("Texte"), value: "FreeSolid" },
-        { type: "number", key: "size", label: t("Hauteur"), value: 8,
-          unit: "mm", min: 0.1 },
-        { type: "number", key: "x", label: t("X"), value: 0, unit: "mm" },
-        { type: "number", key: "y", label: t("Y"), value: 0, unit: "mm" },
-        { type: "number", key: "angle", label: t("Angle (°)"), value: 0 },
-      ] }],
-      note: t("Les contours des lettres deviennent des entités bloquées : "
-        + "à extruder, graver ou découper."),
-      onApply: (v) => safe(call("sketch_add_text", {
-        sketch: mode.state.sketch, text: String(v.text ?? ""),
-        size: num(v.size) ?? 8, x: num(v.x) ?? 0, y: num(v.y) ?? 0,
-        angle: num(v.angle) ?? 0 })),
-    });
-  });
-
-  document.getElementById("sk-equation").addEventListener("click", () => {
-    if (!mode.state) return;
-    abandonEntityPanel();
-    panel.open({
-      icon: "sk_equation",
-      title: t("Courbe par équation"),
-      groups: [{ label: t("Équation"), rows: [
-        { type: "text", key: "x", label: t("x(t)"), value: "t" },
-        { type: "text", key: "y", label: t("y(t)"), value: "10*sin(t)" },
-        { type: "number", key: "t0", label: t("t début"), value: 0 },
-        { type: "number", key: "t1", label: t("t fin"), value: 6.2832 },
-      ] }],
-      note: t("Fonctions : sin, cos, tan, sqrt, exp, log, abs, pow… ; "
-        + "constantes pi et e. x(t) = t : la courbe y = f(x)."),
-      onApply: (v) => safe(call("sketch_add_equation", {
-        sketch: mode.state.sketch, x: String(v.x ?? "t"),
-        y: String(v.y ?? "0"), t0: num(v.t0) ?? 0, t1: num(v.t1) ?? 1 })),
-    });
-  });
-
-  document.getElementById("sk-repair").addEventListener("click", async () => {
-    if (!mode.state) return;
-    const request = call("sketch_repair", { sketch: mode.state.sketch });
-    await safe(request);
-    const state = await request.catch(() => null);
-    if (state?.repair) {
-      const { redundant, conflicts, joined } = state.repair;
-      say(t("Réparation : {r} relation(s) en trop, {c} conflit(s) levé(s), {j} jonction(s)",
-        { r: redundant, c: conflicts, j: joined }));
-    }
-  });
-
-  document.getElementById("sk-define").addEventListener("click", async () => {
-    if (!mode.state) return;
-    const request = call("sketch_fully_define", { sketch: mode.state.sketch });
-    await safe(request);
-    const state = await request.catch(() => null);
-    if (state?.added != null) {
-      say(t("Définir entièrement : {n} cote(s) ajoutée(s)", { n: state.added }));
-    }
-  });
-
-  document.getElementById("sk-block-save").addEventListener("click", () => {
-    if (!mode.state) return;
-    if (!entityPicks().length) {
-      say(t("Bloc : sélectionnez d'abord des entités"), true);
-      return;
-    }
-    const geos = [...new Set(entityPicks().map((s) => s.geo))];
-    abandonEntityPanel();
-    panel.open({
-      icon: "sk_block",
-      title: t("Créer un bloc"),
-      groups: [{ label: t("Bloc"), rows: [
-        { type: "text", key: "name", label: t("Nom"), value: "" },
-      ] }],
-      note: t("Les entités choisies et leurs relations sont rangées sous "
-        + "ce nom ; on les réinsère ensuite où l'on veut."),
-      onApply: (v) => {
-        const blockName = String(v.name ?? "").trim();
-        if (!blockName) {
-          say(t("donnez un nom au bloc"), true);
-          return;
-        }
-        call("sketch_block_save", { sketch: mode.state.sketch, geos,
-          name: blockName })
-          .then(() => say(t("Bloc « {name} » enregistré", { name: blockName })))
-          .catch((error) => say(error.message, true));
-      },
-    });
-  });
-
-  document.getElementById("sk-block-insert").addEventListener("click", async () => {
-    if (!mode.state) return;
-    let blocks = [];
-    try {
-      ({ blocks } = await call("sketch_blocks"));
-    } catch (error) {
-      say(error.message, true);
-      return;
-    }
-    if (!blocks.length) {
-      say(t("Aucun bloc : créez-en un depuis une sélection"), true);
-      return;
-    }
-    abandonEntityPanel();
-    panel.open({
-      icon: "sk_block_insert",
-      title: t("Insérer un bloc"),
-      groups: [{ label: t("Bloc"), rows: [
-        { type: "select", key: "name", label: t("Bloc"),
-          options: blocks.map((b) => [b.name, b.name]),
-          value: blocks[0].name },
-        { type: "number", key: "x", label: t("X"), value: 0, unit: "mm" },
-        { type: "number", key: "y", label: t("Y"), value: 0, unit: "mm" },
-        { type: "number", key: "angle", label: t("Angle (°)"), value: 0 },
-        { type: "number", key: "scale", label: t("Échelle"), value: 1,
-          min: 0.001 },
-      ] }],
-      onApply: (v) => safe(call("sketch_block_insert", {
-        sketch: mode.state.sketch, name: v.name, x: num(v.x) ?? 0,
-        y: num(v.y) ?? 0, angle: num(v.angle) ?? 0,
-        scale: num(v.scale) ?? 1 })),
-    });
-  });
-
-  let offsetPreviewGen = 0;
-
-  async function previewOffset(geos, v) {
-    const gen = ++offsetPreviewGen;
-    const distance = num(v.distance);
-    if (!previewLine || !mode.state || !(distance > 0)) return;
-    try {
-      const { points } = await call("sketch_offset_preview", {
-        sketch: mode.state.sketch, geos, distance, reversed: !!v.reversed });
-      if (gen !== offsetPreviewGen || !panel.active) return;
-      previewLine.geometry.setFromPoints(
-        points.map(([x, y]) => new THREE.Vector3(x, y, 0)));
-      previewLine.visible = true;
-    } catch {
-      if (gen === offsetPreviewGen) previewLine.visible = false;
-    }
-  }
-
-  document.getElementById("sk-offset").addEventListener("click", () => {
-    if (!mode.state) return;
-    if (!entityPicks().length) {
-      say("Décaler : sélectionnez d'abord une chaîne d'entités", true);
-      return;
-    }
-    const geos = entityPicks().map((s) => s.geo);
-    // Arêtes projetées (bloquées) : on veut la copie seule dans le profil.
-    const blocked = new Set((mode.state.constraints ?? [])
-      .filter((c) => c.type === "Block").map((c) => c.geos[0]));
-    const projected = geos.every((geo) => blocked.has(geo));
-    abandonEntityPanel();
-    panel.open({
-      icon: "offset",
-      title: t("Décaler"),
-      groups: [{
-        label: t("Paramètres"),
-        rows: [
-          { type: "number", key: "distance", label: t("Distance"), value: 5,
-            unit: "mm", min: 0.01 },
-          { type: "check", key: "reversed", label: t("Inverser le côté"),
-            value: false },
-          { type: "check", key: "construction",
-            label: t("Originaux en construction"), value: projected },
-        ],
-      }],
-      note: t("Les copies restent libres — le décalage paramétrique " +
-            "viendra plus tard."),
-      // Aperçu : la copie se dessine avant de valider — on voit le côté.
-      onChange: (v) => previewOffset(geos, v),
-      onCancel: () => { if (previewLine) previewLine.visible = false; },
-      onApply: (v) => safe(call("sketch_offset", {
-        sketch: mode.state.sketch, geos,
-        distance: num(v.distance) ?? 5,
-        reversed: !!v.reversed, construction: !!v.construction })
-        .finally(() => { if (previewLine) previewLine.visible = false; })),
-    });
-  });
-
-  const imageInput = document.getElementById("sk-image-file");
-  document.getElementById("sk-image").addEventListener("click", () => {
-    if (!mode.active || !mode.state) {
-      say("Image d'esquisse : ouvrez d'abord une esquisse.", true);
-      return;
-    }
-    imageInput.value = "";
-    imageInput.click();
-  });
-  imageInput.addEventListener("change", () => {
-    const file = imageInput.files?.[0];
-    if (!file) return;
-    loadSketchImage(file);
-  });
-
-  // Convertir les entités : le contour de la face porteuse arrive en
-  // géométrie réelle bloquée — le point de départ classique.
-  document.getElementById("sk-convert").addEventListener("click", () => {
-    if (!mode.active || !mode.state) return;
-    call("sketch_convert", { sketch: mode.state.sketch })
-      .then((state) => {
-        applyState(state);
-        say(t("Converti : {n} entité(s)", { n: state.converted })
-          + (state.skipped ? t(" — {n} ignorée(s)", { n: state.skipped }) : ""));
-      })
-      .catch((error) => say(error.message, true));
-  });
-  document.getElementById("sk-finish").addEventListener("click", () => exit(true));
-  document.getElementById("sk-cancel").addEventListener("click", () => exit(false));
+  installCommandes(sk);
 
   // ---------- lifecycle ----------
 

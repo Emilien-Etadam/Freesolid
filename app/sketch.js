@@ -13,8 +13,7 @@ import { CLICK_TOOLS, OPEN_TOOLS, curvatureComb,
 import {
   arcAngles, chainClickAction, distanceToEntity,
   numericDrawTarget, numericFields, relationGlyphs,
-  entityKindTitle, entityPropertyLines,
-  isDrivingConstraint, sketchPreviewPoints,
+  sketchPreviewPoints,
 } from "./geom2d.js";
 import { fmtMm, num } from "./num.js";
 import { eventToNdc, ndcToScreen } from "./screen.js";
@@ -32,6 +31,7 @@ import {
 } from "./sketch/dimsprite.js";
 import { installCommandes } from "./sketch/commandes.js";
 import { installRelations } from "./sketch/relations.js";
+import { installEntites } from "./sketch/entites.js";
 
 export { DIM_TEXT_PX, createDimSprite };
 
@@ -147,19 +147,12 @@ export function createSketchMode(deps) {
   const DRAG_CLICK_PX = 3; // en-dessous : clic, pas un drag
   let building = false; // construction multi-appels (rectangle) en cours
 
-  const ENTITY_ICONS = {
-    Ligne: "nodes_line",
-    Cercle: "nodes_circle",
-    Arc: "nodes_arc",
-    Spline: "nodes_bspline",
-    Ellipse: "ellipse",
-    Polyligne: "nodes_line",
-    Entité: "sketch",
-  };
-
   let entityPanelOpen = false;
   let entityPanelGeo = null;
   let entityPanelGen = 0;
+  expose("entityPanelOpen", () => entityPanelOpen, (v) => { entityPanelOpen = v; });
+  expose("entityPanelGeo", () => entityPanelGeo, (v) => { entityPanelGeo = v; });
+  expose("entityPanelGen", () => entityPanelGen, (v) => { entityPanelGen = v; });
 
   // Spline sélectionnée : points de passage, poignées, pôles dans la vue.
   const splineEdit = createSplineEditor2d({
@@ -175,6 +168,15 @@ export function createSketchMode(deps) {
     setCursor: (name) => setCursor(name),
   });
   splineEdit.onChosen = () => syncEntityPanel({ refresh: true });
+
+  // Le corps est dans sketch/entites.js.
+  Object.assign(sk, {
+    call, say, panel, mode, splineEdit, applyState, safe, editListedDim,
+  });
+  const {
+    entityPicks, uniqueSelectionGeos, abandonEntityPanel, closeEntityPanel,
+    syncEntityPanel, openEntityPanel,
+  } = installEntites(sk);
 
   // M3 : le solveur planegcs (WASM) côté client. Pendant un drag, la
   // résolution est locale (60 fps, zéro réseau) ; le serveur réconcilie
@@ -2347,165 +2349,6 @@ export function createSketchMode(deps) {
     if (mode.active) exit(true);
     else document.getElementById("btn-sketch")?.click();
   });
-
-  /** La sélection sans l'origine : ce qu'on peut symétriser, répéter… */
-  function entityPicks() {
-    return mode.selection.filter((pick) => pick.geo !== ORIGIN_GEO);
-  }
-
-  function uniqueSelectionGeos() {
-    const seen = [];
-    for (const pick of mode.selection) {
-      if (!seen.includes(pick.geo)) seen.push(pick.geo);
-    }
-    return seen;
-  }
-
-  function abandonEntityPanel() {
-    entityPanelOpen = false;
-    entityPanelGeo = null;
-    entityPanelGen += 1;
-  }
-
-  function closeEntityPanel() {
-    entityPanelGen += 1;
-    if (!entityPanelOpen) return;
-    entityPanelOpen = false;
-    entityPanelGeo = null;
-    if (panel.active) panel.close({ silent: true });
-  }
-
-  function constraintItemLabel(constraint) {
-    return constraint.label
-      + (constraint.name ? ` « ${constraint.name} »` : "")
-      + (constraint.value !== undefined
-         ? " = " + (constraint.type === "Angle"
-             ? (constraint.value * 180 / Math.PI).toFixed(1) + "°"
-             : constraint.value.toFixed(2))
-         : "");
-  }
-
-  function syncEntityPanel({ refresh = false } = {}) {
-    if (!mode.active || mode.drag) return;
-    const geos = uniqueSelectionGeos();
-    // Barre d'état : la longueur de ce qui est sélectionné.
-    document.dispatchEvent(new CustomEvent("freesolid:sketch-selection", {
-      detail: geos.map((id) => mode.state?.entities.find((e) => e.id === id))
-        .filter(Boolean) }));
-    if (geos.length !== 1) {
-      closeEntityPanel();
-      return;
-    }
-    const geo = geos[0];
-    if (entityPanelOpen && entityPanelGeo === geo && !refresh) return;
-    openEntityPanel(geo);
-  }
-
-  async function openEntityPanel(geo) {
-    const gen = ++entityPanelGen;
-    const entity = mode.state?.entities.find((e) => e.id === geo);
-    if (!entity || !mode.state) {
-      closeEntityPanel();
-      return;
-    }
-    let listed = { constraints: [] };
-    try {
-      listed = await call("sketch_constraints",
-        { sketch: mode.state.sketch, geo });
-    } catch (error) {
-      say(error.message, true);
-    }
-    if (gen !== entityPanelGen || !mode.active) return;
-    if (uniqueSelectionGeos()[0] !== geo) return;
-
-    const title = entityKindTitle(entity);
-    const propRows = entityPropertyLines(entity).map((text) => ({
-      type: "note",
-      text,
-      readonly: true,
-      onClick: () => say(
-        "Cette valeur est informative — coter l'entité (D) pour la piloter."),
-    }));
-    propRows.push({
-      type: "note",
-      text: t("Construction : {v}",
-        { v: entity.construction ? t("oui") : t("non") }),
-      readonly: true,
-    });
-    const constraints = listed.constraints ?? [];
-    const hasDriving = constraints.some(isDrivingConstraint);
-    entityPanelOpen = true;
-    entityPanelGeo = geo;
-    const splineGroup = splineEdit.panelGroup();
-    panel.open({
-      icon: ENTITY_ICONS[title] ?? ENTITY_ICONS.Entité,
-      title,
-      noApply: true,
-      autoFocus: false,
-      onChange: splineGroup ? (values) => splineEdit.panelChange(values) : undefined,
-      groups: [
-        { label: t("Propriétés"), rows: propRows },
-        ...(splineGroup ? [splineGroup] : []),
-        {
-          label: t("Relations"),
-          rows: [{
-            type: "list",
-            empty: t("— aucune relation sur cette entité —"),
-            items: constraints.map((c) => {
-              const driving = isDrivingConstraint(c);
-              return {
-                label: constraintItemLabel(c),
-                editable: driving,
-                onEdit: driving ? () => editListedDim(c, geo) : undefined,
-                onDelete: async () => {
-                  try {
-                    applyState(await call("sketch_delete_constraint", {
-                      sketch: mode.state.sketch, constraint: c.id,
-                    }), { keepSelection: true });
-                  } catch (error) {
-                    say(error.message, true);
-                  }
-                },
-              };
-            }),
-          }],
-        },
-      ],
-      note: hasDriving
-        ? "Cliquez une cote dans Relations pour la modifier."
-        : "Pour piloter une valeur : Cotation (D).",
-      actions: [
-        {
-          label: t("Construction"),
-          title: entity.construction
-            ? "Géométrie de construction — cliquer pour basculer en réelle"
-            : "Géométrie réelle — cliquer pour basculer en construction",
-          className: "paction",
-          onClick: () => {
-            safe(call("sketch_toggle_construction",
-              { sketch: mode.state.sketch, geo }),
-            { keepSelection: true });
-          },
-        },
-        {
-          label: t("Supprimer"),
-          title: t("Supprimer l'entité (Suppr)"),
-          className: "paction",
-          onClick: () => {
-            safe(call("sketch_delete_geo",
-              { sketch: mode.state.sketch, geo }));
-          },
-        },
-      ],
-      onCancel: () => {
-        abandonEntityPanel();
-        if (mode.selection.length) {
-          mode.selection = [];
-          redraw();
-        }
-      },
-    });
-  }
 
   // ---------- relations manuelles ----------
 

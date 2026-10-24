@@ -74,7 +74,7 @@ export const STEP_PREFIXES = [
 
 /** Libellé (français, traduit à l'affichage) d'un pas d'annulation. */
 export function undoStepLabel(op) {
-  if (STEP_LABELS[op]) return STEP_LABELS[op];
+  if (Object.hasOwn(STEP_LABELS, op)) return STEP_LABELS[op];
   const family = STEP_PREFIXES.find(([prefix]) => op.startsWith(prefix));
   if (family) return family[1];
   // Repli des ops hors catalogue (plugins) ; une op du noyau n'y tombe

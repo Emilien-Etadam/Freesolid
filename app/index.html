@@ -433,7 +433,8 @@
     white-space: nowrap;
   }
   button img { width: 16px; height: 16px; display: block; pointer-events: none; }
-  header button, #sketchbar button, #viewbar button {
+  header button, #sketchbar button,
+  #viewbar > button, #viewbar .view-drop > button {
     display: inline-flex; align-items: center; gap: 6px;
   }
   header button[hidden] { display: none; }
@@ -447,18 +448,20 @@
     border-radius: 10px; padding: 3px 5px;
     box-shadow: 0 2px 6px rgba(29, 39, 51, 0.10);
   }
-  #viewbar button {
+  /* Les boutons-icônes de la barre seulement : pas les entrées de ses menus. */
+  #viewbar > button, #viewbar .view-drop > button {
     padding: 0; width: 30px; height: 30px; justify-content: center;
     border: none; background: none; border-radius: var(--radius-m);
   }
-  #viewbar button img { width: 18px; height: 18px; }
+  #viewbar > button img, #viewbar .view-drop > button img { width: 18px; height: 18px; }
   /* Icônes monochromes (fs_vb_*, trait sombre) : éclaircies en thème
      sombre, la teinte ardoise gardée. */
-  :root:not([data-theme="light"]) #viewbar button img {
+  :root:not([data-theme="light"]) #viewbar > button img,
+  :root:not([data-theme="light"]) #viewbar .view-drop > button img {
     filter: invert(1) hue-rotate(180deg);
   }
-  #viewbar button:hover { background: var(--hover); }
-  #viewbar button.on {
+  #viewbar > button:hover, #viewbar .view-drop > button:hover { background: var(--hover); }
+  #viewbar > button.on, #viewbar .view-drop > button.on {
     color: var(--accent);
     background: color-mix(in srgb, var(--accent) 16%, transparent);
   }

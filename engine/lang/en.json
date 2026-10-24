@@ -207,6 +207,7 @@
  "propriété non éditable : {}": "property not editable: {}",
  "relation inconnue : {}": "unknown relation: {}",
  "rien à annuler": "nothing to undo",
+ "rien sous la barre de retour": "nothing below the rollback bar",
  "rien à exporter — la pièce n'a pas de solide": "nothing to export — the part has no solid",
  "rien à rétablir": "nothing to redo",
  "répertoire statique invalide « {} » — un nom simple, sans séparateur": "invalid static directory \"{}\" — a simple name, no separator",

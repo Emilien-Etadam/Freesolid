@@ -327,6 +327,7 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # esquisse libre, surface).
                                        # Absent = barre avant la première
     "tip_to_end": (),                  # back to the final state
+    "delete_rolled_back": (),          # tout ce qui est sous la barre
     "delete_feature": _Req(("feature", str)),
     "reorder_feature": _Req(("feature", str), ("target", str),
                             optional={"after": bool}),

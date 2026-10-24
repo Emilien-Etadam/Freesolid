@@ -157,7 +157,9 @@ def rollback_plan(history, target_name=None):
     """Calcule les flags de recul et le Tip à partir des lignes d'historique.
 
     *history* : séquence de dicts ``{name, order, kind}`` déjà triée par
-    ``order``, avec ``kind`` ∈ ``{"feature", "sketch", "surface"}``.
+    ``order``, avec ``kind`` ∈ ``{"feature", "sketch", "surface",
+    "absorbed"}``. ``absorbed`` : l'esquisse rangée sous sa fonction — la
+    barre peut se poser juste après elle, elle ne prend pas de flag.
     *target_name* : dernière ligne visible, ou ``None`` (barre en tête).
 
     Retour : ``(flags, tip)`` — ``flags`` mappe chaque nom sketch/surface
@@ -857,7 +859,7 @@ _TRANSACTIONAL = frozenset({
     "add_repeat_feature", "edit_repeat_feature", "make_drawing",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
-    "set_tip", "tip_to_end", "delete_feature",
+    "set_tip", "tip_to_end", "delete_feature", "delete_rolled_back",
     "sketch_start", "sketch_add_line", "sketch_add_rectangle",
     "sketch_add_circle", "sketch_dim",
     "sketch_set_dim", "sketch_place_dim", "sketch_delete_geo",

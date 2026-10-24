@@ -97,6 +97,29 @@ def _pad_free_sketch_surface(kernel):
     return pad, free_sk, surf
 
 
+def _pad_then_pocket(kernel):
+    kernel.new_part("Absorbée")
+    kernel.add_rect_sketch(40, 20)
+    tree = kernel.add_pad(10)
+    pad = next(f["name"] for f in tree["features"]
+               if f["type"] == "PartDesign::Pad")
+    kernel.add_rect_sketch(10, 5, face=kernel._top_face_id())
+    tree = kernel.add_pocket(through=True)
+    item = next(f for f in tree["features"]
+                if f["type"] == "PartDesign::Pocket")
+    return pad, item["name"], item["children"][0]["name"]
+
+
+def test_rollback_plan_on_absorbed_sketch():
+    history = _hist(("Pad", 5, "feature"),
+                    ("Sketch001", 6, "absorbed"),
+                    ("Pocket", 7, "feature"),
+                    ("Sketch002", 8, "sketch"))
+    flags, tip = rollback_plan(history, "Sketch001")
+    assert tip == "Pad"
+    assert flags == {"Sketch002": True}
+
+
 @pytest.mark.skipif(not _freecad_available(), reason="FreeCAD requis")
 class TestRollbackKernel:
     def setup_method(self):
@@ -164,15 +187,53 @@ class TestRollbackKernel:
 
     def test_set_tip_rejects_non_history(self):
         self.k.new_part("Rejet")
-        self.k.add_rect_sketch(20, 10)
-        tree = self.k.add_pad(5)
-        pad = next(f for f in tree["features"]
-                   if f["type"] == "PartDesign::Pad")
-        consumed = pad["children"][0]["name"]
+        tree = self.k.get_tree()
         with pytest.raises(KernelError, match="ligne d'historique"):
-            self.k.set_tip(consumed)
+            self.k.set_tip(tree["bodies"][0]["name"])
         with pytest.raises(KernelError, match="fonction inconnue"):
             self.k.set_tip("InconnuXYZ")
+
+    def test_set_tip_between_sketch_and_feature(self):
+        pad, pocket, pocket_sk = _pad_then_pocket(self.k)
+        tree = self.k.set_tip(pocket_sk)
+        assert tree["tip"] == pad
+        item = next(f for f in tree["features"] if f["name"] == pocket)
+        child = next(c for c in item["children"] if c["name"] == pocket_sk)
+        assert child.get("unabsorbed") is True
+        mesh = self.k.tessellate()
+        assert any(s["name"] == pocket_sk for s in mesh.get("sketches") or [])
+        # La barre sur la fonction : l'esquisse rentre dessous.
+        tree = self.k.tip_to_end()
+        item = next(f for f in tree["features"] if f["name"] == pocket)
+        assert all(not c.get("unabsorbed") for c in item["children"])
+        mesh = self.k.tessellate()
+        assert not any(s["name"] == pocket_sk
+                       for s in mesh.get("sketches") or [])
+
+    def test_bar_above_feature_keeps_sketch_absorbed(self):
+        pad, pocket, _pocket_sk = _pad_then_pocket(self.k)
+        tree = self.k.set_tip(pad)
+        item = next(f for f in tree["features"] if f["name"] == pocket)
+        assert all(not c.get("unabsorbed") for c in item["children"])
+
+    def test_delete_rolled_back(self):
+        pad, pocket, pocket_sk = _pad_then_pocket(self.k)
+        self.k.set_tip(pad)
+        tree = self.k.delete_rolled_back()
+        names = {f["name"] for f in tree["features"]}
+        assert pocket not in names and pocket_sk not in names
+        assert tree["tip"] == pad
+        with pytest.raises(KernelError, match="rien sous la barre"):
+            self.k.delete_rolled_back()
+
+    def test_delete_rolled_back_keeps_unabsorbed_sketch(self):
+        pad, pocket, pocket_sk = _pad_then_pocket(self.k)
+        self.k.set_tip(pocket_sk)
+        tree = self.k.delete_rolled_back()
+        names = {f["name"] for f in tree["features"]}
+        assert pocket not in names
+        free = next(f for f in tree["features"] if f["name"] == pocket_sk)
+        assert free.get("rolled_back") is not True
 
     def test_flags_persist_save_reopen(self):
         pad, free_sk, surf = _pad_free_sketch_surface(self.k)

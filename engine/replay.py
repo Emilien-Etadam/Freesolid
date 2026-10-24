@@ -12,13 +12,7 @@ from engine.ops import INDEXED, REPLAYERS
 
 #: Ce que ``get_params`` + le profil suffisent à reconstituer — dérivé du
 #: catalogue (``replay=``), plus les fonctions pas encore décrites.
-REPLAYABLE_TYPES = {
-    "PartDesign::Pad": "add_pad",
-    "PartDesign::Pocket": "add_pocket",
-    "PartDesign::Revolution": "add_revolution",
-    "PartDesign::Groove": "add_groove",
-    "PartDesign::Hole": "add_hole",
-}
+REPLAYABLE_TYPES = {}
 REPLAYABLE_TYPES.update(
     {type_id: op.name for type_id, op in REPLAYERS.items()})
 
@@ -530,48 +524,6 @@ def _replay_feature(kernel, feat, sketch_map, substitutions):
     if described is not None:
         described.replay(kernel, feat, sketch,
                          lambda prop: _substituted(feat, substitutions, prop))
-        return
-    if type_id == "PartDesign::Pad":
-        kernel.add_pad(
-            length=_substituted(feat, substitutions, "Length"),
-            sketch=sketch,
-            reversed=feat["reversed"],
-            midplane=feat["midplane"])
-        return
-    if type_id == "PartDesign::Pocket":
-        if feat["through"]:
-            kernel.add_pocket(through=True, sketch=sketch,
-                              reversed=feat["reversed"])
-        else:
-            kernel.add_pocket(
-                length=_substituted(feat, substitutions, "Length"),
-                sketch=sketch, reversed=feat["reversed"])
-        return
-    if type_id == "PartDesign::Revolution":
-        kernel.add_revolution(
-            angle=_substituted(feat, substitutions, "Angle"),
-            sketch=sketch,
-            axis=feat.get("axis") or "vertical",
-            reversed=bool(feat.get("reversed")),
-            midplane=bool(feat.get("midplane")))
-        return
-    if type_id == "PartDesign::Groove":
-        kernel.add_groove(
-            angle=_substituted(feat, substitutions, "Angle"),
-            sketch=sketch,
-            axis=feat.get("axis") or "vertical",
-            reversed=bool(feat.get("reversed")),
-            midplane=bool(feat.get("midplane")))
-        return
-    if type_id == "PartDesign::Hole":
-        # add_hole consomme _latest_sketch — le profil a été cloné juste avant.
-        diameter = _substituted(feat, substitutions, "Diameter")
-        if feat["through"]:
-            kernel.add_hole(diameter=diameter, through=True)
-        else:
-            kernel.add_hole(
-                diameter=diameter,
-                depth=_substituted(feat, substitutions, "Depth"))
         return
     raise KernelError(
         "rejeu impossible pour {} ({})".format(feat["name"], type_id))

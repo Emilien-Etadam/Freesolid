@@ -773,10 +773,8 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
     #: Dérivé du catalogue (``preview=True``), plus les ops pas encore
     #: décrites dans engine/ops/.
     _PREVIEWABLE = PREVIEWABLE | frozenset({
-        "add_pad", "add_pocket", "add_revolution", "add_groove",
         "add_mirror", "add_linear_pattern", "add_polar_pattern",
-        "add_hole", "set_params",
-        "add_loft", "add_sweep", "add_helix", "add_boolean", "add_text",
+        "set_params",
         "add_datum_plane", "add_surface_cut", "add_delete_face",
         "add_replace_face",
         "surface_delete_faces",
@@ -838,11 +836,10 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
 #: Dérivé du catalogue (``undo=True``), plus les ops pas encore décrites
 #: dans engine/ops/.
 _TRANSACTIONAL = TRANSACTIONAL | frozenset({
-    "add_rect_sketch", "add_pad", "add_pocket",
-    "add_revolution", "add_groove", "add_mirror", "add_linear_pattern",
-    "add_polar_pattern", "add_hole",
-    "add_datum_plane", "add_loft", "add_sweep", "add_helix",
-    "add_body", "add_boolean", "set_body_color",
+    "add_rect_sketch",
+    "add_mirror", "add_linear_pattern",
+    "add_polar_pattern",
+    "add_datum_plane",
     "insert_component", "move_component", "add_joint", "solve_assembly",
     "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
     "surface_thicken", "add_curve3d", "edit_curve3d", "surface_planar",
@@ -856,8 +853,8 @@ _TRANSACTIONAL = TRANSACTIONAL | frozenset({
     "curve_composite", "edit_surface_fillet", "surface_split",
     "curve_helix", "surface_radiate", "surface_mid", "surface_flatten",
     "surface_freeform", "edit_surface_freeform",
-    "sketch_convert", "add_text",
-    "edit_text", "add_graph_feature", "edit_graph_feature",
+    "sketch_convert",
+    "add_graph_feature", "edit_graph_feature",
     "add_repeat_feature", "edit_repeat_feature", "make_drawing",
     "set_param", "set_params", "rename",
     "set_variable", "delete_variable", "sketch_delete_constraint",
@@ -879,7 +876,7 @@ _TRANSACTIONAL = TRANSACTIONAL | frozenset({
     "sketch_corner", "sketch_add_equation", "sketch_repair",
     "sketch_fully_define", "sketch_spline", "sketch_set_spline",
     "sketch_block_save",
-    "sketch_match_curvature", "set_profile_contours", "sketch_layers",
+    "sketch_match_curvature", "sketch_layers",
     "sketch_set_layer",
     "sketch_block_insert", "sketch_picture",
     "set_component_grounded", "reorder_feature", "set_comment",

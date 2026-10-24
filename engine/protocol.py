@@ -17,9 +17,6 @@ import tempfile
 from engine.ops import CORE_OPS
 from engine.ops._base import Name, Req as _Req  # noqa: F401 — ré-exportés
 
-#: Conditions de fin d'extrusion communes au bossage et à l'enlèvement.
-_EXTRUDE_OPTIONAL = {"cond": str, "face": int, "offset": float, "taper": float, "midplane": bool, "reversed": bool, "cond2": str, "length2": float, "face2": int, "offset2": float, "taper2": float, "sketch": str, "thin": dict}
-
 #: Comptes / occurrences : entier ≥ 1, plafond anti-absurde.
 _COUNT_PARAMS = frozenset({"count", "cols", "rows", "sides"})
 _COUNT_MIN = 1
@@ -54,12 +51,6 @@ OPS: dict[str, tuple[str, ...]] = {
     # paste-me-the-report loop that debugged the Qt addon.
     "selftest": (),
     "new_part": (),                    # optional: name
-    # Phase C — multi-corps.
-    "add_body": (),                    # optional: name — devient le corps actif
-    "set_active_body": _Req(("body", str)),
-    "set_body_color": _Req(("body", str), "color"),
-                                       # "#rrggbb" | null | "" (défaut)
-    "add_boolean": _Req(("tool", str)),  # optional: type (cut|fuse|common)
     # Phase C — assemblage v1 (placements directs, sans solveur).
     "new_assembly": (),                # optional: name
     "insert_component": _Req(("path", str)),  # .FCStd — App::Link vers son corps
@@ -160,7 +151,6 @@ OPS: dict[str, tuple[str, ...]] = {
     "set_folder": _Req(("features", list), optional={"folder": str}),
     "rename_folder": _Req(("folder", str), optional={"name": str}),
     "feature_relations": _Req(("feature", str)),  # lecture : parents, enfants
-    "face_drag_info": _Req(("face", int)),  # lecture : la face se tire-t-elle
     "sketch_frame": _Req(("sketch", str)),  # lecture : centre et normale
     "list_configurations": (),         # lecture : noms, active
     "add_configuration": _Req(("name", str)),
@@ -185,11 +175,6 @@ OPS: dict[str, tuple[str, ...]] = {
     "make_drawing": _Req(("path", str)),
                                        # optional: scale, dims (bool, défaut True),
                                        # section ("X"|"Y"|"Z") — 3 vues + cotes + coupe, export DXF
-    "add_text": _Req(("text", str), ("face", int)),
-                                       # optional: size, depth, x, y, emboss, font
-    "edit_text": _Req(("feature", str)),
-                                       # optional: text, size, depth, x, y
-                                       # — absents = inchangés
     "add_graph_feature": _Req(("graph", dict), optional={"mode": str}),
                                        # mode : fuse | cut pour un solide ;
                                        # absent pour une courbe / surface
@@ -225,29 +210,6 @@ OPS: dict[str, tuple[str, ...]] = {
     "progress": (),                    # avancement hors noyau — jamais de verrou
     "add_rect_sketch": _Req(("width", float), ("height", float)),
                                        # optional: face (id) to attach
-    # Conditions de fin : engine/extrude.py. Sans length : jusqu'à…
-    "add_pad": _Req(optional={"length": float, "contours": list,
-                              **_EXTRUDE_OPTIONAL}),
-    # Sans profondeur ni condition = à travers tout.
-    "add_pocket": _Req(optional={"length": float, "through": bool,
-                                 "contours": list, **_EXTRUDE_OPTIONAL}),
-    # Palier 2 — fonctions volumiques, aucune interaction nouvelle.
-    "add_revolution": _Req(optional={
-        "angle": float,          # degrés, défaut 360
-        "axis": str,             # vertical | horizontal | line:<id> | X | Y | Z
-        "reversed": bool,
-        "midplane": bool,
-        "contours": list,        # index des contours de l'esquisse pris
-    }),                                # sketch reste libre (nom d'esquisse)
-    "add_groove": _Req(optional={
-        "angle": float,
-        "axis": str,
-        "reversed": bool,
-        "midplane": bool,
-        "contours": list,
-    }),
-    "set_profile_contours": _Req(("feature", str), ("contours", list)),
-                                       # [] : toute l'esquisse
     "sketch_contours": _Req(("sketch", str)),  # lecture
     "add_mirror": _Req(optional={"features": list}),
                                        # optional: plane (XY|XZ|YZ), features
@@ -266,9 +228,6 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # optional: angle (°), axis, features
     # Phase B — références et ossature.
     "add_datum_plane": (),             # optional: base (XY|XZ|YZ) | face, offset, angle
-    "add_loft": _Req(("sketches", list)),  # optional: subtractive, ruled, closed
-    "add_sweep": _Req(("profile", str), ("spine", str)),  # optional: subtractive
-    "add_helix": _Req(("pitch", float), ("height", float)),  # optional: sketch
     "set_param": _Req(("feature", str), ("prop", str), "value"),
     "set_params": _Req(("feature", str), ("values", dict)),
                                        # valeur numérique OU expression
@@ -277,11 +236,6 @@ OPS: dict[str, tuple[str, ...]] = {
     "set_variable": _Req(("name", str), "value"),
     "delete_variable": _Req(("name", str)),
     "rename": _Req(("feature", str), ("label", str)),
-    "add_hole": _Req(("diameter", float), optional={"face": int, "points": list}),
-                                       # optional: depth | through, cut
-                                       # (none|lamage|fraisage), cut_diameter,
-                                       # cut_depth, cut_angle ; face + points :
-                                       # les centres cliqués sur la face
     "get_params": _Req(("feature", str)),  # editable numeric properties
     "set_tip": (),                     # optional: feature — nom d'une
                                        # ligne d'historique (fonction,

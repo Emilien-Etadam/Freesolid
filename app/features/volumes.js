@@ -204,7 +204,7 @@ export function revolutionEditValues(v, revolution, params) {
 
 function revolved({ button, op, icon, title }) {
   return withSketchProfile({
-    button, icon, title,
+    button, op, icon, title,
     groups: (ctx) => revolutionGroups(resolveProfileSketch(ctx)),
     build: (v) => revolutionCreationParams(v, op),
     invalid: () => revolutionProblem(),
@@ -369,6 +369,7 @@ export function extrudeInvalid(v) {
 export const VOLUMES = [
   withSketchProfile({
     button: "btn-pad",
+    op: "add_pad",
     icon: "nodes_extrude",
     title: "Extrusion",
     groups: () => extrudeGroups("pad"),
@@ -378,6 +379,7 @@ export const VOLUMES = [
   }),
   withSketchProfile({
     button: "btn-pocket",
+    op: "add_pocket",
     icon: "pocket",
     title: "Enlèvement extrudé",
     groups: () => extrudeGroups("pocket"),
@@ -399,6 +401,7 @@ export const VOLUMES = [
   }),
   {
     button: "btn-hole",
+    op: "add_hole",
     icon: "hole",
     title: "Perçage",
     groups: () => [
@@ -472,6 +475,7 @@ export const VOLUMES = [
   },
   {
     button: "btn-loft",
+    op: "add_loft",
     icon: "loft",
     title: "Lissage",
     groups: () => [
@@ -504,6 +508,7 @@ export const VOLUMES = [
   },
   {
     button: "btn-sweep",
+    op: "add_sweep",
     icon: "sweep",
     title: "Balayage",
     groups: () => [
@@ -531,6 +536,7 @@ export const VOLUMES = [
   },
   {
     button: "btn-helix",
+    op: "add_helix",
     icon: "nodes_helix",
     title: "Hélice",
     groups: () => [{
@@ -555,6 +561,7 @@ export const VOLUMES = [
   },
   dressup({
     button: "btn-text",
+    op: "add_text",
     icon: "nodes_text", title: "Texte",
     selectionLabel: "Face d'appui",
     group: "Texte",

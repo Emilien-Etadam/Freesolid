@@ -55,6 +55,7 @@ export function patternDirectionParams(v) {
 export const REPETITIONS = [
   {
     button: "btn-linpattern",
+    op: "add_linear_pattern",
     icon: "linear_pattern",
     title: "Réseau linéaire",
     groups: (ctx) => [
@@ -105,6 +106,7 @@ export const REPETITIONS = [
   },
   {
     button: "btn-polpattern",
+    op: "add_polar_pattern",
     icon: "polar_pattern",
     title: "Réseau circulaire",
     groups: (ctx) => [
@@ -134,6 +136,7 @@ export const REPETITIONS = [
   },
   {
     button: "btn-mirror",
+    op: "add_mirror",
     icon: "mirror",
     title: "Symétrie",
     groups: (ctx) => [

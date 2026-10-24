@@ -170,6 +170,7 @@ export function chamferEditValues(v, chamfer, params) {
 export const HABILLAGE = [
   dressup({
     button: "btn-fillet",
+    op: "add_fillet",
     icon: "fillet", title: "Congé",
     selectionLabel: "Éléments à arrondir",
     accepts: ["edges", "face"],
@@ -187,6 +188,7 @@ export const HABILLAGE = [
   }),
   dressup({
     button: "btn-chamfer",
+    op: "add_chamfer",
     icon: "chamfer", title: "Chanfrein",
     selectionLabel: "Éléments à chanfreiner",
     accepts: ["edges", "face"],
@@ -204,6 +206,7 @@ export const HABILLAGE = [
   }),
   {
     button: "btn-vertex-chamfer",
+    op: "add_vertex_chamfer",
     icon: "vertex_chamfer", title: "Chanfrein de sommet",
     groups: () => [
       { label: "Sommet",
@@ -225,6 +228,7 @@ export const HABILLAGE = [
   },
   {
     button: "btn-shell",
+    op: "add_thickness",
     icon: "shell", title: "Coque",
     dressup: true,
     groups: (ctx) => {
@@ -253,6 +257,7 @@ export const HABILLAGE = [
   },
   dressup({
     button: "btn-draft",
+    op: "add_draft",
     icon: "draft", title: "Dépouille",
     selectionLabel: "Faces à dépouiller",
     group: "Angle de dépouille",

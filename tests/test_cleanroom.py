@@ -17,7 +17,7 @@ FORBIDDEN = re.compile(
 # Le selftest vérifie qu'un message d'erreur ne contient pas ce nom.
 # La liste de ``tests/test_guard.py`` est hors de engine/, donc déjà exclue.
 EXCEPTIONS = (
-    ("selftest.py", '"SolidWorks" not in text'),
+    ("selftest/fonctions.py", '"SolidWorks" not in text'),
 )
 
 

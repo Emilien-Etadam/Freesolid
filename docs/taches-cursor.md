@@ -499,8 +499,9 @@ appelées par des méthodes minces) :
   répétitions) ; paramètres et équations ; fichiers (ouvrir, enregistrer,
   exporter) ;
 - tessellation et arbre ; esquisse ;
-- le selftest dans son propre module (`engine/selftest.py`), hors du code
-  de production.
+- le selftest dans son propre paquet (`engine/selftest/`, une fonction
+  par étape, rangée par domaine ; la table de `__init__.py` fixe l'ordre),
+  hors du code de production.
 
 Règles :
 - Les imports FreeCAD restent dans les corps de fonctions (les modules

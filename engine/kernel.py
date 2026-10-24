@@ -31,6 +31,7 @@ from engine.nodegraph import (  # noqa: E402
 from engine.platform import (                    # noqa: E402
     FREECAD, allow_from_environ, freesolid_version, version_status,
 )
+from engine.ops import PREVIEWABLE, TRANSACTIONAL  # noqa: E402
 from engine.plugins import PluginError           # noqa: E402
 from engine.protocol import dangling_deps, visible_dep_subs, visible_deps  # noqa: E402
 from engine.scriptnode import evaluate as evaluate_graph  # noqa: E402
@@ -769,7 +770,9 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
                 return feature
         raise KernelError("élément d'origine introuvable : {}".format(role))
 
-    _PREVIEWABLE = frozenset({
+    #: Dérivé du catalogue (``preview=True``), plus les ops pas encore
+    #: décrites dans engine/ops/.
+    _PREVIEWABLE = PREVIEWABLE | frozenset({
         "add_pad", "add_pocket", "add_revolution", "add_groove",
         "add_fillet", "add_chamfer", "add_thickness", "add_draft",
         "add_mirror", "add_linear_pattern", "add_polar_pattern",
@@ -833,7 +836,9 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
 #: lifecycle (new/open), read-only ops, undo/redo themselves, and
 #: sketch_move — a drag streaming at ~20 Hz would shred the undo stack
 #: into per-frame steps.
-_TRANSACTIONAL = frozenset({
+#: Dérivé du catalogue (``undo=True``), plus les ops pas encore décrites
+#: dans engine/ops/.
+_TRANSACTIONAL = TRANSACTIONAL | frozenset({
     "add_rect_sketch", "add_pad", "add_pocket", "add_fillet", "add_chamfer",
     "add_revolution", "add_groove", "add_mirror", "add_linear_pattern",
     "add_polar_pattern", "add_thickness", "add_draft", "add_hole",

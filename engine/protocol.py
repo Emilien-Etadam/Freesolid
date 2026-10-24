@@ -14,32 +14,8 @@ import json
 import os
 import tempfile
 
-class _Req(tuple):
-    """Tuple of required param names, with optional JSON types.
-
-    ``_Req(("length", float), "value")`` equals ``("length", "value")`` so
-    existing ``OPS[op] == (...)`` assertions keep working. ``.kinds`` maps
-    typed names to ``float``, ``int``, ``str``, ``list``, ``dict``,
-    ``bool`` or ``Name`` (non-empty ``str``). ``.optional`` maps optional names to the same kinds — present
-    params are type-checked, absent ones are not required. Bare names are
-    presence-only (no type check, no coercion).
-    """
-
-    def __new__(cls, *items, optional=None):
-        names = []
-        kinds = {}
-        for item in items:
-            if isinstance(item, str):
-                names.append(item)
-            else:
-                name, kind = item
-                names.append(name)
-                kinds[name] = kind
-        obj = super().__new__(cls, names)
-        obj.kinds = kinds
-        obj.optional = dict(optional or {})
-        return obj
-
+from engine.ops import CORE_OPS
+from engine.ops._base import Name, Req as _Req  # noqa: F401 — ré-exportés
 
 #: Conditions de fin d'extrusion communes au bossage et à l'enlèvement.
 _EXTRUDE_OPTIONAL = {"cond": str, "face": int, "offset": float, "taper": float, "midplane": bool, "reversed": bool, "cond2": str, "length2": float, "face2": int, "offset2": float, "taper2": float, "sketch": str, "thin": dict}
@@ -56,13 +32,6 @@ _NONEMPTY_STR_PARAMS = frozenset({
     "profile", "spine", "surface", "kind", "a_kind", "b_kind",
 })
 
-
-class Name(str):
-    """Kind ``nom`` d'un manifeste de plugin : texte non vide.
-
-    Jamais instancié — il marque seulement un paramètre dans ``OPS``,
-    comme ``_NONEMPTY_STR_PARAMS`` le fait pour les ops du noyau.
-    """
 
 _TYPE_LABELS = {
     float: "nombre",
@@ -488,6 +457,12 @@ OPS: dict[str, tuple[str, ...]] = {
     "sketch_finish": _Req(("sketch", str)),
     "sketch_cancel": _Req(("sketch", str)),  # quitter sans garder
 }
+
+# Migration vers le catalogue engine/ops/ : les familles décrites
+# rejoignent les ops encore déclarées ci-dessus.
+for _op in CORE_OPS:
+    assert _op.name not in OPS, _op.name
+    OPS[_op.name] = _op.req
 
 #: Ops du noyau, avant fusion des plugins. Un plugin ne peut pas les redéfinir.
 CORE_OP_NAMES = frozenset(OPS)

@@ -7,10 +7,28 @@ fonctions.
 """
 
 from engine.kernel import Kernel, KernelError, UPWARD_Z
+from engine.ops import INDEXED, REPLAYERS
 
 
-#: Ce que ``get_params`` + le profil suffisent à reconstituer.
+#: Ce que ``get_params`` + le profil suffisent à reconstituer — dérivé du
+#: catalogue (``replay=``), plus les fonctions pas encore décrites.
 REPLAYABLE_TYPES = {
+    "PartDesign::Pad": "add_pad",
+    "PartDesign::Pocket": "add_pocket",
+    "PartDesign::Revolution": "add_revolution",
+    "PartDesign::Groove": "add_groove",
+    "PartDesign::Fillet": "add_fillet",
+    "PartDesign::Chamfer": "add_chamfer",
+    "PartDesign::Draft": "add_draft",
+    "PartDesign::Thickness": "add_thickness",
+    "PartDesign::Hole": "add_hole",
+}
+REPLAYABLE_TYPES.update(
+    {type_id: op.name for type_id, op in REPLAYERS.items()})
+
+#: Le tableau du spike N009 tel qu'il sort dans ``n9_spike_rapport`` : figé,
+#: ordre compris. Il ne suit pas le catalogue — c'est une mesure datée.
+_N009_REPLAYABLE = {
     "PartDesign::Pad": "add_pad",
     "PartDesign::Pocket": "add_pocket",
     "PartDesign::Revolution": "add_revolution",
@@ -47,7 +65,9 @@ UNREPLAYABLE_OPS = {
 }
 
 #: Fonctions qui portent un indice d'arête ou de face — la garde s'applique.
-INDEXED_TYPES = frozenset({
+#: Dérivé du catalogue (``indexed=True``), plus les fonctions pas encore
+#: décrites.
+INDEXED_TYPES = INDEXED | frozenset({
     "PartDesign::Fillet",
     "PartDesign::Chamfer",
     "PartDesign::Draft",
@@ -64,7 +84,7 @@ _TEMP_PREFIX = "N009Replay"
 def reconstitution_table():
     """Tableau figé : ce qui se reconstitue, et ce qui ne se reconstitue pas."""
     return {
-        "replayable": dict(REPLAYABLE_TYPES),
+        "replayable": dict(_N009_REPLAYABLE),
         "replayable_with_extra": dict(REPLAYABLE_WITH_EXTRA),
         "unreplayable": dict(UNREPLAYABLE_OPS),
     }
@@ -515,6 +535,11 @@ def _rebuild_sketch(kernel, dump, attach_face=None):
 def _replay_feature(kernel, feat, sketch_map, substitutions):
     type_id = feat["type_id"]
     sketch = sketch_map.get(feat.get("profile"))
+    described = REPLAYERS.get(type_id)
+    if described is not None:
+        described.replay(kernel, feat, sketch,
+                         lambda prop: _substituted(feat, substitutions, prop))
+        return
     if type_id == "PartDesign::Pad":
         kernel.add_pad(
             length=_substituted(feat, substitutions, "Length"),

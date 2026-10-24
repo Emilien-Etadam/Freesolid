@@ -1,0 +1,49 @@
+name: Bug report
+description: Something doesn't work or gives a wrong result
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying FreeSolid! It's an early prototype, so every report helps.
+        Rapports en français bienvenus aussi.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. New part, sketch on Front plane
+        2. Rectangle 40 × 20, extrude 10 mm
+        3. Fillet an edge with R 15 → error
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: FreeSolid version
+      description: Gear button → Settings shows it.
+      placeholder: "0.3.1"
+  - type: dropdown
+    id: how
+    attributes:
+      label: How do you run it?
+      options:
+        - Desktop app
+        - From source (freecadcmd engine/server.py)
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11, macOS 15, Ubuntu 24.04…
+  - type: textarea
+    id: files
+    attributes:
+      label: Screenshots or file
+      description: Drag a screenshot here, or a zipped `.FCStd` if the problem depends on the part.

@@ -1,0 +1,31 @@
+name: Feature request
+description: A tool or a workflow you miss
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tell us how you'd do it in the CAD tool you use today — it helps us get the workflow right.
+        Demandes en français bienvenues aussi.
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you want to do?
+      description: The part or the task, not only the command name.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you do it today?
+      description: The command or workflow in your current CAD tool, if any.
+  - type: dropdown
+    id: blocking
+    attributes:
+      label: How much does it matter to you?
+      options:
+        - It stops me from using FreeSolid for real work
+        - I'd use it often
+        - Nice to have
+    validations:
+      required: true

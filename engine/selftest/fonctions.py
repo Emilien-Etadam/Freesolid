@@ -190,6 +190,12 @@ def p2_depouille_coque(self, mark, report, etat):
         not any(f["error"] for f in tree["features"])
         and abs(float(self._require_body().Shape.Volume)
                 - vol_before) > 1e-9)
+    # La capture du rejeu (répétition variable) relit le plan neutre.
+    from engine.replay import capture_group
+    draft = next(f["name"] for f in tree["features"]
+                 if f["type"] == "PartDesign::Draft")
+    captured = capture_group(self, [draft])["features"][0]
+    report["p2_draft_neutral_capture"] = captured.get("neutral") == "XZ"
     self.new_part("Pièce coque")
     self.add_rect_sketch(40, 40)
     self.add_pad(20)

@@ -1,0 +1,194 @@
+[
+  {
+    "name": "01-flush-cylinder",
+    "description": "Cylinder R25 on a plate whose rounded end is the same circle (coaxial, same radius). Fillet R3 on the cylinder/plate top arc.",
+    "input": "inputs/01-flush-cylinder.step",
+    "fillets": [
+      {
+        "point_on_edge": [
+          45.0,
+          0.0,
+          10.0
+        ],
+        "radius": 3.0
+      }
+    ],
+    "expected": "valid single solid, volume increases (concave)"
+  },
+  {
+    "name": "02-tangent-cylinder",
+    "description": "Cylinder R10 on a box, tangent to the box side face. Fillet R2 on the circular junction, which touches the box edge at one point.",
+    "input": "inputs/02-tangent-cylinder.step",
+    "fillets": [
+      {
+        "point_on_edge": [
+          40.0,
+          20.0,
+          10.0
+        ],
+        "radius": 2.0
+      }
+    ],
+    "expected": "valid single solid, volume increases (concave)"
+  },
+  {
+    "name": "03-corner-three-radii",
+    "description": "Box corner where three edges meet. Fillets R4, R6 and R8, one per edge, need a vertex blend.",
+    "input": "inputs/03-corner-three-radii.step",
+    "fillets": [
+      {
+        "point_on_edge": [
+          20.0,
+          40.0,
+          40.0
+        ],
+        "radius": 4.0
+      },
+      {
+        "point_on_edge": [
+          40.0,
+          20.0,
+          40.0
+        ],
+        "radius": 6.0
+      },
+      {
+        "point_on_edge": [
+          40.0,
+          40.0,
+          20.0
+        ],
+        "radius": 8.0
+      }
+    ],
+    "expected": "valid single solid, volume decreases (convex)"
+  },
+  {
+    "name": "04-overflow-step",
+    "description": "Concave edge at the foot of a 2 mm step. Fillet R4 is larger than the step face and must overflow onto the step top.",
+    "input": "inputs/04-overflow-step.step",
+    "fillets": [
+      {
+        "point_on_edge": [
+          20.0,
+          15.0,
+          10.0
+        ],
+        "radius": 4.0
+      }
+    ],
+    "expected": "valid single solid, volume increases (concave)"
+  },
+  {
+    "name": "05-across-seam",
+    "description": "Tab fused to a cylinder exactly across its seam line. Fillet R1.5 on the three junction edges.",
+    "input": "inputs/05-across-seam.step",
+    "fillets": [
+      {
+        "point_on_edge": [
+          9.88686,
+          1.5,
+          10.0
+        ],
+        "radius": 1.5
+      },
+      {
+        "point_on_edge": [
+          9.88686,
+          -1.5,
+          10.0
+        ],
+        "radius": 1.5
+      },
+      {
+        "point_on_edge": [
+          9.539392,
+          3.0,
+          5.0
+        ],
+        "radius": 1.5
+      },
+      {
+        "point_on_edge": [
+          9.539392,
+          -3.0,
+          5.0
+        ],
+        "radius": 1.5
+      }
+    ],
+    "expected": "valid single solid, volume increases (concave)"
+  },
+  {
+    "name": "06-tight-chain",
+    "description": "Rounded-rectangle boss (corner R1.5) on a plate. Fillet R3 on the whole tangent chain at its base: larger than the corner radius.",
+    "input": "inputs/06-tight-chain.step",
+    "fillets": [
+      {
+        "point_on_edge": [
+          15.43934,
+          10.43934,
+          10.0
+        ],
+        "radius": 3.0
+      },
+      {
+        "point_on_edge": [
+          30.0,
+          10.0,
+          10.0
+        ],
+        "radius": 3.0
+      },
+      {
+        "point_on_edge": [
+          44.56066,
+          10.43934,
+          10.0
+        ],
+        "radius": 3.0
+      },
+      {
+        "point_on_edge": [
+          45.0,
+          20.0,
+          10.0
+        ],
+        "radius": 3.0
+      },
+      {
+        "point_on_edge": [
+          44.56066,
+          29.56066,
+          10.0
+        ],
+        "radius": 3.0
+      },
+      {
+        "point_on_edge": [
+          30.0,
+          30.0,
+          10.0
+        ],
+        "radius": 3.0
+      },
+      {
+        "point_on_edge": [
+          15.43934,
+          29.56066,
+          10.0
+        ],
+        "radius": 3.0
+      },
+      {
+        "point_on_edge": [
+          15.0,
+          20.0,
+          10.0
+        ],
+        "radius": 3.0
+      }
+    ],
+    "expected": "valid single solid, volume increases (concave)"
+  }
+]

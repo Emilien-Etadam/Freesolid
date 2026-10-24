@@ -17,10 +17,6 @@ REPLAYABLE_TYPES = {
     "PartDesign::Pocket": "add_pocket",
     "PartDesign::Revolution": "add_revolution",
     "PartDesign::Groove": "add_groove",
-    "PartDesign::Fillet": "add_fillet",
-    "PartDesign::Chamfer": "add_chamfer",
-    "PartDesign::Draft": "add_draft",
-    "PartDesign::Thickness": "add_thickness",
     "PartDesign::Hole": "add_hole",
 }
 REPLAYABLE_TYPES.update(
@@ -67,12 +63,7 @@ UNREPLAYABLE_OPS = {
 #: Fonctions qui portent un indice d'arête ou de face — la garde s'applique.
 #: Dérivé du catalogue (``indexed=True``), plus les fonctions pas encore
 #: décrites.
-INDEXED_TYPES = INDEXED | frozenset({
-    "PartDesign::Fillet",
-    "PartDesign::Chamfer",
-    "PartDesign::Draft",
-    "PartDesign::Thickness",
-})
+INDEXED_TYPES = INDEXED | frozenset()
 
 #: Plafond d'instances d'une répétition variable — mesuré jusqu'à 200
 #: par le spike ; 500 laisse de la marge sans attente illimitée.
@@ -571,52 +562,6 @@ def _replay_feature(kernel, feat, sketch_map, substitutions):
             axis=feat.get("axis") or "vertical",
             reversed=bool(feat.get("reversed")),
             midplane=bool(feat.get("midplane")))
-        return
-    if type_id == "PartDesign::Fillet":
-        radius = _substituted(feat, substitutions, "Radius")
-        if feat["edges"]:
-            kernel.add_fillet(radius=radius, edges=feat["edges"])
-        elif feat["faces"]:
-            kernel.add_fillet(radius=radius, face=feat["faces"][0])
-        else:
-            raise KernelError(
-                "congé sans arête ni face : {}".format(feat["name"]))
-        return
-    if type_id == "PartDesign::Chamfer":
-        size = _substituted(feat, substitutions, "Size")
-        kind = feat.get("chamfer_type") or "egale"
-        extra = {}
-        if kind == "deux":
-            extra["size2"] = _substituted(feat, substitutions, "Size2")
-            extra["chamfer_type"] = "deux"
-            extra["flip"] = bool(feat.get("flip"))
-        elif kind == "angle":
-            extra["angle"] = _substituted(feat, substitutions, "Angle")
-            extra["chamfer_type"] = "angle"
-            extra["flip"] = bool(feat.get("flip"))
-        if feat["edges"]:
-            kernel.add_chamfer(size=size, edges=feat["edges"], **extra)
-        elif feat["faces"]:
-            kernel.add_chamfer(size=size, face=feat["faces"][0], **extra)
-        else:
-            raise KernelError(
-                "chanfrein sans arête ni face : {}".format(feat["name"]))
-        return
-    if type_id == "PartDesign::Draft":
-        if not feat["faces"]:
-            raise KernelError(
-                "dépouille sans face : {}".format(feat["name"]))
-        kernel.add_draft(
-            face=feat["faces"][0],
-            angle=_substituted(feat, substitutions, "Angle"))
-        return
-    if type_id == "PartDesign::Thickness":
-        if not feat["faces"]:
-            raise KernelError("coque sans face : {}".format(feat["name"]))
-        kernel.add_thickness(
-            faces=feat["faces"],
-            thickness=_substituted(feat, substitutions, "Value"),
-            outward=not feat["reversed"])
         return
     if type_id == "PartDesign::Hole":
         # add_hole consomme _latest_sketch — le profil a été cloné juste avant.

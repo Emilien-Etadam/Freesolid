@@ -212,9 +212,6 @@ OPS: dict[str, tuple[str, ...]] = {
     "rebuild_errors": (),              # lecture : fonctions en erreur
     "set_comment": _Req(("feature", str), optional={"text": str}),
     "set_hidden": _Req(("objects", list), optional={"hidden": bool}),
-    "add_vertex_chamfer": _Req(("distances", list), optional={
-        "point": list, "vertex": int}),
-    "edit_vertex_chamfer": _Req(("feature", str), ("distances", list)),
     "edge_chain": _Req(("edge", int), optional={"mode": str, "face": int}),
     "sketch_set_plane": _Req(("sketch", str), optional={
         "plane": str, "datum": str, "face": int}),
@@ -234,13 +231,6 @@ OPS: dict[str, tuple[str, ...]] = {
     # Sans profondeur ni condition = à travers tout.
     "add_pocket": _Req(optional={"length": float, "through": bool,
                                  "contours": list, **_EXTRUDE_OPTIONAL}),
-    "add_fillet": _Req(("radius", float)),  # face OU edges (liste d'ids)
-    "add_chamfer": _Req(("size", float), optional={
-        "size2": float,          # deux distances
-        "angle": float,          # distance et angle, degrés
-        "chamfer_type": str,     # egale | deux | angle
-        "flip": bool,            # échange les deux côtés
-    }),  # face OU edges
     # Palier 2 — fonctions volumiques, aucune interaction nouvelle.
     "add_revolution": _Req(optional={
         "angle": float,          # degrés, défaut 360
@@ -274,12 +264,6 @@ OPS: dict[str, tuple[str, ...]] = {
                                         "edge": int, "angle": float,
                                         "reversed": bool}),
                                        # optional: angle (°), axis, features
-    # face (une) ou faces (plusieurs) ; outward : coque vers l'extérieur.
-    "add_thickness": _Req(("thickness", float),
-                          optional={"face": int, "faces": list,
-                                    "outward": bool}),
-    "add_draft": _Req(("face", int), ("angle", float)),
-                                       # optional: neutral (XY|XZ|YZ)
     # Phase B — références et ossature.
     "add_datum_plane": (),             # optional: base (XY|XZ|YZ) | face, offset, angle
     "add_loft": _Req(("sketches", list)),  # optional: subtractive, ruled, closed

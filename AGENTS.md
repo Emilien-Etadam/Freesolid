@@ -16,8 +16,10 @@ corps de fonctions / méthodes.
 - Installé via micromamba dans l'environnement `freecad`.
   **La version de référence est `engine/platform.py` (`FREECAD`)** — une
   seule source, lue par le selftest et par `.github/workflows/ci.yml`.
-  Binaire micromamba : `~/.local/bin/micromamba` (racine par défaut
-  `~/micromamba`, donc `MAMBA_ROOT_PREFIX` n'a pas besoin d'être exporté).
+  Binaire micromamba : `~/.local/bin/micromamba`. Sa racine par défaut
+  dépend de sa version : `~/.local/share/mamba` depuis micromamba 2.0,
+  `~/micromamba` avant (`micromamba info` l'affiche). Dans les deux cas,
+  `MAMBA_ROOT_PREFIX` n'a pas besoin d'être exporté.
 - Lancer une commande FreeCAD :
   `~/.local/bin/micromamba run -n freecad freecadcmd <script.py>`
 - **Repli 1.0.x** via le kernel (`setJointConnectors` puis propriétés

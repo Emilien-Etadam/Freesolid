@@ -424,14 +424,6 @@
   button:disabled:hover { border-color: var(--line); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .ribbon-tip { display: inline-flex; }
-  #gem-diametre-readout {
-    min-width: 5.8em;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
-    color: var(--ink);
-    user-select: none;
-    white-space: nowrap;
-  }
   button img { width: 16px; height: 16px; display: block; pointer-events: none; }
   header button, #sketchbar button,
   #viewbar > button, #viewbar .view-drop > button {
@@ -717,21 +709,6 @@
     border-color: var(--success-soft);
     background: color-mix(in srgb, var(--success-soft) 8%, transparent);
   }
-
-  #gem-hud {
-    position: absolute; top: 10px; left: 10px; z-index: 4;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-l);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--text-s);
-    line-height: 1.45;
-    color: var(--ink);
-    pointer-events: none;
-    min-width: 11em;
-  }
-  #gem-hud[hidden] { display: none; }
-  #gem-hud .negative { color: var(--error); }
 
   #graph-view {
     display: none;

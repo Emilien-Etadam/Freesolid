@@ -138,7 +138,7 @@ def test_run_op_feeds_progress_then_clears(monkeypatch):
         return {"ok": True, "result": {"tree": True}}
 
     monkeypatch.setattr(kernel_mod, "dispatch", fake_dispatch)
-    response = server.run_op("add_boolean", {"tool": "Semis"})
+    response = server.run_op("add_boolean", {"tool": "Corps001"})
     assert response == {"ok": True, "result": {"tree": True}}
     assert seen == ["add_boolean"]
     idle = server._progress_snapshot()

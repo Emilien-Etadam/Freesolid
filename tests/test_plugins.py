@@ -44,6 +44,15 @@ def test_parse_manifest_valid():
     assert parsed["ops"] == {}
 
 
+def test_parse_manifest_accepte_le_kind_nom():
+    parsed = parse_manifest(
+        _manifest(ops={"poser": {"requis": {"piece": "nom"}}}), "alpha")
+    assert parsed["ops"]["poser"]["requis"] == {"piece": "nom"}
+    with pytest.raises(PluginError, match="inconnu"):
+        parse_manifest(
+            _manifest(ops={"poser": {"requis": {"piece": "texte"}}}), "alpha")
+
+
 def test_parse_manifest_refuses_module_dotdot():
     with pytest.raises(PluginError, match="module"):
         parse_manifest(_manifest(module="foo..bar"), "alpha")
@@ -104,7 +113,7 @@ def test_registry_hook_error_is_noted_and_others_run():
     registre = Registry(nom="alpha")
 
     def boom(_kernel):
-        raise RuntimeError("le semis a échoué")
+        raise RuntimeError("le crochet a échoué")
 
     def ok(_kernel):
         seen.append("ok")
@@ -114,22 +123,22 @@ def test_registry_hook_error_is_noted_and_others_run():
     registre.run_after_recompute(object())
     assert seen == ["ok"]
     assert registre.errors
-    assert "le semis a échoué" in registre.errors[0]
+    assert "le crochet a échoué" in registre.errors[0]
 
 
 def test_registry_tree_key_collision_raises():
     registre = Registry(nom="alpha")
-    registre.tree_contribution(lambda _k: {"gems": [1]})
-    registre.tree_contribution(lambda _k: {"gems": [2]})
-    with pytest.raises(PluginError, match="gems"):
+    registre.tree_contribution(lambda _k: {"pieces": [1]})
+    registre.tree_contribution(lambda _k: {"pieces": [2]})
+    with pytest.raises(PluginError, match="pieces"):
         registre.contribute_tree(object(), {})
 
 
 # -- surface plugin (P047 / P048) -----------------------------------------
 
 # Douze membres : neuf du noyau, deux aides de selftest, et ``state``
-# sur le registre. Épinglés ici parce que la bijouterie partira dans un
-# dépôt privé — la CI publique ne pourra plus voir un rename.
+# sur le registre. Épinglés ici parce que les plugins vivent hors du
+# dépôt — la CI publique ne verrait pas un rename les casser.
 _SURFACE_PLUGIN = (
     "_app", "_body", "_doc", "_face_mesh", "_recompute",
     "_report_progress", "_require_body", "_require_doc", "get_tree",
@@ -151,8 +160,10 @@ def test_surface_plugin_reste_disponible():
 
 
 def test_le_noyau_n_importe_rien_du_plugin():
-    """Le jour du git mv, aucun import ne doit se briser."""
+    """Le noyau n'importe ni ``plugins``, ni un plugin posé dedans."""
     root = Path(__file__).resolve().parents[1] / "engine"
+    installes = {item.name for item in (root.parent / "plugins").iterdir()
+             if item.is_dir()}
     offenders = []
     for path in sorted(root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -162,22 +173,13 @@ def test_le_noyau_n_importe_rien_du_plugin():
                 names = [alias.name for alias in node.names]
             elif isinstance(node, ast.ImportFrom):
                 module = node.module or ""
-                if node.level:
-                    if module == "gems" or module.startswith("gems."):
-                        names.append("engine.gems")
-                    if not module:
-                        for alias in node.names:
-                            if alias.name == "gems":
-                                names.append("engine.gems")
-                else:
+                if not node.level:
                     names.append(module)
                     if module == "engine":
                         for alias in node.names:
                             names.append("engine." + alias.name)
             for name in names:
-                if (name == "engine.gems" or name.startswith("engine.gems.")
-                        or name == "bijouterie"
-                        or name.startswith("bijouterie.")
+                if (name.split(".")[0] in installes
                         or name == "plugins"
                         or name.startswith("plugins.")):
                     rel = path.relative_to(root.parent)
@@ -275,6 +277,40 @@ def test_hooks_personne_ne_reclame():
     assert bouchon.run_boolean_tool(kernel, obj) is None
     assert vide.run_deletes_feature(kernel, obj) is False
     assert bouchon.run_deletes_feature(kernel, obj) is False
+    assert vide.run_internal_object(kernel, obj) is False
+    assert bouchon.run_internal_object(kernel, obj) is False
+    assert vide.run_tree_node(kernel, obj) is False
+    assert bouchon.run_tree_node(kernel, obj) is False
+
+
+def test_reconnaissance_un_plugin_reclame_l_objet():
+    """Le premier qui réclame suffit ; ``extend`` garde les crochets."""
+    marque = object()
+    sub = Registry(nom="alpha")
+    sub.internal_object(lambda _k, obj: obj is marque)
+    sub.tree_node(lambda _k, obj: obj is marque)
+    registry = Registry()
+    registry.extend(_bouchon())
+    registry.extend(sub)
+    assert registry.run_internal_object(None, marque) is True
+    assert registry.run_tree_node(None, marque) is True
+    assert registry.run_internal_object(None, object()) is False
+    assert registry.run_tree_node(None, object()) is False
+
+
+def test_objet_interne_d_un_plugin_hors_de_l_arbre():
+    """``_is_internal_tool`` demande aux plugins, sans propriété du noyau."""
+    from engine.kernel import Kernel
+
+    class _Outil:
+        PropertiesList = ()
+
+    outil = _Outil()
+    kernel = Kernel()
+    kernel._plugins = Registry()
+    assert kernel._is_internal_tool(outil) is False
+    kernel._plugins.internal_object(lambda _k, obj: obj is outil)
+    assert kernel._is_internal_tool(outil) is True
 
 
 def _write_python_plugin(root, nom, register_body="pass", with_js=True):
@@ -361,22 +397,22 @@ def _registre_charge(nom, indicateurs):
 
 
 def test_plugin_exige_et_present_ne_manque_pas():
-    registry = _registre_charge("bijouterie", 24)
-    assert missing_selftest_plugins(registry, ["bijouterie"]) == []
+    registry = _registre_charge("exemple", 24)
+    assert missing_selftest_plugins(registry, ["exemple"]) == []
 
 
 def test_plugin_exige_mais_absent_est_signale():
     """Le cas qui rendait la CI du dépôt privé verte pour rien."""
-    manquants = missing_selftest_plugins(Registry(), ["bijouterie"])
-    assert manquants == ["bijouterie : non chargé"]
+    manquants = missing_selftest_plugins(Registry(), ["exemple"])
+    assert manquants == ["exemple : non chargé"]
 
 
 def test_plugin_charge_mais_muet_est_signale():
     """Chargé ne suffit pas : le noyau a pu bouger sous ses étapes."""
-    registry = _registre_charge("bijouterie", 0)
-    manquants = missing_selftest_plugins(registry, ["bijouterie"])
+    registry = _registre_charge("exemple", 0)
+    manquants = missing_selftest_plugins(registry, ["exemple"])
     assert manquants == [
-        "bijouterie : chargé mais n'a contribué aucun indicateur"]
+        "exemple : chargé mais n'a contribué aucun indicateur"]
 
 
 def test_aucune_exigence_ne_manque_jamais_rien():
@@ -386,8 +422,8 @@ def test_aucune_exigence_ne_manque_jamais_rien():
 
 def test_registre_absent_avec_exigence_est_un_manque():
     """Ne pas savoir vérifier n'est pas la même chose que vérifier."""
-    assert missing_selftest_plugins(None, ["bijouterie"]) == [
-        "bijouterie : non chargé"]
+    assert missing_selftest_plugins(None, ["exemple"]) == [
+        "exemple : non chargé"]
 
 
 def test_chaine_complete_plugin_casse_donne_un_manque(tmp_path):

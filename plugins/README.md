@@ -10,7 +10,7 @@ Déposez son répertoire ici, et redémarrez le moteur :
 
 ```
 plugins/
-└── bijouterie/
+└── exemple/
     ├── plugin.json     manifeste : nom, module, opérations, dossier statique
     ├── plugin.py       enregistre crochets, opérations et contributions
     └── ui/             le JavaScript, servi sous /plugins/<nom>/…
@@ -25,10 +25,26 @@ possibles.
 
 Le registre (`engine/plugins.py`) offre, côté moteur, cinq points de
 contribution — `after_recompute`, `tree_contribution`, `mesh_contribution`,
-`op`, `selftest_step` — et trois crochets de reconnaissance :
-`tolerates_invalid`, `boolean_tool`, `deletes_feature`. Côté client
-(`app/plugins.js`) : `ribbon`, `feature`, `hud`, `key`, `treeRow`,
-`viewport`, `pointer`.
+`op`, `selftest_step` — et cinq crochets de reconnaissance :
+`tolerates_invalid`, `boolean_tool`, `deletes_feature`, `internal_object`
+(un objet du plugin, hors de l'arbre) et `tree_node` (un nœud que le plugin
+montre dans sa section de l'arbre). Le noyau ne lit aucune propriété propre
+à un plugin : il lui pose la question.
+
+Les paramètres d'une opération se déclarent dans `plugin.json` avec les
+types `int`, `float`, `str`, `nom` (texte non vide), `list`, `dict` ou
+`bool`.
+
+Côté client (`app/plugins.js`) : `ribbon`, `feature`, `hud`, `key`,
+`treeRow`, `viewport`, `pointer`, et trois points pour s'appuyer sur le
+noyau sans le dupliquer :
+
+- `featureButton(id, coreButton)` — un bouton de l'onglet du plugin ouvre
+  une fonction du noyau (par exemple Combiner, `btn-boolean`) ;
+- `combineTools({ options, confirm, finished })` — des corps outils de plus
+  pour Combiner, une confirmation avant une combinaison longue, et sa durée
+  une fois finie (`app/combine.js`) ;
+- `progress(handler)` — chaque sondage d'avancement d'une opération longue.
 
 La surface privée du noyau qu'un plugin a le droit d'appeler est
 **épinglée par un test** — `tests/test_plugins.py::test_surface_plugin_reste_disponible`.
@@ -70,8 +86,8 @@ comme pour n'importe quel paquet.
 Le manifeste, lui, reste validé et jailé : ni `..`, ni chemin absolu, ni
 séparateur dans `module` ou `statique`.
 
-## Le premier plugin
+## Où vivent les plugins
 
-**Bijouterie** — pierres aimantées sur les surfaces, réglage du diamètre au
-clavier, écart entre pierres affiché, combinaison booléenne.
-Sa conception est documentée dans [`docs/bijouterie.md`](../docs/bijouterie.md).
+Chaque plugin a son propre dépôt, et sa CI clone FreeSolid pour lancer la
+suite combinée. Ce répertoire ne versionne que ce README : un plugin posé
+ici est ignoré par git (`.gitignore`).

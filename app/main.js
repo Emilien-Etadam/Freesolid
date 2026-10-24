@@ -14,11 +14,8 @@ import {
   readDisplay, writeDisplay, displayEffects,
 } from "./display.js";
 import { FEATURES, resolveProfileSketch } from "./features.js";
-import {
-  formatProgressStatus,
-  noteProgressForCalibration,
-  rememberCombineFinished,
-} from "./progress.js";
+import { formatProgressStatus } from "./progress.js";
+import { addCombineTools, combineFinished } from "./combine.js";
 import { installContextMenu } from "./contextmenu.js";
 import { installMeasure } from "./measure.js";
 import { VIEW_KEYS, VIEWS, installViewCube } from "./viewcube.js";
@@ -139,7 +136,7 @@ async function pollProgressOnce(gen) {
     const progress = await call("progress");
     if (gen !== progressGen || statusSticky) return;
     const now = Date.now() / 1000;
-    noteProgressForCalibration(progress, now);
+    pluginRuntime?.dispatchProgress(progress, now);
     const text = formatProgressStatus(progress, now);
     if (text) say(text);
   } catch {
@@ -333,11 +330,6 @@ window.__freesolidDebug = {
   get sketchScreenPoint() { return sketchScreenPoint(); },
   get surfaceMeshCount() { return surfaceMeshes.length; },
   get surfaceScreenPoint() { return surfaceScreenPoint(); },
-  get gemHudText() {
-    const hud = document.getElementById("gem-hud");
-    if (!hud || hud.hidden) return "";
-    return hud.innerText.replace(/\s+/g, " ").trim();
-  },
   get featureDimCount() { return featureDimSprites.length; },
   /** Centre de rotation projeté à l'écran, ou null. */
   get rotationPivotScreen() {
@@ -1441,6 +1433,14 @@ function addPluginFeature(entry) {
   bindFeature(entry);
 }
 
+/** Un bouton de plugin ouvre une fonction du noyau, sans la dupliquer. */
+function addPluginFeatureButton(id, coreButton) {
+  const entry = FEATURES.find((feat) => feat.button === coreButton);
+  if (!entry) return;
+  entry.buttons = [...(entry.buttons ?? [entry.button]), id];
+  bindFeature(entry);
+}
+
 function addPluginHud(node) {
   if (!(node instanceof Node)) return;
   const viewbar = document.getElementById("viewbar");
@@ -2406,13 +2406,12 @@ function openFeaturePanel(entry, sketchOverride) {
         if (question && !confirm(question)) return;
       }
       const run = entry.refresh === "any" ? refreshAny : refresh;
-      const gem = (ctx.lastTree?.gems ?? []).find(
-        (item) => item.name === built.params?.tool);
-      const stoneCount = gem?.count;
+      const before = ctx.lastTree;
       const started = Date.now();
       const promise = call(built.op, built.params).then((tree) => {
-        if (built.op === "add_boolean" && stoneCount) {
-          rememberCombineFinished(stoneCount, (Date.now() - started) / 1000);
+        if (built.op === "add_boolean") {
+          combineFinished(before, built.params?.tool,
+                          (Date.now() - started) / 1000);
         }
         return tree;
       });
@@ -2698,6 +2697,8 @@ pluginRuntime = createPluginApi({
   scene, camera, controls, renderer,
   addRibbon: addPluginRibbon,
   addFeature: addPluginFeature,
+  addFeatureButton: addPluginFeatureButton,
+  addCombineTools,
   addHud: addPluginHud,
 });
 

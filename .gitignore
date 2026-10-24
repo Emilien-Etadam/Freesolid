@@ -14,3 +14,6 @@ desktop/src-tauri/target/
 desktop/src-tauri/freecad/target/
 desktop/src-tauri/gen/
 scripts/lint/node_modules/
+# Les plugins vivent dans leur propre dépôt (plugins/README.md).
+/plugins/*
+!/plugins/README.md

@@ -19,8 +19,8 @@ class _Req(tuple):
 
     ``_Req(("length", float), "value")`` equals ``("length", "value")`` so
     existing ``OPS[op] == (...)`` assertions keep working. ``.kinds`` maps
-    typed names to ``float``, ``int``, ``str``, ``list``, ``dict`` or
-    ``bool``. ``.optional`` maps optional names to the same kinds — present
+    typed names to ``float``, ``int``, ``str``, ``list``, ``dict``,
+    ``bool`` or ``Name`` (non-empty ``str``). ``.optional`` maps optional names to the same kinds — present
     params are type-checked, absent ones are not required. Bare names are
     presence-only (no type check, no coercion).
     """
@@ -54,13 +54,21 @@ _NONEMPTY_STR_PARAMS = frozenset({
     "op", "feature", "sketch", "body", "tool", "component",
     "component1", "component2", "name", "label", "path", "prop",
     "profile", "spine", "surface", "kind", "a_kind", "b_kind",
-    "gem", "gemme",
 })
+
+
+class Name(str):
+    """Kind ``nom`` d'un manifeste de plugin : texte non vide.
+
+    Jamais instancié — il marque seulement un paramètre dans ``OPS``,
+    comme ``_NONEMPTY_STR_PARAMS`` le fait pour les ops du noyau.
+    """
 
 _TYPE_LABELS = {
     float: "nombre",
     int: "entier",
     str: "texte",
+    Name: "texte",
     list: "liste",
     dict: "objet",
     bool: "booléen",
@@ -337,9 +345,8 @@ OPS: dict[str, tuple[str, ...]] = {
     "rebuild": (),                     # recalcul forcé de tout l'arbre
     "tessellate": (),                  # optional: deviation
     "tessellate_edges": (),            # optional: deviation — picking d'arêtes
-    # Les ops bijouterie (place_gem, …) viennent du plugin : fusionnées
-    # dans OPS au chargement. Tant que le plugin est dans le dépôt, le
-    # snapshot les voit. Un plugin ne peut pas redéfinir une op du noyau.
+    # Les ops des plugins viennent de leur manifeste : fusionnées dans
+    # OPS au chargement. Un plugin ne peut pas redéfinir une op du noyau.
     # M2 — sketch editing. Geometry travels in sketch-local 2D; the state
     # carries the placement matrix that positions it in 3D.
     "sketch_start": (),                # optional: face | plane (XY|XZ|YZ) | datum (nom)
@@ -489,6 +496,7 @@ _PLUGIN_KINDS = {
     "int": int,
     "float": float,
     "str": str,
+    "nom": Name,
     "list": list,
     "dict": dict,
     "bool": bool,
@@ -581,10 +589,11 @@ def _check_param(name: str, kind, value) -> None:
                     "paramètre {} : entier entre {} et {} attendu, reçu {}"
                     .format(name, _COUNT_MIN, _COUNT_MAX, _received(value)))
         return
-    if kind is str:
+    if kind is str or kind is Name:
         if not isinstance(value, str):
             _type_error(name, str, value)
-        if name in _NONEMPTY_STR_PARAMS and not value.strip():
+        if ((kind is Name or name in _NONEMPTY_STR_PARAMS)
+                and not value.strip()):
             raise ProtocolError(
                 "paramètre {} : nom non vide attendu, reçu {}".format(
                     name, _received(value)))
@@ -896,6 +905,14 @@ def visible_dep_subs(dep_subs, known_names):
     return result
 
 
+#: Clés que ``get_tree`` émet lui-même. Les autres viennent des plugins
+#: (``tree_contribution``).
+CORE_TREE_KEYS = frozenset({
+    "body", "tip", "bodies", "planes", "features", "surfaces",
+    "variables", "configurations",
+})
+
+
 def dangling_deps(tree):
     """Arêtes de ``tree`` dont la cible n'est aucun nœud du payload.
 
@@ -907,7 +924,8 @@ def dangling_deps(tree):
     de noms qui a servi à le filtrer : c'est précisément là que les deux
     peuvent diverger. Toute section porteuse de noms compte donc comme
     cible légitime : ``features``, ``surfaces`` et leurs ``children``,
-    ``planes``, ``bodies``, ``gems``.
+    ``planes``, ``bodies`` — et chaque liste qu'un plugin ajoute au
+    payload (une clé hors de ``CORE_TREE_KEYS``).
 
     Fonction pure sur un dictionnaire — pas d'import FreeCAD.
     """
@@ -923,8 +941,10 @@ def dangling_deps(tree):
             for child in walk(item.get("children")):
                 yield child
 
-    sections = (tree.get("features"), tree.get("surfaces"),
-                tree.get("planes"), tree.get("bodies"), tree.get("gems"))
+    sections = [tree.get("features"), tree.get("surfaces"),
+                tree.get("planes"), tree.get("bodies")]
+    sections += [value for key, value in tree.items()
+                 if key not in CORE_TREE_KEYS and isinstance(value, list)]
     known = set()
     for section in sections:
         for item in walk(section):

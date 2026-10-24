@@ -1,5 +1,6 @@
 """Langue des messages du moteur — pur Python, sans FreeCAD."""
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -80,6 +81,44 @@ def test_catalog_keys_exist_in_engine_sources():
     sources = _engine_sources()
     orphans = [key for key in _EN if key not in sources]
     assert orphans == []
+
+
+def _message_templates(node):
+    """Gabarits d'un message : ``"…"``, ``"…".format(…)``, littéraux
+    concaténés, chaque branche d'un ``a if c else b``, chaque valeur d'un
+    ``{…}[clé]``. Un message calculé (texte d'une exception, aide) : rien."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value]
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "format"):
+        return _message_templates(node.func.value)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _message_templates(node.left)
+        right = _message_templates(node.right)
+        return [left[0] + right[0]] if len(left) == len(right) == 1 else []
+    if isinstance(node, ast.IfExp):
+        return _message_templates(node.body) + _message_templates(node.orelse)
+    if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Dict):
+        return [text for value in node.value.values
+                for text in _message_templates(value)]
+    return []
+
+
+def test_every_kernel_error_message_is_translated():
+    """Chaque message de ``KernelError`` écrit en toutes lettres dans le
+    moteur a son entrée anglaise, exacte ou gabarit."""
+    missing = []
+    for path in sorted((_ROOT / "engine").rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and node.args
+                    and getattr(node.func, "id", None) == "KernelError"):
+                continue
+            for text in _message_templates(node.args[0]):
+                if text.replace("{!r}", "{}") not in _EN:
+                    missing.append("{}:{} {}".format(
+                        path.relative_to(_ROOT).as_posix(), node.lineno, text))
+    assert missing == []
 
 
 def test_catalog_keeps_placeholder_counts():

@@ -114,7 +114,9 @@ French texts, translated entry by entry in `app/lang/en.json` (interface,
 placeholders). An untranslated text shows in French. Adding a language
 takes one JSON file on each side, plus its code in `app/settings.js`
 (`LANGS`) and `engine/i18n.py` (`LANGS`). Tests reject orphan entries and
-require a translation for every ribbon label and panel title.
+require a translation for every ribbon label, every panel text (title,
+groups, fields, hints, choices, refusals) and every engine error message
+written as a literal.
 
 ## Architecture
 

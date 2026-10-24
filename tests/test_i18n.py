@@ -57,6 +57,20 @@ def test_labels_follow_the_language():
     assert i18n.label("Fixé — {}", "en").format("Pied") == "Fixed — Pied"
 
 
+def test_fillet_label_follows_the_language(monkeypatch):
+    """Le congé se nomme dans la langue de l'interface, comme le chanfrein
+    (« Congé » restait posé en dur, même en anglais)."""
+    from engine.kernel import Kernel
+    labels = []
+    for lang in ("fr", "en"):
+        kernel = Kernel()
+        kernel.lang = lang
+        monkeypatch.setattr(kernel, "_dressup",
+                            lambda type_id, label, *a, **kw: labels.append(label))
+        kernel.add_fillet(2, face=0)
+    assert labels == ["Congé", "Fillet"]
+
+
 def test_unknown_language_has_no_catalog():
     assert i18n.catalog("klingon") == []
     assert i18n.catalog("fr") == []

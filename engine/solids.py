@@ -1205,7 +1205,7 @@ class SolidsMixin:
         return self.get_tree()
 
     def add_fillet(self, radius, face=None, edges=None):
-        return self._dressup("PartDesign::Fillet", "Congé",
+        return self._dressup("PartDesign::Fillet", self._t("Congé"),
                              "Radius", radius, face=face, edges=edges)
 
     #: Jeton du panneau → énumération FreeCAD ``ChamferType``.

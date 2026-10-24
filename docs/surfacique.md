@@ -18,8 +18,9 @@ Une commande est **faite** quand les six points tiennent :
 3. **Réédition** — double-clic dans l'arbre : les paramètres reviennent et
    la forme se reconstruit ; les formes figées sont recalculées à chaque
    reconstruction quand leur source change.
-4. **Selftest** — au moins un indicateur dans `engine/selftest.py`
-   (FreeCAD réel, CI).
+4. **Selftest** — au moins un indicateur dans `engine/selftest/surfaces.py`
+   (FreeCAD réel, CI), l'étape inscrite dans la table de
+   `engine/selftest/__init__.py`.
 5. **Smoke** — le bouton ouvre son panneau sans erreur console
    (`scripts/smoke/smoke.js`, CI).
 6. **Clic** — le geste complet vérifié à la souris dans le navigateur.

@@ -4,6 +4,10 @@ Décisions du 2026-08-15, à la suite du relevé Chili3D / Nodes de
 [`landscape.md`](landscape.md). Ce document fixe **ce qu'on construit et
 dans quel ordre** ; il ne décrit pas encore d'UI.
 
+Les renvois `kernel.py:ligne` désignent le code de `2865fe0` (2026-08-15),
+sauf `kernel.py:2341`, ajouté le 2026-08-20 : celui de `d07201f`. Ils ne
+suivent pas le code courant.
+
 Le parti pris tient en une phrase : **rien ne se met à côté du document — ça
 s'y range, ou ça n'existe pas.** Ce qui donne deux objets distincts, à deux
 niveaux, et jamais un modèle parallèle :

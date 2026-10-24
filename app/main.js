@@ -4,11 +4,11 @@
 import * as THREE from "three";
 import { createSketchMode, createDimSprite } from "./sketch.js";
 import {
-  dimEditPayload, dimLabel, filletRadiusLabel, openDimEditor, sketchDimAnchor,
+  filletRadiusLabel,
 } from "./dims.js";
 import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
-import { eventToNdc, ndcToScreen } from "./screen.js";
+import { ndcToScreen } from "./screen.js";
 import { readScene } from "./theme.js";
 import {
   readDisplay, writeDisplay, displayEffects,
@@ -44,9 +44,9 @@ import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
 import { rememberRecent } from "./welcome.js";
 import {
-  SELECT_KINDS, boxMode, coverBounds, filterActive, isDrag, middleAction,
-  normalizeRect, nudgeView, pickInBox, readReverseWheel, readSelectFilter,
-  writeReverseWheel, writeSelectFilter, zoomSpeedFor,
+  SELECT_KINDS, filterActive,
+  nudgeView, readReverseWheel, readSelectFilter,
+  writeSelectFilter,
 } from "./navigation.js";
 
 // Noms des types du filtre de sélection (barre d'état).
@@ -67,10 +67,6 @@ const prompt = (message, fallback) => window.prompt(t(message), fallback);
 const confirm = (message) => window.confirm(t(message));
 import { installCoreRibbons } from "./ribbon.js";
 import RIBBON_LAYOUT from "./ribbon.json" with { type: "json" };
-import {
-  isGraphFeature,
-  isRepeatFeature,
-} from "./graph.js";
 import { edgeSnapPoints } from "./pointsnap.js";
 import { installCurve3d } from "./curve3d.js";
 import { installSketch3d } from "./sketch3d.js";

@@ -33,7 +33,10 @@ REPLAYABLE_WITH_EXTRA = {
     "PartDesign::AdditiveHelix": "add_helix — Pitch/Height absents de get_params",
 }
 
-#: Les 23 add_* : ce qui n'a pas de réciproque TypeId + cotes + profil.
+#: Les add_* sans réciproque TypeId + cotes + profil, tels que le spike
+#: N009 les a relevés le 2026-08-21 (sur les 23 add_* d'alors), plus
+#: add_repeat_feature (N010). Figé : il sort dans ``n9_spike_rapport``. Le
+#: catalogue reprend ces raisons (``no_replay``) et donne les suivantes.
 UNREPLAYABLE_OPS = {
     "add_rect_sketch": "l'esquisse se copie, elle ne se reconstitue pas",
     "add_datum_plane": "AttachmentSupport, pas une cote",

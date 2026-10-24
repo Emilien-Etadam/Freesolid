@@ -60,9 +60,10 @@ Plus bas, un exemple complet : la Coque (`add_thickness`).
   l'explication dans `engine/guard.py` (`_OPAQUE_BY_KIND`).
 
 Chaque message de `KernelError` reçoit sa ligne dans
-`engine/lang/en.json`. Les `{}` y deviennent des gabarits. Côté moteur,
-aucun test ne réclame la traduction d'un message de `KernelError` ; seules
-les entrées orphelines sont refusées. C'est donc à vous d'y penser.
+`engine/lang/en.json`. Les `{}` y deviennent des gabarits.
+`tests/test_i18n.py` refuse un message écrit en toutes lettres qui n'a pas
+d'entrée. Un message calculé, comme le texte d'une exception, lui
+échappe.
 
 **5. L'instantané du protocole.**
 
@@ -121,10 +122,11 @@ correspond ; `app/features.js` rassemble les familles.
 
 **11–12.** Le libellé d'annulation est en français ; sa traduction et
 celles de tous les textes du panneau vont dans `app/lang/en.json`. Les
-tests vérifient les textes du ruban, les titres de panneau et les libellés
-d'annulation. Les groupes, les champs et les aides sont traduits par
-`panel.js`, les refus par `say()` ou `t()`, mais aucun test ne les
-compte.
+tests vérifient :
+
+- les textes du ruban ;
+- ceux des panneaux : titre, groupes, champs, aides, choix et refus ;
+- les libellés d'annulation.
 
 ## Exemple complet : la Coque
 
@@ -279,8 +281,9 @@ Ce que chaque test refuse :
 - **`tests/test_ops_instantane.py`** et **`test_ops_snapshot_keys`**
   refusent un changement de protocole absent de l'instantané.
 - **Les tests i18n** (`tests/js/i18n.test.mjs`, `tests/test_i18n.py`)
-  refusent les entrées orphelines et une traduction manquante du ruban
-  ou d'un titre de panneau.
+  refusent les entrées orphelines. Ils refusent aussi une traduction
+  manquante : texte du ruban, texte d'un panneau, ou message de
+  `KernelError` écrit en toutes lettres.
 - **Le smoke** (`scripts/smoke/smoke.js`) refuse un bouton de `FEATURES`
   absent de `FEATURE_PANELS`, puis ouvre chaque panneau dans un vrai
   navigateur.

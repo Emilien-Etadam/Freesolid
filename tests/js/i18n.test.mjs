@@ -86,6 +86,54 @@ describe("dictionnaire anglais", () => {
     assert.deepEqual(missing, []);
   });
 
+  it("couvre les textes des panneaux : groupes, champs, aides, choix, refus", () => {
+    // Deux contextes : sans esquisse, puis avec une esquisse libre (des
+    // lignes n'apparaissent qu'avec un profil).
+    const sketch = { name: "Sketch", label: "Esquisse", type: "Sketcher::SketchObject" };
+    const contexts = [
+      { selection: () => null, selectedSketch: null, lastTree: { features: [] } },
+      { selection: () => null, selectedSketch: sketch, lastTree: { features: [sketch] } },
+    ];
+    const texts = () => {
+      const out = [];
+      const add = (button, text) => {
+        if (typeof text === "string" && text.trim()) out.push([button, text]);
+      };
+      for (const entry of FEATURES) {
+        add(entry.button, entry.note);
+        if (typeof entry.invalid === "string") add(entry.button, entry.invalid);
+        for (const ctx of contexts) {
+          for (const group of entry.groups(ctx) ?? []) {
+            add(entry.button, group.label);
+            for (const row of group.rows ?? []) {
+              add(entry.button, row.label);
+              add(entry.button, row.hint);
+              add(entry.button, row.placeholder);
+              if (row.type === "note") add(entry.button, row.text);
+              for (const [, label] of row.options ?? []) add(entry.button, label);
+            }
+          }
+          if (typeof entry.invalid === "function") {
+            let refusal = null;
+            try { refusal = entry.invalid({}, ctx); } catch { /* saisie vide sans objet */ }
+            add(entry.button, typeof refusal === "string" ? refusal : refusal?.text);
+          }
+        }
+      }
+      return out;
+    };
+    const fr = texts();
+    setLang("en");
+    const en = texts();
+    // Un texte fixe est traduit à l'affichage (panel.js, say()) : il lui
+    // faut son entrée. Un texte composé par t() change avec la langue. Un
+    // code sans minuscule (« REF-001 ») reste tel quel.
+    const missing = fr.filter(([, text], i) => !Object.hasOwn(EN, text)
+      && en[i]?.[1] === text && /[a-zà-ÿ]/.test(text))
+      .map(([button, text]) => `${button} : ${text}`);
+    assert.deepEqual([...new Set(missing)], []);
+  });
+
   it("garde les mêmes variables que le texte source", () => {
     const vars = (s) => (s.match(/\{\w+\}/g) ?? []).sort().join(",");
     const bad = Object.entries(EN).filter(([fr, en]) => vars(fr) !== vars(en));

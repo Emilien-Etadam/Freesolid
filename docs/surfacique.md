@@ -10,8 +10,8 @@ n'est repris de l'aide, des icônes ni des textes de l'éditeur.
 
 Une commande est **faite** quand les six points tiennent :
 
-1. **Moteur** — une op JSON déclarée dans `engine/protocol.py`, annulable
-   (`_TRANSACTIONAL`), qui refuse proprement une entrée impossible (message
+1. **Moteur** — une op JSON déclarée dans `engine/ops/surfaces.py`,
+   annulable (`undo=True`), qui refuse proprement une entrée impossible (message
    traduit dans `engine/lang/en.json`).
 2. **Interface** — un bouton du ruban (onglet Surfaces) avec icône
    originale, un panneau qui se remplit au clic dans la vue.

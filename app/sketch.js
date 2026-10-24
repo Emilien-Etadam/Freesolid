@@ -12,10 +12,10 @@ import { CLICK_TOOLS, OPEN_TOOLS, curvatureComb,
   polygonVertexFromApothem } from "./sketchtools.js";
 import {
   arcAngles, chainClickAction, distanceToEntity,
-  numericDrawTarget, numericFields, relationGlyphs,
+  relationGlyphs,
   sketchPreviewPoints,
 } from "./geom2d.js";
-import { fmtMm, num } from "./num.js";
+import { fmtMm } from "./num.js";
 import { eventToNdc, ndcToScreen } from "./screen.js";
 import { createSplineEditor2d } from "./splineedit2d.js";
 import {
@@ -34,6 +34,7 @@ import { installRelations } from "./sketch/relations.js";
 import { installEntites } from "./sketch/entites.js";
 import { installImage } from "./sketch/image.js";
 import { installPanneauOutil } from "./sketch/panneauoutil.js";
+import { installSaisie } from "./sketch/saisie.js";
 
 export { DIM_TEXT_PX, createDimSprite };
 
@@ -742,73 +743,12 @@ export function createSketchMode(deps) {
     return null;
   }
 
-  // Saisie numérique : taper un chiffre pendant le tracé ouvre, près du
-  // curseur, les cotes de l'entité (longueur et angle, rayon, largeur et
-  // hauteur). Tab passe au champ suivant, Entrée pose, Échap renonce.
-  let numericBox = null;
-
-  function closeNumericEntry() {
-    numericBox?.remove();
-    numericBox = null;
-  }
-
-  function openNumericEntry(firstKey) {
-    const pending = pendingDrawPoint();
-    const labels = numericFields(mode.tool);
-    if (!pending || !labels.length) return;
-    closeNumericEntry();
-    const host = renderer.domElement.parentElement;
-    const box = document.createElement("div");
-    box.className = "dim-modify sk-numeric";
-    box.dataset.ownKeys = "";
-    const inputs = labels.map((label, index) => {
-      const field = document.createElement("label");
-      field.append(t(label) + " ");
-      const input = document.createElement("input");
-      input.type = "text";
-      input.inputMode = "decimal";
-      if (index === 0) input.value = firstKey;
-      field.append(input);
-      box.append(field);
-      return input;
-    });
-    const rect = host.getBoundingClientRect();
-    const at = mode.lastMouse ?? { clientX: rect.left + rect.width / 2,
-                                   clientY: rect.top + rect.height / 2 };
-    box.style.left = `${at.clientX - rect.left + 16}px`;
-    box.style.top = `${at.clientY - rect.top + 18}px`;
-    host.appendChild(box);
-    numericBox = box;
-    const tool = mode.tool;
-    const apply = async () => {
-      const [a, b] = inputs.map((input) => num(input.value) ?? NaN);
-      const target = numericDrawTarget(tool, pendingDrawPoint(),
-        mode.lastLocal, a, b);
-      closeNumericEntry();
-      if (!target) {
-        say("Saisie numérique : valeur invalide", true);
-        return;
-      }
-      if (mode.tool !== tool) return;
-      clearInference();
-      if (previewLine) previewLine.visible = false;
-      const before = new Set((mode.state?.entities ?? []).map((e) => e.id));
-      await placeDrawPoint({ ...target, onPoint: false });
-      await dimTyped(tool, before, a, b);
-    };
-    box.addEventListener("keydown", (event) => {
-      event.stopPropagation();
-      if (event.key === "Enter") {
-        event.preventDefault();
-        apply();
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        closeNumericEntry();
-      }
-    });
-    inputs[0].focus();
-    inputs[0].setSelectionRange(firstKey.length, firstKey.length);
-  }
+  // Le corps est dans sketch/saisie.js.
+  Object.assign(sk, {
+    renderer, say, mode, clearInference, placeDrawPoint, pendingDrawPoint,
+    dimTyped,
+  });
+  const { closeNumericEntry, openNumericEntry } = installSaisie(sk);
 
   /** Les valeurs tapées deviennent des cotes de l'entité tracée : on a
    *  donné la dimension exacte, l'esquisse la garde. */

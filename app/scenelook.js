@@ -14,8 +14,8 @@ export function gridSpacing(radius) {
 /** Rayon (mm) où la grille commence à s'estomper, et celui où elle
  *  disparaît, autour du centre de la pièce. */
 export function gridFade(radius) {
-  const r = Math.max(radius, 20);
-  return { start: r * 1.6, end: r * 4 };
+  const r = Math.max(radius, 32);
+  return { start: r * 1.2, end: r * 2.6 };
 }
 
 // Lumières exprimées dans le repère de la caméra (x à droite, y en haut,
@@ -60,9 +60,9 @@ const GRID_FRAGMENT = /* glsl */ `
     vec2 a = abs(vWorld) / fwidth(vWorld);
     float axis = 1.0 - min(min(a.x, a.y), 1.0);
     vec3 color = uMinor;
-    float alpha = minor * 0.35;
-    if (major > 0.0) { color = mix(color, uMajor, major); alpha = max(alpha, major * 0.6); }
-    if (axis > 0.0) { color = mix(color, uAxis, axis); alpha = max(alpha, axis * 0.8); }
+    float alpha = minor * 0.2;
+    if (major > 0.0) { color = mix(color, uMajor, major); alpha = max(alpha, major * 0.38); }
+    if (axis > 0.0) { color = mix(color, uAxis, axis); alpha = max(alpha, axis * 0.6); }
     float fade = 1.0 - smoothstep(uFadeStart, uFadeEnd, distance(vWorld, uCenter));
     alpha *= fade;
     if (alpha < 0.01) discard;

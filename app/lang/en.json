@@ -1332,7 +1332,7 @@
  "Défaut": "Default",
  "Tableau des configurations": "Configuration table",
  "Tableau des configurations…": "Configuration table…",
- "Ajoutez d'abord une configuration (dossier Configurations de l'arbre)": "Add a configuration first (Configurations folder in the tree)",
+ "Ajoutez d'abord une configuration (onglet Configurations du gestionnaire)": "Add a configuration first (Configurations tab of the manager)",
  "Une ligne par cote ; la configuration active (✓) s'applique tout de suite.": "One row per dimension; the active configuration (✓) applies right away.",
  "Point relâché.": "Point released.",
  "Point P{n} : tirez-le, ou tirez les bouts de sa poignée (Alt : un seul côté).": "Point P{n}: drag it, or drag the ends of its handle (Alt: one side only).",

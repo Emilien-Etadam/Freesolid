@@ -452,8 +452,16 @@
     border: none; background: none; border-radius: var(--radius-m);
   }
   #viewbar button img { width: 18px; height: 18px; }
+  /* Icônes monochromes (fs_vb_*, trait sombre) : éclaircies en thème
+     sombre, la teinte ardoise gardée. */
+  :root:not([data-theme="light"]) #viewbar button img {
+    filter: invert(1) hue-rotate(180deg);
+  }
   #viewbar button:hover { background: var(--hover); }
-  #viewbar button.on { color: var(--accent); }
+  #viewbar button.on {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+  }
   .view-drop { position: relative; display: flex; }
   .view-menu {
     position: absolute; top: calc(100% + 6px); right: 0; z-index: 6;
@@ -638,7 +646,10 @@
     display: flex; align-items: center; justify-content: center;
     font-size: 10px; font-weight: 500; line-height: 1; color: var(--ink);
     background: color-mix(in srgb, var(--surface) 88%, transparent);
-    border: 1px solid var(--line); border-radius: 3px;
+    /* Bord lisible sur les deux fonds de scène (--line seul se fond
+       dans le dégradé sombre). */
+    border: 1px solid color-mix(in srgb, var(--ink-2) 55%, var(--line));
+    border-radius: 3px;
     backface-visibility: hidden;
   }
   #orient-cube .cube-face.back { visibility: hidden; pointer-events: none; }
@@ -971,6 +982,10 @@
   }
   #tree li.folder { font-weight: 600; }
   #tree li.folder.empty { color: var(--ink-2); }
+  /* Dossiers vides masqués, sauf les corps (compteur toujours lisible) :
+     Équations s'ouvre aussi par le ruban, Configurations par l'onglet du
+     gestionnaire. */
+  #tree li.folder.empty:not([data-folder="bodies"]) { display: none; }
   #tree li.in-folder { padding-left: 36px; }
   #tree li.body.in-folder { padding-left: 36px; }
   #tree li.child.in-folder { padding-left: 52px; }
@@ -1201,15 +1216,22 @@
   #tree li.sel-comp { color: var(--accent); background: var(--panel-2); }
   #tree li.error { color: var(--error); }
   #tree li .kind { color: var(--ink-2); }
+  /* Barre de retour arrière : un trait discret, accentué au survol ; le
+     libellé reste dans le DOM (lecteurs d'écran), l'aide est dans title. */
   #tree li.rollback {
-    color: var(--accent); font-size: var(--text-xs); text-align: center;
-    border-top: 1px dashed var(--accent);
-    border-bottom: 1px dashed var(--accent);
-    margin: var(--space-1) 10px; padding: 2px;
+    position: relative; height: 10px; padding: 0;
+    margin: var(--space-1) 10px;
+    font-size: 0; color: transparent;
     cursor: grab;
     user-select: none;
     touch-action: none;
   }
+  #tree li.rollback::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 4px;
+    height: 2px; border-radius: 1px; background: var(--ink-2); opacity: 0.55;
+  }
+  #tree li.rollback:hover::after,
+  #tree li.rollback.dragging::after { background: var(--accent); opacity: 1; }
   #tree li.rollback.dragging { cursor: grabbing; }
   #tree li.insert-mark {
     position: absolute;
@@ -1726,7 +1748,7 @@
     </div>
     <div id="viewbar">
       <div class="view-drop">
-        <button type="button" id="btn-style" title="Style d'affichage"><img data-icon="FreeSolid_DisplayStyle" alt=""></button>
+        <button type="button" id="btn-style" title="Style d'affichage"><img data-icon="vb_style" alt=""></button>
         <div id="style-menu" class="view-menu" hidden>
           <button type="button" data-style="shaded-edges">Ombré + arêtes</button>
           <button type="button" data-style="shaded">Ombré seul</button>
@@ -1737,7 +1759,7 @@
         </div>
       </div>
       <div class="view-drop">
-        <button type="button" id="btn-select-filter" title="Filtre de sélection — ce que le clic peut viser"><img data-icon="select_filter" alt=""></button>
+        <button type="button" id="btn-select-filter" title="Filtre de sélection — ce que le clic peut viser"><img data-icon="vb_filter" alt=""></button>
         <div id="filter-menu" class="view-menu" hidden>
           <label><input type="checkbox" data-filter="faces"> Faces</label>
           <label><input type="checkbox" data-filter="edges"> Arêtes</label>
@@ -1748,7 +1770,7 @@
         </div>
       </div>
       <div class="view-drop">
-        <button type="button" id="btn-visibility" title="Masquer / afficher"><img data-icon="FreeSolid_Visibility" alt=""></button>
+        <button type="button" id="btn-visibility" title="Masquer / afficher"><img data-icon="vb_visibility" alt=""></button>
         <div id="visibility-menu" class="view-menu" hidden>
           <label><input type="checkbox" data-vis="planes"> Plans de référence</label>
           <label><input type="checkbox" data-vis="origin"> Origine</label>
@@ -1756,15 +1778,15 @@
           <label><input type="checkbox" data-vis="edges"> Aperçu des arêtes</label>
         </div>
       </div>
-      <button id="view-iso" title="Vue isométrique (Ctrl+7)"><img data-icon="view-isometric" alt=""></button>
-      <button id="view-front" title="Vue de face (Ctrl+1)"><img data-icon="view-front" alt=""></button>
-      <button id="view-top" title="Vue de dessus (Ctrl+5)"><img data-icon="view-top" alt=""></button>
-      <button id="view-right" title="Vue de droite (Ctrl+4)"><img data-icon="view-right" alt=""></button>
-      <button id="view-fit" title="Zoom au mieux (F)"><img data-icon="zoom-fit-best" alt=""></button>
-      <button id="view-zoom-sel" title="Zoom sur la sélection — la face ou les arêtes choisies"><img data-icon="zoom_sel" alt=""></button>
-      <button id="view-prev" title="Vue précédente (Ctrl+Maj+Z)"><img data-icon="view_prev" alt=""></button>
-      <button id="btn-clip" title="Plan de coupe visuel — voir l'intérieur sans couper la pièce"><img data-icon="Std_ToggleClipPlane" alt=""></button>
-      <button id="btn-graph" title="Vue en graphe — dépendances des fonctions"><img data-icon="Geoassembly" alt=""></button>
+      <button id="view-iso" title="Vue isométrique (Ctrl+7)"><img data-icon="vb_iso" alt=""></button>
+      <button id="view-front" title="Vue de face (Ctrl+1)"><img data-icon="vb_front" alt=""></button>
+      <button id="view-top" title="Vue de dessus (Ctrl+5)"><img data-icon="vb_top" alt=""></button>
+      <button id="view-right" title="Vue de droite (Ctrl+4)"><img data-icon="vb_right" alt=""></button>
+      <button id="view-fit" title="Zoom au mieux (F)"><img data-icon="vb_fit" alt=""></button>
+      <button id="view-zoom-sel" title="Zoom sur la sélection — la face ou les arêtes choisies"><img data-icon="vb_zoomsel" alt=""></button>
+      <button id="view-prev" title="Vue précédente (Ctrl+Maj+Z)"><img data-icon="vb_prev" alt=""></button>
+      <button id="btn-clip" title="Plan de coupe visuel — voir l'intérieur sans couper la pièce"><img data-icon="vb_clip" alt=""></button>
+      <button id="btn-graph" title="Vue en graphe — dépendances des fonctions"><img data-icon="vb_graph" alt=""></button>
     </div>
     <div id="graph-view">
       <div id="graph-bar">

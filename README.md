@@ -1,35 +1,62 @@
 # FreeSolid
 
-> **Version de développement, non fonctionnelle.** FreeSolid est un
-> prototype en cours de construction : des fonctions manquent, d'autres
-> cassent, et les fichiers produits peuvent ne pas se rouvrir d'une version
-> à l'autre. Ne l'utilisez pas pour un vrai travail. Les retours sont
-> bienvenus dans les [issues](https://github.com/Emilien-Etadam/Freesolid/issues).
+A modern mechanical CAD interface on top of an untouched, headless FreeCAD
+engine. Your files stay standard `.FCStd` documents that open in FreeCAD.
 
-Interface de CAO mécanique moderne sur un moteur FreeCAD headless intact — les fichiers restent des `.FCStd`
-standard, ouvrables dans FreeCAD.
+> **Early prototype (v0.3.0).** Usable for simple parts; some features are
+> missing or may break, and files may not reopen across versions. Feedback
+> is welcome in the [issues](https://github.com/Emilien-Etadam/Freesolid/issues).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/apercu-sombre.png">
-  <img alt="FreeSolid — une équerre avec congé, chanfreins, perçages et lumière" src="docs/img/apercu-clair.png">
+  <img alt="FreeSolid — a bracket with a fillet, chamfers, holes and a slot" src="docs/img/apercu-clair.png">
 </picture>
 
-## Démarrage
+## Download
 
-Si vous avez déjà FreeCAD ≥ 1.0 :
+The desktop app (`desktop/`, built with Tauri) needs no terminal: it finds
+FreeCAD on your machine (or offers to install it), runs the engine locally
+and updates itself from GitHub releases. Installers for Linux, Windows and
+macOS are on the
+[releases page](https://github.com/Emilien-Etadam/Freesolid/releases/latest).
+Details and the release procedure: [`desktop/README.md`](desktop/README.md).
+
+## Features
+
+- **Sketching** with constraints and a WASM solver (planegcs) running at
+  ~60 fps while dragging; offset, mirror, patterns, fillet, trim; splines
+  and conics; sketch images (background tracing)
+- **Part features**: extrude and cut, revolve, fillet, chamfer, shell,
+  draft, hole wizard, loft, sweep, helix, patterns, engraved text
+- **Surfaces**: extruded, revolved, lofted, swept, filled and boundary
+  surfaces, trim, knit, thicken, freeform — **parametric and editable**
+  (double-click, expressions)
+- **3D sketches**: splines and polylines in space, snapped to the part,
+  with axis, angle and length rules
+- **Multi-body parts** with per-body display colors
+- **Equations** and expressions (global variables, driven dimensions);
+  **configurations** with a configuration table
+- **Assemblies**: components, joints, MbD solver, interference check,
+  exploded view
+- **Drawings**: dimensioned DXF (Front / Top / Iso views), optional X/Y/Z
+  section
+- **Import/export**: STEP, IGES, STL, 3MF; open and save `.FCStd`
+
+## Run from source
+
+With FreeCAD ≥ 1.0 already installed:
 
 ```bash
 freecadcmd engine/server.py
-# puis ouvrir http://localhost:8787
+# then open http://localhost:8787
 ```
 
-Un seul processus sert l'API JSON et l'UI statique (`app/`).
+A single process serves both the JSON API and the static UI (`app/`).
 
-### Tutoriel pas à pas — Linux (aucun prérequis)
+### Linux, step by step (no prerequisites)
 
-Copiez-collez ce bloc entier dans un terminal (Ctrl+Alt+T l'ouvre sur la
-plupart des systèmes). Il télécharge FreeCAD (~800 Mo, une seule fois),
-récupère FreeSolid et lance le serveur :
+Paste this whole block into a terminal. It downloads FreeCAD (~800 MB,
+once), fetches FreeSolid and starts the server:
 
 ```bash
 cd ~
@@ -41,99 +68,69 @@ cd Freesolid
 ~/squashfs-root/usr/bin/freecadcmd engine/server.py
 ```
 
-Quand le terminal affiche « FreeSolid engine prêt », ouvrez
-**<http://localhost:8787>** dans votre navigateur. C'est tout.
+When the terminal prints “FreeSolid engine prêt”, open
+**<http://localhost:8787>** in your browser.
 
-- Pour arrêter : `Ctrl+C` dans le terminal.
-- Les fois suivantes, seules les deux dernières lignes sont nécessaires :
+- To stop: `Ctrl+C` in the terminal.
+- Next time, only the last two lines are needed:
 
   ```bash
   cd ~/Freesolid
   ~/squashfs-root/usr/bin/freecadcmd engine/server.py
   ```
 
-- Si `git` n'est pas installé (`git : commande introuvable`) :
-  `sudo apt install git` (Ubuntu/Debian) ou téléchargez le ZIP du dépôt
-  (bouton **Code → Download ZIP** sur GitHub) et décompressez-le dans
-  votre dossier personnel.
+- No `git`? Run `sudo apt install git` (Ubuntu/Debian), or download the
+  repository ZIP (**Code → Download ZIP** on GitHub) and unzip it in your
+  home folder.
 
-### Tutoriel pas à pas — Windows
+### Windows, step by step
 
-1. Installez FreeCAD 1.0 depuis
+1. Install FreeCAD 1.0 from
    [freecad.org/downloads](https://www.freecad.org/downloads.php)
-   (installeur classique, options par défaut).
-2. Sur la page GitHub du projet : bouton **Code → Download ZIP**, puis
-   clic droit sur le ZIP → **Extraire tout** vers votre dossier
-   `Documents`.
-3. Ouvrez PowerShell (menu Démarrer → tapez « PowerShell ») et
-   copiez-collez :
+   (standard installer, default options).
+2. On the project's GitHub page: **Code → Download ZIP**, then right-click
+   the ZIP → **Extract All** into your `Documents` folder.
+3. Open PowerShell (Start menu → type “PowerShell”) and paste:
 
    ```powershell
    cd $env:USERPROFILE\Documents\Freesolid-main
    & "C:\Program Files\FreeCAD 1.0\bin\freecadcmd.exe" engine\server.py
    ```
 
-   (Si FreeCAD est installé ailleurs, adaptez le chemin — cherchez
-   `freecadcmd.exe` dans le dossier d'installation.)
-4. Ouvrez **<http://localhost:8787>** dans votre navigateur.
+   (If FreeCAD is installed elsewhere, adjust the path — look for
+   `freecadcmd.exe` in its installation folder.)
+4. Open **<http://localhost:8787>** in your browser.
 
-### Application de bureau
+## Languages
 
-Une app Tauri (`desktop/`) fait la même chose sans terminal : elle trouve
-FreeCAD sur la machine (ou propose de l'installer automatiquement), lance le
-moteur en local et se met à jour depuis les releases GitHub. Installeurs
-Linux, Windows et macOS dans les
-[releases](https://github.com/Emilien-Etadam/Freesolid/releases) ; détails
-et procédure de publication dans [`desktop/README.md`](desktop/README.md).
+The interface is available in French and English: gear button → Settings →
+Language (the browser language is used by default). The engine names tree
+features and writes its error messages in the interface language; names
+already saved in a `.FCStd` are not translated — they are the user's data.
 
-## Ce qui marche aujourd'hui
-
-- **Esquisse** contrainte + solveur WASM (planegcs) à ~60 fps pendant le
-  drag ; décalage d'entités, symétrie, répétition, congé, ajustement
-- **PartDesign** : bossage/enlèvement, révolution, congé, chanfrein, coque,
-  dépouille, perçage, lissage, balayage, hélice, répétitions
-- **Multi-corps** et couleurs d'affichage par corps
-- **Assemblage** : composants, joints, solveur MbD, interférences
-- **Surfacique** : extrusion/révolution de profils ouverts, lissage,
-  épaissir — **paramétrique et rééditable** (double-clic, expressions) ;
-  coudre reste figé
-- **Équations** et expressions (variables globales, cotes pilotées)
-- **Import/export** STEP, STL, 3MF ; sauvegarde/ouverture `.FCStd`
-- **Mise en plan** DXF cotée (vues Face / Dessus / Iso), coupe X/Y/Z
-  optionnelle
-- **Image d'esquisse** (calque de fond)
-
-## Langue
-
-L'interface est en français ou en anglais : bouton engrenage → Paramètres →
-Langue (la langue du navigateur est prise par défaut). Le moteur nomme les
-fonctions de l'arbre et rédige ses messages d'erreur dans la langue de
-l'interface ; les noms déjà enregistrés dans un `.FCStd` ne sont pas
-traduits, ce sont les données de l'utilisateur.
-
-Le français est la langue source : le code et `app/ribbon.json` portent les
-textes français, `app/lang/en.json` (interface) et `engine/lang/en.json`
-(moteur) les traduisent, texte par texte, `{variable}` côté interface et
-`{}` côté moteur. Un texte sans traduction s'affiche en français. Ajouter
-une langue = un fichier JSON de chaque côté, plus son code dans
-`app/settings.js` (`LANGS`) et `engine/i18n.py` (`LANGS`). Les tests
-refusent une entrée orpheline et exigent une traduction pour chaque libellé
-du ruban et chaque titre de panneau.
+French is the source language: the code and `app/ribbon.json` carry the
+French texts, translated entry by entry in `app/lang/en.json` (interface,
+`{variable}` placeholders) and `engine/lang/en.json` (engine, `{}`
+placeholders). An untranslated text shows in French. Adding a language
+takes one JSON file on each side, plus its code in `app/settings.js`
+(`LANGS`) and `engine/i18n.py` (`LANGS`). Tests reject orphan entries and
+require a translation for every ribbon label and panel title.
 
 ## Architecture
 
-Trois couches :
+Three layers:
 
-1. `app/` — navigateur (Three.js, FeatureManager, panneaux)
-2. `engine/` — HTTP JSON sur `127.0.0.1:8787` (stdlib Python)
-3. FreeCAD headless (`freecadcmd`) — géométrie, historique, STEP
+1. `app/` — browser (Three.js, feature tree, panels)
+2. `engine/` — HTTP JSON on `127.0.0.1:8787` (Python standard library)
+3. Headless FreeCAD (`freecadcmd`) — geometry, history, STEP
 
-Détail : [`docs/architecture-app.md`](docs/architecture-app.md).
-La frontière entre la couche 2 et la couche 3, et ce qu'on remonte à
-FreeCAD quand le développement y révèle un manque :
-[`docs/amont-freecad.md`](docs/amont-freecad.md).
+Details: [`docs/architecture-app.md`](docs/architecture-app.md).
+The boundary between layers 2 and 3, and what gets reported upstream to
+FreeCAD when development reveals a gap:
+[`docs/amont-freecad.md`](docs/amont-freecad.md). Design documents in
+`docs/` are written in French.
 
-## Développement
+## Development
 
 ```bash
 python3 -m pip install pytest
@@ -143,14 +140,14 @@ python3 -m pytest -q
 node --test tests/js/*.test.mjs
 
 PYTHONIOENCODING=utf-8 freecadcmd scripts/run-selftest.py
-# smoke navigateur (FreeCAD + Chromium) : scripts/smoke/
+# browser smoke test (FreeCAD + Chromium): scripts/smoke/
 ```
 
-## Licences
+## Licenses
 
-LGPL-2.1-or-later, comme FreeCAD.
+LGPL-2.1-or-later, like FreeCAD.
 
-Composants vendorés :
+Vendored components:
 
-- solveur d'esquisse WASM — [`app/vendor/planegcs/README.md`](app/vendor/planegcs/README.md)
-- icônes FreeCAD — [`app/icons/README.md`](app/icons/README.md)
+- WASM sketch solver — [`app/vendor/planegcs/README.md`](app/vendor/planegcs/README.md)
+- FreeCAD icons — [`app/icons/README.md`](app/icons/README.md)

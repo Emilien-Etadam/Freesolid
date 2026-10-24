@@ -127,8 +127,10 @@ Three layers:
 Details: [`docs/architecture-app.md`](docs/architecture-app.md).
 The boundary between layers 2 and 3, and what gets reported upstream to
 FreeCAD when development reveals a gap:
-[`docs/amont-freecad.md`](docs/amont-freecad.md). Design documents in
-`docs/` are written in French.
+[`docs/amont-freecad.md`](docs/amont-freecad.md). Adding a CAD function
+(engine op, panel, ribbon button, tests):
+[`docs/ajouter-une-fonction.md`](docs/ajouter-une-fonction.md). Design
+documents in `docs/` are written in French.
 
 ## Development
 

@@ -52,6 +52,11 @@ d'erreur ou libellé du moteur, dans `engine/lang/en.json` (gabarit avec
 `{}`). `tests/js/i18n.test.mjs` et `tests/test_i18n.py` refusent les
 entrées orphelines et vérifient la couverture du ruban et des panneaux.
 
+### Ajouter une fonction
+
+La recette (fichiers à toucher, exemple complet de la Coque, tests qui
+refusent une fonction incomplète) : `docs/ajouter-une-fonction.md`.
+
 ### Gotcha à connaître
 
 - `engine/server.py` n'a **pas** de garde `if __name__ == "__main__"`

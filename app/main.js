@@ -14,7 +14,7 @@ import {
   readDisplay, writeDisplay, displayEffects,
 } from "./display.js";
 import { FEATURES, resolveProfileSketch } from "./features.js";
-import { addCombineTools, combineFinished } from "./combine.js";
+import { combineFinished } from "./combine.js";
 import { installContextMenu } from "./contextmenu.js";
 import { installMeasure } from "./measure.js";
 import { VIEW_KEYS, VIEWS, installViewCube } from "./viewcube.js";
@@ -25,10 +25,11 @@ import { installPicking } from "./picking.js";
 import { installViewport } from "./viewport.js";
 import { installApi } from "./main/api.js";
 import { installDebug } from "./main/debug.js";
+import { installPluginHost } from "./main/pluginhost.js";
 import {
   coordsText, editModeText, measureText, sketchEntityLength,
 } from "./statusbar.js";
-import { createPluginApi, loadClientPlugins } from "./plugins.js";
+import { loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, ISSUES_URL, readLang } from "./settings.js";
 import { insertionItems, installMenuBar, menuBarModel } from "./menubar.js";
 import {
@@ -64,9 +65,7 @@ applyStaticIcons(document);
 // source en français, le dictionnaire fait le reste.
 const prompt = (message, fallback) => window.prompt(t(message), fallback);
 const confirm = (message) => window.confirm(t(message));
-import {
-  buildRibbonElement, buildTabButton, installCoreRibbons, isPluginId,
-} from "./ribbon.js";
+import { installCoreRibbons } from "./ribbon.js";
 import RIBBON_LAYOUT from "./ribbon.json" with { type: "json" };
 import {
   isGraphFeature,
@@ -1145,7 +1144,7 @@ let sketchInfoOpen = false;
 expose("selectedDatumFeature", () => selectedDatumFeature, (v) => { selectedDatumFeature = v; });
 expose("sketchInfoOpen", () => sketchInfoOpen, (v) => { sketchInfoOpen = v; });
 expose("selectedPlane", () => selectedPlane, (v) => { selectedPlane = v; });
-expose("pluginRuntime", () => pluginRuntime);
+expose("pluginRuntime", () => pluginRuntime, (v) => { pluginRuntime = v; });
 expose("selectedEdges", () => selectedEdges, (v) => { selectedEdges = v; });
 expose("selectedFeatureName", () => selectedFeatureName, (v) => { selectedFeatureName = v; });
 expose("treeHoverPlane", () => treeHoverPlane, (v) => { treeHoverPlane = v; });
@@ -1220,39 +1219,6 @@ function showTab(name) {
 }
 for (const tab of document.querySelectorAll("header .tab")) {
   tab.addEventListener("click", () => showTab(tab.dataset.tab));
-}
-
-function addPluginRibbon(spec) {
-  if (!isPluginId(spec.id) || RIBBONS[spec.id]) return;
-  const tab = buildTabButton(document, spec.id, spec.libelle);
-  const push = document.querySelector("#topbar .push");
-  if (push) push.parentElement.insertBefore(tab, push);
-  tab.addEventListener("click", () => showTab(spec.id));
-
-  const ribbon = buildRibbonElement(document, spec.id, spec.groupes);
-  const sketchbar = document.getElementById("sketchbar");
-  sketchbar.parentElement.insertBefore(ribbon, sketchbar);
-  RIBBONS[spec.id] = ribbon.id;
-}
-
-function addPluginFeature(entry) {
-  FEATURES.push(entry);
-  bindFeature(entry);
-}
-
-/** Un bouton de plugin ouvre une fonction du noyau, sans la dupliquer. */
-function addPluginFeatureButton(id, coreButton) {
-  const entry = FEATURES.find((feat) => feat.button === coreButton);
-  if (!entry) return;
-  entry.buttons = [...(entry.buttons ?? [entry.button]), id];
-  bindFeature(entry);
-}
-
-function addPluginHud(node) {
-  if (!(node instanceof Node)) return;
-  const viewbar = document.getElementById("viewbar");
-  if (viewbar) viewbar.after(node);
-  else document.getElementById("viewport")?.appendChild(node);
 }
 
 // ---------- coin de confirmation ----------
@@ -2498,16 +2464,12 @@ installCommandSearch(document, {
   sketchActive: () => sketchMode.active,
 });
 
-pluginRuntime = createPluginApi({
-  call, refresh, say,
-  tree: () => lastTree,
-  scene, camera, controls, renderer,
-  addRibbon: addPluginRibbon,
-  addFeature: addPluginFeature,
-  addFeatureButton: addPluginFeatureButton,
-  addCombineTools,
-  addHud: addPluginHud,
+// Hôte des plugins : le corps est dans main/pluginhost.js.
+Object.assign(ctx, {
+  RIBBONS, call, say, refresh, scene, camera, controls, renderer, showTab,
+  bindFeature,
 });
+installPluginHost(ctx);
 
 // ---------- boot ----------
 

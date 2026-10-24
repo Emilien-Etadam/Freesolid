@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { formatProgressStatus } from "../../app/progress.js";
+import { setLang } from "../../app/i18n.js";
 
 describe("formatProgressStatus", () => {
   it("compte les éléments d'une boucle comptable", () => {
@@ -51,5 +52,16 @@ describe("formatProgressStatus", () => {
       op: null, phase: "", fait: 0, total: 0, depuis: 0,
     }, 100), "");
     assert.equal(formatProgressStatus(null, 100), "");
+  });
+
+  it("traduit le repli « Combiner » ; la phase arrive traduite du moteur", () => {
+    const progress = { op: "add_boolean", phase: "", fait: 3, total: 10, depuis: 0 };
+    assert.equal(formatProgressStatus(progress, 0), "Combiner — 3 / 10");
+    setLang("en");
+    try {
+      assert.equal(formatProgressStatus(progress, 0), "Combine — 3 / 10");
+    } finally {
+      setLang("fr");
+    }
   });
 });

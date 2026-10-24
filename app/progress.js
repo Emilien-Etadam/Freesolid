@@ -2,7 +2,10 @@
 //
 // Un PartDesign::Boolean est un appel OCCT opaque : pas de pourcentage.
 // Ce module n'en invente pas. Il formate une phase nommée, un compteur
-// quand la boucle est comptable, et les secondes écoulées.
+// quand la boucle est comptable, et les secondes écoulées. La phase arrive
+// du moteur déjà traduite ; le repli « Combiner » passe par t().
+
+import { t } from "./i18n.js";
 
 /** Texte de barre d'état. Jamais un pourcentage. */
 export function formatProgressStatus(progress, nowSeconds) {
@@ -15,7 +18,7 @@ export function formatProgressStatus(progress, nowSeconds) {
   const fait = Number(progress.fait) || 0;
   const total = Number(progress.total) || 0;
   if (total > 0) {
-    const label = phase || "Combiner";
+    const label = phase || t("Combiner");
     return `${label} — ${fait} / ${total}${clock}`;
   }
   if (phase) return `${phase}${clock}`;

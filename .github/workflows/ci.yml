@@ -90,6 +90,7 @@ jobs:
           node --check app/graph.js
           node --check app/history.js
           node --check app/features.js
+          for f in app/features/*.js; do node --check "$f"; done
           node --check app/sketch.js
           node --check app/panel.js
           node --check app/solver.js

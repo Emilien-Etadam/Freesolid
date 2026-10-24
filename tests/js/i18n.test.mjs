@@ -13,6 +13,10 @@ import { FEATURES } from "../../app/features.js";
 
 const EN = DICTIONARIES.en;
 const APP = new URL("../../app/", import.meta.url);
+// Récursif : un sous-dossier (features/…) est une source de l'interface ;
+// vendor/ n'est pas à nous et lang/ est le dictionnaire lui-même.
+const APP_FILES = readdirSync(APP, { recursive: true })
+  .filter((f) => !/^(vendor|lang)[\\/]/.test(f));
 
 afterEach(() => setLang("fr"));
 
@@ -47,7 +51,7 @@ describe("t()", () => {
 });
 
 describe("dictionnaire anglais", () => {
-  const sources = readdirSync(APP)
+  const sources = APP_FILES
     .filter((f) => f.endsWith(".js") || f.endsWith(".html") || f.endsWith(".json"))
     .map((f) => readFileSync(new URL(f, APP), "utf8"))
     .join("\n")
@@ -93,10 +97,10 @@ describe("pas d'ombre sur t()", () => {
   it("aucun fichier de app/ ne déclare une variable locale nommée t", () => {
     // Un `const t = …` local masquerait l'import et casserait t("…")
     // dans sa portée (vu sur le panneau Gravure).
-    const shadows = readdirSync(APP)
+    const shadows = APP_FILES
       .filter((f) => f.endsWith(".js"))
       .map((f) => [f, readFileSync(new URL(f, APP), "utf8")])
-      .filter(([, src]) => src.includes('from "./i18n.js"'))
+      .filter(([, src]) => /from "(\.\.?\/)+i18n\.js"/.test(src))
       .filter(([, src]) => /\b(const|let|var)\s+t\s*=/.test(src))
       .map(([f]) => f);
     assert.deepEqual(shadows, []);

@@ -68,82 +68,12 @@ OPS: dict[str, tuple[str, ...]] = {
                                        # distance), sub1, sub2, distance
     "solve_assembly": (),
     "spike_assembly": (),              # rapport : joints Assembly headless ?
-    # Phase D — surfacique (API Part, hors historique PartDesign) + courbes.
-    "surface_extrude": _Req(("length", float)),  # optional: sketch — profil ouvert OK
-    "surface_revolve": (),             # optional: angle, sketch
-    "surface_loft": _Req(("sketches", list)),
-    "surface_sew": _Req(("surfaces", list)),  # coudre ; solidifie si fermé
-    "surface_thicken": _Req(("surface", str), ("thickness", float)),
-    "add_curve3d": _Req(("points", list)),  # optional: spline, closed,
-                                       # rules [{axis, length}] par segment,
-                                       # links, tangents [{dir, in, out}|None]
     "add_sketch3d": _Req(("spec", dict)),  # points, links, entities,
                                        # dims, relations (sketch3dmath)
     "edit_sketch3d": _Req(("sketch3d", str), ("spec", dict)),
     "sketch_set_spline": _Req(("sketch", str), ("geo", int),
                               ("points", list)),  # optional: tangents,
                                        # closed — points de passage 2D
-    "curve_poles": _Req(("points", list)),  # lecture : polygone de contrôle
-                                       # optional: closed, tangents
-    "curve_move_pole": _Req(("points", list), ("index", int),
-                            ("point", list)),  # lecture : points et
-                                       # poignées après avoir tiré un pôle
-    "curve3d_preview": _Req(("points", list)),
-                                       # optional: spline, closed — lecture seule
-    "edit_curve3d": _Req(("curve", str), ("points", list)),
-                                       # optional: spline, closed, rules,
-                                       # links, tangents
-    "surface_planar": (),              # optional: sketch — contour fermé
-    "surface_sweep": _Req(("profile", str), ("spine", str)),
-    "surface_offset": _Req(("surface", str), ("distance", float)),
-    "surface_fill": _Req(("boundary", list)),
-                                       # [{name, edge?} | {body: true, edge}]
-                                       # optional: tangent
-    "surface_boundary": _Req(("boundary", list)),   # 2 à 4 courbes
-    "surface_ruled": _Req(("boundary", list)),      # exactement 2 courbes
-    "surface_delete_faces": _Req(("surface", str), ("faces", list)),
-    "surface_untrim": _Req(("surface", str)),       # optional: face
-    "surface_split": _Req(("surface", str), ("tool", str)),
-    "surface_fillet": _Req(("surface", str), ("edges", list),
-                           ("radius", float)),
-    "edit_surface_fillet": _Req(("surface", str), ("radius", float)),
-    "curve_intersection": _Req(("first", str)),     # optional: second, body
-    "curve_project": _Req(("sketch", str), ("surface", str)),
-                                       # optional: face
-    "curve_composite": _Req(("boundary", list)),
-    "surface_radiate": _Req(("boundary", list), ("distance", float)),
-    "surface_mid": (),                 # optional: faces (deux, base 0) |
-                                       # thickness (paires automatiques)
-    "surface_flatten": _Req(("surface", str)),  # optional: face
-    "surface_freeform": _Req(("surface", str)),
-                                       # radius + pushes [[x,y,z,h]…] |
-                                       # point + height ; ou moves
-                                       # [[i,j,dx,dy,dz]…] + grid ;
-                                       # face, keep_edges
-    "edit_surface_freeform": _Req(("surface", str)),
-                                       # radius, pushes, height,
-                                       # keep_edges | moves, grid
-    "surface_control_points": _Req(("surface", str)),
-                                       # optional: face, grid — lecture seule
-    "curve_helix": _Req(("pitch", float), ("height", float),
-                        ("radius", float)),
-                                       # optional: angle, left, axis (X|Y|Z)
-    "surface_extend": _Req(("surface", str), ("distance", float)),
-                                       # optional: edge (bord prolongé)
-    "edit_surface_extend": _Req(("surface", str), ("distance", float)),
-                                       # optional: edge
-    "surface_trim": _Req(("surface", str), ("tool", str)),
-                                       # optional: point — partie gardée,
-                                       # tool_point — ajustement mutuel
-    "add_surface_cut": _Req(("surface", str)),  # optional: flip,
-                                                # thickness (bande enlevée)
-    "add_delete_face": _Req(("faces", list)),  # faces du solide, base 0
-    "add_replace_face": _Req(("face", int), ("surface", str)),
-    "edit_surface_cut": _Req(("feature", str), ("flip", bool)),
-                                       # optional: thickness
-    "edit_surface_trim": _Req(("surface", str)),
-                                       # optional: point — sans point,
-                                       # la partie suivante
     # Phase E — évaluer + mise en plan.
     "mass_properties": (),             # optional: density (g/cm³)
     "material_library": (),            # lecture : matières proposées

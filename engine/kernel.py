@@ -774,9 +774,6 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
     #: décrites dans engine/ops/.
     _PREVIEWABLE = PREVIEWABLE | frozenset({
         "set_params",
-        "add_surface_cut", "add_delete_face",
-        "add_replace_face",
-        "surface_delete_faces",
     })
 
     def preview(self, op, params):
@@ -837,18 +834,7 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
 _TRANSACTIONAL = TRANSACTIONAL | frozenset({
     "add_rect_sketch",
     "insert_component", "move_component", "add_joint", "solve_assembly",
-    "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
-    "surface_thicken", "add_curve3d", "edit_curve3d", "surface_planar",
     "add_sketch3d", "edit_sketch3d",
-    "surface_sweep", "surface_offset", "surface_fill", "surface_extend",
-    "edit_surface_extend", "surface_trim", "edit_surface_trim",
-    "add_surface_cut", "edit_surface_cut", "surface_boundary",
-    "add_delete_face", "add_replace_face",
-    "surface_ruled", "surface_delete_faces", "surface_untrim",
-    "surface_fillet", "curve_intersection", "curve_project",
-    "curve_composite", "edit_surface_fillet", "surface_split",
-    "curve_helix", "surface_radiate", "surface_mid", "surface_flatten",
-    "surface_freeform", "edit_surface_freeform",
     "sketch_convert",
     "add_graph_feature", "edit_graph_feature",
     "add_repeat_feature", "edit_repeat_feature", "make_drawing",

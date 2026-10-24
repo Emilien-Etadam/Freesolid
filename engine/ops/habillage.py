@@ -83,7 +83,8 @@ OPS = (
        replay=_rejouer_depouille),
                                        # optional: neutral (XY|XZ|YZ)
     Op("add_vertex_chamfer", Req(("distances", list), optional={
-        "point": list, "vertex": int}), undo=True, preview=True),
+        "point": list, "vertex": int}), undo=True, preview=True,
+       no_replay="forme figée (FrozenShape), pas get_params"),
     Op("edit_vertex_chamfer", Req(("feature", str), ("distances", list)),
        undo=True),
 )

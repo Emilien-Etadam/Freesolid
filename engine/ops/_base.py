@@ -66,6 +66,8 @@ class Op:
         replay: ``replay(kernel, feat, sketch, cote)`` la recrée depuis sa
             capture (``replay._capture_feature``) ; ``sketch`` est le profil
             recopié, ``cote(prop)`` la cote capturée ou substituée.
+        no_replay: pourquoi une op ``add_*`` ne se rejoue pas — chaque
+            ``add_*`` a ``replay`` ou cette raison (test de cohérence).
     """
 
     name: str
@@ -75,3 +77,4 @@ class Op:
     creates: str = ""
     indexed: bool = False
     replay: Optional[Callable] = None
+    no_replay: str = ""

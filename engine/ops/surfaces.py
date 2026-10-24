@@ -16,7 +16,8 @@ OPS = (
                                        # coudre ; solidifie si fermé
     Op("surface_thicken", Req(("surface", str), ("thickness", float)),
        undo=True),
-    Op("add_curve3d", Req(("points", list)), undo=True),
+    Op("add_curve3d", Req(("points", list)), undo=True,
+       no_replay="liste de points"),
                                        # optional: spline, closed,
                                        # rules [{axis, length}] par segment,
                                        # links, tangents [{dir, in, out}|None]
@@ -81,13 +82,16 @@ OPS = (
     Op("surface_trim", Req(("surface", str), ("tool", str)), undo=True),
                                        # optional: point — partie gardée,
                                        # tool_point — ajustement mutuel
-    Op("add_surface_cut", Req(("surface", str)), undo=True, preview=True),
+    Op("add_surface_cut", Req(("surface", str)), undo=True, preview=True,
+       no_replay="corps outil tiré d'une surface, pas un profil"),
                                        # optional: flip,
                                        # thickness (bande enlevée)
-    Op("add_delete_face", Req(("faces", list)), undo=True, preview=True),
+    Op("add_delete_face", Req(("faces", list)), undo=True, preview=True,
+       no_replay="forme figée (FrozenShape), pas get_params"),
                                        # faces du solide, base 0
     Op("add_replace_face", Req(("face", int), ("surface", str)),
-       undo=True, preview=True),
+       undo=True, preview=True,
+       no_replay="forme figée (FrozenShape), pas get_params"),
     Op("edit_surface_cut", Req(("feature", str), ("flip", bool)), undo=True),
                                        # optional: thickness
     Op("edit_surface_trim", Req(("surface", str)), undo=True),

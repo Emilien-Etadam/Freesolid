@@ -161,10 +161,6 @@ OPS: dict[str, tuple[str, ...]] = {
     "set_configuration_values": _Req(("values", dict)),
     "save_template": _Req(("name", str)),
     "new_from_template": _Req(("name", str)),
-    "add_datum_axis": _Req(optional={"axis": str, "edge": int}),
-    "add_datum_point": _Req(optional={"point": list, "vertex": list,
-                                      "edge": int}),
-    "add_datum_cs": _Req(optional={"point": list, "vertex": list}),
     "paste_feature": _Req(("feature", str), optional={
         "face": int, "plane": str, "datum": str}),
     "set_body_material": _Req(("body", str), optional={
@@ -211,23 +207,6 @@ OPS: dict[str, tuple[str, ...]] = {
     "add_rect_sketch": _Req(("width", float), ("height", float)),
                                        # optional: face (id) to attach
     "sketch_contours": _Req(("sketch", str)),  # lecture
-    "add_mirror": _Req(optional={"features": list}),
-                                       # optional: plane (XY|XZ|YZ), features
-    "add_linear_pattern": _Req(("length", float), ("count", int),
-                               optional={"features": list, "axis": str,
-                                         "edge": int, "spacing": bool,
-                                         "reversed": bool,
-                                         "length2": float, "count2": int,
-                                         "axis2": str, "edge2": int,
-                                         "reversed2": bool}),
-                                       # optional: axis (X|Y|Z), features
-    "add_polar_pattern": _Req(("count", int),
-                              optional={"features": list, "axis": str,
-                                        "edge": int, "angle": float,
-                                        "reversed": bool}),
-                                       # optional: angle (°), axis, features
-    # Phase B — références et ossature.
-    "add_datum_plane": (),             # optional: base (XY|XZ|YZ) | face, offset, angle
     "set_param": _Req(("feature", str), ("prop", str), "value"),
     "set_params": _Req(("feature", str), ("values", dict)),
                                        # valeur numérique OU expression

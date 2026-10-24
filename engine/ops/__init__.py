@@ -4,12 +4,14 @@ Ajouter une op : son descripteur ``Op`` dans la famille qui lui va, sa
 méthode dans le mixin du même domaine. Tout ce qui suit en est dérivé.
 """
 
-from engine.ops import habillage, volumes
+from engine.ops import habillage, references, repetitions, volumes
 
 #: Toutes les ops du noyau. L'ordre n'a pas de sens pour le protocole.
 CORE_OPS = (
     volumes.OPS
     + habillage.OPS
+    + repetitions.OPS
+    + references.OPS
 )
 
 #: Nom → descripteur. Un nom en double est une erreur de catalogue.

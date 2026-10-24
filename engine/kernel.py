@@ -773,9 +773,8 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
     #: Dérivé du catalogue (``preview=True``), plus les ops pas encore
     #: décrites dans engine/ops/.
     _PREVIEWABLE = PREVIEWABLE | frozenset({
-        "add_mirror", "add_linear_pattern", "add_polar_pattern",
         "set_params",
-        "add_datum_plane", "add_surface_cut", "add_delete_face",
+        "add_surface_cut", "add_delete_face",
         "add_replace_face",
         "surface_delete_faces",
     })
@@ -837,9 +836,6 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
 #: dans engine/ops/.
 _TRANSACTIONAL = TRANSACTIONAL | frozenset({
     "add_rect_sketch",
-    "add_mirror", "add_linear_pattern",
-    "add_polar_pattern",
-    "add_datum_plane",
     "insert_component", "move_component", "add_joint", "solve_assembly",
     "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
     "surface_thicken", "add_curve3d", "edit_curve3d", "surface_planar",
@@ -882,7 +878,7 @@ _TRANSACTIONAL = TRANSACTIONAL | frozenset({
     "set_component_grounded", "reorder_feature", "set_comment",
     "set_suppressed", "sketch_set_plane",
     "set_body_material", "set_face_color",
-    "add_datum_axis", "add_datum_point", "add_datum_cs", "paste_feature",
+    "paste_feature",
     "set_folder", "rename_folder", "add_configuration",
     "activate_configuration", "rename_configuration", "delete_configuration",
     "set_configuration_values",

@@ -524,12 +524,9 @@ class TreeMixin:
                 for sketch in self._surface_sketch_objects(obj):
                     names.add(sketch.Name)
         for obj in self._doc.Objects:
-            # Semis : App::Link marqué. Même discipline que
-            # ``_is_internal_tool`` — le noyau reconnaît une propriété,
-            # il n'appelle plus le métier bijouterie.
-            if (getattr(obj, "TypeId", "") == "App::Link"
-                    and "FreeSolidGemFace" in getattr(
-                        obj, "PropertiesList", ())):
+            # Nœuds d'une section de plugin : le plugin les reconnaît,
+            # le noyau ne connaît pas son métier.
+            if self._plugins.run_tree_node(self, obj):
                 names.add(obj.Name)
         return names
 

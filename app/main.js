@@ -4,21 +4,16 @@
 import * as THREE from "three";
 import { createSketchMode, createDimSprite } from "./sketch.js";
 import {
-  dimEditPayload, dimLabel, filletRadiusLabel, openDimEditor, sketchDimAnchor,
+  filletRadiusLabel,
 } from "./dims.js";
-import { createPropertyPanel, panelNotice } from "./panel.js";
+import { createPropertyPanel } from "./panel.js";
 import { num } from "./num.js";
-import { eventToNdc, ndcToScreen } from "./screen.js";
+import { ndcToScreen } from "./screen.js";
 import { readScene } from "./theme.js";
 import {
   readDisplay, writeDisplay, displayEffects,
 } from "./display.js";
-import { FEATURES, resolveProfileSketch } from "./features.js";
-import {
-  formatProgressStatus,
-  noteProgressForCalibration,
-  rememberCombineFinished,
-} from "./progress.js";
+import { FEATURES } from "./features.js";
 import { installContextMenu } from "./contextmenu.js";
 import { installMeasure } from "./measure.js";
 import { VIEW_KEYS, VIEWS, installViewCube } from "./viewcube.js";
@@ -27,10 +22,14 @@ import { installGraphView } from "./graphview.js";
 import { PROP_LABELS, installTree } from "./tree.js";
 import { installPicking } from "./picking.js";
 import { installViewport } from "./viewport.js";
+import { installApi } from "./main/api.js";
+import { installBoot } from "./main/boot.js";
+import { installDebug } from "./main/debug.js";
+import { installFeaturePanel } from "./main/featurepanel.js";
+import { installPluginHost } from "./main/pluginhost.js";
 import {
   coordsText, editModeText, measureText, sketchEntityLength,
 } from "./statusbar.js";
-import { createPluginApi, loadClientPlugins } from "./plugins.js";
 import { createSettingsDialog, ISSUES_URL, readLang } from "./settings.js";
 import { insertionItems, installMenuBar, menuBarModel } from "./menubar.js";
 import {
@@ -43,11 +42,11 @@ import { installGestures } from "./gestures.js";
 import { installHandles } from "./handles.js";
 import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
 import { installFileDialog } from "./filedialog.js";
-import { installWelcome, rememberRecent } from "./welcome.js";
+import { rememberRecent } from "./welcome.js";
 import {
-  SELECT_KINDS, boxMode, coverBounds, filterActive, isDrag, middleAction,
-  normalizeRect, nudgeView, pickInBox, readReverseWheel, readSelectFilter,
-  writeReverseWheel, writeSelectFilter, zoomSpeedFor,
+  SELECT_KINDS, filterActive,
+  nudgeView, readReverseWheel, readSelectFilter,
+  writeSelectFilter,
 } from "./navigation.js";
 
 // Noms des types du filtre de sélection (barre d'état).
@@ -66,15 +65,8 @@ applyStaticIcons(document);
 // source en français, le dictionnaire fait le reste.
 const prompt = (message, fallback) => window.prompt(t(message), fallback);
 const confirm = (message) => window.confirm(t(message));
-import {
-  buildRibbonElement, buildTabButton, installCoreRibbons, isPluginId,
-} from "./ribbon.js";
+import { installCoreRibbons } from "./ribbon.js";
 import RIBBON_LAYOUT from "./ribbon.json" with { type: "json" };
-import {
-  isGraphFeature,
-  isRepeatFeature,
-  latestGraphOrRepeat,
-} from "./graph.js";
 import { edgeSnapPoints } from "./pointsnap.js";
 import { installCurve3d } from "./curve3d.js";
 import { installSketch3d } from "./sketch3d.js";
@@ -98,99 +90,19 @@ const coordsEl = document.getElementById("coords");
 const editModeEl = document.getElementById("edit-mode");
 const treeEl = document.getElementById("tree");
 
+// État partagé des modules. Les accesseurs lisent la variable actuelle,
+// y compris celles déclarées plus bas.
+const ctx = {};
+
 // ---------- api ----------
+// Le corps est dans main/api.js.
 
-async function call(op, params = {}) {
-  const response = await fetch("/api", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    // La langue de l'interface part avec chaque requête : le moteur nomme
-    // ce qu'il crée et rédige ses erreurs dans cette langue.
-    body: JSON.stringify({ op, params, lang: currentLang() }),
-  });
-  const text = await response.text();
-  let payload = null;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    payload = null;
-  }
-  // {ok:false} (HTTP 200 ou 4xx protocole) : message moteur / protocole.
-  if (payload && payload.ok === false) {
-    throw new Error(payload.error + (payload.hint ? ` (${payload.hint})` : ""));
-  }
-  if (!response.ok || !payload || payload.ok !== true) {
-    const excerpt = text.slice(0, 180).replace(/\s+/g, " ").trim();
-    throw new Error(
-      `HTTP ${response.status}${excerpt ? ` — ${excerpt}` : ""}`);
-  }
-  return payload.result;
-}
-
-const PROGRESS_MS = 300;
-let progressTimer = null;
-let progressWatchers = 0;
-let progressGen = 0;
 let statusSticky = false;
-
-async function pollProgressOnce(gen) {
-  if (gen !== progressGen || statusSticky) return;
-  try {
-    const progress = await call("progress");
-    if (gen !== progressGen || statusSticky) return;
-    const now = Date.now() / 1000;
-    noteProgressForCalibration(progress, now);
-    const text = formatProgressStatus(progress, now);
-    if (text) say(text);
-  } catch {
-    // Le sondage ne doit jamais masquer l'op en cours ni son erreur.
-  }
-}
-
-function startProgressWatch() {
-  progressWatchers += 1;
-  if (progressWatchers > 1) return;
-  const gen = ++progressGen;
-  document.body.classList.add("op-en-cours");
-  document.body.setAttribute("aria-busy", "true");
-  pollProgressOnce(gen);
-  progressTimer = setInterval(() => pollProgressOnce(gen), PROGRESS_MS);
-}
-
-function stopProgressWatch() {
-  progressWatchers = Math.max(0, progressWatchers - 1);
-  if (progressWatchers > 0) return;
-  progressGen += 1;
-  if (progressTimer != null) {
-    clearInterval(progressTimer);
-    progressTimer = null;
-  }
-  document.body.classList.remove("op-en-cours");
-  document.body.removeAttribute("aria-busy");
-}
-
-function say(text, isError = false) {
-  if (statusSticky && !isError) return;
-  if (!isError) statusSticky = false;
-  statusEl.textContent = t(text);
-  statusEl.className = isError ? "err" : "";
-  if (statusSticky) statusEl.classList.add("sticky");
-  // Le texte entier en infobulle : la barre l'abrège s'il est trop long.
-  statusEl.title = statusSticky ? t("Cliquer pour fermer") : statusEl.textContent;
-}
-
-/** Erreur qui reste jusqu'à ce que l'utilisateur clique la barre d'état. */
-function sayUntilAck(text) {
-  statusSticky = true;
-  say(text, true);
-}
-
-statusEl.addEventListener("click", () => {
-  if (!statusSticky) return;
-  statusSticky = false;
-  statusEl.classList.remove("sticky");
-  statusEl.title = "";
-});
+expose("statusSticky", () => statusSticky, (v) => { statusSticky = v; });
+Object.assign(ctx, { statusEl });
+const {
+  call, startProgressWatch, stopProgressWatch, say, sayUntilAck,
+} = installApi(ctx);
 
 // Side property panel — feature options live there, not in
 // prompt() dialogs. See panel.js for its anatomy. Closing the
@@ -211,10 +123,6 @@ const panel = createPropertyPanel({
     ctx.hideContextToolbar?.();
   },
 });
-
-// État partagé des modules. Les accesseurs lisent la variable actuelle,
-// y compris celles déclarées plus bas.
-const ctx = {};
 
 Object.assign(ctx, { THREE, sceneTheme, say, call, disposeSubtree, syncVisibilityMenu });
 const {
@@ -243,125 +151,10 @@ function applyVolumeVisibility() {
   applyDisplay();
 }
 
-function volumeVisibleCount() {
-  if (!volumesGroup.visible) return 0;
-  let n = 0;
-  volumesGroup.traverse((obj) => {
-    if (obj !== volumesGroup && (obj.isMesh || obj.isLineSegments)
-        && obj.visible) {
-      n += 1;
-    }
-  });
-  return n;
-}
-
-function sketchScreenPoint() {
-  const lines = sketchLineMeshes[0];
-  if (!lines) return null;
-  const pos = lines.geometry.getAttribute("position");
-  if (!pos || pos.count < 2) return null;
-  const a = new THREE.Vector3().fromBufferAttribute(pos, 0);
-  const b = new THREE.Vector3().fromBufferAttribute(pos, 1);
-  const mid = a.add(b).multiplyScalar(0.5);
-  mid.project(camera);
-  const rect = renderer.domElement.getBoundingClientRect();
-  const screen = ndcToScreen(mid.x, mid.y, rect);
-  return {
-    name: lines.userData.sketch?.name ?? null,
-    label: lines.userData.sketch?.label ?? null,
-    x: screen.x,
-    y: screen.y,
-  };
-}
-
-function surfaceScreenPoint() {
-  const mesh = surfaceMeshes[0];
-  if (!mesh) return null;
-  // Le triangle le plus éloigné de la pièce : le centre de la surface peut
-  // tomber sur une arête du solide, que le clic choisirait alors.
-  const pos = mesh.geometry.getAttribute("position");
-  const index = mesh.geometry.getIndex();
-  if (!pos) return null;
-  const solid = partMesh
-    ? new THREE.Box3().setFromObject(partMesh) : null;
-  const vertex = (i) => new THREE.Vector3().fromBufferAttribute(
-    pos, index ? index.getX(i) : i);
-  const count = index ? index.count : pos.count;
-  let center = null;
-  let farthest = -1;
-  for (let i = 0; i + 2 < count; i += 3) {
-    const c = vertex(i).add(vertex(i + 1)).add(vertex(i + 2))
-      .multiplyScalar(1 / 3);
-    const ndc = c.clone().project(camera);
-    if (Math.abs(ndc.x) > 0.95 || Math.abs(ndc.y) > 0.95) continue;
-    const d = solid ? solid.distanceToPoint(c) : 0;
-    if (d > farthest) { farthest = d; center = c; }
-  }
-  if (!center) return null;
-  const projected = center.clone().project(camera);
-  const rect = renderer.domElement.getBoundingClientRect();
-  const screen = ndcToScreen(projected.x, projected.y, rect);
-  return {
-    name: mesh.userData.surface?.name ?? null,
-    label: mesh.userData.surface?.label ?? null,
-    x: screen.x,
-    y: screen.y,
-  };
-}
-
-/** Centre du premier volume visible, en coordonnées écran — pour que le
- *  smoke clique la pièce là où elle est, pas là où il l'espère. */
-function volumeScreenPoint() {
-  let mesh = null;
-  volumesGroup.traverse((obj) => {
-    if (!mesh && obj.isMesh && obj.visible) mesh = obj;
-  });
-  if (!mesh) return null;
-  mesh.geometry.computeBoundingSphere();
-  const center = mesh.geometry.boundingSphere?.center;
-  if (!center) return null;
-  const projected = mesh.localToWorld(center.clone()).project(camera);
-  const rect = renderer.domElement.getBoundingClientRect();
-  return ndcToScreen(projected.x, projected.y, rect);
-}
-
-window.__freesolidDebug = {
-  get volumeVisibleCount() { return volumeVisibleCount(); },
-  get volumeScreenPoint() { return volumeScreenPoint(); },
-  get isOrthographic() { return camera.isOrthographicCamera === true; },
-  get sketchLineCount() { return sketchLineMeshes.length; },
-  get sketchScreenPoint() { return sketchScreenPoint(); },
-  get surfaceMeshCount() { return surfaceMeshes.length; },
-  get surfaceScreenPoint() { return surfaceScreenPoint(); },
-  get gemHudText() {
-    const hud = document.getElementById("gem-hud");
-    if (!hud || hud.hidden) return "";
-    return hud.innerText.replace(/\s+/g, " ").trim();
-  },
-  get featureDimCount() { return featureDimSprites.length; },
-  /** Centre de rotation projeté à l'écran, ou null. */
-  get rotationPivotScreen() {
-    const pivot = rotationPivot();
-    if (!pivot) return null;
-    camera.updateMatrixWorld();
-    const p = pivot.clone().project(camera);
-    const rect = renderer.domElement.getBoundingClientRect();
-    return ndcToScreen(p.x, p.y, rect);
-  },
-  get selectedFeatureName() { return selectedFeatureName; },
-  /** Spline 3D ouverte : points et tracé à l'écran. */
-  get curve3dScreen() { return ctx.curveTool?.screen() ?? null; },
-  /** Esquisse 3D ouverte : outil, définition, points et cotes à l'écran. */
-  get sketch3dScreen() { return ctx.sketch3dTool?.screen() ?? null; },
-  refresh: () => refresh(call("get_tree")),
-  get graphFeatureActive() { return graphFn.active; },
-  get graphFeatureKind() { return graphFn.kind; },
-  get graphFeatureErrorNode() { return graphFn.errorNode; },
-  get graphFeatureOutput() { return graphFn.draft?.output ?? null; },
-  get graphFeatureNodeIds() {
-    return (graphFn.draft?.nodes ?? []).map((node) => String(node.id));
-  },
-};
+// Outils de débogage (window.__freesolidDebug, lu par le smoke) :
+// le corps est dans main/debug.js.
+Object.assign(ctx, { camera, renderer, rotationPivot, volumesGroup, refresh });
+installDebug(ctx);
 
 const baseMaterial = new THREE.MeshStandardMaterial({
   color: sceneTheme.part, metalness: 0.08, roughness: 0.5,
@@ -1346,7 +1139,7 @@ let sketchInfoOpen = false;
 expose("selectedDatumFeature", () => selectedDatumFeature, (v) => { selectedDatumFeature = v; });
 expose("sketchInfoOpen", () => sketchInfoOpen, (v) => { sketchInfoOpen = v; });
 expose("selectedPlane", () => selectedPlane, (v) => { selectedPlane = v; });
-expose("pluginRuntime", () => pluginRuntime);
+expose("pluginRuntime", () => pluginRuntime, (v) => { pluginRuntime = v; });
 expose("selectedEdges", () => selectedEdges, (v) => { selectedEdges = v; });
 expose("selectedFeatureName", () => selectedFeatureName, (v) => { selectedFeatureName = v; });
 expose("treeHoverPlane", () => treeHoverPlane, (v) => { treeHoverPlane = v; });
@@ -1421,31 +1214,6 @@ function showTab(name) {
 }
 for (const tab of document.querySelectorAll("header .tab")) {
   tab.addEventListener("click", () => showTab(tab.dataset.tab));
-}
-
-function addPluginRibbon(spec) {
-  if (!isPluginId(spec.id) || RIBBONS[spec.id]) return;
-  const tab = buildTabButton(document, spec.id, spec.libelle);
-  const push = document.querySelector("#topbar .push");
-  if (push) push.parentElement.insertBefore(tab, push);
-  tab.addEventListener("click", () => showTab(spec.id));
-
-  const ribbon = buildRibbonElement(document, spec.id, spec.groupes);
-  const sketchbar = document.getElementById("sketchbar");
-  sketchbar.parentElement.insertBefore(ribbon, sketchbar);
-  RIBBONS[spec.id] = ribbon.id;
-}
-
-function addPluginFeature(entry) {
-  FEATURES.push(entry);
-  bindFeature(entry);
-}
-
-function addPluginHud(node) {
-  if (!(node instanceof Node)) return;
-  const viewbar = document.getElementById("viewbar");
-  if (viewbar) viewbar.after(node);
-  else document.getElementById("viewport")?.appendChild(node);
 }
 
 // ---------- coin de confirmation ----------
@@ -1706,6 +1474,18 @@ document.getElementById("btn-clip").addEventListener("click", () => {
     onApply: (v) => setClip(v.axis, num(v.position) ?? 0, !!v.flip),
   });
 });
+
+// ---------- panneaux des fonctions (FEATURES) ----------
+// Le corps est dans main/featurepanel.js. Installé ici : la vue en graphe
+// et la géométrie de référence le lisent dès leur branchement ; les
+// boutons du ruban sont liés plus bas, à leur place d'origine.
+
+Object.assign(ctx, {
+  panel, confirm, call, say, refresh, updateFilletRadiusBubble,
+  schedulePreview, findFeatureInTree, refreshAny, enterGraphFeature,
+  featureCommand,
+});
+const { currentSelection, openFeaturePanel, bindFeature } = installFeaturePanel(ctx);
 
 // ---------- vue en graphe ----------
 // Relais : ces noms sont appelés avant cette ligne (clavier, arbre, menu).
@@ -2340,182 +2120,7 @@ document.getElementById("btn-sketch").addEventListener("click", () =>
     }
   }));
 
-// Habillages : la zone de sélection du panneau absorbe les clics de la
-// zone graphique (arêtes ou face selon la commande) — on peut ouvrir la
-// commande d'abord et cliquer ensuite, comme dans les modeleurs courants.
-function currentSelection(accepts) {
-  if (accepts.includes("edges") && selectedEdges.size) {
-    return { kind: "edges", edges: [...selectedEdges] };
-  }
-  if (accepts.includes("face") && selectedFaceId !== null) {
-    return { kind: "face", face: selectedFaceId };
-  }
-  // Surface cliquée avant la commande (décaler, prolonger, ajuster).
-  if (accepts.includes("surface") && selectedSurface) {
-    return { kind: "surface", name: selectedSurface.name,
-             label: selectedSurface.label };
-  }
-  // Fonction cliquée dans l'arbre avant la commande (répétitions,
-  // symétrie) : elle remplit d'emblée la case, comme une face présélectionnée.
-  const feature = accepts.includes("feature")
-    && findFeatureInTree(lastTree, selectedFeatureName);
-  if (feature && feature.type !== "Sketcher::SketchObject") {
-    return { kind: "feature", items: [
-      { kind: "feature", name: feature.name, label: feature.label }] };
-  }
-  return null;
-}
-
-// Registry : un bind unique pour tous les panneaux « ouvrir → éditer →
-// aperçu → OK ». Les panneaux bespoke (équations, assemblage, datum…)
-// restent plus bas.
-/** Panneau d'une fonction de `FEATURES` — ruban et palette du graphe.
- *  `sketchOverride` : profil imposé par la palette, sinon la sélection. */
-function openFeaturePanel(entry, sketchOverride) {
-  const ctx = {
-    lastTree,
-    selection: currentSelection,
-    selectedSketch: sketchOverride ?? selectedSketch,
-  };
-  Object.defineProperty(ctx, "lastFaceHit", {
-    get: () => lastFaceHit,
-  });
-  const blocked = entry.guard?.(ctx);
-  if (blocked) { say(blocked, true); return; }
-  const spline = selectedFaceId != null && meshGroups.some(
-    (g) => g.faceId === selectedFaceId && g.spline);
-  const spec = {
-    icon: entry.icon,
-    title: entry.title,
-    groups: entry.groups(ctx),
-    note: typeof entry.noteFn === "function"
-      ? entry.noteFn(ctx, { spline })
-      : entry.note,
-    onApply: (v) => {
-      const built = entry.build(v, ctx);
-      if (!built) {
-        const raw = typeof entry.invalid === "function"
-          ? entry.invalid(v, ctx)
-          : (entry.invalid ?? "Valeurs invalides");
-        const notice = panelNotice(raw);
-        if (notice) say(notice.text, notice.tone === "error");
-        return;
-      }
-      if (typeof entry.confirm === "function") {
-        const question = entry.confirm(v, ctx);
-        if (question && !confirm(question)) return;
-      }
-      const run = entry.refresh === "any" ? refreshAny : refresh;
-      const gem = (ctx.lastTree?.gems ?? []).find(
-        (item) => item.name === built.params?.tool);
-      const stoneCount = gem?.count;
-      const started = Date.now();
-      const promise = call(built.op, built.params).then((tree) => {
-        if (built.op === "add_boolean" && stoneCount) {
-          rememberCombineFinished(stoneCount, (Date.now() - started) / 1000);
-        }
-        return tree;
-      });
-      // Refus du moteur : le panneau revient avec les valeurs saisies, au
-      // lieu de les perdre (le message reste dans la barre d'état).
-      promise.catch(() => {
-        if (panel.active) return;
-        openFeaturePanel(entry, sketchOverride);
-        panel.restore(v);
-      });
-      if (entry.openGraphEditor) {
-        run(promise.then((tree) => {
-          queueMicrotask(() => {
-            const created = latestGraphOrRepeat(tree);
-            if (created) enterGraphFeature(created);
-          });
-          return tree;
-        }));
-      } else {
-        run(promise);
-      }
-    },
-  };
-  const depthHandle = ["btn-pad", "btn-pocket"].includes(entry.button)
-    ? extrudeDepthHandle(entry, ctx) : null;
-  if (depthHandle) spec.onClose = () => depthHandle.close();
-  if (entry.preview !== false) {
-    spec.onChange = (v) => {
-      schedulePreview(entry.build(v, ctx));
-      if (entry.button === "btn-fillet") updateFilletRadiusBubble(v);
-      depthHandle?.update(v);
-    };
-    // Œil de l'en-tête : couper l'aperçu (fonction lourde), le rallumer.
-    spec.onPreview = (on, v) =>
-      schedulePreview(on ? entry.build(v, ctx) : null);
-  }
-  // Tant que la saisie est incomplète, le panneau dit ce qui manque.
-  spec.hint = (v) => (entry.build(v, ctx) ? null
-    : typeof entry.invalid === "function" ? entry.invalid(v, ctx)
-      : entry.invalid ?? null);
-  panel.open(spec);
-}
-
-/** Flèche au bout de l'extrusion (ou de l'enlèvement) : la tirer change
- *  la profondeur du panneau, l'aperçu suit. Profondeur « borgne » ou
- *  « plan milieu » seulement. */
-function extrudeDepthHandle(entry, featureCtx) {
-  const pocket = entry.button === "btn-pocket";
-  const sketch = resolveProfileSketch(featureCtx)?.name;
-  let frame = null;
-  let dragging = false;
-  let closed = false;
-  let last = null;
-
-  function show(v) {
-    last = v;
-    if (closed || !frame || dragging) return;
-    const length = num(v.length);
-    if (!(length > 0) || (v.cond !== "borgne" && v.cond !== "milieu")) {
-      ctx.handles?.hide();
-      return;
-    }
-    const half = v.cond === "milieu";
-    const sign = (pocket ? -1 : 1) * (v.reversed && !half ? -1 : 1);
-    const dir = frame.normal.map((c) => c * sign);
-    const reach = half ? length / 2 : length;
-    ctx.handles.show({
-      origin: frame.center.map((c, i) => c + dir[i] * reach), dir,
-      onDrag: (d) => {
-        dragging = true;
-        const next = Math.max(0.5, Math.round((length + d * (half ? 2 : 1)) * 2) / 2);
-        panel.restore({ length: next });
-      },
-      onEnd: () => {
-        dragging = false;
-        show(last);
-      },
-    });
-  }
-
-  if (sketch) {
-    call("sketch_frame", { sketch }).then((result) => {
-      frame = result;
-      if (last) show(last);
-    }).catch(() => {});
-  }
-  return {
-    update: (v) => show(v),
-    close: () => { closed = true; ctx.handles?.hide(); },
-  };
-}
-
-function bindFeature(entry) {
-  const ids = entry.buttons ?? [entry.button];
-  for (const id of ids) {
-    const el = document.getElementById(id);
-    if (!el || el.dataset.boundFeature) continue;
-    el.dataset.boundFeature = "1";
-    el.addEventListener("click", () =>
-      featureCommand(() => openFeaturePanel(entry)));
-  }
-}
-
+// Chaque entrée de FEATURES ouvre son panneau (main/featurepanel.js).
 for (const entry of FEATURES) bindFeature(entry);
 
 document.getElementById("btn-body").addEventListener("click", () =>
@@ -2692,64 +2297,18 @@ installCommandSearch(document, {
   sketchActive: () => sketchMode.active,
 });
 
-pluginRuntime = createPluginApi({
-  call, refresh, say,
-  tree: () => lastTree,
-  scene, camera, controls, renderer,
-  addRibbon: addPluginRibbon,
-  addFeature: addPluginFeature,
-  addHud: addPluginHud,
+// Hôte des plugins : le corps est dans main/pluginhost.js.
+Object.assign(ctx, {
+  RIBBONS, call, say, refresh, scene, camera, controls, renderer, showTab,
+  bindFeature,
 });
+installPluginHost(ctx);
 
 // ---------- boot ----------
-
-// Nouvelle pièce depuis un gabarit (accueil, volet de ressources).
-ctx.openTemplate = async (name) => {
-  if (!(await mayDiscard())) return;
-  clearFeatureDims();
-  refresh(call("new_from_template", { name }));
-};
-
-welcomeApi = installWelcome(document, {
-  storage: localStore,
-  hasDocument: () => Boolean(lastTree || assemblyState),
-  onPart: () => document.getElementById("btn-new").click(),
-  onAssembly: () => document.getElementById("btn-newasm").click(),
-  onOpen: () => document.getElementById("btn-open").click(),
-  onRecent: (path) => openDocument(path),
-  listTemplates: () => call("list_templates").then((r) => r.templates),
-  onTemplate: (name) => ctx.openTemplate(name),
+// Le corps est dans main/boot.js.
+Object.assign(ctx, {
+  call, say, localStore, refresh, updateViewport, renderTree, clearFeatureDims,
+  openDocument, showTab, bindFeature, showAssemblyMeshes, renderAssemblyTree,
+  mayDiscard,
 });
-
-call("ping")
-  .then(async (info) => {
-    await loadClientPlugins(call, pluginRuntime.api);
-    for (const entry of FEATURES) bindFeature(entry);
-    say(t("Moteur prêt — FreeCAD {v}", { v: info.freecad }));
-    // Resynchronise avec le moteur : après un rechargement de la page,
-    // la pièce en cours réapparaît au lieu d'être écrasée au premier
-    // clic sur Esquisse.
-    try {
-      const gen = ++viewGen;
-      const tree = await call("get_tree");
-      if (gen !== viewGen) return;
-      renderTree(tree);
-      await updateViewport(gen);
-    } catch {
-      try {
-        // Peut-être un assemblage en cours dans le moteur.
-        const gen = ++viewGen;
-        assemblyState = await call("assembly_tree");
-        if (gen !== viewGen) return;
-        renderAssemblyTree(assemblyState);
-        const meshes = await call("tessellate_assembly");
-        if (gen !== viewGen) return;
-        showAssemblyMeshes(meshes);
-        showTab("assembly");
-      } catch {
-        // pas encore de document — l'accueil propose d'en créer un
-        welcomeApi?.showWelcome();
-      }
-    }
-  })
-  .catch(() => say("Moteur injoignable — lancez engine/server.py avec freecadcmd", true));
+installBoot(ctx);

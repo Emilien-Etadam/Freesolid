@@ -16,8 +16,10 @@ corps de fonctions / méthodes.
 - Installé via micromamba dans l'environnement `freecad`.
   **La version de référence est `engine/platform.py` (`FREECAD`)** — une
   seule source, lue par le selftest et par `.github/workflows/ci.yml`.
-  Binaire micromamba : `~/.local/bin/micromamba` (racine par défaut
-  `~/micromamba`, donc `MAMBA_ROOT_PREFIX` n'a pas besoin d'être exporté).
+  Binaire micromamba : `~/.local/bin/micromamba`. Sa racine par défaut
+  dépend de sa version : `~/.local/share/mamba` depuis micromamba 2.0,
+  `~/micromamba` avant (`micromamba info` l'affiche). Dans les deux cas,
+  `MAMBA_ROOT_PREFIX` n'a pas besoin d'être exporté.
 - Lancer une commande FreeCAD :
   `~/.local/bin/micromamba run -n freecad freecadcmd <script.py>`
 - **Repli 1.0.x** via le kernel (`setJointConnectors` puis propriétés
@@ -51,6 +53,11 @@ reçoit son entrée dans `app/lang/en.json` ; chaque nouveau message
 d'erreur ou libellé du moteur, dans `engine/lang/en.json` (gabarit avec
 `{}`). `tests/js/i18n.test.mjs` et `tests/test_i18n.py` refusent les
 entrées orphelines et vérifient la couverture du ruban et des panneaux.
+
+### Ajouter une fonction
+
+La recette (fichiers à toucher, exemple complet de la Coque, tests qui
+refusent une fonction incomplète) : `docs/ajouter-une-fonction.md`.
 
 ### Gotcha à connaître
 

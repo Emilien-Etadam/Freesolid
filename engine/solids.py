@@ -69,9 +69,9 @@ class SolidsMixin:
         """Combiner deux corps — Soustraire / Ajouter / Intersection.
 
         S'applique au corps actif. Un ``PartDesign::Body`` outil est
-        absorbé (comportement PartDesign). Un semis de pierres n'est
-        pas absorbé : le corps outil est dérivé, le compound se relit
-        depuis ``PlacementList`` à chaque recompute.
+        absorbé (comportement PartDesign). Un outil qu'un plugin réclame
+        (``boolean_tool``) ne l'est pas : le plugin rend un corps outil
+        dérivé, qu'il tient à jour lui-même.
         """
         from engine.kernel import KernelError
         body = self._require_body()
@@ -1118,6 +1118,34 @@ class SolidsMixin:
             if abs(component) > 0.9:
                 return (tip, ["Face{}".format(index + 1)])
         return None
+
+    def _draft_neutral_token(self, obj):
+        """Plan neutre relu sur la dépouille : ``XY``, ``XZ`` ou ``YZ``.
+
+        ``add_draft`` y pose un plan d'origine, ou une face du Tip
+        parallèle au plan choisi : on relit le rôle du plan, ou l'axe de la
+        normale de la face. ``XY`` par défaut, comme ``add_draft``.
+        """
+        ref = getattr(obj, "NeutralPlane", None)
+        try:
+            target, subs = ref[0], ref[1]
+        except Exception:
+            return "XY"
+        for token, role in self._PLANE_ROLES.items():
+            if getattr(target, "Role", "") == role:
+                return token
+        try:
+            sub = str(list(subs)[0]) if subs else ""
+            face = target.Shape.getElement(sub)
+            u0, u1, v0, v1 = face.ParameterRange
+            normal = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
+        except Exception:
+            return "XY"
+        for token, component in (("XY", normal.z), ("XZ", normal.y),
+                                 ("YZ", normal.x)):
+            if abs(component) > 0.9:
+                return token
+        return "XY"
 
     def add_draft(self, face, angle, neutral="XY"):
         """Dépouille de la face cliquée ; plan neutre XY/XZ/YZ."""

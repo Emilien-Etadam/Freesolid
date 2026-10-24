@@ -11,7 +11,10 @@ const FORBIDDEN = /solidworks|dassault|catia|propertymanager|featuremanager|comm
 
 function files() {
   const out = ["index.html", "ribbon.json", "lang/en.json"];
-  for (const name of readdirSync(APP)) if (name.endsWith(".js")) out.push(name);
+  // Récursif (features/…), sauf vendor/ qui n'est pas à nous.
+  for (const name of readdirSync(APP, { recursive: true })) {
+    if (name.endsWith(".js") && !/^vendor[\\/]/.test(name)) out.push(name);
+  }
   return out;
 }
 

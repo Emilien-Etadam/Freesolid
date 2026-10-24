@@ -31,6 +31,7 @@ from engine.nodegraph import (  # noqa: E402
 from engine.platform import (                    # noqa: E402
     FREECAD, allow_from_environ, freesolid_version, version_status,
 )
+from engine.ops import PREVIEWABLE, TRANSACTIONAL  # noqa: E402
 from engine.plugins import PluginError           # noqa: E402
 from engine.protocol import dangling_deps, visible_dep_subs, visible_deps  # noqa: E402
 from engine.scriptnode import evaluate as evaluate_graph  # noqa: E402
@@ -771,16 +772,8 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
                 return feature
         raise KernelError("élément d'origine introuvable : {}".format(role))
 
-    _PREVIEWABLE = frozenset({
-        "add_pad", "add_pocket", "add_revolution", "add_groove",
-        "add_fillet", "add_chamfer", "add_thickness", "add_draft",
-        "add_mirror", "add_linear_pattern", "add_polar_pattern",
-        "add_hole", "set_params",
-        "add_loft", "add_sweep", "add_helix", "add_boolean", "add_text",
-        "add_datum_plane", "add_surface_cut", "add_delete_face",
-        "add_replace_face", "add_vertex_chamfer",
-        "surface_delete_faces",
-    })
+    #: Ops à aperçu jaune — dérivé du catalogue engine/ops/ (``preview=True``).
+    _PREVIEWABLE = PREVIEWABLE
 
     def preview(self, op, params):
         """Aperçu jaune : exécute la fonction, tesselle, puis annule tout.
@@ -835,59 +828,9 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
 #: lifecycle (new/open), read-only ops, undo/redo themselves, and
 #: sketch_move — a drag streaming at ~20 Hz would shred the undo stack
 #: into per-frame steps.
-_TRANSACTIONAL = frozenset({
-    "add_rect_sketch", "add_pad", "add_pocket", "add_fillet", "add_chamfer",
-    "add_revolution", "add_groove", "add_mirror", "add_linear_pattern",
-    "add_polar_pattern", "add_thickness", "add_draft", "add_hole",
-    "add_datum_plane", "add_loft", "add_sweep", "add_helix",
-    "add_body", "add_boolean", "set_body_color",
-    "insert_component", "move_component", "add_joint", "solve_assembly",
-    "surface_extrude", "surface_revolve", "surface_loft", "surface_sew",
-    "surface_thicken", "add_curve3d", "edit_curve3d", "surface_planar",
-    "add_sketch3d", "edit_sketch3d",
-    "surface_sweep", "surface_offset", "surface_fill", "surface_extend",
-    "edit_surface_extend", "surface_trim", "edit_surface_trim",
-    "add_surface_cut", "edit_surface_cut", "surface_boundary",
-    "add_delete_face", "add_replace_face",
-    "surface_ruled", "surface_delete_faces", "surface_untrim",
-    "surface_fillet", "curve_intersection", "curve_project",
-    "curve_composite", "edit_surface_fillet", "surface_split",
-    "curve_helix", "surface_radiate", "surface_mid", "surface_flatten",
-    "surface_freeform", "edit_surface_freeform",
-    "sketch_convert", "add_text",
-    "edit_text", "add_graph_feature", "edit_graph_feature",
-    "add_repeat_feature", "edit_repeat_feature", "make_drawing",
-    "set_param", "set_params", "rename",
-    "set_variable", "delete_variable", "sketch_delete_constraint",
-    "set_tip", "tip_to_end", "delete_feature", "delete_rolled_back",
-    "sketch_start", "sketch_add_line", "sketch_add_rectangle",
-    "sketch_add_circle", "sketch_dim",
-    "sketch_set_dim", "sketch_place_dim", "sketch_delete_geo",
-    "sketch_finish",
-    "sketch_toggle_construction",
-    "sketch_add_arc", "sketch_add_slot", "sketch_add_polygon",
-    "sketch_fillet", "sketch_trim", "sketch_constrain",
-    "sketch_add_spline", "sketch_add_ellipse", "sketch_mirror",
-    "sketch_array", "sketch_offset", "array_component",
-    "sketch_add_point", "sketch_add_tangent_arc", "sketch_add_rect3",
-    "sketch_add_ellipse_arc", "sketch_add_parabola", "sketch_add_conic",
-    "sketch_add_spline_poles", "sketch_add_arc_slot",
-    "sketch_chamfer", "sketch_extend", "sketch_split", "sketch_transform",
-    "sketch_polar_array", "sketch_reference", "sketch_silhouette", "sketch_add_text",
-    "sketch_corner", "sketch_add_equation", "sketch_repair",
-    "sketch_fully_define", "sketch_spline", "sketch_set_spline",
-    "sketch_block_save",
-    "sketch_match_curvature", "set_profile_contours", "sketch_layers",
-    "sketch_set_layer",
-    "sketch_block_insert", "sketch_picture",
-    "set_component_grounded", "reorder_feature", "set_comment",
-    "set_suppressed", "sketch_set_plane", "add_vertex_chamfer",
-    "edit_vertex_chamfer", "set_body_material", "set_face_color",
-    "add_datum_axis", "add_datum_point", "add_datum_cs", "paste_feature",
-    "set_folder", "rename_folder", "add_configuration",
-    "activate_configuration", "rename_configuration", "delete_configuration",
-    "set_configuration_values",
-})
+#: Dérivé du catalogue engine/ops/ (``undo=True``). Le nom reste : des
+#: plugins l'importent.
+_TRANSACTIONAL = TRANSACTIONAL
 
 
 #: Ops qui laissent un document « propre » : neuf, ouvert ou enregistré.

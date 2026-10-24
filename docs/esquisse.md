@@ -10,8 +10,8 @@ n'est repris de l'aide, des icônes ni des textes de l'éditeur.
 
 Un outil est **fait** quand :
 
-1. **Moteur** — une op JSON déclarée dans `engine/protocol.py`,
-   annulable, qui refuse proprement une entrée impossible (message
+1. **Moteur** — une op JSON déclarée dans `engine/ops/esquisse.py`,
+   annulable (`undo=True`), qui refuse proprement une entrée impossible (message
    traduit dans `engine/lang/en.json`) — ou, pour un pur geste
    d'interface, une fonction pure testée.
 2. **Interface** — un bouton de la barre Esquisse (icône originale,

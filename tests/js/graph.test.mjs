@@ -1,6 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
+import { addCombineTools, resetCombineTools } from "../../app/combine.js";
+
 import {
   buildGraph,
   composeGraphPayload,
@@ -416,7 +418,8 @@ describe("palette constructive", () => {
     assert.equal(fillet?.sketchProfile, undefined);
     assert.equal(combine?.dressup, undefined);
     assert.equal(combine?.sketchProfile, undefined);
-    assert.deepEqual(combine?.buttons, ["btn-boolean", "btn-gem-combine"]);
+    assert.equal(combine?.button, "btn-boolean");
+    assert.equal(combine?.buttons, undefined);
     assert.equal(FEATURES.filter((entry) => entry.dressup).length, 5);
     assert.equal(FEATURES.filter((entry) => entry.sketchProfile).length, 4);
   });
@@ -487,24 +490,29 @@ describe("palette constructive", () => {
     assert.deepEqual(graphPaletteItems(null), []);
   });
 
-  it("Combiner accepte un semis comme corps outil, sans second corps", () => {
+  it("Combiner accepte l'outil d'un plugin, sans second corps", () => {
     const onlyActive = {
       lastTree: { bodies: [{ name: "Body", label: "Pièce", active: true }] },
     };
     assert.match(combine.guard(onlyActive), /second corps/);
-    const withGem = {
-      lastTree: {
-        bodies: [{ name: "Body", label: "Pièce", active: true }],
-        gems: [{ name: "Semis", label: "Semis de pierres — cylindre-plat Ø1,5 mm",
-                 count: 3 }],
-      },
-    };
-    assert.equal(combine.guard(withGem), null);
-    const toolRow = combine.groups(withGem)[0].rows.find((row) => row.key === "tool");
-    assert.deepEqual(toolRow.options, [
-      ["Semis", "Semis de pierres — cylindre-plat Ø1,5 mm"],
-    ]);
-    assert.equal(toolRow.value, "Semis");
+    addCombineTools({
+      options: (tree) => (tree?.pieces ?? []).map((p) => [p.name, p.label]),
+    });
+    try {
+      const withPiece = {
+        lastTree: {
+          bodies: [{ name: "Body", label: "Pièce", active: true }],
+          pieces: [{ name: "Piece", label: "Pièce rapportée" }],
+        },
+      };
+      assert.equal(combine.guard(withPiece), null);
+      const toolRow = combine.groups(withPiece)[0].rows.find(
+        (row) => row.key === "tool");
+      assert.deepEqual(toolRow.options, [["Piece", "Pièce rapportée"]]);
+      assert.equal(toolRow.value, "Piece");
+    } finally {
+      resetCombineTools();
+    }
   });
 });
 

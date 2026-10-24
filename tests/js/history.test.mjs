@@ -140,6 +140,11 @@ describe("undoStepLabel", () => {
     assert.equal(undoStepLabel("add_something_new"), "Fonction");
     assert.equal(undoStepLabel("Autre"), "Modification");
   });
+  it("ne prend pas les propriétés héritées d'Object.prototype pour des libellés", () => {
+    assert.equal(undoStepLabel("constructor"), "Modification");
+    assert.equal(undoStepLabel("toString"), "Modification");
+    assert.equal(undoStepLabel("__proto__"), "Modification");
+  });
 });
 
 describe("countTreeErrors", () => {

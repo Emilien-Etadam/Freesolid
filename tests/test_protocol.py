@@ -887,13 +887,27 @@ def test_dangling_deps_resolves_targets_from_every_section():
     """
     tree = {
         "features": [{"name": "Pad",
-                      "deps": ["XZ_Plane", "Surface", "SketchSurf", "Semis"]}],
+                      "deps": ["XZ_Plane", "Surface", "SketchSurf", "Piece"]}],
         "planes": [{"id": "XZ", "name": "XZ_Plane"}],
         "surfaces": [{"name": "Surface",
                       "children": [{"name": "SketchSurf"}]}],
-        "gems": [{"name": "Semis"}],
+        "pieces": [{"name": "Piece"}],
     }
     assert protocol.dangling_deps(tree) == []
+
+
+def test_dangling_deps_section_de_plugin_est_aussi_une_source():
+    """Une clé hors du noyau vient d'un plugin : ses entrées sont des nœuds."""
+    tree = {"features": [{"name": "Pad"}],
+            "pieces": [{"name": "Piece", "deps": ["Pad", "Disparu"]}]}
+    assert protocol.dangling_deps(tree) == [("Piece", "Disparu")]
+
+
+def test_dangling_deps_les_variables_ne_sont_pas_des_cibles():
+    """``variables`` est une clé du noyau : pas une section de nœuds."""
+    tree = {"features": [{"name": "Pad", "deps": ["largeur"]}],
+            "variables": [{"name": "largeur", "value": 10}]}
+    assert protocol.dangling_deps(tree) == [("Pad", "largeur")]
 
 
 def test_dangling_deps_walks_children_as_sources():
@@ -951,6 +965,19 @@ def test_list_plugins_is_core_and_paramless():
     assert protocol.OPS["list_plugins"] == ()
     assert "list_plugins" in protocol.CORE_OP_NAMES
     protocol.validate_request({"op": "list_plugins"})
+
+
+def test_kind_nom_d_un_manifeste_refuse_le_texte_vide(monkeypatch):
+    """``nom`` : un texte non vide, requis ou optionnel."""
+    req = protocol.req_from_plugin_op(
+        {"requis": {"piece": "nom"}, "optionnels": {"modele": "nom"}})
+    monkeypatch.setitem(protocol.OPS, "poser_piece", req)
+    protocol.validate_request(
+        {"op": "poser_piece", "params": {"piece": "P", "modele": "m"}})
+    for params in ({"piece": ""}, {"piece": "  "},
+                   {"piece": "P", "modele": ""}, {"piece": 3}):
+        with pytest.raises(protocol.ProtocolError):
+            protocol.validate_request({"op": "poser_piece", "params": params})
 
 def test_pack_edges_carries_exact_length():
     packed = protocol.pack_edges([

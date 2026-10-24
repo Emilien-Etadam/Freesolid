@@ -1,8 +1,7 @@
 """Plugin bouchon — uniquement pour les tests. Ne charge pas en production.
 
-Couvre le chemin ``dispatch`` → ``call_op`` avant que les ops bijouterie
-ne quittent ``Kernel``. Découvert par personne : ``discover`` ne lit
-que ``plugins/*/plugin.json``.
+Couvre le chemin ``dispatch`` → ``call_op`` sans plugin réel installé.
+Découvert par personne : ``discover`` ne lit que ``plugins/*/plugin.json``.
 """
 
 from engine.kernel import KernelError
@@ -16,6 +15,8 @@ def register(registre):
     registre.tolerates_invalid(_personne)
     registre.boolean_tool(_rien)
     registre.deletes_feature(_personne)
+    registre.internal_object(_personne)
+    registre.tree_node(_personne)
 
 
 def echo_bouchon(kernel, message):

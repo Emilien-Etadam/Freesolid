@@ -14,7 +14,8 @@ SolidWorks, sans en reprendre de code, d'icône, de nom ni de logo.
 - **Méthode** : le même geste a été fait dans les deux logiciels (esquisse
   sur le plan de face → rectangle → cote → bossage extrudé → congé), puis
   l'assemblage et la mise en plan ont été ouverts. Les références
-  `fichier:ligne` renvoient au code FreeSolid.
+  `fichier:ligne` renvoient au code FreeSolid de `v0.1.3`
+  (`git show v0.1.3:app/main.js`), pas au code courant.
 - **Non observé en direct** (l'outil d'automatisation ne sait pas faire un
   glisser au bouton du milieu, et aucun fichier utilisateur n'a été ouvert) :
   la navigation au bouton du milieu dans SolidWorks et le PropertyManager

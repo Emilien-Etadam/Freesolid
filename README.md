@@ -114,7 +114,9 @@ French texts, translated entry by entry in `app/lang/en.json` (interface,
 placeholders). An untranslated text shows in French. Adding a language
 takes one JSON file on each side, plus its code in `app/settings.js`
 (`LANGS`) and `engine/i18n.py` (`LANGS`). Tests reject orphan entries and
-require a translation for every ribbon label and panel title.
+require a translation for every ribbon label, every panel text (title,
+groups, fields, hints, choices, refusals) and every engine error message
+written as a literal.
 
 ## Architecture
 
@@ -127,8 +129,10 @@ Three layers:
 Details: [`docs/architecture-app.md`](docs/architecture-app.md).
 The boundary between layers 2 and 3, and what gets reported upstream to
 FreeCAD when development reveals a gap:
-[`docs/amont-freecad.md`](docs/amont-freecad.md). Design documents in
-`docs/` are written in French.
+[`docs/amont-freecad.md`](docs/amont-freecad.md). Adding a CAD function
+(engine op, panel, ribbon button, tests):
+[`docs/ajouter-une-fonction.md`](docs/ajouter-une-fonction.md). Design
+documents in `docs/` are written in French.
 
 ## Development
 

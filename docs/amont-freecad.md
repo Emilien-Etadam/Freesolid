@@ -3,6 +3,10 @@
 *Doctrine posée le 2026-08-21, à l'occasion du relevé
 [`vcad.md`](vcad.md), qui a rendu la question inévitable.*
 
+*Les renvois `engine/kernel.py:ligne` désignent le code de ce jour-là,
+commit `f6e444f` (`git show f6e444f:engine/kernel.py`), pas le code
+courant.*
+
 ## 1. La règle, en deux phrases
 
 > **Chaque ligne écrite se range d'un côté de la frontière.** Ce qui touche

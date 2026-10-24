@@ -10,16 +10,17 @@ n'est repris de l'aide, des icônes ni des textes de l'éditeur.
 
 Une commande est **faite** quand les six points tiennent :
 
-1. **Moteur** — une op JSON déclarée dans `engine/protocol.py`, annulable
-   (`_TRANSACTIONAL`), qui refuse proprement une entrée impossible (message
+1. **Moteur** — une op JSON déclarée dans `engine/ops/surfaces.py`,
+   annulable (`undo=True`), qui refuse proprement une entrée impossible (message
    traduit dans `engine/lang/en.json`).
 2. **Interface** — un bouton du ruban (onglet Surfaces) avec icône
    originale, un panneau qui se remplit au clic dans la vue.
 3. **Réédition** — double-clic dans l'arbre : les paramètres reviennent et
    la forme se reconstruit ; les formes figées sont recalculées à chaque
    reconstruction quand leur source change.
-4. **Selftest** — au moins un indicateur dans `engine/selftest.py`
-   (FreeCAD réel, CI).
+4. **Selftest** — au moins un indicateur dans `engine/selftest/surfaces.py`
+   (FreeCAD réel, CI), l'étape inscrite dans la table de
+   `engine/selftest/__init__.py`.
 5. **Smoke** — le bouton ouvre son panneau sans erreur console
    (`scripts/smoke/smoke.js`, CI).
 6. **Clic** — le geste complet vérifié à la souris dans le navigateur.

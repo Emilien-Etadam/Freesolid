@@ -44,10 +44,10 @@ d'extrusion…) sont traités ailleurs.
     plus) : écrire en LF ;
   - aucune variable locale ne doit s'appeler `t` dans `app/` (un test le
     vérifie) ;
-  - une nouvelle op moteur doit être ajoutée dans `engine/protocol.py`
-    (`OPS`) **et** dans la liste figée de `tests/test_protocol.py`
-    (`test_ops_snapshot_keys`) ; si elle modifie le document, l'ajouter à
-    `_TRANSACTIONAL` en bas de `engine/kernel.py`.
+  - une nouvelle op moteur se déclare par un `Op(...)` dans
+    `engine/ops/<famille>.py` (`undo=True` si elle modifie le document),
+    **et** dans la liste figée de `tests/test_protocol.py`
+    (`test_ops_snapshot_keys`) et l'instantané `tests/ops_instantane.json`.
 - **Suivi** : à la fin de chaque tâche, passer sa ligne à « fait » dans le
   tableau de suivi de `docs/ecarts-solidworks.md`.
 
@@ -499,8 +499,9 @@ appelées par des méthodes minces) :
   répétitions) ; paramètres et équations ; fichiers (ouvrir, enregistrer,
   exporter) ;
 - tessellation et arbre ; esquisse ;
-- le selftest dans son propre module (`engine/selftest.py`), hors du code
-  de production.
+- le selftest dans son propre paquet (`engine/selftest/`, une fonction
+  par étape, rangée par domaine ; la table de `__init__.py` fixe l'ordre),
+  hors du code de production.
 
 Règles :
 - Les imports FreeCAD restent dans les corps de fonctions (les modules

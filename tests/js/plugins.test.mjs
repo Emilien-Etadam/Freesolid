@@ -6,24 +6,24 @@ import { createPluginApi, loadClientPlugins, pluginEntryUrl } from "../../app/pl
 describe("pluginEntryUrl", () => {
   it("n'accepte que /plugins/<nom>/plugin.js avec le même nom", () => {
     assert.equal(
-      pluginEntryUrl("bijouterie", "/plugins/bijouterie/plugin.js"),
-      "/plugins/bijouterie/plugin.js",
+      pluginEntryUrl("exemple", "/plugins/exemple/plugin.js"),
+      "/plugins/exemple/plugin.js",
     );
     assert.equal(
-      pluginEntryUrl("bijouterie", "/plugins/autre/plugin.js"),
+      pluginEntryUrl("exemple", "/plugins/autre/plugin.js"),
       "",
     );
     assert.equal(
-      pluginEntryUrl("bijouterie", "/plugins/bijouterie/../x.js"),
+      pluginEntryUrl("exemple", "/plugins/exemple/../x.js"),
       "",
     );
     assert.equal(
-      pluginEntryUrl("bijouterie", "https://evil.example/plugin.js"),
+      pluginEntryUrl("exemple", "https://evil.example/plugin.js"),
       "",
     );
-    assert.equal(pluginEntryUrl("bijouterie", "/app/main.js"), "");
-    assert.equal(pluginEntryUrl("", "/plugins/bijouterie/plugin.js"), "");
-    assert.equal(pluginEntryUrl("bijouterie", null), "");
+    assert.equal(pluginEntryUrl("exemple", "/app/main.js"), "");
+    assert.equal(pluginEntryUrl("", "/plugins/exemple/plugin.js"), "");
+    assert.equal(pluginEntryUrl("exemple", null), "");
   });
 });
 
@@ -129,14 +129,44 @@ describe("createPluginApi", () => {
     };
     const runtime = createPluginApi(host);
     runtime.api.treeRow(
-      (tree) => tree.gems ?? [],
-      (gem) => ({ name: gem.name }),
+      (tree) => tree.pieces ?? [],
+      (piece) => ({ name: piece.name }),
     );
     runtime.renderTreeRows(
-      { gems: [{ name: "Semis" }, { name: "Semis001" }] },
+      { pieces: [{ name: "Piece" }, { name: "Piece001" }] },
       { append: (row) => rows.push(row) },
     );
-    assert.deepEqual(rows, [{ name: "Semis" }, { name: "Semis001" }]);
+    assert.deepEqual(rows, [{ name: "Piece" }, { name: "Piece001" }]);
+  });
+
+  it("featureButton et combineTools passent par l'hôte", () => {
+    const seen = [];
+    const host = {
+      call() {}, refresh() {}, say() {}, tree: () => null,
+      addFeatureButton: (id, core) => seen.push(["button", id, core]),
+      addCombineTools: (hooks) => seen.push(["combine", typeof hooks.options]),
+    };
+    const { api } = createPluginApi(host);
+    api.featureButton("btn-exemple-combine", "btn-boolean");
+    api.featureButton(null, "btn-boolean");
+    api.combineTools({ options: () => [] });
+    api.combineTools({});
+    assert.deepEqual(seen, [
+      ["button", "btn-exemple-combine", "btn-boolean"],
+      ["combine", "function"],
+    ]);
+  });
+
+  it("progress : chaque sondage atteint les plugins, un plugin cassé n'arrête pas", () => {
+    const seen = [];
+    const runtime = createPluginApi({
+      call() {}, refresh() {}, say() {}, tree: () => null,
+    });
+    runtime.api.progress(() => { throw new Error("boum"); });
+    runtime.api.progress((progress, now) => seen.push([progress.op, now]));
+    runtime.api.progress("pas une fonction");
+    runtime.dispatchProgress({ op: "add_boolean" }, 12);
+    assert.deepEqual(seen, [["add_boolean", 12]]);
   });
 
   it("viewport : onClear puis onMesh, les objets sont ajoutés au groupe", () => {

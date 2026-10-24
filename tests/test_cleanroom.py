@@ -17,18 +17,19 @@ FORBIDDEN = re.compile(
 # Le selftest vérifie qu'un message d'erreur ne contient pas ce nom.
 # La liste de ``tests/test_guard.py`` est hors de engine/, donc déjà exclue.
 EXCEPTIONS = (
-    ("selftest.py", '"SolidWorks" not in text'),
+    ("selftest/fonctions.py", '"SolidWorks" not in text'),
 )
 
 
 def test_engine_names_no_commercial_cad():
     hits = []
-    paths = sorted(ENGINE.glob("*.py"))
+    # Récursif : les sous-paquets (engine/ops/…) sont des sources du moteur.
+    paths = sorted(ENGINE.rglob("*.py"))
     lang = ENGINE / "lang" / "en.json"
     if lang.is_file():
         paths.append(lang)
     for path in paths:
-        rel = path.name if path.parent == ENGINE else "lang/en.json"
+        rel = path.relative_to(ENGINE).as_posix()
         for number, line in enumerate(
                 path.read_text(encoding="utf-8").splitlines(), 1):
             if FORBIDDEN.search(line) is None:

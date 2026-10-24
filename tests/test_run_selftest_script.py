@@ -94,25 +94,25 @@ def test_noyau_seul_sans_exigence_sort_zero(tmp_path):
 
 
 def test_plugin_exige_et_present_sort_zero(tmp_path):
-    rapport = dict(_VERT, gem_ok=True)
-    res = _run(rapport, [("bijouterie", 24)], exige="bijouterie",
+    rapport = dict(_VERT, exemple_ok=True)
+    res = _run(rapport, [("exemple", 24)], exige="exemple",
                tmp_path=tmp_path)
     assert res.returncode == 0, res.stdout + res.stderr
-    assert "plugins chargés : bijouterie" in res.stdout
-    assert "(bijouterie : 24)" in res.stdout
+    assert "plugins chargés : exemple" in res.stdout
+    assert "(exemple : 24)" in res.stdout
 
 
 def test_plugin_exige_mais_absent_sort_un(tmp_path):
     """Le cas entier : rapport sans un seul indicateur faux, et pourtant rouge."""
-    res = _run(_VERT, [], exige="bijouterie", tmp_path=tmp_path)
+    res = _run(_VERT, [], exige="exemple", tmp_path=tmp_path)
     assert res.returncode == 1, res.stdout + res.stderr
-    assert "bijouterie : non chargé" in res.stdout
+    assert "exemple : non chargé" in res.stdout
     trace = (tmp_path / "echecs.txt").read_text(encoding="utf-8")
-    assert "bijouterie" in trace
+    assert "exemple" in trace
 
 
 def test_plugin_charge_mais_muet_sort_un(tmp_path):
-    res = _run(_VERT, [("bijouterie", 0)], exige="bijouterie",
+    res = _run(_VERT, [("exemple", 0)], exige="exemple",
                tmp_path=tmp_path)
     assert res.returncode == 1, res.stdout + res.stderr
     assert "n'a contribué aucun indicateur" in res.stdout
@@ -135,7 +135,7 @@ def test_les_notes_du_registre_sont_imprimees(tmp_path):
 
 def test_indicateur_faux_reste_prioritaire(tmp_path):
     """Un indicateur faux sort 1 par lui-même, sans passer par les plugins."""
-    res = _run(dict(_VERT, noyau_ok=False), [], exige="bijouterie",
+    res = _run(dict(_VERT, noyau_ok=False), [], exige="exemple",
                tmp_path=tmp_path)
     assert res.returncode == 1
     assert "indicateurs faux : noyau_ok" in res.stdout
@@ -148,8 +148,8 @@ def test_exigence_vide_ou_espaces_n_exige_rien(tmp_path):
 
 
 def test_deux_plugins_exiges_un_seul_present(tmp_path):
-    res = _run(dict(_VERT, g=True), [("bijouterie", 1)],
-               exige="bijouterie,gravure", tmp_path=tmp_path)
+    res = _run(dict(_VERT, g=True), [("exemple", 1)],
+               exige="exemple,gravure", tmp_path=tmp_path)
     assert res.returncode == 1
     assert "gravure : non chargé" in res.stdout
-    assert "bijouterie : non chargé" not in res.stdout
+    assert "exemple : non chargé" not in res.stdout

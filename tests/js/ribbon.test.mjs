@@ -385,7 +385,7 @@ describe("buildRibbonElement", () => {
 describe("buildTabButton", () => {
   it("retombe sur l'id quand le libellé manque", () => {
     const doc = fakeDoc();
-    assert.equal(buildTabButton(doc, "bijoux", "  ").textContent, "bijoux");
-    assert.equal(buildTabButton(doc, "bijoux", "Bijoux").textContent, "Bijoux");
+    assert.equal(buildTabButton(doc, "exemple", "  ").textContent, "exemple");
+    assert.equal(buildTabButton(doc, "exemple", "Exemple").textContent, "Exemple");
   });
 });

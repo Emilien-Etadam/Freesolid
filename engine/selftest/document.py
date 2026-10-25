@@ -5,9 +5,11 @@ Une fonction par étape, dans l'ordre d'exécution ;
 ``engine/selftest/__init__.py`` fixe l'ordre global.
 """
 
+import json
 import math
 import os
 import tempfile
+import types
 
 from engine.kernel import (
     KernelError,
@@ -776,6 +778,73 @@ def p68_configurations(self, mark, report, etat):
         and abs(body.Shape.Volume - long_volume) < 1e-6
         and tree["configurations"] == {"active": "Long",
                                        "names": ["Court", "Long"]})
+
+
+def _face_mesh_temoin(self, face, face_id, deviation):
+    """Le calcul des normales d'avant p72, gardé comme témoin : chaque
+    sommet reprojeté par ``project_uv``, domaine de la face compris."""
+    from engine.surfaces import is_bspline_surface, project_uv
+    vertices, triangles = face.tessellate(float(deviation))
+    points = [(v.x, v.y, v.z) for v in vertices]
+    normals = []
+    for vertex in vertices:
+        try:
+            u, v, _on = project_uv(face, vertex.x, vertex.y, vertex.z)
+            normal = face.normalAt(u, v)
+            if hasattr(normal, "normalize"):
+                normal = normal.normalize()
+            length = float(getattr(normal, "Length", 0) or 0)
+            if length < 1e-12:
+                normals.append((0.0, 0.0, 1.0))
+            else:
+                normals.append((float(normal.x), float(normal.y),
+                                float(normal.z)))
+        except Exception:
+            normals.append((0.0, 0.0, 1.0))
+    return (face_id, points, triangles, normals), is_bspline_surface(face)
+
+
+def p72_maillage_identique(self, mark, report, etat):
+    """Les normales d'une face plane se calculent une fois, sans
+    isPartOfDomain : le maillage rendu ne change pas d'un octet."""
+    mark("p72: maillage d'affichage identique au témoin")
+    App = self._app()
+    self.new_part("Pièce maillage")
+    self.add_rect_sketch(40, 40)
+    self.add_pad(20)
+    state = self.sketch_start(face=self._top_face_id())
+    hole_sk = state["sketch"]
+    self.sketch_add_circle(hole_sk, 8, 8, 4)
+    self.sketch_finish(hole_sk)
+    self.add_pocket(8)
+    tree = self.add_fillet(2, edges=[0])
+    fillet = any(f["type"] == "PartDesign::Fillet" for f in tree["features"])
+    # Une plaque bosselée (forme libre) coupe le solide : sa face
+    # B-spline entre dans le corps.
+    state = self.sketch_start(plane="XY")
+    plate_sk = state["sketch"]
+    self.sketch_add_rectangle(plate_sk, -30, -30, 30, 30)
+    self.sketch_finish(plate_sk)
+    self._require_doc().getObject(plate_sk).AttachmentOffset = (
+        App.Placement(App.Vector(0, 0, 10), App.Rotation()))
+    self._recompute()
+    plate = self.surface_planar(sketch=plate_sk)["surfaces"][-1]["name"]
+    bump = self.surface_freeform(plate, 15, point=[0, 0, 10], height=5)
+    self.add_surface_cut(bump["surfaces"][-1]["name"])
+    kinds = {f.Surface.TypeId for f in self._require_body().Shape.Faces}
+    report["p72_faces_couvertes"] = fillet and {
+        "Part::GeomPlane", "Part::GeomCylinder", "Part::GeomBSplineSurface",
+    } <= kinds
+    mesh = self.tessellate()
+    self._face_mesh = types.MethodType(_face_mesh_temoin, self)
+    try:
+        temoin = self.tessellate()
+    finally:
+        del self._face_mesh
+    report["p72_maillage_identique"] = (
+        bool(mesh.get("normals"))
+        and json.dumps(mesh, sort_keys=True)
+        == json.dumps(temoin, sort_keys=True))
 
 
 def bilan(self, mark, report, etat):

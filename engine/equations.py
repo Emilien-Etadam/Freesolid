@@ -213,7 +213,8 @@ class EquationsMixin:
         """``{clé: valeur}`` -> ``({propriété FreeCAD: valeur},
         {propriété: clé demandée})``. Une clé neutre se traduit selon le
         genre de l'objet ; un nom de propriété que la table connaît passe
-        tel quel (transition) ; toute autre clé est refusée."""
+        tel quel (transition) ; toute autre clé est refusée, comme deux
+        clés qui visent la même propriété (« length » et « Length »)."""
         from engine.kernel import KernelError
         from engine.vocab import param_prop_for, type_key_for
         type_key = type_key_for(getattr(obj, "TypeId", ""))
@@ -222,6 +223,10 @@ class EquationsMixin:
             prop = param_prop_for(type_key, str(key))
             if prop is None:
                 raise KernelError("propriété non éditable : {}".format(key))
+            if prop in props:
+                raise KernelError(
+                    "clés en double pour la même cote : {}, {}".format(
+                        asked[prop], key))
             props[prop] = value
             asked[prop] = str(key)
         return props, asked

@@ -293,6 +293,30 @@ def test_une_cle_inconnue_est_refusee(key):
     assert obj.Length == 10.0
 
 
+def test_deux_cles_pour_la_meme_cote_sont_refusees():
+    """``length`` et ``Length`` (transition) visent la même propriété : la
+    seconde n'écrase pas la première en silence, la cote ne change pas."""
+    obj = _Obj("F", "PartDesign::Pad", Length=10.0)
+    kernel = _kernel(obj)
+    with pytest.raises(
+            KernelError,
+            match="^clés en double pour la même cote : length, Length$"):
+        kernel.set_params("F", {"length": 5, "Length": 6})
+    assert obj.Length == 10.0
+    assert obj.ExpressionEngine == []
+
+
+def test_deux_cles_neutres_distinctes_passent():
+    """``size`` et ``size2`` mènent à deux propriétés : rien à refuser.
+    (``length2`` ne se réédite pas sur une extrusion : il est refusé comme
+    non éditable, d'où le chanfrein.)"""
+    chamfer = _Obj("C", "PartDesign::Chamfer", ChamferType="Two distances",
+                   Size=1.0, Size2=2.0, Angle=45.0, FlipDirection=False)
+    kernel = _kernel(chamfer)
+    kernel.set_params("C", {"size": 1.5, "size2": 2.5})
+    assert (chamfer.Size, chamfer.Size2) == (1.5, 2.5)
+
+
 def test_une_cote_absente_est_refusee_sous_sa_cle():
     """``lengthFwd`` (table par défaut) sur une extrusion : la fonction n'a
     pas cette cote, le refus nomme la clé demandée."""

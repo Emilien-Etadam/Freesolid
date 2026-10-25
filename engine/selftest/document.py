@@ -762,9 +762,21 @@ def p68_configurations(self, mark, report, etat):
     tree = self.activate_configuration("Long")
     table = self.configuration_table()
     depth = next(r for r in table["rows"]
-                 if r["key"] == "prop:%s.Length" % pad)
+                 if r["key"] == "prop:%s.length" % pad)
     self.set_configuration_values({"Court": {depth["key"]: 15}})
     court_after = self.configuration_table()
+    # Le tableau parle en clés neutres ; le relevé enregistré dans le
+    # .FCStd garde ses noms de propriétés. Transition : la clé du relevé
+    # passe encore.
+    stored = self._config_data()["configs"]["Court"]
+    report["p68_tableau_cles_neutres"] = (
+        depth["param"] == "length" and depth["type_key"] == "pad"
+        and depth["prop"] == "Length"
+        and all(r["key"].endswith("." + r["param"])
+                for r in table["rows"] if r["param"])
+        and stored.get("prop:%s.Length" % pad) == 15.0
+        and "prop:%s.length" % pad not in stored)
+    self.set_configuration_values({"Court": {"prop:%s.Length" % pad: 15}})
     report["p68_tableau"] = (
         depth["values"] == {"Court": 10.0, "Long": 30.0}
         and next(r for r in court_after["rows"]
@@ -845,6 +857,138 @@ def p72_maillage_identique(self, mark, report, etat):
         bool(mesh.get("normals"))
         and json.dumps(mesh, sort_keys=True)
         == json.dumps(temoin, sort_keys=True))
+
+
+def _genres_faux(node):
+    """Noms des objets dont ``type_key`` manque ou ne suit pas la table."""
+    from engine.vocab import type_key_for
+    faux = []
+    if isinstance(node, dict):
+        type_id = node.get("type")
+        if (isinstance(type_id, str) and "::" in type_id
+                and node.get("type_key") != type_key_for(type_id)):
+            faux.append(node.get("name"))
+        for value in node.values():
+            faux.extend(_genres_faux(value))
+    elif isinstance(node, list):
+        for value in node:
+            faux.extend(_genres_faux(value))
+    return faux
+
+
+def _genres(node):
+    """Tous les ``type_key`` de l'arbre, à toute profondeur."""
+    found = set()
+    if isinstance(node, dict):
+        if isinstance(node.get("type_key"), str):
+            found.add(node["type_key"])
+        for value in node.values():
+            found |= _genres(value)
+    elif isinstance(node, list):
+        for value in node:
+            found |= _genres(value)
+    return found
+
+
+def p71_genres_neutres(self, mark, report, etat):
+    """Protocole neutre : l'interface lit ``type_key``, jamais le TypeId."""
+    mark("p71: chaque objet de l'arbre porte son genre neutre")
+    self.new_part("Pièce genres neutres")
+    self.add_rect_sketch(40, 20)
+    self.add_pad(10)
+    self.add_fillet(2, edges=[0])
+    state = self.sketch_start()
+    surf_sk = state["sketch"]
+    self.sketch_add_line(surf_sk, 0, 0, 20, 0)
+    self.sketch_finish(surf_sk)
+    tree = self.surface_extrude(12, sketch=surf_sk)
+    report["p71_genre_suit_la_table"] = _genres_faux(tree) == []
+    report["p71_genres_attendus"] = {
+        "body", "pad", "fillet", "sketch", "surface_extrude",
+    } <= _genres(tree)
+
+
+def _cotes_neutres_ok(self, names):
+    """Pour chaque fonction : ses clés suivent la table de son genre, les
+    propriétés de la table existent, et un aller-retour à valeurs égales
+    par clés neutres ne change rien. Rend (bon, genres vus)."""
+    from engine.vocab import PARAM_KEYS, type_key_for
+    doc = self._require_doc()
+    good, seen = True, set()
+    for name in names:
+        obj = doc.getObject(name)
+        type_key = type_key_for(obj.TypeId)
+        table = PARAM_KEYS.get(type_key)
+        params = self.get_params(name)["params"]
+        if table is not None:
+            seen.add(type_key)
+            thin = self._thin_spec(obj) is not None
+            for prop in table:
+                if prop == "axis" or (not thin and prop in (
+                        "Thickness", "Thickness2", "CapThickness")):
+                    continue
+                good = good and hasattr(obj, prop)
+            good = good and all(p["key"] == table.get(p["prop"])
+                                for p in params)
+        if params:
+            values = {p["key"]: p.get("expr") or p["value"] for p in params}
+            before = [(p["prop"], p["value"]) for p in params]
+            self.set_params(name, values)
+            after = [(p["prop"], p["value"])
+                     for p in self.get_params(name)["params"]]
+            good = good and before == after
+    return good, seen
+
+
+def p73_cotes_neutres(self, mark, report, etat):
+    """Réédition par clés neutres sur de vrais objets FreeCAD."""
+    mark("p73: cotes rééditables par clés neutres")
+    self.new_part("Pièce cotes neutres")
+    self.add_rect_sketch(40, 30)
+    pad = self.add_pad(10)["features"][-1]["name"]
+    fillet = self.add_fillet(2, edges=[0])["features"][-1]["name"]
+    chamfer = self.add_chamfer(size=1.5, edges=[2])["features"][-1]["name"]
+    shell = None
+    for face in range(20):
+        try:
+            shell = self.add_thickness(face, 1)["features"][-1]["name"]
+            break
+        except KernelError:
+            continue
+    state = self.sketch_start()
+    surf_sk = state["sketch"]
+    self.sketch_add_line(surf_sk, 0, 0, 20, 0)
+    self.sketch_finish(surf_sk)
+    surface = self.surface_extrude(12, sketch=surf_sk)["surfaces"][-1]["name"]
+    good, seen = _cotes_neutres_ok(
+        self, [pad, fillet, chamfer, shell, surface])
+    doc = self._require_doc()
+    self.set_params(fillet, {"radius": 1.5})
+    self.set_params(chamfer, {"size": 1})
+    self.set_params(shell, {"thickness": 0.8})
+    self.set_params(surface, {"length": 15})
+    changed = (
+        abs(doc.getObject(fillet).Radius.Value - 1.5) < 1e-9
+        and abs(doc.getObject(chamfer).Size.Value - 1) < 1e-9
+        and abs(doc.getObject(shell).Value.Value - 0.8) < 1e-9
+        and abs(doc.getObject(surface).LengthFwd.Value - 15) < 1e-9)
+    self.new_part("Pièce cotes neutres, bossage seul")
+    self.add_rect_sketch(40, 30)
+    alone = self.add_pad(10)["features"][-1]["name"]
+    self.set_param(alone, "length", 12)
+    changed = changed and abs(
+        self._require_doc().getObject(alone).Length.Value - 12) < 1e-9
+    # La vitrine : dépouille, congé, poche, perçage, répétition, gravure.
+    self.open_part(etat.vitrine_path)  # posé par document.p31_piece_vitrine
+    vitrine_good, vitrine_seen = _cotes_neutres_ok(
+        self, [f["name"] for f in self.get_tree()["features"]])
+    seen |= vitrine_seen
+    report["p73_cles_suivent_la_table"] = good and vitrine_good
+    report["p73_genres_couverts"] = {
+        "pad", "fillet", "chamfer", "thickness", "surface_extrude",
+        "draft", "pocket", "hole", "polar_pattern",
+    } <= seen
+    report["p73_valeur_changee_par_cle"] = changed
 
 
 def bilan(self, mark, report, etat):

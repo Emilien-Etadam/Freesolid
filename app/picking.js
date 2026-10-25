@@ -10,7 +10,7 @@ import { boxMode, isDrag, normalizeRect, pickInBox } from "./navigation.js";
 import {
   dimEditPayload, dimLabel, openDimEditor, sketchDimAnchor,
 } from "./dims.js";
-import { PROP_LABELS } from "./tree.js";
+import { paramLabel } from "./tree.js";
 
 export function findFeatureInTree(tree, name) {
   if (!name || !tree) return null;
@@ -663,7 +663,7 @@ export function installPicking(ctx) {
 
   function featureParamWorldPos(param, feature, hit, sketchState) {
     if (sketchState?.placement
-        && (param.prop === "Length" || param.prop === "LengthFwd")) {
+        && (param.key === "length" || param.key === "lengthFwd")) {
       const matrix = new THREE.Matrix4().set(...sketchState.placement);
       const origin = new THREE.Vector3().setFromMatrixPosition(matrix);
       const normal = new THREE.Vector3(0, 0, 1).transformDirection(matrix);
@@ -697,8 +697,8 @@ export function installPicking(ctx) {
     };
     disposeFeatureDimSprites();
     const sketches = (feature.children ?? []).filter(
-      (child) => child.type === "Sketcher::SketchObject");
-    if (feature.type === "Sketcher::SketchObject") sketches.push(feature);
+      (child) => child.type_key === "sketch");
+    if (feature.type_key === "sketch") sketches.push(feature);
     const params = feature.params?.length
       ? feature.params
       : ((await call("get_params", { feature: feature.name })).params ?? []);
@@ -724,7 +724,7 @@ export function installPicking(ctx) {
       }
     }
     for (const param of params) {
-      const [label, unit] = PROP_LABELS[param.prop] ?? [param.prop, "mm"];
+      const [label, unit] = paramLabel(feature.type_key, param.key);
       const dim = {
         kind: "param",
         name: label,
@@ -732,8 +732,8 @@ export function installPicking(ctx) {
         expr: param.expr || "",
         unit,
         feature: feature.name,
-        prop: param.prop,
-        type: param.prop === "Angle" ? "Angle" : "Distance",
+        key: param.key,
+        type: param.key === "angle" ? "Angle" : "Distance",
       };
       const world = featureParamWorldPos(
         param, feature, hit, firstSketchState);
@@ -791,7 +791,7 @@ export function installPicking(ctx) {
         const raw = extra.expr ?? extra.value;
         refreshFeatureDimEdit(call("set_params", {
           feature: dim.feature,
-          values: { [dim.prop]: raw },
+          values: { [dim.key]: raw },
         }));
       },
     });

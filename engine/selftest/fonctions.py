@@ -968,7 +968,8 @@ def p67_tirer_face_bout(self, mark, report, etat):
         cap is not None and cap["factor"] == 1 and cap["value"] == 20
         and wall is None
         and hole is not None and hole["factor"] == -1
-        and abs(hole["value"] - 5) < 1e-9)
+        and abs(hole["value"] - 5) < 1e-9
+        and cap["key"] == hole["key"] == "length")
 
 
 def p19b_paroi_mince_extremites_fermees(self, mark, report, etat):

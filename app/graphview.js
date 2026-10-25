@@ -50,7 +50,7 @@ export function graphLabelText(text) {
  *  reste de l'application appelle déjà. */
 export function installGraphView(ctx) {
   const {
-    say, call, refresh, refreshAny, confirm, PROP_LABELS,
+    say, call, refresh, refreshAny, confirm, paramLabels,
     featureCommand, openMenu, editFeature, renderTree, updateViewport,
     onSketchRowClick, onDatumRow, onSurfaceClick, onPlaneRow,
     onSketchRowDblClick, onSurfaceDblClick,
@@ -60,33 +60,33 @@ export function installGraphView(ctx) {
   // Le graphe garde les fichiers d'avant. L'arbre, lui, prend le rôle
   // de la commande (TREE_ICONS).
   const GRAPH_TYPE_ICONS = {
-    "Sketcher::SketchObject": "Sketcher_Sketch",
-    "PartDesign::Pad": "PartDesign_Pad",
-    "PartDesign::Pocket": "PartDesign_Pocket",
-    "PartDesign::Fillet": "PartDesign_Fillet",
-    "PartDesign::Chamfer": "PartDesign_Chamfer",
-    "PartDesign::Revolution": "PartDesign_Revolution",
-    "PartDesign::Groove": "PartDesign_Groove",
-    "PartDesign::Mirrored": "PartDesign_Mirrored",
-    "PartDesign::LinearPattern": "PartDesign_LinearPattern",
-    "PartDesign::PolarPattern": "PartDesign_PolarPattern",
-    "PartDesign::Thickness": "PartDesign_Thickness",
-    "PartDesign::Draft": "PartDesign_Draft",
-    "PartDesign::Hole": "PartDesign_Hole",
-    "PartDesign::Plane": "PartDesign_Plane",
-    "PartDesign::AdditiveLoft": "PartDesign_AdditiveLoft",
-    "PartDesign::SubtractiveLoft": "PartDesign_SubtractiveLoft",
-    "PartDesign::AdditivePipe": "PartDesign_AdditivePipe",
-    "PartDesign::SubtractivePipe": "PartDesign_SubtractivePipe",
-    "PartDesign::AdditiveHelix": "PartDesign_AdditiveHelix",
-    "PartDesign::Boolean": "PartDesign_Boolean",
-    "PartDesign::Body": "PartDesign_Body",
-    "Part::Extrusion": "Part_3D_object",
-    "Part::Revolution": "Part_3D_object",
-    "Part::Loft": "Part_3D_object",
-    "Part::Feature": "Part_3D_object",
-    "Part::Offset": "Part_3D_object",
-    "App::Link": "LinkArray",
+    sketch: "Sketcher_Sketch",
+    pad: "PartDesign_Pad",
+    pocket: "PartDesign_Pocket",
+    fillet: "PartDesign_Fillet",
+    chamfer: "PartDesign_Chamfer",
+    revolution: "PartDesign_Revolution",
+    groove: "PartDesign_Groove",
+    mirror: "PartDesign_Mirrored",
+    linear_pattern: "PartDesign_LinearPattern",
+    polar_pattern: "PartDesign_PolarPattern",
+    thickness: "PartDesign_Thickness",
+    draft: "PartDesign_Draft",
+    hole: "PartDesign_Hole",
+    datum_plane: "PartDesign_Plane",
+    loft: "PartDesign_AdditiveLoft",
+    loft_cut: "PartDesign_SubtractiveLoft",
+    sweep: "PartDesign_AdditivePipe",
+    sweep_cut: "PartDesign_SubtractivePipe",
+    helix: "PartDesign_AdditiveHelix",
+    boolean: "PartDesign_Boolean",
+    body: "PartDesign_Body",
+    surface_extrude: "Part_3D_object",
+    surface_revolve: "Part_3D_object",
+    surface_loft: "Part_3D_object",
+    shape: "Part_3D_object",
+    surface_offset: "Part_3D_object",
+    component: "LinkArray",
   };
 
   function graphIconFile(node) {
@@ -100,15 +100,15 @@ export function installGraphView(ctx) {
       if (node.type === "vecteur" || node.type === "point") return "nodes_vect";
       return "nodes_wb_icon";
     }
-    const typed = node?.type ? GRAPH_TYPE_ICONS[node.type] : "";
+    const typed = node?.type_key ? GRAPH_TYPE_ICONS[node.type_key] : "";
     if (typed) return typed;
-    if (node?.role === "sketch") return GRAPH_TYPE_ICONS["Sketcher::SketchObject"];
-    if (node?.role === "datum") return GRAPH_TYPE_ICONS["PartDesign::Plane"];
+    if (node?.role === "sketch") return GRAPH_TYPE_ICONS.sketch;
+    if (node?.role === "datum") return GRAPH_TYPE_ICONS.datum_plane;
     if (node?.role === "plane") return "Std_Plane";
     if (node?.role === "surface") return "Part_3D_object";
     if (node?.role === "variable") return "VarSet";
-    if (node?.role === "body") return GRAPH_TYPE_ICONS["PartDesign::Body"];
-    return GRAPH_TYPE_ICONS["PartDesign::Body"];
+    if (node?.role === "body") return GRAPH_TYPE_ICONS.body;
+    return GRAPH_TYPE_ICONS.body;
   }
 
   function svgGraphIcon(file, x, y) {
@@ -192,10 +192,10 @@ export function installGraphView(ctx) {
     }
     for (const feature of ctx.lastTree.features ?? []) {
       if (feature.name === name) {
-        if (feature.type === "Sketcher::SketchObject") {
+        if (feature.type_key === "sketch") {
           return { kind: "sketch", feature };
         }
-        if (feature.type === "PartDesign::Plane") {
+        if (feature.type_key === "datum_plane") {
           return { kind: "datum", feature };
         }
         return { kind: "feature", feature };
@@ -544,6 +544,7 @@ export function installGraphView(ctx) {
       say(t("{f} : aucune cote éditable", { f: info.label ?? featureName }), true);
       return;
     }
+    const labels = paramLabels(graphMenuTarget(featureName)?.type_key);
     const heading = document.createElement("div");
     heading.className = "menu-label";
     heading.textContent = t("Cote à piloter");
@@ -551,14 +552,14 @@ export function installGraphView(ctx) {
     for (const param of params) {
       const item = document.createElement("div");
       item.className = "menu-item";
-      item.dataset.prop = param.prop;
-      item.textContent = paramChoiceCaption(param, PROP_LABELS);
+      item.dataset.key = param.key;
+      item.textContent = paramChoiceCaption(param, labels);
       item.addEventListener("click", (event) => {
         event.stopPropagation();
         closeParamPicker();
         refresh(call("set_params", {
           feature: featureName,
-          values: { [param.prop]: expressionForVariable(variableName) },
+          values: { [param.key]: expressionForVariable(variableName) },
         }));
       });
       paramPickEl.appendChild(item);
@@ -801,7 +802,7 @@ export function installGraphView(ctx) {
         transform: `translate(${node.x} ${node.y})`,
         "data-name": node.name,
         "data-role": node.role || "feature",
-        "data-type": node.type || "",
+        "data-type": node.type_key || node.type || "",
       });
       if (isGraphNodeSelected(node)) group.classList.add("sel");
       if (!fn && node.afterBar) group.classList.add("rolled-back");
@@ -822,19 +823,20 @@ export function installGraphView(ctx) {
       });
       label.textContent = graphLabelText(node.label);
       group.appendChild(label);
+      const labels = paramLabels(node.type_key);
       const extraParams = (!fn && !isVar)
-        ? (node.params ?? []).map((param) => graphParamLine(param, PROP_LABELS))
+        ? (node.params ?? []).map((param) => graphParamLine(param, labels))
           .filter(Boolean)
         : [];
       for (const [index, param] of shownParams.entries()) {
-        const line = graphParamLine(param, PROP_LABELS);
+        const line = graphParamLine(param, labels);
         if (!line) continue;
         const text = svgEl("text", {
           class: `graph-param${param.expr ? " driven" : ""}`,
           x: -44,
           y: 8,
           "text-anchor": "start", "dominant-baseline": "middle",
-          "data-prop": param.prop,
+          "data-key": param.key,
         });
         text.textContent = line;
         text.addEventListener("click", (event) => {

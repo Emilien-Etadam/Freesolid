@@ -134,6 +134,22 @@ def test_registry_tree_key_collision_raises():
         registre.contribute_tree(object(), {})
 
 
+def test_registry_tree_rows_get_type_key():
+    """Une ligne de plugin qui porte un TypeId reçoit son genre neutre ;
+    un genre déjà posé, un ``type`` qui n'est pas un TypeId restent."""
+    registre = Registry(nom="alpha")
+    registre.tree_contribution(lambda _k: {"pieces": [
+        {"name": "Link", "type": "App::Link"},
+        {"name": "Pad", "type": "PartDesign::Pad", "type_key": "autre"},
+        {"name": "Note", "type": "note"},
+    ], "compte": 3})
+    tree = {}
+    registre.contribute_tree(object(), tree)
+    assert [row.get("type_key") for row in tree["pieces"]] == [
+        "component", "autre", None]
+    assert tree["compte"] == 3
+
+
 # -- surface plugin (P047 / P048) -----------------------------------------
 
 # Douze membres : neuf du noyau, deux aides de selftest, et ``state``

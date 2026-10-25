@@ -139,6 +139,27 @@ describe("createPluginApi", () => {
     assert.deepEqual(rows, [{ name: "Piece" }, { name: "Piece001" }]);
   });
 
+  it("treeRow : le menu d'une ligne prend son genre (type_key)", () => {
+    const opened = [];
+    const runtime = createPluginApi({
+      call() {}, refresh() {}, say() {}, tree: () => null,
+    });
+    runtime.api.treeRow(
+      (tree) => tree.pieces ?? [],
+      (piece, { openMenu }) => {
+        openMenu("clic", { name: piece.name, kind: "Pièce" });
+        return null;
+      },
+    );
+    runtime.renderTreeRows(
+      { pieces: [{ name: "Piece", type_key: "component" }] },
+      { append() {}, openMenu: (event, target) => opened.push([event, target]) },
+    );
+    assert.deepEqual(opened, [
+      ["clic", { type_key: "component", name: "Piece", kind: "Pièce" }],
+    ]);
+  });
+
   it("featureButton et combineTools passent par l'hôte", () => {
     const seen = [];
     const host = {

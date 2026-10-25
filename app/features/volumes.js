@@ -186,18 +186,18 @@ export function revolutionProblem() {
  * `{}` si rien n'a changé, `null` si l'angle est invalide.
  */
 export function revolutionEditValues(v, revolution, params) {
-  const stored = storedMeasure(params, "Angle", revolution.angle);
+  const stored = storedMeasure(params, "angle", revolution.angle);
   const angle = readMeasure(v.angle, stored, { min: 0, max: 360.0001 });
   if (angle == null) return null;
   const axis = v.axis || "vertical";
   const midplane = v.cond === "milieu";
   const reversed = midplane ? false : !!v.reversed;
   const values = {};
-  if (!sameMeasure(angle, stored)) values.Angle = angle;
+  if (!sameMeasure(angle, stored)) values.angle = angle;
   if (axis !== (revolution.axis || "vertical")) values.axis = axis;
   if (reversed !== !!revolution.reversed || midplane !== !!revolution.midplane) {
-    values.Reversed = reversed;
-    values.Midplane = midplane;
+    values.reversed = reversed;
+    values.midplane = midplane;
   }
   return values;
 }

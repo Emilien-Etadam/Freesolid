@@ -50,7 +50,7 @@ describe("réédition de la révolution", () => {
   const revolution = {
     axis: "line:3", angle: 360, reversed: false, midplane: false,
   };
-  const params = [{ prop: "Angle", value: 360 }];
+  const params = [{ key: "angle", value: 360 }];
 
   it("ne renvoie rien si les champs n'ont pas changé", () => {
     assert.deepEqual(revolutionEditValues({
@@ -62,17 +62,17 @@ describe("réédition de la révolution", () => {
     assert.deepEqual(revolutionEditValues({
       angle: "180", axis: "vertical", cond: "milieu", reversed: true,
     }, revolution, params), {
-      Angle: 180, axis: "vertical", Reversed: false, Midplane: true,
+      angle: 180, axis: "vertical", reversed: false, midplane: true,
     });
   });
 
   it("conserve une expression d'angle", () => {
-    const expressed = [{ prop: "Angle", value: 360, expr: "2*Tours" }];
+    const expressed = [{ key: "angle", value: 360, expr: "2*Tours" }];
     assert.deepEqual(revolutionEditValues({
       angle: "2*Tours", axis: "line:3", cond: "one", reversed: false,
     }, revolution, expressed), {});
     assert.deepEqual(revolutionEditValues({
       angle: "3*Tours", axis: "line:3", cond: "one", reversed: false,
-    }, revolution, expressed), { Angle: "3*Tours" });
+    }, revolution, expressed), { angle: "3*Tours" });
   });
 });

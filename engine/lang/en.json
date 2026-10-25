@@ -56,6 +56,7 @@
  "chemin hors du dossier autorisé": "path outside the allowed folder",
  "chemin manquant": "missing path",
  "choisissez deux composants différents": "choose two different components",
+ "clés en double pour la même cote : {}, {}": "duplicate keys for the same dimension: {}, {}",
  "colinéaire : deux lignes": "collinear: two lines",
  "composant inconnu : {}": "unknown component: {}",
  "concentrique : deux cercles ou arcs": "concentric: two circles or arcs",

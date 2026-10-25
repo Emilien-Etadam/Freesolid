@@ -38,7 +38,7 @@ export function installFeaturePanel(ctx) {
     // symétrie) : elle remplit d'emblée la case, comme une face présélectionnée.
     const feature = accepts.includes("feature")
       && findFeatureInTree(app.lastTree, app.selectedFeatureName);
-    if (feature && feature.type !== "Sketcher::SketchObject") {
+    if (feature && feature.type_key !== "sketch") {
       return { kind: "feature", items: [
         { kind: "feature", name: feature.name, label: feature.label }] };
     }

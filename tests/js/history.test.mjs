@@ -11,19 +11,19 @@ import {
   undoStepLabel,
 } from "../../app/history.js";
 
-function feat(name, order, type = "PartDesign::Pad") {
-  return { name, label: name, type, order };
+function feat(name, order, typeKey = "pad") {
+  return { name, label: name, type_key: typeKey, order };
 }
 
 function sketch(name, order, rolled_back = false) {
   return {
-    name, label: name, type: "Sketcher::SketchObject", order, rolled_back,
+    name, label: name, type_key: "sketch", order, rolled_back,
   };
 }
 
 function surface(name, order, rolled_back = false) {
   return {
-    name, label: name, type: "Part::Extrusion", order, rolled_back,
+    name, label: name, type_key: "surface_extrude", order, rolled_back,
   };
 }
 
@@ -41,7 +41,7 @@ describe("chronologicalHistory", () => {
 
 describe("splitHistoryAroundBar", () => {
   it("solides seuls — barre après le tip", () => {
-    const features = [feat("Pad", 1), feat("Pocket", 2, "PartDesign::Pocket")];
+    const features = [feat("Pad", 1), feat("Pocket", 2, "pocket")];
     const split = splitHistoryAroundBar(features, [], "Pad");
     assert.equal(split.bar, "middle");
     assert.deepEqual(split.before.map((row) => row.item.name), ["Pad"]);
@@ -102,7 +102,7 @@ describe("splitHistoryAroundBar", () => {
   });
 
   it("objet créé barre reculée apparaît au-dessus", () => {
-    const features = [feat("Pad", 1), feat("Fillet", 5, "PartDesign::Fillet")];
+    const features = [feat("Pad", 1), feat("Fillet", 5, "fillet")];
     const surfaces = [surface("Surf", 8, false)];
     const split = splitHistoryAroundBar(features, surfaces, "Pad");
     assert.deepEqual(split.before.map((row) => row.item.name),
@@ -114,8 +114,8 @@ describe("splitHistoryAroundBar", () => {
 describe("plan de référence", () => {
   it("sans solide, il reste au-dessus de la barre, comme une esquisse", () => {
     const features = [
-      feat("Sketch", 1, "Sketcher::SketchObject"),
-      feat("DatumPlane", 2, "PartDesign::Plane"),
+      feat("Sketch", 1, "sketch"),
+      feat("DatumPlane", 2, "datum_plane"),
     ];
     const split = splitHistoryAroundBar(features, [], null);
     assert.deepEqual(split.before.map((row) => row.item.name),
@@ -167,7 +167,7 @@ describe("countTreeErrors", () => {
 // esquisses précèdent leur fonction dans l'ordre du document.
 function padPocket({ unabsorbed = false, folder } = {}) {
   const pad = { ...feat("Pad", 1), children: [sketch("Sketch", 0)] };
-  const pocket = { ...feat("Pocket", 3, "PartDesign::Pocket"),
+  const pocket = { ...feat("Pocket", 3, "pocket"),
     children: [{ ...sketch("Sketch001", 2), ...(unabsorbed ? { unabsorbed } : {}) }] };
   if (folder) pocket.folder = folder;
   return [pad, pocket];
@@ -219,7 +219,7 @@ describe("arbre à plat (flat)", () => {
     const shared = { ...sketch("Shared", 0) };
     const features = [
       { ...feat("Pad", 1), children: [shared] },
-      { ...feat("Pocket", 2, "PartDesign::Pocket"),
+      { ...feat("Pocket", 2, "pocket"),
         children: [{ ...shared, shared: ["Bossage"] }] },
     ];
     const split = splitHistoryAroundBar(features, [], "Pocket", { flat: true });
@@ -270,9 +270,9 @@ describe("barSlots", () => {
   it("dossier replié : une seule position, après sa dernière ligne", () => {
     const features = [
       feat("Pad", 1),
-      { ...feat("Pocket", 2, "PartDesign::Pocket"), folder: "Trous" },
-      { ...feat("Hole", 3, "PartDesign::Hole"), folder: "Trous" },
-      feat("Fillet", 4, "PartDesign::Fillet"),
+      { ...feat("Pocket", 2, "pocket"), folder: "Trous" },
+      { ...feat("Hole", 3, "hole"), folder: "Trous" },
+      feat("Fillet", 4, "fillet"),
     ];
     const split = splitHistoryAroundBar(features, [], "Fillet");
     const closed = barSlots(split, { folderOpen: () => false });

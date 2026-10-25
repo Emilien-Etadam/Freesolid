@@ -120,6 +120,175 @@ def label_for_type(obj_type: str, lang: str = "fr") -> str:
     return obj_type.split("::")[-1]
 
 
+#: TypeId FreeCAD -> genre neutre (``type_key``) que l'interface lit à la
+#: place du TypeId. En minuscules, sans « :: », calqué sur l'op qui crée
+#: l'objet quand elle existe (``add_pad`` -> ``pad``, ``surface_extrude``
+#: -> ``surface_extrude``, ``sketch_start`` -> ``sketch``). Seule source :
+#: ``app/typekeys.js`` en tire ses familles, ``tests/test_type_keys.py``
+#: les confronte.
+TYPE_KEYS: dict[str, str] = {
+    # Fonctions de corps : volumes, références, corps.
+    "PartDesign::Pad": "pad",
+    "PartDesign::Pocket": "pocket",
+    "PartDesign::Revolution": "revolution",
+    "PartDesign::Groove": "groove",
+    "PartDesign::AdditiveLoft": "loft",
+    "PartDesign::SubtractiveLoft": "loft_cut",
+    "PartDesign::AdditivePipe": "sweep",
+    "PartDesign::SubtractivePipe": "sweep_cut",
+    "PartDesign::AdditiveHelix": "helix",
+    "PartDesign::SubtractiveHelix": "helix_cut",
+    "PartDesign::Hole": "hole",
+    "PartDesign::Fillet": "fillet",
+    "PartDesign::Chamfer": "chamfer",
+    "PartDesign::Draft": "draft",
+    "PartDesign::Thickness": "thickness",
+    "PartDesign::Mirrored": "mirror",
+    "PartDesign::LinearPattern": "linear_pattern",
+    "PartDesign::PolarPattern": "polar_pattern",
+    "PartDesign::Boolean": "boolean",
+    "PartDesign::Plane": "datum_plane",
+    "PartDesign::Line": "datum_axis",
+    "PartDesign::Point": "datum_point",
+    "PartDesign::CoordinateSystem": "datum_cs",
+    # Lieur de forme : courbe composite, suppression de faces, ou outil
+    # d'un balayage dans le corps.
+    "PartDesign::SubShapeBinder": "binder",
+    "PartDesign::Body": "body",
+    "Sketcher::SketchObject": "sketch",
+    # Surfaces et courbes hors corps.
+    "Part::Feature": "shape",  # forme figée : couture, courbe 3D, legacy
+    "Part::Extrusion": "surface_extrude",
+    "Part::Revolution": "surface_revolve",
+    "Part::Loft": "surface_loft",
+    "Part::Sweep": "surface_sweep",
+    "Part::Offset": "surface_offset",
+    "Part::Face": "surface_planar",
+    "Part::RuledSurface": "surface_ruled",
+    "Part::Fillet": "surface_fillet",
+    "Part::Offset2D": "surface_radiate",
+    # Ajuster : découpe et pièce gardée, fonctions Python de FreeCAD.
+    "Part::FeaturePython": "surface_trim",
+    "Part::Section": "curve_intersection",
+    "Part::ProjectOnSurface": "curve_project",
+    "Part::Helix": "curve_helix",
+    "Surface::Filling": "surface_fill",
+    "Surface::Extend": "surface_extend",
+    "Surface::GeomFillSurface": "surface_boundary",
+    # Document.
+    "App::Link": "component",
+    "App::VarSet": "varset",
+}
+
+#: Genre d'un TypeId absent de ``TYPE_KEYS``, par famille : une fonction
+#: de corps reste une fonction de corps, une surface une surface — ce que
+#: l'interface lisait autrefois sur le préfixe du TypeId.
+TYPE_KEY_FALLBACKS: dict[str, str] = {
+    "PartDesign": "feature",
+    "Part": "surface",
+    "Surface": "surface",
+}
+TYPE_KEY_OTHER = "object"
+
+
+def type_key_for(obj_type: str) -> str:
+    """Genre neutre d'un TypeId (voir ``TYPE_KEYS``)."""
+    key = TYPE_KEYS.get(obj_type)
+    if key is not None:
+        return key
+    return TYPE_KEY_FALLBACKS.get(obj_type.split("::")[0], TYPE_KEY_OTHER)
+
+
+#: Cotes rééditables d'un genre : propriété FreeCAD -> clé neutre, celle
+#: que l'interface lit dans ``get_params`` et écrit dans ``set_params``.
+#: Les clés sont celles des formulaires de création (app/features/). Un
+#: genre absent, ou une propriété que son genre ne nomme pas, prend
+#: ``PARAM_KEYS_DEFAULT``. ``tests/test_param_keys.py`` vérifie la table.
+_EXTRUDE_PARAM_KEYS = {
+    "Length": "length", "Length2": "length2",
+    "Reversed": "reversed", "Midplane": "midplane",
+    # Paroi mince : propriétés FreeSolid posées sur la fonction.
+    "Thickness": "thinT", "Thickness2": "thinT2", "CapThickness": "thinCapT",
+}
+_REVOLVED_PARAM_KEYS = {
+    "Angle": "angle", "Reversed": "reversed", "Midplane": "midplane",
+    "axis": "axis",
+    "Thickness": "thinT", "Thickness2": "thinT2", "CapThickness": "thinCapT",
+}
+_HELIX_PARAM_KEYS = {"Pitch": "pitch", "Height": "height", "Angle": "angle"}
+_DISTANCE_PARAM_KEYS = {"Value": "distance"}
+PARAM_KEYS: dict[str, dict[str, str]] = {
+    "pad": _EXTRUDE_PARAM_KEYS,
+    "pocket": _EXTRUDE_PARAM_KEYS,
+    "revolution": _REVOLVED_PARAM_KEYS,
+    "groove": _REVOLVED_PARAM_KEYS,
+    "fillet": {"Radius": "radius"},
+    "chamfer": {
+        "ChamferType": "kind", "Size": "size", "Size2": "size2",
+        "Angle": "angle", "FlipDirection": "flip",
+    },
+    "thickness": {"Value": "thickness"},
+    "draft": {"Angle": "angle"},
+    "hole": {
+        "Diameter": "diameter", "Depth": "depth",
+        "HoleCutDiameter": "cutDiameter", "HoleCutDepth": "cutDepth",
+    },
+    "linear_pattern": {
+        "Length": "length", "Occurrences": "count",
+        "Length2": "length2", "Occurrences2": "count2",
+    },
+    "polar_pattern": {"Angle": "angle", "Occurrences": "count"},
+    "helix": _HELIX_PARAM_KEYS,
+    "helix_cut": _HELIX_PARAM_KEYS,
+    "surface_extrude": {"LengthFwd": "length"},
+    "surface_revolve": {"Angle": "angle"},
+    "surface_offset": _DISTANCE_PARAM_KEYS,
+    "surface_radiate": _DISTANCE_PARAM_KEYS,
+    "curve_helix": {
+        "Pitch": "pitch", "Height": "height", "Radius": "radius",
+        "Angle": "angle",
+    },
+}
+#: Une cote que le genre ne nomme pas (plan de référence, fonction d'un
+#: fichier étranger…) : une clé par propriété rééditable du noyau.
+PARAM_KEYS_DEFAULT: dict[str, str] = {
+    "Length": "length", "LengthFwd": "lengthFwd", "Radius": "radius",
+    "Size": "size", "Angle": "angle", "Thickness": "thickness",
+    "Thickness2": "thickness2", "CapThickness": "capThickness",
+    "Value": "value", "Occurrences": "count", "Diameter": "diameter",
+    "Depth": "depth", "HoleCutDiameter": "cutDiameter",
+    "HoleCutDepth": "cutDepth", "Pitch": "pitch", "Height": "height",
+}
+
+
+def param_key_for(type_key: str, prop: str):
+    """Clé neutre de la propriété ``prop`` d'un objet de genre
+    ``type_key``, ou None si aucune table ne la nomme."""
+    key = PARAM_KEYS.get(type_key, {}).get(prop)
+    return key if key is not None else PARAM_KEYS_DEFAULT.get(prop)
+
+
+def param_prop_for(type_key: str, key: str):
+    """Propriété FreeCAD derrière la clé ``key``, ou None.
+
+    Transition : un nom de propriété FreeCAD que la table connaît pour ce
+    genre est encore accepté tel quel. Le genre l'emporte sur la table
+    par défaut quand les deux donnent la même clé.
+    """
+    own = PARAM_KEYS.get(type_key, {})
+    for prop, neutral in own.items():
+        if neutral == key:
+            return prop
+    if key in own:
+        return key
+    for prop, neutral in PARAM_KEYS_DEFAULT.items():
+        if neutral == key and prop not in own:
+            return prop
+    if key in PARAM_KEYS_DEFAULT:
+        return key
+    return None
+
+
 #: Catalogue de la fonction graphe (N006) — taxonomie reprise de
 #: ``j8sr0230/Nodes`` (LGPL-2.1). Source unique : type, libellé, catégorie,
 #: icône, ports, et l'état implémenté / pas encore. ``graph_vocabulary``

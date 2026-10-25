@@ -59,9 +59,9 @@ function walkEntries(tree, visit) {
 
 function roleOf(item, fallback) {
   if (fallback) return fallback;
-  if (item.type === "Sketcher::SketchObject") return "sketch";
-  if (item.type === "PartDesign::Plane") return "datum";
-  if (item.type === "PartDesign::Body") return "body";
+  if (item.type_key === "sketch") return "sketch";
+  if (item.type_key === "datum_plane") return "datum";
+  if (item.type_key === "body") return "body";
   return "feature";
 }
 
@@ -71,10 +71,10 @@ function kindOf(item, role) {
   if (role === "variable") return "Variable";
   if (role === "body") return "Corps";
   if (role === "surface") return "Surface";
-  if (role === "sketch" || item.type === "Sketcher::SketchObject") {
+  if (role === "sketch" || item.type_key === "sketch") {
     return "Esquisse";
   }
-  if (role === "datum" || item.type === "PartDesign::Plane") {
+  if (role === "datum" || item.type_key === "datum_plane") {
     return "Plan de référence";
   }
   return item.label || item.name || "";
@@ -82,7 +82,7 @@ function kindOf(item, role) {
 
 function featureParams(item) {
   return listOf(item.params).filter(
-    (param) => param && typeof param === "object" && typeof param.prop === "string");
+    (param) => param && typeof param === "object" && typeof param.key === "string");
 }
 
 function addNode(nodes, item, role, fallbackOrder) {
@@ -95,7 +95,7 @@ function addNode(nodes, item, role, fallbackOrder) {
     label: item.label || name,
     kind: kindOf(item, role),
     role,
-    type: item.type,
+    type_key: item.type_key,
     order,
     afterBar: false,
     layer: 0,
@@ -565,29 +565,30 @@ export function freezeDrivenValues(params, variableName) {
   const names = [variableName];
   for (const param of listOf(params)) {
     if (!param || typeof param !== "object") continue;
-    if (typeof param.prop !== "string" || !param.prop) continue;
+    if (typeof param.key !== "string" || !param.key) continue;
     if (typeof param.expr !== "string" || !param.expr) continue;
     if (!citedVariables(param.expr, names).length) continue;
     if (typeof param.value !== "number" || !Number.isFinite(param.value)) {
       continue;
     }
-    values[param.prop] = param.value;
+    values[param.key] = param.value;
   }
   return values;
 }
 
 /**
  * Libellé d'une cote dans le sélecteur au dépôt du fil.
- * `labels` est `PROP_LABELS` du client — on n'en tient pas une seconde table.
+ * `labels` est `paramLabels(genre)` du client — on n'en tient pas une
+ * seconde table.
  * @param {object|null|undefined} param
  * @param {Record<string, [string, string]>|null|undefined} labels
  */
 export function paramChoiceCaption(param, labels) {
-  if (!param || typeof param !== "object" || typeof param.prop !== "string") {
+  if (!param || typeof param !== "object" || typeof param.key !== "string") {
     return "";
   }
-  const pair = labels && typeof labels === "object" ? labels[param.prop] : null;
-  const label = Array.isArray(pair) && pair[0] ? pair[0] : param.prop;
+  const pair = labels && typeof labels === "object" ? labels[param.key] : null;
+  const label = Array.isArray(pair) && pair[0] ? pair[0] : param.key;
   const unit = Array.isArray(pair) ? (pair[1] ?? "") : "mm";
   const withUnit = unit ? `${label} (${unit})` : label;
   if (typeof param.expr === "string" && param.expr) {
@@ -598,14 +599,15 @@ export function paramChoiceCaption(param, labels) {
 
 /**
  * Libellé compact d'une cote dans le nœud du graphe.
- * `labels` est `PROP_LABELS` — pas de seconde table. Σ comme dans l'arbre.
+ * `labels` est `paramLabels(genre)` — pas de seconde table. Σ comme dans
+ * l'arbre.
  */
 export function graphParamLine(param, labels) {
-  if (!param || typeof param !== "object" || typeof param.prop !== "string") {
+  if (!param || typeof param !== "object" || typeof param.key !== "string") {
     return "";
   }
-  const pair = labels && typeof labels === "object" ? labels[param.prop] : null;
-  const label = Array.isArray(pair) && pair[0] ? pair[0] : param.prop;
+  const pair = labels && typeof labels === "object" ? labels[param.key] : null;
+  const label = Array.isArray(pair) && pair[0] ? pair[0] : param.key;
   const driven = typeof param.expr === "string" && param.expr;
   const prefix = driven ? "Σ " : "";
   const value = typeof param.value === "number" && Number.isFinite(param.value)

@@ -89,7 +89,7 @@ describe("dictionnaire anglais", () => {
   it("couvre les textes des panneaux : groupes, champs, aides, choix, refus", () => {
     // Deux contextes : sans esquisse, puis avec une esquisse libre (des
     // lignes n'apparaissent qu'avec un profil).
-    const sketch = { name: "Sketch", label: "Esquisse", type: "Sketcher::SketchObject" };
+    const sketch = { name: "Sketch", label: "Esquisse", type_key: "sketch" };
     const contexts = [
       { selection: () => null, selectedSketch: null, lastTree: { features: [] } },
       { selection: () => null, selectedSketch: sketch, lastTree: { features: [sketch] } },

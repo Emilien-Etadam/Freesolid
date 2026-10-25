@@ -6,7 +6,8 @@ import { iconSrc } from "./icons.js";
 import { num } from "./num.js";
 import { arcAngles } from "./geom2d.js";
 import {
-  barSlots, sameBarTarget, sketchTreeLabel, splitHistoryAroundBar,
+  barSlots, barStepTarget, sameBarTarget, sketchTreeLabel,
+  splitHistoryAroundBar,
 } from "./history.js";
 import { renameClickAction } from "./rename.js";
 import {
@@ -207,7 +208,10 @@ export function installTree(ctx) {
   }
 
   const expandedFeatures = new Set(); // les fonctions dépliées (persiste)
+  let barSelected = false; // barre cliquée : ↑/↓ la déplacent
   let barState = { slots: [], current: -1 }; // positions du dernier rendu
+  let afterBarNames = new Set(); // lignes reculées du dernier rendu
+  let previousBarTarget = null; // position d'avant le dernier déplacement
   const folderState = Object.create(null); // dossiers tête, mémoire de session
   const folderPrevCounts = Object.create(null); // compteurs du rendu précédent
   let sketchClickTimer = null;
@@ -652,13 +656,31 @@ export function installTree(ctx) {
 
   function appendRollbackBar() {
     const bar = document.createElement("li");
-    bar.className = "rollback";
+    bar.className = "rollback" + (barSelected ? " sel" : "");
     bar.textContent = t("▲ barre de retour arrière ▲");
-    bar.title = t("Glisser pour déplacer · double-clic : revenir à l'état final");
+    bar.title = t("Glisser pour déplacer · clic puis ↑/↓ : d'une ligne · "
+      + "double-clic : revenir à l'état final · clic droit : commandes");
+    bar.addEventListener("click", () => setBarSelected(true));
     bar.addEventListener("dblclick", () => moveBar({ op: "tip_to_end" }));
+    bar.addEventListener("contextmenu", (event) => {
+      setBarSelected(true);
+      ctx.openBarMenu?.(event);
+    });
     bindRollbackDrag(bar);
     treeEl.appendChild(bar);
   }
+
+  function setBarSelected(on) {
+    barSelected = on;
+    treeEl.querySelector("li.rollback")?.classList.toggle("sel", on);
+  }
+
+  // Un clic ailleurs relâche la barre (les flèches reviennent à la vue).
+  document.addEventListener("pointerdown", (event) => {
+    if (barSelected && !event.target.closest?.("#tree li.rollback, #ctxmenu")) {
+      setBarSelected(false);
+    }
+  }, true);
 
   /** Pose sur chaque ligne d'historique la position de barre qui la suit
    *  (data-slot) ; la première porte aussi celle d'au-dessus. */
@@ -678,19 +700,64 @@ export function installTree(ctx) {
       li.dataset[slot.line === null ? "slotAbove" : "slot"] =
         JSON.stringify(slot.target);
     }
+    afterBarNames = new Set();
+    for (const row of split.after) {
+      afterBarNames.add(row.item.name);
+      for (const child of row.item.children ?? []) afterBarNames.add(child.name);
+    }
   }
 
   let barMoving = false; // un déplacement à la fois : le suivant part de l'arbre rendu
 
-  /** Barre vers `target` (une position de barSlots). */
+  /** Barre vers `target` (une position de barSlots) ; la position quittée
+   *  devient la précédente. */
   function moveBar(target) {
     const here = barState.slots[barState.current]?.target ?? null;
     if (!target || barMoving || sameBarTarget(target, here)) return;
+    previousBarTarget = here;
     barMoving = true;
     Promise.resolve(refresh(target.op === "tip_to_end"
       ? call("tip_to_end")
       : call("set_tip", target.feature ? { feature: target.feature } : {})))
       .finally(() => { barMoving = false; });
+  }
+
+  /** Un pas : -1 recule la barre d'une ligne, +1 l'avance. */
+  function stepBar(step) {
+    moveBar(barStepTarget(barState, step));
+  }
+
+  function barToPrevious() {
+    moveBar(previousBarTarget);
+  }
+
+  /** Ce que les commandes de la barre peuvent faire, pour son menu. */
+  function barCommands() {
+    const here = barState.slots[barState.current]?.target ?? null;
+    return {
+      forward: !!barStepTarget(barState, 1),
+      previous: !!previousBarTarget && !sameBarTarget(previousBarTarget, here),
+      end: barState.current >= 0 && barState.current < barState.slots.length - 1,
+      below: afterBarNames.size > 0,
+    };
+  }
+
+  function isAfterBar(name) {
+    return afterBarNames.has(name);
+  }
+
+  /** ↑/↓ sur la barre sélectionnée ; Échap la relâche. */
+  function handleBarKey(event) {
+    if (!barSelected || event.ctrlKey || event.metaKey || event.altKey
+        || event.shiftKey) return false;
+    if (event.key === "Escape") {
+      setBarSelected(false);
+      return true;
+    }
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return false;
+    event.preventDefault();
+    if (!event.repeat) stepBar(event.key === "ArrowUp" ? -1 : 1);
+    return true;
   }
 
   // Glisser-déposer d'une fonction dans l'arbre : le repère d'insertion de
@@ -1737,5 +1804,6 @@ export function installTree(ctx) {
     clearSurfaceSelection, selectSketch, onPlaneRow,
     beginInlineRename, treeRowFor, beginRenameSelected,
     renderTree, editSurface, editFeature,
+    moveBar, stepBar, barToPrevious, barCommands, isAfterBar, handleBarKey,
   };
 }

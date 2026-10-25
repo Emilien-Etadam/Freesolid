@@ -271,3 +271,11 @@ export function barSlots(split, {
 export function sameBarTarget(a, b) {
   return !!a && !!b && a.op === b.op && (a.feature ?? null) === (b.feature ?? null);
 }
+
+/** Cible de la position voisine : `step` -1 au-dessus, +1 au-dessous ;
+ *  null au bout de l'arbre. */
+export function barStepTarget({ slots, current }, step) {
+  const index = current + step;
+  if (current < 0 || index < 0 || index >= slots.length) return null;
+  return slots[index].target;
+}

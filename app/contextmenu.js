@@ -63,6 +63,35 @@ export function installContextMenu(ctx) {
 
   const menuEl = document.getElementById("ctxmenu");
   let menuFeature = null;
+  // Entrées propres au menu de la barre de retour.
+  const BAR_ITEMS = ["ctx-forward", "ctx-bar-back", "ctx-end", "ctx-bar-delete"];
+  const OWN_ITEMS = new Set(["ctx-bar-back", "ctx-bar-delete"]);
+
+  function showMenuAt(event) {
+    menuEl.style.display = "block";
+    menuEl.style.left = Math.min(event.clientX, window.innerWidth - 200) + "px";
+    menuEl.style.top = event.clientY + "px";
+  }
+
+  /** Menu réduit à `ids` ; `off` : entrées grisées. */
+  function openOnly(event, ids, off = []) {
+    event.preventDefault();
+    menuFeature = null;
+    for (const item of menuEl.children) {
+      item.hidden = !ids.includes(item.id);
+      item.classList.toggle("disabled", off.includes(item.id));
+    }
+    showMenuAt(event);
+  }
+
+  /** Clic droit sur la barre de retour. */
+  function openBarMenu(event) {
+    const can = ctx.barCommands();
+    openOnly(event, BAR_ITEMS, [
+      !can.forward && "ctx-forward", !can.previous && "ctx-bar-back",
+      !can.end && "ctx-end", !can.below && "ctx-bar-delete",
+    ]);
+  }
 
   function modifyMenuTarget(feature) {
     if (feature.type === "Sketcher::SketchObject") {
@@ -78,6 +107,10 @@ export function installContextMenu(ctx) {
   function openMenu(event, feature) {
     event.preventDefault();
     menuFeature = feature;
+    for (const item of menuEl.children) {
+      item.hidden = OWN_ITEMS.has(item.id);
+      item.classList.remove("disabled");
+    }
     const onBody = isBodyMenuTarget(feature);
     // Un composant d'assemblage : fixer / libérer, pas de barre de retour.
     const onComponent = !!ctx.assemblyState && typeof feature.grounded === "boolean";
@@ -105,10 +138,11 @@ export function installContextMenu(ctx) {
     ground.hidden = !onComponent;
     ground.textContent = t(feature.grounded ? "Libérer" : "Fixer");
     document.getElementById("ctx-rollback").hidden = !!ctx.assemblyState;
+    // Fonction reculée : la barre peut avancer d'un pas vers elle.
+    document.getElementById("ctx-forward").hidden = !!ctx.assemblyState
+      || !ctx.isAfterBar(feature.name);
     document.getElementById("ctx-end").hidden = !!ctx.assemblyState;
-    menuEl.style.display = "block";
-    menuEl.style.left = Math.min(event.clientX, window.innerWidth - 200) + "px";
-    menuEl.style.top = event.clientY + "px";
+    showMenuAt(event);
   }
   document.addEventListener("click", () => { menuEl.style.display = "none"; });
 
@@ -293,11 +327,26 @@ export function installContextMenu(ctx) {
     }));
   });
 
-  document.getElementById("ctx-rollback").addEventListener("click", () => {
-    if (menuFeature) refresh(call("set_tip", { feature: menuFeature.name }));
+  // Les déplacements de la barre passent par l'arbre, qui garde la
+  // position quittée pour « Revenir à la position précédente ».
+  const barItem = (id, run) => {
+    const item = document.getElementById(id);
+    item.addEventListener("click", () => {
+      if (!item.classList.contains("disabled")) run();
+    });
+  };
+  barItem("ctx-rollback", () => {
+    if (menuFeature) ctx.moveBar({ op: "set_tip", feature: menuFeature.name });
   });
-  document.getElementById("ctx-end").addEventListener("click", () =>
-    refresh(call("tip_to_end")));
+  barItem("ctx-forward", () => ctx.stepBar(1));
+  barItem("ctx-bar-back", () => ctx.barToPrevious());
+  barItem("ctx-end", () => ctx.moveBar({ op: "tip_to_end" }));
+  barItem("ctx-bar-delete", () => {
+    if (confirm("Supprimer tout ce qui est sous la barre de retour ? "
+      + "Une esquisse sortie au-dessus de la barre reste.")) {
+      refreshAny(call("delete_rolled_back"));
+    }
+  });
   document.getElementById("ctx-delete").addEventListener("click", () => {
     if (!menuFeature) return;
     if (confirm(t("Supprimer « {f} » ?", { f: menuFeature.label })))
@@ -387,7 +436,7 @@ export function installContextMenu(ctx) {
       ? { name: hit.sketch.name, label: hit.sketch.label,
           type: "Sketcher::SketchObject" }
       : hit.feature.sketchItem),
-    rollback: (hit) => refresh(call("set_tip", { feature: hit.feature.name })),
+    rollback: (hit) => ctx.moveBar({ op: "set_tip", feature: hit.feature.name }),
     "select-tangent": (hit) => selectChain(hit.edge, "tangent"),
     "face-color": (hit) => {
       const picker = document.getElementById("body-color-picker");
@@ -546,5 +595,5 @@ export function installContextMenu(ctx) {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") hideViewMenu();
   });
-  return { openMenu, showContextToolbar, hideContextToolbar };
+  return { openMenu, openBarMenu, showContextToolbar, hideContextToolbar };
 }

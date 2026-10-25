@@ -1212,6 +1212,11 @@
   }
   #tree li.rollback:hover::after,
   #tree li.rollback.dragging::after { background: var(--accent); opacity: 1; }
+  /* Barre sélectionnée (clic) : ↑/↓ la déplacent. */
+  #tree li.rollback.sel { background: none; }
+  #tree li.rollback.sel::after {
+    background: var(--accent); opacity: 1; height: 3px; top: 3px;
+  }
   #tree li.rollback.dragging { cursor: grabbing; }
   #tree li.insert-mark {
     position: absolute;
@@ -1418,6 +1423,8 @@
   #graph-edge-menu div.danger:hover {
     color: var(--error);
   }
+  /* Commande impossible pour l'instant (menu de la barre de retour). */
+  #ctxmenu div.disabled { opacity: 0.45; pointer-events: none; }
   #param-pick .menu-label, #graph-palette .menu-label {
     padding: 6px 10px 2px;
     font-size: var(--text-xs); font-weight: 600; color: var(--ink-2);
@@ -1801,8 +1808,11 @@
     <div id="ctx-color" hidden>Couleur…</div>
     <div id="ctx-color-reset" hidden>Couleur par défaut</div>
     <div id="ctx-rollback">Amener la barre de retour ici</div>
+    <div id="ctx-forward" hidden>Avancer d'un pas</div>
+    <div id="ctx-bar-back" hidden>Revenir à la position précédente</div>
     <div id="ctx-end">Revenir à l'état final</div>
     <div id="ctx-delete" class="danger">Supprimer</div>
+    <div id="ctx-bar-delete" class="danger" hidden>Supprimer ce qui est sous la barre…</div>
   </div>
   <div id="graph-edge-menu">
     <div id="ctx-unlink" class="danger">Supprimer la liaison</div>

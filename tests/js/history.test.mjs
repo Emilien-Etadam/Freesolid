@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   barSlots,
+  barStepTarget,
   chronologicalHistory,
   countTreeErrors,
   sameBarTarget,
@@ -265,5 +266,17 @@ describe("sameBarTarget", () => {
     assert.ok(sameBarTarget({ op: "set_tip" }, { op: "set_tip", feature: undefined }));
     assert.ok(!sameBarTarget({ op: "set_tip", feature: "Pad" }, { op: "tip_to_end" }));
     assert.ok(!sameBarTarget(null, { op: "tip_to_end" }));
+  });
+});
+
+describe("barStepTarget", () => {
+  const slots = barSlots(splitHistoryAroundBar(padPocket(), [], "Pad"));
+
+  it("avance et recule d'une position, rien au bout", () => {
+    assert.deepEqual(barStepTarget(slots, 1), { op: "tip_to_end" });
+    assert.deepEqual(barStepTarget(slots, -1), { op: "set_tip" });
+    assert.equal(barStepTarget({ ...slots, current: 0 }, -1), null);
+    assert.equal(barStepTarget({ ...slots, current: 2 }, 1), null);
+    assert.equal(barStepTarget({ slots: [], current: -1 }, 1), null);
   });
 });

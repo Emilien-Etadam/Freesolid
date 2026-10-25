@@ -58,6 +58,56 @@ def test_labels_follow_the_language():
     assert i18n.label("Fixé — {}", "en").format("Pied") == "Fixed — Pied"
 
 
+def test_fillet_label_follows_the_language(monkeypatch):
+    """Le congé se nomme dans la langue de l'interface (``label_for_type``),
+    comme les autres fonctions : « Congé » restait posé en dur, même en
+    anglais. Le corps FreeCAD est remplacé par un faux."""
+    from engine.kernel import Kernel
+
+    class Feature:
+        pass
+
+    class Body:
+        Tip = object()
+
+        def newObject(self, type_id, name):
+            self.made = Feature()
+            return self.made
+
+    labels = []
+    for lang in ("fr", "en"):
+        kernel = Kernel()
+        kernel.lang = lang
+        body = Body()
+        monkeypatch.setattr(kernel, "_require_body", lambda: body)
+        monkeypatch.setattr(kernel, "_require_doc", lambda: None)
+        monkeypatch.setattr(kernel, "_recompute", lambda: None)
+        monkeypatch.setattr(kernel, "get_tree", lambda: None)
+        kernel.add_fillet(2, face=0)
+        labels.append(body.made.Label)
+    assert labels == ["Congé", "Fillet"]
+
+
+def test_graph_and_pattern_labels_follow_the_language():
+    """Fonction graphe et réseau variable : même règle que le congé."""
+    from engine.kernel import Kernel
+    kernel = Kernel()
+    circle = [{"shape": "cercle", "rayon": 10}]
+    plane = [{"shape": "plan", "longueur": 20, "largeur": 10}]
+    labels = []
+    for lang in ("fr", "en"):
+        kernel.lang = lang
+        labels.append([kernel._repeat_label("fuse"), kernel._repeat_label("cut"),
+                       kernel._graph_surface_label(circle),
+                       kernel._graph_surface_label(plane)])
+    assert labels == [
+        ["Réseau variable — Ajout", "Réseau variable — Enlèvement",
+         "Fonction graphe — Courbe", "Fonction graphe — Surface"],
+        ["Variable pattern — Add", "Variable pattern — Cut",
+         "Graph feature — Curve", "Graph feature — Surface"],
+    ]
+
+
 def test_unknown_language_has_no_catalog():
     assert i18n.catalog("klingon") == []
     assert i18n.catalog("fr") == []

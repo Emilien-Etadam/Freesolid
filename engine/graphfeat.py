@@ -261,8 +261,8 @@ class GraphMixin:
 
     def _graph_surface_label(self, instructions):
         from engine.kernel import graph_surface_kind
-        return "Fonction graphe — {}".format(
-            graph_surface_kind(instructions))
+        return self._t("Fonction graphe — {}").format(
+            self._t(graph_surface_kind(instructions)))
 
     def add_graph_feature(self, graph, mode=None):
         """Insère la forme d'un graphe dans l'arbre.
@@ -321,8 +321,8 @@ class GraphMixin:
         if tip is not None:
             self._persist_graph(
                 tip, graph, mode,
-                "Fonction graphe — Ajout" if mode == "fuse"
-                else "Fonction graphe — Enlèvement")
+                self._t("Fonction graphe — Ajout") if mode == "fuse"
+                else self._t("Fonction graphe — Enlèvement"))
         return self.get_tree()
 
     def _add_graph_surface(self, graph, instructions):
@@ -404,8 +404,8 @@ class GraphMixin:
         mode = getattr(obj, "FreeSolidGraphMode", "") or "cut"
         self._persist_graph(
             obj, graph, mode,
-            "Fonction graphe — Ajout" if mode == "fuse"
-            else "Fonction graphe — Enlèvement")
+            self._t("Fonction graphe — Ajout") if mode == "fuse"
+            else self._t("Fonction graphe — Enlèvement"))
         return self.get_tree()
 
     def get_graph_feature(self, feature):
@@ -430,8 +430,8 @@ class GraphMixin:
         return {"graph": migrate_graph(parsed), "mode": mode}
 
     def _repeat_label(self, mode):
-        return ("Réseau variable — Ajout" if mode == "fuse"
-                else "Réseau variable — Enlèvement")
+        return (self._t("Réseau variable — Ajout") if mode == "fuse"
+                else self._t("Réseau variable — Enlèvement"))
 
     def _repeat_tool_parts(self, obj):
         from engine.kernel import KernelError

@@ -200,6 +200,40 @@ describe("esquisse sortie par la barre (unabsorbed)", () => {
   });
 });
 
+describe("arbre à plat (flat)", () => {
+  it("chaque esquisse enfant est une ligne à son rang, du côté de sa fonction", () => {
+    const split = splitHistoryAroundBar(padPocket(), [], "Pad", { flat: true });
+    assert.deepEqual(names(split.before), ["Sketch", "Pad"]);
+    assert.deepEqual(names(split.after), ["Sketch001", "Pocket"]);
+    assert.deepEqual(split.before[1].item.children, []);
+  });
+
+  it("une esquisse sortie reste au-dessus de la barre", () => {
+    const split = splitHistoryAroundBar(
+      padPocket({ unabsorbed: true }), [], "Pad", { flat: true });
+    assert.deepEqual(names(split.before), ["Sketch", "Pad", "Sketch001"]);
+    assert.deepEqual(names(split.after), ["Pocket"]);
+  });
+
+  it("une esquisse partagée ne paraît qu'une fois", () => {
+    const shared = { ...sketch("Shared", 0) };
+    const features = [
+      { ...feat("Pad", 1), children: [shared] },
+      { ...feat("Pocket", 2, "PartDesign::Pocket"),
+        children: [{ ...shared, shared: ["Bossage"] }] },
+    ];
+    const split = splitHistoryAroundBar(features, [], "Pocket", { flat: true });
+    assert.deepEqual(names(split.before), ["Shared", "Pad", "Pocket"]);
+  });
+
+  it("les surfaces gardent leurs esquisses", () => {
+    const surf = { ...surface("Surf", 5), children: [sketch("SkSurf", 4)] };
+    const split = splitHistoryAroundBar([feat("Pad", 1)], [surf], "Pad", { flat: true });
+    assert.deepEqual(names(split.before), ["Pad", "Surf"]);
+    assert.equal(split.before[1].item.children.length, 1);
+  });
+});
+
 describe("barSlots", () => {
   it("haut, une position par ligne, l'état final en bas", () => {
     const split = splitHistoryAroundBar(padPocket(), [], "Pad");
@@ -247,6 +281,10 @@ describe("barSlots", () => {
     assert.equal(closed.current, 3);
     const open = barSlots(split, { folderOpen: () => true });
     assert.deepEqual(targets(open), ["haut", "Pad", "Pocket", "Hole", "fin"]);
+    // Arbre à plat : pas de dossier, même replié.
+    const flat = barSlots(splitHistoryAroundBar(features, [], "Fillet", { flat: true }),
+      { folderOpen: () => false, flat: true });
+    assert.deepEqual(targets(flat), ["haut", "Pad", "Pocket", "Hole", "fin"]);
   });
 
   it("barre en tête, et historique vide", () => {

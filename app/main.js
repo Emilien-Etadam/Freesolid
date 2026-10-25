@@ -1105,6 +1105,8 @@ installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
       openOrientBox();
     } else if (name === "origin") {
       toggleOrigin();
+    } else if (name === "flat-tree") {
+      setFlatTree(!isFlatTree());
     } else if (name === "report") {
       window.open(ISSUES_URL, "_blank", "noopener");
     } else if (name === "home") {
@@ -1162,12 +1164,14 @@ const {
   beginInlineRename, treeRowFor, beginRenameSelected,
   renderTree, editSurface, editFeature,
   moveBar, stepBar, barToPrevious, barCommands, isAfterBar, handleBarKey,
+  setFlatTree, isFlatTree,
 } = installTree(ctx);
 Object.assign(ctx, {
   renderTree, refreshDatumGhost, clearSketchSelection,
   cancelPendingSurfaceClick, onSurfaceClick, onSurfaceDblClick,
   clearSurfaceSelection, selectSketch,
   moveBar, stepBar, barToPrevious, barCommands, isAfterBar,
+  setFlatTree, isFlatTree,
 });
 
 // ---------- menus contextuels (arbre et zone graphique) ----------
@@ -1200,10 +1204,11 @@ Object.assign(ctx, {
 });
 
 const {
-  openMenu, openBarMenu, showContextToolbar, hideContextToolbar,
+  openMenu, openBarMenu, openTreeTitleMenu, showContextToolbar, hideContextToolbar,
 } = installContextMenu(ctx);
 ctx.openMenu = openMenu;
 ctx.openBarMenu = openBarMenu;
+ctx.openTreeTitleMenu = openTreeTitleMenu;
 ctx.showContextToolbar = showContextToolbar;
 ctx.hideContextToolbar = hideContextToolbar;
 

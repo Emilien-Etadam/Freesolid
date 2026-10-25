@@ -63,9 +63,9 @@ export function installContextMenu(ctx) {
 
   const menuEl = document.getElementById("ctxmenu");
   let menuFeature = null;
-  // Entrées propres au menu de la barre de retour.
+  // Entrées propres au menu de la barre de retour et à celui du titre.
   const BAR_ITEMS = ["ctx-forward", "ctx-bar-back", "ctx-end", "ctx-bar-delete"];
-  const OWN_ITEMS = new Set(["ctx-bar-back", "ctx-bar-delete"]);
+  const OWN_ITEMS = new Set(["ctx-bar-back", "ctx-bar-delete", "ctx-flat"]);
 
   function showMenuAt(event) {
     menuEl.style.display = "block";
@@ -91,6 +91,12 @@ export function installContextMenu(ctx) {
       !can.forward && "ctx-forward", !can.previous && "ctx-bar-back",
       !can.end && "ctx-end", !can.below && "ctx-bar-delete",
     ]);
+  }
+
+  /** Clic droit sur le titre « Arbre de création ». */
+  function openTreeTitleMenu(event) {
+    openOnly(event, ["ctx-flat"]);
+    document.getElementById("ctx-flat").classList.toggle("checked", ctx.isFlatTree());
   }
 
   function modifyMenuTarget(feature) {
@@ -347,6 +353,7 @@ export function installContextMenu(ctx) {
       refreshAny(call("delete_rolled_back"));
     }
   });
+  barItem("ctx-flat", () => ctx.setFlatTree(!ctx.isFlatTree()));
   document.getElementById("ctx-delete").addEventListener("click", () => {
     if (!menuFeature) return;
     if (confirm(t("Supprimer « {f} » ?", { f: menuFeature.label })))
@@ -595,5 +602,8 @@ export function installContextMenu(ctx) {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") hideViewMenu();
   });
-  return { openMenu, openBarMenu, showContextToolbar, hideContextToolbar };
+  return {
+    openMenu, openBarMenu, openTreeTitleMenu, showContextToolbar,
+    hideContextToolbar,
+  };
 }

@@ -145,31 +145,36 @@ export function chronologicalHistory(features, surfaces) {
   return rows;
 }
 
-/** Esquisses sorties par la barre (`unabsorbed`) des fonctions reculées :
- *  des lignes au-dessus d'elle, chacune à son rang. La ligne de la
- *  fonction devient une copie, sans elles. */
-function liftChildren(sides) {
-  const lifted = [];
+/** Esquisses enfants sorties en lignes, chacune à son rang. La ligne de
+ *  la fonction devient une copie, sans elles. */
+function liftChildren(sides, flat) {
+  const lifted = { before: [], after: [] };
   const seen = new Set();
-  for (const [i, row] of sides.after.entries()) {
-    if (row.surface) continue;
-    const children = row.item.children ?? [];
-    const lift = children.filter((child) => child.unabsorbed);
-    if (!lift.length) continue;
-    sides.after[i] = { ...row, item: {
-      ...row.item, children: children.filter((child) => !lift.includes(child)),
-    } };
-    for (const child of lift) {
-      if (seen.has(child.name)) continue; // partagée : une seule ligne
-      seen.add(child.name);
-      lifted.push({
-        item: child, surface: false, index: row.index, parent: row.item.name,
-      });
+  for (const side of ["before", "after"]) {
+    const rows = sides[side];
+    for (const [i, row] of rows.entries()) {
+      if (row.surface) continue;
+      const children = row.item.children ?? [];
+      const lift = children.filter(
+        (child) => flat || (side === "after" && child.unabsorbed));
+      if (!lift.length) continue;
+      rows[i] = { ...row, item: {
+        ...row.item, children: children.filter((child) => !lift.includes(child)),
+      } };
+      for (const child of lift) {
+        if (seen.has(child.name)) continue; // partagée : une seule ligne
+        seen.add(child.name);
+        lifted[child.unabsorbed ? "before" : side].push({
+          item: child, surface: false, index: row.index, parent: row.item.name,
+        });
+      }
     }
   }
-  if (!lifted.length) return;
-  sides.before.push(...lifted);
-  sides.before.sort(byRank);
+  for (const side of ["before", "after"]) {
+    if (!lifted[side].length) continue;
+    sides[side].push(...lifted[side]);
+    sides[side].sort(byRank);
+  }
 }
 
 /** Sépare l'historique en `before` / `after` la barre de retour.
@@ -180,8 +185,12 @@ function liftChildren(sides) {
  *  présentes = toutes après). Barre `"none"` si aucune ligne.
  *
  *  Une esquisse que la barre a sortie de sa fonction (`unabsorbed`) passe
- *  au-dessus, à son rang ; la fonction reste dessous, sans elle. */
-export function splitHistoryAroundBar(features, surfaces, tip) {
+ *  au-dessus, à son rang ; la fonction reste dessous, sans elle.
+ *  `flat` (arbre à plat) : chaque esquisse enfant d'une fonction devient
+ *  une ligne à son rang, du côté de sa fonction (au-dessus si elle est
+ *  sortie) ; une esquisse partagée ne paraît qu'une fois. Les surfaces
+ *  gardent leurs esquisses. */
+export function splitHistoryAroundBar(features, surfaces, tip, { flat = false } = {}) {
   const history = chronologicalHistory(features, surfaces);
   if (history.length === 0) {
     return { bar: "none", before: [], after: [] };
@@ -203,7 +212,7 @@ export function splitHistoryAroundBar(features, surfaces, tip) {
       after.push(row);
     }
   }
-  liftChildren({ before, after });
+  liftChildren({ before, after }, flat);
   return {
     bar: before.length === 0 ? "start" : "middle",
     before,
@@ -226,9 +235,10 @@ const setTipOn = (feature) => ({ op: "set_tip", feature });
  *  - sous sa dernière esquisse : après la fonction ;
  *  - sous un dossier replié : après sa dernière ligne ;
  *  - tout en bas : l'état final.
- *  `expanded(nom)` et `folderOpen(nom)` disent ce que l'arbre déplie. */
+ *  `expanded(nom)` et `folderOpen(nom)` disent ce que l'arbre déplie ;
+ *  `flat` : pas de dossiers, comme l'arbre à plat. */
 export function barSlots(split, {
-  expanded = () => false, folderOpen = () => true,
+  expanded = () => false, folderOpen = () => true, flat = false,
 } = {}) {
   if (!split || split.bar === "none") return { slots: [], current: -1 };
   const slots = [{ line: null, target: { op: "set_tip" } }];
@@ -247,7 +257,7 @@ export function barSlots(split, {
   };
   const pushSide = (rows) => {
     for (let i = 0; i < rows.length;) {
-      const folder = rows[i].surface ? null : rows[i].item.folder ?? null;
+      const folder = flat || rows[i].surface ? null : rows[i].item.folder ?? null;
       let j = i + 1;
       while (folder && j < rows.length && !rows[j].surface
              && rows[j].item.folder === folder) j++;

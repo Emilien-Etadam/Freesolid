@@ -208,6 +208,11 @@ export function installTree(ctx) {
   }
 
   const expandedFeatures = new Set(); // les fonctions dépliées (persiste)
+  // Arbre à plat (Affichage) : choix gardé d'une session à l'autre.
+  const FLAT_TREE_KEY = "freesolid.flatTree";
+  let flatTree = (() => {
+    try { return localStorage.getItem(FLAT_TREE_KEY) === "1"; } catch { return false; }
+  })();
   let barSelected = false; // barre cliquée : ↑/↓ la déplacent
   let barState = { slots: [], current: -1 }; // positions du dernier rendu
   let afterBarNames = new Set(); // lignes reculées du dernier rendu
@@ -688,6 +693,7 @@ export function installTree(ctx) {
     barState = barSlots(split, {
       expanded: (name) => expandedFeatures.has(name),
       folderOpen: (folder) => folderIsOpen(`user:${folder}`, false),
+      flat: flatTree,
     });
     const lines = new Map();
     for (const li of treeEl.querySelectorAll("li[data-line]")) {
@@ -759,6 +765,19 @@ export function installTree(ctx) {
     if (!event.repeat) stepBar(event.key === "ArrowUp" ? -1 : 1);
     return true;
   }
+
+  function setFlatTree(on) {
+    flatTree = !!on;
+    try { localStorage.setItem(FLAT_TREE_KEY, flatTree ? "1" : "0"); } catch { /* ok */ }
+    if (ctx.lastTree) renderTree(ctx.lastTree);
+  }
+
+  function isFlatTree() {
+    return flatTree;
+  }
+
+  document.querySelector("aside > h2")?.addEventListener("contextmenu",
+    (event) => ctx.openTreeTitleMenu?.(event));
 
   // Glisser-déposer d'une fonction dans l'arbre : le repère d'insertion de
   // la barre de retour montre où elle ira ; le moteur la déplace avec ses
@@ -1163,7 +1182,8 @@ export function installTree(ctx) {
     treeEl.appendChild(origin);
 
     const features = tree.features ?? [];
-    const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip);
+    const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip,
+      { flat: flatTree });
     if (split.bar !== "none") {
       appendHistoryRows(split.before, false);
       appendRollbackBar();
@@ -1173,13 +1193,14 @@ export function installTree(ctx) {
   }
 
   /** Lignes d'historique ; les fonctions rangées dans un même dossier
-   *  (qui se suivent) passent sous une ligne de dossier repliable. Une
-   *  esquisse sortie de sa fonction par la barre est une ligne à elle. */
+   *  (qui se suivent) passent sous une ligne de dossier repliable — sauf
+   *  dans l'arbre à plat, sans dossiers. Une esquisse sortie de sa
+   *  fonction (barre, arbre à plat) est une ligne à elle. */
   function appendHistoryRows(rows, rolledBack) {
     let current = null;
     let open = true;
     rows.forEach((row, i) => {
-      const folder = row.surface ? null : row.item.folder ?? null;
+      const folder = flatTree || row.surface ? null : row.item.folder ?? null;
       if (folder !== current) {
         current = folder;
         open = true;
@@ -1805,5 +1826,6 @@ export function installTree(ctx) {
     beginInlineRename, treeRowFor, beginRenameSelected,
     renderTree, editSurface, editFeature,
     moveBar, stepBar, barToPrevious, barCommands, isAfterBar, handleBarKey,
+    setFlatTree, isFlatTree,
   };
 }

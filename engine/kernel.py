@@ -36,6 +36,7 @@ from engine.plugins import PluginError           # noqa: E402
 from engine.protocol import dangling_deps, visible_dep_subs, visible_deps  # noqa: E402
 from engine.scriptnode import evaluate as evaluate_graph  # noqa: E402
 from engine.i18n import label as _label_in       # noqa: E402
+from engine.i18n import translate as _translate  # noqa: E402
 from engine.vocab import label_for_type          # noqa: E402
 
 
@@ -309,12 +310,13 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
         self._plugins.reset_state()
 
     def _report_progress(self, phase, fait=0, total=0):
-        """Nourrit l'état d'avancement. Aucun appel FreeCAD."""
+        """Nourrit l'état d'avancement, la phase dans la langue de
+        l'interface. Aucun appel FreeCAD."""
         callback = self._progress
         if not callable(callback):
             return
         try:
-            callback(phase, fait, total)
+            callback(_translate(phase, self.lang), fait, total)
         except Exception:
             pass
 

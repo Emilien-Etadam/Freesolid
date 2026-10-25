@@ -52,6 +52,25 @@ def test_kernel_progress_callback_is_a_no_op_without_transport():
     assert seen == [("Construction du compound", 47, 200)]
 
 
+@pytest.mark.parametrize("phase, english", [
+    ("Maillage", "Meshing"),
+    ("Reconstruction de l'arbre", "Rebuilding the tree"),
+    ("Soustraire", "Subtract"),
+    ("Ajouter", "Add"),
+    ("Intersection", "Common"),
+])
+def test_kernel_progress_phase_follows_the_language(phase, english):
+    """La barre d'état affiche la phase telle quelle : le noyau la donne
+    dans la langue de l'interface, comme ses libellés."""
+    k = Kernel()
+    seen = []
+    k._progress = lambda phase, fait=0, total=0: seen.append(phase)
+    k._report_progress(phase)
+    k.lang = "en"
+    k._report_progress(phase)
+    assert seen == [phase, english]
+
+
 def test_kernel_progress_swallows_callback_errors():
     k = Kernel()
 

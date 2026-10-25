@@ -199,6 +199,96 @@ def type_key_for(obj_type: str) -> str:
     return TYPE_KEY_FALLBACKS.get(obj_type.split("::")[0], TYPE_KEY_OTHER)
 
 
+#: Cotes rééditables d'un genre : propriété FreeCAD -> clé neutre, celle
+#: que l'interface lit dans ``get_params`` et écrit dans ``set_params``.
+#: Les clés sont celles des formulaires de création (app/features/). Un
+#: genre absent, ou une propriété que son genre ne nomme pas, prend
+#: ``PARAM_KEYS_DEFAULT``. ``tests/test_param_keys.py`` vérifie la table.
+_EXTRUDE_PARAM_KEYS = {
+    "Length": "length", "Length2": "length2",
+    "Reversed": "reversed", "Midplane": "midplane",
+    # Paroi mince : propriétés FreeSolid posées sur la fonction.
+    "Thickness": "thinT", "Thickness2": "thinT2", "CapThickness": "thinCapT",
+}
+_REVOLVED_PARAM_KEYS = {
+    "Angle": "angle", "Reversed": "reversed", "Midplane": "midplane",
+    "axis": "axis",
+    "Thickness": "thinT", "Thickness2": "thinT2", "CapThickness": "thinCapT",
+}
+_HELIX_PARAM_KEYS = {"Pitch": "pitch", "Height": "height", "Angle": "angle"}
+_DISTANCE_PARAM_KEYS = {"Value": "distance"}
+PARAM_KEYS: dict[str, dict[str, str]] = {
+    "pad": _EXTRUDE_PARAM_KEYS,
+    "pocket": _EXTRUDE_PARAM_KEYS,
+    "revolution": _REVOLVED_PARAM_KEYS,
+    "groove": _REVOLVED_PARAM_KEYS,
+    "fillet": {"Radius": "radius"},
+    "chamfer": {
+        "ChamferType": "kind", "Size": "size", "Size2": "size2",
+        "Angle": "angle", "FlipDirection": "flip",
+    },
+    "thickness": {"Value": "thickness"},
+    "draft": {"Angle": "angle"},
+    "hole": {
+        "Diameter": "diameter", "Depth": "depth",
+        "HoleCutDiameter": "cutDiameter", "HoleCutDepth": "cutDepth",
+    },
+    "linear_pattern": {
+        "Length": "length", "Occurrences": "count",
+        "Length2": "length2", "Occurrences2": "count2",
+    },
+    "polar_pattern": {"Angle": "angle", "Occurrences": "count"},
+    "helix": _HELIX_PARAM_KEYS,
+    "helix_cut": _HELIX_PARAM_KEYS,
+    "surface_extrude": {"LengthFwd": "length"},
+    "surface_revolve": {"Angle": "angle"},
+    "surface_offset": _DISTANCE_PARAM_KEYS,
+    "surface_radiate": _DISTANCE_PARAM_KEYS,
+    "curve_helix": {
+        "Pitch": "pitch", "Height": "height", "Radius": "radius",
+        "Angle": "angle",
+    },
+}
+#: Une cote que le genre ne nomme pas (plan de référence, fonction d'un
+#: fichier étranger…) : une clé par propriété rééditable du noyau.
+PARAM_KEYS_DEFAULT: dict[str, str] = {
+    "Length": "length", "LengthFwd": "lengthFwd", "Radius": "radius",
+    "Size": "size", "Angle": "angle", "Thickness": "thickness",
+    "Thickness2": "thickness2", "CapThickness": "capThickness",
+    "Value": "value", "Occurrences": "count", "Diameter": "diameter",
+    "Depth": "depth", "HoleCutDiameter": "cutDiameter",
+    "HoleCutDepth": "cutDepth", "Pitch": "pitch", "Height": "height",
+}
+
+
+def param_key_for(type_key: str, prop: str):
+    """Clé neutre de la propriété ``prop`` d'un objet de genre
+    ``type_key``, ou None si aucune table ne la nomme."""
+    key = PARAM_KEYS.get(type_key, {}).get(prop)
+    return key if key is not None else PARAM_KEYS_DEFAULT.get(prop)
+
+
+def param_prop_for(type_key: str, key: str):
+    """Propriété FreeCAD derrière la clé ``key``, ou None.
+
+    Transition : un nom de propriété FreeCAD que la table connaît pour ce
+    genre est encore accepté tel quel. Le genre l'emporte sur la table
+    par défaut quand les deux donnent la même clé.
+    """
+    own = PARAM_KEYS.get(type_key, {})
+    for prop, neutral in own.items():
+        if neutral == key:
+            return prop
+    if key in own:
+        return key
+    for prop, neutral in PARAM_KEYS_DEFAULT.items():
+        if neutral == key and prop not in own:
+            return prop
+    if key in PARAM_KEYS_DEFAULT:
+        return key
+    return None
+
+
 #: Catalogue de la fonction graphe (N006) — taxonomie reprise de
 #: ``j8sr0230/Nodes`` (LGPL-2.1). Source unique : type, libellé, catégorie,
 #: icône, ports, et l'état implémenté / pas encore. ``graph_vocabulary``

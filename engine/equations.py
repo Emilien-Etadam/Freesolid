@@ -21,10 +21,11 @@ class EquationsMixin:
 
 
     def set_param(self, feature, prop, value):
-        """Set one property on one feature by internal name, and recompute.
+        """Set one dimension on one feature, and recompute.
 
         This is the whole parametric promise in one operation: the UI edits
-        ``Pad.Length`` and the part rebuilds. Même atomicité que
+        the ``length`` of a pad and the part rebuilds. ``prop`` is a neutral
+        key (``PARAM_KEYS``), as in ``set_params``. Même atomicité que
         ``set_params`` : un refus ne modifie pas la pièce.
         """
         return self.set_params(feature, {str(prop): value})
@@ -33,6 +34,9 @@ class EquationsMixin:
         """Set several properties at once, one recompute — the edit panel
         applies (and previews) its whole form atomically.
 
+        Keys are the neutral keys of ``get_params`` (``PARAM_KEYS`` in
+        ``engine/vocab.py``) ; a FreeCAD property name the table knows is
+        still accepted during the transition, any other key is refused.
         A value may be a number, or a string: a numeric string is a
         number, anything else is an **expression** (``2*Largeur + 5``) —
         an equation, via the expression engine.
@@ -48,6 +52,7 @@ class EquationsMixin:
             raise KernelError("fonction inconnue : {}".format(feature))
         if not isinstance(values, dict):
             raise KernelError("values doit être un objet JSON")
+        values, asked = self._props_from_keys(obj, values)
         # Atomicité : une expression était stockée AVANT que le recompute
         # ne la valide — un identifiant inconnu (« _ ») laissait la pièce
         # Invalid pour toujours (barre bloquée, cascade « Tool shape is
@@ -77,7 +82,8 @@ class EquationsMixin:
         for prop, value in values.items():
             prop = str(prop)
             if prop not in editable:
-                raise KernelError("propriété non éditable : {}".format(prop))
+                raise KernelError("propriété non éditable : {}".format(
+                    asked.get(prop, prop)))
             if prop == "axis":
                 profile = self._as_object(getattr(obj, "Profile", None))
                 if profile is None:
@@ -115,7 +121,7 @@ class EquationsMixin:
                 continue
             if not hasattr(obj, prop):
                 raise KernelError("{} n'a pas de propriété {}".format(
-                    obj.Label, prop))
+                    obj.Label, asked.get(prop, prop)))
             if prop == "ChamferType":
                 token = str(value).strip() if value is not None else ""
                 if token not in self._CHAMFER_TYPES:
@@ -203,6 +209,29 @@ class EquationsMixin:
         return self.get_tree()
 
     @staticmethod
+    def _props_from_keys(obj, values):
+        """``{clé: valeur}`` -> ``({propriété FreeCAD: valeur},
+        {propriété: clé demandée})``. Une clé neutre se traduit selon le
+        genre de l'objet ; un nom de propriété que la table connaît passe
+        tel quel (transition) ; toute autre clé est refusée, comme deux
+        clés qui visent la même propriété (« length » et « Length »)."""
+        from engine.kernel import KernelError
+        from engine.vocab import param_prop_for, type_key_for
+        type_key = type_key_for(getattr(obj, "TypeId", ""))
+        props, asked = {}, {}
+        for key, value in values.items():
+            prop = param_prop_for(type_key, str(key))
+            if prop is None:
+                raise KernelError("propriété non éditable : {}".format(key))
+            if prop in props:
+                raise KernelError(
+                    "clés en double pour la même cote : {}, {}".format(
+                        asked[prop], key))
+            props[prop] = value
+            asked[prop] = str(key)
+        return props, asked
+
+    @staticmethod
     def _restore_props(obj, previous):
         """Défait ``set_params`` : remet liaisons et valeurs mémorisées."""
         for prop, old_expr, old_value in reversed(previous):
@@ -233,19 +262,27 @@ class EquationsMixin:
         return ("Size",)
 
     def get_params(self, feature):
-        """Editable numeric properties of a feature, with current values."""
+        """Editable numeric properties of a feature, with current values.
+
+        ``key`` is the neutral key the UI reads and sends back to
+        ``set_params``; ``prop`` (the FreeCAD property) stays during the
+        transition, for the engine and the plugins.
+        """
         from engine.kernel import KernelError
+        from engine.vocab import param_key_for, type_key_for
         doc = self._require_doc()
         obj = doc.getObject(feature)
         if obj is None:
             raise KernelError("fonction inconnue : {}".format(feature))
         exprs = self._expression_map(obj)
+        type_key = type_key_for(obj.TypeId)
         params = []
         for prop in self._editable_props(obj):
             if not hasattr(obj, prop):
                 continue
             value = getattr(obj, prop)
-            entry = {"prop": prop,
+            entry = {"key": param_key_for(type_key, prop) or prop,
+                     "prop": prop,
                      "value": float(getattr(value, "Value", value))}
             if prop in exprs:
                 entry["expr"] = exprs[prop]

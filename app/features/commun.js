@@ -72,8 +72,8 @@ export function measureRow(key, label, value, unit, showIf) {
   return row;
 }
 
-export function storedMeasure(params, prop, fallback) {
-  const found = (params ?? []).find((item) => item.prop === prop);
+export function storedMeasure(params, key, fallback) {
+  const found = (params ?? []).find((item) => item.key === key);
   if (found?.expr) return { expr: String(found.expr) };
   if (found && found.value != null) return { numeric: Number(found.value) };
   const parsed = plainNumber(fallback);

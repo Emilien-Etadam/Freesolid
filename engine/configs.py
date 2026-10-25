@@ -173,8 +173,13 @@ class ConfigsMixin:
     def configuration_table(self):
         """Tableau des cotes par configuration : une ligne par cote
         relevée (et par variable), une valeur par configuration. L'état
-        courant compte pour la configuration active."""
-        from engine.vocab import label_for_type
+        courant compte pour la configuration active.
+
+        Une cote se nomme par sa clé neutre : ``key`` vaut
+        ``prop:Pad.length`` (le relevé enregistré garde ``prop:Pad.Length``),
+        ``param`` la clé seule, ``type_key`` le genre de l'objet. ``prop``
+        reste pendant la transition."""
+        from engine.vocab import param_key_for, type_key_for
         doc = self._require_doc()
         data = self._config_data()
         configs = dict(data["configs"])
@@ -187,7 +192,8 @@ class ConfigsMixin:
                     keys.append(key)
         rows = []
         for key in keys:
-            prop = None
+            prop = param = type_key = None
+            shown = key
             if key.startswith("var:"):
                 label = key[4:]
             else:
@@ -196,7 +202,11 @@ class ConfigsMixin:
                 if obj is None:
                     continue
                 label = obj.Label
-            rows.append({"key": key, "label": label, "prop": prop,
+                type_key = type_key_for(obj.TypeId)
+                param = param_key_for(type_key, prop) or prop
+                shown = "prop:%s.%s" % (obj_name, param)
+            rows.append({"key": shown, "label": label, "param": param,
+                         "type_key": type_key, "prop": prop,
                          "values": {n: configs[n].get(key)
                                     for n in data["order"]}})
         return {"names": data["order"], "active": data["active"],
@@ -213,14 +223,31 @@ class ConfigsMixin:
             if name not in data["configs"]:
                 raise KernelError("configuration inconnue : {}".format(name))
             for key, value in (changes or {}).items():
-                if key not in data["configs"][name]:
+                stored = self._stored_config_key(key)
+                if stored not in data["configs"][name]:
                     raise KernelError("cote inconnue : {}".format(key))
-                data["configs"][name][key] = float(value)
+                data["configs"][name][stored] = float(value)
         self._store_configs(data)
         if data["active"] in data["configs"]:
             self._apply_snapshot(data["configs"][data["active"]])
             self._recompute()
         return self._current_tree()
+
+    def _stored_config_key(self, key):
+        """Clé du relevé enregistré derrière une clé du tableau :
+        ``prop:Pad.length`` -> ``prop:Pad.Length``. Une clé déjà au format
+        du relevé (variable, ou nom de propriété FreeCAD pendant la
+        transition) passe telle quelle."""
+        from engine.vocab import param_prop_for, type_key_for
+        key = str(key)
+        if not key.startswith("prop:") or "." not in key:
+            return key
+        obj_name, param = key[len("prop:"):].rsplit(".", 1)
+        obj = self._require_doc().getObject(obj_name)
+        if obj is None:
+            return key
+        prop = param_prop_for(type_key_for(obj.TypeId), param)
+        return "prop:%s.%s" % (obj_name, prop) if prop else key
 
     def delete_configuration(self, name):
         """Retire une configuration ; la pièce garde son état courant."""

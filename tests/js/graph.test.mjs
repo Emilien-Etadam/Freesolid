@@ -248,7 +248,7 @@ describe("buildGraph", () => {
           deps: ["XY_Plane"] },
         { name: "Pad", label: "Bossage1", kind: "Extrusion",
           order: 1, deps: ["Sketch"],
-          params: [{ prop: "Length", value: 12 }] },
+          params: [{ key: "length", value: 12 }] },
         { name: "Fillet", label: "Congé1", kind: "Congé",
           order: 2, deps: ["Pad"],
           dep_subs: { Pad: ["Edge3", "Edge7"] } },
@@ -256,7 +256,7 @@ describe("buildGraph", () => {
       planes: [{ id: "XY", name: "XY_Plane", label: "Plan de dessus" }],
     });
     const nodes = byName(graph);
-    assert.deepEqual(nodes.Pad.params, [{ prop: "Length", value: 12 }]);
+    assert.deepEqual(nodes.Pad.params, [{ key: "length", value: 12 }]);
     assert.equal(nodes.Pad.height, 32);
     const filletEdge = graph.edges.find(
       (edge) => edge.kind === "geom" && edge.from === "Pad" && edge.to === "Fillet");
@@ -296,44 +296,44 @@ describe("fil paramétrique", () => {
 
   it("une coupure fige la valeur courante des cotes pilotées, pas zéro", () => {
     const values = freezeDrivenValues([
-      { prop: "Length", value: 25, expr: "Variables.largeur" },
-      { prop: "Angle", value: 12 },
-      { prop: "Radius", value: 3, expr: "2 * largeur + 5" },
+      { key: "length", value: 25, expr: "Variables.largeur" },
+      { key: "angle", value: 12 },
+      { key: "radius", value: 3, expr: "2 * largeur + 5" },
     ], "largeur");
-    assert.deepEqual(values, { Length: 25, Radius: 3 });
-    assert.equal(values.Length === 0, false);
+    assert.deepEqual(values, { length: 25, radius: 3 });
+    assert.equal(values.length === 0, false);
   });
 
   it("une coupure ne prend pas larg pour largeur", () => {
     const values = freezeDrivenValues([
-      { prop: "Length", value: 20, expr: "2 * largeur + 5" },
-      { prop: "Angle", value: 8, expr: "larg" },
+      { key: "length", value: 20, expr: "2 * largeur + 5" },
+      { key: "angle", value: 8, expr: "larg" },
     ], "largeur");
-    assert.deepEqual(values, { Length: 20 });
+    assert.deepEqual(values, { length: 20 });
   });
 
   it("sans expression, sans tableau, sans identifiant → rien à figer", () => {
     assert.deepEqual(freezeDrivenValues(null, "largeur"), {});
     assert.deepEqual(freezeDrivenValues([], "largeur"), {});
     assert.deepEqual(freezeDrivenValues(
-      [{ prop: "Length", value: 10 }], "largeur"), {});
+      [{ key: "length", value: 10 }], "largeur"), {});
     assert.deepEqual(freezeDrivenValues(
-      [{ prop: "Length", value: 10, expr: "Variables.largeur" }], ""), {});
+      [{ key: "length", value: 10, expr: "Variables.largeur" }], ""), {});
   });
 
-  it("le libellé du choix réutilise PROP_LABELS et signale une cote déjà pilotée", () => {
-    const labels = { Length: ["Profondeur", "mm"], Occurrences: ["Nombre d'occurrences", ""] };
+  it("le libellé du choix réutilise paramLabels et signale une cote déjà pilotée", () => {
+    const labels = { length: ["Profondeur", "mm"], count: ["Nombre d'occurrences", ""] };
     assert.equal(
-      paramChoiceCaption({ prop: "Length", value: 10 }, labels),
+      paramChoiceCaption({ key: "length", value: 10 }, labels),
       "Profondeur (mm)",
     );
     assert.equal(
       paramChoiceCaption(
-        { prop: "Length", value: 25, expr: "Variables.largeur" }, labels),
+        { key: "length", value: 25, expr: "Variables.largeur" }, labels),
       "Profondeur (mm) — déjà « Variables.largeur »",
     );
     assert.equal(
-      paramChoiceCaption({ prop: "Occurrences", value: 3 }, labels),
+      paramChoiceCaption({ key: "count", value: 3 }, labels),
       "Nombre d'occurrences",
     );
     assert.equal(paramChoiceCaption(null, labels), "");
@@ -341,7 +341,7 @@ describe("fil paramétrique", () => {
 });
 
 describe("nature des liens N007", () => {
-  const labels = { Length: ["Profondeur", "mm"], Radius: ["Rayon", "mm"] };
+  const labels = { length: ["Profondeur", "mm"], radius: ["Rayon", "mm"] };
 
   it("une arête nomme le sous-élément, +N s'il y en a plusieurs", () => {
     assert.equal(edgeSubCaption(["Face3"]), "Face3");
@@ -351,14 +351,14 @@ describe("nature des liens N007", () => {
     assert.equal(edgeSubCaption(null), "");
   });
 
-  it("le nœud reprend PROP_LABELS et préfixe Σ une cote pilotée", () => {
+  it("le nœud reprend paramLabels et préfixe Σ une cote pilotée", () => {
     assert.equal(
-      graphParamLine({ prop: "Length", value: 12 }, labels),
+      graphParamLine({ key: "length", value: 12 }, labels),
       "Profondeur 12",
     );
     assert.equal(
       graphParamLine(
-        { prop: "Length", value: 25, expr: "2 * Variables.largeur" }, labels),
+        { key: "length", value: 25, expr: "2 * Variables.largeur" }, labels),
       "Σ Profondeur 25",
     );
     assert.equal(graphParamLine(null, labels), "");
@@ -366,12 +366,12 @@ describe("nature des liens N007", () => {
 
   it("ne montre que les premières cotes dans le nœud", () => {
     const params = [
-      { prop: "Length", value: 12 },
-      { prop: "Radius", value: 3 },
-      { prop: "Size", value: 1 },
+      { key: "length", value: 12 },
+      { key: "radius", value: 3 },
+      { key: "size", value: 1 },
     ];
     assert.equal(graphVisibleParams(params).length, 1);
-    assert.equal(graphVisibleParams(params)[0].prop, "Length");
+    assert.equal(graphVisibleParams(params)[0].key, "length");
   });
 
   it("le milieu de l'arête est le centre du segment", () => {

@@ -23,7 +23,7 @@ Plus bas, un exemple complet : la Coque (`add_thickness`).
 | 7 | `app/features/<famille>.js` | l'entrée de `FEATURES` |
 | 8 | `app/ribbon.json` | le bouton |
 | 9 | `app/icons.js` (+ `app/icons/`) | le rôle d'icône |
-| 10 | `app/tree.js`, `app/typekeys.js` | l'icône du genre (`TREE_ICONS`), les cotes rééditables (`PROP_LABELS`), la famille du genre |
+| 10 | `app/tree.js`, `app/typekeys.js` | l'icône du genre (`TREE_ICONS`), le libellé des cotes rééditables (`PARAM_LABELS`), la famille du genre |
 | 11 | `app/history.js` | le libellé d'annulation (`STEP_LABELS`) |
 | 12 | `app/lang/en.json` | chaque texte visible : bouton, infobulle, panneau, refus, libellé d'annulation |
 | 13 | `scripts/smoke/smoke.js` | le bouton dans `FEATURE_PANELS` |
@@ -121,7 +121,10 @@ correspond ; `app/features.js` rassemble les familles.
   - son icône d'arbre va dans `TREE_ICONS` ;
   - sa famille, dans `BODY_FEATURE_KEYS` ou `SURFACE_KEYS`
     (`app/typekeys.js`) : c'est elle qui ouvre le menu contextuel ;
-  - une cote rééditable par double-clic a son libellé dans `PROP_LABELS` ;
+  - une cote rééditable par double-clic a sa clé neutre dans `PARAM_KEYS`
+    (`engine/vocab.py`, la clé du formulaire de création) et son libellé
+    dans `PARAM_LABELS`, par clé ; l'interface ne lit et n'écrit que la
+    clé (`key` de `get_params`, `set_params`) ;
   - côté moteur, sa propriété doit figurer dans `_EDITABLE_PROPS`
     (`engine/equations.py`).
 
@@ -253,7 +256,7 @@ export function shellBuild(v) {
 |---|---|
 | `app/ribbon.json` | `{"id": "btn-shell", "titre": "Coque — les faces cliquées deviennent des ouvertures", "icon": "shell", "libelle": "Coque", "taille": "large"}` |
 | `app/icons.js` | `shell: "PartDesign_Thickness.svg",` |
-| `app/tree.js` | `thickness: "shell",` dans `TREE_ICONS` ; `Value` est déjà dans `PROP_LABELS` |
+| `app/tree.js` | `thickness: "shell",` dans `TREE_ICONS` ; la clé `thickness` est déjà dans `PARAM_LABELS` |
 | `app/typekeys.js` | `"thickness"` dans `BODY_FEATURE_KEYS` |
 | `app/history.js` | `add_thickness: "Coque",` |
 | `app/lang/en.json` | `"Coque": "Shell"`, l'infobulle, `"Faces à supprimer"`, `"Coque vers l'extérieur"`, l'aide, les refus |
@@ -287,6 +290,9 @@ Ce que chaque test refuse :
   `Kernel`, et une `add_*` qui n'a ni `replay` ni `no_replay`.
 - **`tests/test_ops_instantane.py`** et **`test_ops_snapshot_keys`**
   refusent un changement de protocole absent de l'instantané.
+- **`tests/test_param_keys.py`** refuse une cote rééditable sans clé
+  neutre, une clé absente des formulaires de création, une cote affichée
+  sans libellé, et un nom de propriété FreeCAD dans le code de `app/`.
 - **`tests/test_type_keys.py`** refuse un TypeId créé sans genre dans
   `TYPE_KEYS`, un genre qui ne suit pas le nom de l'op, et une famille
   d'`app/typekeys.js` qui ne suit pas la table. **`tests/js/typekeys.test.mjs`**

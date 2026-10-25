@@ -51,9 +51,9 @@ export function chamferRows({
   ];
 }
 
-/** Valeur affichée : l'expression si la cote en a une, sinon le nombre. */
-export function chamferFieldValue(params, prop, fallback) {
-  const found = (params ?? []).find((item) => item.prop === prop);
+/** Valeur affichée : l'expression si la cote `key` en a une, sinon le nombre. */
+export function chamferFieldValue(params, key, fallback) {
+  const found = (params ?? []).find((item) => item.key === key);
   if (found?.expr) return found.expr;
   if (found && found.value != null) return found.value;
   return fallback;
@@ -137,28 +137,28 @@ export function chamferProblem(v) {
 export function chamferEditValues(v, chamfer, params) {
   const kind = v.kind || "egale";
   if (!CHAMFER_KINDS.has(kind)) return null;
-  const sizeStored = storedMeasure(params, "Size", chamfer.size);
+  const sizeStored = storedMeasure(params, "size", chamfer.size);
   const size = readMeasure(v.size, sizeStored, { min: 0, max: Infinity });
   if (size == null) return null;
-  const values = { ChamferType: kind, Size: size };
+  const values = { kind, size };
   const flip = kind === "egale" ? false : !!v.flip;
   let secondSame = true;
   if (kind === "deux") {
-    const stored = storedMeasure(params, "Size2", chamfer.size2);
+    const stored = storedMeasure(params, "size2", chamfer.size2);
     const size2 = readMeasure(v.size2, stored, { min: 0, max: Infinity });
     if (size2 == null) return null;
-    values.Size2 = size2;
-    values.FlipDirection = flip;
+    values.size2 = size2;
+    values.flip = flip;
     secondSame = sameMeasure(size2, stored);
   } else if (kind === "angle") {
-    const stored = storedMeasure(params, "Angle", chamfer.angle);
+    const stored = storedMeasure(params, "angle", chamfer.angle);
     const angle = readMeasure(v.angle, stored, { min: 0, max: 90 });
     if (angle == null) return null;
-    values.Angle = angle;
-    values.FlipDirection = flip;
+    values.angle = angle;
+    values.flip = flip;
     secondSame = sameMeasure(angle, stored);
   } else {
-    values.FlipDirection = false;
+    values.flip = false;
   }
   const unchanged = kind === chamfer.type
     && flip === !!chamfer.flip

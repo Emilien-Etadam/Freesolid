@@ -77,25 +77,48 @@ const SURFACE_ICONS = {
   surface_radiate: "surface_radiate",
 };
 
-export const PROP_LABELS = {
-  Length: ["Profondeur", "mm"],
-  LengthFwd: ["Longueur", "mm"],
-  Pitch: ["Pas", "mm"],
-  Height: ["Hauteur", "mm"],
-  Radius: ["Rayon", "mm"],
-  Size: ["Distance", "mm"],
-  Angle: ["Angle", "°"],
-  Thickness: ["Épaisseur", "mm"],
-  Thickness2: ["Épaisseur côté 2", "mm"],
-  CapThickness: ["Épaisseur des extrémités", "mm"],
-  Value: ["Épaisseur", "mm"],
-  Occurrences: ["Nombre d'occurrences", ""],
-  Occurrences2: ["Occurrences (direction 2)", ""],
-  Diameter: ["Diamètre", "mm"],
-  Depth: ["Profondeur", "mm"],
-  HoleCutDiameter: ["Ø lamage/fraisage", "mm"],
-  HoleCutDepth: ["Profondeur du lamage", "mm"],
+/** Libellé et unité d'une cote rééditable, par clé neutre (`key` de
+ *  get_params, table PARAM_KEYS d'engine/vocab.py). */
+export const PARAM_LABELS = {
+  length: ["Profondeur", "mm"],
+  lengthFwd: ["Longueur", "mm"],
+  pitch: ["Pas", "mm"],
+  height: ["Hauteur", "mm"],
+  radius: ["Rayon", "mm"],
+  size: ["Distance", "mm"],
+  size2: ["Seconde distance", "mm"],
+  angle: ["Angle", "°"],
+  thinT: ["Épaisseur", "mm"],
+  thinT2: ["Épaisseur côté 2", "mm"],
+  thinCapT: ["Épaisseur des extrémités", "mm"],
+  thickness: ["Épaisseur", "mm"],
+  thickness2: ["Épaisseur côté 2", "mm"],
+  capThickness: ["Épaisseur des extrémités", "mm"],
+  value: ["Épaisseur", "mm"],
+  distance: ["Épaisseur", "mm"],
+  count: ["Nombre d'occurrences", ""],
+  count2: ["Occurrences (direction 2)", ""],
+  diameter: ["Diamètre", "mm"],
+  depth: ["Profondeur", "mm"],
+  cutDiameter: ["Ø lamage/fraisage", "mm"],
+  cutDepth: ["Profondeur du lamage", "mm"],
 };
+
+/** Une clé que deux genres partagent sous deux noms : la longueur d'une
+ *  surface extrudée n'est pas une profondeur. */
+const PARAM_LABELS_BY_KIND = {
+  surface_extrude: { length: ["Longueur", "mm"] },
+};
+
+/** Libellés des cotes d'un genre (`type_key`), clé neutre -> [libellé, unité]. */
+export function paramLabels(typeKey) {
+  return { ...PARAM_LABELS, ...(PARAM_LABELS_BY_KIND[typeKey] ?? {}) };
+}
+
+/** [libellé, unité] d'une cote ; la clé elle-même si aucune table ne la nomme. */
+export function paramLabel(typeKey, key) {
+  return PARAM_LABELS_BY_KIND[typeKey]?.[key] ?? PARAM_LABELS[key] ?? [key, "mm"];
+}
 
 /** Branche l'arbre. Les fonctions renvoyées sont celles que le reste
  *  de l'application appelle déjà. */
@@ -1622,7 +1645,7 @@ export function installTree(ctx) {
         const distance = num(v.distance);
         if (distance === null) return;
         refresh(call("set_params", {
-          feature: surface.name, values: { Value: distance } }));
+          feature: surface.name, values: { distance } }));
       },
     });
   }
@@ -1663,7 +1686,7 @@ export function installTree(ctx) {
       icon: TREE_ICONS[feature.type_key] ?? "revolve",
       title: feature.label,
       groups: [...revolutionGroups(sketch, {
-        angle: chamferFieldValue(feature.params, "Angle", spec.angle),
+        angle: chamferFieldValue(feature.params, "angle", spec.angle),
         axis: spec.axis,
         reversed: spec.reversed,
         midplane: spec.midplane,
@@ -1695,9 +1718,9 @@ export function installTree(ctx) {
         label: "Paramètres du chanfrein",
         rows: chamferRows({
           kind: spec.type,
-          size: chamferFieldValue(feature.params, "Size", spec.size),
-          size2: chamferFieldValue(feature.params, "Size2", spec.size2),
-          angle: chamferFieldValue(feature.params, "Angle", spec.angle),
+          size: chamferFieldValue(feature.params, "size", spec.size),
+          size2: chamferFieldValue(feature.params, "size2", spec.size2),
+          angle: chamferFieldValue(feature.params, "angle", spec.angle),
           flip: spec.flip,
         }),
       }],
@@ -1843,8 +1866,8 @@ export function installTree(ctx) {
         const values = {};
         for (const p of info.params) {
           const original = String(p.expr ?? p.value);
-          const raw = String(v[p.prop] ?? "").trim();
-          if (raw && raw !== original) values[p.prop] = raw;
+          const raw = String(v[p.key] ?? "").trim();
+          if (raw && raw !== original) values[p.key] = raw;
         }
         return values;
       };
@@ -1854,8 +1877,8 @@ export function installTree(ctx) {
         groups: [{
           label: t("Paramètres"),
           rows: info.params.map((p) => {
-            const [label, unit] = PROP_LABELS[p.prop] ?? [p.prop, "mm"];
-            return { type: "text", key: p.prop,
+            const [label, unit] = paramLabel(feature.type_key, p.key);
+            return { type: "text", key: p.key,
                      label: (p.expr ? "Σ " : "") + label, unit,
                      value: String(p.expr ?? p.value) };
           }),

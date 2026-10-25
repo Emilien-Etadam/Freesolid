@@ -50,7 +50,7 @@ export function graphLabelText(text) {
  *  reste de l'application appelle déjà. */
 export function installGraphView(ctx) {
   const {
-    say, call, refresh, refreshAny, confirm, PROP_LABELS,
+    say, call, refresh, refreshAny, confirm, paramLabels,
     featureCommand, openMenu, editFeature, renderTree, updateViewport,
     onSketchRowClick, onDatumRow, onSurfaceClick, onPlaneRow,
     onSketchRowDblClick, onSurfaceDblClick,
@@ -544,6 +544,7 @@ export function installGraphView(ctx) {
       say(t("{f} : aucune cote éditable", { f: info.label ?? featureName }), true);
       return;
     }
+    const labels = paramLabels(graphMenuTarget(featureName)?.type_key);
     const heading = document.createElement("div");
     heading.className = "menu-label";
     heading.textContent = t("Cote à piloter");
@@ -551,14 +552,14 @@ export function installGraphView(ctx) {
     for (const param of params) {
       const item = document.createElement("div");
       item.className = "menu-item";
-      item.dataset.prop = param.prop;
-      item.textContent = paramChoiceCaption(param, PROP_LABELS);
+      item.dataset.key = param.key;
+      item.textContent = paramChoiceCaption(param, labels);
       item.addEventListener("click", (event) => {
         event.stopPropagation();
         closeParamPicker();
         refresh(call("set_params", {
           feature: featureName,
-          values: { [param.prop]: expressionForVariable(variableName) },
+          values: { [param.key]: expressionForVariable(variableName) },
         }));
       });
       paramPickEl.appendChild(item);
@@ -822,19 +823,20 @@ export function installGraphView(ctx) {
       });
       label.textContent = graphLabelText(node.label);
       group.appendChild(label);
+      const labels = paramLabels(node.type_key);
       const extraParams = (!fn && !isVar)
-        ? (node.params ?? []).map((param) => graphParamLine(param, PROP_LABELS))
+        ? (node.params ?? []).map((param) => graphParamLine(param, labels))
           .filter(Boolean)
         : [];
       for (const [index, param] of shownParams.entries()) {
-        const line = graphParamLine(param, PROP_LABELS);
+        const line = graphParamLine(param, labels);
         if (!line) continue;
         const text = svgEl("text", {
           class: `graph-param${param.expr ? " driven" : ""}`,
           x: -44,
           y: 8,
           "text-anchor": "start", "dominant-baseline": "middle",
-          "data-prop": param.prop,
+          "data-key": param.key,
         });
         text.textContent = line;
         text.addEventListener("click", (event) => {

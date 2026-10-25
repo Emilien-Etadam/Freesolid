@@ -210,3 +210,64 @@ export function splitHistoryAroundBar(features, surfaces, tip) {
     after,
   };
 }
+
+const setTipOn = (feature) => ({ op: "set_tip", feature });
+
+/** Positions de la barre dans l'arbre affiché, de haut en bas, et celle
+ *  où elle se trouve (`current`).
+ *
+ *  Chaque position porte sa cible — l'appel au moteur, `{ op, feature }`
+ *  — et la ligne sous laquelle elle se dépose (`line`, null tout en
+ *  haut) : le nom de la ligne, `fonction/esquisse` pour une esquisse
+ *  rangée sous sa fonction, `folder:nom` pour un dossier replié.
+ *  - tout en haut : barre avant la première ligne ;
+ *  - sous une fonction dépliée, avant ses esquisses : entre la fonction
+ *    et sa dernière esquisse (une esquisse partagée ⇄ ne compte pas) ;
+ *  - sous sa dernière esquisse : après la fonction ;
+ *  - sous un dossier replié : après sa dernière ligne ;
+ *  - tout en bas : l'état final.
+ *  `expanded(nom)` et `folderOpen(nom)` disent ce que l'arbre déplie. */
+export function barSlots(split, {
+  expanded = () => false, folderOpen = () => true,
+} = {}) {
+  if (!split || split.bar === "none") return { slots: [], current: -1 };
+  const slots = [{ line: null, target: { op: "set_tip" } }];
+  const pushRow = (row) => {
+    const { item } = row;
+    const children = item.children ?? [];
+    if (!children.length || !expanded(item.name)) {
+      slots.push({ line: item.name, target: setTipOn(item.name) });
+      return;
+    }
+    const own = row.surface ? null
+      : children.filter((child) => !child.shared?.length).at(-1);
+    if (own) slots.push({ line: item.name, target: setTipOn(own.name) });
+    slots.push({ line: `${item.name}/${children.at(-1).name}`,
+      target: setTipOn(item.name) });
+  };
+  const pushSide = (rows) => {
+    for (let i = 0; i < rows.length;) {
+      const folder = rows[i].surface ? null : rows[i].item.folder ?? null;
+      let j = i + 1;
+      while (folder && j < rows.length && !rows[j].surface
+             && rows[j].item.folder === folder) j++;
+      if (folder && !folderOpen(folder)) {
+        slots.push({ line: `folder:${folder}`,
+          target: setTipOn(rows[j - 1].item.name) });
+      } else {
+        for (const row of rows.slice(i, j)) pushRow(row);
+      }
+      i = j;
+    }
+  };
+  pushSide(split.before);
+  const current = slots.length - 1;
+  pushSide(split.after);
+  slots[slots.length - 1] = { ...slots.at(-1), target: { op: "tip_to_end" } };
+  return { slots, current };
+}
+
+/** Même position de barre (même appel au moteur). */
+export function sameBarTarget(a, b) {
+  return !!a && !!b && a.op === b.op && (a.feature ?? null) === (b.feature ?? null);
+}

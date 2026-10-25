@@ -2,8 +2,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  barSlots,
   chronologicalHistory,
   countTreeErrors,
+  sameBarTarget,
   splitHistoryAroundBar,
   undoStepLabel,
 } from "../../app/history.js";
@@ -171,6 +173,8 @@ function padPocket({ unabsorbed = false, folder } = {}) {
 }
 
 const names = (rows) => rows.map((row) => row.item.name);
+const targets = ({ slots }) => slots.map((slot) =>
+  (slot.target.op === "tip_to_end" ? "fin" : slot.target.feature ?? "haut"));
 
 describe("esquisse sortie par la barre (unabsorbed)", () => {
   it("passe au-dessus de la barre, sa fonction dessous sans elle", () => {
@@ -192,5 +196,74 @@ describe("esquisse sortie par la barre (unabsorbed)", () => {
     const split = splitHistoryAroundBar([pocket], [], null);
     assert.equal(split.bar, "middle");
     assert.deepEqual(names(split.before), ["Sketch001"]);
+  });
+});
+
+describe("barSlots", () => {
+  it("haut, une position par ligne, l'état final en bas", () => {
+    const split = splitHistoryAroundBar(padPocket(), [], "Pad");
+    const slots = barSlots(split);
+    assert.deepEqual(targets(slots), ["haut", "Pad", "fin"]);
+    assert.deepEqual(slots.slots.map((slot) => slot.line), [null, "Pad", "Pocket"]);
+    assert.equal(slots.current, 1);
+  });
+
+  it("fonction dépliée : la barre peut passer entre elle et son esquisse", () => {
+    const split = splitHistoryAroundBar(padPocket(), [], "Pocket");
+    const slots = barSlots(split, { expanded: (name) => name === "Pocket" });
+    assert.deepEqual(targets(slots), ["haut", "Pad", "Sketch001", "fin"]);
+    assert.deepEqual(slots.slots.map((slot) => slot.line),
+      [null, "Pad", "Pocket", "Pocket/Sketch001"]);
+    assert.equal(slots.current, 3);
+  });
+
+  it("une esquisse partagée ⇄ ne crée pas de position entre elle et sa fonction", () => {
+    const features = padPocket();
+    features[1].children[0].shared = ["Bossage"];
+    const split = splitHistoryAroundBar(features, [], "Pocket");
+    const slots = barSlots(split, { expanded: () => true });
+    assert.deepEqual(targets(slots), ["haut", "Sketch", "Pad", "fin"]);
+  });
+
+  it("esquisse sortie : la barre est juste après elle", () => {
+    const split = splitHistoryAroundBar(padPocket({ unabsorbed: true }), [], "Pad");
+    const slots = barSlots(split);
+    assert.deepEqual(targets(slots), ["haut", "Pad", "Sketch001", "fin"]);
+    assert.equal(slots.current, 2);
+  });
+
+  it("dossier replié : une seule position, après sa dernière ligne", () => {
+    const features = [
+      feat("Pad", 1),
+      { ...feat("Pocket", 2, "PartDesign::Pocket"), folder: "Trous" },
+      { ...feat("Hole", 3, "PartDesign::Hole"), folder: "Trous" },
+      feat("Fillet", 4, "PartDesign::Fillet"),
+    ];
+    const split = splitHistoryAroundBar(features, [], "Fillet");
+    const closed = barSlots(split, { folderOpen: () => false });
+    assert.deepEqual(targets(closed), ["haut", "Pad", "Hole", "fin"]);
+    assert.equal(closed.slots[2].line, "folder:Trous");
+    assert.equal(closed.current, 3);
+    const open = barSlots(split, { folderOpen: () => true });
+    assert.deepEqual(targets(open), ["haut", "Pad", "Pocket", "Hole", "fin"]);
+  });
+
+  it("barre en tête, et historique vide", () => {
+    const split = splitHistoryAroundBar(padPocket(), [], null);
+    const slots = barSlots(split);
+    assert.equal(slots.current, 0);
+    assert.deepEqual(targets(slots), ["haut", "Pad", "fin"]);
+    assert.deepEqual(barSlots(splitHistoryAroundBar([], [], null)),
+      { slots: [], current: -1 });
+  });
+});
+
+describe("sameBarTarget", () => {
+  it("compare deux positions par leur appel au moteur", () => {
+    assert.ok(sameBarTarget({ op: "set_tip", feature: "Pad" },
+      { op: "set_tip", feature: "Pad" }));
+    assert.ok(sameBarTarget({ op: "set_tip" }, { op: "set_tip", feature: undefined }));
+    assert.ok(!sameBarTarget({ op: "set_tip", feature: "Pad" }, { op: "tip_to_end" }));
+    assert.ok(!sameBarTarget(null, { op: "tip_to_end" }));
   });
 });

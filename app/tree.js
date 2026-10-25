@@ -5,7 +5,9 @@ import { t } from "./i18n.js";
 import { iconSrc } from "./icons.js";
 import { num } from "./num.js";
 import { arcAngles } from "./geom2d.js";
-import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
+import {
+  barSlots, sameBarTarget, sketchTreeLabel, splitHistoryAroundBar,
+} from "./history.js";
 import { renameClickAction } from "./rename.js";
 import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
@@ -205,6 +207,7 @@ export function installTree(ctx) {
   }
 
   const expandedFeatures = new Set(); // les fonctions dépliées (persiste)
+  let barState = { slots: [], current: -1 }; // positions du dernier rendu
   const folderState = Object.create(null); // dossiers tête, mémoire de session
   const folderPrevCounts = Object.create(null); // compteurs du rendu précédent
   let sketchClickTimer = null;
@@ -586,7 +589,10 @@ export function installTree(ctx) {
       + (ctx.selectedSurface?.name === surface.name ? " sel" : "")
       + (rolledBack ? " rolled-back" : "")
       + (surface.hidden ? " hidden-object" : "");
-    if (!inFolder) item.dataset.hist = surface.name;
+    if (!inFolder) {
+      item.dataset.hist = surface.name;
+      item.dataset.line = surface.name;
+    }
     item.dataset.feat = surface.name;
     const children = surface.children ?? [];
     const hasChildren = children.length > 0;
@@ -628,6 +634,7 @@ export function installTree(ctx) {
           + (child.error ? " error" : "")
           + (rolledBack ? " rolled-back" : "");
         row.dataset.feat = child.name;
+        if (!inFolder) row.dataset.line = `${surface.name}/${child.name}`;
         row.appendChild(treeIcon("Sketcher_Sketch"));
         row.appendChild(document.createTextNode(child.label));
         row.title = `${child.kind} — `
@@ -643,14 +650,47 @@ export function installTree(ctx) {
     }
   }
 
-  function appendRollbackBar(tree) {
+  function appendRollbackBar() {
     const bar = document.createElement("li");
     bar.className = "rollback";
     bar.textContent = t("▲ barre de retour arrière ▲");
     bar.title = t("Glisser pour déplacer · double-clic : revenir à l'état final");
-    bar.addEventListener("dblclick", () => refresh(call("tip_to_end")));
-    bindRollbackDrag(bar, tree);
+    bar.addEventListener("dblclick", () => moveBar({ op: "tip_to_end" }));
+    bindRollbackDrag(bar);
     treeEl.appendChild(bar);
+  }
+
+  /** Pose sur chaque ligne d'historique la position de barre qui la suit
+   *  (data-slot) ; la première porte aussi celle d'au-dessus. */
+  function markBarSlots(split) {
+    barState = barSlots(split, {
+      expanded: (name) => expandedFeatures.has(name),
+      folderOpen: (folder) => folderIsOpen(`user:${folder}`, false),
+    });
+    const lines = new Map();
+    for (const li of treeEl.querySelectorAll("li[data-line]")) {
+      lines.set(li.dataset.line, li);
+    }
+    const first = treeEl.querySelector("li[data-line]");
+    for (const slot of barState.slots) {
+      const li = slot.line === null ? first : lines.get(slot.line);
+      if (!li) continue;
+      li.dataset[slot.line === null ? "slotAbove" : "slot"] =
+        JSON.stringify(slot.target);
+    }
+  }
+
+  let barMoving = false; // un déplacement à la fois : le suivant part de l'arbre rendu
+
+  /** Barre vers `target` (une position de barSlots). */
+  function moveBar(target) {
+    const here = barState.slots[barState.current]?.target ?? null;
+    if (!target || barMoving || sameBarTarget(target, here)) return;
+    barMoving = true;
+    Promise.resolve(refresh(target.op === "tip_to_end"
+      ? call("tip_to_end")
+      : call("set_tip", target.feature ? { feature: target.feature } : {})))
+      .finally(() => { barMoving = false; });
   }
 
   // Glisser-déposer d'une fonction dans l'arbre : le repère d'insertion de
@@ -785,7 +825,7 @@ export function installTree(ctx) {
                                     moveEvent.clientY - start.y) < 6) return;
         dragging = true;
         row.classList.add("dragging");
-        const slots = rollbackSlotPositions();
+        const slots = reorderSlotPositions();
         if (slots.length) showInsertMark(nearestRollbackSlot(moveEvent.clientY, slots));
       };
       const onUp = (upEvent) => {
@@ -799,7 +839,7 @@ export function installTree(ctx) {
         suppressTreeClick = true;
         setTimeout(() => { suppressTreeClick = false; }, 0);
         const rows = [...treeEl.querySelectorAll("li[data-hist]")];
-        const slots = rollbackSlotPositions();
+        const slots = reorderSlotPositions();
         if (!slots.length) return;
         const slot = nearestRollbackSlot(upEvent.clientY, slots);
         const own = rows.indexOf(row);
@@ -816,20 +856,24 @@ export function installTree(ctx) {
     });
   }
 
-  function applyRollbackSlot(index, history) {
-    if (index <= 0) {
-      refresh(call("set_tip", {}));
-      return;
+  /** Positions de dépôt de la barre : chacune porte sa cible (data-slot),
+   *  sous la ligne affichée qui la porte. */
+  function rollbackSlotPositions() {
+    const slots = [];
+    for (const li of treeEl.querySelectorAll("li[data-slot-above], li[data-slot]")) {
+      const rect = li.getBoundingClientRect();
+      if (li.dataset.slotAbove) {
+        slots.push({ y: rect.top, target: JSON.parse(li.dataset.slotAbove) });
+      }
+      if (li.dataset.slot) {
+        slots.push({ y: rect.bottom, target: JSON.parse(li.dataset.slot) });
+      }
     }
-    if (index >= history.length) {
-      refresh(call("tip_to_end"));
-      return;
-    }
-    const target = history[index - 1];
-    refresh(call("set_tip", { feature: target.item.name }));
+    return slots;
   }
 
-  function rollbackSlotPositions() {
+  /** Positions d'insertion du glisser-réordonner, par indice de ligne. */
+  function reorderSlotPositions() {
     const rows = [...treeEl.querySelectorAll("li[data-hist]")];
     if (!rows.length) return [];
     const slots = [{ y: rows[0].getBoundingClientRect().top, index: 0 }];
@@ -870,16 +914,12 @@ export function installTree(ctx) {
     treeEl.querySelector("li.insert-mark")?.remove();
   }
 
-  function bindRollbackDrag(bar, tree) {
+  function bindRollbackDrag(bar) {
     bar.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
       const startX = event.clientX;
       const startY = event.clientY;
-      const split = splitHistoryAroundBar(
-        tree.features ?? [], tree.surfaces ?? [], tree.tip);
-      const history = split.before.concat(split.after);
-      const currentSlot = split.before.length;
       let dragging = false;
       try {
         bar.setPointerCapture(event.pointerId);
@@ -906,9 +946,7 @@ export function installTree(ctx) {
         if (!dragging) return;
         const slots = rollbackSlotPositions();
         if (!slots.length) return;
-        const slot = nearestRollbackSlot(upEvent.clientY, slots);
-        if (slot.index === currentSlot) return;
-        applyRollbackSlot(slot.index, history);
+        moveBar(nearestRollbackSlot(upEvent.clientY, slots).target);
       };
       bar.addEventListener("pointermove", onMove);
       bar.addEventListener("pointerup", onUp);
@@ -1061,9 +1099,10 @@ export function installTree(ctx) {
     const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip);
     if (split.bar !== "none") {
       appendHistoryRows(split.before, false);
-      appendRollbackBar(tree);
+      appendRollbackBar();
       appendHistoryRows(split.after, true);
     }
+    markBarSlots(split);
   }
 
   /** Lignes d'historique ; les fonctions rangées dans un même dossier
@@ -1086,6 +1125,7 @@ export function installTree(ctx) {
           open = appendFolder(`user:${folder}`, folder, count, "folder", false,
             { title: t("Dossier — clic droit : renommer, défaire") });
           treeEl.lastElementChild.classList.add("user-folder");
+          treeEl.lastElementChild.dataset.line = `folder:${folder}`;
           treeEl.lastElementChild.addEventListener("contextmenu", (event) => {
             event.preventDefault();
             ctx.onFolderMenu?.(folder);
@@ -1110,7 +1150,9 @@ export function installTree(ctx) {
     if (inUserFolder) row.classList.add("in-folder");
     row.classList.add("feat");
     row.dataset.feat = feature.name;
-    row.dataset.hist = feature.name;
+    row.dataset.line = feature.name;
+    // Esquisse sortie de sa fonction : pas une ligne à réordonner.
+    if (!lifted) row.dataset.hist = feature.name;
     if (feature.error) row.classList.add("error");
     if (rolledBack) row.classList.add("rolled-back");
     if (feature.suppressed) row.classList.add("suppressed");
@@ -1162,7 +1204,6 @@ export function installTree(ctx) {
       }
     });
     row.addEventListener("contextmenu", (event) => ctx.openMenu(event, feature));
-    // Esquisse sortie de sa fonction : pas une ligne à réordonner.
     if (!lifted) bindFeatureDrag(row, feature);
     if (feature.type === "PartDesign::Plane") {
       // Un plan de référence se choisit comme un plan d'origine.
@@ -1200,6 +1241,7 @@ export function installTree(ctx) {
         const childRow = document.createElement("li");
         childRow.className = "child" + (child.error ? " error" : "");
         childRow.dataset.feat = child.name;
+        childRow.dataset.line = `${feature.name}/${child.name}`;
         if (rolledBack) childRow.classList.add("rolled-back");
         if (ctx.selectedSketch?.name === child.name) childRow.classList.add("sel");
         childRow.appendChild(treeIcon("Sketcher_Sketch"));

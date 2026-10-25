@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { RENAME_GAP_MS, renameClickAction } from "../../app/rename.js";
+import {
+  RENAME_GAP_MS, RENAME_MAX_GAP_MS, renameClickAction,
+} from "../../app/rename.js";
 
 test("le premier clic sélectionne", () => {
   assert.equal(renameClickAction({
@@ -14,10 +16,22 @@ test("un second clic rapide n'est pas un renommage", () => {
   }), "ignore");
 });
 
-test("un second clic lent renomme la même ligne", () => {
-  assert.equal(renameClickAction({
-    previousAt: 1000, sameRow: true, now: 1000 + RENAME_GAP_MS,
-  }), "rename");
+test("un second clic lent renomme la même ligne, de 500 à 1500 ms", () => {
+  assert.equal(RENAME_GAP_MS, 500);
+  assert.equal(RENAME_MAX_GAP_MS, 1500);
+  for (const gap of [RENAME_GAP_MS, 1000, RENAME_MAX_GAP_MS]) {
+    assert.equal(renameClickAction({
+      previousAt: 1000, sameRow: true, now: 1000 + gap,
+    }), "rename", `écart ${gap} ms`);
+  }
+});
+
+test("au-delà de 1500 ms, le second clic est une simple sélection", () => {
+  for (const gap of [RENAME_MAX_GAP_MS + 1, 5000]) {
+    assert.equal(renameClickAction({
+      previousAt: 1000, sameRow: true, now: 1000 + gap,
+    }), "select", `écart ${gap} ms`);
+  }
 });
 
 test("une autre ligne est une sélection", () => {

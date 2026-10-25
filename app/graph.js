@@ -59,9 +59,9 @@ function walkEntries(tree, visit) {
 
 function roleOf(item, fallback) {
   if (fallback) return fallback;
-  if (item.type === "Sketcher::SketchObject") return "sketch";
-  if (item.type === "PartDesign::Plane") return "datum";
-  if (item.type === "PartDesign::Body") return "body";
+  if (item.type_key === "sketch") return "sketch";
+  if (item.type_key === "datum_plane") return "datum";
+  if (item.type_key === "body") return "body";
   return "feature";
 }
 
@@ -71,10 +71,10 @@ function kindOf(item, role) {
   if (role === "variable") return "Variable";
   if (role === "body") return "Corps";
   if (role === "surface") return "Surface";
-  if (role === "sketch" || item.type === "Sketcher::SketchObject") {
+  if (role === "sketch" || item.type_key === "sketch") {
     return "Esquisse";
   }
-  if (role === "datum" || item.type === "PartDesign::Plane") {
+  if (role === "datum" || item.type_key === "datum_plane") {
     return "Plan de référence";
   }
   return item.label || item.name || "";
@@ -95,7 +95,7 @@ function addNode(nodes, item, role, fallbackOrder) {
     label: item.label || name,
     kind: kindOf(item, role),
     role,
-    type: item.type,
+    type_key: item.type_key,
     order,
     afterBar: false,
     layer: 0,

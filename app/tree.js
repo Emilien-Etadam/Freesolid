@@ -24,57 +24,57 @@ const sceneTheme = readScene();
 // Rôles de la table icons.js : même rôle que la commande qui crée
 // l'élément. Le graphe garde, lui, les fichiers d'avant.
 export const TREE_ICONS = {
-  "Sketcher::SketchObject": "Sketcher_Sketch",
-  "PartDesign::Pad": "nodes_extrude",
-  "PartDesign::Pocket": "pocket",
-  "PartDesign::Fillet": "fillet",
-  "PartDesign::Chamfer": "chamfer",
-  "PartDesign::Revolution": "revolve",
-  "PartDesign::Groove": "groove",
-  "PartDesign::Mirrored": "mirror",
-  "PartDesign::LinearPattern": "linear_pattern",
-  "PartDesign::PolarPattern": "polar_pattern",
-  "PartDesign::Thickness": "shell",
-  "PartDesign::Draft": "draft",
-  "PartDesign::Hole": "hole",
-  "PartDesign::Plane": "plane",
-  "PartDesign::Line": "datum_axis",
-  "PartDesign::Point": "datum_point",
-  "PartDesign::CoordinateSystem": "datum_cs",
-  "PartDesign::AdditiveLoft": "loft",
-  "PartDesign::SubtractiveLoft": "PartDesign_SubtractiveLoft",
-  "PartDesign::AdditivePipe": "sweep",
-  "PartDesign::SubtractivePipe": "PartDesign_SubtractivePipe",
-  "PartDesign::AdditiveHelix": "nodes_helix",
-  "PartDesign::Boolean": "boolean",
-  "PartDesign::Body": "body",
-  "Part::Extrusion": "nodes_extrude",
-  "Part::Revolution": "revolve",
-  "Part::Loft": "loft",
-  "Part::Feature": "body",
-  "Part::Offset": "body",
-  "App::Link": "insert",
+  sketch: "Sketcher_Sketch",
+  pad: "nodes_extrude",
+  pocket: "pocket",
+  fillet: "fillet",
+  chamfer: "chamfer",
+  revolution: "revolve",
+  groove: "groove",
+  mirror: "mirror",
+  linear_pattern: "linear_pattern",
+  polar_pattern: "polar_pattern",
+  thickness: "shell",
+  draft: "draft",
+  hole: "hole",
+  datum_plane: "plane",
+  datum_axis: "datum_axis",
+  datum_point: "datum_point",
+  datum_cs: "datum_cs",
+  loft: "loft",
+  loft_cut: "PartDesign_SubtractiveLoft",
+  sweep: "sweep",
+  sweep_cut: "PartDesign_SubtractivePipe",
+  helix: "nodes_helix",
+  boolean: "boolean",
+  body: "body",
+  surface_extrude: "nodes_extrude",
+  surface_revolve: "revolve",
+  surface_loft: "loft",
+  shape: "body",
+  surface_offset: "body",
+  component: "insert",
 };
 
-// Icônes des surfaces dans l'arbre, par type d'objet.
+// Icônes des surfaces dans l'arbre, par genre d'objet (type_key).
 const SURFACE_ICONS = {
-  "Part::Extrusion": "surface_extrude",
-  "Part::Revolution": "surface_revolve",
-  "Part::Loft": "surface_loft",
-  "Part::Sweep": "surface_sweep",
-  "Part::Face": "surface_planar",
-  "Part::Offset": "surface_offset",
-  "Surface::Filling": "surface_fill",
-  "Surface::Extend": "surface_extend",
-  "Part::FeaturePython": "surface_trim",
-  "Surface::GeomFillSurface": "surface_boundary",
-  "Part::RuledSurface": "surface_ruled",
-  "Part::Fillet": "surface_fillet",
-  "Part::Section": "curve_intersection",
-  "Part::ProjectOnSurface": "curve_project",
-  "PartDesign::SubShapeBinder": "curve_composite",
-  "Part::Helix": "nodes_helix",
-  "Part::Offset2D": "surface_radiate",
+  surface_extrude: "surface_extrude",
+  surface_revolve: "surface_revolve",
+  surface_loft: "surface_loft",
+  surface_sweep: "surface_sweep",
+  surface_planar: "surface_planar",
+  surface_offset: "surface_offset",
+  surface_fill: "surface_fill",
+  surface_extend: "surface_extend",
+  surface_trim: "surface_trim",
+  surface_boundary: "surface_boundary",
+  surface_ruled: "surface_ruled",
+  surface_fillet: "surface_fillet",
+  curve_intersection: "curve_intersection",
+  curve_project: "curve_project",
+  binder: "curve_composite",
+  curve_helix: "nodes_helix",
+  surface_radiate: "surface_radiate",
 };
 
 export const PROP_LABELS = {
@@ -446,7 +446,7 @@ export function installTree(ctx) {
         onClick: () => {
           ctx.sketchInfoOpen = false;
           const target = {
-            type: "Sketcher::SketchObject",
+            type_key: "sketch",
             name: feature.name,
             label: feature.label,
           };
@@ -500,7 +500,7 @@ export function installTree(ctx) {
     if (ctx.selectedSketch) {
       const feat = (tree.features ?? []).find(
         (item) => item.name === ctx.selectedSketch.name);
-      if (feat?.type === "Sketcher::SketchObject" && feat.rolled_back) {
+      if (feat?.type_key === "sketch" && feat.rolled_back) {
         ctx.selectedSketch = null;
         clearSketchHighlight();
         dropped = true;
@@ -607,7 +607,7 @@ export function installTree(ctx) {
     if (surface.surface?.kind === "split") return "surface_split";
     if (surface.surface?.kind === "flatten") return "surface_flatten";
     if (surface.surface?.kind === "freeform") return "surface_freeform";
-    return SURFACE_ICONS[surface.type] ?? "surface_body";
+    return SURFACE_ICONS[surface.type_key] ?? "surface_body";
   }
 
   function appendSurfaceRow(surface, { inFolder = true, rolledBack = false } = {}) {
@@ -1326,10 +1326,10 @@ export function installTree(ctx) {
           : feature.vertex_chamfer ? "vertex_chamfer"
           : feature.delete_face ? "surface_delete_face"
             : feature.replace_face ? "replace_face"
-            : TREE_ICONS[feature.type];
+            : TREE_ICONS[feature.type_key];
     if (icon) row.appendChild(treeIcon(icon));
     row.appendChild(document.createTextNode(
-      feature.type === "Sketcher::SketchObject"
+      feature.type_key === "sketch"
         ? sketchTreeLabel(feature.label, sketchDefinitionOf(feature))
         : feature.label));
     if (ctx.sketchMode.editing === feature.name) row.classList.add("editing");
@@ -1343,7 +1343,7 @@ export function installTree(ctx) {
       row.title = `${feature.comment}\n\n${row.title}`;
     }
     row.addEventListener("dblclick", () => {
-      if (feature.type === "Sketcher::SketchObject") {
+      if (feature.type_key === "sketch") {
         onSketchRowDblClick(feature);
       } else {
         editFeature(feature);
@@ -1351,7 +1351,7 @@ export function installTree(ctx) {
     });
     row.addEventListener("contextmenu", (event) => ctx.openMenu(event, feature));
     if (!lifted) bindFeatureDrag(row, feature);
-    if (feature.type === "PartDesign::Plane") {
+    if (feature.type_key === "datum_plane") {
       // Un plan de référence se choisit comme un plan d'origine.
       row.classList.add("plane");
       if (ctx.selectedDatumFeature?.name === feature.name) {
@@ -1364,13 +1364,13 @@ export function installTree(ctx) {
       row.addEventListener("mouseenter", () => refreshDatumGhost(feature));
       row.addEventListener("mouseleave", () => refreshDatumGhost(null));
     }
-    if (feature.type === "Sketcher::SketchObject") {
+    if (feature.type_key === "sketch") {
       if (ctx.selectedSketch?.name === feature.name) row.classList.add("sel");
       row.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, row, feature)) return;
         onSketchRowClick(feature);
       });
-    } else if (feature.type !== "PartDesign::Plane") {
+    } else if (feature.type_key !== "datum_plane") {
       row.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, row, feature)) return;
         ctx.selectedFeatureName = feature.name;
@@ -1465,14 +1465,14 @@ export function installTree(ctx) {
       editFreeform(surface);
       return;
     }
-    if (surface.static || surface.type === "Part::Feature") {
+    if (surface.static || surface.type_key === "shape") {
       say("Surface figée — non éditable");
       return;
     }
     await editFeature({
       name: surface.name,
       label: surface.label,
-      type: surface.type,
+      type_key: surface.type_key,
     });
   }
 
@@ -1660,7 +1660,7 @@ export function installTree(ctx) {
     const spec = feature.revolution;
     const sketch = findSketch(ctx.lastTree, spec.profile);
     panel.open({
-      icon: TREE_ICONS[feature.type] ?? "revolve",
+      icon: TREE_ICONS[feature.type_key] ?? "revolve",
       title: feature.label,
       groups: [...revolutionGroups(sketch, {
         angle: chamferFieldValue(feature.params, "Angle", spec.angle),
@@ -1764,7 +1764,7 @@ export function installTree(ctx) {
       enterGraphFeature(feature);
       return;
     }
-    if (feature.type === "Sketcher::SketchObject") {
+    if (feature.type_key === "sketch") {
       closeGraph();
       ctx.sketchMode.enter(call("sketch_edit", { feature: feature.name }));
       return;
@@ -1791,7 +1791,7 @@ export function installTree(ctx) {
       // Gravure rééditable (P032) : panneau dédié -> edit_text.
       const txt = feature.text;
       panel.open({
-        icon: TREE_ICONS[feature.type] ?? "body",
+        icon: TREE_ICONS[feature.type_key] ?? "body",
         title: feature.label,
         groups: [{
           label: t("Gravure"),
@@ -1822,12 +1822,12 @@ export function installTree(ctx) {
       editSurfaceCut(feature);
       return;
     }
-    if (feature.type === "PartDesign::Chamfer" && feature.chamfer) {
+    if (feature.type_key === "chamfer" && feature.chamfer) {
       editChamfer(feature);
       return;
     }
-    if ((feature.type === "PartDesign::Revolution"
-         || feature.type === "PartDesign::Groove") && feature.revolution) {
+    if ((feature.type_key === "revolution"
+         || feature.type_key === "groove") && feature.revolution) {
       editRevolved(feature);
       return;
     }
@@ -1849,7 +1849,7 @@ export function installTree(ctx) {
         return values;
       };
       panel.open({
-        icon: TREE_ICONS[feature.type] ?? "body",
+        icon: TREE_ICONS[feature.type_key] ?? "body",
         title: info.label,
         groups: [{
           label: t("Paramètres"),

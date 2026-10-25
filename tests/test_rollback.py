@@ -9,8 +9,8 @@ from engine.kernel import Kernel, KernelError, rollback_plan
 
 
 def _hist(*rows):
-    return [{"name": name, "order": order, "kind": kind}
-            for name, order, kind in rows]
+    return [{"name": name, "order": order, "role": role}
+            for name, order, role in rows]
 
 
 def test_rollback_plan_bar_at_top():

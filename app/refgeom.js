@@ -6,9 +6,9 @@ import { t } from "./i18n.js";
 import { num } from "./num.js";
 
 const KINDS = {
-  "PartDesign::Line": "axis",
-  "PartDesign::Point": "point",
-  "PartDesign::CoordinateSystem": "cs",
+  datum_axis: "axis",
+  datum_point: "point",
+  datum_cs: "cs",
 };
 
 /** Axes, points et repères à dessiner : placés, pas derrière la barre de
@@ -17,8 +17,8 @@ export function referenceItems(tree) {
   const out = [];
   const visit = (items) => {
     for (const item of items ?? []) {
-      if (KINDS[item.type] && item.placement && !item.rolled_back) {
-        out.push({ ...item, shape: KINDS[item.type] });
+      if (KINDS[item.type_key] && item.placement && !item.rolled_back) {
+        out.push({ ...item, shape: KINDS[item.type_key] });
       }
       visit(item.children);
     }

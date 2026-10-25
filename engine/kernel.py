@@ -149,7 +149,7 @@ def resolve_pattern_originals(names, catalog):
 
 
 #: Lignes hors chaîne PartDesign — flag ``FreeSolidRolledBack``.
-_ROLLBACK_KINDS = frozenset({"sketch", "surface"})
+_ROLLBACK_ROLES = frozenset({"sketch", "surface"})
 
 #: Propriété custom persistée dans le .FCStd (source de vérité du recul).
 _ROLLED_BACK_PROP = "FreeSolidRolledBack"
@@ -158,8 +158,8 @@ _ROLLED_BACK_PROP = "FreeSolidRolledBack"
 def rollback_plan(history, target_name=None):
     """Calcule les flags de recul et le Tip à partir des lignes d'historique.
 
-    *history* : séquence de dicts ``{name, order, kind}`` déjà triée par
-    ``order``, avec ``kind`` ∈ ``{"feature", "sketch", "surface",
+    *history* : séquence de dicts ``{name, order, role}`` déjà triée par
+    ``order``, avec ``role`` ∈ ``{"feature", "sketch", "surface",
     "absorbed"}``. ``absorbed`` : l'esquisse rangée sous sa fonction — la
     barre peut se poser juste après elle, elle ne prend pas de flag.
     *target_name* : dernière ligne visible, ou ``None`` (barre en tête).
@@ -171,7 +171,7 @@ def rollback_plan(history, target_name=None):
     if target_name is None:
         flags = {row["name"]: True
                  for row in history
-                 if row["kind"] in _ROLLBACK_KINDS}
+                 if row["role"] in _ROLLBACK_ROLES}
         return flags, None
     target_order = None
     for row in history:
@@ -186,9 +186,9 @@ def rollback_plan(history, target_name=None):
     flags = {}
     tip = None
     for row in history:
-        if row["kind"] in _ROLLBACK_KINDS:
+        if row["role"] in _ROLLBACK_ROLES:
             flags[row["name"]] = row["order"] > target_order
-        elif row["kind"] == "feature" and row["order"] <= target_order:
+        elif row["role"] == "feature" and row["order"] <= target_order:
             tip = row["name"]
     return flags, tip
 

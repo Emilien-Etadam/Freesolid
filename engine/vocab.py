@@ -120,6 +120,85 @@ def label_for_type(obj_type: str, lang: str = "fr") -> str:
     return obj_type.split("::")[-1]
 
 
+#: TypeId FreeCAD -> genre neutre (``type_key``) que l'interface lit à la
+#: place du TypeId. En minuscules, sans « :: », calqué sur l'op qui crée
+#: l'objet quand elle existe (``add_pad`` -> ``pad``, ``surface_extrude``
+#: -> ``surface_extrude``, ``sketch_start`` -> ``sketch``). Seule source :
+#: ``app/typekeys.js`` en tire ses familles, ``tests/test_type_keys.py``
+#: les confronte.
+TYPE_KEYS: dict[str, str] = {
+    # Fonctions de corps : volumes, références, corps.
+    "PartDesign::Pad": "pad",
+    "PartDesign::Pocket": "pocket",
+    "PartDesign::Revolution": "revolution",
+    "PartDesign::Groove": "groove",
+    "PartDesign::AdditiveLoft": "loft",
+    "PartDesign::SubtractiveLoft": "loft_cut",
+    "PartDesign::AdditivePipe": "sweep",
+    "PartDesign::SubtractivePipe": "sweep_cut",
+    "PartDesign::AdditiveHelix": "helix",
+    "PartDesign::SubtractiveHelix": "helix_cut",
+    "PartDesign::Hole": "hole",
+    "PartDesign::Fillet": "fillet",
+    "PartDesign::Chamfer": "chamfer",
+    "PartDesign::Draft": "draft",
+    "PartDesign::Thickness": "thickness",
+    "PartDesign::Mirrored": "mirror",
+    "PartDesign::LinearPattern": "linear_pattern",
+    "PartDesign::PolarPattern": "polar_pattern",
+    "PartDesign::Boolean": "boolean",
+    "PartDesign::Plane": "datum_plane",
+    "PartDesign::Line": "datum_axis",
+    "PartDesign::Point": "datum_point",
+    "PartDesign::CoordinateSystem": "datum_cs",
+    # Lieur de forme : courbe composite, suppression de faces, ou outil
+    # d'un balayage dans le corps.
+    "PartDesign::SubShapeBinder": "binder",
+    "PartDesign::Body": "body",
+    "Sketcher::SketchObject": "sketch",
+    # Surfaces et courbes hors corps.
+    "Part::Feature": "shape",  # forme figée : couture, courbe 3D, legacy
+    "Part::Extrusion": "surface_extrude",
+    "Part::Revolution": "surface_revolve",
+    "Part::Loft": "surface_loft",
+    "Part::Sweep": "surface_sweep",
+    "Part::Offset": "surface_offset",
+    "Part::Face": "surface_planar",
+    "Part::RuledSurface": "surface_ruled",
+    "Part::Fillet": "surface_fillet",
+    "Part::Offset2D": "surface_radiate",
+    # Ajuster : découpe et pièce gardée, fonctions Python de FreeCAD.
+    "Part::FeaturePython": "surface_trim",
+    "Part::Section": "curve_intersection",
+    "Part::ProjectOnSurface": "curve_project",
+    "Part::Helix": "curve_helix",
+    "Surface::Filling": "surface_fill",
+    "Surface::Extend": "surface_extend",
+    "Surface::GeomFillSurface": "surface_boundary",
+    # Document.
+    "App::Link": "component",
+    "App::VarSet": "varset",
+}
+
+#: Genre d'un TypeId absent de ``TYPE_KEYS``, par famille : une fonction
+#: de corps reste une fonction de corps, une surface une surface — ce que
+#: l'interface lisait autrefois sur le préfixe du TypeId.
+TYPE_KEY_FALLBACKS: dict[str, str] = {
+    "PartDesign": "feature",
+    "Part": "surface",
+    "Surface": "surface",
+}
+TYPE_KEY_OTHER = "object"
+
+
+def type_key_for(obj_type: str) -> str:
+    """Genre neutre d'un TypeId (voir ``TYPE_KEYS``)."""
+    key = TYPE_KEYS.get(obj_type)
+    if key is not None:
+        return key
+    return TYPE_KEY_FALLBACKS.get(obj_type.split("::")[0], TYPE_KEY_OTHER)
+
+
 #: Catalogue de la fonction graphe (N006) — taxonomie reprise de
 #: ``j8sr0230/Nodes`` (LGPL-2.1). Source unique : type, libellé, catégorie,
 #: icône, ports, et l'état implémenté / pas encore. ``graph_vocabulary``

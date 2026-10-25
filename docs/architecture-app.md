@@ -42,6 +42,13 @@ catalogue `engine/ops/` — un descripteur `Op` par opération, dont
 `engine/protocol.py` dérive `OPS` — seule source de vérité, testée sans
 FreeCAD.
 
+Le protocole ne parle pas FreeCAD. Chaque objet que le moteur décrit
+porte un genre neutre, `type_key` (`pad`, `sketch`, `surface_extrude`…),
+tiré de `TYPE_KEYS` dans `engine/vocab.py`. L'interface ne lit que lui ;
+ses familles (fonction de corps, surface) sont dans `app/typekeys.js`. Le
+TypeId FreeCAD (`type`) reste dans les réponses le temps de la transition,
+pour les plugins qui le lisent, mais aucun code de `app/` ne le lit.
+
 ## Les deux risques identifiés — et leur traitement
 
 1. **Le picking** (cliquer une face à l'écran → retrouver la face OCCT).

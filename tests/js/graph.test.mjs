@@ -139,7 +139,7 @@ describe("buildGraph", () => {
       features: [
         {
           name: "Sketch", label: "Esquisse1", kind: "Esquisse", order: 1,
-          type: "Sketcher::SketchObject", deps: ["XZ_Plane"],
+          type_key: "sketch", deps: ["XZ_Plane"],
         },
         {
           name: "Pad", label: "Bossage1", kind: "Extrusion",
@@ -147,7 +147,7 @@ describe("buildGraph", () => {
           driven: { Length: "2 * largeur + 5" },
           children: [{
             name: "SketchIn", label: "Esquisse2", kind: "Esquisse",
-            type: "Sketcher::SketchObject", order: 1,
+            type_key: "sketch", order: 1,
           }],
         },
         {
@@ -160,7 +160,7 @@ describe("buildGraph", () => {
         deps: ["SketchSurf"],
         children: [{
           name: "SketchSurf", label: "Esquisse3", kind: "Esquisse",
-          type: "Sketcher::SketchObject", order: 3,
+          type_key: "sketch", order: 3,
         }],
       }],
       bodies: [
@@ -201,14 +201,14 @@ describe("buildGraph", () => {
       planes: [{ id: "XZ", name: "XZ_Plane", label: "Plan de face" }],
       features: [
         { name: "Sketch", label: "Esquisse1", kind: "Esquisse",
-          type: "Sketcher::SketchObject", order: 0 },
+          type_key: "sketch", order: 0 },
         { name: "Pad", label: "Bossage1", kind: "Extrusion",
-          type: "PartDesign::Pad", order: 1, deps: ["Sketch"] },
+          type_key: "pad", order: 1, deps: ["Sketch"] },
         { name: "Fillet", label: "Congé1", kind: "Congé",
-          type: "PartDesign::Fillet", order: 2, deps: ["Pad"],
+          type_key: "fillet", order: 2, deps: ["Pad"],
           children: [{
             name: "SketchIn", label: "Esquisse2", kind: "Esquisse",
-            type: "Sketcher::SketchObject", order: 3,
+            type_key: "sketch", order: 3,
           }] },
       ],
     });
@@ -227,12 +227,12 @@ describe("buildGraph", () => {
       planes: [],
       features: [
         { name: "Pad", label: "Bossage1", kind: "Extrusion",
-          type: "PartDesign::Pad", order: 1 },
+          type_key: "pad", order: 1 },
         { name: "Pocket", label: "Enlèvement1", kind: "Enlèvement",
-          type: "PartDesign::Pocket", order: 3, deps: ["Sketch001"],
+          type_key: "pocket", order: 3, deps: ["Sketch001"],
           children: [{
             name: "Sketch001", label: "Esquisse2", kind: "Esquisse",
-            type: "Sketcher::SketchObject", order: 2, unabsorbed: true,
+            type_key: "sketch", order: 2, unabsorbed: true,
           }] },
       ],
     });
@@ -425,7 +425,7 @@ describe("palette constructive", () => {
   const combine = FEATURES.find((entry) => entry.button === "btn-boolean");
   const sketch = { name: "Sketch", label: "Esquisse1" };
   const treeWithSketch = {
-    features: [{ name: "Sketch", type: "Sketcher::SketchObject" }],
+    features: [{ name: "Sketch", type_key: "sketch" }],
   };
   const faceSel = { kind: "face", face: 0 };
   const edgeSel = { kind: "edges", edges: [1, 2] };
@@ -685,7 +685,7 @@ describe("composition du graphe interne", () => {
 
   it("isGraphFeature lit le champ graph de l'arbre, pas le type FreeCAD", () => {
     assert.equal(isGraphFeature({ graph: { nodes: [] } }), true);
-    assert.equal(isGraphFeature({ type: "PartDesign::Boolean" }), false);
+    assert.equal(isGraphFeature({ type_key: "boolean" }), false);
     assert.equal(isRepeatFeature({ repeat: { features: [] } }), true);
     assert.equal(isRepeatFeature({ graph: { nodes: [] } }), false);
     assert.equal(minimalRepeatGraph().output, "inst");

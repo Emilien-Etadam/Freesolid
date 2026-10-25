@@ -7,6 +7,7 @@ import { t } from "./i18n.js";
 import { iconSrc } from "./icons.js";
 import { cssHex } from "./theme.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
+import { isBodyFeatureKey, isSurfaceKey } from "./typekeys.js";
 import {
   contextToolbarKeys, menuIcon, placeViewMenu, viewMenuItems, viewMenuLabel,
 } from "./viewmenu.js";
@@ -15,35 +16,32 @@ export function isBodyMenuTarget(feature) {
   return feature != null && typeof feature.active === "boolean";
 }
 
-/** Fonction de volume (PartDesign, hors plan de référence) : elle se
+/** Fonction de corps (hors plan de référence et corps) : elle se
  *  désactive sans être supprimée. */
 export function isSuppressibleTarget(feature) {
-  const type = feature?.type ?? "";
-  return type.startsWith("PartDesign::") && type !== "PartDesign::Plane"
-    && type !== "PartDesign::Body" && !isBodyMenuTarget(feature);
+  const key = feature?.type_key ?? "";
+  return isBodyFeatureKey(key) && key !== "datum_plane"
+    && key !== "body" && !isBodyMenuTarget(feature);
 }
 
 /** Corps, ou surface du premier niveau : ce qu'on masque et affiche. */
 export function isHideableTarget(feature) {
   if (!feature?.name || typeof feature.grounded === "boolean") return false;
-  return isBodyMenuTarget(feature)
-    || /^(Part|Surface)::/.test(feature.type ?? "");
+  return isBodyMenuTarget(feature) || isSurfaceKey(feature.type_key);
 }
 
 export function isFrozenSurface(feature) {
   if (isGraphFeature(feature) || isRepeatFeature(feature)) return false;
-  return !!(feature?.static || feature?.type === "Part::Feature");
+  return !!(feature?.static || feature?.type_key === "shape");
 }
 
 export function canModifyMenuTarget(feature) {
   if (!feature || isBodyMenuTarget(feature)) return false;
-  const type = feature.type;
-  if (!type || type === "PartDesign::Plane") return false;
+  const key = feature.type_key;
+  if (!key || key === "datum_plane") return false;
   if (isFrozenSurface(feature)) return false;
-  if (type === "Sketcher::SketchObject") return true;
-  return type.startsWith("PartDesign::")
-    || type.startsWith("Part::")
-    || type.startsWith("Surface::");
+  if (key === "sketch") return true;
+  return isBodyFeatureKey(key) || isSurfaceKey(key);
 }
 
 /** Branche les deux menus. Renvoie les ouvertures appelées par l'arbre,
@@ -100,10 +98,9 @@ export function installContextMenu(ctx) {
   }
 
   function modifyMenuTarget(feature) {
-    if (feature.type === "Sketcher::SketchObject") {
+    if (feature.type_key === "sketch") {
       onSketchRowDblClick(feature);
-    } else if (feature.type.startsWith("Part::")
-               || feature.type.startsWith("Surface::")) {
+    } else if (isSurfaceKey(feature.type_key)) {
       editSurface(feature);
     } else {
       editFeature(feature);
@@ -126,13 +123,13 @@ export function installContextMenu(ctx) {
     document.getElementById("ctx-color-reset").hidden = !onBody;
     document.getElementById("ctx-comment").hidden = onBody || onComponent;
     document.getElementById("ctx-copy").hidden = !ctx.canCopyFeature(feature);
-    const isFeature = !onBody && !onComponent && !!feature.type
-      && !/^(Part|Surface)::/.test(feature.type);
+    const isFeature = !onBody && !onComponent && !!feature.type_key
+      && !isSurfaceKey(feature.type_key);
     document.getElementById("ctx-folder").hidden = !isFeature;
     document.getElementById("ctx-unfolder").hidden = !isFeature || !feature.folder;
     document.getElementById("ctx-relations").hidden = !isFeature;
     document.getElementById("ctx-sketch-plane").hidden =
-      feature.type !== "Sketcher::SketchObject" || !!ctx.assemblyState
+      feature.type_key !== "sketch" || !!ctx.assemblyState
       || ctx.sketchMode.active;
     const suppress = document.getElementById("ctx-suppress");
     suppress.hidden = !isSuppressibleTarget(feature) || !!ctx.assemblyState;
@@ -228,11 +225,11 @@ export function installContextMenu(ctx) {
   // Changer de plan : un plan d'origine, un plan de référence ou une
   // face cliquée dans la vue.
   document.getElementById("ctx-sketch-plane").addEventListener("click", () => {
-    if (!menuFeature || menuFeature.type !== "Sketcher::SketchObject") return;
+    if (!menuFeature || menuFeature.type_key !== "sketch") return;
     const sketch = menuFeature;
     const tree = ctx.lastTree ?? {};
     const datums = (tree.features ?? [])
-      .filter((f) => f.type === "PartDesign::Plane");
+      .filter((f) => f.type_key === "datum_plane");
     panel.open({
       icon: "Sketcher_Sketch",
       title: t("Plan de l'esquisse — {s}", { s: sketch.label }),
@@ -382,7 +379,7 @@ export function installContextMenu(ctx) {
       const group = ctx.meshGroups[ctx.hoveredGroup];
       const feature = findFeatureInTree(ctx.lastTree, group.feature);
       const sketch = (feature?.children ?? [])
-        .find((child) => child.type === "Sketcher::SketchObject");
+        .find((child) => child.type_key === "sketch");
       hit = {
         kind: "face",
         face: group.faceId,
@@ -441,7 +438,7 @@ export function installContextMenu(ctx) {
     "edit-feature": (hit) => editFeature(hit.feature.item),
     "edit-sketch": (hit) => onSketchRowDblClick(hit.kind === "sketch"
       ? { name: hit.sketch.name, label: hit.sketch.label,
-          type: "Sketcher::SketchObject" }
+          type_key: "sketch" }
       : hit.feature.sketchItem),
     rollback: (hit) => ctx.moveBar({ op: "set_tip", feature: hit.feature.name }),
     "select-tangent": (hit) => selectChain(hit.edge, "tangent"),

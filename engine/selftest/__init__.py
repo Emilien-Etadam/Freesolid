@@ -185,6 +185,7 @@ def _etapes():
         surfaces.p69_spline_3d_poignees_poles,
         esquisse.p70_esquisse_3d,
         fonctions.p19b_paroi_mince_extremites_fermees,
+        document.p71_genres_neutres,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

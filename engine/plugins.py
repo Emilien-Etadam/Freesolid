@@ -43,6 +43,8 @@ import os
 import re
 import sys
 
+from engine.vocab import type_key_for
+
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEFAULT_ROOT = os.path.join(_REPO_ROOT, "plugins")
 
@@ -345,8 +347,13 @@ class Registry:
                     "plugin « {} » : {}".format(nom or "?", exc))
 
     def contribute_tree(self, kernel, tree):
-        """Fusionne les contributions. Collision de clé → PluginError."""
-        _merge_contributions(self._tree, tree, lambda fn: fn(kernel))
+        """Fusionne les contributions. Collision de clé → PluginError.
+
+        Une ligne qui porte un TypeId reçoit son genre neutre, comme les
+        objets du noyau (voir ``_with_type_keys``).
+        """
+        _merge_contributions(
+            self._tree, tree, lambda fn: _with_type_keys(fn(kernel)))
 
     def contribute_mesh(self, kernel, mesh, deviation):
         """Fusionne les contributions de maillage. Collision → PluginError."""
@@ -414,6 +421,23 @@ class Registry:
             if fn(kernel, obj):
                 return True
         return False
+
+
+def _with_type_keys(extra):
+    """Pose ``type_key`` sur chaque ligne d'une contribution d'arbre qui
+    porte un TypeId FreeCAD (``type`` en « Espace::Type ») et pas encore de
+    genre : l'interface ne lit que le genre. Le plugin n'a rien à changer."""
+    if not isinstance(extra, dict):
+        return extra
+    for rows in extra.values():
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if (isinstance(row, dict) and "type_key" not in row
+                    and isinstance(row.get("type"), str)
+                    and "::" in row["type"]):
+                row["type_key"] = type_key_for(row["type"])
+    return extra
 
 
 def _merge_contributions(hooks, target, invoke):

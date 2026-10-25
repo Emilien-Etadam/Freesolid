@@ -17,24 +17,24 @@ describe("cible du menu de l'arbre", () => {
 
   it("une surface figée n'est ni un graphe ni une répétition", () => {
     assert.equal(isFrozenSurface(null), false);
-    assert.equal(isFrozenSurface({ type: "PartDesign::Pad" }), false);
+    assert.equal(isFrozenSurface({ type_key: "pad" }), false);
     assert.equal(isFrozenSurface({ static: true }), true);
-    assert.equal(isFrozenSurface({ type: "Part::Feature" }), true);
+    assert.equal(isFrozenSurface({ type_key: "shape" }), true);
     assert.equal(isFrozenSurface({ static: true, graph: {} }), false);
-    assert.equal(isFrozenSurface({ type: "Part::Feature", repeat: {} }), false);
+    assert.equal(isFrozenSurface({ type_key: "shape", repeat: {} }), false);
   });
 
   it("modifie une esquisse, une fonction ou une surface", () => {
     assert.equal(canModifyMenuTarget(null), false);
     assert.equal(canModifyMenuTarget({}), false);
-    assert.equal(canModifyMenuTarget({ active: false, type: "PartDesign::Body" }), false);
-    assert.equal(canModifyMenuTarget({ type: "PartDesign::Plane" }), false);
-    assert.equal(canModifyMenuTarget({ type: "Part::Feature" }), false);
-    assert.equal(canModifyMenuTarget({ type: "Sketcher::SketchObject" }), true);
-    assert.equal(canModifyMenuTarget({ type: "PartDesign::Pad" }), true);
-    assert.equal(canModifyMenuTarget({ type: "Part::Extrusion" }), true);
-    assert.equal(canModifyMenuTarget({ type: "Surface::Filling" }), true);
-    assert.equal(canModifyMenuTarget({ type: "App::Link" }), false);
-    assert.equal(canModifyMenuTarget({ type: "PartDesign::Pad", graph: {} }), true);
+    assert.equal(canModifyMenuTarget({ active: false, type_key: "body" }), false);
+    assert.equal(canModifyMenuTarget({ type_key: "datum_plane" }), false);
+    assert.equal(canModifyMenuTarget({ type_key: "shape" }), false);
+    assert.equal(canModifyMenuTarget({ type_key: "sketch" }), true);
+    assert.equal(canModifyMenuTarget({ type_key: "pad" }), true);
+    assert.equal(canModifyMenuTarget({ type_key: "surface_extrude" }), true);
+    assert.equal(canModifyMenuTarget({ type_key: "surface_fill" }), true);
+    assert.equal(canModifyMenuTarget({ type_key: "component" }), false);
+    assert.equal(canModifyMenuTarget({ type_key: "pad", graph: {} }), true);
   });
 });

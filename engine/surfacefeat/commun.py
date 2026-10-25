@@ -126,6 +126,7 @@ class SurfaceCommonMixin:
         par l'appelant — ne pas le recalculer par surface.
         """
         from engine.kernel import label_for_type
+        from engine.vocab import type_key_for
         sketches = self._surface_sketch_objects(obj)
         order_of = order_of if order_of is not None else {}
         known_names = known_names if known_names is not None else set()
@@ -137,6 +138,7 @@ class SurfaceCommonMixin:
             "name": obj.Name,
             "label": obj.Label,
             "type": obj.TypeId,
+            "type_key": type_key_for(obj.TypeId),
             "sketches": [sk.Name for sk in sketches],
             "order": order_of.get(obj.Name, -1),
         }
@@ -165,6 +167,7 @@ class SurfaceCommonMixin:
                 "label": sk.Label,
                 "kind": label_for_type(sk.TypeId, self.lang),
                 "type": sk.TypeId,
+                "type_key": type_key_for(sk.TypeId),
                 "error": "Invalid" in (sk.State or ()),
                 "order": order_of.get(sk.Name, -1),
                 "definition": self._sketch_definition(sk),

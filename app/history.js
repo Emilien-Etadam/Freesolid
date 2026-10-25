@@ -108,13 +108,12 @@ export function sketchTreeLabel(label, definition) {
 
 // Esquisses libres et géométrie de référence (plans, axes, points) :
 // elles ne font pas le solide, la barre ne les recule que sur demande.
-const REFERENCE_TYPES = new Set([
-  "Sketcher::SketchObject", "PartDesign::Plane", "PartDesign::Line",
-  "PartDesign::Point", "PartDesign::CoordinateSystem",
+const REFERENCE_KEYS = new Set([
+  "sketch", "datum_plane", "datum_axis", "datum_point", "datum_cs",
 ]);
 
 function isVolumeRow(row) {
-  return !row.surface && !REFERENCE_TYPES.has(row.item.type);
+  return !row.surface && !REFERENCE_KEYS.has(row.item.type_key);
 }
 
 /** Rang d'une ligne : son `order` (index document), sinon après tout. */

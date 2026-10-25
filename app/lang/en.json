@@ -180,6 +180,8 @@
  "Fermez d'abord la fonction graphe (Échap ou Fermer)": "Close the graph feature first (Esc or Close)",
  "Fichier": "File",
  "Fichier non reconnu comme image (PNG, JPEG, SVG…).": "File not recognized as an image (PNG, JPEG, SVG…).",
+ "Filtrer l'arbre": "Filter the tree",
+ "Filtrer l'arbre de création": "Filter the design tree",
  "Fixe": "Fixed",
  "Fonction": "Feature",
  "Fonction graphe": "Graph feature",

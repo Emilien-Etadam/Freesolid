@@ -931,6 +931,17 @@
     padding: 10px var(--space-3) 6px;
   }
   #tree { list-style: none; position: relative; }
+  #tree-filter {
+    display: block;
+    width: calc(100% - 2 * var(--space-3));
+    margin: 0 var(--space-3) var(--space-1);
+    padding: 2px var(--space-1);
+    font: inherit; font-size: var(--text-xs);
+    color: inherit; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: var(--radius-s);
+  }
+  #tree-filter[hidden] { display: none; }
+  #tree li[hidden] { display: none; }
   #tree li {
     padding: var(--space-1) var(--space-3) var(--space-1) 22px;
     cursor: pointer;
@@ -1001,9 +1012,10 @@
   aside[data-mgr="configs"] #mgr-configs,
   aside[data-mgr="display"] #mgr-display { display: block; }
   aside[data-mgr="configs"] > h2, aside[data-mgr="configs"] > #tree,
-  aside[data-mgr="configs"] > #panel,
+  aside[data-mgr="configs"] > #panel, aside[data-mgr="configs"] > #tree-filter,
   aside[data-mgr="display"] > h2, aside[data-mgr="display"] > #tree,
-  aside[data-mgr="display"] > #panel { display: none; }
+  aside[data-mgr="display"] > #panel,
+  aside[data-mgr="display"] > #tree-filter { display: none; }
   aside.panel-open[data-mgr="tree"] > h2,
   aside.panel-open[data-mgr="tree"] > #tree { display: block; }
   aside.panel-open[data-mgr="tree"] > #panel { display: none; }
@@ -1694,6 +1706,8 @@
 
   <aside>
     <h2 title="Clic droit : arbre à plat">Arbre de création</h2>
+    <input id="tree-filter" type="search" placeholder="Filtrer l'arbre"
+           aria-label="Filtrer l'arbre de création" autocomplete="off">
     <ul id="tree"><li class="body">— aucun document —</li></ul>
     <div id="panel"></div>
   </aside>

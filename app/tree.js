@@ -9,6 +9,7 @@ import {
   barSlots, barStepTarget, sameBarTarget, sketchTreeLabel,
   splitHistoryAroundBar,
 } from "./history.js";
+import { filterTreeLines } from "./treefilter.js";
 import { renameClickAction } from "./rename.js";
 import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
@@ -115,6 +116,7 @@ export function installTree(ctx) {
   // cliquer une fonction, une esquisse ou un plan pendant la commande.
 
   const treeFlyout = document.getElementById("tree-flyout");
+  const treeFilterEl = document.getElementById("tree-filter");
   const treeFlyoutBody = document.getElementById("tree-flyout-body");
   const TREE_FLYOUT_KEY = "freesolid.treeFlyoutOpen";
 
@@ -130,6 +132,11 @@ export function installTree(ctx) {
         aside.insertBefore(tree, document.getElementById("panel"));
       }
       treeFlyout.hidden = true;
+    }
+    // Le filtre se masque pendant une commande, et ne filtre plus.
+    if (treeFilterEl && treeFilterEl.hidden !== panel.active) {
+      treeFilterEl.hidden = panel.active;
+      if (treeFilterEl.value.trim() && ctx.lastTree) renderTree(ctx.lastTree);
     }
   }
 
@@ -217,6 +224,16 @@ export function installTree(ctx) {
   let barState = { slots: [], current: -1 }; // positions du dernier rendu
   let afterBarNames = new Set(); // lignes reculées du dernier rendu
   let previousBarTarget = null; // position d'avant le dernier déplacement
+
+  /** Texte du filtre ; vide pendant une commande (champ masqué). */
+  function treeFilterText() {
+    return panel.active ? "" : (treeFilterEl?.value ?? "").trim();
+  }
+
+  /** Dépliée : à la main, ou tout l'arbre pendant le filtre. */
+  function isExpanded(name) {
+    return expandedFeatures.has(name) || !!treeFilterText();
+  }
   const folderState = Object.create(null); // dossiers tête, mémoire de session
   const folderPrevCounts = Object.create(null); // compteurs du rendu précédent
   let sketchClickTimer = null;
@@ -505,6 +522,7 @@ export function installTree(ctx) {
   }
 
   function folderIsOpen(key, defaultOpen) {
+    if (treeFilterText()) return true;
     return Object.prototype.hasOwnProperty.call(folderState, key)
       ? folderState[key]
       : defaultOpen;
@@ -608,7 +626,7 @@ export function installTree(ctx) {
     const arrow = document.createElement("span");
     arrow.className = "arrow";
     arrow.textContent = hasChildren
-      ? (expandedFeatures.has(surface.name) ? "▾" : "▸") : "";
+      ? (isExpanded(surface.name) ? "▾" : "▸") : "";
     if (hasChildren) {
       arrow.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -636,7 +654,7 @@ export function installTree(ctx) {
     item.addEventListener("dblclick", () => onSurfaceDblClick(surface));
     item.addEventListener("contextmenu", (event) => ctx.openMenu(event, surface));
     treeEl.appendChild(item);
-    if (hasChildren && expandedFeatures.has(surface.name)) {
+    if (hasChildren && isExpanded(surface.name)) {
       for (const child of children) {
         const row = document.createElement("li");
         row.className = "child" + (inFolder ? " in-folder" : "")
@@ -691,7 +709,7 @@ export function installTree(ctx) {
    *  (data-slot) ; la première porte aussi celle d'au-dessus. */
   function markBarSlots(split) {
     barState = barSlots(split, {
-      expanded: (name) => expandedFeatures.has(name),
+      expanded: isExpanded,
       folderOpen: (folder) => folderIsOpen(`user:${folder}`, false),
       flat: flatTree,
     });
@@ -778,6 +796,44 @@ export function installTree(ctx) {
 
   document.querySelector("aside > h2")?.addEventListener("contextmenu",
     (event) => ctx.openTreeTitleMenu?.(event));
+
+  treeFilterEl?.addEventListener("input", () => {
+    if (ctx.lastTree) renderTree(ctx.lastTree);
+  });
+  treeFilterEl?.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !treeFilterEl.value) return;
+    event.preventDefault();
+    treeFilterEl.value = "";
+    if (ctx.lastTree) renderTree(ctx.lastTree);
+  });
+
+  /** Masque les lignes hors filtre ; leurs parents et la barre restent. */
+  function applyTreeFilter() {
+    const text = treeFilterText();
+    if (!text) return;
+    const items = [...treeEl.children];
+    const lines = [];
+    let folder = -1; // dossier ouvert au-dessus
+    let owner = -1; // dernière ligne qui peut porter des esquisses
+    for (const [i, li] of items.entries()) {
+      const child = li.classList.contains("child");
+      const inFolder = li.classList.contains("in-folder");
+      lines.push({
+        label: li.textContent,
+        parent: child ? owner : inFolder ? folder : -1,
+        keep: li.classList.contains("rollback"),
+      });
+      if (li.classList.contains("folder")) {
+        folder = i;
+        owner = -1;
+      } else if (!child) {
+        owner = i;
+        if (!inFolder) folder = -1;
+      }
+    }
+    const visible = filterTreeLines(lines, text);
+    items.forEach((li, i) => { li.hidden = !visible[i]; });
+  }
 
   // Glisser-déposer d'une fonction dans l'arbre : le repère d'insertion de
   // la barre de retour montre où elle ira ; le moteur la déplace avec ses
@@ -947,6 +1003,7 @@ export function installTree(ctx) {
   function rollbackSlotPositions() {
     const slots = [];
     for (const li of treeEl.querySelectorAll("li[data-slot-above], li[data-slot]")) {
+      if (!li.getClientRects().length) continue; // masquée par le filtre
       const rect = li.getBoundingClientRect();
       if (li.dataset.slotAbove) {
         slots.push({ y: rect.top, target: JSON.parse(li.dataset.slotAbove) });
@@ -1106,6 +1163,7 @@ export function installTree(ctx) {
     ctx.pluginRuntime?.renderTreeRows(tree, {
       treeIcon, openMenu: ctx.openMenu, append: (row) => treeEl.appendChild(row),
     });
+    applyTreeFilter();
     syncGraphFromTree();
   }
 
@@ -1249,7 +1307,7 @@ export function installTree(ctx) {
     const arrow = document.createElement("span");
     arrow.className = "arrow";
     arrow.textContent = hasChildren
-      ? (expandedFeatures.has(feature.name) ? "▾" : "▸") : "";
+      ? (isExpanded(feature.name) ? "▾" : "▸") : "";
     if (hasChildren) {
       arrow.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -1324,7 +1382,7 @@ export function installTree(ctx) {
     treeEl.appendChild(row);
 
     // L'esquisse consommée vit sous sa fonction.
-    if (hasChildren && expandedFeatures.has(feature.name)) {
+    if (hasChildren && isExpanded(feature.name)) {
       for (const child of feature.children) {
         const childRow = document.createElement("li");
         childRow.className = "child" + (child.error ? " error" : "");

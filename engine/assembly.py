@@ -401,6 +401,7 @@ class AssemblyMixin:
         return self.assembly_tree()
 
     def assembly_tree(self):
+        from engine.vocab import type_key_for
         doc = self._require_assembly()
         joints = []
         grounded = set()
@@ -424,6 +425,7 @@ class AssemblyMixin:
             components.append({
                 "name": obj.Name,
                 "label": obj.Label,
+                "type_key": type_key_for(obj.TypeId),
                 "grounded": obj.Name in grounded,
                 "position": [placement.Base.x, placement.Base.y,
                              placement.Base.z],

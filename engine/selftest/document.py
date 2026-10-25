@@ -778,6 +778,55 @@ def p68_configurations(self, mark, report, etat):
                                        "names": ["Court", "Long"]})
 
 
+def _genres_faux(node):
+    """Noms des objets dont ``type_key`` manque ou ne suit pas la table."""
+    from engine.vocab import type_key_for
+    faux = []
+    if isinstance(node, dict):
+        type_id = node.get("type")
+        if (isinstance(type_id, str) and "::" in type_id
+                and node.get("type_key") != type_key_for(type_id)):
+            faux.append(node.get("name"))
+        for value in node.values():
+            faux.extend(_genres_faux(value))
+    elif isinstance(node, list):
+        for value in node:
+            faux.extend(_genres_faux(value))
+    return faux
+
+
+def _genres(node):
+    """Tous les ``type_key`` de l'arbre, à toute profondeur."""
+    found = set()
+    if isinstance(node, dict):
+        if isinstance(node.get("type_key"), str):
+            found.add(node["type_key"])
+        for value in node.values():
+            found |= _genres(value)
+    elif isinstance(node, list):
+        for value in node:
+            found |= _genres(value)
+    return found
+
+
+def p71_genres_neutres(self, mark, report, etat):
+    """Protocole neutre : l'interface lit ``type_key``, jamais le TypeId."""
+    mark("p71: chaque objet de l'arbre porte son genre neutre")
+    self.new_part("Pièce genres neutres")
+    self.add_rect_sketch(40, 20)
+    self.add_pad(10)
+    self.add_fillet(2, edges=[0])
+    state = self.sketch_start()
+    surf_sk = state["sketch"]
+    self.sketch_add_line(surf_sk, 0, 0, 20, 0)
+    self.sketch_finish(surf_sk)
+    tree = self.surface_extrude(12, sketch=surf_sk)
+    report["p71_genre_suit_la_table"] = _genres_faux(tree) == []
+    report["p71_genres_attendus"] = {
+        "body", "pad", "fillet", "sketch", "surface_extrude",
+    } <= _genres(tree)
+
+
 def bilan(self, mark, report, etat):
     vitrine_path = etat.vitrine_path  # posé par document.p31_piece_vitrine
     mark("bilan")

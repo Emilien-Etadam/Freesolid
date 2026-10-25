@@ -1892,8 +1892,8 @@ ctx.onFolderMenu = (folder) => {
   if (name === null) return;
   refresh(call("rename_folder", { folder, name: name.trim() }));
 };
-ctx.canCopyFeature = (feature) => feature?.type === "Sketcher::SketchObject"
-  || (feature?.children ?? []).some((c) => c.type === "Sketcher::SketchObject");
+ctx.canCopyFeature = (feature) => feature?.type_key === "sketch"
+  || (feature?.children ?? []).some((c) => c.type_key === "sketch");
 ctx.copyFeature = (feature) => {
   copiedFeature = { name: feature.name, label: feature.label };
   say(t("« {f} » copiée — sélectionnez une face ou un plan, puis Ctrl+V",

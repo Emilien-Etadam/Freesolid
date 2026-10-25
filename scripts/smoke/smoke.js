@@ -1396,7 +1396,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const edges = [...document.querySelectorAll("#graph-view .graph-edge")];
     const pad = nodes.find((n) => /Extrusion/i.test(n.textContent || ""));
     const fillet = nodes.find((n) =>
-      (n.getAttribute("data-type") || "").includes("Fillet")
+      n.getAttribute("data-type") === "fillet"
       || /Congé/i.test(n.textContent || ""));
     const filletName = fillet?.getAttribute("data-name") || "";
     const filletEdge = edges.find((e) =>

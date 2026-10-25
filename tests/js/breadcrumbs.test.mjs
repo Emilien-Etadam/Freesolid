@@ -6,10 +6,10 @@ import { breadcrumbTrail, findFeature } from "../../app/breadcrumbs.js";
 const tree = {
   body: "Équerre-support",
   features: [
-    { name: "Pad", label: "Socle", type: "PartDesign::Pad",
-      children: [{ name: "Sketch", label: "Esquisse 1", type: "Sketcher::SketchObject" }] },
+    { name: "Pad", label: "Socle", type_key: "pad",
+      children: [{ name: "Sketch", label: "Esquisse 1", type_key: "sketch" }] },
     { name: "Folder", label: "Perçages", type: "folder",
-      features: [{ name: "Hole", label: "Perçages M6", type: "PartDesign::Hole" }] },
+      features: [{ name: "Hole", label: "Perçages M6", type_key: "hole" }] },
   ],
 };
 const groups = [{ faceId: 0, feature: "Pad" }, { faceId: 5, feature: "Hole" }, { faceId: 7 }];

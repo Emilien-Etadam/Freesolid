@@ -20,6 +20,8 @@ def p10_deux_instances(self, mark, report, etat):
     self.insert_component(asm_part)
     tree = self.insert_component(asm_part)
     report["p10_two_components"] = len(tree["components"]) == 2
+    report["p10_genre_composant"] = all(
+        c.get("type_key") == "component" for c in tree["components"])
     second = tree["components"][1]["name"]
     tree = self.move_component(second, x=30, z=10, yaw=45)
     moved = next(c for c in tree["components"]

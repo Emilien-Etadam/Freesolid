@@ -13,7 +13,7 @@ export const NO_SKETCH_AVAILABLE =
  *  `_latest_sketch` côté moteur. */
 export function availableSketches(tree) {
   return (tree?.features ?? []).filter(
-    (f) => f.type === "Sketcher::SketchObject" && !f.rolled_back);
+    (f) => f.type_key === "sketch" && !f.rolled_back);
 }
 
 function latestAvailableSketch(tree) {

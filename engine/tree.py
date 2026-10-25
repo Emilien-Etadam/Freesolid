@@ -124,8 +124,10 @@ class TreeMixin:
         if hasattr(obj, "Visibility"):
             obj.Visibility = not rolled
 
-    def _history_kind(self, obj, consumed):
-        """``feature`` / ``sketch`` / ``surface``, ou None si hors historique."""
+    def _history_role(self, obj, consumed):
+        """Rôle dans l'historique : ``feature`` / ``sketch`` / ``surface``,
+        ou None si hors historique. Un code, pas un libellé : ``kind`` reste
+        le nom affiché d'un objet."""
         if self._is_thin_helper(obj):
             return None
         if self._is_surface_obj(obj):
@@ -158,8 +160,8 @@ class TreeMixin:
         consumed = self._consumed_sketches()
         lines = []
         for obj in body.Group:
-            kind = self._history_kind(obj, consumed)
-            if kind in ("feature", "sketch"):
+            role = self._history_role(obj, consumed)
+            if role in ("feature", "sketch"):
                 lines.append(obj)
         for obj in doc.Objects:
             if (self._is_surface_obj(obj)
@@ -174,13 +176,13 @@ class TreeMixin:
         order_of = self._tree_order()
         rows = []
         for obj in (lines if lines is not None else self._history_lines()):
-            kind = self._history_kind(obj, consumed)
-            if kind is None:
+            role = self._history_role(obj, consumed)
+            if role is None:
                 continue
             rows.append({
                 "name": obj.Name,
                 "order": order_of.get(obj.Name, -1),
-                "kind": kind,
+                "role": role,
             })
         return rows
 
@@ -270,7 +272,7 @@ class TreeMixin:
                     and self._absorbing_feature(obj) is not None)
         if absorbed:
             # Ni flag ni Tip pour elle : sa place dans l'ordre suffit.
-            rows.append({"name": obj.Name, "kind": "absorbed",
+            rows.append({"name": obj.Name, "role": "absorbed",
                          "order": self._tree_order().get(obj.Name, -1)})
             rows.sort(key=lambda row: row["order"])
         elif obj.Name not in {row["name"] for row in rows}:
@@ -685,6 +687,7 @@ class TreeMixin:
         """
         import json
         from engine.kernel import label_for_type
+        from engine.vocab import type_key_for
         body = self._require_body()
         order_of = self._tree_order()
         consumed = self._consumed_sketches()
@@ -697,6 +700,7 @@ class TreeMixin:
                 "label": obj.Label,
                 "kind": label_for_type(obj.TypeId, self.lang),
                 "type": obj.TypeId,
+                "type_key": type_key_for(obj.TypeId),
                 "error": "Invalid" in (obj.State or ()),
                 "order": order_of.get(obj.Name, -1),
             }
@@ -830,6 +834,7 @@ class TreeMixin:
             bodies.append({
                 "name": obj.Name,
                 "label": obj.Label,
+                "type_key": type_key_for(obj.TypeId),
                 "active": obj is body,
                 "count": len([o for o in obj.Group
                               if (o.isDerivedFrom("PartDesign::Feature")

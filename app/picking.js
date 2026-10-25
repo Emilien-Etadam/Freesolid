@@ -697,8 +697,8 @@ export function installPicking(ctx) {
     };
     disposeFeatureDimSprites();
     const sketches = (feature.children ?? []).filter(
-      (child) => child.type === "Sketcher::SketchObject");
-    if (feature.type === "Sketcher::SketchObject") sketches.push(feature);
+      (child) => child.type_key === "sketch");
+    if (feature.type_key === "sketch") sketches.push(feature);
     const params = feature.params?.length
       ? feature.params
       : ((await call("get_params", { feature: feature.name })).params ?? []);

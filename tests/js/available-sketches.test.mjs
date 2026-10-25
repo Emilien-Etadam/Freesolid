@@ -7,11 +7,11 @@ describe("availableSketches", () => {
   it("ne retient que les esquisses libres non reculées", () => {
     const tree = {
       features: [
-        { name: "Pad", type: "PartDesign::Pad" },
-        { name: "Sketch", type: "Sketcher::SketchObject" },
-        { name: "Sketch001", type: "Sketcher::SketchObject",
+        { name: "Pad", type_key: "pad" },
+        { name: "Sketch", type_key: "sketch" },
+        { name: "Sketch001", type_key: "sketch",
           rolled_back: true },
-        { name: "Sketch002", type: "Sketcher::SketchObject",
+        { name: "Sketch002", type_key: "sketch",
           rolled_back: false },
       ],
     };

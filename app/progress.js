@@ -1,6 +1,6 @@
 // Avancement d'une opération longue — formatage pur, sans DOM.
 //
-// Un PartDesign::Boolean est un appel OCCT opaque : pas de pourcentage.
+// Une combinaison de corps est un appel OCCT opaque : pas de pourcentage.
 // Ce module n'en invente pas. Il formate une phase nommée, un compteur
 // quand la boucle est comptable, et les secondes écoulées. La phase arrive
 // du moteur déjà traduite ; le repli « Combiner » passe par t().

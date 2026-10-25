@@ -27,9 +27,9 @@ export function breadcrumbTrail(tree, groups, faceId) {
   const feature = group?.feature ? findFeature(tree.features, group.feature) : null;
   if (feature) {
     trail.push({ kind: "feature", label: feature.label ?? feature.name,
-                 icon: TREE_ICONS[feature.type] ?? "body", item: feature });
+                 icon: TREE_ICONS[feature.type_key] ?? "body", item: feature });
     const sketch = (feature.children ?? []).find(
-      (child) => child.type === "Sketcher::SketchObject");
+      (child) => child.type_key === "sketch");
     if (sketch) {
       trail.push({ kind: "sketch", label: sketch.label ?? sketch.name,
                    icon: "Sketcher_Sketch", item: sketch });

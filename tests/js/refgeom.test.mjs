@@ -7,11 +7,11 @@ describe("géométrie de référence", () => {
   it("garde les axes, points et repères placés, hors barre de retour", () => {
     const m = Array(16).fill(0);
     const items = referenceItems({ features: [
-      { name: "A", type: "PartDesign::Line", placement: m },
-      { name: "B", type: "PartDesign::Point", placement: m, rolled_back: true },
-      { name: "P", type: "PartDesign::Plane", placement: m },
-      { name: "Pad", type: "PartDesign::Pad",
-        children: [{ name: "C", type: "PartDesign::CoordinateSystem", placement: m }] },
+      { name: "A", type_key: "datum_axis", placement: m },
+      { name: "B", type_key: "datum_point", placement: m, rolled_back: true },
+      { name: "P", type_key: "datum_plane", placement: m },
+      { name: "Pad", type_key: "pad",
+        children: [{ name: "C", type_key: "datum_cs", placement: m }] },
     ] });
     assert.deepEqual(items.map((i) => [i.name, i.shape]), [["A", "axis"], ["C", "cs"]]);
   });

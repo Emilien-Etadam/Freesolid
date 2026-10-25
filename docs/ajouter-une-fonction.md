@@ -16,14 +16,14 @@ Plus bas, un exemple complet : la Coque (`add_thickness`).
 |---|---|---|
 | 1 | mixin du domaine — `engine/solids.py`, `engine/surfacefeat/<module>.py`… | la méthode, du même nom que l'op |
 | 2 | `engine/ops/<famille>.py` | le descripteur `Op(...)` |
-| 3 | `engine/vocab.py` | le `Term` d'un nouveau TypeId (libellé de l'arbre, FR et EN) |
+| 3 | `engine/vocab.py` | le `Term` d'un nouveau TypeId (libellé de l'arbre, FR et EN), son genre neutre (`TYPE_KEYS`) |
 | 4 | `engine/lang/en.json` | chaque message d'erreur de la méthode |
 | 5 | `tests/ops_instantane.json`, `tests/test_protocol.py` | l'op dans l'instantané et dans `test_ops_snapshot_keys` |
 | 6 | `engine/selftest/<domaine>.py` + `_etapes()` | une étape, ses indicateurs |
 | 7 | `app/features/<famille>.js` | l'entrée de `FEATURES` |
 | 8 | `app/ribbon.json` | le bouton |
 | 9 | `app/icons.js` (+ `app/icons/`) | le rôle d'icône |
-| 10 | `app/tree.js` | l'icône du TypeId (`TREE_ICONS`), les cotes rééditables (`PROP_LABELS`) |
+| 10 | `app/tree.js`, `app/typekeys.js` | l'icône du genre (`TREE_ICONS`), les cotes rééditables (`PROP_LABELS`), la famille du genre |
 | 11 | `app/history.js` | le libellé d'annulation (`STEP_LABELS`) |
 | 12 | `app/lang/en.json` | chaque texte visible : bouton, infobulle, panneau, refus, libellé d'annulation |
 | 13 | `scripts/smoke/smoke.js` | le bouton dans `FEATURE_PANELS` |
@@ -56,6 +56,9 @@ Plus bas, un exemple complet : la Coque (`add_thickness`).
 
 - ajoutez son `Term` dans `vocab.py` : c'est le nom affiché, et le terme
   SolidWorks français fait foi ;
+- ajoutez son genre dans `TYPE_KEYS` (même fichier) : en minuscules, sans
+  `::`, le nom de l'op sans `add_` (`add_thickness` -> `thickness`).
+  L'interface ne lit que ce genre (`type_key`), jamais le TypeId ;
 - si OCCT peut échouer avec un message opaque, ou sans message, ajoutez
   l'explication dans `engine/guard.py` (`_OPAQUE_BY_KIND`).
 
@@ -114,8 +117,10 @@ correspond ; `app/features.js` rassemble les familles.
   `docs/ruban.md` dit où le ranger.
 - Une icône nouvelle va dans `app/icons/` (voir `app/icons/README.md`) ;
   son rôle, dans `ICONS`.
-- Pour un nouveau TypeId :
+- Pour un nouveau genre (`type_key`) :
   - son icône d'arbre va dans `TREE_ICONS` ;
+  - sa famille, dans `BODY_FEATURE_KEYS` ou `SURFACE_KEYS`
+    (`app/typekeys.js`) : c'est elle qui ouvre le menu contextuel ;
   - une cote rééditable par double-clic a son libellé dans `PROP_LABELS` ;
   - côté moteur, sa propriété doit figurer dans `_EDITABLE_PROPS`
     (`engine/equations.py`).
@@ -171,7 +176,8 @@ Op("add_thickness", Req(("thickness", float),
 
 **Moteur — nom, gabarit, traductions :**
 
-- `engine/vocab.py` : `Term("PartDesign_Thickness", "PartDesign::Thickness", "Coque", "Shell")`.
+- `engine/vocab.py` : `Term("PartDesign_Thickness", "PartDesign::Thickness", "Coque", "Shell")`,
+  et `"PartDesign::Thickness": "thickness"` dans `TYPE_KEYS`.
 - `engine/guard.py` : `_OPAQUE_BY_KIND["PartDesign::Thickness"]` explique
   une coque impossible (« l'épaisseur est trop forte pour cette pièce »).
 - `engine/lang/en.json` :
@@ -247,7 +253,8 @@ export function shellBuild(v) {
 |---|---|
 | `app/ribbon.json` | `{"id": "btn-shell", "titre": "Coque — les faces cliquées deviennent des ouvertures", "icon": "shell", "libelle": "Coque", "taille": "large"}` |
 | `app/icons.js` | `shell: "PartDesign_Thickness.svg",` |
-| `app/tree.js` | `"PartDesign::Thickness": "shell",` dans `TREE_ICONS` ; `Value` est déjà dans `PROP_LABELS` |
+| `app/tree.js` | `thickness: "shell",` dans `TREE_ICONS` ; `Value` est déjà dans `PROP_LABELS` |
+| `app/typekeys.js` | `"thickness"` dans `BODY_FEATURE_KEYS` |
 | `app/history.js` | `add_thickness: "Coque",` |
 | `app/lang/en.json` | `"Coque": "Shell"`, l'infobulle, `"Faces à supprimer"`, `"Coque vers l'extérieur"`, l'aide, les refus |
 | `scripts/smoke/smoke.js` | `{ id: "btn-shell", tab: "features" },` |
@@ -280,6 +287,10 @@ Ce que chaque test refuse :
   `Kernel`, et une `add_*` qui n'a ni `replay` ni `no_replay`.
 - **`tests/test_ops_instantane.py`** et **`test_ops_snapshot_keys`**
   refusent un changement de protocole absent de l'instantané.
+- **`tests/test_type_keys.py`** refuse un TypeId créé sans genre dans
+  `TYPE_KEYS`, un genre qui ne suit pas le nom de l'op, et une famille
+  d'`app/typekeys.js` qui ne suit pas la table. **`tests/js/typekeys.test.mjs`**
+  refuse un type FreeCAD « Espace::Type » écrit dans le code de `app/`.
 - **Les tests i18n** (`tests/js/i18n.test.mjs`, `tests/test_i18n.py`)
   refusent les entrées orphelines. Ils refusent aussi une traduction
   manquante : texte du ruban, texte d'un panneau, ou message de

@@ -45,6 +45,18 @@ export async function loadClientPlugins(call, api, importer = (url) => import(ur
   return loaded;
 }
 
+/** Aides passées au rendu d'une ligne. Le menu contextuel lit le genre de
+ *  l'objet (`type_key`) : une cible qui n'en porte pas prend celui de la
+ *  ligne rendue, que le moteur pose sur chaque contribution d'arbre. */
+function rowHelpers(helpers, item) {
+  if (typeof helpers?.openMenu !== "function" || !item?.type_key) return helpers;
+  return {
+    ...helpers,
+    openMenu: (event, target) => helpers.openMenu(
+      event, { type_key: item.type_key, ...target }),
+  };
+}
+
 /**
  * API client exposée à `register(api)`. L'hôte fournit le DOM et le
  * moteur ; ici on ne fait que collecter et dispatcher, dans l'ordre
@@ -150,7 +162,7 @@ export function createPluginApi(host) {
         for (const item of list) {
           let row;
           try {
-            row = rendu(item, helpers);
+            row = rendu(item, rowHelpers(helpers, item));
           } catch {
             continue;
           }

@@ -4,6 +4,9 @@
 ``failure_message`` construit la ligne montrée à l'utilisateur : la phrase
 utile, et le texte brut entre parenthèses quand il aide au diagnostic —
 jamais le générique « command not done », qui n'apprend rien.
+``invalid_dressup_message`` refuse un congé ou un chanfrein de forme
+invalide ; ``flush_cylinder`` reconnaît le cylindre affleurant qui en est
+souvent la cause.
 
 Purs : aucun import du modeleur, testés sans lui.
 """
@@ -125,3 +128,72 @@ def failure_message(label: str, text: str, kind: str = "") -> str | None:
 def shell_too_thick_message() -> str:
     """Coque acceptée par le modeleur mais sans enlèvement de matière."""
     return _explanation(_OPAQUE_BY_KIND["PartDesign::Thickness"])
+
+
+# Congé ou chanfrein que le modeleur dit à jour, mais de forme invalide.
+_INVALID_DRESSUP: dict[str, str] = {
+    "PartDesign::Fillet":
+        "congé impossible sur cette sélection : le résultat serait une "
+        "pièce invalide — essayez un rayon plus petit ou d'autres arêtes",
+    "PartDesign::Chamfer":
+        "chanfrein impossible sur cette sélection : le résultat serait une "
+        "pièce invalide — essayez une distance plus petite ou d'autres arêtes",
+}
+
+_FLUSH_HINT = (
+    "{} — le cylindre affleure exactement une autre face de même rayon ; "
+    "élargir l'un des deux de 0,001 mm suffit en général")
+
+
+def invalid_dressup_message(kind: str, flush: bool = False) -> str:
+    """Refus d'un congé (ou d'un chanfrein) de forme invalide.
+
+    ``flush`` ajoute l'indice de l'affleurement (voir ``flush_cylinder``).
+    """
+    text = _INVALID_DRESSUP.get(kind, _INVALID_DRESSUP["PartDesign::Fillet"])
+    return _fill(_FLUSH_HINT, (text,)) if flush else text
+
+
+def _minus(a, b):
+    return tuple(float(x) - float(y) for x, y in zip(a, b))
+
+
+def _dot(a, b):
+    return sum(float(x) * float(y) for x, y in zip(a, b))
+
+
+def flush_cylinder(center, axis, radius, cylinders, tol: float = 1e-6) -> bool:
+    """L'arête circulaire bute-t-elle sur un cylindre qui affleure ?
+
+    ``center``, ``axis``, ``radius`` : le cercle porteur de l'arête.
+    ``cylinders`` : les faces cylindriques de la pièce, chacune
+    ``(début, fin, rayon)`` — les deux bouts de son axe, des points.
+
+    Vrai quand des faces de même cercle porteur (même axe, même rayon, à
+    ``tol`` près) prolongent la paroi des deux côtés du plan de l'arête :
+    un cylindre posé au ras d'un arrondi de même rayon. Le congé y casse
+    la pièce sans que le modeleur le signale.
+    """
+    length = _dot(axis, axis) ** 0.5
+    if length < tol:
+        return False
+    unit = tuple(float(x) / length for x in axis)
+
+    def along(point):
+        """Abscisse du point sur l'axe de l'arête, ou None hors de l'axe."""
+        offset = _minus(point, center)
+        t = _dot(offset, unit)
+        aside = _minus(offset, tuple(t * u for u in unit))
+        return t if _dot(aside, aside) ** 0.5 <= tol else None
+
+    below = above = False
+    for start, end, cylinder_radius in cylinders:
+        if abs(float(cylinder_radius) - float(radius)) > tol:
+            continue
+        t0, t1 = along(start), along(end)
+        if t0 is None or t1 is None:
+            continue
+        low, high = min(t0, t1), max(t0, t1)
+        below = below or (low < -tol and high >= -tol)
+        above = above or (high > tol and low <= tol)
+    return below and above

@@ -85,6 +85,7 @@ def _etapes():
         fonctions.p4b_chanfrein,
         fonctions.p5_conge_aretes,
         fonctions.q1_conge_coque_trop_grands,
+        fonctions.q2_conge_cylindre_affleurant,
         fonctions.p6_assistant_percage,
         document.p6_renommer_edition_atomique,
         document.p7_cote_nommee_variable_equation,

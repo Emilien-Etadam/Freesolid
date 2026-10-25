@@ -185,6 +185,11 @@ class EquationsMixin:
         try:
             self._sync_thin(obj)
             self._recompute()
+            if obj.TypeId in ("PartDesign::Fillet", "PartDesign::Chamfer"):
+                # Rayon ou distance rééditée : même garde qu'à la création.
+                invalid = self._invalid_dressup_message(obj)
+                if invalid is not None:
+                    raise KernelError(invalid)
         except KernelError as exc:
             self._restore_props(obj, previous)
             try:

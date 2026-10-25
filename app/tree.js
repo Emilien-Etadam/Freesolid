@@ -5,7 +5,11 @@ import { t } from "./i18n.js";
 import { iconSrc } from "./icons.js";
 import { num } from "./num.js";
 import { arcAngles } from "./geom2d.js";
-import { sketchTreeLabel, splitHistoryAroundBar } from "./history.js";
+import {
+  barSlots, barStepTarget, sameBarTarget, sketchTreeLabel,
+  splitHistoryAroundBar,
+} from "./history.js";
+import { filterTreeLines } from "./treefilter.js";
 import { renameClickAction } from "./rename.js";
 import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
@@ -112,6 +116,7 @@ export function installTree(ctx) {
   // cliquer une fonction, une esquisse ou un plan pendant la commande.
 
   const treeFlyout = document.getElementById("tree-flyout");
+  const treeFilterEl = document.getElementById("tree-filter");
   const treeFlyoutBody = document.getElementById("tree-flyout-body");
   const TREE_FLYOUT_KEY = "freesolid.treeFlyoutOpen";
 
@@ -127,6 +132,11 @@ export function installTree(ctx) {
         aside.insertBefore(tree, document.getElementById("panel"));
       }
       treeFlyout.hidden = true;
+    }
+    // Le filtre se masque pendant une commande, et ne filtre plus.
+    if (treeFilterEl && treeFilterEl.hidden !== panel.active) {
+      treeFilterEl.hidden = panel.active;
+      if (treeFilterEl.value.trim() && ctx.lastTree) renderTree(ctx.lastTree);
     }
   }
 
@@ -205,6 +215,25 @@ export function installTree(ctx) {
   }
 
   const expandedFeatures = new Set(); // les fonctions dépliées (persiste)
+  // Arbre à plat (Affichage) : choix gardé d'une session à l'autre.
+  const FLAT_TREE_KEY = "freesolid.flatTree";
+  let flatTree = (() => {
+    try { return localStorage.getItem(FLAT_TREE_KEY) === "1"; } catch { return false; }
+  })();
+  let barSelected = false; // barre cliquée : ↑/↓ la déplacent
+  let barState = { slots: [], current: -1 }; // positions du dernier rendu
+  let afterBarNames = new Set(); // lignes reculées du dernier rendu
+  let previousBarTarget = null; // position d'avant le dernier déplacement
+
+  /** Texte du filtre ; vide pendant une commande (champ masqué). */
+  function treeFilterText() {
+    return panel.active ? "" : (treeFilterEl?.value ?? "").trim();
+  }
+
+  /** Dépliée : à la main, ou tout l'arbre pendant le filtre. */
+  function isExpanded(name) {
+    return expandedFeatures.has(name) || !!treeFilterText();
+  }
   const folderState = Object.create(null); // dossiers tête, mémoire de session
   const folderPrevCounts = Object.create(null); // compteurs du rendu précédent
   let sketchClickTimer = null;
@@ -493,6 +522,7 @@ export function installTree(ctx) {
   }
 
   function folderIsOpen(key, defaultOpen) {
+    if (treeFilterText()) return true;
     return Object.prototype.hasOwnProperty.call(folderState, key)
       ? folderState[key]
       : defaultOpen;
@@ -586,14 +616,17 @@ export function installTree(ctx) {
       + (ctx.selectedSurface?.name === surface.name ? " sel" : "")
       + (rolledBack ? " rolled-back" : "")
       + (surface.hidden ? " hidden-object" : "");
-    if (!inFolder) item.dataset.hist = surface.name;
+    if (!inFolder) {
+      item.dataset.hist = surface.name;
+      item.dataset.line = surface.name;
+    }
     item.dataset.feat = surface.name;
     const children = surface.children ?? [];
     const hasChildren = children.length > 0;
     const arrow = document.createElement("span");
     arrow.className = "arrow";
     arrow.textContent = hasChildren
-      ? (expandedFeatures.has(surface.name) ? "▾" : "▸") : "";
+      ? (isExpanded(surface.name) ? "▾" : "▸") : "";
     if (hasChildren) {
       arrow.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -621,13 +654,14 @@ export function installTree(ctx) {
     item.addEventListener("dblclick", () => onSurfaceDblClick(surface));
     item.addEventListener("contextmenu", (event) => ctx.openMenu(event, surface));
     treeEl.appendChild(item);
-    if (hasChildren && expandedFeatures.has(surface.name)) {
+    if (hasChildren && isExpanded(surface.name)) {
       for (const child of children) {
         const row = document.createElement("li");
         row.className = "child" + (inFolder ? " in-folder" : "")
           + (child.error ? " error" : "")
           + (rolledBack ? " rolled-back" : "");
         row.dataset.feat = child.name;
+        if (!inFolder) row.dataset.line = `${surface.name}/${child.name}`;
         row.appendChild(treeIcon("Sketcher_Sketch"));
         row.appendChild(document.createTextNode(child.label));
         row.title = `${child.kind} — `
@@ -643,14 +677,162 @@ export function installTree(ctx) {
     }
   }
 
-  function appendRollbackBar(tree) {
+  function appendRollbackBar() {
     const bar = document.createElement("li");
-    bar.className = "rollback";
+    bar.className = "rollback" + (barSelected ? " sel" : "");
     bar.textContent = t("▲ barre de retour arrière ▲");
-    bar.title = t("Glisser pour déplacer · double-clic : revenir à l'état final");
-    bar.addEventListener("dblclick", () => refresh(call("tip_to_end")));
-    bindRollbackDrag(bar, tree);
+    bar.title = t("Glisser pour déplacer · clic puis ↑/↓ : d'une ligne · "
+      + "double-clic : revenir à l'état final · clic droit : commandes");
+    bar.addEventListener("click", () => setBarSelected(true));
+    bar.addEventListener("dblclick", () => moveBar({ op: "tip_to_end" }));
+    bar.addEventListener("contextmenu", (event) => {
+      setBarSelected(true);
+      ctx.openBarMenu?.(event);
+    });
+    bindRollbackDrag(bar);
     treeEl.appendChild(bar);
+  }
+
+  function setBarSelected(on) {
+    barSelected = on;
+    treeEl.querySelector("li.rollback")?.classList.toggle("sel", on);
+  }
+
+  // Un clic ailleurs relâche la barre (les flèches reviennent à la vue).
+  document.addEventListener("pointerdown", (event) => {
+    if (barSelected && !event.target.closest?.("#tree li.rollback, #ctxmenu")) {
+      setBarSelected(false);
+    }
+  }, true);
+
+  /** Pose sur chaque ligne d'historique la position de barre qui la suit
+   *  (data-slot) ; la première porte aussi celle d'au-dessus. */
+  function markBarSlots(split) {
+    barState = barSlots(split, {
+      expanded: isExpanded,
+      folderOpen: (folder) => folderIsOpen(`user:${folder}`, false),
+      flat: flatTree,
+    });
+    const lines = new Map();
+    for (const li of treeEl.querySelectorAll("li[data-line]")) {
+      lines.set(li.dataset.line, li);
+    }
+    const first = treeEl.querySelector("li[data-line]");
+    for (const slot of barState.slots) {
+      const li = slot.line === null ? first : lines.get(slot.line);
+      if (!li) continue;
+      li.dataset[slot.line === null ? "slotAbove" : "slot"] =
+        JSON.stringify(slot.target);
+    }
+    afterBarNames = new Set();
+    for (const row of split.after) {
+      afterBarNames.add(row.item.name);
+      for (const child of row.item.children ?? []) afterBarNames.add(child.name);
+    }
+  }
+
+  let barMoving = false; // un déplacement à la fois : le suivant part de l'arbre rendu
+
+  /** Barre vers `target` (une position de barSlots) ; la position quittée
+   *  devient la précédente. */
+  function moveBar(target) {
+    const here = barState.slots[barState.current]?.target ?? null;
+    if (!target || barMoving || sameBarTarget(target, here)) return;
+    previousBarTarget = here;
+    barMoving = true;
+    Promise.resolve(refresh(target.op === "tip_to_end"
+      ? call("tip_to_end")
+      : call("set_tip", target.feature ? { feature: target.feature } : {})))
+      .finally(() => { barMoving = false; });
+  }
+
+  /** Un pas : -1 recule la barre d'une ligne, +1 l'avance. */
+  function stepBar(step) {
+    moveBar(barStepTarget(barState, step));
+  }
+
+  function barToPrevious() {
+    moveBar(previousBarTarget);
+  }
+
+  /** Ce que les commandes de la barre peuvent faire, pour son menu. */
+  function barCommands() {
+    const here = barState.slots[barState.current]?.target ?? null;
+    return {
+      forward: !!barStepTarget(barState, 1),
+      previous: !!previousBarTarget && !sameBarTarget(previousBarTarget, here),
+      end: barState.current >= 0 && barState.current < barState.slots.length - 1,
+      below: afterBarNames.size > 0,
+    };
+  }
+
+  function isAfterBar(name) {
+    return afterBarNames.has(name);
+  }
+
+  /** ↑/↓ sur la barre sélectionnée ; Échap la relâche. */
+  function handleBarKey(event) {
+    if (!barSelected || event.ctrlKey || event.metaKey || event.altKey
+        || event.shiftKey) return false;
+    if (event.key === "Escape") {
+      setBarSelected(false);
+      return true;
+    }
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return false;
+    event.preventDefault();
+    if (!event.repeat) stepBar(event.key === "ArrowUp" ? -1 : 1);
+    return true;
+  }
+
+  function setFlatTree(on) {
+    flatTree = !!on;
+    try { localStorage.setItem(FLAT_TREE_KEY, flatTree ? "1" : "0"); } catch { /* ok */ }
+    if (ctx.lastTree) renderTree(ctx.lastTree);
+  }
+
+  function isFlatTree() {
+    return flatTree;
+  }
+
+  document.querySelector("aside > h2")?.addEventListener("contextmenu",
+    (event) => ctx.openTreeTitleMenu?.(event));
+
+  treeFilterEl?.addEventListener("input", () => {
+    if (ctx.lastTree) renderTree(ctx.lastTree);
+  });
+  treeFilterEl?.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !treeFilterEl.value) return;
+    event.preventDefault();
+    treeFilterEl.value = "";
+    if (ctx.lastTree) renderTree(ctx.lastTree);
+  });
+
+  /** Masque les lignes hors filtre ; leurs parents et la barre restent. */
+  function applyTreeFilter() {
+    const text = treeFilterText();
+    if (!text) return;
+    const items = [...treeEl.children];
+    const lines = [];
+    let folder = -1; // dossier ouvert au-dessus
+    let owner = -1; // dernière ligne qui peut porter des esquisses
+    for (const [i, li] of items.entries()) {
+      const child = li.classList.contains("child");
+      const inFolder = li.classList.contains("in-folder");
+      lines.push({
+        label: li.textContent,
+        parent: child ? owner : inFolder ? folder : -1,
+        keep: li.classList.contains("rollback"),
+      });
+      if (li.classList.contains("folder")) {
+        folder = i;
+        owner = -1;
+      } else if (!child) {
+        owner = i;
+        if (!inFolder) folder = -1;
+      }
+    }
+    const visible = filterTreeLines(lines, text);
+    items.forEach((li, i) => { li.hidden = !visible[i]; });
   }
 
   // Glisser-déposer d'une fonction dans l'arbre : le repère d'insertion de
@@ -785,7 +967,7 @@ export function installTree(ctx) {
                                     moveEvent.clientY - start.y) < 6) return;
         dragging = true;
         row.classList.add("dragging");
-        const slots = rollbackSlotPositions();
+        const slots = reorderSlotPositions();
         if (slots.length) showInsertMark(nearestRollbackSlot(moveEvent.clientY, slots));
       };
       const onUp = (upEvent) => {
@@ -799,7 +981,7 @@ export function installTree(ctx) {
         suppressTreeClick = true;
         setTimeout(() => { suppressTreeClick = false; }, 0);
         const rows = [...treeEl.querySelectorAll("li[data-hist]")];
-        const slots = rollbackSlotPositions();
+        const slots = reorderSlotPositions();
         if (!slots.length) return;
         const slot = nearestRollbackSlot(upEvent.clientY, slots);
         const own = rows.indexOf(row);
@@ -816,20 +998,25 @@ export function installTree(ctx) {
     });
   }
 
-  function applyRollbackSlot(index, history) {
-    if (index <= 0) {
-      refresh(call("set_tip", {}));
-      return;
+  /** Positions de dépôt de la barre : chacune porte sa cible (data-slot),
+   *  sous la ligne affichée qui la porte. */
+  function rollbackSlotPositions() {
+    const slots = [];
+    for (const li of treeEl.querySelectorAll("li[data-slot-above], li[data-slot]")) {
+      if (!li.getClientRects().length) continue; // masquée par le filtre
+      const rect = li.getBoundingClientRect();
+      if (li.dataset.slotAbove) {
+        slots.push({ y: rect.top, target: JSON.parse(li.dataset.slotAbove) });
+      }
+      if (li.dataset.slot) {
+        slots.push({ y: rect.bottom, target: JSON.parse(li.dataset.slot) });
+      }
     }
-    if (index >= history.length) {
-      refresh(call("tip_to_end"));
-      return;
-    }
-    const target = history[index - 1];
-    refresh(call("set_tip", { feature: target.item.name }));
+    return slots;
   }
 
-  function rollbackSlotPositions() {
+  /** Positions d'insertion du glisser-réordonner, par indice de ligne. */
+  function reorderSlotPositions() {
     const rows = [...treeEl.querySelectorAll("li[data-hist]")];
     if (!rows.length) return [];
     const slots = [{ y: rows[0].getBoundingClientRect().top, index: 0 }];
@@ -870,16 +1057,12 @@ export function installTree(ctx) {
     treeEl.querySelector("li.insert-mark")?.remove();
   }
 
-  function bindRollbackDrag(bar, tree) {
+  function bindRollbackDrag(bar) {
     bar.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
       const startX = event.clientX;
       const startY = event.clientY;
-      const split = splitHistoryAroundBar(
-        tree.features ?? [], tree.surfaces ?? [], tree.tip);
-      const history = split.before.concat(split.after);
-      const currentSlot = split.before.length;
       let dragging = false;
       try {
         bar.setPointerCapture(event.pointerId);
@@ -906,9 +1089,7 @@ export function installTree(ctx) {
         if (!dragging) return;
         const slots = rollbackSlotPositions();
         if (!slots.length) return;
-        const slot = nearestRollbackSlot(upEvent.clientY, slots);
-        if (slot.index === currentSlot) return;
-        applyRollbackSlot(slot.index, history);
+        moveBar(nearestRollbackSlot(upEvent.clientY, slots).target);
       };
       bar.addEventListener("pointermove", onMove);
       bar.addEventListener("pointerup", onUp);
@@ -982,6 +1163,7 @@ export function installTree(ctx) {
     ctx.pluginRuntime?.renderTreeRows(tree, {
       treeIcon, openMenu: ctx.openMenu, append: (row) => treeEl.appendChild(row),
     });
+    applyTreeFilter();
     syncGraphFromTree();
   }
 
@@ -1058,21 +1240,25 @@ export function installTree(ctx) {
     treeEl.appendChild(origin);
 
     const features = tree.features ?? [];
-    const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip);
+    const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip,
+      { flat: flatTree });
     if (split.bar !== "none") {
       appendHistoryRows(split.before, false);
-      appendRollbackBar(tree);
+      appendRollbackBar();
       appendHistoryRows(split.after, true);
     }
+    markBarSlots(split);
   }
 
   /** Lignes d'historique ; les fonctions rangées dans un même dossier
-   *  (qui se suivent) passent sous une ligne de dossier repliable. */
+   *  (qui se suivent) passent sous une ligne de dossier repliable — sauf
+   *  dans l'arbre à plat, sans dossiers. Une esquisse sortie de sa
+   *  fonction (barre, arbre à plat) est une ligne à elle. */
   function appendHistoryRows(rows, rolledBack) {
     let current = null;
     let open = true;
     rows.forEach((row, i) => {
-      const folder = row.surface ? null : row.item.folder ?? null;
+      const folder = flatTree || row.surface ? null : row.item.folder ?? null;
       if (folder !== current) {
         current = folder;
         open = true;
@@ -1085,6 +1271,7 @@ export function installTree(ctx) {
           open = appendFolder(`user:${folder}`, folder, count, "folder", false,
             { title: t("Dossier — clic droit : renommer, défaire") });
           treeEl.lastElementChild.classList.add("user-folder");
+          treeEl.lastElementChild.dataset.line = `folder:${folder}`;
           treeEl.lastElementChild.addEventListener("contextmenu", (event) => {
             event.preventDefault();
             ctx.onFolderMenu?.(folder);
@@ -1097,17 +1284,21 @@ export function installTree(ctx) {
           inFolder: false, rolledBack: rolledBack || !!row.item.rolled_back,
         });
       } else {
-        appendFeatureHistoryRow(row.item, rolledBack, !!folder);
+        appendFeatureHistoryRow(row.item, rolledBack, !!folder,
+          { lifted: !!row.parent });
       }
     });
   }
 
-  function appendFeatureHistoryRow(feature, rolledBack, inUserFolder = false) {
+  function appendFeatureHistoryRow(feature, rolledBack, inUserFolder = false,
+    { lifted = false } = {}) {
     const row = document.createElement("li");
     if (inUserFolder) row.classList.add("in-folder");
     row.classList.add("feat");
     row.dataset.feat = feature.name;
-    row.dataset.hist = feature.name;
+    row.dataset.line = feature.name;
+    // Esquisse sortie de sa fonction : pas une ligne à réordonner.
+    if (!lifted) row.dataset.hist = feature.name;
     if (feature.error) row.classList.add("error");
     if (rolledBack) row.classList.add("rolled-back");
     if (feature.suppressed) row.classList.add("suppressed");
@@ -1116,7 +1307,7 @@ export function installTree(ctx) {
     const arrow = document.createElement("span");
     arrow.className = "arrow";
     arrow.textContent = hasChildren
-      ? (expandedFeatures.has(feature.name) ? "▾" : "▸") : "";
+      ? (isExpanded(feature.name) ? "▾" : "▸") : "";
     if (hasChildren) {
       arrow.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -1159,7 +1350,7 @@ export function installTree(ctx) {
       }
     });
     row.addEventListener("contextmenu", (event) => ctx.openMenu(event, feature));
-    bindFeatureDrag(row, feature);
+    if (!lifted) bindFeatureDrag(row, feature);
     if (feature.type === "PartDesign::Plane") {
       // Un plan de référence se choisit comme un plan d'origine.
       row.classList.add("plane");
@@ -1191,11 +1382,12 @@ export function installTree(ctx) {
     treeEl.appendChild(row);
 
     // L'esquisse consommée vit sous sa fonction.
-    if (hasChildren && expandedFeatures.has(feature.name)) {
+    if (hasChildren && isExpanded(feature.name)) {
       for (const child of feature.children) {
         const childRow = document.createElement("li");
         childRow.className = "child" + (child.error ? " error" : "");
         childRow.dataset.feat = child.name;
+        childRow.dataset.line = `${feature.name}/${child.name}`;
         if (rolledBack) childRow.classList.add("rolled-back");
         if (ctx.selectedSketch?.name === child.name) childRow.classList.add("sel");
         childRow.appendChild(treeIcon("Sketcher_Sketch"));
@@ -1691,5 +1883,7 @@ export function installTree(ctx) {
     clearSurfaceSelection, selectSketch, onPlaneRow,
     beginInlineRename, treeRowFor, beginRenameSelected,
     renderTree, editSurface, editFeature,
+    moveBar, stepBar, barToPrevious, barCommands, isAfterBar, handleBarKey,
+    setFlatTree, isFlatTree,
   };
 }

@@ -1009,6 +1009,7 @@ document.addEventListener("keydown", (event) => {
   }
   // Typing in a panel field must not trigger view shortcuts (F, Ctrl+1…).
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
+  if (handleBarKey(event)) return; // barre de retour sélectionnée : ↑/↓
   if (applyViewNudge(event)) return;
   if (event.key !== "Escape" && pluginRuntime?.dispatchKey(event)) return;
   // Raccourcis personnels : une commande du ruban par combinaison.
@@ -1104,6 +1105,8 @@ installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
       openOrientBox();
     } else if (name === "origin") {
       toggleOrigin();
+    } else if (name === "flat-tree") {
+      setFlatTree(!isFlatTree());
     } else if (name === "report") {
       window.open(ISSUES_URL, "_blank", "noopener");
     } else if (name === "home") {
@@ -1160,11 +1163,15 @@ const {
   clearSurfaceSelection, selectSketch, onPlaneRow,
   beginInlineRename, treeRowFor, beginRenameSelected,
   renderTree, editSurface, editFeature,
+  moveBar, stepBar, barToPrevious, barCommands, isAfterBar, handleBarKey,
+  setFlatTree, isFlatTree,
 } = installTree(ctx);
 Object.assign(ctx, {
   renderTree, refreshDatumGhost, clearSketchSelection,
   cancelPendingSurfaceClick, onSurfaceClick, onSurfaceDblClick,
   clearSurfaceSelection, selectSketch,
+  moveBar, stepBar, barToPrevious, barCommands, isAfterBar,
+  setFlatTree, isFlatTree,
 });
 
 // ---------- menus contextuels (arbre et zone graphique) ----------
@@ -1196,8 +1203,12 @@ Object.assign(ctx, {
   panel, container, renderer,
 });
 
-const { openMenu, showContextToolbar, hideContextToolbar } = installContextMenu(ctx);
+const {
+  openMenu, openBarMenu, openTreeTitleMenu, showContextToolbar, hideContextToolbar,
+} = installContextMenu(ctx);
 ctx.openMenu = openMenu;
+ctx.openBarMenu = openBarMenu;
+ctx.openTreeTitleMenu = openTreeTitleMenu;
 ctx.showContextToolbar = showContextToolbar;
 ctx.hideContextToolbar = hideContextToolbar;
 

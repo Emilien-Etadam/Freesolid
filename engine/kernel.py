@@ -158,7 +158,9 @@ def rollback_plan(history, target_name=None):
     """Calcule les flags de recul et le Tip à partir des lignes d'historique.
 
     *history* : séquence de dicts ``{name, order, kind}`` déjà triée par
-    ``order``, avec ``kind`` ∈ ``{"feature", "sketch", "surface"}``.
+    ``order``, avec ``kind`` ∈ ``{"feature", "sketch", "surface",
+    "absorbed"}``. ``absorbed`` : l'esquisse rangée sous sa fonction — la
+    barre peut se poser juste après elle, elle ne prend pas de flag.
     *target_name* : dernière ligne visible, ou ``None`` (barre en tête).
 
     Retour : ``(flags, tip)`` — ``flags`` mappe chaque nom sketch/surface

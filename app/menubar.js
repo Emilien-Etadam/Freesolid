@@ -78,6 +78,7 @@ export function menuBarModel(ribbon) {
       { sep: true },
       item("Boîte d'orientation", { action: "orient", shortcut: "Espace" }),
       item("Origine", { action: "origin" }),
+      item("Arbre à plat", { action: "flat-tree" }),
     ] },
     { id: "insert", label: "Insertion", items: insertionItems(ribbon) },
     { id: "tools", label: "Outils", items: [

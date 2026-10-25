@@ -549,6 +549,7 @@ def test_ops_snapshot_keys():
             "curve_project",
             "delete_configuration",
             "delete_feature",
+            "delete_rolled_back",
             "delete_variable",
             "document_properties",
             "document_status",

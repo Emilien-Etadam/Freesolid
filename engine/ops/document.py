@@ -78,6 +78,7 @@ OPS = (
                                        # esquisse libre, surface).
                                        # Absent = barre avant la première
     Op("tip_to_end", undo=True),       # back to the final state
+    Op("delete_rolled_back", undo=True),  # tout ce qui est sous la barre
     Op("delete_feature", Req(("feature", str)), undo=True),
     Op("reorder_feature", Req(("feature", str), ("target", str),
                               optional={"after": bool}), undo=True),

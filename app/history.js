@@ -36,6 +36,7 @@ export const STEP_LABELS = {
   set_tip: "Barre de retour",
   tip_to_end: "Barre de retour",
   delete_feature: "Supprimer",
+  delete_rolled_back: "Supprimer sous la barre",
   reorder_feature: "Réordonner",
   set_comment: "Commentaire",
   paste_feature: "Coller",
@@ -116,6 +117,18 @@ function isVolumeRow(row) {
   return !row.surface && !REFERENCE_TYPES.has(row.item.type);
 }
 
+/** Rang d'une ligne : son `order` (index document), sinon après tout. */
+function rowRank(row) {
+  return typeof row.item.order === "number" ? row.item.order : row.index + 1e6;
+}
+
+function byRank(a, b) {
+  const ra = rowRank(a);
+  const rb = rowRank(b);
+  if (ra !== rb) return ra - rb;
+  return a.index - b.index;
+}
+
 /** Lignes top-niveau (fonctions + esquisses libres + surfaces),
  *  ordonnées par `order` (index document). */
 export function chronologicalHistory(features, surfaces) {
@@ -128,13 +141,40 @@ export function chronologicalHistory(features, surfaces) {
   for (const [index, item] of surfaceList.entries()) {
     rows.push({ item, surface: true, index: featureList.length + index });
   }
-  rows.sort((a, b) => {
-    const oa = typeof a.item.order === "number" ? a.item.order : a.index + 1e6;
-    const ob = typeof b.item.order === "number" ? b.item.order : b.index + 1e6;
-    if (oa !== ob) return oa - ob;
-    return a.index - b.index;
-  });
+  rows.sort(byRank);
   return rows;
+}
+
+/** Esquisses enfants sorties en lignes, chacune à son rang. La ligne de
+ *  la fonction devient une copie, sans elles. */
+function liftChildren(sides, flat) {
+  const lifted = { before: [], after: [] };
+  const seen = new Set();
+  for (const side of ["before", "after"]) {
+    const rows = sides[side];
+    for (const [i, row] of rows.entries()) {
+      if (row.surface) continue;
+      const children = row.item.children ?? [];
+      const lift = children.filter(
+        (child) => flat || (side === "after" && child.unabsorbed));
+      if (!lift.length) continue;
+      rows[i] = { ...row, item: {
+        ...row.item, children: children.filter((child) => !lift.includes(child)),
+      } };
+      for (const child of lift) {
+        if (seen.has(child.name)) continue; // partagée : une seule ligne
+        seen.add(child.name);
+        lifted[child.unabsorbed ? "before" : side].push({
+          item: child, surface: false, index: row.index, parent: row.item.name,
+        });
+      }
+    }
+  }
+  for (const side of ["before", "after"]) {
+    if (!lifted[side].length) continue;
+    sides[side].push(...lifted[side]);
+    sides[side].sort(byRank);
+  }
 }
 
 /** Sépare l'historique en `before` / `after` la barre de retour.
@@ -142,8 +182,15 @@ export function chronologicalHistory(features, surfaces) {
  *  Une surface, une esquisse libre ou une référence (plan, axe, point)
  *  est *après* ssi `rolled_back` est vrai.
  *  Une fonction volumique est après le tip (tip absent + fonctions
- *  présentes = toutes après). Barre `"none"` si aucune ligne. */
-export function splitHistoryAroundBar(features, surfaces, tip) {
+ *  présentes = toutes après). Barre `"none"` si aucune ligne.
+ *
+ *  Une esquisse que la barre a sortie de sa fonction (`unabsorbed`) passe
+ *  au-dessus, à son rang ; la fonction reste dessous, sans elle.
+ *  `flat` (arbre à plat) : chaque esquisse enfant d'une fonction devient
+ *  une ligne à son rang, du côté de sa fonction (au-dessus si elle est
+ *  sortie) ; une esquisse partagée ne paraît qu'une fois. Les surfaces
+ *  gardent leurs esquisses. */
+export function splitHistoryAroundBar(features, surfaces, tip, { flat = false } = {}) {
   const history = chronologicalHistory(features, surfaces);
   if (history.length === 0) {
     return { bar: "none", before: [], after: [] };
@@ -165,9 +212,80 @@ export function splitHistoryAroundBar(features, surfaces, tip) {
       after.push(row);
     }
   }
+  liftChildren({ before, after }, flat);
   return {
     bar: before.length === 0 ? "start" : "middle",
     before,
     after,
   };
+}
+
+const setTipOn = (feature) => ({ op: "set_tip", feature });
+
+/** Positions de la barre dans l'arbre affiché, de haut en bas, et celle
+ *  où elle se trouve (`current`).
+ *
+ *  Chaque position porte sa cible — l'appel au moteur, `{ op, feature }`
+ *  — et la ligne sous laquelle elle se dépose (`line`, null tout en
+ *  haut) : le nom de la ligne, `fonction/esquisse` pour une esquisse
+ *  rangée sous sa fonction, `folder:nom` pour un dossier replié.
+ *  - tout en haut : barre avant la première ligne ;
+ *  - sous une fonction dépliée, avant ses esquisses : entre la fonction
+ *    et sa dernière esquisse (une esquisse partagée ⇄ ne compte pas) ;
+ *  - sous sa dernière esquisse : après la fonction ;
+ *  - sous un dossier replié : après sa dernière ligne ;
+ *  - tout en bas : l'état final.
+ *  `expanded(nom)` et `folderOpen(nom)` disent ce que l'arbre déplie ;
+ *  `flat` : pas de dossiers, comme l'arbre à plat. */
+export function barSlots(split, {
+  expanded = () => false, folderOpen = () => true, flat = false,
+} = {}) {
+  if (!split || split.bar === "none") return { slots: [], current: -1 };
+  const slots = [{ line: null, target: { op: "set_tip" } }];
+  const pushRow = (row) => {
+    const { item } = row;
+    const children = item.children ?? [];
+    if (!children.length || !expanded(item.name)) {
+      slots.push({ line: item.name, target: setTipOn(item.name) });
+      return;
+    }
+    const own = row.surface ? null
+      : children.filter((child) => !child.shared?.length).at(-1);
+    if (own) slots.push({ line: item.name, target: setTipOn(own.name) });
+    slots.push({ line: `${item.name}/${children.at(-1).name}`,
+      target: setTipOn(item.name) });
+  };
+  const pushSide = (rows) => {
+    for (let i = 0; i < rows.length;) {
+      const folder = flat || rows[i].surface ? null : rows[i].item.folder ?? null;
+      let j = i + 1;
+      while (folder && j < rows.length && !rows[j].surface
+             && rows[j].item.folder === folder) j++;
+      if (folder && !folderOpen(folder)) {
+        slots.push({ line: `folder:${folder}`,
+          target: setTipOn(rows[j - 1].item.name) });
+      } else {
+        for (const row of rows.slice(i, j)) pushRow(row);
+      }
+      i = j;
+    }
+  };
+  pushSide(split.before);
+  const current = slots.length - 1;
+  pushSide(split.after);
+  slots[slots.length - 1] = { ...slots.at(-1), target: { op: "tip_to_end" } };
+  return { slots, current };
+}
+
+/** Même position de barre (même appel au moteur). */
+export function sameBarTarget(a, b) {
+  return !!a && !!b && a.op === b.op && (a.feature ?? null) === (b.feature ?? null);
+}
+
+/** Cible de la position voisine : `step` -1 au-dessus, +1 au-dessous ;
+ *  null au bout de l'arbre. */
+export function barStepTarget({ slots, current }, step) {
+  const index = current + step;
+  if (current < 0 || index < 0 || index >= slots.length) return null;
+  return slots[index].target;
 }

@@ -221,6 +221,26 @@ describe("buildGraph", () => {
     assert.equal(nodes.XZ_Plane.afterBar, false);
   });
 
+  it("une esquisse sortie par la barre n'est pas après elle", () => {
+    const graph = buildGraph({
+      tip: "Pad",
+      planes: [],
+      features: [
+        { name: "Pad", label: "Bossage1", kind: "Extrusion",
+          type: "PartDesign::Pad", order: 1 },
+        { name: "Pocket", label: "Enlèvement1", kind: "Enlèvement",
+          type: "PartDesign::Pocket", order: 3, deps: ["Sketch001"],
+          children: [{
+            name: "Sketch001", label: "Esquisse2", kind: "Esquisse",
+            type: "Sketcher::SketchObject", order: 2, unabsorbed: true,
+          }] },
+      ],
+    });
+    const nodes = byName(graph);
+    assert.equal(nodes.Pocket.afterBar, true);
+    assert.equal(nodes.Sketch001.afterBar, false);
+  });
+
   it("reporte dep_subs sur l'arête et params sur le nœud", () => {
     const graph = buildGraph({
       features: [

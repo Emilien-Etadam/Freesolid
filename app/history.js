@@ -117,6 +117,18 @@ function isVolumeRow(row) {
   return !row.surface && !REFERENCE_TYPES.has(row.item.type);
 }
 
+/** Rang d'une ligne : son `order` (index document), sinon après tout. */
+function rowRank(row) {
+  return typeof row.item.order === "number" ? row.item.order : row.index + 1e6;
+}
+
+function byRank(a, b) {
+  const ra = rowRank(a);
+  const rb = rowRank(b);
+  if (ra !== rb) return ra - rb;
+  return a.index - b.index;
+}
+
 /** Lignes top-niveau (fonctions + esquisses libres + surfaces),
  *  ordonnées par `order` (index document). */
 export function chronologicalHistory(features, surfaces) {
@@ -129,13 +141,35 @@ export function chronologicalHistory(features, surfaces) {
   for (const [index, item] of surfaceList.entries()) {
     rows.push({ item, surface: true, index: featureList.length + index });
   }
-  rows.sort((a, b) => {
-    const oa = typeof a.item.order === "number" ? a.item.order : a.index + 1e6;
-    const ob = typeof b.item.order === "number" ? b.item.order : b.index + 1e6;
-    if (oa !== ob) return oa - ob;
-    return a.index - b.index;
-  });
+  rows.sort(byRank);
   return rows;
+}
+
+/** Esquisses sorties par la barre (`unabsorbed`) des fonctions reculées :
+ *  des lignes au-dessus d'elle, chacune à son rang. La ligne de la
+ *  fonction devient une copie, sans elles. */
+function liftChildren(sides) {
+  const lifted = [];
+  const seen = new Set();
+  for (const [i, row] of sides.after.entries()) {
+    if (row.surface) continue;
+    const children = row.item.children ?? [];
+    const lift = children.filter((child) => child.unabsorbed);
+    if (!lift.length) continue;
+    sides.after[i] = { ...row, item: {
+      ...row.item, children: children.filter((child) => !lift.includes(child)),
+    } };
+    for (const child of lift) {
+      if (seen.has(child.name)) continue; // partagée : une seule ligne
+      seen.add(child.name);
+      lifted.push({
+        item: child, surface: false, index: row.index, parent: row.item.name,
+      });
+    }
+  }
+  if (!lifted.length) return;
+  sides.before.push(...lifted);
+  sides.before.sort(byRank);
 }
 
 /** Sépare l'historique en `before` / `after` la barre de retour.
@@ -143,7 +177,10 @@ export function chronologicalHistory(features, surfaces) {
  *  Une surface, une esquisse libre ou une référence (plan, axe, point)
  *  est *après* ssi `rolled_back` est vrai.
  *  Une fonction volumique est après le tip (tip absent + fonctions
- *  présentes = toutes après). Barre `"none"` si aucune ligne. */
+ *  présentes = toutes après). Barre `"none"` si aucune ligne.
+ *
+ *  Une esquisse que la barre a sortie de sa fonction (`unabsorbed`) passe
+ *  au-dessus, à son rang ; la fonction reste dessous, sans elle. */
 export function splitHistoryAroundBar(features, surfaces, tip) {
   const history = chronologicalHistory(features, surfaces);
   if (history.length === 0) {
@@ -166,6 +203,7 @@ export function splitHistoryAroundBar(features, surfaces, tip) {
       after.push(row);
     }
   }
+  liftChildren({ before, after });
   return {
     bar: before.length === 0 ? "start" : "middle",
     before,

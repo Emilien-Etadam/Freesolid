@@ -159,3 +159,38 @@ describe("countTreeErrors", () => {
     assert.equal(countTreeErrors(null), 0);
   });
 });
+
+// Bossage (Pad) sur son esquisse, enlèvement (Pocket) sur la sienne : les
+// esquisses précèdent leur fonction dans l'ordre du document.
+function padPocket({ unabsorbed = false, folder } = {}) {
+  const pad = { ...feat("Pad", 1), children: [sketch("Sketch", 0)] };
+  const pocket = { ...feat("Pocket", 3, "PartDesign::Pocket"),
+    children: [{ ...sketch("Sketch001", 2), ...(unabsorbed ? { unabsorbed } : {}) }] };
+  if (folder) pocket.folder = folder;
+  return [pad, pocket];
+}
+
+const names = (rows) => rows.map((row) => row.item.name);
+
+describe("esquisse sortie par la barre (unabsorbed)", () => {
+  it("passe au-dessus de la barre, sa fonction dessous sans elle", () => {
+    const split = splitHistoryAroundBar(padPocket({ unabsorbed: true }), [], "Pad");
+    assert.deepEqual(names(split.before), ["Pad", "Sketch001"]);
+    assert.equal(split.before[1].parent, "Pocket");
+    assert.deepEqual(names(split.after), ["Pocket"]);
+    assert.deepEqual(split.after[0].item.children, []);
+  });
+
+  it("ne touche pas l'arbre reçu", () => {
+    const features = padPocket({ unabsorbed: true });
+    splitHistoryAroundBar(features, [], "Pad");
+    assert.equal(features[1].children.length, 1);
+  });
+
+  it("barre en tête : l'esquisse sortie suffit à la poser au milieu", () => {
+    const [, pocket] = padPocket({ unabsorbed: true });
+    const split = splitHistoryAroundBar([pocket], [], null);
+    assert.equal(split.bar, "middle");
+    assert.deepEqual(names(split.before), ["Sketch001"]);
+  });
+});

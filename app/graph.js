@@ -115,7 +115,8 @@ function namesAfterBar(tree) {
     const item = row?.item;
     if (item?.name) names.add(item.name);
     for (const child of listOf(item?.children)) {
-      if (child?.name) names.add(child.name);
+      // Esquisse sortie par la barre : au-dessus, même sous sa fonction.
+      if (child?.name && !child.unabsorbed) names.add(child.name);
     }
   }
   return names;

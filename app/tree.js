@@ -1067,7 +1067,8 @@ export function installTree(ctx) {
   }
 
   /** Lignes d'historique ; les fonctions rangées dans un même dossier
-   *  (qui se suivent) passent sous une ligne de dossier repliable. */
+   *  (qui se suivent) passent sous une ligne de dossier repliable. Une
+   *  esquisse sortie de sa fonction par la barre est une ligne à elle. */
   function appendHistoryRows(rows, rolledBack) {
     let current = null;
     let open = true;
@@ -1097,12 +1098,14 @@ export function installTree(ctx) {
           inFolder: false, rolledBack: rolledBack || !!row.item.rolled_back,
         });
       } else {
-        appendFeatureHistoryRow(row.item, rolledBack, !!folder);
+        appendFeatureHistoryRow(row.item, rolledBack, !!folder,
+          { lifted: !!row.parent });
       }
     });
   }
 
-  function appendFeatureHistoryRow(feature, rolledBack, inUserFolder = false) {
+  function appendFeatureHistoryRow(feature, rolledBack, inUserFolder = false,
+    { lifted = false } = {}) {
     const row = document.createElement("li");
     if (inUserFolder) row.classList.add("in-folder");
     row.classList.add("feat");
@@ -1159,7 +1162,8 @@ export function installTree(ctx) {
       }
     });
     row.addEventListener("contextmenu", (event) => ctx.openMenu(event, feature));
-    bindFeatureDrag(row, feature);
+    // Esquisse sortie de sa fonction : pas une ligne à réordonner.
+    if (!lifted) bindFeatureDrag(row, feature);
     if (feature.type === "PartDesign::Plane") {
       // Un plan de référence se choisit comme un plan d'origine.
       row.classList.add("plane");

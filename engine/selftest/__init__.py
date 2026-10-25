@@ -186,6 +186,7 @@ def _etapes():
         esquisse.p70_esquisse_3d,
         fonctions.p19b_paroi_mince_extremites_fermees,
         document.p71_genres_neutres,
+        document.p72_maillage_identique,
         document.p73_cotes_neutres,
         _etapes_des_plugins,
         document.bilan,

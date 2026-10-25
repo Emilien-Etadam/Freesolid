@@ -870,14 +870,24 @@ class TreeMixin:
         return tree
 
     def _face_mesh(self, face, face_id, deviation):
-        """Tessellation d'une face + normales exactes ``normalAt(u, v)``."""
-        from engine.surfaces import is_bspline_surface, project_uv
+        """Tessellation d'une face + normales exactes ``normalAt(u, v)``.
+
+        Une face plane a la même normale en tout point : elle se calcule
+        au premier sommet et se répète, sans reprojeter les suivants.
+        """
+        from engine.surfaces import (
+            is_bspline_surface, is_plane_surface, surface_uv,
+        )
         vertices, triangles = face.tessellate(float(deviation))
         points = [(v.x, v.y, v.z) for v in vertices]
+        planar = is_plane_surface(face)
         normals = []
         for vertex in vertices:
+            if planar and normals:
+                normals.append(normals[0])
+                continue
             try:
-                u, v, _on = project_uv(face, vertex.x, vertex.y, vertex.z)
+                u, v = surface_uv(face, vertex.x, vertex.y, vertex.z)
                 normal = face.normalAt(u, v)
                 if hasattr(normal, "normalize"):
                     normal = normal.normalize()

@@ -59,8 +59,8 @@ describe("champs selon le type", () => {
 describe("réédition", () => {
   const chamfer = { type: "deux", size: 2, size2: 5, angle: 45, flip: false };
   const params = [
-    { prop: "Size", value: 2 },
-    { prop: "Size2", value: 5 },
+    { key: "size", value: 2 },
+    { key: "size2", value: 5 },
   ];
 
   it("n'envoie rien si le formulaire est inchangé", () => {
@@ -73,15 +73,15 @@ describe("réédition", () => {
     const values = chamferEditValues(
       { kind: "angle", size: 4, size2: 5, angle: 30, flip: true },
       chamfer, params);
-    assert.equal(values.ChamferType, "angle");
-    assert.equal(values.Size, 4);
-    assert.equal(values.Angle, 30);
-    assert.equal(values.FlipDirection, true);
-    assert.equal(values.Size2, undefined);
+    assert.equal(values.kind, "angle");
+    assert.equal(values.size, 4);
+    assert.equal(values.angle, 30);
+    assert.equal(values.flip, true);
+    assert.equal(values.size2, undefined);
   });
 
   it("conserve une expression de distance", () => {
-    const withExpr = [{ prop: "Size", value: 4, expr: "2*Largeur" }];
+    const withExpr = [{ key: "size", value: 4, expr: "2*Largeur" }];
     const current = { type: "egale", size: 4, size2: 1, angle: 45, flip: false };
     assert.deepEqual(chamferEditValues(
       { kind: "egale", size: "2*Largeur", flip: false },
@@ -89,7 +89,7 @@ describe("réédition", () => {
     const changed = chamferEditValues(
       { kind: "egale", size: "3*Largeur", flip: false },
       current, withExpr);
-    assert.equal(changed.Size, "3*Largeur");
-    assert.equal(changed.ChamferType, "egale");
+    assert.equal(changed.size, "3*Largeur");
+    assert.equal(changed.kind, "egale");
   });
 });

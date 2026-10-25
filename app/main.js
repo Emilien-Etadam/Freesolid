@@ -19,7 +19,7 @@ import { installMeasure } from "./measure.js";
 import { VIEW_KEYS, VIEWS, installViewCube } from "./viewcube.js";
 import { installAssembly } from "./assembly.js";
 import { installGraphView } from "./graphview.js";
-import { PROP_LABELS, installTree } from "./tree.js";
+import { paramLabel, paramLabels, installTree } from "./tree.js";
 import { installPicking } from "./picking.js";
 import { installViewport } from "./viewport.js";
 import { installApi } from "./main/api.js";
@@ -1444,7 +1444,7 @@ ctx.onFacePicked = async (face) => {
         { f: drag.label, v: value }));
       if (value > 0) {
         schedulePreview({ op: "set_params", params: {
-          feature: drag.feature, values: { [drag.prop]: value } } });
+          feature: drag.feature, values: { [drag.key]: value } } });
       }
     },
     onEnd: (d) => {
@@ -1457,7 +1457,7 @@ ctx.onFacePicked = async (face) => {
         return;
       }
       refresh(call("set_params", { feature: drag.feature,
-                                   values: { [drag.prop]: value } }));
+                                   values: { [drag.key]: value } }));
     },
   });
 };
@@ -1545,7 +1545,7 @@ expose("graphFn", () => graphFn, (v) => { graphFn = v; });
 expose("selectedDatumFeature", () => selectedDatumFeature, (v) => { selectedDatumFeature = v; });
 expose("selectedSurface", () => selectedSurface, (v) => { selectedSurface = v; });
 Object.assign(ctx, {
-  say, call, refresh, refreshAny, confirm, PROP_LABELS,
+  say, call, refresh, refreshAny, confirm, paramLabels,
   featureCommand, openMenu, editFeature, renderTree, updateViewport,
   onSketchRowClick, onDatumRow, onSurfaceClick, onPlaneRow,
   onSketchRowDblClick, onSurfaceDblClick,
@@ -1859,8 +1859,8 @@ async function openConfigTable() {
     icon: "configurations",
     title: t("Tableau des configurations"),
     groups: table.rows.map((row, i) => ({
-      label: row.prop
-        ? `${row.label} · ${t(PROP_LABELS[row.prop]?.[0] ?? row.prop)}` : row.label,
+      label: row.param
+        ? `${row.label} · ${t(paramLabel(row.type_key, row.param)[0])}` : row.label,
       rows: table.names.map((name) => ({
         type: "number", key: `${i}|${name}`,
         label: name === table.active ? `${name} ✓` : name,

@@ -49,6 +49,14 @@ ses familles (fonction de corps, surface) sont dans `app/typekeys.js`. Le
 TypeId FreeCAD (`type`) reste dans les réponses le temps de la transition,
 pour les plugins qui le lisent, mais aucun code de `app/` ne le lit.
 
+Les cotes rééditables suivent la même règle. `get_params` nomme chaque
+cote par une clé neutre (`key` : `length`, `radius`, `kind`…), celle du
+formulaire de création, tirée de `PARAM_KEYS` par genre. `set_params` et
+`set_param` la reçoivent et la traduisent ; un nom de propriété FreeCAD
+que la table connaît passe encore pendant la transition, toute autre clé
+est refusée. Les valeurs, elles, ne changent pas : une expression reste
+écrite dans la syntaxe de FreeCAD.
+
 ## Les deux risques identifiés — et leur traitement
 
 1. **Le picking** (cliquer une face à l'écran → retrouver la face OCCT).

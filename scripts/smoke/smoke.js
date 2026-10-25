@@ -637,7 +637,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await sleep(20);
     }
     await page.mouse.up();
-    await page.waitForSelector("#param-pick .menu-item[data-prop='Length']", {
+    await page.waitForSelector("#param-pick .menu-item[data-key='length']", {
       timeout: 8000,
     }).catch(() => {});
     const pickVisible = await page.evaluate(() =>
@@ -645,7 +645,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     if (!pickVisible) {
       errors.push("N003 : sélecteur de cote absent après le dépôt du fil");
     } else {
-      await page.click("#param-pick .menu-item[data-prop='Length']");
+      await page.click("#param-pick .menu-item[data-key='length']");
       await sleep(2500);
     }
   }
@@ -666,7 +666,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                              params: { feature } }) });
     const j = await r.json();
     const length = (j.ok ? j.result.params : [])
-      .find((p) => p.prop === "Length") || null;
+      .find((p) => p.key === "length") || null;
     return { edges, length, feature };
   });
   const paramEdge = afterWire.edges.find((e) => e.kind === "param"
@@ -707,7 +707,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                              params: { feature } }) });
     const j = await r.json();
     const length = (j.ok ? j.result.params : [])
-      .find((p) => p.prop === "Length") || null;
+      .find((p) => p.key === "length") || null;
     return { paramCount, length };
   }, afterWire.feature);
   if (afterCut.paramCount !== 0) {
@@ -727,7 +727,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await fetch("/api", { method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ op: "set_params",
-        params: { feature, values: { Length: 10 } } }) });
+        params: { feature, values: { length: 10 } } }) });
   }, afterWire.feature);
   await sleep(1200);
   await page.screenshot({ path: path.join(SHOTS, "4a3-graphe-coupure.png") });

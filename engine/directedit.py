@@ -39,6 +39,7 @@ class DirectEditMixin:
     def face_drag_info(self, face):
         """Comment tirer la face ``face`` du corps actif, ou
         ``{"drag": None}`` si elle ne pilote aucune cote simple."""
+        from engine.vocab import param_key_for, type_key_for
         body = self._require_body()
         shape = getattr(body, "Shape", None)
         index = int(face)
@@ -73,7 +74,9 @@ class DirectEditMixin:
         if abs(abs(offset) - expected) > 1e-6 * max(1.0, expected):
             return {"drag": None}  # pas la face du bout
         return {"drag": {
-            "feature": obj.Name, "label": obj.Label, "prop": "Length",
+            "feature": obj.Name, "label": obj.Label,
+            "key": param_key_for(type_key_for(obj.TypeId), "Length"),
+            "prop": "Length",  # transition : l'interface lit ``key``
             "value": length,
             "point": [center.x, center.y, center.z],
             "normal": [normal.x, normal.y, normal.z],

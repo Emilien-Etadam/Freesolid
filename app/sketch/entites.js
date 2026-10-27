@@ -1,9 +1,12 @@
-// Esquisse : la sélection d'entités (sans l'origine) et le panneau
-// d'une entité — propriétés, poignées de spline, relations qui la touchent.
+// Esquisse : la sélection d'entités (sans l'origine) et ses panneaux —
+// celui d'une entité (propriétés, poignées de spline, relations qui la
+// touchent) et celui d'une sélection de plusieurs éléments ou d'un point
+// (ce qui est choisi, les relations à ajouter, celles qui y sont).
 
 import { t } from "../i18n.js";
 import {
-  entityKindTitle, entityPropertyLines, isDrivingConstraint,
+  entityKindTitle, entityPropertyLines, isDrivingConstraint, pickLabel,
+  samePick,
 } from "../geom2d.js";
 import { ORIGIN_GEO } from "./commun.js";
 
@@ -59,20 +62,124 @@ export function installEntites(sk) {
          : "");
   }
 
+  /** L'entité entière choisie seule (son panneau), ou null : plusieurs
+   *  éléments, ou un point, ont le panneau de la sélection. */
+  function soleEntity() {
+    const [pick, ...rest] = mode.selection;
+    return pick && !rest.length && pick.point == null
+      && pick.geo !== ORIGIN_GEO ? pick.geo : null;
+  }
+
+  /** Ce que le panneau de la sélection montre : il se rouvre quand la
+   *  sélection change. */
+  function selectionKey() {
+    return "sélection:" + mode.selection
+      .map((pick) => `${pick.geo}.${pick.point ?? ""}`).join(",");
+  }
+
   function syncEntityPanel({ refresh = false } = {}) {
     if (!mode.active || mode.drag) return;
-    const geos = uniqueSelectionGeos();
-    // Barre d'état : la longueur de ce qui est sélectionné.
+    // Barre d'état : la longueur des entités choisies entières (un point
+    // n'a pas de longueur).
+    const whole = mode.selection.filter((pick) => pick.point == null)
+      .map((pick) => pick.geo);
     document.dispatchEvent(new CustomEvent("freesolid:sketch-selection", {
-      detail: geos.map((id) => mode.state?.entities.find((e) => e.id === id))
+      detail: whole.map((id) => mode.state?.entities.find((e) => e.id === id))
         .filter(Boolean) }));
-    if (geos.length !== 1) {
+    if (!mode.selection.length) {
       closeEntityPanel();
       return;
     }
-    const geo = geos[0];
-    if (sk.entityPanelOpen && sk.entityPanelGeo === geo && !refresh) return;
-    openEntityPanel(geo);
+    const geo = soleEntity();
+    const key = geo ?? selectionKey();
+    if (sk.entityPanelOpen && sk.entityPanelGeo === key && !refresh) return;
+    if (geo != null) openEntityPanel(geo);
+    else openSelectionPanel(key);
+  }
+
+  /** « Ajouter une relation » : un groupe de panneau, ou rien si la
+   *  sélection n'en permet aucune. */
+  function relationGroup() {
+    const items = sk.relationButtons?.() ?? [];
+    return items.length
+      ? [{ label: t("Ajouter une relation"), rows: [{ type: "buttons", items }] }]
+      : [];
+  }
+
+  function deleteConstraintItem(c) {
+    return async () => {
+      try {
+        applyState(await call("sketch_delete_constraint", {
+          sketch: mode.state.sketch, constraint: c.id,
+        }), { keepSelection: true });
+      } catch (error) {
+        say(error.message, true);
+      }
+    };
+  }
+
+  /** Le panneau de plusieurs éléments choisis (Ctrl+clic), ou d'un
+   *  point : chacun, qu'un ✕ retire de la sélection ; les relations que
+   *  la sélection permet ; celles qui ne touchent qu'elle. */
+  async function openSelectionPanel(key) {
+    const gen = ++sk.entityPanelGen;
+    let listed = { constraints: [] };
+    try {
+      listed = await call("sketch_constraints", { sketch: mode.state.sketch });
+    } catch (error) {
+      say(error.message, true);
+    }
+    if (gen !== sk.entityPanelGen || !mode.active) return;
+    if (selectionKey() !== key) return;
+    const entities = mode.state?.entities ?? [];
+    const geos = new Set(mode.selection.map((pick) => pick.geo));
+    const existing = (listed.constraints ?? []).filter((c) => c.geos.length
+      && c.geos.every((g) => geos.has(g)));
+    sk.entityPanelOpen = true;
+    sk.entityPanelGeo = key;
+    panel.open({
+      icon: "select",
+      title: t("Sélection ({n} entité(s))", { n: mode.selection.length }),
+      noApply: true,
+      autoFocus: false,
+      groups: [
+        {
+          label: t("Éléments choisis"),
+          rows: [{
+            type: "list",
+            items: mode.selection.map((pick) => ({
+              label: pickLabel(pick, entities),
+              onDelete: () => {
+                mode.selection = mode.selection.filter(
+                  (s) => !samePick(s, pick));
+                sk.redraw();
+                syncEntityPanel();
+              },
+            })),
+          }],
+        },
+        ...relationGroup(),
+        {
+          label: t("Relations existantes"),
+          rows: [{
+            type: "list",
+            empty: t("— aucune relation entre ces éléments —"),
+            items: existing.map((c) => ({
+              label: constraintItemLabel(c),
+              onDelete: deleteConstraintItem(c),
+            })),
+          }],
+        },
+      ],
+      note: t("Ctrl+clic : ajouter ou retirer un élément ; clic dans le vide : tout désélectionner."),
+      onCancel: () => {
+        abandonEntityPanel();
+        if (mode.selection.length) {
+          mode.selection = [];
+          sk.redraw();
+        }
+      },
+    });
   }
 
   async function openEntityPanel(geo) {
@@ -90,7 +197,7 @@ export function installEntites(sk) {
       say(error.message, true);
     }
     if (gen !== sk.entityPanelGen || !mode.active) return;
-    if (uniqueSelectionGeos()[0] !== geo) return;
+    if (soleEntity() !== geo) return;
 
     const title = entityKindTitle(entity);
     const propRows = entityPropertyLines(entity).map((text) => ({
@@ -120,6 +227,7 @@ export function installEntites(sk) {
       groups: [
         { label: t("Propriétés"), rows: propRows },
         ...(splineGroup ? [splineGroup] : []),
+        ...relationGroup(),
         {
           label: t("Relations"),
           rows: [{
@@ -131,15 +239,7 @@ export function installEntites(sk) {
                 label: constraintItemLabel(c),
                 editable: driving,
                 onEdit: driving ? () => editListedDim(c, geo) : undefined,
-                onDelete: async () => {
-                  try {
-                    applyState(await call("sketch_delete_constraint", {
-                      sketch: mode.state.sketch, constraint: c.id,
-                    }), { keepSelection: true });
-                  } catch (error) {
-                    say(error.message, true);
-                  }
-                },
+                onDelete: deleteConstraintItem(c),
               };
             }),
           }],

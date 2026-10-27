@@ -34,7 +34,7 @@
 //       { type: "segments", key, pointsKey } — une règle par segment entre
 //         points consécutifs : axe imposé (X/Y/Z), angle avec le segment
 //         d'avant, longueur cotée
-//       { type: "buttons", items: [{ label, title?, onClick(values) }] } —
+//       { type: "buttons", items: [{ label, title?, icon?, onClick(values) }] } —
 //         boutons dans le panneau (qui reste ouvert)
 //       points : tangentsKey? — autre liste parallèle (retirée avec le
 //         point) ; selectKey? — index du point choisi (ligne surlignée,
@@ -461,6 +461,12 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       for (const item of row.items) {
         const btn = el("button", "pbtn", item.label);
         if (item.title) btn.title = t(item.title);
+        if (item.icon) {
+          const img = document.createElement("img");
+          img.src = iconSrc(item.icon);
+          img.alt = "";
+          btn.prepend(img);
+        }
         btn.addEventListener("click", () => item.onClick?.({ ...active.values }));
         wrap.append(btn);
       }

@@ -1128,3 +1128,100 @@ def p77_glisser_accroche(self, mark, report, etat):
                                where) < 1e-9)
     report["p77_glisser_accroche"] = (joined and undone and on_ok and clean
                                       and all(refused))
+
+
+def p78_accroche_piece(self, mark, report, etat):
+    mark("p78: accrocher une esquisse aux arêtes de la pièce")
+    from engine.kernel import dispatch
+    from engine.sketchref import external_count
+    self.new_part("Pièce accrochée")
+    self.add_rect_sketch(40, 30)
+    self.add_pad(10)
+    body = self._require_body()
+    edges = body.Shape.Edges
+
+    def edge_from(a, b):
+        """L'arête du dessus qui va de a à b (dans un sens ou l'autre)."""
+        V = self._app().Vector
+        for k, e in enumerate(edges):
+            got = [e.valueAt(e.FirstParameter), e.valueAt(e.LastParameter)]
+            want = [V(*a), V(*b)]
+            if any(all(g.distanceToPoint(w) < 1e-6 for g, w in zip(got, order))
+                   for order in (want, want[::-1])):
+                first = 1 if got[0].distanceToPoint(want[0]) < 1e-6 else 2
+                return k, first
+        raise LookupError("arête du dessus {} → {} absente".format(a, b))
+
+    front, front_start = edge_from((-20, -15, 10), (20, -15, 10))
+    right, _ = edge_from((20, -15, 10), (20, 15, 10))
+    top = next(i for i, f in enumerate(body.Shape.Faces)
+               if abs(f.CenterOfMass.z - 10) < 1e-6)
+    name = self.sketch_start(face=top)["sketch"]
+    sk = self._get_sketch(name)
+
+    def has(kind, *args):
+        for c in sk.Constraints:
+            got = (c.First, c.FirstPos, c.Second, c.SecondPos, c.Third,
+                   c.ThirdPos)
+            if c.Type == kind and tuple(
+                    int(getattr(v, "value", v)) for v in got[:len(args)]) == args:
+                return True
+        return False
+
+    # Par le protocole : une ligne partie du coin (-20, -15), le départ de
+    # l'arête de devant — la référence et la relation, un seul Ctrl+Z.
+    out = dispatch(self, "sketch_add_line", {
+        "sketch": name, "x1": -20, "y1": -15, "x2": 0, "y2": 5,
+        "snaps": {"start": {"geo": {"edge": front}, "point": front_start}}})
+    if not out["ok"]:
+        raise KernelError(out["error"])
+    ext = -3
+    linked = external_count(sk) == 1 and any(
+        has("Coincident", 0, 1, ext, pos)
+        and sk.getPoint(ext, pos).distanceToPoint(
+            self._app().Vector(-20, -15, 0)) < 1e-6 for pos in (1, 2))
+    self.undo()
+    undone = external_count(sk) == 0 and not len(sk.Geometry)
+    self.redo()
+    # Au milieu de la même arête : sa référence resservit.
+    self.sketch_add_line(name, -10, 10, 0, -15, snaps={
+        "end": {"kind": "midpoint", "geo": {"edge": front}}})
+    reused = external_count(sk) == 1 and has("Symmetric", ext, 1, ext, 2, 1, 2)
+    # Sur l'arête de droite, et parallèle à celle de devant.
+    self.sketch_add_line(name, 0, 0, 20, 0, snaps={
+        "end": {"kind": "on", "geo": {"edge": right}},
+        "direction": {"kind": "parallel", "geo": {"edge": front}}})
+    on_ok = (external_count(sk) == 2 and has("PointOnObject", 2, 2, -4)
+             and has("Parallel", 2, 0, ext))
+    # Lâché sur un coin : la fin de la ligne 1 va au coin (20, -15).
+    self.sketch_drop(name, 1, 1, 20, -15, snaps={
+        "at": {"geo": {"edge": front}, "point": 3 - front_start}})
+    dropped = any(has("Coincident", 1, 1, ext, pos)
+                  and sk.getPoint(ext, pos).distanceToPoint(
+                      self._app().Vector(20, -15, 0)) < 1e-6 for pos in (1, 2))
+    clean = not (list(sk.RedundantConstraints or [])
+                 or list(sk.ConflictingConstraints or []))
+    count = (len(sk.Geometry), len(sk.Constraints), external_count(sk))
+    refused = []
+    for snaps in ({"start": {"geo": {"edge": 999}, "point": 1}},
+                  {"start": {"geo": {"edge": front, "x": 1}, "point": 1}}):
+        try:
+            self.sketch_add_line(name, 30, 30, 40, 40, snaps=snaps)
+            refused.append(False)
+        except KernelError:
+            refused.append((len(sk.Geometry), len(sk.Constraints),
+                            external_count(sk)) == count)
+    self.sketch_finish(name)
+    # Le profil du bloc, réédité : ses arêtes viennent du bloc, qui dépend
+    # de lui — pas de référence, la ligne reste sans relation.
+    profile = self._get_sketch("Sketch")
+    self.sketch_edit("Sketch")
+    lines = len(profile.Geometry)
+    self.sketch_add_line("Sketch", -20, -15, -30, -25, snaps={
+        "start": {"geo": {"edge": front}, "point": front_start}})
+    unlinked = (external_count(profile) == 0
+                and len(profile.Geometry) == lines + 1)
+    self.sketch_cancel("Sketch")
+    report["p78_accroche_piece"] = (linked and undone and reused and on_ok
+                                    and dropped and clean and all(refused)
+                                    and unlinked)

@@ -27,6 +27,12 @@ l'origine, -3, -4… les références externes) :
 Un point glissé puis lâché (``sketch_drop``) nomme sa cible ``at``, comme
 un point tracé.
 
+Partout où une cible nomme une géométrie (``geo``, chaque élément de
+``geos``), ``{"edge": k}`` désigne l'arête ``k`` de la pièce, numérotée
+comme le maillage des arêtes (``tessellate_edges``) : le moteur la lie à
+l'esquisse (une référence externe) avant de poser la relation. Le point
+d'une arête : 1 son départ, 2 sa fin, 3 son centre (cercle, arc).
+
 Une ligne dit aussi sa ``direction`` : ``{"kind": "parallel" |
 "perpendicular", "geo": n}`` à une ligne, ``{"kind": "tangent", "geo": n}``
 à un cercle ou un arc. Un bout déjà posé sur cette courbe lui est
@@ -83,6 +89,84 @@ _POSITIONS = {
 _LINE = "Part::GeomLineSegment"
 _ARC = "Part::GeomArcOfCircle"
 _ROUND = ("Part::GeomCircle", _ARC)
+
+
+def _edge_ref(value):
+    """L'arête ``k`` que ``value`` (``{"edge": k}``) désigne, sinon None."""
+    if (isinstance(value, dict) and set(value) == {"edge"}
+            and _int(value["edge"]) and value["edge"] >= 0):
+        return value["edge"]
+    return None
+
+
+def _role_targets(snaps):
+    """``(rôle, cible)`` de chaque cible de ``snaps``, listes dépliées."""
+    for role, value in snaps.items():
+        for target in (value if isinstance(value, list) else [value]):
+            yield role, target
+
+
+def model_edges(snaps):
+    """Les arêtes de la pièce que ``snaps`` nomme (``{"edge": k}``) :
+    un ensemble d'indices. Une référence d'arête mal formée est refusée."""
+    from engine.kernel import KernelError
+    found = set()
+    if not isinstance(snaps, dict):
+        return found
+    for role, target in _role_targets(snaps):
+        if not isinstance(target, dict):
+            continue
+        refs = [target.get("geo")] + list(
+            target["geos"] if isinstance(target.get("geos"), list) else [])
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            edge = _edge_ref(ref)
+            if edge is None:
+                raise KernelError(
+                    "accrochage « {} » : cible invalide".format(role))
+            found.add(edge)
+    return found
+
+
+def with_model_edges(snaps, refs):
+    """``snaps`` où chaque arête de la pièce est remplacée par sa
+    référence dans l'esquisse. ``refs`` : ``{k: {"geo": g, "points":
+    {point de l'arête: point de la référence}}}``, ou ``{k: None}`` pour
+    une arête que l'esquisse ne peut pas lier — sa cible tombe : le point
+    reste où il est, sans relation."""
+    def geo(ref):
+        edge = _edge_ref(ref)
+        if edge is None:
+            return ref
+        return refs[edge]["geo"] if refs.get(edge) else None
+
+    def target(value):
+        if not isinstance(value, dict):
+            return value
+        out = dict(value)
+        if isinstance(value.get("geos"), list):
+            out["geos"] = [geo(g) for g in value["geos"]]
+            if None in out["geos"]:
+                return None
+        if "geo" in value:
+            out["geo"] = geo(value["geo"])
+            if out["geo"] is None:
+                return None
+            edge = _edge_ref(value["geo"])
+            if edge is not None and "point" in value:
+                out["point"] = refs[edge]["points"].get(value["point"])
+                if out["point"] is None:
+                    return None
+        return out
+
+    out = {}
+    for role, value in snaps.items():
+        if isinstance(value, list):
+            out[role] = [t for t in map(target, value) if t is not None]
+        else:
+            out[role] = target(value)
+    return out
 
 
 def snap_positions(type_id):

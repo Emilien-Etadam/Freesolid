@@ -533,9 +533,17 @@ class SketchMixin:
 
     def _snap_targets(self, sk, op, snaps):
         """``snaps`` vérifié, chaque cible comprise : avant tout ajout,
-        pour qu'un refus ne laisse rien."""
+        pour qu'un refus ne laisse rien — sauf les arêtes de la pièce
+        qu'il nomme, liées d'abord à l'esquisse (``_model_edge_refs``) ;
+        un refus annule l'opération, et elles avec."""
         from engine.kernel import KernelError
-        from engine.sketchsnap import fits, geos_of, parse_snaps, targets_of
+        from engine.sketchsnap import (
+            fits, geos_of, model_edges, parse_snaps, targets_of,
+            with_model_edges,
+        )
+        edges = model_edges(snaps)
+        if edges:
+            snaps = with_model_edges(snaps, self._model_edge_refs(sk, edges))
         parsed = parse_snaps(op, snaps)
         for role, target in targets_of(parsed):
             if target.kind == "point":

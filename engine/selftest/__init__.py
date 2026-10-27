@@ -192,6 +192,7 @@ def _etapes():
         esquisse.p75_accrochages_points_remarquables,
         esquisse.p76_accrochages_directions,
         esquisse.p77_glisser_accroche,
+        esquisse.p78_accroche_piece,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

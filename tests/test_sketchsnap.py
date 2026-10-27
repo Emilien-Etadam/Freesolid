@@ -4,8 +4,8 @@ import pytest
 from engine.kernel import KernelError
 from engine.ops import BY_NAME
 from engine.sketchsnap import (
-    ROLES, Target, fits, parse_snaps, relations, snap_positions, targets_of,
-    with_direction,
+    ROLES, Target, fits, model_edges, parse_snaps, relations, snap_positions,
+    targets_of, with_direction, with_model_edges,
 )
 
 LINE, ARC, CIRCLE, POINT = ("Part::GeomLineSegment", "Part::GeomArcOfCircle",
@@ -184,3 +184,51 @@ def test_tangente_au_bout_d_un_arc_au_lieu_de_la_coincidence():
     assert with_direction(Target("tangent", 1), 5, [
         ("Coincident", 5, 1, 1, 3)]) == [
         ("Coincident", 5, 1, 1, 3), ("Tangent", 5, 1)]
+
+
+def test_les_aretes_de_la_piece_nommees():
+    snaps = {"start": {"geo": {"edge": 7}, "point": 1},
+             "end": {"kind": "intersection", "geos": [2, {"edge": 3}]},
+             "direction": {"kind": "parallel", "geo": {"edge": 7}}}
+    assert model_edges(snaps) == {3, 7}
+    assert model_edges({"start": {"geo": 0, "point": 1}}) == set()
+    assert model_edges({"on": [{"geo": {"edge": 0}, "point": 3}]}) == {0}
+
+
+@pytest.mark.parametrize("ref", [{"edge": -1}, {"edge": 1.5}, {"edge": True},
+                                 {"edge": 1, "point": 2}, {}])
+def test_une_arete_mal_nommee_est_refusee(ref):
+    with pytest.raises(KernelError,
+                       match="^accrochage « end » : cible invalide$"):
+        model_edges({"end": {"kind": "on", "geo": ref}})
+
+
+def test_une_arete_devient_sa_reference():
+    refs = {7: {"geo": -3, "points": {1: 2, 2: 1}},
+            3: {"geo": -4, "points": {}}}
+    snaps = {"start": {"geo": {"edge": 7}, "point": 1},
+             "end": {"kind": "intersection", "geos": [2, {"edge": 3}]},
+             "direction": {"kind": "parallel", "geo": {"edge": 7}}}
+    assert with_model_edges(snaps, refs) == {
+        "start": {"geo": -3, "point": 2},
+        "end": {"kind": "intersection", "geos": [2, -4]},
+        "direction": {"kind": "parallel", "geo": -3}}
+    # Rien n'a changé dans l'original.
+    assert snaps["start"] == {"geo": {"edge": 7}, "point": 1}
+
+
+def test_une_arete_qu_on_ne_peut_lier_laisse_tomber_sa_cible():
+    refs = {7: None, 3: {"geo": -3, "points": {1: 1}}}
+    assert with_model_edges({
+        "start": {"geo": {"edge": 7}, "point": 1},
+        "end": {"kind": "on", "geo": {"edge": 3}},
+        "center": {"geo": 0, "point": 3},
+        "on": [{"geo": {"edge": 3}, "point": 2}, {"geo": 1, "point": 1}],
+    }, refs) == {
+        "start": None,
+        "end": {"kind": "on", "geo": -3},
+        "center": {"geo": 0, "point": 3},
+        # Le point 2 de l'arête 3 n'a pas de point dans sa référence.
+        "on": [{"geo": 1, "point": 1}]}
+    assert parse_snaps("sketch_add_line", with_model_edges(
+        {"start": {"geo": {"edge": 7}, "point": 1}}, refs)) == {}

@@ -65,7 +65,7 @@ Un outil est **fait** quand :
 | Égaliser la courbure (G2) au raccord de deux splines | ✅ | `sketch_match_curvature` | `p51_complements` |
 | Éditer une spline dans la vue : tirer ses points, poignées de tangente sur tous ses points dès qu'elle est sélectionnée (direction et longueurs, Alt : un seul côté, longueurs en %), Ctrl+clic pour un point de plus (forme gardée), Suppr pour en retirer un, polygone de contrôle (pôles à tirer), peigne de courbure, simplifier (tolérance), lisser, libérer les poignées — les relations de la spline tiennent | ✅ | `sketch_set_spline`, `curve_poles`, `curve_move_pole` ; calcul `splinemath` (moteur et client) | `p69_esquisse`, `test_splinemath`, `splinemath.test` |
 | Peigne de courbure, accrochage à la grille | ✅ | client (`curvatureComb`, `gridStep`) | `sketchtools` |
-| Accrochage pendant le tracé : extrémités, centres, points, bouts de spline, références liées, origine ; milieux, quadrants, croisements, sur la courbe (arêtes de la pièce comprises) ; directions d'une ligne (horizontale, verticale, parallèle, perpendiculaire, tangente, pas d'angle), longueur ronde avec Maj — la relation part avec le tracé, son symbole s'affiche au curseur, Ctrl suspend l'accrochage ; chaque sorte se règle (Paramètres), un interrupteur les coupe toutes, accrochage rapide au clic droit ; un point glissé s'accroche aussi, lâché sur sa cible il en garde la relation | ✅ | `snaps` des tracés (`engine/sketchsnap.py`), `sketch_drop` ; client `app/sketchsnap.js` (`SNAP_KINDS`, `activeSnaps`) | `p74_accrochages`, `p75_points_remarquables`, `p76_directions`, `p77_glisser_accroche`, `sketchsnap`, `test_sketchsnap` |
+| Accrochage pendant le tracé : extrémités, centres, points, bouts de spline, références liées, origine ; milieux, quadrants, croisements, sur la courbe ; les arêtes de la pièce posées dans le plan de l'esquisse accrochent comme ses entités, liées à l'esquisse au clic ; directions d'une ligne (horizontale, verticale, parallèle, perpendiculaire, tangente, pas d'angle), longueur ronde avec Maj — la relation part avec le tracé, son symbole s'affiche au curseur, Ctrl suspend l'accrochage ; chaque sorte se règle (Paramètres), un interrupteur les coupe toutes, accrochage rapide au clic droit ; un point glissé s'accroche aussi, lâché sur sa cible il en garde la relation | ✅ | `snaps` des tracés (`engine/sketchsnap.py`), `sketch_drop` ; client `app/sketchsnap.js` (`SNAP_KINDS`, `activeSnaps`) | `p74_accrochages`, `p75_points_remarquables`, `p76_directions`, `p77_glisser_accroche`, `p78_accroche_piece`, `sketchsnap`, `test_sketchsnap` |
 
 ## Relations
 
@@ -168,6 +168,17 @@ Un outil est **fait** quand :
   un seul Ctrl+Z, alors qu'un glisser sans cible n'en a pas. Ctrl
   maintenu, le point glisse sans accrocher. Une entité glissée entière
   n'accroche rien.
+  Les arêtes de la pièce posées dans le plan de l'esquisse (le contour
+  de la face où on l'a ouverte, par exemple) accrochent comme les
+  entités, au tracé comme au glisser : sommets, centres, milieux,
+  quadrants, croisements, sur l'arête, parallèle ou perpendiculaire à
+  elle ; l'arête visée passe en jaune. Au clic, le moteur la lie à
+  l'esquisse — une référence externe, hors du profil, réutilisée si elle
+  y est déjà — et pose la relation sur elle, dans la même opération.
+  L'interface nomme l'arête par son numéro dans le maillage des arêtes
+  (`{"edge": k}` dans `snaps`). Une arête faite après l'esquisse qu'on
+  réédite ne se lie pas (l'esquisse dépendrait d'elle-même) : le point
+  se pose, sans relation.
 - **Sélection** : un clic choisit ce qu'il touche, seul — un point
   (extrémité, centre, origine) avant l'entité qui le porte ; Ctrl (ou
   Maj) l'ajoute à la sélection ou l'en retire, un clic dans le vide la

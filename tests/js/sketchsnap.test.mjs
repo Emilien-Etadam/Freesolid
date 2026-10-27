@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import {
   ANGLE_STEP, ON_CURVE_PX, ORIGIN_GEO, SNAPS_KEY, SNAP_KINDS, SNAP_PX,
   activeSnaps, arcSnaps, chainDirections, circleSnaps, crossingsAlong,
-  tangentPoints, entityCrossings, entityFeatures, lineSnaps, nearestOnEntity,
+  engineSnaps, tangentPoints, entityCrossings, entityFeatures, lineSnaps,
+  modelEdgeId, modelEdgeOf, modelEdgeSnaps, nearestOnEntity,
   normalizeSnapSettings, onCircle, pointSnaps, readSnapSettings, rectSnaps,
   sketchEndpoints, sketchSnapPoints, snapSketchPoint, snapTarget,
   writeSnapSettings,
@@ -482,5 +483,122 @@ describe("outils à clics", () => {
       { end: { geo: 1, point: 3 } });
     assert.deepEqual(CLICK_TOOLS.circle3.snaps([free, center, free]),
       { on: [{ geo: 1, point: 3 }] });
+  });
+});
+
+/** Le maillage des arêtes, comme pack_edges : `edges` est
+ *  `[{ id, points: [[x, y, z]…], center? }]`. */
+function packEdges(edges) {
+  const positions = [], indices = [], groups = [];
+  let base = 0;
+  for (const { id, points, center } of edges) {
+    const start = indices.length;
+    for (const q of points) positions.push(...q);
+    for (let i = 0; i < points.length - 1; i++) indices.push(base + i, base + i + 1);
+    groups.push({ edgeId: id, start, count: indices.length - start,
+                  ...(center ? { center } : {}) });
+    base += points.length;
+  }
+  return { positions, indices, groups };
+}
+
+// Esquisse sur la face du dessus d'un bloc, à z = 10.
+const onTop = (x, y, z) => [x, y, z - 10];
+const arcPoints = (c, r, from, to, n = 8) => Array.from({ length: n + 1 }, (_, i) => {
+  const a = from + (to - from) * i / n;
+  return [c[0] + r * Math.cos(a), c[1] + r * Math.sin(a), 10];
+});
+
+describe("arêtes de la pièce", () => {
+  it("un id d'arête, et l'arête qu'il désigne", () => {
+    assert.equal(modelEdgeId(7), "edge:7");
+    assert.equal(modelEdgeOf("edge:7"), 7);
+    assert.equal(modelEdgeOf(7), null);
+    assert.equal(modelEdgeOf(-3), null);
+  });
+
+  it("seules les arêtes posées dans le plan de l'esquisse accrochent", () => {
+    const { entities, points } = modelEdgeSnaps(packEdges([
+      { id: 0, points: [[0, 0, 10], [40, 0, 10]] },
+      { id: 1, points: [[40, 0, 0], [40, 0, 10]] }, // verticale
+      { id: 2, points: [[0, 0, 0], [40, 0, 0]] },   // sous le bloc
+    ]), onTop);
+    assert.deepEqual(entities, [{ id: "edge:0", type: "line", p1: [0, 0], p2: [40, 0] }]);
+    assert.deepEqual(points, [
+      { geo: "edge:0", point: 1, x: 0, y: 0 },
+      { geo: "edge:0", point: 2, x: 40, y: 0 },
+    ]);
+  });
+
+  it("un cercle fermé n'a que son centre ; un arc tourne dans le sens trigo", () => {
+    const { entities, points } = modelEdgeSnaps(packEdges([
+      { id: 3, points: arcPoints([20, 15], 5, 0, 2 * Math.PI, 24), center: [20, 15, 10] },
+      // Un arc parcouru en sens horaire, du haut vers la droite.
+      { id: 4, points: arcPoints([0, 0], 10, Math.PI / 2, 0), center: [0, 0, 10] },
+    ]), onTop);
+    assert.equal(entities[0].type, "circle");
+    assert.deepEqual(entities[0].c, [20, 15]);
+    assert.ok(Math.abs(entities[0].r - 5) < 1e-9);
+    const arc = entities[1];
+    assert.equal(arc.type, "arc");
+    // Le balayage trigo va de la droite vers le haut : p1 et p2 inversés.
+    assert.ok(Math.abs(arc.p1[0] - 10) < 1e-9 && Math.abs(arc.p1[1]) < 1e-9);
+    assert.ok(Math.abs(arc.p2[0]) < 1e-9 && Math.abs(arc.p2[1] - 10) < 1e-9);
+    // Les points gardent la numérotation de l'arête : 1 son départ.
+    const start = points.find((p) => p.geo === "edge:4" && p.point === 1);
+    assert.ok(Math.abs(start.x) < 1e-9 && Math.abs(start.y - 10) < 1e-9);
+    assert.deepEqual(points.filter((p) => p.geo === "edge:3").map((p) => p.point), [3]);
+  });
+
+  it("une courbe sans centre est une polyligne", () => {
+    const { entities } = modelEdgeSnaps(packEdges([
+      { id: 5, points: [[0, 0, 10], [5, 3, 10], [10, 4, 10], [15, 3, 10]] },
+    ]), onTop);
+    assert.equal(entities[0].type, "poly");
+    assert.equal(entities[0].points.length, 4);
+  });
+
+  it("une arête déjà en référence dans l'esquisse est laissée", () => {
+    const edges = packEdges([
+      { id: 0, points: [[0, 0, 10], [40, 0, 10]] },
+      { id: 1, points: [[40, 0, 10], [40, 30, 10]] },
+    ]);
+    const externals = [{ id: -3, type: "line", p1: [40, 0], p2: [0, 0], external: true }];
+    const { entities } = modelEdgeSnaps(edges, onTop, { externals });
+    assert.deepEqual(entities.map((e) => e.id), ["edge:1"]);
+  });
+
+  it("sans maillage, rien", () => {
+    assert.deepEqual(modelEdgeSnaps(null, onTop), { entities: [], points: [] });
+  });
+
+  it("un clic accroche le sommet de la pièce, que le moteur reçoit en arête", () => {
+    const model = modelEdgeSnaps(packEdges([
+      { id: 2, points: [[40, 0, 10], [40, 30, 10]] },
+    ]), onTop);
+    const at = (x, y) => snapSketchPoint({ x, y }, cursorAt(x, y), {
+      points: model.points, entities: model.entities, toScreen });
+    const corner = at(40.2, 0.1);
+    assert.deepEqual(corner.target, { geo: "edge:2", point: 1 });
+    const middle = at(40.1, 15.2);
+    assert.deepEqual(middle.target, { kind: "midpoint", geo: "edge:2" });
+    assert.deepEqual(engineSnaps(lineSnaps({ x: 0, y: 0 }, middle)),
+      { end: { kind: "midpoint", geo: { edge: 2 } } });
+    assert.deepEqual(engineSnaps(lineSnaps(corner, { x: 0, y: 0 })),
+      { start: { geo: { edge: 2 }, point: 1 } });
+  });
+
+  it("le moteur reçoit chaque arête nommée, dans geo comme dans geos", () => {
+    assert.deepEqual(engineSnaps({
+      start: { geo: 0, point: 1 },
+      end: { kind: "intersection", geos: ["edge:1", 2] },
+      direction: { kind: "parallel", geo: "edge:3" },
+      on: [{ geo: "edge:4", point: 2 }, { geo: -1, point: 1 }],
+    }), {
+      start: { geo: 0, point: 1 },
+      end: { kind: "intersection", geos: [{ edge: 1 }, 2] },
+      direction: { kind: "parallel", geo: { edge: 3 } },
+      on: [{ geo: { edge: 4 }, point: 2 }, { geo: -1, point: 1 }],
+    });
   });
 });

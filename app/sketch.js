@@ -253,17 +253,33 @@ export function createSketchMode(deps) {
     return sketchSnapPoints(mode.state?.entities, hiddenIds());
   }
 
+  /** Pas des directions d'une ligne en cours, en degrés (repères). */
+  const ANGLE_STEP = 15;
+
   /** Où tombe le curseur : voir snapSketchPoint (sketchsnap.js). */
   function snap(local, event) {
     const hidden = hiddenIds();
+    // Grille : un pas rond qui suit le zoom (≈ 1/40 de la vue).
+    const step = gridStep((camera.top - camera.bottom) / (camera.zoom || 1));
     return snapSketchPoint(local, { x: event.clientX, y: event.clientY }, {
       points: snapPoints(), toScreen, chain: mode.chain,
       entities: (mode.state?.entities ?? []).filter((e) => !hidden.has(e.id)),
-      // Grille : un pas rond qui suit le zoom (≈ 1/40 de la vue).
-      gridStep: mode.gridSnap
-        ? gridStep((camera.top - camera.bottom) / (camera.zoom || 1)) : null,
+      woken: mode.woken ?? [], angleStep: ANGLE_STEP,
+      // Maj maintenu : des longueurs au pas de la grille, affichée ou non.
+      lengthStep: event.shiftKey ? step : null,
+      gridStep: mode.gridSnap ? step : null,
       suspended: suspendsSnap(event),
     });
+  }
+
+  /** Les lignes survolées pendant le tracé : la suivante peut leur être
+   *  parallèle ou perpendiculaire. Les deux dernières. */
+  function wake(s) {
+    const entity = s.hover != null
+      && mode.state?.entities.find((e) => e.id === s.hover);
+    if (entity?.type !== "line") return;
+    mode.woken = [entity.id, ...(mode.woken ?? []).filter((id) => id !== entity.id)]
+      .slice(0, 2);
   }
 
   /** Ctrl maintenu pendant un tracé : le point reste sous le curseur,
@@ -280,7 +296,9 @@ export function createSketchMode(deps) {
   /** Ce qu'un tracé garde d'un clic : où, et ce qu'il a accroché. */
   function clickOf(snapped) {
     return { x: snapped.x, y: snapped.y, onPoint: snapped.onPoint ?? null,
-             target: snapped.target ?? null, suspended: !!snapped.suspended };
+             target: snapped.target ?? null,
+             direction: snapped.direction ?? null,
+             suspended: !!snapped.suspended };
   }
 
   // ---------- aides au tracé ----------
@@ -295,11 +313,17 @@ export function createSketchMode(deps) {
     transparent: true, opacity: 0.8 });
   const snapMaterial = new THREE.PointsMaterial({
     color: sceneTheme.selection, size: 11, sizeAttenuation: false, depthTest: false, transparent: true });
+  // Ligne d'aide d'une direction qui posera une relation : la couleur du
+  // point accroché. Les repères (alignement, pas d'angle) restent bleus.
+  const rayMaterial = new THREE.LineDashedMaterial({
+    color: sceneTheme.selection, dashSize: 1.5, gapSize: 1.2, depthTest: false,
+    transparent: true, opacity: 0.9 });
   // Milieu et quadrants de l'entité survolée : où le clic peut se poser.
   const wakeMaterial = new THREE.PointsMaterial({
     color: sceneTheme.under, size: 6, sizeAttenuation: false, depthTest: false,
     transparent: true, opacity: 0.9 });
   let inferLines = null;
+  let rayLines = null;
   let snapPoint = null;
   let wakePoints = null;
   let readoutEl = null;
@@ -311,15 +335,32 @@ export function createSketchMode(deps) {
     quadrant: ["rel_onobject", "Quadrant"],
     intersection: ["rel_intersection", "Croisement"],
     on: ["rel_onobject", "Sur l'entité"],
+    H: ["rel_horizontal", "Horizontale"],
+    V: ["rel_vertical", "Verticale"],
+    parallel: ["rel_parallel", "Parallèle"],
+    perpendicular: ["rel_perpendicular", "Perpendiculaire"],
+    tangent: ["rel_tangent", "Tangente"],
   };
 
   function dropInferenceObjects() {
-    for (const obj of [inferLines, snapPoint, wakePoints]) {
+    for (const obj of [inferLines, rayLines, snapPoint, wakePoints]) {
       if (obj) { group.remove(obj); obj.geometry.dispose(); }
     }
     inferLines = null;
+    rayLines = null;
     snapPoint = null;
     wakePoints = null;
+  }
+
+  function dashedLines(segments, material, order) {
+    const lines = new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(segments.flatMap(
+        ([x1, y1, x2, y2]) => [new THREE.Vector3(x1, y1, 0),
+                               new THREE.Vector3(x2, y2, 0)])), material);
+    lines.computeLineDistances();
+    lines.renderOrder = order;
+    group.add(lines);
+    return lines;
   }
 
   function clearInference() {
@@ -329,7 +370,6 @@ export function createSketchMode(deps) {
 
   function readoutText(s) {
     const parts = [];
-    if (s.hv) parts.push(s.hv);
     if (mode.tool === "line" && mode.chain) {
       const dx = s.x - mode.chain.x, dy = s.y - mode.chain.y;
       parts.push(t("L {v} mm", { v: fmtMm(Math.hypot(dx, dy)) }),
@@ -362,15 +402,13 @@ export function createSketchMode(deps) {
     mode.lastLocal = { x: s.x, y: s.y };
     emitPointer(s);
     dropInferenceObjects();
-    if (s.guides.length) {
-      const pts = s.guides.flatMap((g) => [
-        new THREE.Vector3(g.x, g.y, 0), new THREE.Vector3(s.x, s.y, 0)]);
-      inferLines = new THREE.LineSegments(
-        new THREE.BufferGeometry().setFromPoints(pts), guideMaterial);
-      inferLines.computeLineDistances();
-      inferLines.renderOrder = 23;
-      group.add(inferLines);
-    }
+    if (!s.suspended) wake(s);
+    const plain = [...s.guides.map((g) => [g.x, g.y, s.x, s.y]),
+      ...s.rays.filter((r) => !r.relation).map((r) => [r.x1, r.y1, r.x2, r.y2])];
+    const related = s.rays.filter((r) => r.relation)
+      .map((r) => [r.x1, r.y1, r.x2, r.y2]);
+    if (plain.length) inferLines = dashedLines(plain, guideMaterial, 23);
+    if (related.length) rayLines = dashedLines(related, rayMaterial, 23);
     if (s.target) {
       snapPoint = new THREE.Points(new THREE.BufferGeometry().setFromPoints(
         [new THREE.Vector3(s.x, s.y, 0)]), snapMaterial);
@@ -390,15 +428,15 @@ export function createSketchMode(deps) {
     }
     const host = renderer.domElement.parentElement.getBoundingClientRect();
     readoutEl.hidden = false;
-    const symbol = SNAP_SYMBOLS[s.kind];
-    const parts = [document.createTextNode(readoutText(s))];
-    if (symbol) {
-      const img = document.createElement("img");
-      img.src = iconSrc(symbol[0]);
-      img.alt = img.title = t(symbol[1]);
-      parts.unshift(img);
-    }
-    readoutEl.replaceChildren(...parts);
+    // Les symboles des relations que le clic posera, puis la lecture.
+    const parts = [s.kind, s.direction?.kind, s.hv]
+      .map((key) => SNAP_SYMBOLS[key]).filter(Boolean).map(([icon, label]) => {
+        const img = document.createElement("img");
+        img.src = iconSrc(icon);
+        img.alt = img.title = t(label);
+        return img;
+      });
+    readoutEl.replaceChildren(...parts, document.createTextNode(readoutText(s)));
     readoutEl.style.left = `${event.clientX - host.left + 16}px`;
     readoutEl.style.top = `${event.clientY - host.top + 18}px`;
   }
@@ -1799,13 +1837,13 @@ export function createSketchMode(deps) {
   Object.assign(sk, { renderer, call, refresh, mode, safe, editDim });
   const { closeModifyBox, openModifyBox } = installBoiteCote(sk);
 
-  // Ctrl enfoncé ou relâché : l'aperçu suit tout de suite, sans attendre
-  // que la souris bouge (voir suspendsSnap).
+  // Ctrl ou Maj enfoncé ou relâché : l'aperçu suit tout de suite, sans
+  // attendre que la souris bouge (voir suspendsSnap, lengthStep).
   function onModifierKey(event) {
-    if (event.key !== "Control" && event.key !== "Meta") return;
+    if (!["Control", "Meta", "Shift"].includes(event.key)) return;
     if (!mode.active || !mode.lastMouse || !DRAW_TOOLS.has(mode.tool)) return;
-    onPointerMove({ ...mode.lastMouse,
-      ctrlKey: event.ctrlKey, metaKey: event.metaKey });
+    onPointerMove({ ...mode.lastMouse, ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey, shiftKey: event.shiftKey });
   }
 
   function onKey(event) {
@@ -1874,6 +1912,7 @@ export function createSketchMode(deps) {
     clearInference();
     mode.tool = tool;
     mode.chain = null;
+    mode.woken = [];
     mode.pendingCircle = null;
     mode.pendingRect = null;
     mode.pendingRectC = null;

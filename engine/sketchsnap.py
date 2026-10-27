@@ -23,15 +23,22 @@ l'origine, -3, -4… les références externes) :
 - ``{"kind": "on", "geo": n}`` : n'importe où sur une courbe ;
 - ``{"kind": "intersection", "geos": [a, b]}`` : le croisement de deux
   courbes.
+
+Une ligne dit aussi sa ``direction`` : ``{"kind": "parallel" |
+"perpendicular", "geo": n}`` à une ligne, ``{"kind": "tangent", "geo": n}``
+à un cercle ou un arc. Un bout déjà posé sur cette courbe lui est
+tangent en ce point (une relation au lieu de deux).
 """
 
 from collections import namedtuple
 
 #: Rôles acceptés par chaque tracé : ``target`` (une cible), ``point``
-#: (un point d'esquisse seulement) ou ``points`` (une liste de points
-#: d'esquisse posés sur la courbe tracée).
+#: (un point d'esquisse seulement), ``points`` (une liste de points
+#: d'esquisse posés sur la courbe tracée) ou ``direction`` (celle d'une
+#: ligne).
 ROLES = {
-    "sketch_add_line": {"start": "target", "end": "target"},
+    "sketch_add_line": {"start": "target", "end": "target",
+                        "direction": "direction"},
     "sketch_add_point": {"at": "target"},
     "sketch_add_circle": {"center": "target", "on": "points"},
     "sketch_add_arc": {"center": "target", "start": "target",
@@ -53,6 +60,9 @@ _KEYS = {
     "on": {"kind", "geo"},
     "intersection": {"kind", "geos"},
 }
+
+#: Les directions d'une ligne.
+_DIRECTIONS = ("parallel", "perpendicular", "tangent")
 
 #: Points qu'un accrochage peut viser, par type de géométrie ; les
 #: autres courbes (splines, coniques) n'offrent que leurs deux bouts.
@@ -79,7 +89,7 @@ def _int(value):
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _target(role, value, points_only):
+def _target(role, value, kind_of_role):
     from engine.kernel import KernelError
 
     def invalid():
@@ -87,13 +97,19 @@ def _target(role, value, points_only):
 
     if not isinstance(value, dict):
         raise invalid()
+    if kind_of_role == "direction":
+        if (value.get("kind") not in _DIRECTIONS
+                or set(value) != {"kind", "geo"} or not _int(value["geo"])):
+            raise invalid()
+        return Target(value["kind"], value["geo"])
     if set(value) == {"geo", "point"}:
         if not (_int(value["geo"]) and value["point"] in (1, 2, 3)
                 and _int(value["point"])):
             raise invalid()
         return Target("point", value["geo"], point=value["point"])
     kind = value.get("kind")
-    if points_only or kind not in _KEYS or set(value) != _KEYS[kind]:
+    if (kind_of_role != "target" or kind not in _KEYS
+            or set(value) != _KEYS[kind]):
         raise invalid()
     if kind == "intersection":
         geos = value["geos"]
@@ -128,12 +144,12 @@ def parse_snaps(op, snaps):
         if value is None:
             continue
         if kind != "points":
-            parsed[role] = _target(role, value, kind == "point")
+            parsed[role] = _target(role, value, kind)
         else:
             if not isinstance(value, list):
                 raise KernelError(
                     "accrochage « {} » : cible invalide".format(role))
-            parsed[role] = [_target(role, item, True) for item in value]
+            parsed[role] = [_target(role, item, "point") for item in value]
     return parsed
 
 
@@ -160,8 +176,10 @@ def fits(target, type_of):
         return target.point in snap_positions(type_of(target.geo))
     if target.kind == "midpoint":
         return type_of(target.geo) in (_LINE, _ARC)
-    if target.kind == "quadrant":
+    if target.kind in ("quadrant", "tangent"):
         return type_of(target.geo) in _ROUND
+    if target.kind in ("parallel", "perpendicular"):
+        return type_of(target.geo) == _LINE
     return all(type_of(g) != "Part::GeomPoint" for g in geos_of(target))
 
 
@@ -180,3 +198,27 @@ def relations(target, gid, pos, type_of):
         return [("PointOnObject", gid, pos, target.geo),
                 (axis, gid, pos, target.geo, 3)]
     return [("PointOnObject", gid, pos, g) for g in geos_of(target)]
+
+
+def with_direction(target, gid, specs):
+    """Les relations ``specs`` de la ligne ``gid``, plus celle de sa
+    direction. Un bout de la ligne déjà sur la courbe à laquelle elle est
+    tangente : la tangence en ce point remplace la relation qui l'y pose
+    — au bout d'un arc (coïncidence avec son point 1 ou 2), ou n'importe
+    où dessus (« sur l'entité »). Les deux ensemble, Sketcher les voit
+    redondantes."""
+    if target.kind != "tangent":
+        kind = "Parallel" if target.kind == "parallel" else "Perpendicular"
+        return specs + [(kind, gid, target.geo)]
+    for i, spec in enumerate(specs):
+        if spec[1] != gid:
+            continue
+        if (spec[0] == "Coincident" and spec[3] == target.geo
+                and spec[4] in (1, 2)):
+            tangent = ("Tangent", gid, spec[2], target.geo, spec[4])
+        elif spec[0] == "PointOnObject" and spec[3] == target.geo:
+            tangent = ("Tangent", gid, spec[2], target.geo)
+        else:
+            continue
+        return specs[:i] + [tangent] + specs[i + 1:]
+    return specs + [("Tangent", gid, target.geo)]

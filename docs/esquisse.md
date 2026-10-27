@@ -65,7 +65,7 @@ Un outil est **fait** quand :
 | Égaliser la courbure (G2) au raccord de deux splines | ✅ | `sketch_match_curvature` | `p51_complements` |
 | Éditer une spline dans la vue : tirer ses points, poignées de tangente sur tous ses points dès qu'elle est sélectionnée (direction et longueurs, Alt : un seul côté, longueurs en %), Ctrl+clic pour un point de plus (forme gardée), Suppr pour en retirer un, polygone de contrôle (pôles à tirer), peigne de courbure, simplifier (tolérance), lisser, libérer les poignées — les relations de la spline tiennent | ✅ | `sketch_set_spline`, `curve_poles`, `curve_move_pole` ; calcul `splinemath` (moteur et client) | `p69_esquisse`, `test_splinemath`, `splinemath.test` |
 | Peigne de courbure, accrochage à la grille | ✅ | client (`curvatureComb`, `gridStep`) | `sketchtools` |
-| Accrochage pendant le tracé : extrémités, centres, points, bouts de spline, références liées, origine ; milieux, quadrants, croisements, sur la courbe (arêtes de la pièce comprises) — la relation part avec le tracé, son symbole s'affiche au curseur, Ctrl suspend l'accrochage | ✅ | `snaps` des tracés (`engine/sketchsnap.py`) ; client `app/sketchsnap.js` | `p74_accrochages`, `p75_points_remarquables`, `sketchsnap`, `test_sketchsnap` |
+| Accrochage pendant le tracé : extrémités, centres, points, bouts de spline, références liées, origine ; milieux, quadrants, croisements, sur la courbe (arêtes de la pièce comprises) ; directions d'une ligne (horizontale, verticale, parallèle, perpendiculaire, tangente, pas d'angle), longueur ronde avec Maj — la relation part avec le tracé, son symbole s'affiche au curseur, Ctrl suspend l'accrochage | ✅ | `snaps` des tracés (`engine/sketchsnap.py`) ; client `app/sketchsnap.js` | `p74_accrochages`, `p75_points_remarquables`, `p76_directions`, `sketchsnap`, `test_sketchsnap` |
 
 ## Relations
 
@@ -139,6 +139,16 @@ Un outil est **fait** quand :
   courbe : sur l'entité ; dans l'axe horizontal ou vertical d'une
   chaîne, le point se pose là où l'axe la coupe. Le symbole de la
   relation que le clic posera s'affiche devant la lecture du curseur.
+  Une ligne en cours suit aussi une direction : parallèle ou
+  perpendiculaire à la ligne précédente, à celle d'où elle part ou à une
+  ligne survolée juste avant ; tangente à l'arc dont elle part, ou au
+  cercle qu'elle va toucher. La ligne d'aide est alors de la couleur du
+  point accroché : la relation sera posée. Les pas de 15° (depuis l'axe
+  X, ou depuis la ligne d'où l'on part) ne sont qu'un repère, en bleu,
+  sans relation. Maj maintenu : la longueur se pose au pas de la grille,
+  affichée ou non. Partie d'un point déjà posé sur un cercle (plus loin
+  dans une chaîne), la ligne ne propose pas la tangente : Sketcher la
+  verrait redondante avec ce point.
   Ctrl maintenu pendant un tracé : le point reste sous le curseur, sans
   accrochage ni relation (sauf au premier clic de l'arc tangent, qui doit
   partir d'une extrémité).

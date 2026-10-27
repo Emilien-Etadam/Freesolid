@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 
 import { iconSrc } from "../../app/icons.js";
+import { SNAP_KINDS } from "../../app/sketchsnap.js";
 import {
   contextToolbarKeys, menuIcon, placeViewMenu, viewMenuItems, viewMenuLabel,
 } from "../../app/viewmenu.js";
@@ -54,7 +55,8 @@ describe("viewMenuItems", () => {
     const hits = [{ kind: "edge" }, { kind: "sketch" }, { kind: "surface" },
       { kind: "face", feature: { name: "Pad", label: "P", sketch: "S" } }];
     const all = new Set();
-    for (const ctx of [...hits.map((hit) => ({ hit })), { mode: "sketch" }]) {
+    for (const ctx of [...hits.map((hit) => ({ hit })), { mode: "sketch" },
+                       { mode: "sketch", drawing: true, quickSnap: { kind: "on" } }]) {
       const items = viewMenuItems(ctx);
       for (const key of [...keys(items), ...bar(items)]) all.add(key);
     }
@@ -90,6 +92,22 @@ describe("viewMenuItems", () => {
     const k = keys(viewMenuItems({ mode: "sketch" }));
     assert.ok(k.includes("sk-line") && k.includes("sk-finish") && k.includes("sk-cancel"));
     assert.ok(!k.includes("fillet"));
+  });
+
+  it("pendant un tracé : l'accrochage rapide d'abord, la sorte choisie cochée", () => {
+    assert.ok(!keys(viewMenuItems({ mode: "sketch" })).some((k) => k.startsWith("snap-")),
+      "hors tracé, pas d'accrochage rapide");
+    const items = viewMenuItems({ mode: "sketch", drawing: true });
+    assert.equal(items[0].header, "Accrochage rapide");
+    const k = keys(items);
+    assert.deepEqual(k.filter((key) => key.startsWith("snap-")),
+      [...SNAP_KINDS.map((s) => "snap-" + s.key), "snap-settings"]);
+    assert.ok(k.indexOf("snap-settings") < k.indexOf("sk-line"));
+    assert.ok(!items.some((i) => i.checked));
+    const chosen = viewMenuItems({ mode: "sketch", drawing: true,
+      quickSnap: { kind: "midpoint", keep: false } });
+    assert.deepEqual(chosen.filter((i) => i.checked).map((i) => i.key), ["snap-midpoint"]);
+    assert.ok(keys(chosen).includes("snap-none"));
   });
 });
 

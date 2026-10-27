@@ -9,7 +9,10 @@
 //
 // Entrée : { key, label } | { header } | { separator: true }
 // | { bar: [clé…] } (rangée d'icônes en tête du menu : les actions sur ce
-// qu'on vise), `danger: true` pour une action destructive.
+// qu'on vise), `danger: true` pour une action destructive, `checked: true`
+// pour un choix en cours.
+
+import { SNAP_KINDS } from "./sketchsnap.js";
 
 const SEP = { separator: true };
 
@@ -60,6 +63,9 @@ const MENU_ICONS = {
   "sk-trim": "trim",
   "sk-finish": "sketch_ok",
   "sk-cancel": "sketch_cancel",
+  ...Object.fromEntries(SNAP_KINDS.map((k) => ["snap-" + k.key, k.icon])),
+  "snap-none": "sketch_cancel",
+  "snap-settings": "sk_snap",
 };
 
 /** Rôle d'icône d'une action du menu, ou "" s'il n'y en a pas. */
@@ -148,9 +154,25 @@ export function placeViewMenu({
   return { left, top, maxHeight };
 }
 
+/** Pendant un tracé : l'accrochage rapide, une sorte pour l'entité en
+ *  cours (`ctx.quickSnap` : celle choisie), et le réglage. */
+function quickSnapSection(ctx) {
+  if (!ctx.drawing) return [];
+  const quick = ctx.quickSnap ?? null;
+  return [
+    { header: "Accrochage rapide" },
+    ...SNAP_KINDS.map((k) => ({ key: "snap-" + k.key, label: k.label,
+      ...(quick?.kind === k.key ? { checked: true } : {}) })),
+    ...(quick ? [{ key: "snap-none", label: "Retirer l'accrochage rapide" }] : []),
+    { key: "snap-settings", label: "Réglages des accrochages…" },
+    SEP,
+  ];
+}
+
 export function viewMenuItems(ctx = {}) {
   if (ctx.mode === "sketch") {
     return [
+      ...quickSnapSection(ctx),
       { header: "Esquisse" },
       { key: "sk-select", label: "Sélectionner" },
       { key: "sk-line", label: "Ligne (L)" },

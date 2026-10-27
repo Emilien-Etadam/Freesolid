@@ -3,12 +3,14 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  ON_CURVE_PX, ORIGIN_GEO, SNAP_PX, arcSnaps, chainDirections, circleSnaps,
-  crossingsAlong, tangentPoints,
-  entityCrossings, entityFeatures, lineSnaps, nearestOnEntity, onCircle,
-  pointSnaps, rectSnaps, sketchEndpoints, sketchSnapPoints, snapSketchPoint,
-  snapTarget,
+  ANGLE_STEP, ON_CURVE_PX, ORIGIN_GEO, SNAPS_KEY, SNAP_KINDS, SNAP_PX,
+  activeSnaps, arcSnaps, chainDirections, circleSnaps, crossingsAlong,
+  tangentPoints, entityCrossings, entityFeatures, lineSnaps, nearestOnEntity,
+  normalizeSnapSettings, onCircle, pointSnaps, readSnapSettings, rectSnaps,
+  sketchEndpoints, sketchSnapPoints, snapSketchPoint, snapTarget,
+  writeSnapSettings,
 } from "../../app/sketchsnap.js";
+import { hasTranslation, setLang } from "../../app/i18n.js";
 
 // Vue de dessus, 1 mm = 10 px : le pixel d'un point est (10x, -10y).
 const toScreen = (x, y) => ({ x: x * 10, y: -y * 10 });
@@ -304,6 +306,114 @@ describe("directions depuis la chaîne", () => {
     const c = along(chain, dir, 20);
     const s = snapNear(c.x, c.y, [prev], { chain, gridStep: 5 });
     assert.ok(onLine(s, chain, dir));
+  });
+});
+
+describe("réglage des accrochages", () => {
+  const memory = (init = {}) => {
+    const data = { ...init };
+    return { data, getItem: (k) => data[k] ?? null,
+             setItem: (k, v) => { data[k] = String(v); } };
+  };
+
+  it("tout actif par défaut, sans stockage ou avec une valeur abîmée", () => {
+    const all = { enabled: true, off: [], angleStep: ANGLE_STEP };
+    assert.deepEqual(readSnapSettings(null), all);
+    assert.deepEqual(readSnapSettings(memory({ [SNAPS_KEY]: "{oups" })), all);
+    const broken = { getItem: () => { throw new Error("bloqué"); } };
+    assert.deepEqual(readSnapSettings(broken), all);
+  });
+
+  it("garde l'interrupteur, les sortes coupées connues et un pas d'angle sensé", () => {
+    const store = memory();
+    assert.equal(writeSnapSettings(store, {
+      enabled: false, off: ["midpoint", "inconnue", "midpoint"], angleStep: 5 }), true);
+    assert.deepEqual(readSnapSettings(store),
+      { enabled: false, off: ["midpoint"], angleStep: 5 });
+    for (const angleStep of [0, 91, "x", -15]) {
+      assert.equal(normalizeSnapSettings({ angleStep }).angleStep, ANGLE_STEP);
+    }
+    const full = { setItem: () => { throw new Error("plein"); } };
+    assert.equal(writeSnapSettings(full, {}), false);
+  });
+
+  it("les sortes actives : le réglage, rien s'il est coupé, l'accrochage rapide seul", () => {
+    const keys = SNAP_KINDS.map((k) => k.key);
+    assert.deepEqual([...activeSnaps(null)], keys);
+    assert.deepEqual([...activeSnaps({ off: ["on", "angle"] })],
+      keys.filter((k) => k !== "on" && k !== "angle"));
+    assert.equal(activeSnaps({ enabled: false }).size, 0);
+    // L'accrochage rapide passe outre l'interrupteur coupé.
+    assert.deepEqual([...activeSnaps({ enabled: false }, { kind: "midpoint" })],
+      ["midpoint"]);
+  });
+
+  it("chaque sorte a un libellé traduit", () => {
+    setLang("en");
+    try {
+      for (const k of SNAP_KINDS) assert.ok(hasTranslation(k.label), k.label);
+    } finally {
+      setLang("fr");
+    }
+  });
+});
+
+describe("seules les sortes actives accrochent", () => {
+  const only = (...keys) => new Set(keys);
+
+  it("extrémités et centres se coupent à part", () => {
+    // Le centre du cercle (1, 3), le bout de l'arc (2, 1).
+    assert.equal(snapNear(50.4, 30, ENTITIES, { kinds: only("endpoint") }).onPoint, null);
+    assert.deepEqual(snapNear(50.4, 30, ENTITIES, { kinds: only("center") }).target,
+      { geo: 1, point: 3 });
+    assert.equal(snapNear(85.3, 0.2, ENTITIES, { kinds: only("center") }).onPoint, null);
+  });
+
+  it("le milieu coupé ne s'offre ni au clic ni au survol", () => {
+    const s = snapNear(20.6, -19.7, ENTITIES, { kinds: only("endpoint") });
+    assert.equal(s.target, null);
+    assert.deepEqual(s.wake, []);
+    // Sur l'entité seul : le point le plus proche, pas le milieu.
+    const on = snapNear(20.6, -19.7, ENTITIES, { kinds: only("on") });
+    assert.deepEqual(on.target, { kind: "on", geo: 0 });
+    assert.equal(on.x, 20.6);
+  });
+
+  it("croisement coupé, courbe coupée", () => {
+    const lines = [{ id: 10, type: "line", p1: [0, 0], p2: [30, 30] },
+      { id: 11, type: "line", p1: [0, 20], p2: [40, -20] }];
+    const s = snapNear(10.5, 10.2, lines, { kinds: only("on") });
+    assert.equal(s.kind, "on");
+    const none = snapNear(10.5, 10.2, lines, { kinds: only() });
+    assert.deepEqual([none.x, none.y, none.target], [10.5, 10.2, null]);
+  });
+
+  it("les directions d'une chaîne suivent leurs sortes", () => {
+    const prev = { id: 20, type: "line", p1: [0, 0], p2: [30, 0] };
+    const chain = { x: 30, y: 0 };
+    const kindsOf = (kinds) => chainDirections(chain, [prev], { angleStep: 15, kinds })
+      .map((d) => d.angle ? "angle" : d.hv ?? d.direction.kind);
+    assert.deepEqual(kindsOf(only("perpendicular")), ["perpendicular"]);
+    // L'horizontale coupée : la ligne précédente, horizontale, reste
+    // offerte comme parallèle.
+    assert.deepEqual(kindsOf(only("parallel")), ["parallel"]);
+    assert.ok(kindsOf(only("angle")).every((k) => k === "angle"));
+    assert.deepEqual(kindsOf(only()), []);
+    const s = snapNear(45, 0.4, [prev], { chain, kinds: only() });
+    assert.deepEqual([s.y, s.hv, s.direction], [0.4, null, null]);
+  });
+
+  it("l'alignement sur un point se coupe, la grille et Maj restent", () => {
+    const pts = [{ geo: 3, point: 1, x: 40, y: 10 }];
+    const at = (kinds, extra = {}) => snapSketchPoint({ x: 40.3, y: 25.04 },
+      cursorAt(40.3, 25.04), { points: pts, toScreen, kinds, ...extra });
+    assert.equal(at(only("align")).x, 40);
+    assert.equal(at(only()).x, 40.3);
+    assert.deepEqual([at(only(), { gridStep: 5 }).x, at(only(), { gridStep: 5 }).y], [40, 25]);
+    const chain = { x: 0, y: 0 };
+    const shift = snapSketchPoint({ x: 12.4, y: 0.3 }, cursorAt(12.4, 0.3),
+      { points: [], toScreen, chain, kinds: only(), lengthStep: 5 });
+    assert.ok(near(Math.hypot(shift.x, shift.y), 10));
   });
 });
 

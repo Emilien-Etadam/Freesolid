@@ -190,6 +190,17 @@ export function installCommandes(sk) {
     });
   }
 
+  // L'interrupteur des accrochages : gardé d'une séance à l'autre, avec
+  // le détail des sortes (Paramètres). L'accrochage rapide passe outre.
+  const snapButton = document.getElementById("sk-snap");
+  snapButton.classList.toggle("on", mode.snapSettings.enabled);
+  snapButton.addEventListener("click", () => {
+    sk.setSnapSettings({ ...mode.snapSettings, enabled: !mode.snapSettings.enabled });
+    say(t(mode.snapSettings.enabled ? "Accrochages actifs"
+      : "Accrochages coupés — le clic droit offre encore l'accrochage rapide"));
+    sk.redraw();
+  });
+
   // Affichés par défaut : le bouton enfoncé montre, relâché masque.
   for (const [id, key, on, off] of [
     ["sk-show-rel", "showRelations", "Symboles de relation affichés",

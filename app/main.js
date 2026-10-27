@@ -1361,12 +1361,19 @@ const settingsDialog = createSettingsDialog({
   call,
   ribbonLabels: { read: readRibbonLabels, apply: applyRibbonLabels },
   wheel: { read: () => readReverseWheel(localStore), apply: setReverseWheel },
+  // sketchMode est créé plus bas ; le panneau ne s'ouvre qu'après.
+  sketchSnaps: {
+    read: () => sketchMode.snapSettings,
+    apply: (settings) => sketchMode.setSnapSettings(settings),
+  },
   storage: (() => { try { return window.localStorage; } catch { return null; } })(),
   navigatorLang: navigator.language,
 });
 document.getElementById("btn-settings").addEventListener("click", () => {
   settingsDialog.toggle();
 });
+/** Le panneau Paramètres ouvert sur une section (menu de l'esquisse). */
+ctx.openSettings = (section) => settingsDialog.open(section);
 
 // Cliquer une fonction pendant une esquisse la termine d'abord — le
 // réflexe de modeleur : on dessine, puis on clique Extrusion, sans passer
@@ -2297,7 +2304,7 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
 
 const sketchMode = createSketchMode(
   { scene, camera, renderer, controls, call, say, refresh, panel, boxOverlay,
-    hideContextToolbar: () => ctx.hideContextToolbar?.() });
+    hideContextToolbar: () => ctx.hideContextToolbar?.(), storage: localStore });
 
 installShortcutBar(document, {
   ribbon: RIBBON_LAYOUT,

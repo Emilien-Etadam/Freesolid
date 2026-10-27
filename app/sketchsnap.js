@@ -10,6 +10,10 @@
 // { kind: "quadrant", geo, quadrant } (0 à droite du centre, sens trigo),
 // { kind: "on", geo } (n'importe où sur la courbe) et
 // { kind: "intersection", geos: [a, b] }.
+//
+// Chaque sorte d'accrochage (SNAP_KINDS) se coupe dans le réglage, que le
+// navigateur garde ; l'accrochage rapide n'en garde qu'une, le temps
+// d'une entité (activeSnaps).
 
 import { arcAngles, distanceToEntity } from "./geom2d.js";
 
@@ -22,6 +26,77 @@ export const ON_CURVE_PX = 8;
 export const SNAP_TOL = 1e-7;
 /** Le point racine du moteur : l'origine de l'esquisse (point 1). */
 export const ORIGIN_GEO = -1;
+
+/**
+ * Les sortes d'accrochage, dans l'ordre du réglage et du menu de
+ * l'accrochage rapide : clé, libellé (traduit à l'affichage), icône.
+ * Toutes sont actives par défaut. La grille a son bouton, et Maj (une
+ * longueur ronde) reste toujours là.
+ */
+export const SNAP_KINDS = [
+  { key: "endpoint", label: "Extrémité", icon: "rel_coincident" },
+  { key: "center", label: "Centre", icon: "rel_concentric" },
+  { key: "midpoint", label: "Milieu", icon: "rel_midpoint" },
+  { key: "quadrant", label: "Quadrant", icon: "rel_onobject" },
+  { key: "intersection", label: "Croisement", icon: "rel_intersection" },
+  { key: "on", label: "Sur l'entité", icon: "rel_onobject" },
+  { key: "tangent", label: "Tangente", icon: "rel_tangent" },
+  { key: "perpendicular", label: "Perpendiculaire", icon: "rel_perpendicular" },
+  { key: "parallel", label: "Parallèle", icon: "rel_parallel" },
+  { key: "hv", label: "Horizontale ou verticale", icon: "rel_horizontal" },
+  { key: "align", label: "Alignement sur un point", icon: "sk_point" },
+  { key: "angle", label: "Pas d'angle", icon: "dim_axis_angle" },
+];
+
+/** Où le réglage des accrochages est gardé (stockage du navigateur). */
+export const SNAPS_KEY = "freesolid.sketchSnaps";
+/** Pas des directions d'une ligne en cours, en degrés, par défaut. */
+export const ANGLE_STEP = 15;
+
+/** Un réglage `{ enabled, off, angleStep }` sûr : l'interrupteur, les
+ *  sortes coupées (clés connues seulement), le pas d'angle (1 à 90°). */
+export function normalizeSnapSettings(raw) {
+  const known = new Set(SNAP_KINDS.map((k) => k.key));
+  const step = Number(raw?.angleStep);
+  return {
+    enabled: raw?.enabled !== false,
+    off: Array.isArray(raw?.off) ? [...new Set(raw.off.filter((k) => known.has(k)))] : [],
+    angleStep: step >= 1 && step <= 90 ? step : ANGLE_STEP,
+  };
+}
+
+/** Le réglage gardé ; tout actif si rien n'est gardé ou lisible. */
+export function readSnapSettings(storage) {
+  let raw = null;
+  try {
+    raw = JSON.parse(storage?.getItem(SNAPS_KEY) ?? "null");
+  } catch {
+    // stockage indisponible ou valeur abîmée : réglage par défaut.
+  }
+  return normalizeSnapSettings(raw);
+}
+
+export function writeSnapSettings(storage, settings) {
+  try {
+    storage?.setItem(SNAPS_KEY, JSON.stringify(normalizeSnapSettings(settings)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Les sortes d'accrochage actives, un Set de clés : celle de
+ * l'accrochage rapide `quick` ({ kind }) seule, même accrochages coupés ;
+ * aucune si l'interrupteur est coupé ; sinon celles que le réglage n'a
+ * pas coupées.
+ */
+export function activeSnaps(settings, quick = null) {
+  if (quick) return new Set([quick.kind]);
+  const s = normalizeSnapSettings(settings);
+  if (!s.enabled) return new Set();
+  return new Set(SNAP_KINDS.map((k) => k.key).filter((k) => !s.off.includes(k)));
+}
 
 /**
  * Points d'esquisse d'où une ligne peut partir : extrémités, centres,
@@ -279,8 +354,11 @@ const parallelDirs = (a, b) => Math.abs(a.x * b.y - a.y * b.x) < 1e-9;
  * dans la chaîne, un point posé sur un cercle ne propose pas la
  * tangente : il y est déjà par la ligne précédente, et Sketcher verrait
  * la tangence en plus comme redondante.
+ *
+ * `kinds` : les sortes actives (activeSnaps) ; toutes si null.
  */
-export function chainDirections(chain, entities, { woken = [], angleStep = 0 } = {}) {
+export function chainDirections(chain, entities,
+                                { woken = [], angleStep = 0, kinds = null } = {}) {
   const at = (p) => Math.abs(p[0] - chain.x) < 1e-9 && Math.abs(p[1] - chain.y) < 1e-9;
   const byId = new Map(entities.map((e) => [e.id, e]));
   const seat = chain.target ?? null;
@@ -294,6 +372,9 @@ export function chainDirections(chain, entities, { woken = [], angleStep = 0 } =
   }
   const out = [];
   const add = (candidate) => {
+    const kind = candidate.angle ? "angle"
+      : candidate.hv ? "hv" : candidate.direction.kind;
+    if (kinds && !kinds.has(kind)) return;
     if (!out.some((c) => parallelDirs(c.dir, candidate.dir))) out.push(candidate);
   };
   // La tangente d'abord : au bout du haut d'un arc, elle est horizontale
@@ -344,6 +425,8 @@ export function chainDirections(chain, entities, { woken = [], angleStep = 0 } =
  * pas des longueurs, ou null.
  * `gridStep` : le pas de la grille si elle accroche, sinon null.
  * `suspended` (Ctrl maintenu) : le point reste où est le curseur.
+ * `kinds` : les sortes d'accrochage actives (activeSnaps), toutes si
+ * null ; la grille et Maj n'en dépendent pas.
  *
  * Rend `{ x, y, onPoint, target, kind, direction, hover, wake, guides,
  * rays, hv, suspended }` : `onPoint` le point d'esquisse accroché,
@@ -357,14 +440,16 @@ export function chainDirections(chain, entities, { woken = [], angleStep = 0 } =
  */
 export function snapSketchPoint(local, cursor, {
   points, entities = [], toScreen, chain = null, woken = [], angleStep = 0,
-  lengthStep = null, gridStep = null, suspended = false,
+  lengthStep = null, gridStep = null, suspended = false, kinds = null,
 }) {
   const none = { onPoint: null, target: null, kind: null, direction: null,
                  hover: null, wake: [], guides: [], rays: [], hv: null };
   if (suspended) {
     return { x: local.x, y: local.y, ...none, suspended: true };
   }
+  const allowed = (kind) => !kinds || kinds.has(kind);
   for (const p of points) {
+    if (!allowed(p.point === 3 ? "center" : "endpoint")) continue;
     const s = toScreen(p.x, p.y);
     if (Math.hypot(s.x - cursor.x, s.y - cursor.y) < SNAP_PX) {
       return { x: p.x, y: p.y, ...none, onPoint: p, kind: "point",
@@ -385,23 +470,25 @@ export function snapSketchPoint(local, cursor, {
     .filter(({ d }) => d < SNAP_PX)
     .sort((a, b) => a.d - b.d)
     .map(({ entity }) => entity);
+  const features = (entity) => entityFeatures(entity).filter((f) => allowed(f.kind));
   const seen = { hover: near[0]?.id ?? null,
-                 wake: near.length ? entityFeatures(near[0]) : [] };
+                 wake: near.length ? features(near[0]) : [] };
   // Une ligne d'aide depuis le point de la chaîne, un peu au-delà du point.
   const ray = (p, relation) => {
     const d = unit(p.x - chain.x, p.y - chain.y), over = 40 / scale;
     return { x1: chain.x, y1: chain.y, x2: p.x + d.x * over, y2: p.y + d.y * over,
              relation };
   };
-  const special = near.flatMap(entityFeatures);
+  const special = near.flatMap(features);
   for (let i = 0; i < near.length; i++) {
     for (let j = i + 1; j < near.length; j++) {
+      if (!allowed("intersection")) break;
       for (const hit of entityCrossings(near[i], near[j])) {
         special.push({ ...hit, kind: "intersection", target: {
           kind: "intersection", geos: [near[i].id, near[j].id] } });
       }
     }
-    if (chain) {
+    if (chain && allowed("tangent")) {
       for (const hit of tangentPoints(near[i], chain)) {
         special.push({ ...hit, kind: "on", target: { kind: "on", geo: near[i].id },
                        direction: { kind: "tangent", geo: near[i].id } });
@@ -424,7 +511,7 @@ export function snapSketchPoint(local, cursor, {
     let bestDir = Infinity;
     const vx = local.x - chain.x, vy = local.y - chain.y;
     const reach = Math.hypot(vx, vy);
-    for (const c of chainDirections(chain, entities, { woken, angleStep })) {
+    for (const c of chainDirections(chain, entities, { woken, angleStep, kinds })) {
       const t = vx * c.dir.x + vy * c.dir.y;
       const q = { x: chain.x + t * c.dir.x, y: chain.y + t * c.dir.y };
       const d = screenDistance(q);
@@ -458,7 +545,7 @@ export function snapSketchPoint(local, cursor, {
     const p = { x, y };
     return { x, y, ...none, ...seen, direction, hv, rays: [ray(p, relation)] };
   }
-  const curve = near.find((entity) =>
+  const curve = allowed("on") && near.find((entity) =>
     distanceToEntity(local.x, local.y, entity) * scale < ON_CURVE_PX);
   if (curve) {
     const on = { kind: "on", target: { kind: "on", geo: curve.id } };
@@ -487,7 +574,7 @@ export function snapSketchPoint(local, cursor, {
   const guides = [];
   const tol = (SNAP_PX * 0.7) / scale;
   let alignX = null, alignY = null;
-  for (const p of points) {
+  for (const p of allowed("align") ? points : []) {
     if (chain && p.x === chain.x && p.y === chain.y) continue;
     if (!alignX && hv !== "V" && Math.abs(p.x - x) < tol) alignX = p;
     if (!alignY && hv !== "H" && Math.abs(p.y - y) < tol) alignY = p;

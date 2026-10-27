@@ -28,8 +28,9 @@ import {
 } from "./dims.js";
 import { ORIGIN_GEO, sceneTheme } from "./sketch/commun.js";
 import {
-  SNAP_PX, arcSnaps, circleSnaps, lineSnaps, onCircle, rectSnaps,
-  sketchEndpoints, sketchSnapPoints, snapSketchPoint,
+  SNAP_KINDS, SNAP_PX, activeSnaps, arcSnaps, circleSnaps, lineSnaps,
+  normalizeSnapSettings, onCircle, readSnapSettings, rectSnaps,
+  sketchEndpoints, sketchSnapPoints, snapSketchPoint, writeSnapSettings,
 } from "./sketchsnap.js";
 import {
   DIM_LABEL_RATIO, DIM_TEXT_PX, createDimSprite, createGlyphSprite,
@@ -46,7 +47,7 @@ export { DIM_TEXT_PX, createDimSprite };
 
 export function createSketchMode(deps) {
   const { scene, camera, renderer, controls, call, say, refresh, panel,
-    boxOverlay, hideContextToolbar } = deps;
+    boxOverlay, hideContextToolbar, storage = null } = deps;
 
   // Session partagée avec les modules de app/sketch/ : ils lisent les
   // fonctions et const de cette fermeture une fois, à l'installation, et
@@ -145,6 +146,8 @@ export function createSketchMode(deps) {
     box: null,            // { x, y } — appui dans le vide : cadre possible
     dragLocal: null,      // dernière position locale d'un drag local (M3)
     solverOk: false,      // l'esquisse est chargée dans le solveur local
+    snapSettings: readSnapSettings(storage), // sortes d'accrochage (réglage)
+    quickSnap: null,      // { kind, keep } — accrochage rapide en cours
     savedCamera: null,
     matrix: new THREE.Matrix4(),
     inverse: new THREE.Matrix4(),
@@ -253,8 +256,16 @@ export function createSketchMode(deps) {
     return sketchSnapPoints(mode.state?.entities, hiddenIds());
   }
 
-  /** Pas des directions d'une ligne en cours, en degrés (repères). */
-  const ANGLE_STEP = 15;
+  /** Les sortes d'accrochage actives : le réglage, ou l'accrochage
+   *  rapide. Le premier clic de l'arc tangent vise une extrémité : il en
+   *  garde l'accrochage. */
+  function snapKinds() {
+    const kinds = activeSnaps(mode.snapSettings, mode.quickSnap);
+    if (CLICK_TOOLS[mode.tool]?.needsEndpoint && !mode.pendingClicks?.length) {
+      kinds.add("endpoint");
+    }
+    return kinds;
+  }
 
   /** Où tombe le curseur : voir snapSketchPoint (sketchsnap.js). */
   function snap(local, event) {
@@ -264,13 +275,44 @@ export function createSketchMode(deps) {
     return snapSketchPoint(local, { x: event.clientX, y: event.clientY }, {
       points: snapPoints(), toScreen, chain: mode.chain,
       entities: (mode.state?.entities ?? []).filter((e) => !hidden.has(e.id)),
-      woken: mode.woken ?? [], angleStep: ANGLE_STEP,
+      woken: mode.woken ?? [], angleStep: mode.snapSettings.angleStep,
+      kinds: snapKinds(),
       // Maj maintenu : des longueurs au pas de la grille, affichée ou non.
       lengthStep: event.shiftKey ? step : null,
       gridStep: mode.gridSnap ? step : null,
       suspended: suspendsSnap(event),
     });
   }
+
+  /**
+   * Accrochage rapide : la seule sorte `kind` (SNAP_KINDS) pour l'entité
+   * en cours, même accrochages coupés. Choisie une seconde fois, elle est
+   * gardée jusqu'au changement d'outil ; null la retire.
+   */
+  function pickQuickSnap(kind) {
+    const label = SNAP_KINDS.find((k) => k.key === kind)?.label;
+    if (!DRAW_TOOLS.has(mode.tool) || !label) {
+      mode.quickSnap = null;
+      say(t("Accrochage rapide retiré"));
+      return;
+    }
+    const keep = mode.quickSnap?.kind === kind;
+    mode.quickSnap = { kind, keep };
+    say(t(keep
+      ? "Accrochage rapide gardé : {k} — jusqu'au changement d'outil"
+      : "Accrochage rapide : {k} — pour l'entité en cours ; choisissez-le "
+        + "de nouveau pour le garder", { k: t(label) }));
+  }
+
+  /** Le réglage des accrochages : appliqué, gardé, et l'interrupteur de
+   *  la barre d'esquisse suit. */
+  function setSnapSettings(settings) {
+    mode.snapSettings = normalizeSnapSettings(settings);
+    writeSnapSettings(storage, mode.snapSettings);
+    document.getElementById("sk-snap")
+      ?.classList.toggle("on", mode.snapSettings.enabled);
+  }
+  sk.setSnapSettings = setSnapSettings;
 
   /** Les lignes survolées pendant le tracé : la suivante peut leur être
    *  parallèle ou perpendiculaire. Les deux dernières. */
@@ -683,7 +725,14 @@ export function createSketchMode(deps) {
 
   function applyState(state, { keepSelection = false } = {}) {
     const prevSelection = keepSelection ? mode.selection : [];
+    const before = mode.state?.entities?.length ?? 0;
     mode.state = state;
+    // Une entité de plus pendant un tracé : elle est finie, l'accrochage
+    // rapide pris pour elle seule s'arrête là.
+    if (mode.quickSnap && !mode.quickSnap.keep && DRAW_TOOLS.has(mode.tool)
+        && (state.entities?.length ?? 0) > before) {
+      mode.quickSnap = null;
+    }
     // Geometry ids may have shifted (trim, delete): stale picks lie,
     // unless the appelant garantit que les ids tiennent (move, cote…).
     const ids = new Set((state.entities ?? []).map((e) => e.id));
@@ -1913,6 +1962,7 @@ export function createSketchMode(deps) {
     mode.tool = tool;
     mode.chain = null;
     mode.woken = [];
+    mode.quickSnap = null;
     mode.pendingCircle = null;
     mode.pendingRect = null;
     mode.pendingRectC = null;
@@ -2158,6 +2208,12 @@ export function createSketchMode(deps) {
     finish: () => exit(true),
     /** Quitter sans garder (coin de confirmation, bouton Quitter). */
     cancel: () => exit(false),
+    /** Un outil de tracé est actif : l'accrochage rapide a un sens. */
+    get drawing() { return mode.active && DRAW_TOOLS.has(mode.tool); },
+    get quickSnap() { return mode.quickSnap; },
+    pickQuickSnap,
+    get snapSettings() { return mode.snapSettings; },
+    setSnapSettings,
     /** Points monde de la géométrie, pour cadrer sans quitter le plan. */
     framePoints() {
       if (!mode.active) return [];

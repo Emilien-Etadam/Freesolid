@@ -1421,6 +1421,9 @@
   }
   #view-menu div > img { width: 16px; height: 16px; flex: none; }
   #view-menu div > img.blank { visibility: hidden; }
+  /* Le choix en cours (accrochage rapide) : coché en bout de ligne. */
+  #view-menu div.checked { color: var(--accent); }
+  #view-menu div.checked::after { content: "✓"; margin-left: auto; padding-left: var(--space-3); }
   /* Rangée d'icônes en tête : les actions sur ce qu'on vise. */
   #view-menu div.bar, #view-menu div.bar:hover {
     display: flex; gap: 2px; padding: 2px; background: none; cursor: default;
@@ -1481,6 +1484,8 @@
   .settings-field > span:first-child, .settings-field > label:first-child { color: var(--ink-2); min-width: 120px; }
   .settings-field label { display: inline-flex; align-items: center; gap: var(--space-1); cursor: pointer; }
   .settings-note { color: var(--ink-2); font-size: var(--text-xs); }
+  /* Une liste de cases à droite du libellé, qui passe à la ligne sous elle-même. */
+  .settings-choices { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); flex: 1; min-width: 0; }
   .settings-actions { justify-content: flex-end; margin-top: 14px; }
   #file-dialog {
     position: fixed; inset: 0; z-index: 70;
@@ -1686,6 +1691,7 @@
           <button id="sk-repair" title="Réparer l'esquisse — relations en trop et conflits retirés, extrémités presque jointes soudées"><img data-icon="sk_repair" alt=""></button>
           <button id="sk-define" title="Définir entièrement — les cotes qui manquent sont ajoutées"><img data-icon="sk_define" alt=""></button>
           <button id="sk-layers" title="Calques d'esquisse — ranger, colorer, masquer des entités"><img data-icon="sk_layers" alt=""></button>
+          <button id="sk-snap" title="Accrochages — points, directions et relations pendant le tracé ; clic droit : accrochage rapide"><img data-icon="sk_snap" alt=""></button>
           <button id="sk-grid" title="Accrochage à la grille — un pas rond qui suit le zoom"><img data-icon="sk_grid" alt=""></button>
           <button id="sk-show-rel" title="Afficher les symboles de relation"><img data-icon="sk_show_rel" alt=""></button>
           <button id="sk-show-dims" title="Afficher les cotes"><img data-icon="sk_show_dims" alt=""></button>

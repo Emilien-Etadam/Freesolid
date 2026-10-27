@@ -6,6 +6,7 @@
 
 import * as THREE from "three";
 import { t } from "./i18n.js";
+import { iconSrc } from "./icons.js";
 import { createLocalSolver } from "./solver.js";
 import { CLICK_TOOLS, OPEN_TOOLS, curvatureComb,
   endpointDirection, gridStep, hiddenByLayers,
@@ -254,8 +255,10 @@ export function createSketchMode(deps) {
 
   /** Où tombe le curseur : voir snapSketchPoint (sketchsnap.js). */
   function snap(local, event) {
+    const hidden = hiddenIds();
     return snapSketchPoint(local, { x: event.clientX, y: event.clientY }, {
       points: snapPoints(), toScreen, chain: mode.chain,
+      entities: (mode.state?.entities ?? []).filter((e) => !hidden.has(e.id)),
       // Grille : un pas rond qui suit le zoom (≈ 1/40 de la vue).
       gridStep: mode.gridSnap
         ? gridStep((camera.top - camera.bottom) / (camera.zoom || 1)) : null,
@@ -277,7 +280,7 @@ export function createSketchMode(deps) {
   /** Ce qu'un tracé garde d'un clic : où, et ce qu'il a accroché. */
   function clickOf(snapped) {
     return { x: snapped.x, y: snapped.y, onPoint: snapped.onPoint ?? null,
-             suspended: !!snapped.suspended };
+             target: snapped.target ?? null, suspended: !!snapped.suspended };
   }
 
   // ---------- aides au tracé ----------
@@ -292,16 +295,35 @@ export function createSketchMode(deps) {
     transparent: true, opacity: 0.8 });
   const snapMaterial = new THREE.PointsMaterial({
     color: sceneTheme.selection, size: 11, sizeAttenuation: false, depthTest: false, transparent: true });
+  // Milieu et quadrants de l'entité survolée : où le clic peut se poser.
+  const wakeMaterial = new THREE.PointsMaterial({
+    color: sceneTheme.under, size: 6, sizeAttenuation: false, depthTest: false,
+    transparent: true, opacity: 0.9 });
   let inferLines = null;
   let snapPoint = null;
+  let wakePoints = null;
   let readoutEl = null;
 
-  function clearInference() {
-    for (const obj of [inferLines, snapPoint]) {
+  // Le symbole de la relation que le clic posera, devant la lecture.
+  const SNAP_SYMBOLS = {
+    point: ["rel_coincident", "Coïncidente"],
+    midpoint: ["rel_midpoint", "Milieu"],
+    quadrant: ["rel_onobject", "Quadrant"],
+    intersection: ["rel_intersection", "Croisement"],
+    on: ["rel_onobject", "Sur l'entité"],
+  };
+
+  function dropInferenceObjects() {
+    for (const obj of [inferLines, snapPoint, wakePoints]) {
       if (obj) { group.remove(obj); obj.geometry.dispose(); }
     }
     inferLines = null;
     snapPoint = null;
+    wakePoints = null;
+  }
+
+  function clearInference() {
+    dropInferenceObjects();
     if (readoutEl) readoutEl.hidden = true;
   }
 
@@ -339,11 +361,7 @@ export function createSketchMode(deps) {
     const s = snap(local, event);
     mode.lastLocal = { x: s.x, y: s.y };
     emitPointer(s);
-    for (const obj of [inferLines, snapPoint]) {
-      if (obj) { group.remove(obj); obj.geometry.dispose(); }
-    }
-    inferLines = null;
-    snapPoint = null;
+    dropInferenceObjects();
     if (s.guides.length) {
       const pts = s.guides.flatMap((g) => [
         new THREE.Vector3(g.x, g.y, 0), new THREE.Vector3(s.x, s.y, 0)]);
@@ -353,11 +371,17 @@ export function createSketchMode(deps) {
       inferLines.renderOrder = 23;
       group.add(inferLines);
     }
-    if (s.onPoint) {
+    if (s.target) {
       snapPoint = new THREE.Points(new THREE.BufferGeometry().setFromPoints(
         [new THREE.Vector3(s.x, s.y, 0)]), snapMaterial);
       snapPoint.renderOrder = 24;
       group.add(snapPoint);
+    }
+    if (s.wake.length) {
+      wakePoints = new THREE.Points(new THREE.BufferGeometry().setFromPoints(
+        s.wake.map((p) => new THREE.Vector3(p.x, p.y, 0))), wakeMaterial);
+      wakePoints.renderOrder = 23;
+      group.add(wakePoints);
     }
     if (!readoutEl) {
       readoutEl = document.createElement("div");
@@ -366,7 +390,15 @@ export function createSketchMode(deps) {
     }
     const host = renderer.domElement.parentElement.getBoundingClientRect();
     readoutEl.hidden = false;
-    readoutEl.textContent = readoutText(s);
+    const symbol = SNAP_SYMBOLS[s.kind];
+    const parts = [document.createTextNode(readoutText(s))];
+    if (symbol) {
+      const img = document.createElement("img");
+      img.src = iconSrc(symbol[0]);
+      img.alt = img.title = t(symbol[1]);
+      parts.unshift(img);
+    }
+    readoutEl.replaceChildren(...parts);
     readoutEl.style.left = `${event.clientX - host.left + 16}px`;
     readoutEl.style.top = `${event.clientY - host.top + 18}px`;
   }

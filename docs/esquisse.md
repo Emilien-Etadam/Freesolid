@@ -65,7 +65,7 @@ Un outil est **fait** quand :
 | Égaliser la courbure (G2) au raccord de deux splines | ✅ | `sketch_match_curvature` | `p51_complements` |
 | Éditer une spline dans la vue : tirer ses points, poignées de tangente sur tous ses points dès qu'elle est sélectionnée (direction et longueurs, Alt : un seul côté, longueurs en %), Ctrl+clic pour un point de plus (forme gardée), Suppr pour en retirer un, polygone de contrôle (pôles à tirer), peigne de courbure, simplifier (tolérance), lisser, libérer les poignées — les relations de la spline tiennent | ✅ | `sketch_set_spline`, `curve_poles`, `curve_move_pole` ; calcul `splinemath` (moteur et client) | `p69_esquisse`, `test_splinemath`, `splinemath.test` |
 | Peigne de courbure, accrochage à la grille | ✅ | client (`curvatureComb`, `gridStep`) | `sketchtools` |
-| Accrochage pendant le tracé : extrémités, centres, points, bouts de spline, références liées, origine — la relation part avec le tracé, Ctrl suspend l'accrochage | ✅ | `snaps` des tracés (`engine/sketchsnap.py`) ; client `app/sketchsnap.js` | `p74_accrochages`, `sketchsnap`, `test_sketchsnap` |
+| Accrochage pendant le tracé : extrémités, centres, points, bouts de spline, références liées, origine ; milieux, quadrants, croisements, sur la courbe (arêtes de la pièce comprises) — la relation part avec le tracé, son symbole s'affiche au curseur, Ctrl suspend l'accrochage | ✅ | `snaps` des tracés (`engine/sketchsnap.py`) ; client `app/sketchsnap.js` | `p74_accrochages`, `p75_points_remarquables`, `sketchsnap`, `test_sketchsnap` |
 
 ## Relations
 
@@ -131,6 +131,14 @@ Un outil est **fait** quand :
   exactement au même endroit (la ligne précédente d'une chaîne), et une
   ligne exactement horizontale ou verticale le reste. Une relation qui
   rendrait l'esquisse redondante ou contradictoire n'est pas posée.
+  Survoler une entité montre son milieu et ses quadrants. Le milieu d'une
+  ligne donne une relation milieu ; celui d'un arc, seulement « sur
+  l'entité » (Sketcher n'a pas de milieu d'arc : le point ne suit pas si
+  l'arc change). Un quadrant : sur l'entité, et horizontal ou vertical
+  avec le centre. Un croisement : sur les deux courbes. Près d'une
+  courbe : sur l'entité ; dans l'axe horizontal ou vertical d'une
+  chaîne, le point se pose là où l'axe la coupe. Le symbole de la
+  relation que le clic posera s'affiche devant la lecture du curseur.
   Ctrl maintenu pendant un tracé : le point reste sous le curseur, sans
   accrochage ni relation (sauf au premier clic de l'arc tangent, qui doit
   partir d'une extrémité).

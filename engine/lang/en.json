@@ -26,6 +26,8 @@
  "accrochage inconnu : {}": "unknown snap: {}",
  "accrochage « center » : réservé au rectangle par le centre": "snap \"center\": center rectangle only",
  "accrochage « {} » : cible invalide": "snap \"{}\": invalid target",
+ "accrochage « {} » : géométrie {} introuvable": "snap \"{}\": geometry {} not found",
+ "accrochage « {} » : la géométrie {} ne s'y prête pas": "snap \"{}\": geometry {} does not allow it",
  "accrochage « {} » : point {}.{} introuvable": "snap \"{}\": point {}.{} not found",
  "aperçu non disponible pour {}": "preview not available for {}",
  "arête depuis un nœud inconnu « {} »": "edge from unknown node \"{}\"",

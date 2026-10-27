@@ -283,6 +283,11 @@ export function relationGlyphs(constraints, entities, offset = 2) {
   for (const c of constraints ?? []) {
     const text = RELATION_GLYPHS[c.type];
     if (!text || (c.type === "Block" && blocks > MAX_BLOCK_GLYPHS)) continue;
+    // Horizontale ou verticale entre deux points (un quadrant accroché) :
+    // aucune des deux courbes n'est horizontale, rien à marquer.
+    if ((c.type === "Horizontal" || c.type === "Vertical") && c.pos?.[0]) {
+      continue;
+    }
     // Une relation entre un point et une ligne (milieu, sur l'objet…)
     // ne se marque pas ; une relation entre deux courbes se marque sur
     // chacune.

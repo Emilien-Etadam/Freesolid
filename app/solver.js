@@ -262,7 +262,14 @@ export function createLocalSolver(loadModule) {
         }
         return undefined;
       case "Symmetric":
-        if (P1 && P2 && L3) {
+        // Autour d'un point (un milieu, le centre d'un rectangle) ou
+        // d'une ligne : le troisième a une position ou n'en a pas.
+        if (P1 && P2 && p3) {
+          const P3 = pointRef(g3, p3);
+          return P3 ? [{ id: id(""), type: "p2p_symmetric_ppp",
+                         p1_id: P1, p2_id: P2, p_id: P3 }] : undefined;
+        }
+        if (P1 && P2 && L3 && (g3 < 0 || kinds[g3] === "line")) {
           return [{ id: id(""), type: "p2p_symmetric_ppl",
                     p1_id: P1, p2_id: P2, l_id: L3 }];
         }

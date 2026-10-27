@@ -65,6 +65,7 @@ Un outil est **fait** quand :
 | Égaliser la courbure (G2) au raccord de deux splines | ✅ | `sketch_match_curvature` | `p51_complements` |
 | Éditer une spline dans la vue : tirer ses points, poignées de tangente sur tous ses points dès qu'elle est sélectionnée (direction et longueurs, Alt : un seul côté, longueurs en %), Ctrl+clic pour un point de plus (forme gardée), Suppr pour en retirer un, polygone de contrôle (pôles à tirer), peigne de courbure, simplifier (tolérance), lisser, libérer les poignées — les relations de la spline tiennent | ✅ | `sketch_set_spline`, `curve_poles`, `curve_move_pole` ; calcul `splinemath` (moteur et client) | `p69_esquisse`, `test_splinemath`, `splinemath.test` |
 | Peigne de courbure, accrochage à la grille | ✅ | client (`curvatureComb`, `gridStep`) | `sketchtools` |
+| Accrochage pendant le tracé : extrémités, centres, points, bouts de spline, références liées, origine — la relation part avec le tracé, Ctrl suspend l'accrochage | ✅ | `snaps` des tracés (`engine/sketchsnap.py`) ; client `app/sketchsnap.js` | `p74_accrochages`, `sketchsnap`, `test_sketchsnap` |
 
 ## Relations
 
@@ -120,6 +121,19 @@ Un outil est **fait** quand :
   le degré ») n’a plus de points de passage : elle ne s’édite pas dans la
   vue.
 
+- **Accrochage** : un point accroché (extrémité, centre, point, bout de
+  spline, référence liée, origine) donne une coïncidence ; le clic du
+  rayon d'un cercle ou le point de passage d'un arc posé sur un point
+  existant donne un « sur l'entité ». L'interface nomme ce qu'elle a
+  accroché (`snaps`) et le moteur pose ces relations dans la même
+  opération : un seul Ctrl+Z retire le tracé et ses relations. Un point
+  que l'interface n'a pas nommé coïncide encore avec un point existant
+  exactement au même endroit (la ligne précédente d'une chaîne), et une
+  ligne exactement horizontale ou verticale le reste. Une relation qui
+  rendrait l'esquisse redondante ou contradictoire n'est pas posée.
+  Ctrl maintenu pendant un tracé : le point reste sous le curseur, sans
+  accrochage ni relation (sauf au premier clic de l'arc tangent, qui doit
+  partir d'une extrémité).
 - **Blocs** : un bloc est un modèle ; l'insérer en copie les entités et
   leurs relations internes. Modifier le bloc ensuite ne met pas à jour
   les copies déjà posées.

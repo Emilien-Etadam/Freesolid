@@ -30,21 +30,24 @@ OPS = (
     Op("sketch_state", Req(("sketch", str))),
     Op("sketch_add_line", Req(
         ("sketch", str), ("x1", float), ("y1", float),
-        ("x2", float), ("y2", float), optional={"construction": bool}),
-       undo=True),
-                                       # construction : ligne d'axe
+        ("x2", float), ("y2", float),
+        optional={"construction": bool, "snaps": dict}), undo=True),
+                                       # construction : ligne d'axe ;
+                                       # snaps : ce que l'interface a
+                                       # accroché (engine/sketchsnap.py)
     Op("sketch_add_rectangle", Req(
         ("sketch", str), ("x1", float), ("y1", float),
-        ("x2", float), ("y2", float), optional={"center": bool}), undo=True),
+        ("x2", float), ("y2", float),
+        optional={"center": bool, "snaps": dict}), undo=True),
                                        # coins opposés ; center : tenu par
                                        # son centre s'il est sur l'origine
     Op("sketch_add_circle", Req(
-        ("sketch", str), ("cx", float), ("cy", float), ("r", float)),
-       undo=True),
+        ("sketch", str), ("cx", float), ("cy", float), ("r", float),
+        optional={"snaps": dict}), undo=True),
     # Palier 3 — outils d'esquisse avancés. Angles en radians, sens trigo.
     Op("sketch_add_arc", Req(
         ("sketch", str), ("cx", float), ("cy", float), ("r", float),
-        ("a1", float), ("a2", float)), undo=True),
+        ("a1", float), ("a2", float), optional={"snaps": dict}), undo=True),
     Op("sketch_add_spline", Req(("sketch", str), ("points", list)), undo=True),
                                        # interpolée par les points
     Op("sketch_add_ellipse", Req(
@@ -63,8 +66,8 @@ OPS = (
         ("sketch", str), ("geos", list), ("distance", float)), undo=True),
                                        # optional: reversed, construction
     # Tracés complémentaires (engine/sketchdraw.py).
-    Op("sketch_add_point", Req(("sketch", str), ("x", float), ("y", float)),
-       undo=True),
+    Op("sketch_add_point", Req(("sketch", str), ("x", float), ("y", float),
+                               optional={"snaps": dict}), undo=True),
     Op("sketch_add_tangent_arc", Req(
         ("sketch", str), ("geo", int), ("point", int),
         ("x", float), ("y", float)), undo=True),  # part d'une extrémité (1|2)

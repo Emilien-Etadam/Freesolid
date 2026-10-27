@@ -5,6 +5,7 @@
 // ici, en fonctions pures.
 
 import { circlePoints, ellipsePoints, slotPoints } from "./geom2d.js";
+import { circleSnaps, lineSnaps, pointSnaps } from "./sketchsnap.js";
 
 const TAU = Math.PI * 2;
 
@@ -263,13 +264,15 @@ const xy = (p) => ({ x: p.x, y: p.y });
 /**
  * Les outils. `prompts[i]` : la consigne après i clics. `build(pts, opts)`
  * renvoie `{ op, params }` ou `{ error }`. `preview(pts, cursor, opts)`
- * renvoie une polyligne (coordonnées d'esquisse).
+ * renvoie une polyligne (coordonnées d'esquisse). `snaps(pts)`, s'il
+ * existe : ce que les clics ont accroché, envoyé à l'op (sketchsnap.js).
  */
 export const CLICK_TOOLS = {
   point: {
     clicks: 1,
     prompts: ["Point : cliquez où le poser"],
     build: ([p]) => ({ op: "sketch_add_point", params: { x: p.x, y: p.y } }),
+    snaps: ([p]) => pointSnaps(p),
     preview: () => [],
   },
   centerline: {
@@ -278,6 +281,7 @@ export const CLICK_TOOLS = {
       "Ligne d'axe : cliquez l'arrivée"],
     build: ([a, b]) => ({ op: "sketch_add_line", params: {
       x1: a.x, y1: a.y, x2: b.x, y2: b.y, construction: true } }),
+    snaps: ([a, b]) => lineSnaps(a, b),
     preview: ([a], cur) => [xy(a), xy(cur)],
   },
   circle3: {
@@ -290,6 +294,7 @@ export const CLICK_TOOLS = {
       if (!k) return { error: "Cercle : les trois points sont alignés" };
       return { op: "sketch_add_circle", params: { cx: k.x, cy: k.y, r: k.r } };
     },
+    snaps: (pts) => circleSnaps(null, pts),
     preview: (pts, cur) => {
       if (pts.length < 2) return [xy(pts[0]), xy(cur)];
       const k = circumcircle(pts[0], pts[1], cur);

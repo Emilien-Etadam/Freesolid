@@ -851,3 +851,75 @@ def p70_esquisse_3d(self, mark, report, etat):
         abs(moved[2] - 16) < 1e-6 and refused
         and len(self._sketch3d_spec(obj)["dims"]) == 2
         and sweep_obj.Shape.Area > 0)
+
+
+def p74_accrochages_esquisse(self, mark, report, etat):
+    mark("p74: accrochages de l'esquisse")
+    from engine.kernel import dispatch
+    self.new_part("Pièce accrochages")
+    name = self.sketch_start()["sketch"]
+    sk = self._get_sketch(name)
+
+    def coincident(a, pa, b, pb):
+        return any(c.Type == "Coincident"
+                   and {(c.First, c.FirstPos), (c.Second, c.SecondPos)}
+                   == {(a, pa), (b, pb)} for c in sk.Constraints)
+
+    self.sketch_add_circle(name, 40, 20, 5, snaps={})
+    # Par le protocole : une ligne partie du centre du cercle, un seul
+    # Ctrl+Z pour la ligne et sa relation.
+    out = dispatch(self, "sketch_add_line", {
+        "sketch": name, "x1": 40, "y1": 20, "x2": 70, "y2": 35,
+        "snaps": {"start": {"geo": 0, "point": 3}}})
+    if not out["ok"]:
+        raise KernelError(out["error"])
+    centre = coincident(1, 1, 0, 3)
+    self.undo()
+    undo_ok = len(sk.Geometry) == 1 and not len(sk.Constraints)
+    self.redo()
+    # Une chaîne sans cible : le moteur voit la fin de la ligne d'avant.
+    self.sketch_add_line(name, 70, 35, 90, 35, snaps={})
+    self.sketch_add_point(name, 90, 35, snaps={"at": {"geo": 2, "point": 2}})
+    self.sketch_add_circle(name, 90, 35, 3,
+                           snaps={"center": {"geo": 3, "point": 1}})
+    # Une ligne retracée sur une autre : son horizontale serait redondante.
+    self.sketch_add_line(name, 100, -10, 120, -10, snaps={})
+    self.sketch_add_line(name, 100, -10, 120, -10, snaps={})
+    clean = not (list(sk.RedundantConstraints or [])
+                 or list(sk.ConflictingConstraints or []))
+    count = len(sk.Geometry)
+    try:
+        self.sketch_add_line(name, 0, 0, 5, 5,
+                             snaps={"start": {"geo": 99, "point": 1}})
+        refused = False
+    except KernelError:
+        refused = len(sk.Geometry) == count
+    report["p74_accrochages"] = (
+        centre and undo_ok
+        and coincident(2, 1, 1, 2) and coincident(3, 1, 2, 2)
+        and coincident(4, 3, 3, 1)
+        and coincident(6, 1, 5, 1) and coincident(6, 2, 5, 2)
+        and not any(c.Type == "Horizontal" and c.First == 6
+                    for c in sk.Constraints)
+        and clean and refused)
+
+    # Sur une face : la ligne part d'un sommet de la pièce et s'arrête
+    # sur un autre sans qu'il soit nommé.
+    self.new_part("Pièce accrochages références")
+    self.add_rect_sketch(40, 30)
+    self.add_pad(10)
+    body = self._require_body()
+    top = next(i for i, f in enumerate(body.Shape.Faces)
+               if abs(f.CenterOfMass.z - 10) < 1e-6)
+    name = self.sketch_start(face=top)["sketch"]
+    sk = self._get_sketch(name)
+    refs = [e for e in self.sketch_reference(name, mode="edges")["entities"]
+            if e.get("external")]
+    first, second = refs[0], refs[1]
+    self.sketch_add_line(name, *first["p1"], 0, 0,
+                         snaps={"start": {"geo": first["id"], "point": 1}})
+    self.sketch_add_line(name, 0, 0, *second["p2"], snaps={})
+    report["p74_accrochages_references"] = (
+        coincident(0, 1, first["id"], 1) and coincident(0, 2, -1, 1)
+        and coincident(1, 1, 0, 2) and coincident(1, 2, second["id"], 2))
+    self.sketch_finish(name)

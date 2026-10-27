@@ -86,14 +86,20 @@ class SketchDrawMixin:
                 "Coincident", first + i, 2, first + (i + 1) % n, 1))
         return first
 
-    def sketch_add_point(self, sketch, x, y):
-        """Point d'esquisse — repère pour une cote, un perçage, un axe."""
+    def sketch_add_point(self, sketch, x, y, snaps=None):
+        """Point d'esquisse — repère pour une cote, un perçage, un axe.
+        ``snaps`` : ``at``, le point d'esquisse sur lequel il est posé."""
         import Part
         import Sketcher
         sk = self._get_sketch(sketch)
+        parsed = (None if snaps is None
+                  else self._snap_targets(sk, "sketch_add_point", snaps))
         gid = sk.addGeometry(Part.Point(self._app().Vector(
             float(x), float(y), 0)), False)
-        if self._coincident_2d(x, y, 0, 0):
+        if parsed is not None:
+            self._add_snap_constraints(
+                sk, self._snap_links(sk, parsed, (("at", gid, 1),), {gid}))
+        elif self._coincident_2d(x, y, 0, 0):
             sk.addConstraint(Sketcher.Constraint("Coincident", gid, 1, -1, 1))
         return self.sketch_state(sketch)
 

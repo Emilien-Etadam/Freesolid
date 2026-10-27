@@ -27,6 +27,10 @@ import {
 } from "./dims.js";
 import { ORIGIN_GEO, sceneTheme } from "./sketch/commun.js";
 import {
+  SNAP_PX, arcSnaps, circleSnaps, lineSnaps, onCircle, rectSnaps,
+  sketchEndpoints, sketchSnapPoints, snapSketchPoint,
+} from "./sketchsnap.js";
+import {
   DIM_LABEL_RATIO, DIM_TEXT_PX, createDimSprite, createGlyphSprite,
 } from "./sketch/dimsprite.js";
 import { installCommandes } from "./sketch/commandes.js";
@@ -147,7 +151,6 @@ export function createSketchMode(deps) {
     lastFinished: null,   // sketch name, for "pad what I just drew"
   };
 
-  const SNAP_PX = 12;
   const DRAG_CLICK_PX = 3; // en-dessous : clic, pas un drag
   let building = false; // construction multi-appels (rectangle) en cours
 
@@ -238,86 +241,43 @@ export function createSketchMode(deps) {
     return hiddenByLayers(mode.state?.entities, mode.state?.layers);
   }
 
-  function* endpoints() {
-    const hidden = hiddenIds();
-    for (const entity of mode.state?.entities ?? []) {
-      if (hidden.has(entity.id)) continue;
-      if (entity.type === "point") {
-        yield { geo: entity.id, point: 1, x: entity.p1[0], y: entity.p1[1] };
-      }
-      if (entity.type === "line" || entity.type === "arc") {
-        yield { geo: entity.id, point: 1, x: entity.p1[0], y: entity.p1[1] };
-        yield { geo: entity.id, point: 2, x: entity.p2[0], y: entity.p2[1] };
-      }
-      if (entity.type === "circle" || entity.type === "arc") {
-        yield { geo: entity.id, point: 3, x: entity.c[0], y: entity.c[1] };
-      }
-      if (entity.type === "poly" && entity.kind === "spline"
-          && entity.points?.length > 1) {
-        // Bouts d'une spline : départ (1) et arrivée (2), comme Sketcher.
-        const [x1, y1] = entity.points[0];
-        const [x2, y2] = entity.points[entity.points.length - 1];
-        yield { geo: entity.id, point: 1, x: x1, y: y1 };
-        if (Math.hypot(x2 - x1, y2 - y1) > 1e-9) {
-          yield { geo: entity.id, point: 2, x: x2, y: y2 };
-        }
-      }
-    }
+  function endpoints() {
+    return sketchEndpoints(mode.state?.entities, hiddenIds());
   }
 
   // Points d'accrochage : les extrémités et centres, plus l'origine de
-  // l'esquisse — on démarre souvent un profil dessus (le moteur en fait une
-  // coïncidence). L'origine ne se glisse pas : overEndpoint ne la voit pas.
-  function* snapPoints() {
-    yield* endpoints();
-    yield { geo: ORIGIN_GEO, point: 1, x: 0, y: 0 };
+  // l'esquisse — on démarre souvent un profil dessus. L'origine ne se
+  // glisse pas : overEndpoint ne la voit pas.
+  function snapPoints() {
+    return sketchSnapPoints(mode.state?.entities, hiddenIds());
   }
 
+  /** Où tombe le curseur : voir snapSketchPoint (sketchsnap.js). */
   function snap(local, event) {
-    // Endpoint snap first (screen-space), then axis snap along the chain,
-    // then inference lines: alignment on any existing point (a guide only,
-    // no relation is created for it).
-    for (const p of snapPoints()) {
-      const s = toScreen(p.x, p.y);
-      if (Math.hypot(s.x - event.clientX, s.y - event.clientY) < SNAP_PX) {
-        return { x: p.x, y: p.y, onPoint: p, guides: [], hv: null };
-      }
-    }
-    let { x, y } = local;
-    let hv = null;
-    const guides = [];
-    if (mode.chain) {
-      const sHere = toScreen(x, y);
-      const sAxisV = toScreen(mode.chain.x, y);
-      const sAxisH = toScreen(x, mode.chain.y);
-      if (Math.hypot(sHere.x - sAxisV.x, sHere.y - sAxisV.y) < SNAP_PX) {
-        x = mode.chain.x;
-        hv = "V";
-      } else if (Math.hypot(sHere.x - sAxisH.x, sHere.y - sAxisH.y) < SNAP_PX) {
-        y = mode.chain.y;
-        hv = "H";
-      }
-    }
-    // Tolérance en unités d'esquisse : les axes de l'esquisse ne suivent
-    // pas forcément ceux de l'écran.
-    const s0 = toScreen(0, 0), s1 = toScreen(1, 0);
-    const tol = (SNAP_PX * 0.7) / (Math.hypot(s1.x - s0.x, s1.y - s0.y) || 1);
-    let alignX = null, alignY = null;
-    for (const p of snapPoints()) {
-      if (mode.chain && p.x === mode.chain.x && p.y === mode.chain.y) continue;
-      if (!alignX && hv !== "V" && Math.abs(p.x - x) < tol) alignX = p;
-      if (!alignY && hv !== "H" && Math.abs(p.y - y) < tol) alignY = p;
-    }
-    if (alignX) { x = alignX.x; guides.push(alignX); }
-    if (alignY) { y = alignY.y; guides.push(alignY); }
-    if (hv && mode.chain) guides.push(mode.chain);
-    if (mode.gridSnap) {
+    return snapSketchPoint(local, { x: event.clientX, y: event.clientY }, {
+      points: snapPoints(), toScreen, chain: mode.chain,
       // Grille : un pas rond qui suit le zoom (≈ 1/40 de la vue).
-      const step = gridStep((camera.top - camera.bottom) / (camera.zoom || 1));
-      if (!guides.some((g) => g.x === x)) x = Math.round(x / step) * step;
-      if (!guides.some((g) => g.y === y)) y = Math.round(y / step) * step;
+      gridStep: mode.gridSnap
+        ? gridStep((camera.top - camera.bottom) / (camera.zoom || 1)) : null,
+      suspended: suspendsSnap(event),
+    });
+  }
+
+  /** Ctrl maintenu pendant un tracé : le point reste sous le curseur,
+   *  sans accrochage ni relation. Pas au premier clic d'un outil qui
+   *  part d'une extrémité (arc tangent) : il doit en viser une. */
+  function suspendsSnap(event) {
+    if (!(event.ctrlKey || event.metaKey) || !DRAW_TOOLS.has(mode.tool)) {
+      return false;
     }
-    return { x, y, onPoint: null, guides, hv };
+    return !(CLICK_TOOLS[mode.tool]?.needsEndpoint
+      && !mode.pendingClicks?.length);
+  }
+
+  /** Ce qu'un tracé garde d'un clic : où, et ce qu'il a accroché. */
+  function clickOf(snapped) {
+    return { x: snapped.x, y: snapped.y, onPoint: snapped.onPoint ?? null,
+             suspended: !!snapped.suspended };
   }
 
   // ---------- aides au tracé ----------
@@ -703,15 +663,19 @@ export function createSketchMode(deps) {
     const name = mode.state.sketch;
     if (mode.tool === "line" && mode.chain) {
       const from = mode.chain;
+      // Le point suivant part d'ici ; le moteur le voit coïncider avec la
+      // fin de cette ligne.
       mode.chain = point.onPoint ? null : { x: point.x, y: point.y };
       await safe(call("sketch_add_line", { sketch: name,
-        x1: from.x, y1: from.y, x2: point.x, y2: point.y }));
+        x1: from.x, y1: from.y, x2: point.x, y2: point.y,
+        snaps: lineSnaps(from, point) }));
     } else if (mode.tool === "rect" && mode.pendingRect) {
       const a = mode.pendingRect;
       mode.pendingRect = null;
       building = true;
       try {
-        await addRectangle(name, a, point);
+        await addRectangle(name, a, point, false,
+          rectSnaps({ corner1: a, corner2: point }));
       } finally {
         building = false;
       }
@@ -721,7 +685,8 @@ export function createSketchMode(deps) {
       building = true;
       try {
         await addRectangle(name,
-          { x: 2 * c.x - point.x, y: 2 * c.y - point.y }, point, true);
+          { x: 2 * c.x - point.x, y: 2 * c.y - point.y }, point, true,
+          rectSnaps({ corner2: point, center: c }));
       } finally {
         building = false;
       }
@@ -730,7 +695,7 @@ export function createSketchMode(deps) {
       mode.pendingCircle = null;
       const r = Math.hypot(point.x - c.x, point.y - c.y);
       if (r > 0) await safe(call("sketch_add_circle",
-        { sketch: name, cx: c.x, cy: c.y, r }));
+        { sketch: name, cx: c.x, cy: c.y, r, snaps: circleSnaps(c, [point]) }));
     }
   }
 
@@ -779,7 +744,7 @@ export function createSketchMode(deps) {
   /** Un clic d'un outil de sketchtools.js : rangé, puis l'op au dernier. */
   async function clickToolStep(spec, snapped, name) {
     const pts = [...(mode.pendingClicks ?? [])];
-    let p = { x: snapped.x, y: snapped.y };
+    let p = clickOf(snapped);
     if (spec.needsEndpoint && !pts.length) {
       const on = snapped.onPoint;
       const entity = on && (mode.state.entities ?? []).find(
@@ -806,7 +771,9 @@ export function createSketchMode(deps) {
       return;
     }
     say(t(spec.prompts[0]));
-    await safe(call(out.op, { sketch: name, ...out.params }));
+    const snaps = spec.snaps?.(pts);
+    await safe(call(out.op,
+      { sketch: name, ...out.params, ...(snaps ? { snaps } : {}) }));
   }
 
   async function onClick(event) {
@@ -851,7 +818,7 @@ export function createSketchMode(deps) {
       syncEntityPanel();
     } else if (mode.tool === "line") {
       if (!mode.chain) {
-        mode.chain = { x: snapped.x, y: snapped.y };
+        mode.chain = clickOf(snapped);
         say("Ligne : cliquez le point suivant (Échap pour terminer)");
       } else {
         const from = mode.chain;
@@ -867,31 +834,31 @@ export function createSketchMode(deps) {
       }
     } else if (mode.tool === "rect") {
       if (!mode.pendingRect) {
-        mode.pendingRect = { x: snapped.x, y: snapped.y };
+        mode.pendingRect = clickOf(snapped);
         say("Rectangle : cliquez le sommet opposé — ou tapez la largeur");
       } else {
         await placeDrawPoint(snapped);
       }
     } else if (mode.tool === "rectc") {
       if (!mode.pendingRectC) {
-        mode.pendingRectC = { x: snapped.x, y: snapped.y };
+        mode.pendingRectC = clickOf(snapped);
         say("Rectangle par le centre : cliquez un sommet — ou tapez la largeur");
       } else {
         await placeDrawPoint(snapped);
       }
     } else if (mode.tool === "circle") {
       if (!mode.pendingCircle) {
-        mode.pendingCircle = { x: snapped.x, y: snapped.y };
+        mode.pendingCircle = clickOf(snapped);
         say("Cercle : cliquez pour donner le rayon — ou tapez-le");
       } else {
         await placeDrawPoint(snapped);
       }
     } else if (mode.tool === "arc") {
       if (!mode.pendingArc) {
-        mode.pendingArc = { c: { x: snapped.x, y: snapped.y } };
+        mode.pendingArc = { c: clickOf(snapped) };
         say("Arc : cliquez le point de départ");
       } else if (!mode.pendingArc.start) {
-        mode.pendingArc.start = { x: snapped.x, y: snapped.y };
+        mode.pendingArc.start = clickOf(snapped);
         say("Arc : cliquez le point d'arrivée (sens anti-horaire)");
       } else {
         const { c, start } = mode.pendingArc;
@@ -901,15 +868,17 @@ export function createSketchMode(deps) {
         const a1 = Math.atan2(start.y - c.y, start.x - c.x);
         let a2 = Math.atan2(snapped.y - c.y, snapped.x - c.x);
         if (a2 <= a1) a2 += Math.PI * 2;
-        safe(call("sketch_add_arc",
-          { sketch: name, cx: c.x, cy: c.y, r, a1, a2 }));
+        // Le bout ne tombe sur le point visé que s'il est au même rayon.
+        const end = onCircle(snapped, c, r) ? clickOf(snapped) : null;
+        safe(call("sketch_add_arc", { sketch: name, cx: c.x, cy: c.y, r,
+          a1, a2, snaps: arcSnaps({ center: c, start, end }) }));
       }
     } else if (mode.tool === "arc3") {
       if (!mode.pendingArc3) {
-        mode.pendingArc3 = [{ x: snapped.x, y: snapped.y }];
+        mode.pendingArc3 = [clickOf(snapped)];
         say("Arc 3 points : cliquez le point d'arrivée");
       } else if (mode.pendingArc3.length === 1) {
-        mode.pendingArc3.push({ x: snapped.x, y: snapped.y });
+        mode.pendingArc3.push(clickOf(snapped));
         say("Arc 3 points : cliquez un point de passage");
       } else {
         const [p1, p2] = mode.pendingArc3;
@@ -926,8 +895,9 @@ export function createSketchMode(deps) {
         const params = aM < aE
           ? { a1: aS, a2: aE }
           : { a1: aE - Math.PI * 2, a2: aS };
-        safe(call("sketch_add_arc",
-          { sketch: name, cx: c.x, cy: c.y, r, ...params }));
+        const [start, end] = aM < aE ? [p1, p2] : [p2, p1];
+        safe(call("sketch_add_arc", { sketch: name, cx: c.x, cy: c.y, r,
+          ...params, snaps: arcSnaps({ start, end, on: [clickOf(snapped)] }) }));
       }
     } else if (mode.tool === "slot") {
       if (!mode.pendingSlot) {
@@ -1247,7 +1217,7 @@ export function createSketchMode(deps) {
   Object.assign(sk, { panel, mode, abandonEntityPanel, setTool });
   const { openToolPanel, closeToolPanel } = installPanneauOutil(sk);
 
-  async function addRectangle(name, a, b, center = false) {
+  async function addRectangle(name, a, b, center = false, snaps = {}) {
     // Une seule opération (un seul Ctrl+Z) : le moteur enchaîne les quatre
     // côtés comme tracés à la main (coïncidences, horizontal/vertical) ;
     // par le centre, les coins restent symétriques autour de lui.
@@ -1257,7 +1227,7 @@ export function createSketchMode(deps) {
     }
     try {
       applyState(await call("sketch_add_rectangle", { sketch: name,
-        x1: a.x, y1: a.y, x2: b.x, y2: b.y, center }));
+        x1: a.x, y1: a.y, x2: b.x, y2: b.y, center, snaps }));
     } catch (error) {
       say(error.message, true);
     }
@@ -1797,6 +1767,15 @@ export function createSketchMode(deps) {
   Object.assign(sk, { renderer, call, refresh, mode, safe, editDim });
   const { closeModifyBox, openModifyBox } = installBoiteCote(sk);
 
+  // Ctrl enfoncé ou relâché : l'aperçu suit tout de suite, sans attendre
+  // que la souris bouge (voir suspendsSnap).
+  function onModifierKey(event) {
+    if (event.key !== "Control" && event.key !== "Meta") return;
+    if (!mode.active || !mode.lastMouse || !DRAW_TOOLS.has(mode.tool)) return;
+    onPointerMove({ ...mode.lastMouse,
+      ctrlKey: event.ctrlKey, metaKey: event.metaKey });
+  }
+
   function onKey(event) {
     if (!mode.active) return;
     // Taper dans un champ du panneau ne doit pas changer d'outil.
@@ -2014,6 +1993,8 @@ export function createSketchMode(deps) {
         renderer.domElement.addEventListener(type, handler);
       }
       document.addEventListener("keydown", onKey);
+      document.addEventListener("keydown", onModifierKey);
+      document.addEventListener("keyup", onModifierKey);
       // Le ruban bascule sur l'onglet Esquisse (main.js écoute).
       document.dispatchEvent(new Event("freesolid:sketch-enter"));
       setTool(pendingTool ?? "line");
@@ -2042,6 +2023,8 @@ export function createSketchMode(deps) {
       renderer.domElement.removeEventListener(type, handler);
     }
     document.removeEventListener("keydown", onKey);
+    document.removeEventListener("keydown", onModifierKey);
+    document.removeEventListener("keyup", onModifierKey);
     setCursor("");
     imageLoadGen += 1;
     revokePendingImageUrl();

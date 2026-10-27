@@ -374,12 +374,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     errors.push("P025 : le panneau de propriétés devrait être ouvert sur la ligne");
   }
   await page.screenshot({ path: path.join(SHOTS, "1a-entite-ligne.png") });
+  // Un clic simple sur une autre entité la choisit seule (son panneau) ;
+  // Ctrl+clic sur la première : les deux, le panneau de la sélection et
+  // ses relations.
   await page.mouse.click(cx + 90, cy);
-  await sleep(500);
-  const panelOpenAfterSecond = await page.evaluate(
-    () => document.querySelector("aside")?.classList.contains("panel-open"));
-  if (panelOpenAfterSecond) {
-    errors.push("P025 : le panneau devrait se fermer à la 2e entité");
+  await sleep(800);
+  const secondTitle = await page.evaluate(
+    () => document.querySelector("#panel .ptitle")?.textContent ?? "");
+  if (secondTitle !== "Ligne") {
+    errors.push("P025 : un clic simple sur la 2e entité devrait la choisir "
+      + "seule (titre « " + secondTitle + " »)");
+  }
+  await page.keyboard.down("Control");
+  await page.mouse.click(cx, cy - 70);
+  await page.keyboard.up("Control");
+  await page.waitForFunction(
+    () => document.querySelector("#panel .ptitle")?.textContent
+      ?.startsWith("Sélection (2"),
+    null,
+    { timeout: 8000 },
+  ).catch(() => {});
+  const bothText = await page.evaluate(
+    () => document.querySelector("#panel")?.innerText ?? "");
+  if (!bothText.includes("Sélection (2") || !bothText.includes("Perpendiculaire")) {
+    errors.push("P025 : Ctrl+clic devrait ajouter la 1re entité et proposer "
+      + "ses relations (« " + bothText.replace(/\s+/g, " ").slice(0, 180) + " »)");
   }
   await page.keyboard.press("Escape");
   await sleep(250);

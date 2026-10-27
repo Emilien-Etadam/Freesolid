@@ -189,6 +189,7 @@ def _etapes():
         document.p72_maillage_identique,
         document.p73_cotes_neutres,
         esquisse.p74_accrochages_esquisse,
+        esquisse.p75_accrochages_points_remarquables,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

@@ -535,27 +535,38 @@ class SketchMixin:
         """``snaps`` vérifié, chaque cible comprise : avant tout ajout,
         pour qu'un refus ne laisse rien."""
         from engine.kernel import KernelError
-        from engine.sketchsnap import parse_snaps, snap_positions, targets_of
+        from engine.sketchsnap import fits, geos_of, parse_snaps, targets_of
         parsed = parse_snaps(op, snaps)
-        for role, (geo, point) in targets_of(parsed):
-            if geo == ROOT_GEO:
-                found = point == 1
-            else:
-                found = (is_geo(sk, geo) and point in snap_positions(
-                    geo_of(sk, geo).TypeId))
-            if not found:
+        for role, target in targets_of(parsed):
+            if target.kind == "point":
+                if target.geo == ROOT_GEO:
+                    found = target.point == 1
+                else:
+                    found = is_geo(sk, target.geo) and fits(
+                        target, lambda g: geo_of(sk, g).TypeId)
+                if not found:
+                    raise KernelError(
+                        "accrochage « {} » : point {}.{} introuvable".format(
+                            role, target.geo, target.point))
+                continue
+            for geo in geos_of(target):
+                if not is_geo(sk, geo):
+                    raise KernelError(
+                        "accrochage « {} » : géométrie {} introuvable".format(
+                            role, geo))
+            if not fits(target, lambda g: geo_of(sk, g).TypeId):
                 raise KernelError(
-                    "accrochage « {} » : point {}.{} introuvable".format(
-                        role, geo, point))
+                    "accrochage « {} » : la géométrie {} ne s'y prête "
+                    "pas".format(role, target.geo))
         return parsed
 
     def _point_at(self, sk, where, skip):
-        """Le point d'esquisse exactement en ``where`` : ``(geo, point)``
+        """Le point d'esquisse exactement en ``where`` : une ``Target``
         ou None. Entités (sauf ``skip``, le tracé lui-même), puis
         références, puis l'origine : extrémités, centres, points, bouts
         de spline — tout ce que l'interface accroche."""
         from engine.sketchref import FIRST_EXTERNAL, external_count
-        from engine.sketchsnap import snap_positions
+        from engine.sketchsnap import Target, snap_positions
         gids = [g for g in range(len(sk.Geometry)) if g not in skip]
         gids += [FIRST_EXTERNAL - k for k in range(external_count(sk))]
         for gid in gids:
@@ -565,25 +576,31 @@ class SketchMixin:
                 except Exception:  # noqa: BLE001 - point absent
                     continue
                 if where.distanceToPoint(there) < self._SNAP_TOL:
-                    return gid, pos
+                    return Target("point", gid, point=pos)
         if where.distanceToPoint(self._app().Vector(0, 0, 0)) < self._SNAP_TOL:
-            return ROOT_GEO, 1
+            return Target("point", ROOT_GEO, point=1)
         return None
 
     def _snap_links(self, sk, parsed, points, skip):
-        """Coïncidences des points d'un tracé ``(rôle, geo, point)`` : la
-        cible que ``snaps`` nomme, sinon le point existant exactement au
-        même endroit (la ligne précédente d'une chaîne)."""
-        import Sketcher
+        """Relations des points d'un tracé ``(rôle, geo, point)`` : vers
+        la cible que ``snaps`` nomme, sinon une coïncidence avec le point
+        existant exactement au même endroit (la ligne précédente d'une
+        chaîne)."""
+        from engine.sketchsnap import relations
         links = []
         for role, gid, pos in points:
             target = parsed.get(role) if role else None
             if target is None:
                 target = self._point_at(sk, sk.getPoint(gid, pos), skip)
             if target is not None:
-                links.append(Sketcher.Constraint(
-                    "Coincident", gid, pos, *target))
+                links += self._constraints(sk, relations(
+                    target, gid, pos, lambda g: geo_of(sk, g).TypeId))
         return links
+
+    @staticmethod
+    def _constraints(sk, specs):
+        import Sketcher
+        return [Sketcher.Constraint(*spec) for spec in specs]
 
     @staticmethod
     def _add_snap_constraints(sk, constraints):
@@ -682,7 +699,8 @@ class SketchMixin:
                 middle = self._point_at(
                     sk, V((x1 + x2) / 2, (y1 + y2) / 2, 0), sides)
             if middle is not None:
-                links.append(C("Symmetric", first, 1, first + 2, 1, *middle))
+                links.append(C("Symmetric", first, 1, first + 2, 1,
+                               middle.geo, middle.point))
             self._add_snap_constraints(sk, links)
         elif center and self._coincident_2d((x1 + x2) / 2, (y1 + y2) / 2, 0, 0):
             # Coin (x1, y1) = départ du 1er côté ; (x2, y2) = départ du 3e ;
@@ -717,10 +735,9 @@ class SketchMixin:
     def _round_snap_links(self, sk, gid, parsed, points):
         """Relations d'accrochage d'un cercle ou d'un arc : centre et bouts
         coïncidents, points posés sur la courbe (``on``)."""
-        import Sketcher
-        return self._snap_links(sk, parsed, points, {gid}) + [
-            Sketcher.Constraint("PointOnObject", geo, point, gid)
-            for geo, point in parsed.get("on", [])]
+        return self._snap_links(sk, parsed, points, {gid}) + self._constraints(
+            sk, [("PointOnObject", on.geo, on.point, gid)
+                 for on in parsed.get("on", [])])
 
     def sketch_add_spline(self, sketch, points):
         """Spline interpolée par les points cliqués."""

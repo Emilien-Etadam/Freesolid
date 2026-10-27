@@ -23,6 +23,13 @@ describe("relationGlyphs", () => {
     assert.deepEqual(g.map((x) => [x.text, x.geo]), [["∥", 0], ["∥", 1]]);
   });
 
+  it("une horizontale entre deux points ne marque aucune courbe", () => {
+    assert.deepEqual(relationGlyphs(
+      [{ type: "Horizontal", geos: [1, 0, null], pos: [2, 3, 0] }],
+      [{ id: 0, type: "circle", c: [0, 0], r: 5 }, line(1, [-9, -9], [5, 0])]),
+    []);
+  });
+
   it("les coïncidences ne sont pas marquées", () => {
     assert.deepEqual(relationGlyphs(
       [{ type: "Coincident", geos: [0, 1, null] }],

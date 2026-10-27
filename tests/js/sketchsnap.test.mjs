@@ -3,7 +3,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  ORIGIN_GEO, SNAP_PX, arcSnaps, circleSnaps, lineSnaps, onCircle,
+  ON_CURVE_PX, ORIGIN_GEO, SNAP_PX, arcSnaps, axisCrossings, circleSnaps,
+  entityCrossings, entityFeatures, lineSnaps, nearestOnEntity, onCircle,
   pointSnaps, rectSnaps, sketchEndpoints, sketchSnapPoints, snapSketchPoint,
   snapTarget,
 } from "../../app/sketchsnap.js";
@@ -15,7 +16,7 @@ const cursorAt = (x, y) => toScreen(x, y);
 const ENTITIES = [
   { id: 0, type: "line", p1: [10, -20], p2: [30, -20] },
   { id: 1, type: "circle", c: [50, 30], r: 5 },
-  { id: 2, type: "arc", c: [80, 0], p1: [85, 0], p2: [80, 5] },
+  { id: 2, type: "arc", c: [80, 0], r: 5, p1: [85, 0], p2: [80, 5] },
   { id: 3, type: "point", p1: [-40, 10] },
   { id: 4, type: "poly", kind: "spline", points: [[0, 50], [5, 55], [10, 50]] },
 ];
@@ -91,8 +92,111 @@ describe("où tombe le curseur", () => {
   it("Ctrl maintenu : le point reste sous le curseur, sans accrochage", () => {
     const s = snapAt(50.3, 30, { suspended: true, chain: { x: 0, y: 30 },
       gridStep: 5 });
-    assert.deepEqual(s, { x: 50.3, y: 30, onPoint: null, guides: [],
-      hv: null, suspended: true });
+    assert.deepEqual(s, { x: 50.3, y: 30, onPoint: null, target: null,
+      kind: null, wake: [], guides: [], hv: null, suspended: true });
+  });
+});
+
+const near = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
+
+function snapNear(x, y, entities, opts = {}) {
+  return snapSketchPoint({ x, y }, cursorAt(x, y), {
+    points: sketchSnapPoints(entities), entities, toScreen, ...opts });
+}
+
+describe("points remarquables et courbes", () => {
+  it("milieu d'une ligne, milieu et quadrants couverts d'un arc", () => {
+    assert.deepEqual(entityFeatures(ENTITIES[0]).map((f) => [f.kind, f.x, f.y]),
+      [["midpoint", 20, -20]]);
+    const arc = entityFeatures(ENTITIES[2]);
+    assert.deepEqual(arc.map((f) => f.kind), ["midpoint", "quadrant", "quadrant"]);
+    assert.ok(near(arc[0].x, 80 + 5 * Math.SQRT1_2) && near(arc[0].y, 5 * Math.SQRT1_2));
+    assert.deepEqual(arc.slice(1).map((f) => f.target.quadrant), [0, 1]);
+    const circle = entityFeatures(ENTITIES[1]);
+    assert.deepEqual(circle.map((f) => [f.target.quadrant, f.x, f.y]),
+      [[0, 55, 30], [1, 50, 35], [2, 45, 30], [3, 50, 25]]);
+  });
+
+  it("le point le plus proche sur une ligne, un cercle, un arc", () => {
+    assert.deepEqual(nearestOnEntity(ENTITIES[0], 25, -10), { x: 25, y: -20 });
+    const q = nearestOnEntity(ENTITIES[1], 60, 30);
+    assert.ok(near(q.x, 55) && near(q.y, 30));
+    assert.equal(nearestOnEntity(ENTITIES[2], 70, -5), null); // hors balayage
+  });
+
+  it("croisements : deux lignes, une ligne et un cercle, deux cercles", () => {
+    const a = { id: 10, type: "line", p1: [0, 0], p2: [30, 30] };
+    const b = { id: 11, type: "line", p1: [0, 20], p2: [40, -20] };
+    assert.deepEqual(entityCrossings(a, b), [{ x: 10, y: 10 }]);
+    const short = { id: 12, type: "line", p1: [0, 20], p2: [5, 15] };
+    assert.deepEqual(entityCrossings(a, short), []);
+    const c = { id: 13, type: "circle", c: [0, 0], r: 10 };
+    const h = { id: 14, type: "line", p1: [-20, 5], p2: [20, 5] };
+    const xs = entityCrossings(h, c).map((p) => p.x).sort((u, v) => u - v);
+    assert.ok(near(xs[0], -Math.sqrt(75)) && near(xs[1], Math.sqrt(75)));
+    const d = { id: 15, type: "circle", c: [10, 0], r: 10 };
+    assert.equal(entityCrossings(c, d).length, 2);
+    // Un arc ne garde que les croisements de son balayage.
+    const arc = { id: 16, type: "arc", c: [0, 0], r: 10, p1: [10, 0], p2: [0, 10] };
+    assert.equal(entityCrossings(h, arc).length, 1);
+  });
+
+  it("l'axe d'une chaîne coupe une courbe", () => {
+    const hits = axisCrossings(ENTITIES[1], "H", 32.5);
+    assert.deepEqual(hits.map((p) => p.y), [32.5, 32.5]);
+  });
+});
+
+describe("accrocher un milieu, un quadrant, un croisement, une courbe", () => {
+  it("le milieu d'une ligne", () => {
+    const s = snapNear(20.6, -19.7, ENTITIES);
+    assert.deepEqual([s.x, s.y, s.kind], [20, -20, "midpoint"]);
+    assert.deepEqual(s.target, { kind: "midpoint", geo: 0 });
+    assert.equal(s.onPoint, null);
+  });
+
+  it("un quadrant de cercle", () => {
+    const s = snapNear(55.4, 30.3, ENTITIES);
+    assert.deepEqual([s.x, s.y], [55, 30]);
+    assert.deepEqual(s.target, { kind: "quadrant", geo: 1, quadrant: 0 });
+  });
+
+  it("le croisement de deux entités survolées", () => {
+    const lines = [{ id: 10, type: "line", p1: [0, 0], p2: [30, 30] },
+      { id: 11, type: "line", p1: [0, 20], p2: [40, -20] }];
+    const s = snapNear(10.5, 10.2, lines);
+    assert.deepEqual([s.x, s.y, s.kind], [10, 10, "intersection"]);
+    assert.deepEqual(s.target, { kind: "intersection", geos: [10, 11] });
+  });
+
+  it("sur la courbe, près d'elle seulement", () => {
+    const a = Math.PI / 6;
+    const out = 0.5; // 5 px dehors
+    const s = snapNear(50 + (5 + out) * Math.cos(a), 30 + (5 + out) * Math.sin(a),
+      ENTITIES);
+    assert.equal(s.kind, "on");
+    assert.deepEqual(s.target, { kind: "on", geo: 1 });
+    assert.ok(near(Math.hypot(s.x - 50, s.y - 30), 5));
+    const far = (ON_CURVE_PX + 1) / 10;
+    const t = snapNear(50 + (5 + far) * Math.cos(a), 30 + (5 + far) * Math.sin(a),
+      ENTITIES);
+    assert.equal(t.target, null);
+    assert.ok(t.wake.length, "la courbe survolée montre ses points remarquables");
+  });
+
+  it("sur la courbe et dans l'axe de la chaîne : là où l'axe la coupe", () => {
+    const chain = { x: 30, y: 32.5 };
+    const s = snapNear(54.5, 32.9, ENTITIES, { chain });
+    assert.equal(s.hv, "H");
+    assert.equal(s.y, 32.5);
+    assert.ok(near(s.x, 50 + Math.sqrt(25 - 2.5 * 2.5)));
+    assert.deepEqual(s.target, { kind: "on", geo: 1 });
+  });
+
+  it("un point existant passe avant tout", () => {
+    const s = snapNear(85.3, 0.2, ENTITIES);
+    assert.deepEqual(s.target, { geo: 2, point: 1 });
+    assert.equal(s.kind, "point");
   });
 });
 
@@ -125,6 +229,15 @@ describe("ce que le tracé envoie au moteur", () => {
     assert.ok(!onCircle({ x: 3, y: 4.1 }, c, 5));
     assert.deepEqual(arcSnaps({ center, start: free, end: null, on: [center] }), {
       center: { geo: 1, point: 3 }, on: [{ geo: 1, point: 3 }] });
+  });
+
+  it("milieu et courbe partent tels quels ; un point posé sur la courbe tracée, non", () => {
+    const mid = snapNear(20.6, -19.7, ENTITIES);
+    assert.deepEqual(lineSnaps(mid, free), { start: { kind: "midpoint", geo: 0 } });
+    assert.deepEqual(circleSnaps(mid, [mid, center]), {
+      center: { kind: "midpoint", geo: 0 }, on: [{ geo: 1, point: 3 }] });
+    assert.deepEqual(rectSnaps({ corner1: mid, center: mid }), {
+      corner1: { kind: "midpoint", geo: 0 } });
   });
 
   it("rectangle : coins et centre", () => {

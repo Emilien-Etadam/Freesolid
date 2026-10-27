@@ -923,3 +923,80 @@ def p74_accrochages_esquisse(self, mark, report, etat):
         coincident(0, 1, first["id"], 1) and coincident(0, 2, -1, 1)
         and coincident(1, 1, 0, 2) and coincident(1, 2, second["id"], 2))
     self.sketch_finish(name)
+
+
+def p75_accrochages_points_remarquables(self, mark, report, etat):
+    mark("p75: accrochages — milieu, quadrant, croisement, sur l'entité")
+    self.new_part("Pièce accrochages remarquables")
+    name = self.sketch_start()["sketch"]
+    sk = self._get_sketch(name)
+
+    def has(kind, *args):
+        n = len(args)
+        for c in sk.Constraints:
+            got = (c.First, c.FirstPos, c.Second, c.SecondPos, c.Third,
+                   c.ThirdPos)
+            if c.Type == kind and tuple(
+                    int(getattr(v, "value", v)) for v in got[:n]) == args:
+                return True
+        return False
+
+    self.sketch_add_line(name, 0, 0, 60, 0, snaps={})                # 0
+    self.sketch_add_circle(name, 60, 30, 10, snaps={})               # 1
+    self.sketch_add_line(name, 0, 20, 40, -20, snaps={})             # 2
+    # Une ligne partie du milieu de la première, une autre d'un quadrant.
+    self.sketch_add_line(name, 30, 0, 30, -15, snaps={               # 3
+        "start": {"kind": "midpoint", "geo": 0}})
+    self.sketch_add_line(name, 60, 40, 90, 40, snaps={               # 4
+        "start": {"kind": "quadrant", "geo": 1, "quadrant": 1}})
+    self.sketch_add_point(name, 20, 0, snaps={                       # 5
+        "at": {"kind": "intersection", "geos": [0, 2]}})
+    k = math.sqrt(50)
+    self.sketch_add_point(name, 60 + k, 30 + k, snaps={              # 6
+        "at": {"kind": "on", "geo": 1}})
+    self.sketch_add_arc(name, 100, 0, 10, 0, math.pi / 2, snaps={})  # 7
+    self.sketch_add_line(name, 100 + k, k, 130, 30, snaps={          # 8
+        "start": {"kind": "midpoint", "geo": 7}})
+    relations_ok = (
+        has("Symmetric", 0, 1, 0, 2, 3, 1)
+        and has("PointOnObject", 4, 1, 1) and has("Vertical", 4, 1, 1, 3)
+        and has("Horizontal", 4)
+        and has("PointOnObject", 5, 1, 0) and has("PointOnObject", 5, 1, 2)
+        and has("PointOnObject", 6, 1, 1)
+        and has("PointOnObject", 8, 1, 7)
+        and not list(sk.RedundantConstraints or [])
+        and not list(sk.ConflictingConstraints or []))
+    # La ligne s'allonge : le départ de la ligne 3 reste en son milieu.
+    self.sketch_move(name, 0, 2, 80, 0)
+    follows = abs(sk.getPoint(3, 1).x - 40) < 1e-6
+    count = len(sk.Geometry)
+    refused = []
+    for snaps in ({"start": {"kind": "midpoint", "geo": 1}},
+                  {"start": {"kind": "quadrant", "geo": 0, "quadrant": 0}},
+                  {"start": {"kind": "on", "geo": 99}}):
+        try:
+            self.sketch_add_line(name, 0, 50, 10, 60, snaps=snaps)
+            refused.append(False)
+        except KernelError:
+            refused.append(len(sk.Geometry) == count)
+    report["p75_points_remarquables"] = (
+        relations_ok and follows and all(refused))
+
+    # Sur une arête de la pièce, liée : le point la suit.
+    self.new_part("Pièce accrochage arête")
+    self.add_rect_sketch(40, 30)
+    self.add_pad(10)
+    body = self._require_body()
+    top = next(i for i, f in enumerate(body.Shape.Faces)
+               if abs(f.CenterOfMass.z - 10) < 1e-6)
+    name = self.sketch_start(face=top)["sketch"]
+    sk = self._get_sketch(name)
+    edge = next(e for e in self.sketch_reference(name, mode="edges")[
+        "entities"] if e.get("external"))
+    x = (edge["p1"][0] + edge["p2"][0]) / 2 + 3
+    y = (edge["p1"][1] + edge["p2"][1]) / 2
+    self.sketch_add_line(name, x, y, 0, 0, snaps={
+        "start": {"kind": "on", "geo": edge["id"]}})
+    report["p75_sur_arete"] = (
+        has("PointOnObject", 0, 1, edge["id"]) and has("Coincident", 0, 2, -1, 1))
+    self.sketch_finish(name)

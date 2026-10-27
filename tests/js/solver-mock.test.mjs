@@ -248,6 +248,22 @@ describe("table translate", () => {
       ],
     },
     {
+      name: "Symmetric autour d'un point : le centre au milieu d'une ligne",
+      constraint: constraint("Symmetric", [0, 0, 2], [1, 2, 3]),
+      expected: [
+        { id: "c0", type: "p2p_symmetric_ppp",
+          p1_id: "g0p1", p2_id: "g0p2", p_id: "g2p3" },
+      ],
+    },
+    {
+      name: "Symmetric autour de l'origine (rectangle par le centre)",
+      constraint: constraint("Symmetric", [0, 1, -1], [1, 2, 1]),
+      expected: [
+        { id: "c0", type: "p2p_symmetric_ppp",
+          p1_id: "g0p1", p2_id: "g1p2", p_id: "origin" },
+      ],
+    },
+    {
       name: "PointOnObject ligne",
       constraint: constraint("PointOnObject", [0, 1], [1, 0]),
       expected: [
@@ -293,6 +309,12 @@ describe("table translate", () => {
 
 describe("politique de refus", () => {
   const entities = fixtureEntities();
+
+  it("symétrie autour d'un cercle entier → load false", async () => {
+    const { solver } = await mockSolver();
+    assert.equal(solver.load(sketch(entities,
+      [constraint("Symmetric", [0, 1, 2], [1, 2, 0])])), false);
+  });
 
   it("type inconnu → load false", async () => {
     const { solver } = await mockSolver();

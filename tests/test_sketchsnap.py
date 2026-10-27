@@ -5,6 +5,7 @@ from engine.kernel import KernelError
 from engine.ops import BY_NAME
 from engine.sketchsnap import (
     ROLES, Target, fits, parse_snaps, relations, snap_positions, targets_of,
+    with_direction,
 )
 
 LINE, ARC, CIRCLE, POINT = ("Part::GeomLineSegment", "Part::GeomArcOfCircle",
@@ -69,7 +70,15 @@ def test_les_points_poses_sur_un_cercle_forment_une_liste():
      "accrochage « start » : cible invalide"),
     ("sketch_add_circle", {"on": {"geo": 0, "point": 1}},
      "accrochage « on » : cible invalide"),
+    ("sketch_add_line", {"sens": "horizontal"},
+     "accrochage inconnu : sens"),
     ("sketch_add_line", {"direction": "horizontal"},
+     "accrochage « direction » : cible invalide"),
+    ("sketch_add_line", {"direction": {"kind": "on", "geo": 0}},
+     "accrochage « direction » : cible invalide"),
+    ("sketch_add_line", {"end": {"kind": "tangent", "geo": 0}},
+     "accrochage « end » : cible invalide"),
+    ("sketch_add_point", {"direction": {"kind": "tangent", "geo": 0}},
      "accrochage inconnu : direction"),
     ("sketch_add_line", {"end": {"kind": "milieu", "geo": 0}},
      "accrochage « end » : cible invalide"),
@@ -112,6 +121,11 @@ def test_les_points_visables_suivent_le_type_de_geometrie():
     (Target("on", 3), False),
     (Target("intersection", 0, other=-3), True),
     (Target("intersection", 0, other=3), False),
+    (Target("parallel", 0), True),
+    (Target("perpendicular", -3), True),
+    (Target("parallel", 2), False),
+    (Target("tangent", 1), True),
+    (Target("tangent", 0), False),
 ])
 def test_une_cible_convient_a_ce_qu_elle_vise(target, ok):
     assert fits(target, type_of) is ok
@@ -134,3 +148,30 @@ def test_les_relations_qui_posent_le_point():
         ("PointOnObject", 5, 1, -3)]
     assert relations(Target("intersection", 0, other=2), 5, 1, type_of) == [
         ("PointOnObject", 5, 1, 0), ("PointOnObject", 5, 1, 2)]
+
+
+def test_la_direction_d_une_ligne():
+    parsed = parse_snaps("sketch_add_line", {
+        "direction": {"kind": "perpendicular", "geo": 0}})
+    assert parsed["direction"] == Target("perpendicular", 0)
+    assert with_direction(Target("parallel", 0), 5, []) == [
+        ("Parallel", 5, 0)]
+    assert with_direction(Target("perpendicular", -3), 5, [
+        ("Coincident", 5, 1, 0, 2)]) == [
+        ("Coincident", 5, 1, 0, 2), ("Perpendicular", 5, -3)]
+
+
+def test_tangente_au_bout_d_un_arc_au_lieu_de_la_coincidence():
+    # Partie du bout 2 de l'arc 1 : tangente en ce bout, une relation.
+    assert with_direction(Target("tangent", 1), 5, [
+        ("Coincident", 5, 1, 1, 2), ("PointOnObject", 5, 2, 0)]) == [
+        ("Tangent", 5, 1, 1, 2), ("PointOnObject", 5, 2, 0)]
+    # Posée sur le cercle (« sur l'entité », un quadrant) : tangente en
+    # ce point.
+    assert with_direction(Target("tangent", 2), 5, [
+        ("PointOnObject", 5, 2, 2), ("Vertical", 5, 2, 2, 3)]) == [
+        ("Tangent", 5, 2, 2), ("Vertical", 5, 2, 2, 3)]
+    # Ailleurs (le centre, un autre arc) : tangente tout court.
+    assert with_direction(Target("tangent", 1), 5, [
+        ("Coincident", 5, 1, 1, 3)]) == [
+        ("Coincident", 5, 1, 1, 3), ("Tangent", 5, 1)]

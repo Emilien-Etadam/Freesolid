@@ -3,7 +3,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  ON_CURVE_PX, ORIGIN_GEO, SNAP_PX, arcSnaps, axisCrossings, circleSnaps,
+  ON_CURVE_PX, ORIGIN_GEO, SNAP_PX, arcSnaps, chainDirections, circleSnaps,
+  crossingsAlong, tangentPoints,
   entityCrossings, entityFeatures, lineSnaps, nearestOnEntity, onCircle,
   pointSnaps, rectSnaps, sketchEndpoints, sketchSnapPoints, snapSketchPoint,
   snapTarget,
@@ -69,7 +70,8 @@ describe("où tombe le curseur", () => {
     const h = snapAt(130, 100.5, { chain });
     assert.equal(h.hv, "H");
     assert.equal(h.y, 100);
-    assert.ok(h.guides.includes(chain));
+    assert.deepEqual(h.rays.map((r) => [r.x1, r.y1, r.relation]),
+      [[100, 100, true]]);
     const v = snapAt(100.4, 140, { chain });
     assert.equal(v.hv, "V");
     assert.equal(v.x, 100);
@@ -93,7 +95,8 @@ describe("où tombe le curseur", () => {
     const s = snapAt(50.3, 30, { suspended: true, chain: { x: 0, y: 30 },
       gridStep: 5 });
     assert.deepEqual(s, { x: 50.3, y: 30, onPoint: null, target: null,
-      kind: null, wake: [], guides: [], hv: null, suspended: true });
+      kind: null, direction: null, hover: null, wake: [], guides: [],
+      rays: [], hv: null, suspended: true });
   });
 });
 
@@ -142,8 +145,9 @@ describe("points remarquables et courbes", () => {
   });
 
   it("l'axe d'une chaîne coupe une courbe", () => {
-    const hits = axisCrossings(ENTITIES[1], "H", 32.5);
-    assert.deepEqual(hits.map((p) => p.y), [32.5, 32.5]);
+    const hits = crossingsAlong(ENTITIES[1], { x: 30, y: 32.5 }, { x: 1, y: 0 });
+    assert.equal(hits.length, 2);
+    assert.ok(hits.every((p) => near(p.y, 32.5)));
   });
 });
 
@@ -200,6 +204,109 @@ describe("accrocher un milieu, un quadrant, un croisement, une courbe", () => {
   });
 });
 
+describe("directions depuis la chaîne", () => {
+  // Le curseur à `t` mm de `from` le long de `dir`, décalé de `off` mm.
+  const along = (from, dir, t, off = 0.3) => ({
+    x: from.x + t * dir.x - off * dir.y, y: from.y + t * dir.y + off * dir.x });
+  const unitOf = (x, y) => ({ x: x / Math.hypot(x, y), y: y / Math.hypot(x, y) });
+  const onLine = (s, from, dir) =>
+    near((s.x - from.x) * dir.y - (s.y - from.y) * dir.x, 0);
+
+  it("perpendiculaire à la ligne précédente", () => {
+    const prev = { id: 20, type: "line", p1: [0, 0], p2: [30, 10] };
+    const chain = { x: 30, y: 10 };
+    const dir = unitOf(-1, 3);
+    const c = along(chain, dir, 20);
+    const s = snapNear(c.x, c.y, [prev], { chain });
+    assert.deepEqual(s.direction, { kind: "perpendicular", geo: 20 });
+    assert.ok(onLine(s, chain, dir));
+    assert.equal(s.rays[0].relation, true);
+  });
+
+  it("parallèle à une ligne survolée avant, pas sans elle", () => {
+    const woke = { id: 21, type: "line", p1: [50, -50], p2: [90, -30] };
+    const chain = { x: 0, y: 0 };
+    const c = along(chain, unitOf(2, 1), 30, 0.4);
+    const s = snapNear(c.x, c.y, [woke], { chain, woken: [21] });
+    assert.deepEqual(s.direction, { kind: "parallel", geo: 21 });
+    assert.equal(snapNear(c.x, c.y, [woke], { chain }).direction, null);
+  });
+
+  it("tangente au bout d'un arc, même quand elle est horizontale", () => {
+    const a = Math.PI / 3;
+    const arc = { id: 22, type: "arc", c: [0, 0], r: 10, p1: [10, 0],
+                  p2: [10 * Math.cos(a), 10 * Math.sin(a)] };
+    const chain = { x: arc.p2[0], y: arc.p2[1] };
+    const dir = { x: -Math.sin(a), y: Math.cos(a) };
+    const c = along(chain, dir, 15);
+    const s = snapNear(c.x, c.y, [arc], { chain });
+    assert.deepEqual(s.direction, { kind: "tangent", geo: 22 });
+    assert.ok(onLine(s, chain, dir));
+    const top = { ...arc, p2: [0, 10] };
+    const dirs = chainDirections({ x: 0, y: 10 }, [top]);
+    assert.deepEqual(dirs[0].direction, { kind: "tangent", geo: 22 });
+    assert.ok(!dirs.some((d) => d.hv === "H"), "l'horizontale cède à la tangente");
+  });
+
+  it("tangente à un cercle depuis un premier point posé dessus", () => {
+    const circle = { id: 23, type: "circle", c: [0, 0], r: 10 };
+    const chain = { x: 10, y: 0, target: { kind: "on", geo: 23 } };
+    assert.deepEqual(chainDirections(chain, [circle])[0].direction,
+      { kind: "tangent", geo: 23 });
+  });
+
+  it("le point où la ligne toucherait un cercle en tangente", () => {
+    const circle = { id: 23, type: "circle", c: [50, 0], r: 10 };
+    const [t] = tangentPoints(circle, { x: 0, y: 0 });
+    assert.ok(near(Math.hypot(t.x - 50, t.y), 10));
+    assert.ok(near(t.x * (t.x - 50) + t.y * t.y, 0)); // rayon ⟂ ligne
+    const s = snapNear(t.x + 0.2, t.y + 0.3, [circle], { chain: { x: 0, y: 0 } });
+    assert.deepEqual(s.target, { kind: "on", geo: 23 });
+    assert.deepEqual(s.direction, { kind: "tangent", geo: 23 });
+  });
+
+  it("un pas d'angle : un repère sans relation, à quelques degrés seulement", () => {
+    const chain = { x: 0, y: 0 };
+    const at = (deg) => ({ x: 40 * Math.cos(deg * Math.PI / 180),
+                           y: 40 * Math.sin(deg * Math.PI / 180) });
+    const c = at(30.5);
+    const s = snapNear(c.x, c.y, [], { chain, angleStep: 15 });
+    assert.ok(near(Math.atan2(s.y, s.x) * 180 / Math.PI, 30));
+    assert.equal(s.direction, null);
+    assert.equal(s.rays[0].relation, false);
+    const d = at(32);
+    const t = snapNear(d.x, d.y, [], { chain, angleStep: 15 });
+    assert.deepEqual([t.x, t.y], [d.x, d.y]);
+    assert.deepEqual(t.rays, []);
+  });
+
+  it("depuis une ligne existante, l'angle se compte depuis elle", () => {
+    const prev = { id: 20, type: "line", p1: [-10, -10], p2: [0, 0] };
+    const dirs = chainDirections({ x: 0, y: 0 }, [prev], { angleStep: 15 })
+      .filter((d) => d.angle);
+    const angles = dirs.map((d) => Math.round(Math.atan2(d.dir.y, d.dir.x) * 180 / Math.PI));
+    assert.ok(angles.includes(60), "45° + 15°");
+    assert.ok(!angles.includes(30));
+  });
+
+  it("Maj : une longueur ronde, dans la direction trouvée", () => {
+    const chain = { x: 0, y: 0 };
+    const s = snapNear(23.4, 0.3, [], { chain, lengthStep: 5 });
+    assert.deepEqual([s.x, s.y, s.hv], [25, 0, "H"]);
+    const free = snapNear(17.1, 17.6, [], { chain, lengthStep: 5 });
+    assert.ok(near(Math.hypot(free.x, free.y), 25));
+  });
+
+  it("une direction oblique échappe à la grille", () => {
+    const prev = { id: 20, type: "line", p1: [0, 0], p2: [30, 10] };
+    const chain = { x: 30, y: 10 };
+    const dir = unitOf(-1, 3);
+    const c = along(chain, dir, 20);
+    const s = snapNear(c.x, c.y, [prev], { chain, gridStep: 5 });
+    assert.ok(onLine(s, chain, dir));
+  });
+});
+
 describe("ce que le tracé envoie au moteur", () => {
   const center = snapAt(50, 30);
   const free = snapAt(33, 71);
@@ -238,6 +345,14 @@ describe("ce que le tracé envoie au moteur", () => {
       center: { kind: "midpoint", geo: 0 }, on: [{ geo: 1, point: 3 }] });
     assert.deepEqual(rectSnaps({ corner1: mid, center: mid }), {
       corner1: { kind: "midpoint", geo: 0 } });
+  });
+
+  it("ligne : la direction du second clic", () => {
+    const end = { x: 1, y: 2, target: null,
+                  direction: { kind: "tangent", geo: 4 } };
+    assert.deepEqual(lineSnaps(free, end),
+      { direction: { kind: "tangent", geo: 4 } });
+    assert.deepEqual(lineSnaps(free, { ...end, suspended: true }), {});
   });
 
   it("rectangle : coins et centre", () => {

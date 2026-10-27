@@ -1000,3 +1000,67 @@ def p75_accrochages_points_remarquables(self, mark, report, etat):
     report["p75_sur_arete"] = (
         has("PointOnObject", 0, 1, edge["id"]) and has("Coincident", 0, 2, -1, 1))
     self.sketch_finish(name)
+
+
+def p76_accrochages_directions(self, mark, report, etat):
+    mark("p76: accrochages — parallèle, perpendiculaire, tangente")
+    self.new_part("Pièce accrochages directions")
+    name = self.sketch_start()["sketch"]
+    sk = self._get_sketch(name)
+
+    def has(kind, *args):
+        for c in sk.Constraints:
+            got = (c.First, c.FirstPos, c.Second, c.SecondPos)
+            if c.Type == kind and tuple(
+                    int(getattr(v, "value", v)) for v in got[:len(args)]) == args:
+                return True
+        return False
+
+    def unit(a, b):
+        d = b - a
+        return d / d.Length
+
+    self.sketch_add_line(name, 0, 0, 30, 10, snaps={})              # 0
+    # Perpendiculaire à la ligne précédente, partie de son bout.
+    self.sketch_add_line(name, 30, 10, 27, 19, snaps={              # 1
+        "direction": {"kind": "perpendicular", "geo": 0}})
+    self.sketch_add_line(name, 50, 0, 80, 10, snaps={               # 2
+        "direction": {"kind": "parallel", "geo": 0}})
+    a = math.pi / 3
+    self.sketch_add_arc(name, 100, 0, 10, 0, a, snaps={})           # 3
+    end = (100 + 10 * math.cos(a), 10 * math.sin(a))
+    self.sketch_add_line(                                           # 4
+        name, end[0], end[1], end[0] - 15 * math.sin(a),
+        end[1] + 15 * math.cos(a), snaps={
+            "start": {"geo": 3, "point": 2},
+            "direction": {"kind": "tangent", "geo": 3}})
+    self.sketch_add_circle(name, 150, 0, 10, snaps={})              # 5
+    # Depuis (120, 40), le point où la ligne touche le cercle en tangente.
+    d = math.hypot(30, 40)
+    t = math.atan2(40, -30) - math.acos(10 / d)
+    self.sketch_add_line(name, 120, 40, 150 + 10 * math.cos(t),     # 6
+                         10 * math.sin(t), snaps={
+                             "end": {"kind": "on", "geo": 5},
+                             "direction": {"kind": "tangent", "geo": 5}})
+    relations_ok = (
+        has("Coincident", 1, 1, 0, 2) and has("Perpendicular", 1, 0)
+        and has("Parallel", 2, 0)
+        and has("Tangent", 4, 1, 3, 2) and not has("Coincident", 4, 1, 3, 2)
+        and has("Tangent", 6, 2, 5) and not has("PointOnObject", 6, 2, 5)
+        and not list(sk.RedundantConstraints or [])
+        and not list(sk.ConflictingConstraints or []))
+    # Le bout de la ligne 1 bouge : elle reste perpendiculaire.
+    self.sketch_move(name, 1, 2, 20, 25)
+    g0, g1 = sk.Geometry[0], sk.Geometry[1]
+    held = abs(unit(g0.StartPoint, g0.EndPoint).dot(
+        unit(g1.StartPoint, g1.EndPoint))) < 1e-6
+    count = len(sk.Geometry)
+    refused = []
+    for snaps in ({"direction": {"kind": "parallel", "geo": 5}},
+                  {"direction": {"kind": "tangent", "geo": 0}}):
+        try:
+            self.sketch_add_line(name, 0, 50, 10, 60, snaps=snaps)
+            refused.append(False)
+        except KernelError:
+            refused.append(len(sk.Geometry) == count)
+    report["p76_directions"] = relations_ok and held and all(refused)

@@ -586,16 +586,21 @@ class SketchMixin:
         la cible que ``snaps`` nomme, sinon une coïncidence avec le point
         existant exactement au même endroit (la ligne précédente d'une
         chaîne)."""
+        return self._constraints(
+            sk, self._snap_specs(sk, parsed, points, skip))
+
+    def _snap_specs(self, sk, parsed, points, skip):
+        """``_snap_links``, en arguments de ``Sketcher.Constraint``."""
         from engine.sketchsnap import relations
-        links = []
+        specs = []
         for role, gid, pos in points:
             target = parsed.get(role) if role else None
             if target is None:
                 target = self._point_at(sk, sk.getPoint(gid, pos), skip)
             if target is not None:
-                links += self._constraints(sk, relations(
-                    target, gid, pos, lambda g: geo_of(sk, g).TypeId))
-        return links
+                specs += relations(
+                    target, gid, pos, lambda g: geo_of(sk, g).TypeId)
+        return specs
 
     @staticmethod
     def _constraints(sk, specs):
@@ -624,9 +629,9 @@ class SketchMixin:
 
     def sketch_add_line(self, sketch, x1, y1, x2, y2, construction=False,
                         snaps=None):
-        """Ligne. ``snaps`` (``start``, ``end``) : les points que
-        l'interface a accrochés ; sans lui, le moteur déduit tout des
-        coordonnées (``_auto_constrain``)."""
+        """Ligne. ``snaps`` (``start``, ``end``, ``direction``) : les points
+        et la direction que l'interface a accrochés ; sans lui, le moteur
+        déduit tout des coordonnées (``_auto_constrain``)."""
         from engine.kernel import KernelError
         import Part
         sk = self._get_sketch(sketch)
@@ -642,10 +647,14 @@ class SketchMixin:
         if parsed is None:
             self._auto_constrain(sk, gid)
             return self.sketch_state(sketch)
-        links = self._snap_links(
+        from engine.sketchsnap import with_direction
+        specs = self._snap_specs(
             sk, parsed, (("start", gid, 1), ("end", gid, 2)), {gid})
+        if "direction" in parsed:
+            specs = with_direction(parsed["direction"], gid, specs)
         axis = self._axis_constraint(sk, gid)
-        self._add_snap_constraints(sk, links + ([axis] if axis else []))
+        self._add_snap_constraints(
+            sk, self._constraints(sk, specs) + ([axis] if axis else []))
         return self.sketch_state(sketch)
 
     def sketch_add_rectangle(self, sketch, x1, y1, x2, y2, center=False,

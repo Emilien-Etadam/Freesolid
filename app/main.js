@@ -7,7 +7,7 @@ import {
   filletRadiusLabel,
 } from "./dims.js";
 import { createPropertyPanel } from "./panel.js";
-import { num } from "./num.js";
+import { num, setDisplayDecimals } from "./num.js";
 import { ndcToScreen } from "./screen.js";
 import { readScene } from "./theme.js";
 import {
@@ -1365,6 +1365,20 @@ applyRibbonLabels(readRibbonLabels());
 
 // ---------- panneau Paramètres ----------
 
+let docOptionsQueued = false;
+
+/** Les propriétés du document validées : rangées dans le fichier, puis
+ *  la vue reconstruite (la qualité d'image change le maillage). */
+async function sendDocOptions() {
+  docOptionsQueued = false;
+  try {
+    await call("set_document_options", { values: ctx.docOptions });
+    await refreshAny(call(ctx.assemblyState ? "assembly_tree" : "get_tree"));
+  } catch (error) {
+    sayUntilAck(error.message);
+  }
+}
+
 const settingsDialog = createSettingsDialog({
   root: document.getElementById("settings-dialog"),
   doc: document,
@@ -1386,6 +1400,18 @@ const settingsDialog = createSettingsDialog({
     display: { read: () => ({ ...displayState }), apply: setDisplay },
     selectFilter: { read: () => ctx.selectFilter, apply: (next) => ctx.setSelectFilter(next) },
     flatTree: { read: () => isFlatTree(), apply: setFlatTree },
+    // Gardées dans le fichier : le moteur les range, l'arbre les renvoie
+    // (décimales), le maillage les relit (qualité d'image).
+    docOptions: {
+      read: () => ctx.docOptions,
+      apply: (values) => {
+        // Un champ à la fois à la validation : un seul envoi pour tous.
+        const first = !docOptionsQueued;
+        docOptionsQueued = true;
+        applyDocOptions(values);
+        if (first) queueMicrotask(sendDocOptions);
+      },
+    },
   },
   openShortcuts: () => openShortcutPanel(),
   storage: (() => { try { return window.localStorage; } catch { return null; } })(),
@@ -1396,6 +1422,17 @@ document.getElementById("btn-settings").addEventListener("click", () => {
 });
 /** Le panneau Paramètres ouvert sur une section (menu de l'esquisse). */
 ctx.openSettings = (section) => settingsDialog.open(section);
+
+/** Propriétés du document reçues avec l'arbre (pièce ou assemblage) :
+ *  les décimales des cotes et lectures ; null sans document. */
+function applyDocOptions(options) {
+  const before = JSON.stringify(ctx.docOptions ?? null);
+  ctx.docOptions = options;
+  setDisplayDecimals(options
+    ? { length: options.length_decimals, angle: options.angle_decimals } : {});
+  if (JSON.stringify(options) !== before) ctx.redrawSketch?.();
+}
+ctx.applyDocOptions = applyDocOptions;
 
 // Cliquer une fonction pendant une esquisse la termine d'abord — le
 // réflexe de modeleur : on dessine, puis on clique Extrusion, sans passer
@@ -1820,6 +1857,8 @@ ctx.handles = installHandles(ctx);
 Object.assign(ctx, { currentSelection, featureCommand });
 const refGeometry = installRefGeometry(ctx);
 ctx.treeHooks.push((tree) => refGeometry.draw(tree));
+// Propriétés du document : elles arrivent avec chaque arbre de pièce.
+ctx.treeHooks.push((tree) => applyDocOptions(tree.options ?? null));
 // Fil de la sélection : pièce › fonction › esquisse › face.
 installBreadcrumbs(ctx);
 // Gestionnaire à onglets : arbre, propriétés, configurations, affichage.
@@ -2330,7 +2369,8 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
 const sketchMode = createSketchMode(
   { scene, camera, renderer, controls, call, say, refresh, panel, boxOverlay,
     hideContextToolbar: () => ctx.hideContextToolbar?.(), storage: localStore,
-    modelEdges: () => edgeData });
+    modelEdges: () => edgeData, docOptions: () => ctx.docOptions });
+ctx.redrawSketch = () => sketchMode.redraw();
 
 installShortcutBar(document, {
   ribbon: RIBBON_LAYOUT,

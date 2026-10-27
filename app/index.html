@@ -1494,6 +1494,7 @@
     background: var(--panel); border-color: var(--line); color: var(--ink);
     position: relative; top: 1px;
   }
+  .settings-tabs button:disabled { opacity: 0.5; cursor: default; }
   .settings-search { width: 240px; margin-bottom: var(--space-1); }
   .settings-search, .settings-field input[type="number"], .settings-field select {
     background: var(--bg); color: var(--ink);
@@ -1517,6 +1518,7 @@
   }
   .settings-tree button:hover { background: var(--hover); }
   .settings-tree button.on { background: var(--accent-wash); box-shadow: inset 2px 0 0 var(--accent); }
+  .settings-tree > div { display: contents; }
   .settings-tree [hidden] { display: none; }
   .settings-none { margin: 0; padding: var(--space-2); color: var(--ink-2); font-size: var(--text-xs); }
   .settings-pages { overflow-y: auto; padding: var(--space-3); }

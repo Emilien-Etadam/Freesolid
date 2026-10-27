@@ -865,9 +865,26 @@ class TreeMixin:
                 "planes": planes, "features": items,
                 "surfaces": surfaces,
                 "variables": self.list_variables()["variables"],
-                "configurations": self.list_configurations()}
+                "configurations": self.list_configurations(),
+                "options": self.document_options()}
         self._plugins.contribute_tree(self, tree)
         return tree
+
+    @staticmethod
+    def _meshed(shape, deviation, angle):
+        """La forme dont on lit les facettes (``face.tessellate``). Sans
+        ``angle`` : elle-même, qui garde son maillage d'une fois sur
+        l'autre. Avec : une copie sans maillage, maillée à cet écart et
+        cet angle — ``tessellate`` ne règle pas l'angle, et OCCT garderait
+        sur la pièce le maillage le plus fin déjà fait. La copie a les
+        faces dans le même ordre."""
+        if angle is None or not shape.Faces:
+            return shape
+        import MeshPart
+        copy = shape.copy(True, False)
+        MeshPart.meshFromShape(Shape=copy, LinearDeflection=float(deviation),
+                               AngularDeflection=float(angle), Relative=False)
+        return copy
 
     def _face_mesh(self, face, face_id, deviation):
         """Tessellation d'une face + normales exactes ``normalAt(u, v)``.
@@ -901,14 +918,18 @@ class TreeMixin:
                 normals.append((0.0, 0.0, 1.0))
         return (face_id, points, triangles, normals), is_bspline_surface(face)
 
-    def tessellate(self, deviation=0.1):
+    def tessellate(self, deviation=None):
         """Per-face tessellation of the body's current shape.
 
         Face-by-face on purpose — see ``protocol.pack_mesh``: picking works
         by construction because each OCCT face is its own index group.
+        Sans ``deviation``, celle de la qualité d'image du document.
         """
         from . import protocol
         body = self._require_body()
+        angle = None
+        if deviation is None:
+            deviation, angle, _edges = self._display_mesh()
         self._report_progress("Maillage")
         shape = getattr(body, "Shape", None)
         if self._is_hidden(body):
@@ -916,7 +937,7 @@ class TreeMixin:
         faces = []
         splines = []
         if shape is not None and shape.Faces:
-            for i, face in enumerate(shape.Faces):
+            for i, face in enumerate(self._meshed(shape, deviation, angle).Faces):
                 packed, spline = self._face_mesh(face, i, deviation)
                 faces.append(packed)
                 splines.append(spline)
@@ -951,7 +972,7 @@ class TreeMixin:
                     or self._is_hidden(obj)):
                 continue
             other_faces = []
-            for face in obj.Shape.Faces:
+            for face in self._meshed(obj.Shape, deviation, angle).Faces:
                 vertices, triangles = face.tessellate(float(deviation))
                 other_faces.append(
                     (0, [(v.x, v.y, v.z) for v in vertices], triangles))
@@ -994,7 +1015,7 @@ class TreeMixin:
             edges = protocol.pack_edges(self._object_edge_lines(shape))
             if shape.Faces:
                 surface_faces = []
-                for i, face in enumerate(shape.Faces):
+                for i, face in enumerate(self._meshed(shape, deviation, angle).Faces):
                     vertices, triangles = face.tessellate(float(deviation))
                     surface_faces.append(
                         (i, [(v.x, v.y, v.z) for v in vertices], triangles))
@@ -1066,7 +1087,7 @@ class TreeMixin:
         self._plugins.contribute_mesh(self, mesh, deviation)
         return mesh
 
-    def tessellate_edges(self, deviation=0.05):
+    def tessellate_edges(self, deviation=None):
         """Per-edge polylines of the body's current shape.
 
         Edge-by-edge on purpose — see ``protocol.pack_edges``: a raycast
@@ -1074,10 +1095,13 @@ class TreeMixin:
         for faces. Ids are Edge indices, so ``Edge{id+1}`` server-side.
         Les arêtes de couture (la jointure interne d'un cylindre, d'un
         cône…) ne sont pas tracées : elles ne bordent rien à l'œil. Les
-        ids des autres restent ceux du noyau.
+        ids des autres restent ceux du noyau. Sans ``deviation``, celle de
+        la qualité d'image du document (la moitié de celle des faces).
         """
         from . import protocol
         body = self._require_body()
+        if deviation is None:
+            deviation = self._display_mesh()[2]
         shape = getattr(body, "Shape", None)
         if shape is None or not shape.Edges or self._is_hidden(body):
             return protocol.pack_edges([])
@@ -1087,7 +1111,7 @@ class TreeMixin:
             if i in seams:
                 continue
             try:
-                points = edge.discretize(Deviation=float(deviation))
+                points = edge.discretize(QuasiDeflection=float(deviation))
             except Exception:
                 try:
                     points = edge.discretize(Number=24)

@@ -293,4 +293,39 @@ describe("pages et champs des Paramètres", () => {
     assert.equal(clampNumber(angle, "", 15), 15);
     assert.equal(clampNumber(angle, "abc", 15), 15);
   });
+
+  it("un pas de grille garde deux décimales, la virgule vaut le point", () => {
+    const step = fields.find((f) => f.id === "doc.gridStep");
+    assert.equal(clampNumber(step, "2,345", 10), 2.35);
+    assert.equal(clampNumber(step, "0.001", 10), 0.01);
+    assert.equal(clampNumber(step, " ", 10), 10);
+  });
+
+  it("les propriétés du document : un onglet à part, les défauts du moteur", () => {
+    const engine = readFileSync(new URL("../../engine/docoptions.py", import.meta.url), "utf8");
+    const pyDefault = (key) => JSON.parse(engine.match(new RegExp(`"${key}": ([^,\\n]+),`))[1]
+      .replace("False", "false").replace("True", "true"));
+    const docFields = fields.filter((f) => f.store === "docOptions");
+    const tabOf = (f) => SETTINGS_PAGES.find((p) => p.id === f.page).tab;
+    assert.ok(docFields.length >= 5 && docFields.every((f) => tabOf(f) === "document"));
+    assert.ok(fields.filter((f) => f.store !== "docOptions").every((f) => tabOf(f) === "system"));
+    const byKey = { "doc.lengthDecimals": "length_decimals", "doc.angleDecimals": "angle_decimals",
+      "doc.gridFixed": "grid_fixed", "doc.gridStep": "grid_step", "doc.quality": "quality" };
+    for (const [id, key] of Object.entries(byKey)) {
+      assert.equal(fields.find((f) => f.id === id).default, pyDefault(key), id);
+    }
+    const quality = engine.match(/QUALITY = \{([^}]+)\}/)[1];
+    assert.deepEqual(fields.find((f) => f.id === "doc.quality").options.map(([id]) => id),
+      [...quality.matchAll(/"(\w+)":/g)].map((m) => m[1]));
+    // Lu et écrit dans un seul objet, comme le moteur le renvoie.
+    let options = { length_decimals: 2, grid_fixed: false };
+    const stores = { docOptions: { read: () => options, apply: (next) => { options = next; } } };
+    fields.find((f) => f.id === "doc.gridFixed").set(stores, true);
+    assert.deepEqual(options, { length_decimals: 2, grid_fixed: true });
+    // Sans document : pas de valeur, rien à appliquer.
+    const none = { docOptions: { read: () => null, apply: () => assert.fail() } };
+    const draft = readValues(docFields, none);
+    assert.ok(Object.values(draft).every((v) => v === undefined));
+    assert.deepEqual(changedFields(docFields, none, draft), []);
+  });
 });

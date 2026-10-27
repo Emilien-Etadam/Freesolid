@@ -433,13 +433,17 @@ class AssemblyMixin:
                              for v in placement.Rotation.toEuler()],
             })
         return {"assembly": True, "components": components,
-                "joints": joints}
+                "joints": joints, "options": self.document_options()}
 
-    def tessellate_assembly(self, deviation=0.1):
+    def tessellate_assembly(self, deviation=None):
         """Un maillage par composant — la sélection au clic est par
-        composant, pas par face (v1)."""
+        composant, pas par face (v1). Sans ``deviation``, celle de la
+        qualité d'image de l'assemblage."""
         from . import protocol
         doc = self._require_assembly()
+        angle = None
+        if deviation is None:
+            deviation, angle, _edges = self._display_mesh()
         components = []
         for obj in doc.Objects:
             if obj.TypeId != "App::Link":
@@ -451,7 +455,7 @@ class AssemblyMixin:
             moved = shape.copy()
             moved.Placement = obj.Placement.multiply(moved.Placement)
             faces = []
-            for i, face in enumerate(moved.Faces):
+            for i, face in enumerate(self._meshed(moved, deviation, angle).Faces):
                 vertices, triangles = face.tessellate(float(deviation))
                 faces.append(
                     (i, [(v.x, v.y, v.z) for v in vertices], triangles))

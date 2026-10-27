@@ -2,6 +2,9 @@
 d'annulation, corps et surfaces masqués, fonctions désactivées, liste
 des erreurs de reconstruction.
 
+Les propriétés du document (``docoptions`` : décimales, grille, qualité
+d'image) partent aussi avec le fichier.
+
 Un commentaire est une note libre posée sur une fonction (propriété
 cachée ``FreeSolidComment``) : l'arbre la montre en infobulle. Les
 propriétés du fichier reprennent celles du document FreeCAD (auteur,
@@ -109,6 +112,35 @@ class DocPropsMixin:
         if "custom" in values:
             doc.Meta = clean_meta(values["custom"])
         return self.document_properties()
+
+    def document_options(self):
+        """Propriétés du document (``docoptions``) : décimales, grille,
+        qualité d'image — gardées dans le fichier."""
+        from engine import docoptions
+        doc = self._require_doc()
+        return docoptions.normalize(getattr(doc, "FreeSolidOptions", ""))
+
+    def set_document_options(self, values):
+        """Change les propriétés du document données dans ``values`` (les
+        autres restent). Une clé inconnue ou une valeur hors bornes est
+        refusée, rien n'est changé. Hors de l'historique d'annulation,
+        comme les propriétés du fichier."""
+        import json
+        from engine import docoptions
+        doc = self._require_doc()
+        options = docoptions.merge(getattr(doc, "FreeSolidOptions", ""), values)
+        if "FreeSolidOptions" not in doc.PropertiesList:
+            doc.addProperty("App::PropertyString", "FreeSolidOptions", "FreeSolid",
+                            "Propriétés du document FreeSolid (JSON)")
+        doc.FreeSolidOptions = json.dumps(options, sort_keys=True)
+        return options
+
+    def _display_mesh(self):
+        """La qualité d'image du document : (écart des faces, angle ou
+        None, écart des arêtes) — ``docoptions.mesh_settings``."""
+        from engine import docoptions
+        return docoptions.mesh_settings(
+            getattr(self._require_doc(), "FreeSolidOptions", ""))
 
     @staticmethod
     def _is_hidden(obj):

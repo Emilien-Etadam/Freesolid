@@ -1070,14 +1070,15 @@ export function createSketchMode(deps) {
       // Un clic choisit ce qu'il touche, seul ; Ctrl (ou Maj) l'ajoute à
       // la sélection, ou l'en retire.
       const additive = event.ctrlKey || event.metaKey || event.shiftKey;
-      mode.selection = clickSelection(mode.selection, selectPickAt(event),
-        additive);
+      const pick = selectPickAt(event);
+      mode.selection = clickSelection(mode.selection, pick, additive);
       redraw();
       if (mode.selection.length) {
         say(t("Sélection : {n} entité(s) — relation, symétrie ou répétition ; clic dans le vide = vider",
           { n: mode.selection.length }));
       }
       syncEntityPanel();
+      if (additive && pick) sk.showQuickRelations(event);
     } else if (mode.tool === "line") {
       if (!mode.chain) {
         mode.chain = clickOf(snapped);
@@ -1743,6 +1744,7 @@ export function createSketchMode(deps) {
       { n: mode.selection.length }));
     redraw();
     syncEntityPanel();
+    sk.showQuickRelations({ clientX: end.x, clientY: end.y });
   }
 
   function onPointerMove(event) {
@@ -2255,7 +2257,7 @@ export function createSketchMode(deps) {
 
   // Le corps est dans sketch/relations.js.
   Object.assign(sk, {
-    call, say, mode, safe, uniqueSelectionGeos, openEntityPanel,
+    call, say, mode, safe, uniqueSelectionGeos, openEntityPanel, renderer,
   });
   const { updateRelationButtons } = installRelations(sk);
 

@@ -80,7 +80,7 @@ Un outil est **fait** quand :
 | Corradiale | ✅ | `p51_relations_cotes` |
 | Intersection (point au croisement de deux courbes) | ✅ | `p51_relations_cotes` |
 | Percée (coïncidence avec un point de percée lié) | ✅ | `p51_references` |
-| Relations proposées selon la sélection (panneau de la sélection : éléments choisis, relations à ajouter, relations existantes ; Ctrl+clic pour plusieurs éléments, un point se choisit seul), liste et suppression | ✅ | `relations-applicable`, `p7` |
+| Relations proposées selon la sélection (panneau de la sélection : éléments choisis, relations à ajouter, relations existantes ; Ctrl+clic pour plusieurs éléments, un point se choisit seul ; menu rapide des relations près du curseur), liste et suppression | ✅ | `relations-applicable`, `screen`, `p7` |
 
 ## Cotes
 
@@ -196,6 +196,11 @@ Un outil est **fait** quand :
   (posées sans la défaire, pour en ajouter une autre) et celles qui ne
   touchent qu'elle. Les points passent devant les courbes : symétrique
   et intersection ne dépendent pas de l'ordre des clics.
+  Plusieurs éléments choisis au Ctrl+clic (ou au cadre) : les relations
+  qu'ils permettent s'offrent aussi dans un petit menu d'icônes, près du
+  curseur (son nom au survol). La relation cliquée se pose sans défaire
+  la sélection ; le menu s'efface quand la souris s'éloigne, au clic
+  suivant, avec Échap, ou quand la sélection n'en permet aucune.
 - **Annuler** : dans l'esquisse, Ctrl+Z et Ctrl+Y (les boutons et la
   liste de l'historique aussi) ne défont que ses pas : jamais l'esquisse
   elle-même, ni ce qui précède son ouverture — pour cela, la quitter.

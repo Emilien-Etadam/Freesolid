@@ -297,8 +297,13 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
         self.lang = "fr"
         # Consentement Python : ce document, cette session. Jamais le .FCStd.
         self._scripts_authorized = False
-        # Esquisse ouverte : de quoi l'annuler (sketch_cancel).
+        # Esquisse ouverte : de quoi l'annuler (sketch_cancel), et son
+        # numéro, que portent ses transactions (Ctrl+Z dans l'esquisse).
         self._sketch_session = None
+        self._sketch_serial = 0
+        # L'esquisse d'avant un glisser (sketch_move), pour que le lâcher
+        # en fasse un seul pas d'annulation (sketch_drop).
+        self._drag_from = None
         self._reset_face_match()
         # Callback d'avancement (phase, fait, total) — posé par le
         # transport, jamais importé d'ici. Absent = no-op.
@@ -626,6 +631,8 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
         self._doc = self._body = None
         self._assembly = False
         self._scripts_authorized = False
+        self._sketch_session = None
+        self._drag_from = None
         self._plugins.reset_state()
 
     def _setup_doc(self, doc):
@@ -734,25 +741,54 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
         """Part tree or assembly tree, whichever mode the document is in."""
         return self.assembly_tree() if self._assembly else self.get_tree()
 
-    def undo(self, steps=1):
+    def undo(self, steps=1, sketch=None):
         """Annuler la dernière opération — une transaction par op UI ;
-        ``steps`` : plusieurs d'un coup (liste de l'historique)."""
+        ``steps`` : plusieurs d'un coup (liste de l'historique).
+        ``sketch`` : depuis l'esquisse ouverte — seuls ses pas se
+        défont (jamais l'esquisse elle-même, ni ce qui la précède), et la
+        réponse est son état (sketch_state) au lieu de l'arbre."""
         doc = self._require_doc()
-        if not doc.UndoNames:
+        room = self._undo_room(list(doc.UndoNames), sketch)
+        if not room and sketch is not None:
+            raise KernelError("rien à annuler dans l'esquisse")
+        if not room:
             raise KernelError("rien à annuler")
-        for _ in range(max(1, min(int(steps), len(doc.UndoNames)))):
+        for _ in range(max(1, min(int(steps), room))):
             doc.undo()
-        doc.recompute()
-        return self._current_tree()
+        return self._after_history(sketch)
 
-    def redo(self, steps=1):
+    def redo(self, steps=1, sketch=None):
+        """Rétablir ; ``sketch`` : comme pour ``undo``."""
         doc = self._require_doc()
-        if not doc.RedoNames:
+        room = self._undo_room(list(doc.RedoNames), sketch)
+        if not room and sketch is not None:
+            raise KernelError("rien à rétablir dans l'esquisse")
+        if not room:
             raise KernelError("rien à rétablir")
-        for _ in range(max(1, min(int(steps), len(doc.RedoNames)))):
+        for _ in range(max(1, min(int(steps), room))):
             doc.redo()
-        doc.recompute()
-        return self._current_tree()
+        return self._after_history(sketch)
+
+    def _undo_room(self, names, sketch=None):
+        """Combien des pas ``names`` (UndoNames ou RedoNames) se défont :
+        tous ; avec ``sketch``, ceux de la session de l'esquisse ouverte
+        (``transaction_name``), aucun si ce n'est pas elle."""
+        from engine.docprops import session_steps
+        if sketch is None:
+            return len(names)
+        session = self._sketch_session
+        if not session or session["sketch"] != str(sketch):
+            return 0
+        return session_steps(names, session["id"])
+
+    def _after_history(self, sketch):
+        """Après Ctrl+Z ou Ctrl+Y : l'arbre recalculé ; dans l'esquisse,
+        elle seule, et son état."""
+        if sketch is None:
+            self._require_doc().recompute()
+            return self._current_tree()
+        self._get_sketch(sketch).recompute()
+        return self.sketch_state(sketch)
 
     _PLANE_ROLES = {"XY": "XY_Plane", "XZ": "XZ_Plane", "YZ": "YZ_Plane"}
 
@@ -807,10 +843,7 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
             return self.tessellate()
         finally:
             self._previewing = False
-            try:
-                doc.abortTransaction()
-            except Exception:
-                pass
+            _abort(doc)
             doc.recompute()
 
     def rename(self, feature, label):
@@ -857,6 +890,20 @@ def _abort(doc):
         doc.abortTransaction()
     except Exception:
         pass
+    _close_booking(abort=True)
+
+
+def _close_booking(abort=False):
+    """Ferme la transaction réservée qui resterait ouverte. FreeCAD ne
+    crée une transaction qu'au premier changement : une op refusée
+    avant d'avoir rien changé, ou qui ne change rien, laisse la sienne
+    réservée, et le changement suivant hors transaction — un glisser
+    (sketch_move) — s'y enregistrerait sous son nom."""
+    try:
+        import FreeCAD
+        FreeCAD.closeActiveTransaction(abort)
+    except Exception:  # noqa: BLE001 - hors FreeCAD (CI), ou API absente
+        pass
 
 
 def _transactional(kernel, op):
@@ -874,9 +921,14 @@ def dispatch(kernel: Kernel, op: str, params: dict):
     cet ordre. Un plugin ne détourne pas une opération existante.
     """
     from . import protocol
+    from .docprops import transaction_name
     doc = kernel._doc if _transactional(kernel, op) else None
     if doc is not None:
-        doc.openTransaction("freesolid-" + op)
+        # Pendant une esquisse, la transaction porte le numéro de sa
+        # session : Ctrl+Z dans l'esquisse ne défait que ses pas.
+        session = getattr(kernel, "_sketch_session", None)
+        doc.openTransaction(transaction_name(
+            op, session.get("id") if session else None))
     try:
         method = getattr(kernel, op, None)
         if callable(method):
@@ -895,5 +947,6 @@ def dispatch(kernel: Kernel, op: str, params: dict):
             doc.commitTransaction()
         except Exception:
             pass
+        _close_booking()
     _track_modified(kernel, op)
     return protocol.ok(result)

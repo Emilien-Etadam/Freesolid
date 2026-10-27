@@ -165,7 +165,7 @@ export function createSketchMode(deps) {
     justDragged: false,   // un drag qui finit ne doit pas sélectionner
     drag: null,           // { geo, point } while dragging
     box: null,            // { x, y } — appui dans le vide : cadre possible
-    dragLocal: null,      // dernière position locale d'un drag local (M3)
+    dragLocal: null,      // dernière position d'un glisser, pour le lâcher
     solverOk: false,      // l'esquisse est chargée dans le solveur local
     snapSettings: readSnapSettings(storage), // sortes d'accrochage (réglage)
     quickSnap: null,      // { kind, keep } — accrochage rapide en cours
@@ -1644,16 +1644,15 @@ export function createSketchMode(deps) {
 
   // File sérielle du fallback serveur : un seul sketch_move en vol ;
   // pendant l'attente on ne garde que la dernière (x, y) ; seule la
-  // réponse la plus récente peut applyState. Le sketch_move final du
-  // pointerup (chemin solveur local) passe par ici aussi, et le lâcher
-  // accroché (sketch_drop, `snaps`).
-  function enqueueSketchMove(x, y, snaps = null) {
+  // réponse la plus récente peut applyState. Le lâcher du pointerup
+  // (`drop` : sketch_drop, avec ses `snaps`) passe par ici aussi.
+  function enqueueSketchMove(x, y, snaps = null, { drop = false } = {}) {
     if (!mode.state || !mode.drag) return;
     pendingMove = {
       sketch: mode.state.sketch,
       geo: mode.drag.geo,
       point: mode.drag.point,
-      x, y, snaps,
+      x, y, snaps, drop,
       gen: ++moveGen,
     };
     flushSketchMoves();
@@ -1665,7 +1664,7 @@ export function createSketchMode(deps) {
     pendingMove = null;
     moveInFlight = true;
     try {
-      const state = await call(req.snaps ? "sketch_drop" : "sketch_move", {
+      const state = await call(req.drop ? "sketch_drop" : "sketch_move", {
         sketch: req.sketch, geo: req.geo, point: req.point,
         x: req.x, y: req.y, ...(req.snaps ? { snaps: req.snaps } : {}),
       });
@@ -1682,6 +1681,16 @@ export function createSketchMode(deps) {
       moveInFlight = false;
       if (pendingMove) flushSketchMoves();
     }
+  }
+
+  /** Ctrl+Z, Ctrl+Y (ou les boutons) dans l'esquisse : le moteur n'y
+   *  défait que ses pas, jamais l'esquisse elle-même. Un tracé en cours
+   *  repart de zéro : il visait peut-être ce qui vient d'être défait. */
+  async function stepHistory(op, steps = 1) {
+    if (!mode.active || !mode.state || building || mode.drag) return;
+    const sketch = mode.state.sketch;
+    setTool(mode.tool);
+    await safe(call(op, { sketch, ...(steps > 1 ? { steps } : {}) }));
   }
 
   /** Une entité en polyligne, dans l'esquisse : `[[x, y]…]`. */
@@ -1776,13 +1785,13 @@ export function createSketchMode(deps) {
       mode.drag.snapped = snapped;
       const target = snapped ? { x: snapped.x, y: snapped.y }
         : wholeCurveTarget(mode.drag, local);
+      mode.dragLocal = target; // pour le lâcher (sketch_drop)
       // M3 : résolution locale planegcs — toutes les contraintes tiennent
       // à 60 fps, zéro réseau ; le serveur réconcilie au pointerup.
       if (mode.solverOk) {
         const updates = localSolver.drag(
           mode.drag.geo, mode.drag.point, target.x, target.y);
         if (updates) {
-          mode.dragLocal = target; // pour le sketch_move final
           redraw();
           if (snapped) showInference(snapped, event);
           return;
@@ -1933,18 +1942,15 @@ export function createSketchMode(deps) {
       return;
     }
     if (mode.drag) {
-      // Lâché sur ce qu'il a accroché : le moteur pose la relation avec
-      // le déplacement (sketch_drop, un seul Ctrl+Z).
+      // Le lâcher (sketch_drop) : tout le glisser en un seul Ctrl+Z, et,
+      // lâché sur ce qu'il a accroché, la relation avec. Par la même
+      // file que les sketch_move du glisser : il passe après eux.
       const { snapped } = mode.drag;
       const at = mode.dragMoved && snapped && !snapped.suspended
         ? snapTarget(snapped) : null;
-      const snaps = at ? { at } : null;
-      // Drag local (M3) : un seul sketch_move au lâcher, via la même
-      // file — il ne double pas un move serveur déjà en vol.
-      if (mode.solverOk && mode.dragLocal && mode.state) {
-        enqueueSketchMove(mode.dragLocal.x, mode.dragLocal.y, snaps);
-      } else if (snaps && mode.state) {
-        enqueueSketchMove(snapped.x, snapped.y, snaps);
+      if (mode.dragMoved && mode.dragLocal && mode.state) {
+        enqueueSketchMove(mode.dragLocal.x, mode.dragLocal.y,
+          at ? { at } : null, { drop: true });
       }
       clearInference();
       const moved = !!mode.dragMoved;
@@ -2397,6 +2403,10 @@ export function createSketchMode(deps) {
     pickQuickSnap,
     get snapSettings() { return mode.snapSettings; },
     setSnapSettings,
+    /** Ctrl+Z dans l'esquisse : ses pas seulement (`steps` d'un coup). */
+    undo: (steps) => stepHistory("undo", steps),
+    /** Ctrl+Y dans l'esquisse. */
+    redo: (steps) => stepHistory("redo", steps),
     /** Points monde de la géométrie, pour cadrer sans quitter le plan. */
     framePoints() {
       if (!mode.active) return [];

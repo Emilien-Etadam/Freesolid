@@ -126,8 +126,7 @@ class SketchMixin:
         mark = doc.UndoCount
         sketch = doc.addObject("Sketcher::SketchObject", "Sketch")
         body.addObject(sketch)
-        self._sketch_session = {"sketch": sketch.Name, "mark": mark,
-                                "snapshot": None}
+        self._open_session(sketch.Name, mark, None)
         sketch.Label = self._t("Esquisse")
         if face is not None:
             self._attach_to_face(sketch, face)
@@ -183,13 +182,21 @@ class SketchMixin:
         """Re-enter an existing sketch."""
         sk = self._get_sketch(feature)
         doc = self._require_doc()
-        self._sketch_session = {
-            "sketch": sk.Name, "mark": doc.UndoCount,
-            # Les glisser (sketch_move) ne passent pas par une transaction :
-            # l'instantané les rattrape.
-            "snapshot": (list(sk.Geometry), list(sk.Constraints)),
-        }
+        # Un glisser lâché ailleurs que sur une cible a sa transaction
+        # (sketch_drop) ; l'instantané rattrape ce qui n'en aurait pas.
+        self._open_session(sk.Name, doc.UndoCount,
+                           (list(sk.Geometry), list(sk.Constraints)))
         return self.sketch_state(sk.Name)
+
+    def _open_session(self, sketch, mark, snapshot):
+        """La session de l'esquisse ouverte : de quoi l'annuler
+        (``mark``, ``snapshot``) et son numéro, que portent ses
+        transactions (``docprops.transaction_name``)."""
+        self._sketch_serial = getattr(self, "_sketch_serial", 0) + 1
+        self._sketch_session = {"sketch": sketch, "mark": mark,
+                                "snapshot": snapshot,
+                                "id": self._sketch_serial}
+        self._drag_from = None
 
     def sketch_cancel(self, sketch):
         """Quitter l'esquisse sans garder les modifications.
@@ -201,18 +208,24 @@ class SketchMixin:
         doc = self._require_doc()
         session = self._sketch_session
         self._sketch_session = None
+        self._drag_from = None
         if not session or session["sketch"] != str(sketch):
             return self.get_tree()
         while doc.UndoCount > session["mark"] and doc.UndoNames:
             doc.undo()
         sk = doc.getObject(session["sketch"])
         if sk is not None and session["snapshot"] is not None:
-            geometry, constraints = session["snapshot"]
-            sk.Constraints = []
-            sk.Geometry = geometry
-            sk.Constraints = constraints
+            self._set_sketch(sk, *session["snapshot"])
         doc.recompute()
         return self.get_tree()
+
+    @staticmethod
+    def _set_sketch(sk, geometry, constraints):
+        """Toute la géométrie et les contraintes d'une esquisse, d'un
+        coup (les contraintes d'abord retirées : elles visent des ids)."""
+        sk.Constraints = []
+        sk.Geometry = geometry
+        sk.Constraints = constraints
 
     def sketch_state(self, sketch):
         """Everything the client needs to draw the sketch.
@@ -1269,6 +1282,28 @@ class SketchMixin:
         """Drag: move one point, let the solver follow. ``point`` is the
         Sketcher convention — 1 start, 2 end, 3 center, 0 whole curve.
 
+        Sans transaction : le glisser en envoie un à chaque pas. Le
+        premier garde l'esquisse d'avant (``_drag_from``), pour que le
+        lâcher (``sketch_drop``) fasse de tout le glisser un seul pas
+        d'annulation.
+        """
+        sk = self._get_sketch(sketch)
+        mark = self._drag_mark(sk)
+        if not self._drag_from or self._drag_from["mark"] != mark:
+            self._drag_from = {"mark": mark, "geometry": list(sk.Geometry),
+                               "constraints": list(sk.Constraints)}
+        return self._move_point(sketch, geo, point, x, y)
+
+    def _drag_mark(self, sk):
+        """Ce qui dit qu'un glisser continue : la même esquisse, et
+        l'historique d'annulation inchangé depuis son premier pas."""
+        doc = self._require_doc()
+        return (sk.Name, doc.UndoCount, doc.RedoCount,
+                tuple(doc.UndoNames[:1]))
+
+    def _move_point(self, sketch, geo, point, x, y):
+        """Le déplacement d'un glisser (sketch_move, sketch_drop).
+
         The API was renamed across FreeCAD versions (movePoint →
         moveGeometry, plus a grouped moveGeometries), so this tries the
         known spellings in order — 1.1.3 has no ``movePoint`` at all,
@@ -1304,30 +1339,54 @@ class SketchMixin:
             "FreeCAD (essayé : {})".format(", ".join(tried) or "aucune"))
 
     def sketch_drop(self, sketch, geo, point, x, y, snaps=None):
-        """Lâcher d'un point glissé sur ce que l'interface a accroché
-        (``snaps`` : ``at``, une cible de ``engine/sketchsnap.py``) : le
-        point va en (x, y) et la relation qui l'y tient est posée. Une
-        seule opération, un seul Ctrl+Z — le glisser lui-même
-        (``sketch_move``) n'en a pas. Une relation qui rendrait l'esquisse
+        """Lâcher d'un glisser : le point (ou, ``point`` 0, la courbe
+        entière) va en (x, y). Avec ``snaps`` (``at``, une cible de
+        ``engine/sketchsnap.py``, pour un point), la relation qui l'y
+        tient est posée. Tout le glisser — ses ``sketch_move``, sans
+        transaction — et le lâcher font un seul Ctrl+Z
+        (``_drag_as_one_step``) ; refusé, le lâcher remet l'esquisse
+        d'avant le glisser. Une relation qui rendrait l'esquisse
         redondante ou contradictoire n'est pas posée, le point reste où
         il est lâché."""
         from engine.kernel import KernelError
         from engine.sketchsnap import geos_of, relations, snap_positions
         sk = self._get_sketch(sketch)
+        drag, self._drag_from = self._drag_from, None
         gid, pos = int(geo), int(point)
         if not (0 <= gid < len(sk.Geometry)
-                and pos in snap_positions(sk.Geometry[gid].TypeId)):
+                and (pos in snap_positions(sk.Geometry[gid].TypeId)
+                     or (pos == 0 and not snaps))):
             raise KernelError("point {}.{} introuvable".format(gid, pos))
+        if drag is not None and drag["mark"] == self._drag_mark(sk):
+            self._drag_as_one_step(sk, drag)
         parsed = self._snap_targets(sk, "sketch_drop", snaps or {})
         target = parsed.get("at")
         if target is not None and gid in geos_of(target):
             raise KernelError(
                 "accrochage « at » : un point ne s'accroche pas à son entité")
-        self.sketch_move(sketch, gid, pos, x, y)
+        self._move_point(sketch, gid, pos, x, y)
         if target is not None:
             self._add_snap_constraints(sk, self._constraints(sk, relations(
                 target, gid, pos, lambda g: geo_of(sk, g).TypeId)))
         return self.sketch_state(sketch)
+
+    def _drag_as_one_step(self, sk, drag):
+        """Que la transaction du lâcher garde l'esquisse d'avant le
+        glisser. FreeCAD n'enregistre une propriété qu'au premier
+        changement d'une transaction : celle du lâcher (ouverte par
+        dispatch, encore vide) ne garderait que la fin du glisser. Elle
+        est refermée, l'esquisse d'avant remise hors transaction, puis la
+        transaction rouverte sous le même nom et l'esquisse glissée
+        reposée. Hors dispatch (aucune transaction réservée), rien."""
+        App = self._app()
+        active = App.getActiveTransaction()
+        if not active:
+            return
+        moved = (list(sk.Geometry), list(sk.Constraints))
+        App.closeActiveTransaction()
+        self._set_sketch(sk, drag["geometry"], drag["constraints"])
+        self._require_doc().openTransaction(active[0])
+        self._set_sketch(sk, *moved)
 
     @staticmethod
     def _point_of(geo, pos):
@@ -1868,6 +1927,7 @@ class SketchMixin:
         """Close the sketch: recompute and hand back the feature tree."""
         self._get_sketch(sketch)
         self._sketch_session = None
+        self._drag_from = None
         self._recompute()
         tree = self.get_tree()
         tree["open_profile"] = self._sketch_open_profile(sketch)

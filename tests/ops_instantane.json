@@ -93,7 +93,7 @@
   "progress": {"requis": [], "types": [], "optionnels": []},
   "rebuild": {"requis": [], "types": [], "optionnels": []},
   "rebuild_errors": {"requis": [], "types": [], "optionnels": []},
-  "redo": {"requis": [], "types": [], "optionnels": [["steps", "int"]]},
+  "redo": {"requis": [], "types": [], "optionnels": [["steps", "int"], ["sketch", "str"]]},
   "rename": {"requis": ["feature", "label"], "types": [["feature", "str"], ["label", "str"]], "optionnels": []},
   "rename_configuration": {"requis": ["name", "new_name"], "types": [["name", "str"], ["new_name", "str"]], "optionnels": []},
   "rename_folder": {"requis": ["folder"], "types": [["folder", "str"]], "optionnels": [["name", "str"]]},
@@ -208,8 +208,8 @@
   "tessellate_assembly": {"requis": [], "types": [], "optionnels": []},
   "tessellate_edges": {"requis": [], "types": [], "optionnels": []},
   "tip_to_end": {"requis": [], "types": [], "optionnels": []},
-  "undo": {"requis": [], "types": [], "optionnels": [["steps", "int"]]},
-  "undo_history": {"requis": [], "types": [], "optionnels": []}
+  "undo": {"requis": [], "types": [], "optionnels": [["steps", "int"], ["sketch", "str"]]},
+  "undo_history": {"requis": [], "types": [], "optionnels": [["sketch", "str"]]}
  },
  "annulables": [
   "activate_configuration",

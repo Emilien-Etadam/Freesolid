@@ -7,18 +7,41 @@ cachée ``FreeSolidComment``) : l'arbre la montre en infobulle. Les
 propriétés du fichier reprennent celles du document FreeCAD (auteur,
 société, description) et ses propriétés libres (``Meta``) ; elles
 partent avec le .FCStd. Les imports FreeCAD restent dans les méthodes ;
-``undo_steps`` et ``clean_meta`` sont testées en CI.
+``undo_steps``, ``session_steps``, ``transaction_name`` et ``clean_meta``
+sont testées en CI.
 """
 
 #: Préfixe des transactions ouvertes par ``dispatch`` (kernel.py).
 _PREFIX = "freesolid-"
+#: Marque, après le nom de l'op, de la session d'esquisse en cours.
+_SESSION = "@"
+
+
+def transaction_name(op, session=None):
+    """Le nom de la transaction d'une op : « freesolid-<op> », suivi de
+    « @<n> » pendant la session d'esquisse numéro ``n`` — Ctrl+Z, dans
+    l'esquisse, ne défait que les pas qui la portent (session_steps)."""
+    return _PREFIX + op + ("{}{}".format(_SESSION, session) if session else "")
 
 
 def undo_steps(names):
     """Noms de transactions → noms d'ops, du plus récent au plus ancien
     (l'ordre de FreeCAD). Une transaction étrangère garde son nom."""
-    return [name[len(_PREFIX):] if name.startswith(_PREFIX) else name
+    return [name[len(_PREFIX):].split(_SESSION)[0]
+            if name.startswith(_PREFIX) else name
             for name in names or ()]
+
+
+def session_steps(names, session):
+    """Combien des pas ``names`` (du plus récent au plus ancien) sont ceux
+    de la session d'esquisse ``session`` : ceux de tête qui la portent."""
+    mark = "{}{}".format(_SESSION, session)
+    count = 0
+    for name in names or ():
+        if not (name.startswith(_PREFIX) and name.endswith(mark)):
+            break
+        count += 1
+    return count
 
 
 def clean_meta(meta):
@@ -199,8 +222,12 @@ class DocPropsMixin:
         from engine.vocab import label_for_type
         return label_for_type(obj.TypeId, self.lang)
 
-    def undo_history(self):
-        """Ce que Ctrl+Z et Ctrl+Y défont, du plus proche au plus loin."""
+    def undo_history(self, sketch=None):
+        """Ce que Ctrl+Z et Ctrl+Y défont, du plus proche au plus loin ;
+        avec ``sketch``, l'esquisse ouverte : ses pas seulement."""
         doc = self._require_doc()
-        return {"undo": undo_steps(doc.UndoNames),
-                "redo": undo_steps(doc.RedoNames)}
+        undo, redo = list(doc.UndoNames), list(doc.RedoNames)
+        if sketch is not None:
+            undo = undo[:self._undo_room(undo, sketch)]
+            redo = redo[:self._undo_room(redo, sketch)]
+        return {"undo": undo_steps(undo), "redo": undo_steps(redo)}

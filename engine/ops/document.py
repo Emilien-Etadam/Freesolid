@@ -47,9 +47,13 @@ OPS = (
     Op("make_drawing", Req(("path", str)), undo=True),
                                        # optional: scale, dims (bool, défaut True),
                                        # section ("X"|"Y"|"Z") — 3 vues + cotes + coupe, export DXF
-    Op("undo", Req(optional={"steps": int})),  # une transaction = un Ctrl+Z
-    Op("redo", Req(optional={"steps": int})),
-    Op("undo_history"),                # lecture : pas à défaire / refaire
+    Op("undo", Req(optional={"steps": int, "sketch": str})),
+                                       # une transaction = un Ctrl+Z ;
+                                       # sketch : depuis l'esquisse ouverte,
+                                       # ses pas seulement
+    Op("redo", Req(optional={"steps": int, "sketch": str})),
+    Op("undo_history", Req(optional={"sketch": str})),
+                                       # lecture : pas à défaire / refaire
     Op("rebuild_errors"),              # lecture : fonctions en erreur
     Op("set_comment", Req(("feature", str), optional={"text": str}),
        undo=True),

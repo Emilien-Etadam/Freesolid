@@ -651,6 +651,7 @@ def test_ops_snapshot_keys():
             "sketch_delete_constraint",
             "sketch_delete_geo",
             "sketch_dim",
+            "sketch_drop",
             "sketch_edit",
             "sketch_extend",
             "sketch_fillet",

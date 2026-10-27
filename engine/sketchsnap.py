@@ -24,6 +24,9 @@ l'origine, -3, -4… les références externes) :
 - ``{"kind": "intersection", "geos": [a, b]}`` : le croisement de deux
   courbes.
 
+Un point glissé puis lâché (``sketch_drop``) nomme sa cible ``at``, comme
+un point tracé.
+
 Une ligne dit aussi sa ``direction`` : ``{"kind": "parallel" |
 "perpendicular", "geo": n}`` à une ligne, ``{"kind": "tangent", "geo": n}``
 à un cercle ou un arc. Un bout déjà posé sur cette courbe lui est
@@ -45,6 +48,8 @@ ROLES = {
                        "end": "target", "on": "points"},
     "sketch_add_rectangle": {"corner1": "target", "corner2": "target",
                              "center": "point"},
+    # Un point glissé, lâché sur sa cible.
+    "sketch_drop": {"at": "target"},
 }
 
 #: Une cible vérifiée. ``geo`` : la géométrie visée (la première des deux

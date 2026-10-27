@@ -1064,3 +1064,67 @@ def p76_accrochages_directions(self, mark, report, etat):
         except KernelError:
             refused.append(len(sk.Geometry) == count)
     report["p76_directions"] = relations_ok and held and all(refused)
+
+
+def p77_glisser_accroche(self, mark, report, etat):
+    mark("p77: glisser un point et le lâcher sur sa cible")
+    from engine.kernel import dispatch
+    self.new_part("Pièce glisser accroché")
+    name = self.sketch_start()["sketch"]
+    sk = self._get_sketch(name)
+
+    def has(kind, *args):
+        for c in sk.Constraints:
+            got = (c.First, c.FirstPos, c.Second, c.SecondPos, c.Third,
+                   c.ThirdPos)
+            if c.Type == kind and tuple(
+                    int(getattr(v, "value", v)) for v in got[:len(args)]) == args:
+                return True
+        return False
+
+    self.sketch_add_line(name, 0, 0, 30, 0, snaps={})               # 0
+    self.sketch_add_line(name, 50, 20, 80, 30, snaps={})            # 1
+    self.sketch_add_circle(name, 100, 0, 10, snaps={})              # 2
+    self.sketch_add_line(name, 10, 30, 20, 40, snaps={})            # 3
+    # Par le protocole : le départ de 1 lâché sur la fin de 0, un seul
+    # Ctrl+Z pour le déplacement et la relation.
+    before = sk.Geometry[1].StartPoint
+    out = dispatch(self, "sketch_drop", {
+        "sketch": name, "geo": 1, "point": 1, "x": 30, "y": 0,
+        "snaps": {"at": {"geo": 0, "point": 2}}})
+    if not out["ok"]:
+        raise KernelError(out["error"])
+    joined = (has("Coincident", 1, 1, 0, 2)
+              and sk.Geometry[1].StartPoint.distanceToPoint(
+                  sk.Geometry[0].EndPoint) < 1e-6)
+    self.undo()
+    undone = (not has("Coincident", 1, 1, 0, 2)
+              and sk.Geometry[1].StartPoint.distanceToPoint(before) < 1e-6)
+    self.redo()
+    # La fin de 1 sur le cercle, le départ de 3 au milieu de 0.
+    a = math.pi / 4
+    self.sketch_drop(name, 1, 2, 100 + 10 * math.cos(a), 10 * math.sin(a),
+                     snaps={"at": {"kind": "on", "geo": 2}})
+    self.sketch_drop(name, 3, 1, 15, 0,
+                     snaps={"at": {"kind": "midpoint", "geo": 0}})
+    on_ok = has("PointOnObject", 1, 2, 2) and has("Symmetric", 0, 1, 0, 2, 3, 1)
+    # Lâché de nouveau sur le même point : la coïncidence en double serait
+    # redondante, elle n'est pas posée.
+    count = len(sk.Constraints)
+    self.sketch_drop(name, 1, 1, 30, 0, snaps={"at": {"geo": 0, "point": 2}})
+    clean = (len(sk.Constraints) == count
+             and not list(sk.RedundantConstraints or [])
+             and not list(sk.ConflictingConstraints or []))
+    refused = []
+    where = sk.Geometry[3].EndPoint
+    for snaps in ({"at": {"geo": 3, "point": 1}},
+                  {"start": {"geo": 0, "point": 1}}):
+        try:
+            self.sketch_drop(name, 3, 2, 0, 0, snaps=snaps)
+            refused.append(False)
+        except KernelError:
+            refused.append(len(sk.Constraints) == count
+                           and sk.Geometry[3].EndPoint.distanceToPoint(
+                               where) < 1e-9)
+    report["p77_glisser_accroche"] = (joined and undone and on_ok and clean
+                                      and all(refused))

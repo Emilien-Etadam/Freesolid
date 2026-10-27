@@ -42,6 +42,15 @@ def test_milieu_quadrant_sur_et_croisement():
         "center": {"kind": "on", "geo": 1}})["center"] == Target("on", 1)
 
 
+def test_un_point_lache_nomme_sa_cible():
+    assert parse_snaps("sketch_drop", {"at": {"geo": 2, "point": 3}}) == {
+        "at": Target("point", 2, point=3)}
+    assert parse_snaps("sketch_drop", {"at": {"kind": "on", "geo": 1}}) == {
+        "at": Target("on", 1)}
+    with pytest.raises(KernelError, match="^accrochage inconnu : start$"):
+        parse_snaps("sketch_drop", {"start": {"geo": 0, "point": 1}})
+
+
 def test_un_role_absent_ou_nul_n_accroche_rien():
     assert parse_snaps("sketch_add_line", {}) == {}
     assert parse_snaps("sketch_add_line", {"start": None}) == {}

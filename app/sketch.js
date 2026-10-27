@@ -28,9 +28,10 @@ import {
 } from "./dims.js";
 import { ORIGIN_GEO, sceneTheme } from "./sketch/commun.js";
 import {
-  SNAP_KINDS, SNAP_PX, activeSnaps, arcSnaps, circleSnaps, lineSnaps,
-  normalizeSnapSettings, onCircle, readSnapSettings, rectSnaps,
-  sketchEndpoints, sketchSnapPoints, snapSketchPoint, writeSnapSettings,
+  SNAP_KINDS, SNAP_PX, SNAP_TOL, activeSnaps, arcSnaps, circleSnaps,
+  lineSnaps, normalizeSnapSettings, onCircle, readSnapSettings, rectSnaps,
+  sketchEndpoints, sketchSnapPoints, snapSketchPoint, snapTarget,
+  writeSnapSettings,
 } from "./sketchsnap.js";
 import {
   DIM_LABEL_RATIO, DIM_TEXT_PX, createDimSprite, createGlyphSprite,
@@ -280,20 +281,26 @@ export function createSketchMode(deps) {
     return kinds;
   }
 
-  /** Où tombe le curseur : voir snapSketchPoint (sketchsnap.js). */
-  function snap(local, event) {
+  /** Où tombe le curseur : voir snapSketchPoint (sketchsnap.js).
+   *  `moving` : pendant un glisser, les entités qui bougent avec le point
+   *  — il ne s'accroche pas à elles ; Ctrl suspend l'accrochage. */
+  function snap(local, event, { moving = null } = {}) {
     const hidden = hiddenIds();
+    const still = (geo) => !moving?.has(geo);
     // Grille : un pas rond qui suit le zoom (≈ 1/40 de la vue).
     const step = gridStep((camera.top - camera.bottom) / (camera.zoom || 1));
     return snapSketchPoint(local, { x: event.clientX, y: event.clientY }, {
-      points: snapPoints(), toScreen, chain: mode.chain,
-      entities: (mode.state?.entities ?? []).filter((e) => !hidden.has(e.id)),
+      points: snapPoints().filter((p) => still(p.geo)), toScreen,
+      chain: moving ? null : mode.chain,
+      entities: (mode.state?.entities ?? [])
+        .filter((e) => !hidden.has(e.id) && still(e.id)),
       woken: mode.woken ?? [], angleStep: mode.snapSettings.angleStep,
       kinds: snapKinds(),
       // Maj maintenu : des longueurs au pas de la grille, affichée ou non.
-      lengthStep: event.shiftKey ? step : null,
+      lengthStep: event.shiftKey && !moving ? step : null,
       gridStep: mode.gridSnap ? step : null,
-      suspended: suspendsSnap(event),
+      suspended: moving ? !!(event.ctrlKey || event.metaKey)
+        : suspendsSnap(event),
     });
   }
 
@@ -456,8 +463,16 @@ export function createSketchMode(deps) {
     const s = snap(local, event);
     mode.lastLocal = { x: s.x, y: s.y };
     emitPointer(s);
-    dropInferenceObjects();
     if (!s.suspended) wake(s);
+    showInference(s, event);
+  }
+
+  /** Les aides d'un accrochage `s` (snapSketchPoint) : lignes
+   *  d'alignement et de direction, point accroché, points remarquables
+   *  de l'entité survolée, et la lecture près du curseur avec le symbole
+   *  de la relation qui sera posée. */
+  function showInference(s, event) {
+    dropInferenceObjects();
     const plain = [...s.guides.map((g) => [g.x, g.y, s.x, s.y]),
       ...s.rays.filter((r) => !r.relation).map((r) => [r.x1, r.y1, r.x2, r.y2])];
     const related = s.rays.filter((r) => r.relation)
@@ -1464,7 +1479,12 @@ export function createSketchMode(deps) {
     }
     const p = overEndpoint(event);
     if (p) {
-      mode.drag = { geo: p.geo, point: p.point };
+      // Ce qui bouge avec le point : son entité et celles dont un point
+      // lui coïncide — il ne s'accroche pas à elles.
+      const moving = new Set([p.geo, ...endpoints()
+        .filter((q) => Math.hypot(q.x - p.x, q.y - p.y) < SNAP_TOL)
+        .map((q) => q.geo)]);
+      mode.drag = { geo: p.geo, point: p.point, moving, snapped: null };
       mode.dragMoved = false;
       mode.dragScreen = { x: event.clientX, y: event.clientY };
       controls.enabled = false;
@@ -1555,20 +1575,21 @@ export function createSketchMode(deps) {
   }
 
   let moveInFlight = false;
-  let pendingMove = null; // { sketch, geo, point, x, y, gen } | null
+  let pendingMove = null; // { sketch, geo, point, x, y, snaps, gen } | null
   let moveGen = 0;
 
   // File sérielle du fallback serveur : un seul sketch_move en vol ;
   // pendant l'attente on ne garde que la dernière (x, y) ; seule la
   // réponse la plus récente peut applyState. Le sketch_move final du
-  // pointerup (chemin solveur local) passe par ici aussi.
-  function enqueueSketchMove(x, y) {
+  // pointerup (chemin solveur local) passe par ici aussi, et le lâcher
+  // accroché (sketch_drop, `snaps`).
+  function enqueueSketchMove(x, y, snaps = null) {
     if (!mode.state || !mode.drag) return;
     pendingMove = {
       sketch: mode.state.sketch,
       geo: mode.drag.geo,
       point: mode.drag.point,
-      x, y,
+      x, y, snaps,
       gen: ++moveGen,
     };
     flushSketchMoves();
@@ -1580,9 +1601,9 @@ export function createSketchMode(deps) {
     pendingMove = null;
     moveInFlight = true;
     try {
-      const state = await call("sketch_move", {
+      const state = await call(req.snaps ? "sketch_drop" : "sketch_move", {
         sketch: req.sketch, geo: req.geo, point: req.point,
-        x: req.x, y: req.y,
+        x: req.x, y: req.y, ...(req.snaps ? { snaps: req.snaps } : {}),
       });
       if (req.gen === moveGen) applyState(state, { keepSelection: true });
     } catch (error) {
@@ -1684,8 +1705,13 @@ export function createSketchMode(deps) {
       }
       const local = toLocal(event);
       if (!local) return;
-      const target = mode.drag.point === 0
-        ? wholeCurveTarget(mode.drag, local) : local;
+      // Un point glissé s'accroche comme un point tracé ; une entité
+      // entière, non.
+      const snapped = mode.drag.point === 0 ? null
+        : snap(local, event, { moving: mode.drag.moving });
+      mode.drag.snapped = snapped;
+      const target = snapped ? { x: snapped.x, y: snapped.y }
+        : wholeCurveTarget(mode.drag, local);
       // M3 : résolution locale planegcs — toutes les contraintes tiennent
       // à 60 fps, zéro réseau ; le serveur réconcilie au pointerup.
       if (mode.solverOk) {
@@ -1694,6 +1720,7 @@ export function createSketchMode(deps) {
         if (updates) {
           mode.dragLocal = target; // pour le sketch_move final
           redraw();
+          if (snapped) showInference(snapped, event);
           return;
         }
         mode.solverOk = false; // solveur KO : retour au chemin serveur
@@ -1707,13 +1734,14 @@ export function createSketchMode(deps) {
         if (mode.drag.point === 0) {
           applyWholeCurveLocal(entity, mode.drag, local);
         } else if (mode.drag.point === 1 && entity.p1) {
-          entity.p1 = [local.x, local.y];
+          entity.p1 = [target.x, target.y];
         } else if (mode.drag.point === 2 && entity.p2) {
-          entity.p2 = [local.x, local.y];
+          entity.p2 = [target.x, target.y];
         } else if (mode.drag.point === 3 && entity.c) {
-          entity.c = [local.x, local.y];
+          entity.c = [target.x, target.y];
         }
         redraw();
+        if (snapped) showInference(snapped, event);
       }
       enqueueSketchMove(target.x, target.y);
     } else if (mode.tool === "dim" && mode.pendingDim && previewLine
@@ -1841,11 +1869,20 @@ export function createSketchMode(deps) {
       return;
     }
     if (mode.drag) {
+      // Lâché sur ce qu'il a accroché : le moteur pose la relation avec
+      // le déplacement (sketch_drop, un seul Ctrl+Z).
+      const { snapped } = mode.drag;
+      const at = mode.dragMoved && snapped && !snapped.suspended
+        ? snapTarget(snapped) : null;
+      const snaps = at ? { at } : null;
       // Drag local (M3) : un seul sketch_move au lâcher, via la même
       // file — il ne double pas un move serveur déjà en vol.
       if (mode.solverOk && mode.dragLocal && mode.state) {
-        enqueueSketchMove(mode.dragLocal.x, mode.dragLocal.y);
+        enqueueSketchMove(mode.dragLocal.x, mode.dragLocal.y, snaps);
+      } else if (snaps && mode.state) {
+        enqueueSketchMove(snapped.x, snapped.y, snaps);
       }
+      clearInference();
       const moved = !!mode.dragMoved;
       mode.dragLocal = null;
       mode.drag = null;
@@ -1971,7 +2008,8 @@ export function createSketchMode(deps) {
   // attendre que la souris bouge (voir suspendsSnap, lengthStep).
   function onModifierKey(event) {
     if (!["Control", "Meta", "Shift"].includes(event.key)) return;
-    if (!mode.active || !mode.lastMouse || !DRAW_TOOLS.has(mode.tool)) return;
+    if (!mode.active || !mode.lastMouse) return;
+    if (!DRAW_TOOLS.has(mode.tool) && !mode.drag) return;
     onPointerMove({ ...mode.lastMouse, ctrlKey: event.ctrlKey,
       metaKey: event.metaKey, shiftKey: event.shiftKey });
   }

@@ -187,6 +187,7 @@ let partFaceMaterials = []; // clones possédés — faces colorées
 let meshGroups = [];
 let edgeGroups = [];
 let edgeSnaps = []; // centres de cercles et sommets (clics de position)
+let edgeData = null; // le maillage des arêtes, où l'esquisse s'accroche
 let hoveredEdgeGroup = -1;
 let hoveredGroup = -1;
 
@@ -418,6 +419,7 @@ function showEdgeLines(data) {
   }
   partEdges = null;
   edgeGroups = data.groups;
+  edgeData = data;
   edgeSnaps = edgeSnapPoints(data);
   hoveredEdgeGroup = -1;
   selectedEdges = new Set(); // ids shift after every rebuild, like faces
@@ -2304,7 +2306,8 @@ document.getElementById("btn-selftest").addEventListener("click", async () => {
 
 const sketchMode = createSketchMode(
   { scene, camera, renderer, controls, call, say, refresh, panel, boxOverlay,
-    hideContextToolbar: () => ctx.hideContextToolbar?.(), storage: localStore });
+    hideContextToolbar: () => ctx.hideContextToolbar?.(), storage: localStore,
+    modelEdges: () => edgeData });
 
 installShortcutBar(document, {
   ribbon: RIBBON_LAYOUT,

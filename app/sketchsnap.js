@@ -14,6 +14,11 @@
 // Chaque sorte d'accrochage (SNAP_KINDS) se coupe dans le réglage, que le
 // navigateur garde ; l'accrochage rapide n'en garde qu'une, le temps
 // d'une entité (activeSnaps).
+//
+// Les arêtes de la pièce posées dans le plan de l'esquisse accrochent
+// aussi (modelEdgeSnaps) : leur id est "edge:k" (k, le numéro de l'arête
+// dans le maillage des arêtes), que engineSnaps change en { edge: k }
+// pour le moteur, qui les lie à l'esquisse.
 
 import { arcAngles, distanceToEntity } from "./geom2d.js";
 
@@ -139,6 +144,128 @@ export function sketchSnapPoints(entities, hidden) {
 }
 
 const TAU = Math.PI * 2;
+
+const EDGE_ID = "edge:";
+
+/** L'id d'accrochage de l'arête `k` de la pièce. */
+export function modelEdgeId(k) {
+  return EDGE_ID + k;
+}
+
+/** L'arête de la pièce qu'un id d'accrochage désigne, sinon null. */
+export function modelEdgeOf(id) {
+  return typeof id === "string" && id.startsWith(EDGE_ID)
+    ? Number(id.slice(EDGE_ID.length)) : null;
+}
+
+const near2 = (a, b, tol) => Math.hypot(a[0] - b[0], a[1] - b[1]) < tol;
+
+/** Deux courbes de l'esquisse sont-elles la même (une référence et
+ *  l'arête qu'elle reproduit) ? */
+function sameCurve(a, b, tol) {
+  if (a.type !== b.type) return false;
+  const ends = (e) => near2(e.p1, b.p1, tol) && near2(e.p2, b.p2, tol)
+    || near2(e.p1, b.p2, tol) && near2(e.p2, b.p1, tol);
+  if (a.type === "line") return ends(a);
+  if (a.type === "circle" || a.type === "arc") {
+    return near2(a.c, b.c, tol) && Math.abs(a.r - b.r) < tol
+      && (a.type === "circle" || ends(a));
+  }
+  return a.points?.length > 1 && b.points?.length > 1
+    && near2(a.points[0], b.points[0], tol)
+    && near2(a.points.at(-1), b.points.at(-1), tol);
+}
+
+/** Les points d'une polyligne sont-ils alignés ? */
+function straight(points, tol) {
+  const [a, b] = [points[0], points.at(-1)];
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  if (len < tol) return false;
+  return points.every((p) => Math.abs((b[0] - a[0]) * (p[1] - a[1])
+    - (b[1] - a[1]) * (p[0] - a[0])) / len < tol);
+}
+
+/**
+ * Les arêtes de la pièce posées dans le plan de l'esquisse, pour
+ * l'accrochage : `{ entities, points }`. Une entité a l'id "edge:k"
+ * (modelEdgeId) et la forme d'une entité d'esquisse — ligne, cercle, arc
+ * (balayé dans le sens trigo), polyligne ; ses points ont la
+ * numérotation du moteur pour une arête : 1 son départ, 2 sa fin, 3 son
+ * centre.
+ *
+ * `edges` : le maillage des arêtes (`{ positions, indices, groups }`,
+ * protocole `pack_edges` ; un groupe peut porter `center`). `toLocal(x,
+ * y, z)` rend `[x, y, z]` dans l'esquisse ; une arête dont un point
+ * s'écarte du plan de plus de `tol` est laissée. `externals` : les
+ * références déjà dans l'esquisse — l'arête qu'une d'elles reproduit est
+ * laissée, on accroche la référence.
+ */
+export function modelEdgeSnaps(edges, toLocal, { tol = 1e-4, externals = [] } = {}) {
+  const entities = [], points = [];
+  const positions = edges?.positions ?? [], indices = edges?.indices ?? [];
+  const at = (i) => toLocal(positions[3 * i], positions[3 * i + 1], positions[3 * i + 2]);
+  for (const group of edges?.groups ?? []) {
+    if (!group.count) continue;
+    const chain = [at(indices[group.start])];
+    for (let i = group.start + 1; i < group.start + group.count; i += 2) {
+      chain.push(at(indices[i]));
+    }
+    if (chain.length < 2 || chain.some((q) => Math.abs(q[2]) > tol)) continue;
+    const flat = chain.map((q) => [q[0], q[1]]);
+    const first = flat[0], last = flat.at(-1);
+    const closed = near2(first, last, tol);
+    const id = modelEdgeId(group.edgeId);
+    let entity;
+    let center = null;
+    if (group.center) {
+      const q = toLocal(...group.center);
+      center = [q[0], q[1]];
+      const r = Math.hypot(first[0] - center[0], first[1] - center[1]);
+      if (closed) {
+        entity = { id, type: "circle", c: center, r };
+      } else {
+        // Un arc d'esquisse tourne dans le sens trigo de p1 à p2 : le
+        // milieu de la polyligne dit dans quel sens va l'arête.
+        const mid = flat[Math.floor(flat.length / 2)];
+        const arc = { c: center, r, p1: first, p2: last };
+        const { a1, a2 } = arcAngles(arc);
+        const ccw = inSweep(Math.atan2(mid[1] - center[1], mid[0] - center[0]), a1, a2);
+        entity = { id, type: "arc", c: center, r,
+                   p1: ccw ? first : last, p2: ccw ? last : first };
+      }
+    } else if (straight(flat, tol)) {
+      entity = { id, type: "line", p1: first, p2: last };
+    } else {
+      entity = { id, type: "poly", points: flat };
+    }
+    if (externals.some((e) => sameCurve(e, entity, tol))) continue;
+    entities.push(entity);
+    if (!closed) {
+      points.push({ geo: id, point: 1, x: first[0], y: first[1] },
+                  { geo: id, point: 2, x: last[0], y: last[1] });
+    }
+    if (center) points.push({ geo: id, point: 3, x: center[0], y: center[1] });
+  }
+  return { entities, points };
+}
+
+/** `snaps` pour le moteur : chaque arête de la pièce ("edge:k") devient
+ *  `{ edge: k }`, dans `geo` comme dans `geos`. */
+export function engineSnaps(snaps) {
+  const ref = (geo) => {
+    const k = modelEdgeOf(geo);
+    return k == null ? geo : { edge: k };
+  };
+  const target = (t) => {
+    if (!t || typeof t !== "object") return t;
+    const out = { ...t };
+    if ("geo" in t) out.geo = ref(t.geo);
+    if (Array.isArray(t.geos)) out.geos = t.geos.map(ref);
+    return out;
+  };
+  return Object.fromEntries(Object.entries(snaps ?? {}).map(([role, value]) =>
+    [role, Array.isArray(value) ? value.map(target) : target(value)]));
+}
 
 /** L'angle `a` tombe-t-il dans le balayage [a1, a2] d'un arc ? */
 function inSweep(a, a1, a2, eps = 1e-12) {

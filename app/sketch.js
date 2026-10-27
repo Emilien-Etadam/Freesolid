@@ -29,9 +29,9 @@ import {
 import { ORIGIN_GEO, sceneTheme } from "./sketch/commun.js";
 import {
   SNAP_KINDS, SNAP_PX, SNAP_TOL, activeSnaps, arcSnaps, circleSnaps,
-  lineSnaps, normalizeSnapSettings, onCircle, readSnapSettings, rectSnaps,
-  sketchEndpoints, sketchSnapPoints, snapSketchPoint, snapTarget,
-  writeSnapSettings,
+  engineSnaps, lineSnaps, modelEdgeOf, modelEdgeSnaps, normalizeSnapSettings,
+  onCircle, readSnapSettings, rectSnaps, sketchEndpoints, sketchSnapPoints,
+  snapSketchPoint, snapTarget, writeSnapSettings,
 } from "./sketchsnap.js";
 import {
   DIM_LABEL_RATIO, DIM_TEXT_PX, createDimSprite, createGlyphSprite,
@@ -47,8 +47,16 @@ import { installBoiteCote } from "./sketch/boitecote.js";
 export { DIM_TEXT_PX, createDimSprite };
 
 export function createSketchMode(deps) {
-  const { scene, camera, renderer, controls, call, say, refresh, panel,
-    boxOverlay, hideContextToolbar, storage = null } = deps;
+  const { scene, camera, renderer, controls, call: engineCall, say, refresh,
+    panel, boxOverlay, hideContextToolbar, storage = null,
+    modelEdges = () => null } = deps;
+
+  /** L'appel au moteur : un accrochage à une arête de la pièce
+   *  ("edge:k") lui est nommé `{ edge: k }` (engineSnaps). */
+  function call(op, params = {}) {
+    return engineCall(op, params.snaps
+      ? { ...params, snaps: engineSnaps(params.snaps) } : params);
+  }
 
   // Session partagée avec les modules de app/sketch/ : ils lisent les
   // fonctions et const de cette fermeture une fois, à l'installation, et
@@ -270,6 +278,44 @@ export function createSketchMode(deps) {
     return sketchSnapPoints(mode.state?.entities, hiddenIds());
   }
 
+  // Les arêtes de la pièce dans le plan de l'esquisse (modelEdgeSnaps) :
+  // recalculées quand le maillage des arêtes ou l'état de l'esquisse
+  // change.
+  const NO_MODEL = { entities: [], points: [] };
+  let modelCache = { edges: null, state: null, snaps: NO_MODEL };
+  function modelSnaps() {
+    const edges = modelEdges();
+    if (!edges || !mode.state) return NO_MODEL;
+    if (modelCache.edges !== edges || modelCache.state !== mode.state) {
+      const inSketch = (x, y, z) => {
+        const v = new THREE.Vector3(x, y, z).applyMatrix4(mode.inverse);
+        return [v.x, v.y, v.z];
+      };
+      modelCache = { edges, state: mode.state, snaps: modelEdgeSnaps(
+        edges, inSketch,
+        { externals: mode.state.entities.filter((e) => e.external) }) };
+    }
+    return modelCache.snaps;
+  }
+
+  /** Les arêtes de la pièce accrochent au tracé et au glisser d'un point.
+   *  Pas au premier clic de l'arc tangent : il part d'une extrémité de
+   *  l'esquisse ; ni aux outils qui nomment un point de l'esquisse (cote
+   *  ordonnée, courbure…). */
+  function modelSnapsFor(moving) {
+    const first = CLICK_TOOLS[mode.tool]?.needsEndpoint
+      && !mode.pendingClicks?.length;
+    return (moving || DRAW_TOOLS.has(mode.tool)) && !first
+      ? modelSnaps() : NO_MODEL;
+  }
+
+  /** Une entité de l'esquisse, ou une arête de la pièce ("edge:k"). */
+  function snapEntity(id) {
+    return modelEdgeOf(id) != null
+      ? modelSnaps().entities.find((e) => e.id === id)
+      : mode.state?.entities.find((e) => e.id === id);
+  }
+
   /** Les sortes d'accrochage actives : le réglage, ou l'accrochage
    *  rapide. Le premier clic de l'arc tangent vise une extrémité : il en
    *  garde l'accrochage. */
@@ -283,17 +329,19 @@ export function createSketchMode(deps) {
 
   /** Où tombe le curseur : voir snapSketchPoint (sketchsnap.js).
    *  `moving` : pendant un glisser, les entités qui bougent avec le point
-   *  — il ne s'accroche pas à elles ; Ctrl suspend l'accrochage. */
+   *  — il ne s'accroche pas à elles ; Ctrl suspend l'accrochage. Les
+   *  arêtes de la pièce accrochent après celles de l'esquisse. */
   function snap(local, event, { moving = null } = {}) {
     const hidden = hiddenIds();
     const still = (geo) => !moving?.has(geo);
+    const model = modelSnapsFor(moving);
     // Grille : un pas rond qui suit le zoom (≈ 1/40 de la vue).
     const step = gridStep((camera.top - camera.bottom) / (camera.zoom || 1));
     return snapSketchPoint(local, { x: event.clientX, y: event.clientY }, {
-      points: snapPoints().filter((p) => still(p.geo)), toScreen,
-      chain: moving ? null : mode.chain,
-      entities: (mode.state?.entities ?? [])
-        .filter((e) => !hidden.has(e.id) && still(e.id)),
+      points: [...snapPoints().filter((p) => still(p.geo)), ...model.points],
+      toScreen, chain: moving ? null : mode.chain,
+      entities: [...(mode.state?.entities ?? [])
+        .filter((e) => !hidden.has(e.id) && still(e.id)), ...model.entities],
       woken: mode.woken ?? [], angleStep: mode.snapSettings.angleStep,
       kinds: snapKinds(),
       // Maj maintenu : des longueurs au pas de la grille, affichée ou non.
@@ -337,8 +385,7 @@ export function createSketchMode(deps) {
   /** Les lignes survolées pendant le tracé : la suivante peut leur être
    *  parallèle ou perpendiculaire. Les deux dernières. */
   function wake(s) {
-    const entity = s.hover != null
-      && mode.state?.entities.find((e) => e.id === s.hover);
+    const entity = s.hover != null && snapEntity(s.hover);
     if (entity?.type !== "line") return;
     mode.woken = [entity.id, ...(mode.woken ?? []).filter((id) => id !== entity.id)]
       .slice(0, 2);
@@ -388,6 +435,7 @@ export function createSketchMode(deps) {
   let rayLines = null;
   let snapPoint = null;
   let wakePoints = null;
+  let modelLines = null;
   let readoutEl = null;
 
   // Le symbole de la relation que le clic posera, devant la lecture.
@@ -405,13 +453,14 @@ export function createSketchMode(deps) {
   };
 
   function dropInferenceObjects() {
-    for (const obj of [inferLines, rayLines, snapPoint, wakePoints]) {
+    for (const obj of [inferLines, rayLines, snapPoint, wakePoints, modelLines]) {
       if (obj) { group.remove(obj); obj.geometry.dispose(); }
     }
     inferLines = null;
     rayLines = null;
     snapPoint = null;
     wakePoints = null;
+    modelLines = null;
   }
 
   function dashedLines(segments, material, order) {
@@ -490,6 +539,21 @@ export function createSketchMode(deps) {
         s.wake.map((p) => new THREE.Vector3(p.x, p.y, 0))), wakeMaterial);
       wakePoints.renderOrder = 23;
       group.add(wakePoints);
+    }
+    // Les arêtes de la pièce visées ou survolées : en évidence — le clic
+    // les liera à l'esquisse.
+    const edges = new Set([s.target?.geo, ...(s.target?.geos ?? []),
+      s.direction?.geo, s.hover].filter((id) => modelEdgeOf(id) != null));
+    const segments = [...edges].flatMap((id) => {
+      const pts = entityPolyline(snapEntity(id) ?? {});
+      return pts.slice(1).flatMap((q, i) => [
+        new THREE.Vector3(pts[i][0], pts[i][1], 0), new THREE.Vector3(q[0], q[1], 0)]);
+    });
+    if (segments.length) {
+      modelLines = new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(segments), hoverMaterial);
+      modelLines.renderOrder = 22;
+      group.add(modelLines);
     }
     if (!readoutEl) {
       readoutEl = document.createElement("div");

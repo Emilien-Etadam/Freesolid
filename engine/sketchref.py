@@ -165,6 +165,131 @@ class SketchRefMixin:
         state["referenced"] = external_count(sk) - before
         return state
 
+    # -- arêtes de la pièce visées par un accrochage ------------------------
+
+    @staticmethod
+    def _same_edge(a, b, tolerance=1e-6):
+        """Deux arêtes de formes différentes sont-elles la même courbe ?
+        Même longueur, mêmes bouts (dans un sens ou l'autre), et le milieu
+        de l'une sur l'autre."""
+        import Part
+        if abs(a.Length - b.Length) > tolerance * max(1.0, a.Length):
+            return False
+        ends_a = [a.valueAt(a.FirstParameter), a.valueAt(a.LastParameter)]
+        ends_b = [b.valueAt(b.FirstParameter), b.valueAt(b.LastParameter)]
+        if not any(all(p.distanceToPoint(q) < tolerance
+                       for p, q in zip(ends_a, order))
+                   for order in (ends_b, ends_b[::-1])):
+            return False
+        mid = a.valueAt((a.FirstParameter + a.LastParameter) / 2)
+        return b.distToShape(Part.Vertex(mid))[0] < tolerance
+
+    def _model_edge_link(self, sk, edge):
+        """(objet, « EdgeN ») : une fonction du corps qui porte l'arête
+        ``edge`` de la pièce et ne dépend pas de l'esquisse — le dernier
+        volume si l'esquisse vient après lui, sinon le dernier avant elle.
+        None si aucune ne la porte (une arête faite après l'esquisse
+        qu'on réédite)."""
+        body = self._require_body()
+        group = list(body.Group)
+        before = group[:group.index(sk)] if sk in group else group
+        tip = getattr(body, "Tip", None)
+        for obj in [tip] + before[::-1]:
+            if (obj is None or obj is sk
+                    or not obj.isDerivedFrom("PartDesign::Feature")
+                    or sk in (obj.OutListRecursive or [])):
+                continue
+            shape = getattr(obj, "Shape", None)
+            for j, other in enumerate(getattr(shape, "Edges", None) or []):
+                if self._same_edge(edge, other):
+                    return obj, "Edge%d" % (j + 1)
+        return None
+
+    def _edge_points(self, sk, edge):
+        """Les points d'une arête de la pièce dans l'esquisse : 1 son
+        départ, 2 sa fin, 3 son centre (cercle, arc)."""
+        placement = sk.getGlobalPlacement() if hasattr(
+            sk, "getGlobalPlacement") else sk.Placement
+        inverse = placement.inverse()
+        points = {1: edge.valueAt(edge.FirstParameter),
+                  2: edge.valueAt(edge.LastParameter)}
+        center = getattr(edge.Curve, "Center", None)
+        if center is not None:
+            points[3] = center
+        return {p: inverse.multVec(v) for p, v in points.items()}
+
+    def _external_points(self, sk, gid, points, tolerance=1e-5):
+        """Le point de la référence ``gid`` sur chacun des ``points``
+        (``{point de l'arête: Vector}``) qu'elle a : ``{p: pos}``."""
+        from engine.sketchsnap import snap_positions
+        App = self._app()
+        out = {}
+        for p, where in points.items():
+            flat = App.Vector(where.x, where.y, 0)
+            for pos in snap_positions(geo_of(sk, gid).TypeId):
+                try:
+                    there = sk.getPoint(gid, pos)
+                except Exception:  # noqa: BLE001 - point absent
+                    continue
+                if flat.distanceToPoint(there) < tolerance:
+                    out[p] = pos
+                    break
+        return out
+
+    def _external_of_edge(self, sk, edge, points):
+        """La référence déjà dans l'esquisse qui reproduit l'arête : ses
+        points tombent sur ceux de l'arête (un cercle : son centre et son
+        rayon). None s'il n'y en a pas."""
+        from engine.sketchsnap import snap_positions
+        for k in range(external_count(sk)):
+            gid = FIRST_EXTERNAL - k
+            geo = geo_of(sk, gid)
+            found = self._external_points(sk, gid, points)
+            if geo.TypeId == "Part::GeomCircle":
+                radius = getattr(edge.Curve, "Radius", None)
+                if (3 in found and radius is not None and edge.isClosed()
+                        and abs(geo.Radius - radius) < 1e-6):
+                    return gid
+            # Les deux bouts, et un centre des deux côtés ou d'aucun : une
+            # ligne n'est pas l'arc qui a les mêmes bouts.
+            elif ({1, 2} <= set(found) and found[1] != found[2]
+                  and (3 in snap_positions(geo.TypeId)) == (3 in points)
+                  and (3 not in points or 3 in found)):
+                return gid
+        return None
+
+    def _model_edge_refs(self, sk, edges):
+        """Chaque arête ``k`` de la pièce qu'un accrochage nomme : la
+        référence qui la reproduit dans l'esquisse — déjà là, ou ajoutée,
+        liée à la fonction qui la porte et hors du profil — avec le point
+        de la référence pour chaque point de l'arête. None : l'esquisse ne
+        peut pas la lier, l'accrochage tombe (voir with_model_edges)."""
+        from engine.kernel import KernelError
+        shape = getattr(self._require_body(), "Shape", None)
+        count = len(shape.Edges) if shape is not None else 0
+        for k in edges:
+            if not 0 <= k < count:
+                raise KernelError(
+                    "accrochage : arête {} de la pièce introuvable".format(k))
+        refs = {}
+        for k in sorted(edges):
+            edge = shape.Edges[k]
+            points = self._edge_points(sk, edge)
+            gid = self._external_of_edge(sk, edge, points)
+            if gid is None:
+                link = self._model_edge_link(sk, edge)
+                before = external_count(sk)
+                if link is not None:
+                    try:
+                        sk.addExternal(link[0].Name, link[1], False, False)
+                    except Exception:  # noqa: BLE001 - refusée : sans relation
+                        pass
+                if external_count(sk) > before:
+                    gid = FIRST_EXTERNAL - before
+            refs[k] = None if gid is None else {
+                "geo": gid, "points": self._external_points(sk, gid, points)}
+        return refs
+
     def sketch_silhouette(self, sketch):
         """Silhouette : les arêtes vues du solide, regardé de face depuis le
         plan de l'esquisse (contours apparents compris), projetées et

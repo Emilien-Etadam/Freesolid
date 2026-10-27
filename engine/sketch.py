@@ -7,6 +7,17 @@ les méthodes importent le noyau à l'appel, pour éviter un cycle.
 #: Le point racine de Sketcher : l'origine de l'esquisse (point 1).
 ROOT_GEO = -1
 
+#: Une courbe glissée entière (``point`` 0) : les points que Sketcher
+#: emmène ensemble (``moveGeometries``), pour qu'elle glisse sans se
+#: déformer. Un arc pris par sa courbe changerait de rayon ; une ellipse
+#: se déforme toujours : elle ne glisse pas entière.
+SLIDE_POINTS = {
+    "Part::GeomLineSegment": (1, 2),
+    "Part::GeomCircle": (3,),
+    "Part::GeomArcOfCircle": (1, 2, 3),
+    "Part::GeomBSplineCurve": (0,),
+}
+
 from engine.sketchref import geo_of, is_geo  # noqa: E402
 
 
@@ -1280,7 +1291,8 @@ class SketchMixin:
 
     def sketch_move(self, sketch, geo, point, x, y):
         """Drag: move one point, let the solver follow. ``point`` is the
-        Sketcher convention — 1 start, 2 end, 3 center, 0 whole curve.
+        Sketcher convention — 1 start, 2 end, 3 center, 0 whole curve
+        (qui glisse sans se déformer : ``_slide_curve``).
 
         Sans transaction : le glisser en envoie un à chaque pas. Le
         premier garde l'esquisse d'avant (``_drag_from``), pour que le
@@ -1316,6 +1328,8 @@ class SketchMixin:
         sk = self._get_sketch(sketch)
         gid, pos = int(geo), int(point)
         target = self._app().Vector(float(x), float(y), 0)
+        if pos == 0:
+            return self._slide_curve(sketch, sk, gid, target)
         attempts = (
             ("moveGeometry", lambda fn: fn(gid, pos, target, 0)),
             ("movePoint", lambda fn: fn(gid, pos, target, 0)),
@@ -1337,6 +1351,33 @@ class SketchMixin:
         raise KernelError(
             "aucune API de déplacement compatible sur cette version de "
             "FreeCAD (essayé : {})".format(", ".join(tried) or "aucune"))
+
+    def _slide_curve(self, sketch, sk, gid, target):
+        """Une courbe glissée entière (``point`` 0) se translate : ``target``
+        est où va son point de repère — le départ d'une ligne ou d'une
+        spline, le centre d'un cercle ou d'un arc —, ce que l'interface et
+        son solveur local tiennent. Sketcher, pris au mot (``moveGeometry``
+        au point 0), poserait le milieu d'une ligne sur la cible, et
+        changerait le rayon d'un cercle ou d'un arc : la courbe sautait au
+        lâcher."""
+        from engine.kernel import KernelError, _explain
+        if not 0 <= gid < len(sk.Geometry):
+            raise KernelError("point {}.{} introuvable".format(gid, 0))
+        geo = sk.Geometry[gid]
+        points = SLIDE_POINTS.get(geo.TypeId)
+        if points is None:
+            raise KernelError("glisser : cette courbe ne se déplace pas entière")
+        mover = getattr(sk, "moveGeometries", None)
+        if mover is None:
+            raise KernelError(
+                "aucune API de déplacement compatible sur cette version de "
+                "FreeCAD (essayé : {})".format("moveGeometries"))
+        anchor = geo.Center if 3 in points else geo.StartPoint
+        try:
+            mover([(gid, p) for p in points], target - anchor, True)
+        except Exception as exc:  # noqa: BLE001 - solver refusal
+            raise KernelError(_explain(exc))
+        return self.sketch_state(sketch)
 
     def sketch_drop(self, sketch, geo, point, x, y, snaps=None):
         """Lâcher d'un glisser : le point (ou, ``point`` 0, la courbe

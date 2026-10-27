@@ -194,6 +194,7 @@ def _etapes():
         esquisse.p77_glisser_accroche,
         esquisse.p78_accroche_piece,
         esquisse.p79_annuler_esquisse,
+        esquisse.p80_glisser_courbe_entiere,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

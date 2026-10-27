@@ -651,5 +651,6 @@
  "accrochage « at » : un point ne s'accroche pas à son entité": "snap \"at\": a point does not snap to its own entity",
  "accrochage : arête {} de la pièce introuvable": "snap: part edge {} not found",
  "rien à annuler dans l'esquisse": "nothing to undo in the sketch",
- "rien à rétablir dans l'esquisse": "nothing to redo in the sketch"
+ "rien à rétablir dans l'esquisse": "nothing to redo in the sketch",
+ "glisser : cette courbe ne se déplace pas entière": "drag: this curve does not move as a whole"
 }

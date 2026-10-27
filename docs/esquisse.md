@@ -67,6 +67,7 @@ Un outil est **fait** quand :
 | Peigne de courbure, accrochage à la grille | ✅ | client (`curvatureComb`, `gridStep`) | `sketchtools` |
 | Accrochage pendant le tracé : extrémités, centres, points, bouts de spline, références liées, origine ; milieux, quadrants, croisements, sur la courbe ; les arêtes de la pièce posées dans le plan de l'esquisse accrochent comme ses entités, liées à l'esquisse au clic ; directions d'une ligne (horizontale, verticale, parallèle, perpendiculaire, tangente, pas d'angle), longueur ronde avec Maj — la relation part avec le tracé, son symbole s'affiche au curseur, Ctrl suspend l'accrochage ; chaque sorte se règle (Paramètres), un interrupteur les coupe toutes, accrochage rapide au clic droit ; un point glissé s'accroche aussi, lâché sur sa cible il en garde la relation | ✅ | `snaps` des tracés (`engine/sketchsnap.py`), `sketch_drop` ; client `app/sketchsnap.js` (`SNAP_KINDS`, `activeSnaps`) | `p74_accrochages`, `p75_points_remarquables`, `p76_directions`, `p77_glisser_accroche`, `p78_accroche_piece`, `sketchsnap`, `test_sketchsnap` |
 | Annuler, rétablir dans l'esquisse (Ctrl+Z, Ctrl+Y, boutons et liste de l'historique) : seulement ses pas, jamais l'esquisse elle-même ni ce qui la précède ; un glisser est un pas | ✅ | `undo`, `redo`, `undo_history` (`sketch`), `sketch_drop` | `p79_annuler_esquisse`, `test_docprops` |
+| Glisser une entité entière (ligne, cercle, arc, spline) : elle se translate sans se déformer, ses relations tiennent ; une ellipse ne glisse pas entière | ✅ | `sketch_move`, `sketch_drop` (`point` 0) | `p80_glisser_courbe_entiere` |
 
 ## Relations
 
@@ -167,7 +168,13 @@ Un outil est **fait** quand :
   coïncide). Lâché sur sa cible, il en garde la relation : le
   déplacement et la relation font une seule opération (`sketch_drop`),
   un seul Ctrl+Z. Ctrl maintenu, le point glisse sans accrocher. Une entité glissée entière
-  n'accroche rien.
+  n'accroche rien ; elle se translate sans se déformer : une ligne garde
+  sa longueur et sa direction (son départ suit le curseur), un cercle ou
+  un arc son rayon (son centre suit), une spline sa forme. Sketcher, lui,
+  poserait le milieu d'une ligne sous la cible et changerait le rayon
+  d'un cercle : le moteur emmène ensemble les points de la courbe
+  (`moveGeometries`). Une ellipse se déformerait toujours : elle ne
+  glisse pas entière.
   Les arêtes de la pièce posées dans le plan de l'esquisse (le contour
   de la face où on l'a ouverte, par exemple) accrochent comme les
   entités, au tracé comme au glisser : sommets, centres, milieux,

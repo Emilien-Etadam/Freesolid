@@ -509,36 +509,139 @@ class SketchMixin:
             # (GeoId -1 = axe H, PosId 1 = son départ, l'origine).
             if not matched and point.distanceToPoint(origin) < self._SNAP_TOL:
                 sk.addConstraint(C("Coincident", gid, pos, -1, 1))
+        axis = self._axis_constraint(sk, gid)
+        if axis is not None:
+            sk.addConstraint(axis)
+
+    def _axis_constraint(self, sk, gid):
+        """Horizontale ou verticale d'une ligne exactement alignée sur un
+        axe, sinon None."""
+        import Sketcher
+        geo = sk.Geometry[gid]
         if geo.TypeId != "Part::GeomLineSegment":
-            return
+            return None
         dx = abs(geo.EndPoint.x - geo.StartPoint.x)
         dy = abs(geo.EndPoint.y - geo.StartPoint.y)
         if dx > self._SNAP_TOL or dy > self._SNAP_TOL:  # not degenerate
             if dy < self._SNAP_TOL:
-                sk.addConstraint(C("Horizontal", gid))
-            elif dx < self._SNAP_TOL:
-                sk.addConstraint(C("Vertical", gid))
+                return Sketcher.Constraint("Horizontal", gid)
+            if dx < self._SNAP_TOL:
+                return Sketcher.Constraint("Vertical", gid)
+        return None
 
-    def sketch_add_line(self, sketch, x1, y1, x2, y2, construction=False):
+    # -- accrochages (engine/sketchsnap.py) --------------------------------
+
+    def _snap_targets(self, sk, op, snaps):
+        """``snaps`` vérifié, chaque cible comprise : avant tout ajout,
+        pour qu'un refus ne laisse rien."""
+        from engine.kernel import KernelError
+        from engine.sketchsnap import parse_snaps, snap_positions, targets_of
+        parsed = parse_snaps(op, snaps)
+        for role, (geo, point) in targets_of(parsed):
+            if geo == ROOT_GEO:
+                found = point == 1
+            else:
+                found = (is_geo(sk, geo) and point in snap_positions(
+                    geo_of(sk, geo).TypeId))
+            if not found:
+                raise KernelError(
+                    "accrochage « {} » : point {}.{} introuvable".format(
+                        role, geo, point))
+        return parsed
+
+    def _point_at(self, sk, where, skip):
+        """Le point d'esquisse exactement en ``where`` : ``(geo, point)``
+        ou None. Entités (sauf ``skip``, le tracé lui-même), puis
+        références, puis l'origine : extrémités, centres, points, bouts
+        de spline — tout ce que l'interface accroche."""
+        from engine.sketchref import FIRST_EXTERNAL, external_count
+        from engine.sketchsnap import snap_positions
+        gids = [g for g in range(len(sk.Geometry)) if g not in skip]
+        gids += [FIRST_EXTERNAL - k for k in range(external_count(sk))]
+        for gid in gids:
+            for pos in snap_positions(geo_of(sk, gid).TypeId):
+                try:
+                    there = sk.getPoint(gid, pos)
+                except Exception:  # noqa: BLE001 - point absent
+                    continue
+                if where.distanceToPoint(there) < self._SNAP_TOL:
+                    return gid, pos
+        if where.distanceToPoint(self._app().Vector(0, 0, 0)) < self._SNAP_TOL:
+            return ROOT_GEO, 1
+        return None
+
+    def _snap_links(self, sk, parsed, points, skip):
+        """Coïncidences des points d'un tracé ``(rôle, geo, point)`` : la
+        cible que ``snaps`` nomme, sinon le point existant exactement au
+        même endroit (la ligne précédente d'une chaîne)."""
+        import Sketcher
+        links = []
+        for role, gid, pos in points:
+            target = parsed.get(role) if role else None
+            if target is None:
+                target = self._point_at(sk, sk.getPoint(gid, pos), skip)
+            if target is not None:
+                links.append(Sketcher.Constraint(
+                    "Coincident", gid, pos, *target))
+        return links
+
+    @staticmethod
+    def _add_snap_constraints(sk, constraints):
+        """Pose les relations d'accrochage une à une. Celle qui rendrait
+        l'esquisse redondante ou contradictoire est retirée : le tracé
+        reste, sans la relation de trop."""
+        def trouble():
+            return (set(sk.ConflictingConstraints or [])
+                    | set(sk.RedundantConstraints or []))
+        sk.solve()
+        for constraint in constraints:
+            before = trouble()
+            try:
+                index = sk.addConstraint(constraint)
+            except Exception:  # noqa: BLE001 - relation impossible : omise
+                continue
+            sk.solve()
+            if trouble() - before:
+                sk.delConstraint(index)
+                sk.solve()
+
+    def sketch_add_line(self, sketch, x1, y1, x2, y2, construction=False,
+                        snaps=None):
+        """Ligne. ``snaps`` (``start``, ``end``) : les points que
+        l'interface a accrochés ; sans lui, le moteur déduit tout des
+        coordonnées (``_auto_constrain``)."""
         from engine.kernel import KernelError
         import Part
         sk = self._get_sketch(sketch)
         if self._coincident_2d(x1, y1, x2, y2):
             raise KernelError(
                 "segment de longueur nulle — les deux points coïncident")
+        parsed = (None if snaps is None
+                  else self._snap_targets(sk, "sketch_add_line", snaps))
         V = self._app().Vector
         gid = sk.addGeometry(Part.LineSegment(
             V(float(x1), float(y1), 0), V(float(x2), float(y2), 0)),
             bool(construction))
-        self._auto_constrain(sk, gid)
+        if parsed is None:
+            self._auto_constrain(sk, gid)
+            return self.sketch_state(sketch)
+        links = self._snap_links(
+            sk, parsed, (("start", gid, 1), ("end", gid, 2)), {gid})
+        axis = self._axis_constraint(sk, gid)
+        self._add_snap_constraints(sk, links + ([axis] if axis else []))
         return self.sketch_state(sketch)
 
-    def sketch_add_rectangle(self, sketch, x1, y1, x2, y2, center=False):
+    def sketch_add_rectangle(self, sketch, x1, y1, x2, y2, center=False,
+                             snaps=None):
         """Rectangle par deux coins opposés, en une opération (un seul
         Ctrl+Z). Les côtés s'enchaînent comme tracés à la main
         (coïncidences, horizontal/vertical, origine). ``center`` avec le
         milieu sur l'origine : les deux coins restent symétriques autour
-        d'elle (ailleurs, le centre est libre de toute façon)."""
+        d'elle (ailleurs, le centre est libre de toute façon).
+
+        ``snaps`` : ``corner1`` (x1, y1), ``corner2`` (x2, y2) et, par le
+        centre, ``center`` — les deux coins restent alors symétriques
+        autour du point visé, quel qu'il soit."""
         from engine.kernel import KernelError
         import Part
         import Sketcher
@@ -547,6 +650,11 @@ class SketchMixin:
             raise KernelError(
                 "rectangle : les deux coins doivent être en diagonale")
         sk = self._get_sketch(sketch)
+        parsed = (None if snaps is None
+                  else self._snap_targets(sk, "sketch_add_rectangle", snaps))
+        if parsed and "center" in parsed and not center:
+            raise KernelError(
+                "accrochage « center » : réservé au rectangle par le centre")
         V = self._app().Vector
         corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
         first = None
@@ -555,28 +663,64 @@ class SketchMixin:
             gid = sk.addGeometry(Part.LineSegment(
                 V(ax, ay, 0), V(bx, by, 0)), False)
             first = gid if first is None else first
-            self._auto_constrain(sk, gid)
-        if center and self._coincident_2d((x1 + x2) / 2, (y1 + y2) / 2, 0, 0):
+            if parsed is None:
+                self._auto_constrain(sk, gid)
+        C = Sketcher.Constraint
+        if parsed is not None:
+            # Les côtés : enchaînés, deux horizontaux, deux verticaux.
+            for i in range(4):
+                sk.addConstraint(C("Coincident", first + i, 2,
+                                   first + (i + 1) % 4, 1))
+                sk.addConstraint(C("Horizontal" if i % 2 == 0 else "Vertical",
+                                   first + i))
+            sides = set(range(first, first + 4))
+            links = self._snap_links(sk, parsed, (
+                ("corner1", first, 1), (None, first + 1, 1),
+                ("corner2", first + 2, 1), (None, first + 3, 1)), sides)
+            middle = parsed.get("center") if center else None
+            if center and middle is None:
+                middle = self._point_at(
+                    sk, V((x1 + x2) / 2, (y1 + y2) / 2, 0), sides)
+            if middle is not None:
+                links.append(C("Symmetric", first, 1, first + 2, 1, *middle))
+            self._add_snap_constraints(sk, links)
+        elif center and self._coincident_2d((x1 + x2) / 2, (y1 + y2) / 2, 0, 0):
             # Coin (x1, y1) = départ du 1er côté ; (x2, y2) = départ du 3e ;
             # (-1, 1) = le point racine, l'origine.
-            sk.addConstraint(Sketcher.Constraint(
-                "Symmetric", first, 1, first + 2, 1, -1, 1))
+            sk.addConstraint(C("Symmetric", first, 1, first + 2, 1, -1, 1))
         return self.sketch_state(sketch)
 
-    def sketch_add_arc(self, sketch, cx, cy, r, a1, a2):
-        """Arc de cercle — angles en radians, sens trigonométrique."""
+    def sketch_add_arc(self, sketch, cx, cy, r, a1, a2, snaps=None):
+        """Arc de cercle — angles en radians, sens trigonométrique.
+        ``snaps`` : ``center``, ``start`` (angle a1), ``end`` (angle a2)
+        et ``on``, les points posés sur l'arc."""
         from engine.kernel import KernelError
         import Part
         sk = self._get_sketch(sketch)
         if float(r) <= 0:
             raise KernelError("le rayon doit être positif")
+        parsed = (None if snaps is None
+                  else self._snap_targets(sk, "sketch_add_arc", snaps))
         App = self._app()
         circle = Part.Circle(App.Vector(float(cx), float(cy), 0),
                              App.Vector(0, 0, 1), float(r))
         gid = sk.addGeometry(
             Part.ArcOfCircle(circle, float(a1), float(a2)), False)
-        self._auto_constrain(sk, gid)
+        if parsed is None:
+            self._auto_constrain(sk, gid)
+        else:
+            self._add_snap_constraints(sk, self._round_snap_links(
+                sk, gid, parsed,
+                (("center", gid, 3), ("start", gid, 1), ("end", gid, 2))))
         return self.sketch_state(sketch)
+
+    def _round_snap_links(self, sk, gid, parsed, points):
+        """Relations d'accrochage d'un cercle ou d'un arc : centre et bouts
+        coïncidents, points posés sur la courbe (``on``)."""
+        import Sketcher
+        return self._snap_links(sk, parsed, points, {gid}) + [
+            Sketcher.Constraint("PointOnObject", geo, point, gid)
+            for geo, point in parsed.get("on", [])]
 
     def sketch_add_spline(self, sketch, points):
         """Spline interpolée par les points cliqués."""
@@ -1064,18 +1208,25 @@ class SketchMixin:
             raise KernelError(_explain(exc))
         return self.sketch_state(sketch)
 
-    def sketch_add_circle(self, sketch, cx, cy, r):
+    def sketch_add_circle(self, sketch, cx, cy, r, snaps=None):
+        """Cercle. ``snaps`` : ``center`` et ``on``, les points posés sur
+        le cercle (le clic du rayon, ou les trois points)."""
         from engine.kernel import KernelError
         import Part
         sk = self._get_sketch(sketch)
         if float(r) <= 0:
             raise KernelError("le rayon doit être positif")
+        parsed = (None if snaps is None
+                  else self._snap_targets(sk, "sketch_add_circle", snaps))
         App = self._app()
         gid = sk.addGeometry(Part.Circle(
             App.Vector(float(cx), float(cy), 0),
             App.Vector(0, 0, 1), float(r)), False)
+        if parsed is not None:
+            self._add_snap_constraints(sk, self._round_snap_links(
+                sk, gid, parsed, (("center", gid, 3),)))
         # Centre posé sur l'origine (le client y accroche) : coïncident.
-        if self._coincident_2d(cx, cy, 0, 0):
+        elif self._coincident_2d(cx, cy, 0, 0):
             import Sketcher
             sk.addConstraint(Sketcher.Constraint("Coincident", gid, 3, -1, 1))
         return self.sketch_state(sketch)

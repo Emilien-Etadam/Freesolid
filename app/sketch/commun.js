@@ -5,4 +5,4 @@ import { readScene } from "../theme.js";
 export const sceneTheme = readScene();
 
 /** Le point racine du moteur : l'origine de l'esquisse (point 1). */
-export const ORIGIN_GEO = -1;
+export { ORIGIN_GEO } from "../sketchsnap.js";

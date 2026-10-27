@@ -1225,3 +1225,93 @@ def p78_accroche_piece(self, mark, report, etat):
     report["p78_accroche_piece"] = (linked and undone and reused and on_ok
                                     and dropped and clean and all(refused)
                                     and unlinked)
+
+
+def p79_annuler_esquisse(self, mark, report, etat):
+    mark("p79: Ctrl+Z dans l'esquisse, un glisser en un pas")
+    from engine.kernel import KernelError, dispatch
+    V = self._app().Vector
+
+    def run(op, **params):
+        out = dispatch(self, op, params)
+        if not out["ok"]:
+            raise KernelError(out["error"])
+        return out["result"]
+
+    def refused(op, **params):
+        return not dispatch(self, op, params)["ok"]
+
+    def coincident(geo1, pos1, geo2, pos2):
+        return any(c.Type == "Coincident" and (c.First, c.FirstPos, c.Second,
+                                               c.SecondPos) == (geo1, pos1, geo2, pos2)
+                   for c in sk.Constraints)
+
+    self.new_part("Pièce annuler esquisse")
+    doc = self._require_doc()
+    name = run("sketch_start")["sketch"]
+    sk = self._get_sketch(name)
+    # Rien dessiné : Ctrl+Z ne défait pas l'esquisse elle-même.
+    floor = refused("undo", sketch=name) and doc.getObject(name) is not None
+    run("sketch_add_line", sketch=name, x1=0, y1=0, x2=30, y2=0)       # 0
+    run("sketch_add_line", sketch=name, x1=50, y1=20, x2=80, y2=30)    # 1
+    listed = run("undo_history", sketch=name)["undo"] == [
+        "sketch_add_line", "sketch_add_line"]
+    # Plus de pas demandés que l'esquisse n'en a : les siens seulement.
+    state = run("undo", sketch=name, steps=5)
+    capped = (not state["entities"] and doc.getObject(name) is not None
+              and refused("undo", sketch=name))
+    run("redo", sketch=name)
+    state = run("redo", sketch=name)
+    redone = (len(state["entities"]) == 2 and refused("redo", sketch=name)
+              and refused("undo", sketch="Autre"))
+    # Un glisser (sketch_move sans transaction) puis son lâcher : un pas.
+    count = doc.UndoCount
+    start = V(sk.Geometry[1].EndPoint)
+    for x, y in ((82, 32), (85, 36), (88, 40)):
+        run("sketch_move", sketch=name, geo=1, point=2, x=x, y=y)
+    run("sketch_drop", sketch=name, geo=1, point=2, x=90, y=42)
+    one_step = doc.UndoCount == count + 1
+    run("undo", sketch=name)
+    back = sk.Geometry[1].EndPoint.distanceToPoint(start) < 1e-6
+    run("redo", sketch=name)
+    dragged = (one_step and back and sk.Geometry[1].EndPoint.distanceToPoint(
+        V(90, 42, 0)) < 1e-6)
+    # Lâché sur sa cible : le glisser et la relation, un seul pas.
+    count = doc.UndoCount
+    start = V(sk.Geometry[1].StartPoint)
+    run("sketch_move", sketch=name, geo=1, point=1, x=40, y=10)
+    run("sketch_drop", sketch=name, geo=1, point=1, x=30, y=0,
+        snaps={"at": {"geo": 0, "point": 2}})
+    joined = doc.UndoCount == count + 1 and coincident(1, 1, 0, 2)
+    run("undo", sketch=name)
+    snapped = (joined and not coincident(1, 1, 0, 2)
+               and sk.Geometry[1].StartPoint.distanceToPoint(start) < 1e-6)
+    # Le solveur local n'envoie que le lâcher ; une courbe entière aussi.
+    count = doc.UndoCount
+    start = V(sk.Geometry[1].StartPoint)
+    run("sketch_drop", sketch=name, geo=1, point=0, x=60, y=-10)
+    moved = (doc.UndoCount == count + 1
+             and sk.Geometry[1].StartPoint.distanceToPoint(start) > 1)
+    run("undo", sketch=name)
+    whole = moved and sk.Geometry[1].StartPoint.distanceToPoint(start) < 1e-6
+    # Un lâcher refusé ne laisse pas sa transaction réservée : le glisser
+    # qui suit n'entre pas dans l'historique sous son nom.
+    count = doc.UndoCount
+    gone = refused("sketch_drop", sketch=name, geo=1, point=1, x=0, y=0,
+                   snaps={"at": {"geo": 1, "point": 2}})
+    run("sketch_move", sketch=name, geo=1, point=2, x=70, y=50)
+    unbooked = gone and doc.UndoCount == count
+    run("sketch_drop", sketch=name, geo=1, point=2, x=70, y=50)
+    # Réédité : Ctrl+Z ne défait rien d'avant l'entrée ; hors de
+    # l'esquisse, il défait tout.
+    run("sketch_finish", sketch=name)
+    run("sketch_edit", feature=name)
+    run("sketch_add_line", sketch=name, x1=0, y1=40, x2=20, y2=40)
+    run("undo", sketch=name)
+    edited = (refused("undo", sketch=name) and len(sk.Geometry) == 2
+              and doc.getObject(name) is not None)
+    run("sketch_cancel", sketch=name)
+    outside = not refused("undo")
+    report["p79_annuler_esquisse"] = (floor and listed and capped and redone
+                                      and dragged and snapped and whole
+                                      and unbooked and edited and outside)

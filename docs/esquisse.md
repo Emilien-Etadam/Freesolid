@@ -66,6 +66,7 @@ Un outil est **fait** quand :
 | Éditer une spline dans la vue : tirer ses points, poignées de tangente sur tous ses points dès qu'elle est sélectionnée (direction et longueurs, Alt : un seul côté, longueurs en %), Ctrl+clic pour un point de plus (forme gardée), Suppr pour en retirer un, polygone de contrôle (pôles à tirer), peigne de courbure, simplifier (tolérance), lisser, libérer les poignées — les relations de la spline tiennent | ✅ | `sketch_set_spline`, `curve_poles`, `curve_move_pole` ; calcul `splinemath` (moteur et client) | `p69_esquisse`, `test_splinemath`, `splinemath.test` |
 | Peigne de courbure, accrochage à la grille | ✅ | client (`curvatureComb`, `gridStep`) | `sketchtools` |
 | Accrochage pendant le tracé : extrémités, centres, points, bouts de spline, références liées, origine ; milieux, quadrants, croisements, sur la courbe ; les arêtes de la pièce posées dans le plan de l'esquisse accrochent comme ses entités, liées à l'esquisse au clic ; directions d'une ligne (horizontale, verticale, parallèle, perpendiculaire, tangente, pas d'angle), longueur ronde avec Maj — la relation part avec le tracé, son symbole s'affiche au curseur, Ctrl suspend l'accrochage ; chaque sorte se règle (Paramètres), un interrupteur les coupe toutes, accrochage rapide au clic droit ; un point glissé s'accroche aussi, lâché sur sa cible il en garde la relation | ✅ | `snaps` des tracés (`engine/sketchsnap.py`), `sketch_drop` ; client `app/sketchsnap.js` (`SNAP_KINDS`, `activeSnaps`) | `p74_accrochages`, `p75_points_remarquables`, `p76_directions`, `p77_glisser_accroche`, `p78_accroche_piece`, `sketchsnap`, `test_sketchsnap` |
+| Annuler, rétablir dans l'esquisse (Ctrl+Z, Ctrl+Y, boutons et liste de l'historique) : seulement ses pas, jamais l'esquisse elle-même ni ce qui la précède ; un glisser est un pas | ✅ | `undo`, `redo`, `undo_history` (`sketch`), `sketch_drop` | `p79_annuler_esquisse`, `test_docprops` |
 
 ## Relations
 
@@ -165,8 +166,7 @@ Un outil est **fait** quand :
   son entité et à celles qui bougent avec lui (un point qui lui
   coïncide). Lâché sur sa cible, il en garde la relation : le
   déplacement et la relation font une seule opération (`sketch_drop`),
-  un seul Ctrl+Z, alors qu'un glisser sans cible n'en a pas. Ctrl
-  maintenu, le point glisse sans accrocher. Une entité glissée entière
+  un seul Ctrl+Z. Ctrl maintenu, le point glisse sans accrocher. Une entité glissée entière
   n'accroche rien.
   Les arêtes de la pièce posées dans le plan de l'esquisse (le contour
   de la face où on l'a ouverte, par exemple) accrochent comme les
@@ -189,6 +189,16 @@ Un outil est **fait** quand :
   (posées sans la défaire, pour en ajouter une autre) et celles qui ne
   touchent qu'elle. Les points passent devant les courbes : symétrique
   et intersection ne dépendent pas de l'ordre des clics.
+- **Annuler** : dans l'esquisse, Ctrl+Z et Ctrl+Y (les boutons et la
+  liste de l'historique aussi) ne défont que ses pas : jamais l'esquisse
+  elle-même, ni ce qui précède son ouverture — pour cela, la quitter.
+  Chaque transaction ouverte pendant l'esquisse porte le numéro de sa
+  session (`freesolid-<op>@<n>`), et `undo`, `redo`, `undo_history`
+  reçoivent `sketch` pour s'y tenir ; la réponse est alors l'état de
+  l'esquisse. Un glisser entier est un seul pas : ses `sketch_move` n'ont
+  pas de transaction, le lâcher (`sketch_drop`, envoyé à la fin de
+  chaque glisser) en a une, qui garde l'esquisse d'avant le premier
+  `sketch_move`. Un tracé en cours repart de zéro après Ctrl+Z.
 - **Blocs** : un bloc est un modèle ; l'insérer en copie les entités et
   leurs relations internes. Modifier le bloc ensuite ne met pas à jour
   les copies déjà posées.

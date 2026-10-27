@@ -998,6 +998,12 @@ document.addEventListener("keydown", (event) => {
         && (event.key === "z" || event.key === "Z")) {
       event.preventDefault();
       goPreviousView();
+    } else if ((event.ctrlKey || event.metaKey) && !event.altKey
+               && ["z", "Z", "y", "Y"].includes(event.key)) {
+      // Ctrl+Z, Ctrl+Y : les pas de l'esquisse, pas ceux de la pièce.
+      event.preventDefault();
+      if (event.key === "z" || event.key === "Z") sketchMode.undo();
+      else sketchMode.redo();
     } else if ((event.key === "f" || event.key === "F")
         && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
@@ -1750,8 +1756,9 @@ document.getElementById("btn-new").addEventListener("click", async () => {
   refresh(call("new_part"));
 });
 
+// Dans l'esquisse, Annuler et Rétablir ne touchent que ses pas.
 document.getElementById("btn-undo").addEventListener("click", () =>
-  refreshAny(call("undo")));
+  (sketchMode.active ? sketchMode.undo() : refreshAny(call("undo"))));
 
 // Liste de l'historique : un clic sur un pas défait tout jusqu'à lui.
 document.getElementById("btn-undo-list").addEventListener("click", async (event) => {
@@ -1760,7 +1767,8 @@ document.getElementById("btn-undo-list").addEventListener("click", async (event)
   const wasOpen = !menu.hidden;
   closeViewMenus();
   if (wasOpen) return;
-  const history = await call("undo_history").catch(() => null);
+  const history = await call("undo_history", sketchMode.active
+    ? { sketch: sketchMode.editing } : {}).catch(() => null);
   menu.replaceChildren();
   const head = document.createElement("div");
   head.className = "menu-head";
@@ -1773,7 +1781,8 @@ document.getElementById("btn-undo-list").addEventListener("click", async (event)
     button.textContent = t(undoStepLabel(op));
     button.addEventListener("click", () => {
       closeViewMenus();
-      refreshAny(call("undo", { steps: i + 1 }));
+      if (sketchMode.active) sketchMode.undo(i + 1);
+      else refreshAny(call("undo", { steps: i + 1 }));
     });
     menu.appendChild(button);
   });
@@ -2033,7 +2042,7 @@ async function openDocumentProperties() {
   });
 }
 document.getElementById("btn-redo").addEventListener("click", () =>
-  refreshAny(call("redo")));
+  (sketchMode.active ? sketchMode.redo() : refreshAny(call("redo"))));
 document.getElementById("btn-rebuild").addEventListener("click", () => {
   clearFeatureDims();
   refresh(call("rebuild"));

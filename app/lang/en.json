@@ -1468,5 +1468,19 @@
  "Corps actif : {b}": "Active body: {b}",
  "Appliquer à {b}": "Apply to {b}",
  "Aucun gabarit : Fichier → Enregistrer comme gabarit… en crée un depuis la pièce ouverte.": "No template: File → Save as template… creates one from the open part.",
- "Nouvelle pièce depuis ce gabarit": "New part from this template"
+ "Nouvelle pièce depuis ce gabarit": "New part from this template",
+ "Sélectionner : cliquez un point ou une entité, Ctrl+clic pour en ajouter ; glissez pour déplacer": "Select: click a point or an entity, Ctrl+click to add more; drag to move",
+ "Centre de {e}": "Center of {e}",
+ "Extrémité de {e}": "Endpoint of {e}",
+ "Ajouter une relation": "Add relation",
+ "Éléments choisis": "Selected items",
+ "Relations existantes": "Existing relations",
+ "— aucune relation entre ces éléments —": "— no relation between these items —",
+ "Ctrl+clic : ajouter ou retirer un élément ; clic dans le vide : tout désélectionner.": "Ctrl+click: add or remove an item; click empty space: clear the selection.",
+ "Égale": "Equal",
+ "Colinéaire": "Collinear",
+ "Symétrique": "Symmetric",
+ "Corradiale": "Coradial",
+ "Polyligne": "Polyline",
+ "Entité": "Entity"
 }

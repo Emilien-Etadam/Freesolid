@@ -2,7 +2,18 @@
 // sélection) et le panneau Relations, qui les liste et les supprime.
 
 import { t } from "../i18n.js";
-import { applicableRelations } from "../geom2d.js";
+import { applicableRelations, relationOrder } from "../geom2d.js";
+
+/** Le nom de chaque relation, dans le panneau de la sélection ; son
+ *  icône est ``rel_<relation>``. */
+const RELATION_LABELS = {
+  horizontal: "Horizontale", vertical: "Verticale", fixed: "Fixe",
+  coincident: "Coïncidente", parallel: "Parallèle",
+  perpendicular: "Perpendiculaire", tangent: "Tangente", equal: "Égale",
+  concentric: "Concentrique", collinear: "Colinéaire", midpoint: "Milieu",
+  symmetric: "Symétrique", onobject: "Sur l'entité", coradial: "Corradiale",
+  intersection: "Croisement",
+};
 
 export function installRelations(sk) {
   const { call, say, mode, safe, uniqueSelectionGeos, openEntityPanel } = sk;
@@ -16,21 +27,25 @@ export function installRelations(sk) {
     symmetric: 3, intersection: 3,
   };
 
-  function applyConstraint(kind) {
+  /** Pose la relation ``kind`` sur la sélection, prise dans l'ordre des
+   *  relations (les points d'abord). ``keepSelection`` : la sélection
+   *  reste, pour en poser une autre (le panneau de la sélection). */
+  function applyConstraint(kind, { keepSelection = false } = {}) {
     if (!mode.state) return;
     let needed = CONSTRAINT_NEEDS[kind];
+    const ordered = relationOrder(mode.selection);
     // Horizontale / verticale : une ligne, ou deux points alignés.
-    const lastTwo = mode.selection.slice(-2);
+    const lastTwo = ordered.slice(-2);
     if ((kind === "horizontal" || kind === "vertical") && lastTwo.length === 2
         && lastTwo.every((pick) => pick.point != null)) {
       needed = 2;
     }
-    if (mode.selection.length < needed) {
+    if (ordered.length < needed) {
       say(t("Relation : sélectionnez d'abord {n} entité(s) avec l'outil Sélectionner",
         { n: needed }), true);
       return;
     }
-    const selection = mode.selection.slice(-needed);
+    const selection = ordered.slice(-needed);
     const params = { sketch: mode.state.sketch, kind,
                      geo1: selection[0].geo };
     if (selection[0].point != null) params.point1 = selection[0].point;
@@ -39,8 +54,20 @@ export function installRelations(sk) {
       if (selection[1].point != null) params.point2 = selection[1].point;
     }
     if (needed >= 3 && selection[2]) params.geo3 = selection[2].geo;
-    safe(call("sketch_constrain", params));
+    safe(call("sketch_constrain", params), { keepSelection });
   }
+
+  /** Les boutons « Ajouter une relation » d'un panneau : les relations
+   *  que la sélection permet. */
+  function relationButtons() {
+    return applicableRelations(mode.selection, mode.state?.entities)
+      .map((kind) => ({
+        label: RELATION_LABELS[kind],
+        icon: "rel_" + kind,
+        onClick: () => applyConstraint(kind, { keepSelection: true }),
+      }));
+  }
+  Object.assign(sk, { relationButtons });
 
   for (const kind of Object.keys(CONSTRAINT_NEEDS)) {
     document.getElementById("sk-c-" + kind)
@@ -70,7 +97,12 @@ export function installRelations(sk) {
           "(outil Sélectionner)", true);
       return;
     }
-    await openEntityPanel(uniqueSelectionGeos()[0]);
+    // Un point choisi : le panneau est celui de son entité, choisie
+    // entière.
+    const geo = uniqueSelectionGeos()[0];
+    mode.selection = [{ geo }];
+    sk.redraw();
+    await openEntityPanel(geo);
   }
 
   document.getElementById("sk-relations")

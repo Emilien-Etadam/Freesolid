@@ -12,8 +12,8 @@ import { CLICK_TOOLS, OPEN_TOOLS, curvatureComb,
   endpointDirection, gridStep, hiddenByLayers,
   polygonVertexFromApothem } from "./sketchtools.js";
 import {
-  arcAngles, chainClickAction, distanceToEntity,
-  relationGlyphs,
+  arcAngles, chainClickAction, clickSelection, distanceToEntity,
+  relationGlyphs, samePick,
   sketchPreviewPoints,
 } from "./geom2d.js";
 import { fmtMm } from "./num.js";
@@ -116,6 +116,17 @@ export function createSketchMode(deps) {
     { color: sceneTheme.ink2, side: THREE.DoubleSide, ...ON_TOP });
   const pointMaterial = new THREE.PointsMaterial({
     color: sceneTheme.accent, size: 7, sizeAttenuation: false, ...ON_TOP });
+  // Un point choisi (extrémité, centre) : plus gros, couleur de la
+  // sélection — son entité, elle, ne l'est pas.
+  const selectedPointMaterial = new THREE.PointsMaterial({
+    color: sceneTheme.selection, size: 11, sizeAttenuation: false, ...ON_TOP });
+  // Sous le curseur de l'outil Sélectionner : ce que le clic choisira, le
+  // point ou l'entité entière — en jaune, ni le bleu du tracé ni l'orange
+  // de la sélection.
+  const hoverMaterial = new THREE.LineBasicMaterial(
+    { color: sceneTheme.ghost, ...ON_TOP });
+  const hoverPointMaterial = new THREE.PointsMaterial({
+    color: sceneTheme.ghost, size: 11, sizeAttenuation: false, ...ON_TOP });
   group.renderOrder = 20;
 
   const mode = {
@@ -141,6 +152,7 @@ export function createSketchMode(deps) {
     filletRadius: 3,      // rayon du congé d'esquisse (panneau de l'outil)
     polygonSides: 6,      // côtés du polygone (panneau de l'outil)
     selection: [],        // [{ geo, point? }] — outil Sélectionner
+    hover: null,          // { geo, point? } sous le curseur de Sélectionner
     justDragged: false,   // un drag qui finit ne doit pas sélectionner
     drag: null,           // { geo, point } while dragging
     box: null,            // { x, y } — appui dans le vide : cadre possible
@@ -169,10 +181,11 @@ export function createSketchMode(deps) {
   const splineEdit = createSplineEditor2d({
     THREE, theme: sceneTheme, toScreen, toLocal, call, say, controls,
     getState: () => mode.state,
+    // La spline choisie seule et entière (un de ses bouts choisi : non).
     selectedSpline: () => {
-      const geos = mode.active ? uniqueSelectionGeos() : [];
-      return geos.length === 1
-        ? mode.state?.entities.find((e) => e.id === geos[0]) ?? null : null;
+      const [pick, ...rest] = mode.active ? mode.selection : [];
+      return pick && !rest.length && pick.point == null
+        ? mode.state?.entities.find((e) => e.id === pick.geo) ?? null : null;
     },
     applyState: (state, opts) => applyState(state, opts),
     redraw: () => redraw(),
@@ -512,6 +525,47 @@ export function createSketchMode(deps) {
     });
   }
 
+  let hoverObject = null;
+
+  /** Ce que le clic de Sélectionner choisira, en évidence : le point
+   *  (extrémité, centre, origine) ou l'entité entière. */
+  function drawHover() {
+    if (hoverObject) {
+      group.remove(hoverObject);
+      hoverObject.geometry.dispose();
+      hoverObject = null;
+    }
+    const pick = mode.tool === "select" && !mode.drag && !mode.box
+      ? mode.hover : null;
+    // Déjà choisi : la sélection le montre.
+    if (!pick || !mode.state || mode.selection.some((s) => samePick(s, pick))) {
+      return;
+    }
+    if (pick.point != null) {
+      const p = pickPoint(pick);
+      if (!p) return;
+      hoverObject = new THREE.Points(new THREE.BufferGeometry().setFromPoints(
+        [new THREE.Vector3(p.x, p.y, 0)]), hoverPointMaterial);
+    } else {
+      const entity = mode.state.entities.find((e) => e.id === pick.geo);
+      const pts = entity ? entityPolyline(entity) : [];
+      if (pts.length < 2) return;
+      hoverObject = new THREE.Line(new THREE.BufferGeometry().setFromPoints(
+        pts.map((q) => new THREE.Vector3(q[0], q[1], 0))), hoverMaterial);
+    }
+    hoverObject.renderOrder = 22;
+    group.add(hoverObject);
+  }
+
+  /** Le survol de l'outil Sélectionner change : redessiné s'il le faut. */
+  function setHover(pick) {
+    const same = pick && mode.hover ? samePick(pick, mode.hover)
+      : !pick && !mode.hover;
+    if (same) return;
+    mode.hover = pick;
+    drawHover();
+  }
+
   function redraw() {
     updateRelationButtons();
     if (previewLine) group.remove(previewLine);
@@ -530,7 +584,9 @@ export function createSketchMode(deps) {
       .filter((l) => l.color).map((l) => [l.name, l.color]));
     for (const entity of mode.state.entities) {
       if (hidden.has(entity.id)) continue;
-      const isSelected = mode.selection.some((s) => s.geo === entity.id);
+      // Un point choisi ne colore pas son entité : seule l'entité entière.
+      const isSelected = mode.selection.some(
+        (s) => s.geo === entity.id && s.point == null);
       const status = STATUS_COLORS[entity.status] ? entity.status : "under";
       const tint = layerColor.get(entity.layer);
       const material = isSelected ? selectedMaterial
@@ -641,6 +697,15 @@ export function createSketchMode(deps) {
       cloud.renderOrder = 21;
       group.add(cloud);
     }
+    const chosen = mode.selection
+      .filter((s) => s.point != null && s.geo !== ORIGIN_GEO && !hidden.has(s.geo))
+      .map(pickPoint).filter(Boolean);
+    if (chosen.length) {
+      const dots = new THREE.Points(new THREE.BufferGeometry().setFromPoints(
+        chosen.map((p) => new THREE.Vector3(p.x, p.y, 0))), selectedPointMaterial);
+      dots.renderOrder = 22;
+      group.add(dots);
+    }
 
     // Calques masqués : ni symboles, ni cotes de leurs entités. Les
     // boutons de la barre masquent tous les symboles, ou toutes les cotes.
@@ -710,6 +775,8 @@ export function createSketchMode(deps) {
     }
 
     splineEdit.draw(group);
+    hoverObject = null; // group.clear() l'a retiré
+    drawHover();
 
     const dof = mode.state.dof;
     const definition = mode.state.definition
@@ -921,19 +988,16 @@ export function createSketchMode(deps) {
 
     if (mode.tool === "select") {
       if (mode.justDragged) { mode.justDragged = false; return; }
-      const endpoint = overPoint(event);
-      const picked = endpoint
-        ? { geo: endpoint.geo, point: endpoint.point }
-        : (() => { const n = nearestEntity(event);
-                   return n === null ? null : { geo: n }; })();
-      if (picked === null) {
-        mode.selection = [];
-      } else {
-        mode.selection = [...mode.selection, picked].slice(-8);
+      // Un clic choisit ce qu'il touche, seul ; Ctrl (ou Maj) l'ajoute à
+      // la sélection, ou l'en retire.
+      const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+      mode.selection = clickSelection(mode.selection, selectPickAt(event),
+        additive);
+      redraw();
+      if (mode.selection.length) {
         say(t("Sélection : {n} entité(s) — relation, symétrie ou répétition ; clic dans le vide = vider",
           { n: mode.selection.length }));
       }
-      redraw();
       syncEntityPanel();
     } else if (mode.tool === "line") {
       if (!mode.chain) {
@@ -1458,6 +1522,16 @@ export function createSketchMode(deps) {
     }
   }
 
+  /** Ce que le clic de Sélectionner choisit sous le curseur : un point
+   *  d'abord (extrémité, centre, origine), sinon l'entité entière, ou
+   *  null. */
+  function selectPickAt(event) {
+    const p = overPoint(event);
+    if (p) return { geo: p.geo, point: p.point };
+    const id = nearestEntity(event);
+    return id === null ? null : { geo: id };
+  }
+
   /** Extrémité, centre ou origine sous le curseur — ce qu'on clique pour
    *  sélectionner ou coter ; l'origine, elle, ne se glisse pas. */
   function overPoint(event) {
@@ -1525,8 +1599,8 @@ export function createSketchMode(deps) {
     }
   }
 
-  /** Points écran d'une entité, en polyligne, pour le cadre. */
-  function entityScreenPoints(entity) {
+  /** Une entité en polyligne, dans l'esquisse : `[[x, y]…]`. */
+  function entityPolyline(entity) {
     let pts = [];
     if (entity.type === "line") {
       pts = [entity.p1, entity.p2];
@@ -1541,7 +1615,12 @@ export function createSketchMode(deps) {
     } else if (entity.points) {
       pts = entity.points;
     }
-    return pts.map((p) => toScreen(p[0], p[1]));
+    return pts;
+  }
+
+  /** Points écran d'une entité, en polyligne, pour le cadre. */
+  function entityScreenPoints(entity) {
+    return entityPolyline(entity).map((p) => toScreen(p[0], p[1]));
   }
 
   function selectInBox(start, end, additive) {
@@ -1595,6 +1674,7 @@ export function createSketchMode(deps) {
       const hot = overEndpoint(event) || overEntity(event)
         || dimLabelAt(event);
       setCursor(hot ? "grab" : "default");
+      setHover(selectPickAt(event));
     }
     if (mode.drag) {
       if (mode.dragScreen
@@ -1774,6 +1854,7 @@ export function createSketchMode(deps) {
       mode.justDragged = moved; // un vrai drag ne doit pas sélectionner
       controls.enabled = true;
       setCursor("grab");
+      drawHover();
       if (moved) syncEntityPanel({ refresh: true });
     }
   }
@@ -1978,6 +2059,7 @@ export function createSketchMode(deps) {
     mode.pendingG2 = null;
     mode.pendingEllipse = null;
     mode.selection = [];
+    mode.hover = null;
     if (tool === "polygon") {
       mode.pendingPoly = { sides: mode.polygonSides };
       openToolPanel("polygon");
@@ -1992,8 +2074,7 @@ export function createSketchMode(deps) {
       button.classList.toggle("on", button.dataset.tool === tool);
     }
     const hints = {
-      select: "Sélectionner : glissez un point, ou cliquez 1-2 entités " +
-              "puis une contrainte",
+      select: "Sélectionner : cliquez un point ou une entité, Ctrl+clic pour en ajouter ; glissez pour déplacer",
       line: "Ligne : cliquez le premier point",
       rect: "Rectangle par sommet : cliquez le premier sommet",
       rectc: "Rectangle par le centre : cliquez le centre",

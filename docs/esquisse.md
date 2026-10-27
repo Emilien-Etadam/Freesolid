@@ -78,7 +78,7 @@ Un outil est **fait** quand :
 | Corradiale | ✅ | `p51_relations_cotes` |
 | Intersection (point au croisement de deux courbes) | ✅ | `p51_relations_cotes` |
 | Percée (coïncidence avec un point de percée lié) | ✅ | `p51_references` |
-| Relations proposées selon la sélection, liste et suppression | ✅ | `relations-applicable`, `p7` |
+| Relations proposées selon la sélection (panneau de la sélection : éléments choisis, relations à ajouter, relations existantes ; Ctrl+clic pour plusieurs éléments, un point se choisit seul), liste et suppression | ✅ | `relations-applicable`, `p7` |
 
 ## Cotes
 
@@ -160,6 +160,16 @@ Un outil est **fait** quand :
   accrochages coupés ; choisie une seconde fois, elle est gardée jusqu'au
   changement d'outil. Accrochages coupés, le moteur voit encore la
   coïncidence exacte (une chaîne reste jointe).
+- **Sélection** : un clic choisit ce qu'il touche, seul — un point
+  (extrémité, centre, origine) avant l'entité qui le porte ; Ctrl (ou
+  Maj) l'ajoute à la sélection ou l'en retire, un clic dans le vide la
+  vide. Ce que le clic choisira passe en jaune au survol ; un point
+  choisi grossit, sans colorer son entité. Une entité choisie seule a son
+  panneau ; plusieurs éléments, ou un point, ont le panneau de la
+  sélection : ce qui est choisi, les relations que la sélection permet
+  (posées sans la défaire, pour en ajouter une autre) et celles qui ne
+  touchent qu'elle. Les points passent devant les courbes : symétrique
+  et intersection ne dépendent pas de l'ordre des clics.
 - **Blocs** : un bloc est un modèle ; l'insérer en copie les entités et
   leurs relations internes. Modifier le bloc ensuite ne met pas à jour
   les copies déjà posées.

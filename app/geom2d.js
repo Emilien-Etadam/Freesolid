@@ -374,15 +374,60 @@ export function entityPropertyLines(entity) {
   return [];
 }
 
+/** Deux choix d'esquisse (``{geo, point?}``) désignent-ils la même
+ *  chose : la même entité entière, ou le même point ? */
+export function samePick(a, b) {
+  return a.geo === b.geo && (a.point ?? null) === (b.point ?? null);
+}
+
+/**
+ * La sélection après un clic sur ``pick`` : lui seul, ou — Ctrl ou Maj
+ * (``additive``) — ajouté, retiré s'il y était déjà. ``pick`` null : un
+ * clic dans le vide, qui vide la sélection, sauf avec Ctrl ou Maj.
+ */
+export function clickSelection(selection, pick, additive) {
+  if (!pick) return additive ? selection : [];
+  if (!additive) return [pick];
+  return selection.some((s) => samePick(s, pick))
+    ? selection.filter((s) => !samePick(s, pick))
+    : [...selection, pick];
+}
+
+/** La sélection dans l'ordre des relations : les points d'abord, puis
+ *  les courbes, chacun dans l'ordre des clics. Symétrique (deux points
+ *  puis l'axe) et intersection (un point puis deux courbes) ne dépendent
+ *  pas de l'ordre où l'on a cliqué. */
+export function relationOrder(selection) {
+  return [...selection.filter((s) => s.point != null),
+          ...selection.filter((s) => s.point == null)];
+}
+
+/** Ce qu'un choix désigne, en clair : « Ligne 3 », « Extrémité de
+ *  Ligne 3 », « Centre de Cercle 2 », « Origine ». */
+export function pickLabel(pick, entities) {
+  if (pick.geo === -1) return t("Origine"); // ORIGIN_GEO
+  const entity = (entities ?? []).find((e) => e.id === pick.geo);
+  const name = entity?.external ? `${t("Référence")} ${-2 - pick.geo}`
+    : entity?.type === "point" ? `${t("Point")} ${pick.geo + 1}`
+      : `${t(entityKindTitle(entity))} ${pick.geo + 1}`;
+  if (pick.point == null || entity?.type === "point") return name;
+  return t(pick.point === 3 ? "Centre de {e}" : "Extrémité de {e}",
+    { e: name });
+}
+
 /**
  * Relations possibles pour la sélection d'esquisse (``[{geo, point?}]``,
- * dans l'ordre des clics) : seules celles que le moteur sait poser sur
- * ces éléments. Un point est une extrémité ou un centre cliqué.
+ * dans n'importe quel ordre : voir relationOrder) : seules celles que le
+ * moteur sait poser sur ces éléments. Un point est une extrémité ou un
+ * centre cliqué. Fixer un point seul bloquerait toute son entité : seul
+ * un point d'esquisse se fixe ainsi.
  */
 export function applicableRelations(selection, entities) {
-  const kinds = (selection ?? []).map((item) => {
+  const entityOf = (geo) => (entities ?? []).find((e) => e.id === geo);
+  const ordered = relationOrder(selection ?? []);
+  const kinds = ordered.map((item) => {
     if (item.point != null) return "point";
-    const entity = (entities ?? []).find((e) => e.id === item.geo);
+    const entity = entityOf(item.geo);
     if (entity?.type === "line") return "line";
     if (entity?.type === "circle" || entity?.type === "arc") return "round";
     return "other";
@@ -391,7 +436,9 @@ export function applicableRelations(selection, entities) {
   const out = [];
   if (kinds.length === 1) {
     if (kinds[0] === "line") out.push("horizontal", "vertical");
-    out.push("fixed");
+    if (kinds[0] !== "point" || entityOf(ordered[0].geo)?.type === "point") {
+      out.push("fixed");
+    }
   } else if (kinds.length === 2) {
     if (count("point") === 2) out.push("coincident", "horizontal", "vertical");
     if (count("line") === 2) {

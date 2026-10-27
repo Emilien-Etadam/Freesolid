@@ -8,6 +8,7 @@ import { iconSrc } from "./icons.js";
 import { cssHex } from "./theme.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
 import { isBodyFeatureKey, isSurfaceKey } from "./typekeys.js";
+import { SNAP_KINDS } from "./sketchsnap.js";
 import {
   contextToolbarKeys, menuIcon, placeViewMenu, viewMenuItems, viewMenuLabel,
 } from "./viewmenu.js";
@@ -367,7 +368,10 @@ export function installContextMenu(ctx) {
   let viewMenuHit = null;
 
   function viewMenuContext() {
-    if (ctx.sketchMode.active) return { mode: "sketch" };
+    if (ctx.sketchMode.active) {
+      return { mode: "sketch", drawing: ctx.sketchMode.drawing,
+               quickSnap: ctx.sketchMode.quickSnap };
+    }
     let hit = null;
     if (ctx.hoveredEdgeGroup >= 0) {
       hit = { kind: "edge", edge: ctx.edgeGroups[ctx.hoveredEdgeGroup].edgeId };
@@ -471,6 +475,10 @@ export function installContextMenu(ctx) {
     "sk-trim": () => sketchTool("trim"),
     "sk-finish": () => ctx.sketchMode.finish(),
     "sk-cancel": () => ctx.sketchMode.cancel(),
+    ...Object.fromEntries(SNAP_KINDS.map((k) =>
+      ["snap-" + k.key, () => ctx.sketchMode.pickQuickSnap(k.key)])),
+    "snap-none": () => ctx.sketchMode.pickQuickSnap(null),
+    "snap-settings": () => ctx.openSettings?.("snaps"),
   };
 
   function hideViewMenu() {
@@ -572,6 +580,7 @@ export function installContextMenu(ctx) {
         else icon.className = "blank";
         row.append(icon, t(item.label));
         if (item.danger) row.classList.add("danger");
+        if (item.checked) row.classList.add("checked");
         row.addEventListener("click", () => {
           hideViewMenu();
           VIEW_MENU_ACTIONS[item.key]?.(viewMenuHit);

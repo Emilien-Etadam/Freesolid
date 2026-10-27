@@ -1,11 +1,12 @@
 // Panneau Paramètres : identité de FreeSolid et du moteur, liens, mises à
-// jour (application de bureau), réglages d'interface.
+// jour (application de bureau), réglages d'interface et d'esquisse.
 //
 // Tout ce qui est décision est une fonction pure et testée (lignes
 // d'information, langue, pont Tauri) ; le DOM n'est touché que dans
 // createSettingsDialog.
 
 import { t } from "./i18n.js";
+import { SNAP_KINDS } from "./sketchsnap.js";
 
 export const REPO_URL = "https://github.com/Emilien-Etadam/Freesolid";
 const RELEASES_URL = REPO_URL + "/releases";
@@ -139,12 +140,39 @@ function esc(text) {
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
 }
 
+/** Les accrochages d'esquisse : l'interrupteur, une case par sorte
+ *  (SNAP_KINDS), le pas d'angle. `snaps` : { enabled, off, angleStep }. */
+function snapSection(snaps, T) {
+  const off = snaps.enabled ? "" : "disabled";
+  return `
+        <h3 id="settings-snaps">${T("Esquisse")}</h3>
+        <div class="settings-field">
+          <span>${T("Accrochages")}</span>
+          <label><input type="checkbox" data-action="snap-enabled"
+            ${snaps.enabled ? "checked" : ""}> ${T("Accrocher pendant le tracé")}</label>
+        </div>
+        <div class="settings-field">
+          <span>${T("Accrocher à")}</span>
+          <div class="settings-choices">
+            ${SNAP_KINDS.map((k) => `<label><input type="checkbox" data-snap-kind="${k.key}"
+              ${snaps.off.includes(k.key) ? "" : "checked"} ${off}> ${T(k.label)}</label>`).join("")}
+          </div>
+        </div>
+        <div class="settings-field">
+          <label for="settings-snap-angle">${T("Pas d'angle")}</label>
+          <input id="settings-snap-angle" type="number" min="1" max="90" step="1"
+            value="${snaps.angleStep}" ${off}>
+          <span class="settings-note">${T("degrés, depuis l'axe X ou la ligne précédente")}</span>
+        </div>`;
+}
+
 /**
  * Le panneau lui-même. `root` est l'élément #settings-dialog (caché) ;
- * `call` la fonction d'appel du moteur ; `ribbonLabels` {read, apply}.
+ * `call` la fonction d'appel du moteur ; `ribbonLabels` {read, apply} ;
+ * `sketchSnaps` {read, apply} : le réglage des accrochages d'esquisse.
  */
 export function createSettingsDialog({
-  root, doc, win, call, ribbonLabels, wheel, storage, navigatorLang,
+  root, doc, win, call, ribbonLabels, wheel, sketchSnaps, storage, navigatorLang,
 }) {
   const bridge = desktopBridge(win);
   let pendingUpdate = null;
@@ -212,6 +240,7 @@ export function createSettingsDialog({
           </select>
           <span class="settings-note">${T("la page se recharge au changement")}</span>
         </div>
+        ${sketchSnaps ? snapSection(sketchSnaps.read(), T) : ""}
 
         <div class="settings-actions">
           <button type="button" data-action="close">${T("Fermer")}</button>
@@ -295,12 +324,34 @@ export function createSettingsDialog({
         // Comme la langue : la scène 3D lit ses couleurs au chargement.
         if (writeTheme(storage, event.target.value)) win.location?.reload?.();
       });
+    const snapInputs = root.querySelectorAll(
+      '[data-action="snap-enabled"], [data-snap-kind], #settings-snap-angle');
+    for (const input of snapInputs) {
+      input.addEventListener("change", applySnaps);
+    }
     root.querySelector("#settings-lang")
       ?.addEventListener("change", (event) => {
         // La langue s'applique au chargement (ruban, panneaux, moteur) :
         // on enregistre puis on recharge la page.
         if (writeLang(storage, event.target.value)) win.location?.reload?.();
       });
+  }
+
+  /** Les cases des accrochages → le réglage ; une valeur hors bornes
+   *  revient à celle que le réglage a gardée. */
+  function applySnaps() {
+    const angle = root.querySelector("#settings-snap-angle");
+    sketchSnaps.apply({
+      enabled: root.querySelector('[data-action="snap-enabled"]').checked,
+      off: [...root.querySelectorAll("[data-snap-kind]")]
+        .filter((box) => !box.checked).map((box) => box.dataset.snapKind),
+      angleStep: Number(angle.value),
+    });
+    const kept = sketchSnaps.read();
+    angle.value = kept.angleStep;
+    for (const input of root.querySelectorAll("[data-snap-kind], #settings-snap-angle")) {
+      input.disabled = !kept.enabled;
+    }
   }
 
   function onKey(event) {
@@ -314,9 +365,13 @@ export function createSettingsDialog({
     if (event.target === root) close();
   }
 
-  async function open() {
+  /** `section` : l'id d'un titre du panneau (« snaps ») à montrer. */
+  async function open(section = null) {
     root.hidden = false;
     render(null, { engineUrl: win.location?.origin || "" });
+    const show = () => section
+      && root.querySelector(`#settings-${section}`)?.scrollIntoView?.();
+    show();
     doc.addEventListener("keydown", onKey, true);
     root.addEventListener("click", onBackdrop);
     let ping = null;
@@ -326,7 +381,10 @@ export function createSettingsDialog({
       try { extra.appVersion = await bridge.appVersion(); } catch { /* version du moteur */ }
       try { extra.logPath = await bridge.engineLogPath(); } catch { /* pas de journal */ }
     }
-    if (!root.hidden) render(ping, extra);
+    if (!root.hidden) {
+      render(ping, extra);
+      show();
+    }
   }
 
   function close() {

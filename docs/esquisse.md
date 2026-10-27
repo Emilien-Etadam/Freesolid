@@ -65,7 +65,7 @@ Un outil est **fait** quand :
 | Égaliser la courbure (G2) au raccord de deux splines | ✅ | `sketch_match_curvature` | `p51_complements` |
 | Éditer une spline dans la vue : tirer ses points, poignées de tangente sur tous ses points dès qu'elle est sélectionnée (direction et longueurs, Alt : un seul côté, longueurs en %), Ctrl+clic pour un point de plus (forme gardée), Suppr pour en retirer un, polygone de contrôle (pôles à tirer), peigne de courbure, simplifier (tolérance), lisser, libérer les poignées — les relations de la spline tiennent | ✅ | `sketch_set_spline`, `curve_poles`, `curve_move_pole` ; calcul `splinemath` (moteur et client) | `p69_esquisse`, `test_splinemath`, `splinemath.test` |
 | Peigne de courbure, accrochage à la grille | ✅ | client (`curvatureComb`, `gridStep`) | `sketchtools` |
-| Accrochage pendant le tracé : extrémités, centres, points, bouts de spline, références liées, origine ; milieux, quadrants, croisements, sur la courbe (arêtes de la pièce comprises) ; directions d'une ligne (horizontale, verticale, parallèle, perpendiculaire, tangente, pas d'angle), longueur ronde avec Maj — la relation part avec le tracé, son symbole s'affiche au curseur, Ctrl suspend l'accrochage | ✅ | `snaps` des tracés (`engine/sketchsnap.py`) ; client `app/sketchsnap.js` | `p74_accrochages`, `p75_points_remarquables`, `p76_directions`, `sketchsnap`, `test_sketchsnap` |
+| Accrochage pendant le tracé : extrémités, centres, points, bouts de spline, références liées, origine ; milieux, quadrants, croisements, sur la courbe (arêtes de la pièce comprises) ; directions d'une ligne (horizontale, verticale, parallèle, perpendiculaire, tangente, pas d'angle), longueur ronde avec Maj — la relation part avec le tracé, son symbole s'affiche au curseur, Ctrl suspend l'accrochage ; chaque sorte se règle (Paramètres), un interrupteur les coupe toutes, accrochage rapide au clic droit | ✅ | `snaps` des tracés (`engine/sketchsnap.py`) ; client `app/sketchsnap.js` (`SNAP_KINDS`, `activeSnaps`) | `p74_accrochages`, `p75_points_remarquables`, `p76_directions`, `sketchsnap`, `test_sketchsnap` |
 
 ## Relations
 
@@ -152,6 +152,14 @@ Un outil est **fait** quand :
   Ctrl maintenu pendant un tracé : le point reste sous le curseur, sans
   accrochage ni relation (sauf au premier clic de l'arc tangent, qui doit
   partir d'une extrémité).
+  Chaque sorte d'accrochage se coupe à part dans Paramètres > Esquisse,
+  avec le pas d'angle ; le bouton aimant de la barre d'esquisse les coupe
+  toutes. Le réglage est gardé par le navigateur, la grille garde son
+  bouton et Maj reste toujours là. Pendant un tracé, le clic droit offre
+  l'accrochage rapide : une seule sorte pour l'entité en cours, même
+  accrochages coupés ; choisie une seconde fois, elle est gardée jusqu'au
+  changement d'outil. Accrochages coupés, le moteur voit encore la
+  coïncidence exacte (une chaîne reste jointe).
 - **Blocs** : un bloc est un modèle ; l'insérer en copie les entités et
   leurs relations internes. Modifier le bloc ensuite ne met pas à jour
   les copies déjà posées.

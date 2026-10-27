@@ -222,6 +222,7 @@ export const ICONS = {
   sk_show_rel: "fs_sk_show_rel.svg",
   sk_silhouette: "fs_sk_silhouette.svg",
   sk_slot_center: "fs_sk_slot_center.svg",
+  sk_snap: "fs_sk_snap.svg",
   sk_spline_convert: "fs_sk_spline_convert.svg",
   sk_spline_degree: "fs_sk_spline_degree.svg",
   sk_spline_knot: "fs_sk_spline_knot.svg",

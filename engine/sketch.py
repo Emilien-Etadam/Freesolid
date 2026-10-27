@@ -1295,6 +1295,32 @@ class SketchMixin:
             "aucune API de déplacement compatible sur cette version de "
             "FreeCAD (essayé : {})".format(", ".join(tried) or "aucune"))
 
+    def sketch_drop(self, sketch, geo, point, x, y, snaps=None):
+        """Lâcher d'un point glissé sur ce que l'interface a accroché
+        (``snaps`` : ``at``, une cible de ``engine/sketchsnap.py``) : le
+        point va en (x, y) et la relation qui l'y tient est posée. Une
+        seule opération, un seul Ctrl+Z — le glisser lui-même
+        (``sketch_move``) n'en a pas. Une relation qui rendrait l'esquisse
+        redondante ou contradictoire n'est pas posée, le point reste où
+        il est lâché."""
+        from engine.kernel import KernelError
+        from engine.sketchsnap import geos_of, relations, snap_positions
+        sk = self._get_sketch(sketch)
+        gid, pos = int(geo), int(point)
+        if not (0 <= gid < len(sk.Geometry)
+                and pos in snap_positions(sk.Geometry[gid].TypeId)):
+            raise KernelError("point {}.{} introuvable".format(gid, pos))
+        parsed = self._snap_targets(sk, "sketch_drop", snaps or {})
+        target = parsed.get("at")
+        if target is not None and gid in geos_of(target):
+            raise KernelError(
+                "accrochage « at » : un point ne s'accroche pas à son entité")
+        self.sketch_move(sketch, gid, pos, x, y)
+        if target is not None:
+            self._add_snap_constraints(sk, self._constraints(sk, relations(
+                target, gid, pos, lambda g: geo_of(sk, g).TypeId)))
+        return self.sketch_state(sketch)
+
     @staticmethod
     def _point_of(geo, pos):
         """Sketcher point convention: 1 start, 2 end, 3 center.

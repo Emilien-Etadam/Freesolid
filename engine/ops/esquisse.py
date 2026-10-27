@@ -160,6 +160,11 @@ OPS = (
     Op("sketch_move", Req(
         ("sketch", str), ("geo", int), ("point", int),
         ("x", float), ("y", float))),
+    Op("sketch_drop", Req(
+        ("sketch", str), ("geo", int), ("point", int),
+        ("x", float), ("y", float), optional={"snaps": dict}), undo=True),
+                                       # le lâcher d'un point glissé sur ce
+                                       # que l'interface a accroché (at)
     Op("sketch_dim", Req(("sketch", str), ("geo", int)), undo=True),
                                        # optional: value, geo2, point, point2,
                                        # axis (x | y : cote horizontale / verticale),

@@ -646,5 +646,7 @@
  "rectangle : les deux coins doivent être en diagonale": "rectangle: the two corners must be diagonal",
  "perçage : la face des positions manque": "hole: the face of the positions is missing",
  "perçage : une position est [x, y, z]": "hole: a position is [x, y, z]",
- "aucune arête : la pièce est vide": "no edge: the part is empty"
+ "aucune arête : la pièce est vide": "no edge: the part is empty",
+ "point {}.{} introuvable": "point {}.{} not found",
+ "accrochage « at » : un point ne s'accroche pas à son entité": "snap \"at\": a point does not snap to its own entity"
 }

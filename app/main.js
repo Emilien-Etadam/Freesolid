@@ -45,7 +45,7 @@ import { installFileDialog } from "./filedialog.js";
 import { rememberRecent } from "./welcome.js";
 import {
   SELECT_KINDS, filterActive,
-  nudgeView, readReverseWheel, readSelectFilter,
+  nudgeView, readReverseWheel, readSelectFilter, readZoomToCursor,
   writeSelectFilter,
 } from "./navigation.js";
 
@@ -128,7 +128,7 @@ Object.assign(ctx, { THREE, sceneTheme, say, call, disposeSubtree, syncVisibilit
 const {
   container, renderer, scene, camera, controls,
   ORTHO_HEIGHT, viewSize, boxOverlay, localStore, originGroup,
-  setReverseWheel, setLayout, rebuildPlanes, rebuildOrigin,
+  setReverseWheel, setZoomToCursor, setLayout, rebuildPlanes, rebuildOrigin,
   toggleOrigin, setOriginShown, updatePlaneVisibility,
   startPlanePick, cancelPlanePick, pickPlane, rotationPivot,
   rememberView, previousView, captureImage,
@@ -660,6 +660,7 @@ function setDisplay(patch) {
         .map((kind) => t(FILTER_NAMES[kind])).join(", ") || t("rien") })
       : t("Filtre de sélection : tout"));
   };
+  ctx.setSelectFilter = setFilter;
   filterButton.addEventListener("click", (event) => {
     event.stopPropagation();
     const open = filterMenu.hidden;
@@ -1115,6 +1116,8 @@ installMenuBar(document, menuBarModel(RIBBON_LAYOUT), {
       toggleOrigin();
     } else if (name === "flat-tree") {
       setFlatTree(!isFlatTree());
+    } else if (name === "about") {
+      ctx.openSettings("about");
     } else if (name === "report") {
       window.open(ISSUES_URL, "_blank", "noopener");
     } else if (name === "home") {
@@ -1367,13 +1370,24 @@ const settingsDialog = createSettingsDialog({
   doc: document,
   win: window,
   call,
-  ribbonLabels: { read: readRibbonLabels, apply: applyRibbonLabels },
-  wheel: { read: () => readReverseWheel(localStore), apply: setReverseWheel },
-  // sketchMode est créé plus bas ; le panneau ne s'ouvre qu'après.
-  sketchSnaps: {
-    read: () => sketchMode.snapSettings,
-    apply: (settings) => sketchMode.setSnapSettings(settings),
+  stores: {
+    ribbonLabels: { read: readRibbonLabels, apply: applyRibbonLabels },
+    reverseWheel: { read: () => readReverseWheel(localStore), apply: setReverseWheel },
+    zoomToCursor: { read: () => readZoomToCursor(localStore), apply: setZoomToCursor },
+    // sketchMode est créé plus bas ; le panneau ne s'ouvre qu'après.
+    sketchSnaps: {
+      read: () => sketchMode.snapSettings,
+      apply: (settings) => sketchMode.setSnapSettings(settings),
+    },
+    sketchPrefs: {
+      read: () => sketchMode.sketchPrefs,
+      apply: (prefs) => sketchMode.setSketchPrefs(prefs),
+    },
+    display: { read: () => ({ ...displayState }), apply: setDisplay },
+    selectFilter: { read: () => ctx.selectFilter, apply: (next) => ctx.setSelectFilter(next) },
+    flatTree: { read: () => isFlatTree(), apply: setFlatTree },
   },
+  openShortcuts: () => openShortcutPanel(),
   storage: (() => { try { return window.localStorage; } catch { return null; } })(),
   navigatorLang: navigator.language,
 });

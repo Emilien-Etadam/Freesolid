@@ -175,18 +175,23 @@ export function installCommandes(sk) {
     });
   }
 
+  // Grille, peigne, symboles de relation, cotes : des réglages gardés
+  // d'une séance à l'autre (Paramètres > Esquisse), le bouton enfoncé
+  // quand ils sont actifs.
   for (const [id, key, on, off] of [
     ["sk-grid", "gridSnap", "Accrochage à la grille : actif",
      "Accrochage à la grille : coupé"],
     ["sk-comb", "showComb", "Peigne de courbure affiché",
      "Peigne de courbure masqué"],
+    ["sk-show-rel", "showRelations", "Symboles de relation affichés",
+     "Symboles de relation masqués"],
+    ["sk-show-dims", "showDims", "Cotes affichées", "Cotes masquées"],
   ]) {
     const button = document.getElementById(id);
+    button.classList.toggle("on", mode.prefs[key]);
     button.addEventListener("click", () => {
-      mode[key] = !mode[key];
-      button.classList.toggle("on", mode[key]);
-      say(t(mode[key] ? on : off));
-      sk.redraw();
+      sk.setSketchPrefs({ ...mode.prefs, [key]: !mode.prefs[key] });
+      say(t(mode.prefs[key] ? on : off));
     });
   }
 
@@ -201,21 +206,6 @@ export function installCommandes(sk) {
     sk.redraw();
   });
 
-  // Affichés par défaut : le bouton enfoncé montre, relâché masque.
-  for (const [id, key, on, off] of [
-    ["sk-show-rel", "showRelations", "Symboles de relation affichés",
-     "Symboles de relation masqués"],
-    ["sk-show-dims", "showDims", "Cotes affichées", "Cotes masquées"],
-  ]) {
-    const button = document.getElementById(id);
-    button.classList.add("on");
-    button.addEventListener("click", () => {
-      mode[key] = mode[key] === false;
-      button.classList.toggle("on", mode[key]);
-      say(t(mode[key] ? on : off));
-      sk.redraw();
-    });
-  }
 
   document.getElementById("sk-layers").addEventListener("click", () => {
     if (!mode.state) return;

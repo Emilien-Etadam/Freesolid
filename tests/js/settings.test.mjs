@@ -1,13 +1,24 @@
-// Panneau Paramètres : les décisions pures (langue, lignes d'information,
-// pont bureau, textes d'état), sans DOM.
+// Panneau Paramètres : les décisions pures (pages, champs, recherche,
+// brouillon, langue, lignes d'information, pont bureau, textes d'état),
+// sans DOM.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  SETTINGS_PAGES,
+  SETTINGS_TABS,
   THEME_KEY,
+  changedFields,
+  clampNumber,
+  pageTree,
   readTheme,
+  readValues,
+  resetDraft,
+  searchSettings,
+  searchText,
+  settingsFields,
   resolveTheme,
   writeTheme,
   LANG_KEY,
@@ -161,3 +172,125 @@ describe("thème", () => {
   });
 });
 
+
+describe("pages et champs des Paramètres", () => {
+  const fields = settingsFields("fr-FR");
+  const en = JSON.parse(readFileSync(new URL("../../app/lang/en.json", import.meta.url), "utf8"));
+
+  it("chaque sous-page suit son parent, un cran plus loin", () => {
+    const tree = pageTree(SETTINGS_PAGES, "system");
+    assert.equal(tree[0].id, "general");
+    const sketch = tree.findIndex((p) => p.id === "sketch");
+    assert.deepEqual([tree[sketch + 1].id, tree[sketch + 1].depth], ["snaps", 1]);
+    assert.equal(tree.at(-1).id, "about");
+    assert.ok(tree.every((p) => p.depth === (p.parent ? 1 : 0)));
+  });
+
+  it("chaque champ a un id unique, une page connue et une valeur par défaut", () => {
+    const ids = fields.map((f) => f.id);
+    assert.equal(new Set(ids).size, ids.length);
+    const pages = new Set(SETTINGS_PAGES.map((p) => p.id));
+    for (const f of fields) {
+      assert.ok(pages.has(f.page), f.id);
+      assert.equal(typeof f.store, "string", f.id);
+      assert.notEqual(f.default, undefined, f.id);
+      for (const id of [f.enabledBy ?? []].flat()) assert.ok(ids.includes(id), f.id);
+    }
+    assert.equal(fields.find((f) => f.id === "lang").default, "fr");
+    assert.equal(settingsFields("en-US").find((f) => f.id === "lang").default, "en");
+  });
+
+  it("chaque texte des pages et des champs a sa traduction anglaise", () => {
+    const texts = [...SETTINGS_TABS.map(([, label]) => label),
+      ...SETTINGS_PAGES.map((p) => p.label)];
+    for (const f of fields) {
+      texts.push(f.label, f.group);
+      if (f.note) texts.push(f.note);
+      if (f.translate !== false) texts.push(...(f.options ?? []).map(([, name]) => name));
+    }
+    assert.deepEqual(texts.filter((text) => !(text in en)), []);
+  });
+
+  it("la recherche ignore casse et accents, trouve la page et son parent", () => {
+    assert.equal(searchText("Sélection Élevée"), "selection elevee");
+    assert.equal(searchSettings("  ", fields, SETTINGS_PAGES), null);
+    const grid = searchSettings("GRILLE", fields, SETTINGS_PAGES);
+    assert.ok(grid.fields.has("sketch.gridSnap"));
+    assert.ok(grid.pages.has("snaps") && grid.pages.has("sketch"));
+    assert.ok(!grid.pages.has("view"));
+    // Tous les mots, dans n'importe quel ordre.
+    const zoom = searchSettings("curseur zoom", fields, SETTINGS_PAGES);
+    assert.deepEqual([...zoom.fields], ["view.zoomToCursor"]);
+    // Le nom d'une page suffit ; un choix d'une liste aussi.
+    assert.ok(searchSettings("selection", fields, SETTINGS_PAGES).pages.has("selection"));
+    assert.ok(searchSettings("filaire", fields, SETTINGS_PAGES).fields.has("display.style"));
+    assert.equal(searchSettings("introuvable", fields, SETTINGS_PAGES).pages.size, 0);
+  });
+
+  it("cherche dans la langue affichée", () => {
+    const label = (text) => en[text] ?? text;
+    assert.ok(searchSettings("snap to grid", fields, SETTINGS_PAGES, label)
+      .fields.has("sketch.gridSnap"));
+  });
+
+  function fakeStores() {
+    const log = [];
+    let snaps = { enabled: true, off: ["midpoint"], angleStep: 15 };
+    let filter = { faces: true, edges: false };
+    let wheel = false;
+    return {
+      log,
+      stores: {
+        sketchSnaps: { read: () => snaps, apply: (next) => { snaps = next; log.push("snaps"); } },
+        selectFilter: { read: () => filter, apply: (next) => { filter = next; log.push("filter"); } },
+        reverseWheel: { read: () => wheel, apply: (next) => { wheel = next; log.push("wheel"); } },
+      },
+      get snaps() { return snaps; },
+      get filter() { return filter; },
+    };
+  }
+
+  it("le brouillon : seuls les champs changés s'appliquent", () => {
+    const fake = fakeStores();
+    const known = fields.filter((f) => f.store in fake.stores);
+    assert.ok(known.every((f) => /^(snaps|select|view\.reverseWheel)/.test(f.id)));
+    const draft = readValues(known, fake.stores);
+    assert.equal(draft["snaps.kind.midpoint"], false);
+    assert.equal(draft["snaps.kind.center"], true);
+    assert.equal(draft["select.sketches"], true); // absent = sélectionnable
+    assert.deepEqual(changedFields(known, fake.stores, draft), []);
+    draft["snaps.kind.midpoint"] = true;
+    draft["snaps.kind.center"] = false;
+    draft["select.edges"] = true;
+    const changed = changedFields(known, fake.stores, draft);
+    assert.deepEqual(changed.map((f) => f.id),
+      ["snaps.kind.center", "snaps.kind.midpoint", "select.edges"]);
+    for (const f of changed) f.set(fake.stores, draft[f.id]);
+    assert.deepEqual(fake.snaps, { enabled: true, off: ["center"], angleStep: 15 });
+    assert.deepEqual(fake.filter, { faces: true, edges: true });
+    assert.deepEqual(fake.log, ["snaps", "snaps", "filter"]);
+  });
+
+  it("réinitialiser : les défauts des pages demandées, dans le brouillon", () => {
+    const fake = fakeStores();
+    const known = fields.filter((f) => f.store in fake.stores);
+    const draft = readValues(known, fake.stores);
+    draft["view.reverseWheel"] = true;
+    const page = resetDraft(known, draft, ["snaps"]);
+    assert.equal(page["snaps.kind.midpoint"], true);
+    assert.equal(page["view.reverseWheel"], true);
+    assert.equal(draft["snaps.kind.midpoint"], false); // le brouillon d'avant reste
+    const all = resetDraft(known, draft, SETTINGS_PAGES.map((p) => p.id));
+    assert.equal(all["view.reverseWheel"], false);
+    assert.equal(all["select.edges"], true);
+  });
+
+  it("un nombre reste entier et dans ses bornes", () => {
+    const angle = fields.find((f) => f.id === "snaps.angleStep");
+    assert.equal(clampNumber(angle, "7.6", 15), 8);
+    assert.equal(clampNumber(angle, "500", 15), 90);
+    assert.equal(clampNumber(angle, "0", 15), 1);
+    assert.equal(clampNumber(angle, "", 15), 15);
+    assert.equal(clampNumber(angle, "abc", 15), 15);
+  });
+});

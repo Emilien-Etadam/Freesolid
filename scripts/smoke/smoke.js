@@ -203,9 +203,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('[data-tab="features"]');
   await sleep(200);
 
-  const settingsItem = async (value) => {
-    // Le panneau Paramètres (settings.js) : la case « libellés du ruban »
-    // s'applique au changement ; on rouvre le panneau s'il est fermé.
+  const settingsItem = async (value, button = "ok") => {
+    // Le panneau Paramètres (settings.js) s'ouvre sur sa page Général : la
+    // case « libellés du ruban » y est ; OK l'applique, Échap l'oublie. On
+    // rouvre le panneau s'il est fermé.
     const item = page.locator(
       '#settings-dialog input[name="ribbon-labels"][value="' + value + '"]');
     if (!(await item.isVisible())) {
@@ -213,6 +214,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await sleep(300);
     }
     await item.check({ timeout: 5000 });
+    if (button === "ok") await page.click('#settings-dialog [data-action="ok"]');
+    else await page.keyboard.press("Escape");
   };
   await page.click("#btn-settings");
   await sleep(400);
@@ -263,23 +266,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }
   }
   await page.screenshot({ path: path.join(SHOTS, "0c-icones-seules.png") });
-  // Le panneau reste ouvert après le premier choix : settingsItem le
-  // rouvre seulement s'il est fermé (un clic sur l'engrenage derrière la
-  // surcouche serait intercepté).
+  // OK a fermé le panneau : settingsItem le rouvre (un clic sur
+  // l'engrenage derrière la surcouche serait intercepté s'il restait).
   await settingsItem("icons-and-text");
   await sleep(200);
   const iconsAndText = await page.evaluate(() =>
     !document.body.classList.contains("ribbon-icons-only")
     && localStorage.getItem("freesolid.ribbonLabels") === "icons-and-text");
   if (!iconsAndText) errors.push("Icônes et texte : classe encore posée");
-  // Le panneau est une surcouche : le fermer (Échap) avant la suite, sinon
-  // il intercepterait les clics sur le ruban.
-  await page.keyboard.press("Escape");
+  // Échap ferme le panneau sans appliquer le choix en attente.
+  await settingsItem("icons-only", "escape");
   await sleep(200);
   if (await page.locator("#settings-dialog").isVisible()) {
     errors.push("Paramètres : le panneau ne se ferme pas avec Échap");
     await page.click('#settings-dialog [data-action="close"]').catch(() => {});
   }
+  const cancelled = await page.evaluate(() =>
+    !document.body.classList.contains("ribbon-icons-only")
+    && localStorage.getItem("freesolid.ribbonLabels") === "icons-and-text");
+  if (!cancelled) errors.push("Paramètres : Échap a appliqué le choix en attente");
   await step("réglages ruban");
 
   // Multilingue : la langue enregistrée s'applique au rechargement — ruban,

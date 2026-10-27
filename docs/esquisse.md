@@ -154,10 +154,15 @@ Un outil est **fait** quand :
   Ctrl maintenu pendant un tracé : le point reste sous le curseur, sans
   accrochage ni relation (sauf au premier clic de l'arc tangent, qui doit
   partir d'une extrémité).
-  Chaque sorte d'accrochage se coupe à part dans Paramètres > Esquisse,
-  avec le pas d'angle ; le bouton aimant de la barre d'esquisse les coupe
-  toutes. Le réglage est gardé par le navigateur, la grille garde son
-  bouton et Maj reste toujours là. Pendant un tracé, le clic droit offre
+  Chaque sorte d'accrochage se coupe à part dans Paramètres > Esquisse >
+  Relations et accrochages, avec le pas d'angle et la grille ; le bouton
+  aimant de la barre d'esquisse les coupe toutes. Le réglage est gardé par
+  le navigateur, la grille garde son bouton et Maj reste toujours là.
+  Paramètres > Esquisse règle aussi la vue à l'ouverture (tournée face au
+  plan, ou laissée telle quelle et libre de tourner) et l'affichage des
+  symboles de relation, des cotes et du peigne de courbure : les boutons
+  de la barre d'esquisse changent le même réglage, gardé d'une séance à
+  l'autre. Pendant un tracé, le clic droit offre
   l'accrochage rapide : une seule sorte pour l'entité en cours, même
   accrochages coupés ; choisie une seconde fois, elle est gardée jusqu'au
   changement d'outil. Accrochages coupés, le moteur voit encore la

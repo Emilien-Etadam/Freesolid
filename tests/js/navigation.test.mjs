@@ -12,11 +12,13 @@ import {
   pushView,
   readReverseWheel,
   readSelectFilter,
+  readZoomToCursor,
   segmentHitsRect,
   writeSelectFilter,
   nudgeView,
   sketchLocalPoints,
   writeReverseWheel,
+  writeZoomToCursor,
   zoomSpeedFor,
 } from "../../app/navigation.js";
 
@@ -59,6 +61,15 @@ describe("sens de la molette", () => {
     const broken = { getItem: () => { throw new Error("x"); } };
     assert.equal(readReverseWheel(broken), false);
     assert.equal(readReverseWheel(null), false);
+  });
+  it("zoom vers le curseur : actif par défaut, le réglage se relit", () => {
+    const storage = memoryStorage();
+    assert.equal(readZoomToCursor(storage), true);
+    writeZoomToCursor(storage, false);
+    assert.equal(readZoomToCursor(storage), false);
+    writeZoomToCursor(storage, true);
+    assert.equal(readZoomToCursor(storage), true);
+    assert.equal(readZoomToCursor({ getItem: () => { throw new Error("x"); } }), true);
   });
 });
 

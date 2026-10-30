@@ -564,19 +564,22 @@
   .orient-cross .r3 { grid-row: 3; }
   .orient-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-1); }
 
-  /* Barre d'icônes contextuelle, près du curseur après une sélection. */
-  #ctx-toolbar {
+  /* Barre d'icônes contextuelle, près du curseur après une sélection ;
+     en esquisse, les relations que permet la sélection. */
+  #ctx-toolbar, #sk-quick-relations {
     position: absolute; z-index: 6; display: flex; gap: 2px; padding: var(--space-1);
     background: var(--panel); border: 1px solid var(--line);
     border-radius: var(--radius-m); box-shadow: 0 4px 14px rgba(0,0,0,.4);
   }
-  #ctx-toolbar[hidden] { display: none; }
-  #ctx-toolbar button {
+  #ctx-toolbar[hidden], #sk-quick-relations[hidden] { display: none; }
+  #ctx-toolbar button, #sk-quick-relations button {
     padding: var(--space-1); background: none; border: 1px solid transparent;
     border-radius: var(--radius-s); cursor: pointer;
   }
-  #ctx-toolbar button:hover { border-color: var(--accent); background: var(--hover); }
-  #ctx-toolbar img { width: 20px; height: 20px; }
+  #ctx-toolbar button:hover, #sk-quick-relations button:hover {
+    border-color: var(--accent); background: var(--hover);
+  }
+  #ctx-toolbar img, #sk-quick-relations img { width: 20px; height: 20px; }
 
   /* Lecture près du curseur pendant le tracé. */
   .sk-readout {

@@ -327,6 +327,7 @@
  "Rejoue un groupe de fonctions avec des cotes différentes. Si la topologie d'une instance ne correspond plus, la répétition s'arrête plutôt que de produire.": "Replays a group of features with different dimensions. If an instance's topology no longer matches, the pattern stops rather than producing.",
  "Relancer le solveur d'assemblage": "Re-run the assembly solver",
  "Relation : sélectionnez d'abord {n} entité(s) avec l'outil Sélectionner": "Relation: first select {n} entity(ies) with the Select tool",
+ "Relations possibles": "Possible relations",
  "Relation colinéaire — deux lignes": "Collinear relation — two lines",
  "Relation concentrique — deux cercles ou arcs": "Concentric relation — two circles or arcs",
  "Relation coïncidente — deux points": "Coincident relation — two points",

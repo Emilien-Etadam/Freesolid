@@ -942,7 +942,7 @@ class SketchMixin:
         points = []
         for edge in edges:
             try:
-                samples = edge.discretize(Deviation=0.05)
+                samples = edge.discretize(Deflection=0.05)
             except Exception:
                 samples = edge.discretize(Number=48)
             pts = [[p.x, p.y] for p in samples]

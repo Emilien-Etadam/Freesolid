@@ -32,9 +32,23 @@ export function simpleDecimal(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Deux décimales. `snap` ramène un résidu sous 0,005 mm à zéro. */
+// Décimales affichées (Propriétés du document > Unités) : celles des
+// longueurs (mm) et des angles (degrés), dans les cotes et les lectures.
+let decimals = { length: 2, angle: 1 };
+
+/** Les décimales du document ouvert ; sans valeur, 2 et 1. */
+export function setDisplayDecimals({ length = 2, angle = 1 } = {}) {
+  decimals = { length, angle };
+}
+
+export function displayDecimals() {
+  return { ...decimals };
+}
+
+/** Les décimales des longueurs (deux par défaut). `snap` ramène à zéro un
+ *  résidu plus petit que la moitié de la dernière décimale. */
 export function fmtMm(value, { snap = false } = {}) {
   const number = Number(value);
-  const shown = snap && Math.abs(number) < 5e-3 ? 0 : number;
-  return shown.toFixed(2);
+  const shown = snap && Math.abs(number) < 0.5 * 10 ** -decimals.length ? 0 : number;
+  return shown.toFixed(decimals.length);
 }

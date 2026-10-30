@@ -63,6 +63,8 @@ OPS = (
                              optional={"suppressed": bool}), undo=True),
     Op("document_properties"),         # lecture : auteur, société, libres
     Op("set_document_properties", Req(("values", dict))),
+    Op("document_options"),            # décimales, grille, qualité d'image
+    Op("set_document_options", Req(("values", dict))),
     Op("export_part", Req(("path", str))),  # .stl ou .step selon l'extension
     Op("preview", Req(("op", str), ("params", dict))),
                                        # aperçu jaune : op exécutée puis annulée

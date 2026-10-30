@@ -52,7 +52,7 @@ export { DIM_TEXT_PX, createDimSprite };
 export function createSketchMode(deps) {
   const { scene, camera, renderer, controls, call: engineCall, say, refresh,
     panel, boxOverlay, hideContextToolbar, storage = null,
-    modelEdges = () => null } = deps;
+    modelEdges = () => null, docOptions = () => null } = deps;
 
   /** L'appel au moteur : un accrochage à une arête de la pièce
    *  ("edge:k") lui est nommé `{ edge: k }` (engineSnaps). */
@@ -339,8 +339,11 @@ export function createSketchMode(deps) {
     const hidden = hiddenIds();
     const still = (geo) => !moving?.has(geo);
     const model = modelSnapsFor(moving);
-    // Grille : un pas rond qui suit le zoom (≈ 1/40 de la vue).
-    const step = gridStep((camera.top - camera.bottom) / (camera.zoom || 1));
+    // Grille : un pas rond qui suit le zoom (≈ 1/40 de la vue), ou le pas
+    // fixe des propriétés du document.
+    const options = docOptions();
+    const step = options?.grid_fixed ? options.grid_step
+      : gridStep((camera.top - camera.bottom) / (camera.zoom || 1));
     return snapSketchPoint(local, { x: event.clientX, y: event.clientY }, {
       points: [...snapPoints().filter((p) => still(p.geo)), ...model.points],
       toScreen, chain: moving ? null : mode.chain,
@@ -2446,6 +2449,8 @@ export function createSketchMode(deps) {
     setSnapSettings,
     get sketchPrefs() { return mode.prefs; },
     setSketchPrefs,
+    /** Redessine l'esquisse ouverte (décimales du document changées). */
+    redraw() { if (mode.active) redraw(); },
     /** Ctrl+Z dans l'esquisse : ses pas seulement (`steps` d'un coup). */
     undo: (steps) => stepHistory("undo", steps),
     /** Ctrl+Y dans l'esquisse. */

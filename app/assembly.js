@@ -182,6 +182,7 @@ export function installAssembly(ctx) {
 
   function renderAssemblyTree(tree) {
     ctx.welcomeApi?.hideWelcome();
+    ctx.applyDocOptions?.(tree.options ?? null);
     ctx.lastTree = null; // le mode pièce est inactif
     queueMicrotask(updateEditMode); // assemblyState est posé par l'appelant
     closeGraph();

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   dimEditPayload, dimGeometry, dimLabel, filletRadiusLabel, sketchDimAnchor,
 } from "../../app/dims.js";
+import { setDisplayDecimals } from "../../app/num.js";
 
 describe("cotes — libellé et ancrage", () => {
   it("dimLabel préfixe Σ et le nom", () => {
@@ -24,6 +25,17 @@ describe("cotes — libellé et ancrage", () => {
   it("une cote d'angle s'affiche en degrés", () => {
     assert.equal(dimLabel({ type: "Angle", value: Math.PI / 2, name: "" }),
       "90.0°");
+  });
+
+  it("les cotes prennent les décimales du document", () => {
+    setDisplayDecimals({ length: 3, angle: 0 });
+    try {
+      assert.equal(dimLabel({ type: "Distance", value: 10, name: "" }), "10.000");
+      assert.equal(dimLabel({ type: "Angle", value: Math.PI / 2, name: "" }), "90°");
+      assert.equal(filletRadiusLabel("2.5"), "R = 2.500");
+    } finally {
+      setDisplayDecimals();
+    }
   });
 
   it("sketchDimAnchor pose la cote au milieu d'une ligne", () => {

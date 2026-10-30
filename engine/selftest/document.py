@@ -991,6 +991,69 @@ def p73_cotes_neutres(self, mark, report, etat):
     report["p73_valeur_changee_par_cle"] = changed
 
 
+def p81_proprietes_document(self, mark, report, etat):
+    """Les propriétés du document : gardées dans le fichier, refusées hors
+    bornes, et la qualité d'image change les facettes affichées."""
+    mark("p81: propriétés du document")
+    import os
+    from engine import docoptions
+    from engine.kernel import dispatch
+
+    def set_options(values):
+        out = dispatch(self, "set_document_options", {"values": values})
+        if not out["ok"]:
+            raise KernelError(out["error"])
+        return out["result"]
+    self.new_part("Pièce propriétés du document")
+    self.add_rect_sketch(40, 30)
+    self.add_pad(10)
+    self.add_fillet(4, edges=[0])  # une face courbe : la qualité s'y voit
+    doc = self._require_doc()
+    defaults = (self.document_options() == docoptions.DEFAULTS
+                and self.get_tree()["options"] == docoptions.DEFAULTS)
+    normal = len(self.tessellate()["indices"])
+    normal_edges = len(self.tessellate_edges()["positions"])
+    count = doc.UndoCount
+    counts = {}
+    for quality in ("finest", "fine", "coarse"):
+        set_options({"quality": quality, "length_decimals": 3})
+        counts[quality] = len(self.tessellate()["indices"])
+        if quality == "finest":
+            finest_edges = len(self.tessellate_edges()["positions"])
+    # Plus grossière après plus fine : la copie maillée, pas la
+    # triangulation fine qu'OCCT garderait ; la pièce garde la sienne.
+    finer = (counts["coarse"] < normal < counts["fine"] < counts["finest"]
+             and normal_edges < finest_edges
+             and len(self.tessellate(0.1)["indices"]) == normal)
+    # La copie maillée a les faces dans l'ordre de la pièce (le clic les
+    # vise par leur numéro).
+    shape = self._require_body().Shape
+    same_order = ([round(f.Area, 6) for f in shape.Faces]
+                  == [round(f.Area, 6) for f in self._meshed(shape, 0.05, 0.07).Faces])
+    outside_undo = doc.UndoCount == count
+    refused = []
+    for values in ({"length_decimals": 9}, {"quality": "ultra"}, {"x": 1}):
+        try:
+            set_options(values)
+            refused.append(False)
+        except KernelError:
+            refused.append(True)
+    kept = self.document_options() == {**docoptions.DEFAULTS,
+                                       "quality": "coarse", "length_decimals": 3}
+    path = os.path.join(tempfile.gettempdir(), "freesolid_proprietes_document.FCStd")
+    set_options({"grid_fixed": True, "grid_step": 2.5})
+    self.save_part(path)
+    self.new_part("Pièce vierge")
+    blank = self.document_options() == docoptions.DEFAULTS
+    self.open_part(path)
+    reopened = self.get_tree()["options"] == {
+        **docoptions.DEFAULTS, "quality": "coarse", "length_decimals": 3,
+        "grid_fixed": True, "grid_step": 2.5}
+    report["p81_proprietes_document"] = (
+        defaults and finer and same_order and outside_undo and all(refused)
+        and kept and blank and reopened)
+
+
 def bilan(self, mark, report, etat):
     vitrine_path = etat.vitrine_path  # posé par document.p31_piece_vitrine
     mark("bilan")

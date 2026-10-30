@@ -147,8 +147,13 @@ function esc(text) {
 
 // ---------- pages et champs ----------
 
-/** Les onglets du panneau : id, libellé. */
-export const SETTINGS_TABS = [["system", "Options du système"]];
+/** Les onglets du panneau : id, libellé. Les options du système valent
+ *  pour toute session ; les propriétés du document sont gardées dans le
+ *  fichier ouvert. */
+export const SETTINGS_TABS = [
+  ["system", "Options du système"],
+  ["document", "Propriétés du document"],
+];
 
 /** Les pages, dans l'ordre de l'arbre ; `parent` en fait une sous-page. */
 export const SETTINGS_PAGES = [
@@ -161,6 +166,15 @@ export const SETTINGS_PAGES = [
   { id: "tree", tab: "system", label: "Arbre de création" },
   { id: "view", tab: "system", label: "Vue" },
   { id: "about", tab: "system", label: "À propos" },
+  { id: "units", tab: "document", label: "Unités" },
+  { id: "grid", tab: "document", label: "Grille" },
+  { id: "quality", tab: "document", label: "Qualité d'image" },
+];
+
+/** Les choix de la qualité d'image : du plus rapide au plus fin. */
+const QUALITY_LABELS = [
+  ["coarse", "Grossière"], ["normal", "Normale"], ["fine", "Fine"],
+  ["finest", "Très fine"],
 ];
 
 const STYLE_LABELS = {
@@ -210,6 +224,9 @@ export function settingsFields(navigatorLang = "") {
   }));
   const check = (id, page, group, label, fallback, access) => (
     { id, page, group, kind: "check", label, default: fallback, ...access });
+  const docNumber = (id, page, group, label, key, fallback, range) => ({
+    id, page, group, kind: "number", label, default: fallback, ...range,
+    ...inObject("docOptions", key) });
   return [
     { id: "lang", page: "general", group: "Interface", kind: "select",
       label: "Langue", options: LANGS, translate: false,
@@ -267,6 +284,19 @@ export function settingsFields(navigatorLang = "") {
       whole("reverseWheel")),
     check("view.zoomToCursor", "view", "Molette", "Zoomer vers le curseur", true,
       whole("zoomToCursor")),
+    docNumber("doc.lengthDecimals", "units", "Décimales", "Longueurs",
+      "length_decimals", 2, { min: 0, max: 6, note: "dans les cotes et les lectures" }),
+    docNumber("doc.angleDecimals", "units", "Décimales", "Angles",
+      "angle_decimals", 1, { min: 0, max: 4 }),
+    check("doc.gridFixed", "grid", "Esquisse", "Pas de grille fixe", false,
+      inObject("docOptions", "grid_fixed")),
+    docNumber("doc.gridStep", "grid", "Esquisse", "Pas de la grille", "grid_step",
+      10, { min: 0.01, max: 1000, decimals: 2, enabledBy: "doc.gridFixed",
+        note: "mm, pour l'accrochage à la grille et les longueurs avec Maj ; sinon le pas suit le zoom" }),
+    { id: "doc.quality", page: "quality", group: "Facettes", kind: "select",
+      label: "Qualité d'image", default: "normal", options: QUALITY_LABELS,
+      note: "plus fine : plus lente à afficher",
+      ...inObject("docOptions", "quality") },
   ];
 }
 
@@ -322,11 +352,13 @@ export function resetDraft(fields, draft, pageIds) {
   return next;
 }
 
-/** Une saisie de nombre gardée dans ses bornes, entière ; illisible, la
- *  valeur d'avant. */
+/** Une saisie de nombre gardée dans ses bornes, entière ou arrondie à
+ *  `field.decimals` ; la virgule vaut le point ; illisible, la valeur
+ *  d'avant. */
 export function clampNumber(field, raw, previous) {
-  const value = Math.round(Number(raw));
-  if (raw === "" || !Number.isFinite(value)) return previous;
+  const scale = 10 ** (field.decimals ?? 0);
+  const value = Math.round(Number(String(raw).replace(",", ".")) * scale) / scale;
+  if (String(raw).trim() === "" || !Number.isFinite(value)) return previous;
   return Math.min(field.max ?? value, Math.max(field.min ?? value, value));
 }
 
@@ -349,7 +381,8 @@ export function pageTree(pages, tab) {
  * `call` la fonction d'appel du moteur ; `stores`, les réglages qu'il
  * règle, chacun `{ read, apply }` : ribbonLabels, reverseWheel,
  * zoomToCursor, sketchSnaps, sketchPrefs, display, selectFilter,
- * flatTree ; `openShortcuts` ouvre le panneau des raccourcis clavier.
+ * flatTree, docOptions (null sans document : l'onglet est grisé) ;
+ * `openShortcuts` ouvre le panneau des raccourcis clavier.
  */
 export function createSettingsDialog({
   root, doc, win, call, stores: given = {}, openShortcuts, storage, navigatorLang,
@@ -375,6 +408,13 @@ export function createSettingsDialog({
     return SETTINGS_PAGES.find((p) => p.id === id)?.label ?? "";
   }
 
+  /** Un onglet s'ouvre si l'un de ses champs a une valeur (les
+   *  propriétés du document attendent un document). */
+  function tabOpen(id) {
+    return fields.some((f) => draft[f.id] !== undefined
+      && SETTINGS_PAGES.find((p) => p.id === f.page)?.tab === id);
+  }
+
   function fieldHtml(field) {
     const value = draft[field.id];
     const attrs = `data-field="${esc(field.id)}"`;
@@ -398,7 +438,8 @@ export function createSettingsDialog({
         `<option value="${esc(id)}" ${id === value ? "selected" : ""}>${name(text)}</option>`).join("")}</select>`;
     } else {
       control = `<input id="settings-${esc(field.id)}" type="number" ${attrs}
-          min="${field.min}" max="${field.max}" step="1" value="${esc(value)}">`;
+          min="${field.min}" max="${field.max}" step="${10 ** -(field.decimals ?? 0)}"
+          value="${esc(value)}">`;
     }
     return `<div class="settings-field" ${attrs}>
         <label for="settings-${esc(field.id)}">${T(field.label)}</label>${control}${note}${reload}
@@ -414,7 +455,11 @@ export function createSettingsDialog({
           <div class="settings-field">
             <button type="button" data-action="shortcuts">${T("Raccourcis clavier…")}</button>
           </div></fieldset>` : "";
-    return groups.map((group) => `<fieldset class="settings-group">
+    const head = id === "units"
+      ? `<fieldset class="settings-group"><legend>${T("Système d'unités")}</legend>
+          <div class="settings-field"><span>${T("Unités : millimètre, gramme, seconde")}</span></div>
+        </fieldset>` : "";
+    return head + groups.map((group) => `<fieldset class="settings-group">
         <legend>${T(group)}</legend>
         ${mine.filter((f) => f.group === group).map(fieldHtml).join("")}
       </fieldset>`).join("") + extra;
@@ -442,7 +487,7 @@ export function createSettingsDialog({
   }
 
   function render() {
-    const tree = pageTree(SETTINGS_PAGES, tab);
+    const tabs = SETTINGS_TABS.map(([id]) => [id, pageTree(SETTINGS_PAGES, id)]);
     root.innerHTML = `
       <div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="settings-head">
@@ -453,20 +498,21 @@ export function createSettingsDialog({
         <div class="settings-top">
           <div class="settings-tabs" role="tablist">
             ${SETTINGS_TABS.map(([id, label]) => `<button type="button" role="tab"
-              data-tab="${id}" class="${id === tab ? "on" : ""}">${T(label)}</button>`).join("")}
+              data-tab="${id}" ${tabOpen(id) ? "" : `disabled title="${T("Aucun document ouvert")}"`}>${T(label)}</button>`).join("")}
           </div>
           <input type="search" class="settings-search" placeholder="${T("Rechercher une option")}"
             aria-label="${T("Rechercher une option")}">
         </div>
         <div class="settings-body">
           <nav class="settings-tree" aria-label="${T("Pages")}">
-            ${tree.map((p) => `<button type="button" data-page="${p.id}"
-              style="--depth: ${p.depth}">${T(p.label)}</button>`).join("")}
+            ${tabs.map(([id, tree]) => `<div data-tab="${id}" hidden>
+              ${tree.map((p) => `<button type="button" data-page="${p.id}"
+                style="--depth: ${p.depth}">${T(p.label)}</button>`).join("")}</div>`).join("")}
             <p class="settings-none" hidden>${T("Aucune option trouvée")}</p>
           </nav>
           <div class="settings-pages">
-            ${tree.map((p) => `<section class="settings-page" id="settings-${p.id}"
-              data-page="${p.id}" hidden>${pageHtml(p.id)}</section>`).join("")}
+            ${tabs.flatMap(([, tree]) => tree).map((p) => `<section class="settings-page"
+              id="settings-${p.id}" data-page="${p.id}" hidden>${pageHtml(p.id)}</section>`).join("")}
           </div>
         </div>
         <div class="settings-actions">
@@ -494,14 +540,25 @@ export function createSettingsDialog({
       .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
   }
 
+  /** Montrer une page, et son onglet ; une page inconnue (ou d'un
+   *  onglet grisé) : la première de l'onglet ouvert. */
   function showPage(id) {
-    const known = SETTINGS_PAGES.find((p) => p.id === id && p.tab === tab);
+    const known = SETTINGS_PAGES.find((p) => p.id === id && tabOpen(p.tab));
+    if (known) tab = known.tab;
+    else if (!tabOpen(tab)) tab = "system";
     page = known ? id : pageTree(SETTINGS_PAGES, tab)[0].id;
     for (const el of root.querySelectorAll(".settings-page")) {
       el.hidden = el.dataset.page !== page;
     }
     for (const el of root.querySelectorAll(".settings-tree [data-page]")) {
       el.classList.toggle("on", el.dataset.page === page);
+    }
+    for (const el of root.querySelectorAll(".settings-tree [data-tab]")) {
+      el.hidden = el.dataset.tab !== tab;
+    }
+    for (const el of root.querySelectorAll(".settings-tabs [data-tab]")) {
+      el.classList.toggle("on", el.dataset.tab === tab);
+      el.setAttribute("aria-selected", String(el.dataset.tab === tab));
     }
     const tabLabel = SETTINGS_TABS.find(([id]) => id === tab)?.[1] ?? "";
     root.querySelector("#settings-title").textContent =
@@ -545,7 +602,10 @@ export function createSettingsDialog({
   }
 
   function search(query) {
-    const found = searchSettings(query, fields, SETTINGS_PAGES, t);
+    // Pas dans un onglet grisé.
+    const pages = SETTINGS_PAGES.filter((p) => tabOpen(p.tab));
+    const found = searchSettings(query, fields.filter((f) => draft[f.id] !== undefined),
+      pages, t);
     for (const el of root.querySelectorAll(".settings-tree [data-page]")) {
       el.hidden = !!found && !found.pages.has(el.dataset.page);
     }
@@ -641,6 +701,12 @@ export function createSettingsDialog({
     for (const btn of root.querySelectorAll(".settings-tree [data-page]")) {
       btn.addEventListener("click", () => showPage(btn.dataset.page));
     }
+    for (const btn of root.querySelectorAll(".settings-tabs [data-tab]")) {
+      // La première page de l'onglet que la recherche laisse voir.
+      btn.addEventListener("click", () => showPage(root.querySelector(
+        `.settings-tree [data-tab="${btn.dataset.tab}"] [data-page]:not([hidden])`)
+        ?.dataset.page ?? pageTree(SETTINGS_PAGES, btn.dataset.tab)[0].id));
+    }
     root.querySelector(".settings-pages").addEventListener("change", onInput);
     root.querySelector(".settings-search")
       .addEventListener("input", (event) => search(event.target.value));
@@ -680,7 +746,7 @@ export function createSettingsDialog({
   async function open(section = null) {
     root.hidden = false;
     draft = readValues(fields, stores);
-    tab = "system";
+    tab = SETTINGS_PAGES.find((p) => p.id === section)?.tab ?? "system";
     page = section ?? "general";
     render();
     renderInfo(null, { engineUrl: win.location?.origin || "" });

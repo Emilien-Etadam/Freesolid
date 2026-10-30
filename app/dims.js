@@ -2,15 +2,16 @@
 // sprite 3D reste dans sketch.js ; le panneau est le même en esquisse
 // et hors esquisse.
 
-import { simpleDecimal } from "./num.js";
+import { displayDecimals, simpleDecimal } from "./num.js";
 import { t } from "./i18n.js";
 
 /** Libellé d'une cote : « largeur = 60.00 », préfixe Σ si expression,
- *  Ø pour un diamètre, R pour un rayon. */
+ *  Ø pour un diamètre, R pour un rayon ; les décimales du document. */
 export function dimLabel(dim) {
+  const { length, angle } = displayDecimals();
   const number = dim.type === "Angle"
-    ? (dim.value * 180 / Math.PI).toFixed(1) + "°"
-    : Number(dim.value).toFixed(2);
+    ? (dim.value * 180 / Math.PI).toFixed(angle) + "°"
+    : Number(dim.value).toFixed(length);
   const symbol = dim.type === "Diameter" ? "Ø"
     : dim.type === "Radius" ? "R" : dim.kind === "arc_length" ? "⌒" : "";
   const text = (dim.expr ? "Σ " : "")
@@ -24,7 +25,8 @@ export function filletRadiusLabel(raw) {
   const text = String(raw ?? "").trim();
   if (!text) return null;
   const numeric = simpleDecimal(text);
-  return numeric == null ? `R = ${text}` : `R = ${numeric.toFixed(2)}`;
+  return numeric == null ? `R = ${text}`
+    : `R = ${numeric.toFixed(displayDecimals().length)}`;
 }
 
 // ---------- tracé d'une cote d'esquisse ----------

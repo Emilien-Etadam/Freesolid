@@ -1888,9 +1888,9 @@ export function installTree(ctx) {
         // L'édition profite du même aperçu jaune que la création, dès
         // l'ouverture : sans changement, il montre la fonction telle
         // qu'elle est.
-        onChange: (v) => {
+        onChange: (v, how) => {
           schedulePreview({ op: "set_params",
-            params: { feature: feature.name, values: collectChanged(v) } });
+            params: { feature: feature.name, values: collectChanged(v) } }, how);
           depth?.update(v);
         },
         onClose: () => depth?.close(),

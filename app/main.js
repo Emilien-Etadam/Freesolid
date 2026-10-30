@@ -688,27 +688,50 @@ function setDisplay(patch) {
 
 // ---------- aperçu jaune (le fantôme du panneau de propriétés) ----------
 
+// Un fantôme : un volume translucide vu des deux côtés (on voit la pièce
+// au travers), cerné de ses arêtes vives, visibles même derrière.
 const ghostMaterial = new THREE.MeshStandardMaterial({
   color: sceneTheme.ghost, metalness: 0.1, roughness: 0.5,
-  transparent: true, opacity: 0.55, depthWrite: false,
+  transparent: true, opacity: 0.22, depthWrite: false,
+  side: THREE.DoubleSide,
+});
+const ghostEdgeMaterial = new THREE.LineBasicMaterial({
+  color: sceneTheme.ghostEdge, transparent: true, opacity: 0.9,
+  depthTest: false,
 });
 let ghostMesh = null;
+let ghostEdges = null;
 let previewTimer = null;
 let previewGen = 0;
+// Aperçus en route : voir schedulePreview.
+let previewFailed = false;
+let previewFloor = 0;
+let previewShown = 0;
+let previewBusy = false;
+let previewNext = null; // { built, gen } : attend la requête en cours
 
-function clearGhost() {
-  clearTimeout(previewTimer);
-  previewTimer = null;
+/** Retire le fantôme de la vue, sans toucher aux aperçus demandés. */
+function hideGhost() {
   clearPlaneGhost();
-  if (ghostMesh) {
-    ghostMesh.removeFromParent();
-    ghostMesh.geometry.dispose();
-    ghostMesh = null;
+  for (const obj of [ghostMesh, ghostEdges]) {
+    obj?.removeFromParent();
+    obj?.geometry.dispose();
   }
+  ghostMesh = ghostEdges = null;
   baseMaterial.opacity = 1;
   if (partBaseMaterial) partBaseMaterial.opacity = 1;
   for (const material of partFaceMaterials) material.opacity = 1;
   hoverMaterial.opacity = selectedMaterial.opacity = 1;
+}
+
+/** Efface le fantôme et oublie les aperçus en route : une réponse qui
+ *  arrive ensuite ne le remet pas. */
+function clearGhost() {
+  clearTimeout(previewTimer);
+  previewTimer = null;
+  previewFloor = previewGen;
+  previewNext = null;
+  hideGhost();
 }
 
 // Aperçu d'un plan de référence : un carré translucide là où le moteur
@@ -738,22 +761,22 @@ function showPlaneGhost(matrix) {
   scene.add(planeGhost);
 }
 
-function showGhost(mesh, { bothSides = false } = {}) {
-  if (ghostMesh) {
-    ghostMesh.removeFromParent();
-    ghostMesh.geometry.dispose();
-    ghostMesh = null;
+function showGhost(mesh) {
+  for (const obj of [ghostMesh, ghostEdges]) {
+    obj?.removeFromParent();
+    obj?.geometry.dispose();
   }
+  ghostMesh = ghostEdges = null;
   if (!mesh.indices.length) return;
   const geometry = new THREE.BufferGeometry();
   applyPackedGeometry(geometry, mesh);
-  // Le congé OCCT renvoie la face arrondie avec des normales vers
-  // l'intérieur : en FrontSide elle reste une bande sombre. DoubleSide
-  // l'éclaire. Les autres aperçus gardent FrontSide.
-  ghostMaterial.side = bothSides ? THREE.DoubleSide : THREE.FrontSide;
-  ghostMaterial.needsUpdate = true;
+  // DoubleSide éclaire aussi la face arrondie d'un congé, que OCCT rend
+  // avec des normales vers l'intérieur.
   ghostMesh = new THREE.Mesh(geometry, ghostMaterial);
-  volumesGroup.add(ghostMesh);
+  ghostEdges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry, 30), ghostEdgeMaterial);
+  ghostEdges.renderOrder = 12;
+  volumesGroup.add(ghostMesh, ghostEdges);
   applyVolumeVisibility();
   baseMaterial.opacity = 0.15; // la pièce s'efface derrière le résultat
   if (partBaseMaterial) partBaseMaterial.opacity = 0.15;
@@ -839,32 +862,53 @@ function pickFilletRadiusBubble(event) {
 
 // Chaque frappe dans le panneau relance l'aperçu, débouncé — le serveur
 // exécute la fonction dans une transaction puis l'annule (op "preview").
-// previewGen s'incrémente à chaque appel (y compris built == null) : une
-// réponse obsolète ne montre ni n'efface le fantôme. Un aperçu réussi
-// efface le message d'un aperçu raté précédent.
-let previewFailed = false;
-function schedulePreview(built) {
+// Pendant un glisser (`live`), pas d'attente : le fantôme suit la flèche.
+// Une requête à la fois ; la plus récente attend la fin de celle en
+// cours, les autres sont sautées.
+// previewGen numérote chaque appel. Une réponse s'affiche si elle est plus
+// récente que le fantôme montré et que previewFloor — qu'une frappe
+// relève au numéro d'avant, et clearGhost au dernier : une réponse
+// obsolète ne montre ni n'efface le fantôme. Un aperçu réussi efface le
+// message d'un aperçu raté précédent.
+function schedulePreview(built, { live = false } = {}) {
   const gen = ++previewGen;
   clearTimeout(previewTimer);
+  previewTimer = null;
   if (!built) { clearGhost(); return; }
-  previewTimer = setTimeout(async () => {
-    try {
-      const mesh = await call("preview",
-        { op: built.op, params: built.params });
-      if (gen !== previewGen) return;
-      if (!panel.active) return;
-      if (mesh.plane) showPlaneGhost(mesh.plane);
-      else showGhost(mesh, { bothSides: built.op === "add_fillet" });
-      if (previewFailed) say("");
-      previewFailed = false;
-    } catch (error) {
-      if (gen !== previewGen) return;
-      if (!panel.active) return;
-      clearGhost();
-      say("Aperçu — " + error.message);
-      previewFailed = true;
-    }
-  }, 250);
+  if (live) {
+    sendPreview(built, gen);
+    return;
+  }
+  previewFloor = gen - 1;
+  previewTimer = setTimeout(() => sendPreview(built, gen), 250);
+}
+
+function sendPreview(built, gen) {
+  if (previewBusy) {
+    previewNext = { built, gen };
+    return;
+  }
+  previewBusy = true;
+  const fresh = () => gen > previewFloor && gen > previewShown;
+  call("preview", { op: built.op, params: built.params }).then((mesh) => {
+    if (!fresh()) return;
+    previewShown = gen;
+    if (mesh.plane) showPlaneGhost(mesh.plane);
+    else showGhost(mesh);
+    if (previewFailed) say("");
+    previewFailed = false;
+  }, (error) => {
+    if (!fresh()) return;
+    previewShown = gen;
+    hideGhost();
+    say("Aperçu — " + error.message);
+    previewFailed = true;
+  }).finally(() => {
+    previewBusy = false;
+    const next = previewNext;
+    previewNext = null;
+    if (next && next.gen > previewFloor) sendPreview(next.built, next.gen);
+  });
 }
 
 
@@ -1505,15 +1549,19 @@ ctx.onFacePicked = async (face) => {
   const drag = info?.drag;
   if (!drag || selectedFaceId !== face) return;
   const valueAt = (d) => Math.round((drag.value + drag.factor * d) * 2) / 2;
+  let shown = drag.value;
   ctx.handles.show({
     origin: drag.point, dir: drag.normal,
     onDrag: (d) => {
       const value = valueAt(d);
+      if (value === shown) return;
+      shown = value;
       say(t("{f} : profondeur {v} mm — relâchez pour appliquer",
         { f: drag.label, v: value }));
       if (value > 0) {
         schedulePreview({ op: "set_params", params: {
-          feature: drag.feature, values: { [drag.key]: value } } });
+          feature: drag.feature, values: { [drag.key]: value } } },
+        { live: true });
       }
     },
     onEnd: (d) => {

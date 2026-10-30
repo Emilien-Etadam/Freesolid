@@ -118,8 +118,8 @@ export function installFeaturePanel(ctx) {
       ? extrudeDepthHandle(entry, ctx) : null;
     if (depthHandle) spec.onClose = () => depthHandle.close();
     if (entry.preview !== false) {
-      spec.onChange = (v) => {
-        schedulePreview(entry.build(v, ctx));
+      spec.onChange = (v, how) => {
+        schedulePreview(entry.build(v, ctx), how);
         if (entry.button === "btn-fillet") updateFilletRadiusBubble(v);
         depthHandle?.update(v);
       };
@@ -153,13 +153,17 @@ export function installFeaturePanel(ctx) {
         ctx.handles?.hide();
         return;
       }
+      let shown = at.length;
       ctx.handles.show({
         origin: at.origin, dir: at.dir, owner: "panel",
         onDrag: (d) => {
           dragging = true;
           const next = Math.max(0.5,
             Math.round((at.length + d * at.factor) * 2) / 2);
-          panel.restore({ [at.key]: next });
+          if (next === shown) return;
+          shown = next;
+          // Le fantôme suit la flèche pendant le glisser.
+          panel.restore({ [at.key]: next }, { live: true });
         },
         onEnd: () => {
           dragging = false;

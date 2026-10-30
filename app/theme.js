@@ -24,6 +24,7 @@ const SCENE = {
   edgeFaint: ["--scene-edge-faint", 0x7d8792],
   edgeOnBg: ["--scene-edge-on-bg", 0xd5dde6],
   ghost: ["--scene-ghost", 0xf2c94c],
+  ghostEdge: ["--scene-ghost-edge", 0xffe08a],
   axisX: ["--scene-axis-x", 0xe06666],
   axisY: ["--scene-axis-y", 0x6aa84f],
   axisZ: ["--scene-axis-z", 0x4b9bd5],

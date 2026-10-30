@@ -123,4 +123,6 @@ OPS = (
                                        # — absents = inchangés
     Op("face_drag_info", Req(("face", int))),
                                        # lecture : la face se tire-t-elle
+    Op("feature_drag_info", Req(("feature", str))),
+                                       # lecture : la flèche d'une réédition
 )

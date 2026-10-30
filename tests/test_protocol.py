@@ -568,6 +568,7 @@ def test_ops_snapshot_keys():
             "edit_vertex_chamfer",
             "export_part",
             "face_drag_info",
+            "feature_drag_info",
             "feature_relations",
             "get_graph_feature",
             "get_params",

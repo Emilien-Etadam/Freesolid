@@ -1494,6 +1494,9 @@ function showClipHandle() {
 // profondeur suit, l'aperçu jaune montre le résultat, le lâcher l'applique.
 ctx.onFacePicked = async (face) => {
   if (face === null || sketchMode.active || panel.active || assemblyState) {
+    // La flèche du panneau ouvert reste : un clic dans la vue ne la
+    // retire pas.
+    if (ctx.handles?.owner === "panel") return;
     if (ctx.handles?.active) ctx.handles.hide();
     if (face === null) showClipHandle();
     return;
@@ -1562,7 +1565,10 @@ Object.assign(ctx, {
   schedulePreview, findFeatureInTree, refreshAny, enterGraphFeature,
   featureCommand,
 });
-const { currentSelection, openFeaturePanel, bindFeature } = installFeaturePanel(ctx);
+const {
+  currentSelection, openFeaturePanel, bindFeature, editDepthHandle,
+} = installFeaturePanel(ctx);
+ctx.editDepthHandle = editDepthHandle;
 
 // ---------- vue en graphe ----------
 // Relais : ces noms sont appelés avant cette ligne (clavier, arbre, menu).

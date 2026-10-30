@@ -18,6 +18,12 @@ export function axisParam(rayOrigin, rayDir, axisOrigin, axisDir) {
   return (a * e - b * d) / den;
 }
 
+/** Longueur d'une flèche, à l'échelle de la pièce (`radius` : rayon de
+ *  son encombrement) : un quart du rayon, 7,5 mm au moins. */
+export function handleSize(radius) {
+  return Math.max(radius * 0.25, 7.5);
+}
+
 /** Une poignée à la fois dans la vue. `show({ origin, dir, onDrag, onEnd })`
  *  la pose ; `hide()` la retire. Pendant le glisser, la vue ne tourne pas
  *  et le clic ne sélectionne rien. */
@@ -89,10 +95,11 @@ export function installHandles(ctx) {
   }
 
   /** Pose une poignée : une flèche (`dir`, `onDrag(d)`, `onEnd(d)`) ou
-   *  plusieurs (`axes: [{ dir, color }]`, `onDrag(d, i)`, `onEnd(d, i)`). */
+   *  plusieurs (`axes: [{ dir, color }]`, `onDrag(d, i)`, `onEnd(d, i)`).
+   *  `owner` dit à qui elle est (« panel » : au panneau ouvert). */
   function show(spec) {
     hide();
-    const size = spec.size ?? Math.max(ctx.partCenterRadius().radius * 0.5, 15);
+    const size = spec.size ?? handleSize(ctx.partCenterRadius().radius);
     const accent = ctx.sceneTheme.accent ?? 0x3d8bfd;
     const axes = (spec.axes ?? [{ dir: spec.dir, color: accent }]).map((a) => ({
       dir: new THREE.Vector3(...a.dir).normalize(), color: a.color ?? accent }));
@@ -142,5 +149,9 @@ export function installHandles(ctx) {
     handle.spec.onEnd?.(offset, axis);
   }, true);
 
-  return { show, hide, get active() { return handle !== null; } };
+  return {
+    show, hide,
+    get active() { return handle !== null; },
+    get owner() { return handle?.spec.owner ?? null; },
+  };
 }

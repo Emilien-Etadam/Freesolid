@@ -201,6 +201,13 @@ def p17_spline_ellipse_decalage(self, mark, report, etat):
                                        reversed=True)
     radius = lambda pts: max(math.hypot(x - 80, y)  # noqa: E731
                              for x, y in pts)
+    # L'aperçu suit la courbe à 0,05 mm près, sans semer de points sur
+    # les droites : 4 côtés et 4 coins arrondis, pas 8 × 48 points.
+    sag = max(12 - math.hypot((a[0] + b[0]) / 2 - 80, (a[1] + b[1]) / 2)
+              for a, b in zip(outer["points"], outer["points"][1:]))
+    rect = self.sketch_offset_preview(offset_sk, [0, 1, 2, 3], 2.0)
+    report["p17_offset_apercu_fleche"] = (
+        sag <= 0.05 and len(rect["points"]) < 60)
     # Congé d'esquisse : les cotes des lignes restent (coin gardé)
     # et le rayon est coté.
     name = self.sketch_start()["sketch"]

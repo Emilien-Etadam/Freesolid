@@ -65,8 +65,8 @@ describe("contenu", () => {
     assert.equal(byId.file.items[6].action, "screenshot");
     assert.equal(byId.tools.items.find((entry) => entry.label === "Mesurer").click,
       "btn-measure");
-    assert.equal(byId.help.items.find((entry) => entry.label === "À propos").click,
-      "btn-settings");
+    assert.equal(byId.help.items.find((entry) => entry.label === "À propos").action,
+      "about");
     assert.equal(
       byId.help.items.find((entry) => entry.label === "Autotest du moteur").click,
       "btn-selftest");

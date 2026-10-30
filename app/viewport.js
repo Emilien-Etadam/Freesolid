@@ -12,7 +12,7 @@ import { eventToNdc } from "./screen.js";
 import { VIEWS } from "./viewcube.js";
 import {
   boxMode, middleAction, normalizeRect, pushView, readReverseWheel,
-  writeReverseWheel, zoomSpeedFor,
+  readZoomToCursor, writeReverseWheel, writeZoomToCursor, zoomSpeedFor,
 } from "./navigation.js";
 
 export function installViewport(ctx) {
@@ -107,7 +107,7 @@ export function installViewport(ctx) {
   // sélectionne (clic ou cadre), le droit reste au menu contextuel.
   const localStore = (() => { try { return window.localStorage; } catch { return null; } })();
   controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: null };
-  controls.zoomToCursor = true;
+  controls.zoomToCursor = readZoomToCursor(localStore);
   controls.zoomSpeed = zoomSpeedFor(readReverseWheel(localStore));
 
   // OrbitControls inverse lui-même ROTATE/PAN quand Ctrl ou Maj est tenu :
@@ -217,6 +217,11 @@ export function installViewport(ctx) {
   function setReverseWheel(reversed) {
     writeReverseWheel(localStore, reversed);
     controls.zoomSpeed = zoomSpeedFor(reversed);
+  }
+
+  function setZoomToCursor(on) {
+    writeZoomToCursor(localStore, on);
+    controls.zoomToCursor = !!on;
   }
 
   // Cadre de sélection : un rectangle HTML posé sur la vue. Trait plein en
@@ -560,7 +565,7 @@ export function installViewport(ctx) {
   return {
     container, renderer, scene, camera, controls,
     ORTHO_HEIGHT, viewSize, boxOverlay, localStore, originGroup,
-    setReverseWheel, setLayout, rebuildPlanes, rebuildOrigin,
+    setReverseWheel, setZoomToCursor, setLayout, rebuildPlanes, rebuildOrigin,
     toggleOrigin, setOriginShown, updatePlaneVisibility,
     startPlanePick, cancelPlanePick, pickPlane,
     rememberView, previousView, captureImage,

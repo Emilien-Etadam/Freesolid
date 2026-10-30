@@ -1,12 +1,17 @@
-// Panneau Paramètres : identité de FreeSolid et du moteur, liens, mises à
-// jour (application de bureau), réglages d'interface et d'esquisse.
+// Panneau Paramètres, rangé comme les options des modeleurs courants : des
+// onglets (Options du système : gardées par le navigateur, pour tous les
+// documents), l'arbre des pages à gauche, la page choisie à droite, une
+// recherche qui filtre l'arbre et marque les options trouvées. Les
+// changements attendent OK ; Annuler (ou Échap) les oublie ; Réinitialiser
+// remet les valeurs par défaut de la page ou de tout l'onglet, à valider.
 //
-// Tout ce qui est décision est une fonction pure et testée (lignes
-// d'information, langue, pont Tauri) ; le DOM n'est touché que dans
-// createSettingsDialog.
+// Tout ce qui est décision est une fonction pure et testée (pages, champs,
+// recherche, brouillon, lignes d'information, langue, pont Tauri) ; le DOM
+// n'est touché que dans createSettingsDialog.
 
 import { t } from "./i18n.js";
-import { SNAP_KINDS } from "./sketchsnap.js";
+import { DISPLAY_STYLES } from "./display.js";
+import { ANGLE_STEP, SNAP_KINDS } from "./sketchsnap.js";
 
 export const REPO_URL = "https://github.com/Emilien-Etadam/Freesolid";
 const RELEASES_URL = REPO_URL + "/releases";
@@ -140,69 +145,292 @@ function esc(text) {
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
 }
 
-/** Les accrochages d'esquisse : l'interrupteur, une case par sorte
- *  (SNAP_KINDS), le pas d'angle. `snaps` : { enabled, off, angleStep }. */
-function snapSection(snaps, T) {
-  const off = snaps.enabled ? "" : "disabled";
-  return `
-        <h3 id="settings-snaps">${T("Esquisse")}</h3>
-        <div class="settings-field">
-          <span>${T("Accrochages")}</span>
-          <label><input type="checkbox" data-action="snap-enabled"
-            ${snaps.enabled ? "checked" : ""}> ${T("Accrocher pendant le tracé")}</label>
-        </div>
-        <div class="settings-field">
-          <span>${T("Accrocher à")}</span>
-          <div class="settings-choices">
-            ${SNAP_KINDS.map((k) => `<label><input type="checkbox" data-snap-kind="${k.key}"
-              ${snaps.off.includes(k.key) ? "" : "checked"} ${off}> ${T(k.label)}</label>`).join("")}
-          </div>
-        </div>
-        <div class="settings-field">
-          <label for="settings-snap-angle">${T("Pas d'angle")}</label>
-          <input id="settings-snap-angle" type="number" min="1" max="90" step="1"
-            value="${snaps.angleStep}" ${off}>
-          <span class="settings-note">${T("degrés, depuis l'axe X ou la ligne précédente")}</span>
-        </div>`;
+// ---------- pages et champs ----------
+
+/** Les onglets du panneau : id, libellé. */
+export const SETTINGS_TABS = [["system", "Options du système"]];
+
+/** Les pages, dans l'ordre de l'arbre ; `parent` en fait une sous-page. */
+export const SETTINGS_PAGES = [
+  { id: "general", tab: "system", label: "Général" },
+  { id: "colors", tab: "system", label: "Couleurs" },
+  { id: "sketch", tab: "system", label: "Esquisse" },
+  { id: "snaps", tab: "system", label: "Relations et accrochages", parent: "sketch" },
+  { id: "display", tab: "system", label: "Affichage" },
+  { id: "selection", tab: "system", label: "Sélection" },
+  { id: "tree", tab: "system", label: "Arbre de création" },
+  { id: "view", tab: "system", label: "Vue" },
+  { id: "about", tab: "system", label: "À propos" },
+];
+
+const STYLE_LABELS = {
+  "shaded-edges": "Ombré + arêtes", shaded: "Ombré seul",
+  wireframe: "Filaire", hidden: "Lignes cachées estompées",
+};
+
+/** Un champ pris dans un réglage en objet (`stores[name]` : read/apply). */
+function inObject(name, key) {
+  return {
+    store: name,
+    get: (stores) => stores[name]?.read()?.[key],
+    set: (stores, value) => stores[name]?.apply({ ...stores[name].read(), [key]: value }),
+  };
+}
+
+/** Un réglage simple (`stores[name]` : read/apply). */
+function whole(name) {
+  return {
+    store: name,
+    get: (stores) => stores[name]?.read(),
+    set: (stores, value) => stores[name]?.apply(value),
+  };
+}
+
+/**
+ * Les champs des pages, dans leur ordre d'affichage. Un champ : `id`,
+ * `page`, `group` (le cadre qui le contient), `kind` (check, radio,
+ * select, number), `label`, `default`, `store` (le réglage qu'il lit),
+ * `get`/`set` sur les réglages, et
+ * selon sa sorte `options` ([valeur, libellé]), `name` (d'un groupe de
+ * boutons radio), `min`/`max`, `note`,
+ * `reload` (la page se recharge à la validation), `enabledBy` (l'id du
+ * champ qui l'active, ou les ids de ceux qui doivent l'être tous).
+ * `navigatorLang` donne la langue par défaut.
+ */
+export function settingsFields(navigatorLang = "") {
+  const snapKinds = SNAP_KINDS.map((k) => ({
+    id: "snaps.kind." + k.key, page: "snaps", group: "Accrocher à", kind: "check",
+    label: k.label, default: true, enabledBy: "snaps.enabled", store: "sketchSnaps",
+    get: (stores) => !stores.sketchSnaps.read().off.includes(k.key),
+    set: (stores, on) => {
+      const snaps = stores.sketchSnaps.read();
+      const off = snaps.off.filter((key) => key !== k.key);
+      stores.sketchSnaps.apply({ ...snaps, off: on ? off : [...off, k.key] });
+    },
+  }));
+  const check = (id, page, group, label, fallback, access) => (
+    { id, page, group, kind: "check", label, default: fallback, ...access });
+  return [
+    { id: "lang", page: "general", group: "Interface", kind: "select",
+      label: "Langue", options: LANGS, translate: false,
+      default: detectLang(navigatorLang), reload: true, ...whole("lang") },
+    { id: "ribbonLabels", name: "ribbon-labels", page: "general", group: "Interface",
+      kind: "radio", label: "Libellés du ruban", default: "icons-and-text",
+      options: [["icons-and-text", "Icônes et texte"], ["icons-only", "Icônes seules"]],
+      ...whole("ribbonLabels") },
+    { id: "theme", page: "colors", group: "Thème", kind: "select",
+      label: "Thème", options: THEMES, default: "light", reload: true,
+      ...whole("theme") },
+    check("sketch.normalView", "sketch", "À l'ouverture",
+      "Tourner la vue face au plan de l'esquisse", true,
+      inObject("sketchPrefs", "normalView")),
+    check("sketch.showRelations", "sketch", "Affichage",
+      "Afficher les symboles de relation", true,
+      inObject("sketchPrefs", "showRelations")),
+    check("sketch.showDims", "sketch", "Affichage", "Afficher les cotes", true,
+      inObject("sketchPrefs", "showDims")),
+    check("sketch.showComb", "sketch", "Affichage",
+      "Afficher le peigne de courbure des splines", false,
+      inObject("sketchPrefs", "showComb")),
+    check("snaps.enabled", "snaps", "Accrochages", "Accrocher pendant le tracé",
+      true, inObject("sketchSnaps", "enabled")),
+    ...snapKinds,
+    { id: "snaps.angleStep", page: "snaps", group: "Accrocher à", kind: "number",
+      label: "Valeur du pas", min: 1, max: 90, default: ANGLE_STEP,
+      note: "degrés, depuis l'axe X ou la ligne précédente",
+      enabledBy: ["snaps.enabled", "snaps.kind.angle"],
+      ...inObject("sketchSnaps", "angleStep") },
+    check("sketch.gridSnap", "snaps", "Grille", "Accrocher à la grille", false,
+      inObject("sketchPrefs", "gridSnap")),
+    { id: "display.style", page: "display", group: "Style", kind: "select",
+      label: "Style d'affichage", default: "shaded-edges",
+      options: DISPLAY_STYLES.map((style) => [style, STYLE_LABELS[style]]),
+      ...inObject("display", "style") },
+    check("display.perspective", "display", "Style", "Perspective", false,
+      inObject("display", "perspective")),
+    check("display.planes", "display", "Montrer", "Plans de référence", false,
+      inObject("display", "planes")),
+    check("display.origin", "display", "Montrer", "Origine", false,
+      inObject("display", "origin")),
+    check("display.sketches", "display", "Montrer", "Esquisses", true,
+      inObject("display", "sketches")),
+    check("display.edges", "display", "Montrer", "Aperçu des arêtes", true,
+      inObject("display", "edges")),
+    ...[["faces", "Faces"], ["edges", "Arêtes"], ["sketches", "Esquisses"],
+      ["surfaces", "Surfaces et courbes"]].map(([key, label]) => ({
+      ...check("select." + key, "selection", "Sélectionnables", label, true,
+        inObject("selectFilter", key)),
+      get: (stores) => stores.selectFilter.read()?.[key] !== false,
+    })),
+    check("tree.flat", "tree", "Arbre", "Arbre à plat", false, whole("flatTree")),
+    check("view.reverseWheel", "view", "Molette", "Inverser le sens du zoom", false,
+      whole("reverseWheel")),
+    check("view.zoomToCursor", "view", "Molette", "Zoomer vers le curseur", true,
+      whole("zoomToCursor")),
+  ];
+}
+
+/** Le texte où l'on cherche : minuscules, sans accents. */
+export function searchText(text) {
+  return String(text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
+/**
+ * Ce que la recherche trouve : `fields`, les ids des champs dont le
+ * libellé, le cadre ou un choix contient tous les mots de `query` ;
+ * `pages`, les pages qui en ont un (ou dont le nom répond), avec leur
+ * parent. `label` traduit un texte (t). Une recherche vide : null.
+ */
+export function searchSettings(query, fields, pages, label = (s) => s) {
+  const words = searchText(query).split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+  const hit = (...texts) => {
+    const haystack = searchText(texts.join(" "));
+    return words.every((word) => haystack.includes(word));
+  };
+  const found = new Set(fields.filter((field) => hit(label(field.label),
+    label(field.group), ...(field.options ?? []).map(([, name]) =>
+      field.translate === false ? name : label(name)))).map((f) => f.id));
+  const pageIds = new Set();
+  for (const page of pages) {
+    if (hit(label(page.label))
+        || fields.some((f) => f.page === page.id && found.has(f.id))) {
+      pageIds.add(page.id);
+      if (page.parent) pageIds.add(page.parent);
+    }
+  }
+  return { fields: found, pages: pageIds };
+}
+
+/** Les valeurs actuelles des champs, par id. */
+export function readValues(fields, stores) {
+  return Object.fromEntries(fields.map((f) => [f.id, f.get(stores)]));
+}
+
+/** Les champs dont le brouillon diffère de la valeur actuelle. */
+export function changedFields(fields, stores, draft) {
+  return fields.filter((f) => f.id in draft && draft[f.id] !== f.get(stores));
+}
+
+/** Le brouillon remis aux valeurs par défaut des champs de `pageIds`. */
+export function resetDraft(fields, draft, pageIds) {
+  const next = { ...draft };
+  for (const f of fields) {
+    if (pageIds.includes(f.page)) next[f.id] = f.default;
+  }
+  return next;
+}
+
+/** Une saisie de nombre gardée dans ses bornes, entière ; illisible, la
+ *  valeur d'avant. */
+export function clampNumber(field, raw, previous) {
+  const value = Math.round(Number(raw));
+  if (raw === "" || !Number.isFinite(value)) return previous;
+  return Math.min(field.max ?? value, Math.max(field.min ?? value, value));
+}
+
+/** Les sous-pages juste après leur parent, chacune avec sa profondeur. */
+export function pageTree(pages, tab) {
+  const inTab = pages.filter((p) => p.tab === tab);
+  const out = [];
+  const add = (parent, depth) => {
+    for (const page of inTab.filter((p) => (p.parent ?? null) === parent)) {
+      out.push({ ...page, depth });
+      add(page.id, depth + 1);
+    }
+  };
+  add(null, 0);
+  return out;
 }
 
 /**
  * Le panneau lui-même. `root` est l'élément #settings-dialog (caché) ;
- * `call` la fonction d'appel du moteur ; `ribbonLabels` {read, apply} ;
- * `sketchSnaps` {read, apply} : le réglage des accrochages d'esquisse.
+ * `call` la fonction d'appel du moteur ; `stores`, les réglages qu'il
+ * règle, chacun `{ read, apply }` : ribbonLabels, reverseWheel,
+ * zoomToCursor, sketchSnaps, sketchPrefs, display, selectFilter,
+ * flatTree ; `openShortcuts` ouvre le panneau des raccourcis clavier.
  */
 export function createSettingsDialog({
-  root, doc, win, call, ribbonLabels, wheel, sketchSnaps, storage, navigatorLang,
+  root, doc, win, call, stores: given = {}, openShortcuts, storage, navigatorLang,
 }) {
   const bridge = desktopBridge(win);
+  const stores = {
+    lang: { read: () => readLang(storage, navigatorLang),
+            apply: (lang) => writeLang(storage, lang) },
+    theme: { read: () => readTheme(storage),
+             apply: (theme) => writeTheme(storage, theme) },
+    ...given,
+  };
+  // Les champs dont le réglage est fourni ; lus à l'ouverture seulement
+  // (l'esquisse est créée après le panneau).
+  const fields = settingsFields(navigatorLang).filter((f) => f.store in stores);
+  const T = (text, vars) => esc(t(text, vars));
   let pendingUpdate = null;
+  let draft = {};
+  let tab = "system";
+  let page = "general";
 
-  function render(ping, extra) {
-    const rows = infoRows(ping, extra);
-    const lang = readLang(storage, navigatorLang);
-    const labelsMode = ribbonLabels.read();
-    const theme = readTheme(storage);
-    const T = (text, vars) => esc(t(text, vars));
-    root.innerHTML = `
-      <div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-        <div class="settings-head">
-          <h2 id="settings-title">${T("Paramètres")}</h2>
-          <button type="button" class="settings-close" data-action="close" title="${T("Fermer")}">×</button>
-        </div>
-        <p class="settings-warn">${T("Version de développement, non fonctionnelle : un prototype pour essayer et remonter des problèmes.")}</p>
+  function pageLabel(id) {
+    return SETTINGS_PAGES.find((p) => p.id === id)?.label ?? "";
+  }
 
-        <h3>${T("À propos")}</h3>
-        <dl class="settings-info">
-          ${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}
-        </dl>
+  function fieldHtml(field) {
+    const value = draft[field.id];
+    const attrs = `data-field="${esc(field.id)}"`;
+    const name = (text) => field.translate === false ? esc(text) : T(text);
+    const note = field.note ? `<span class="settings-note">${T(field.note)}</span>` : "";
+    const reload = field.reload
+      ? `<span class="settings-note">${T("la page se recharge à la validation")}</span>` : "";
+    let control;
+    if (field.kind === "check") {
+      return `<div class="settings-field" ${attrs}>
+          <label><input type="checkbox" ${attrs} ${value ? "checked" : ""}> ${T(field.label)}</label>${note}
+        </div>`;
+    } else if (field.kind === "radio") {
+      control = field.options.map(([id, text]) => `<label><input type="radio"
+          name="${esc(field.name ?? field.id)}" value="${esc(id)}" ${attrs}
+          ${id === value ? "checked" : ""}> ${name(text)}</label>`).join("");
+      return `<div class="settings-field" ${attrs}><span>${T(field.label)}</span>
+          <div class="settings-choices">${control}</div>${note}</div>`;
+    } else if (field.kind === "select") {
+      control = `<select id="settings-${esc(field.id)}" ${attrs}>${field.options.map(([id, text]) =>
+        `<option value="${esc(id)}" ${id === value ? "selected" : ""}>${name(text)}</option>`).join("")}</select>`;
+    } else {
+      control = `<input id="settings-${esc(field.id)}" type="number" ${attrs}
+          min="${field.min}" max="${field.max}" step="1" value="${esc(value)}">`;
+    }
+    return `<div class="settings-field" ${attrs}>
+        <label for="settings-${esc(field.id)}">${T(field.label)}</label>${control}${note}${reload}
+      </div>`;
+  }
+
+  function pageHtml(id) {
+    if (id === "about") return aboutHtml();
+    const mine = fields.filter((f) => f.page === id);
+    const groups = [...new Set(mine.map((f) => f.group))];
+    const extra = id === "general" && openShortcuts
+      ? `<fieldset class="settings-group"><legend>${T("Raccourcis")}</legend>
+          <div class="settings-field">
+            <button type="button" data-action="shortcuts">${T("Raccourcis clavier…")}</button>
+          </div></fieldset>` : "";
+    return groups.map((group) => `<fieldset class="settings-group">
+        <legend>${T(group)}</legend>
+        ${mine.filter((f) => f.group === group).map(fieldHtml).join("")}
+      </fieldset>`).join("") + extra;
+  }
+
+  function aboutHtml() {
+    return `<fieldset class="settings-group"><legend>${T("FreeSolid et le moteur")}</legend>
+        <dl class="settings-info"></dl>
         <div class="settings-links">
           <button type="button" data-url="${REPO_URL}">${T("Dépôt GitHub")}</button>
           <button type="button" data-url="${ISSUES_URL}">${T("Signaler un problème")}</button>
           <button type="button" data-url="${RELEASES_URL}">${T("Versions")}</button>
           <button type="button" data-url="${LICENSE_URL}">${T("Licence LGPL-2.1")}</button>
         </div>
-
-        <h3>${T("Mises à jour")}</h3>
+      </fieldset>
+      <fieldset class="settings-group"><legend>${T("Mises à jour")}</legend>
         <div class="settings-update">
           ${bridge
             ? `<button type="button" data-action="check-update">${T("Rechercher des mises à jour")}</button>
@@ -210,43 +438,131 @@ export function createSettingsDialog({
             : ""}
           <span class="settings-update-status">${bridge ? "" : esc(updateStatus("browser"))}</span>
         </div>
+      </fieldset>`;
+  }
 
-        <h3>${T("Interface")}</h3>
-        <div class="settings-field">
-          <span>${T("Libellés du ruban")}</span>
-          <label><input type="radio" name="ribbon-labels" value="icons-and-text"
-            ${labelsMode === "icons-and-text" ? "checked" : ""}> ${T("Icônes et texte")}</label>
-          <label><input type="radio" name="ribbon-labels" value="icons-only"
-            ${labelsMode === "icons-only" ? "checked" : ""}> ${T("Icônes seules")}</label>
+  function render() {
+    const tree = pageTree(SETTINGS_PAGES, tab);
+    root.innerHTML = `
+      <div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="settings-head">
+          <h2 id="settings-title"></h2>
+          <button type="button" class="settings-close" data-action="close" title="${T("Annuler")}">×</button>
         </div>
-        <div class="settings-field">
-          <span>${T("Molette")}</span>
-          <label><input type="checkbox" data-action="reverse-wheel"
-            ${wheel?.read() ? "checked" : ""}> ${T("Inverser le sens du zoom")}</label>
+        <p class="settings-warn">${T("Version de développement, non fonctionnelle : un prototype pour essayer et remonter des problèmes.")}</p>
+        <div class="settings-top">
+          <div class="settings-tabs" role="tablist">
+            ${SETTINGS_TABS.map(([id, label]) => `<button type="button" role="tab"
+              data-tab="${id}" class="${id === tab ? "on" : ""}">${T(label)}</button>`).join("")}
+          </div>
+          <input type="search" class="settings-search" placeholder="${T("Rechercher une option")}"
+            aria-label="${T("Rechercher une option")}">
         </div>
-        <div class="settings-field">
-          <label for="settings-theme">${T("Thème")}</label>
-          <select id="settings-theme">
-            ${THEMES.map(([id, name]) =>
-              `<option value="${id}" ${id === theme ? "selected" : ""}>${T(name)}</option>`).join("")}
-          </select>
-          <span class="settings-note">${T("la page se recharge au changement")}</span>
+        <div class="settings-body">
+          <nav class="settings-tree" aria-label="${T("Pages")}">
+            ${tree.map((p) => `<button type="button" data-page="${p.id}"
+              style="--depth: ${p.depth}">${T(p.label)}</button>`).join("")}
+            <p class="settings-none" hidden>${T("Aucune option trouvée")}</p>
+          </nav>
+          <div class="settings-pages">
+            ${tree.map((p) => `<section class="settings-page" id="settings-${p.id}"
+              data-page="${p.id}" hidden>${pageHtml(p.id)}</section>`).join("")}
+          </div>
         </div>
-        <div class="settings-field">
-          <label for="settings-lang">${T("Langue")}</label>
-          <select id="settings-lang">
-            ${LANGS.map(([id, name]) =>
-              `<option value="${id}" ${id === lang ? "selected" : ""}>${esc(name)}</option>`).join("")}
-          </select>
-          <span class="settings-note">${T("la page se recharge au changement")}</span>
-        </div>
-        ${sketchSnaps ? snapSection(sketchSnaps.read(), T) : ""}
-
         <div class="settings-actions">
-          <button type="button" data-action="close">${T("Fermer")}</button>
+          <div class="settings-reset">
+            <button type="button" data-action="reset">${T("Réinitialiser…")}</button>
+            <div class="settings-reset-menu" hidden>
+              <button type="button" data-reset="page">${T("Cette page")}</button>
+              <button type="button" data-reset="tab">${T("Toutes les options de l'onglet")}</button>
+            </div>
+          </div>
+          <button type="button" class="primary" data-action="ok">${T("OK")}</button>
+          <button type="button" data-action="close">${T("Annuler")}</button>
         </div>
       </div>`;
     wire();
+    syncEnabled();
+    showPage(page);
+  }
+
+  /** Les lignes « À propos », une fois le moteur interrogé. */
+  function renderInfo(ping, extra) {
+    const el = root.querySelector(".settings-info");
+    if (!el) return;
+    el.innerHTML = infoRows(ping, extra)
+      .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  }
+
+  function showPage(id) {
+    const known = SETTINGS_PAGES.find((p) => p.id === id && p.tab === tab);
+    page = known ? id : pageTree(SETTINGS_PAGES, tab)[0].id;
+    for (const el of root.querySelectorAll(".settings-page")) {
+      el.hidden = el.dataset.page !== page;
+    }
+    for (const el of root.querySelectorAll(".settings-tree [data-page]")) {
+      el.classList.toggle("on", el.dataset.page === page);
+    }
+    const tabLabel = SETTINGS_TABS.find(([id]) => id === tab)?.[1] ?? "";
+    root.querySelector("#settings-title").textContent =
+      `${t(tabLabel)} — ${t(pageLabel(page))}`;
+  }
+
+  /** Un champ qu'un autre active (les sortes d'accrochage) suit son
+   *  brouillon. */
+  function syncEnabled() {
+    for (const field of fields.filter((f) => f.enabledBy)) {
+      const on = [field.enabledBy].flat().every((id) => draft[id]);
+      for (const input of root.querySelectorAll(`input[data-field="${field.id}"]`)) {
+        input.disabled = !on;
+      }
+    }
+  }
+
+  /** Le brouillon dans les champs (après Réinitialiser). */
+  function syncInputs() {
+    for (const field of fields) {
+      for (const input of root.querySelectorAll(
+        `input[data-field="${field.id}"], select[data-field="${field.id}"]`)) {
+        if (input.type === "checkbox") input.checked = !!draft[field.id];
+        else if (input.type === "radio") input.checked = input.value === draft[field.id];
+        else input.value = draft[field.id];
+      }
+    }
+    syncEnabled();
+  }
+
+  function onInput(event) {
+    const field = fields.find((f) => f.id === event.target.dataset.field);
+    if (!field) return;
+    const input = event.target;
+    if (field.kind === "check") draft[field.id] = input.checked;
+    else if (field.kind === "number") {
+      draft[field.id] = clampNumber(field, input.value, draft[field.id]);
+      input.value = draft[field.id];
+    } else if (input.type !== "radio" || input.checked) draft[field.id] = input.value;
+    syncEnabled();
+  }
+
+  function search(query) {
+    const found = searchSettings(query, fields, SETTINGS_PAGES, t);
+    for (const el of root.querySelectorAll(".settings-tree [data-page]")) {
+      el.hidden = !!found && !found.pages.has(el.dataset.page);
+    }
+    for (const el of root.querySelectorAll(".settings-field[data-field]")) {
+      el.classList.toggle("hit", !!found?.fields.has(el.dataset.field));
+    }
+    root.querySelector(".settings-none").hidden = !found || found.pages.size > 0;
+    if (found && found.pages.size && !found.pages.has(page)) {
+      // La première page qui a une option trouvée, sinon la première
+      // dont le nom répond.
+      const first = fields.find((f) => found.fields.has(f.id))?.page
+        ?? [...found.pages][0];
+      showPage(first);
+    }
+    // La première option trouvée de la page montrée, dans la vue.
+    root.querySelector(`.settings-page[data-page="${page}"] .settings-field.hit`)
+      ?.scrollIntoView?.({ block: "nearest" });
   }
 
   function setUpdateStatus(kind, detail) {
@@ -310,70 +626,65 @@ export function createSettingsDialog({
     for (const btn of root.querySelectorAll('[data-action="close"]')) {
       btn.addEventListener("click", close);
     }
+    root.querySelector('[data-action="ok"]').addEventListener("click", accept);
     root.querySelector('[data-action="check-update"]')
       ?.addEventListener("click", checkUpdate);
     root.querySelector('[data-action="install-update"]')
       ?.addEventListener("click", installUpdate);
-    for (const radio of root.querySelectorAll('input[name="ribbon-labels"]')) {
-      radio.addEventListener("change", () => ribbonLabels.apply(radio.value));
-    }
-    root.querySelector('[data-action="reverse-wheel"]')
-      ?.addEventListener("change", (event) => wheel?.apply(event.target.checked));
-    root.querySelector("#settings-theme")
-      ?.addEventListener("change", (event) => {
-        // Comme la langue : la scène 3D lit ses couleurs au chargement.
-        if (writeTheme(storage, event.target.value)) win.location?.reload?.();
+    root.querySelector('[data-action="shortcuts"]')
+      ?.addEventListener("click", () => {
+        // Le panneau des raccourcis s'ouvre à la place : les changements
+        // en attente sont validés d'abord.
+        accept();
+        openShortcuts();
       });
-    const snapInputs = root.querySelectorAll(
-      '[data-action="snap-enabled"], [data-snap-kind], #settings-snap-angle');
-    for (const input of snapInputs) {
-      input.addEventListener("change", applySnaps);
+    for (const btn of root.querySelectorAll(".settings-tree [data-page]")) {
+      btn.addEventListener("click", () => showPage(btn.dataset.page));
     }
-    root.querySelector("#settings-lang")
-      ?.addEventListener("change", (event) => {
-        // La langue s'applique au chargement (ruban, panneaux, moteur) :
-        // on enregistre puis on recharge la page.
-        if (writeLang(storage, event.target.value)) win.location?.reload?.();
+    root.querySelector(".settings-pages").addEventListener("change", onInput);
+    root.querySelector(".settings-search")
+      .addEventListener("input", (event) => search(event.target.value));
+    const resetMenu = root.querySelector(".settings-reset-menu");
+    root.querySelector('[data-action="reset"]').addEventListener("click", () => {
+      resetMenu.hidden = !resetMenu.hidden;
+    });
+    for (const btn of resetMenu.querySelectorAll("[data-reset]")) {
+      btn.addEventListener("click", () => {
+        resetMenu.hidden = true;
+        const pages = btn.dataset.reset === "page" ? [page]
+          : SETTINGS_PAGES.filter((p) => p.tab === tab).map((p) => p.id);
+        draft = resetDraft(fields, draft, pages);
+        syncInputs();
       });
+    }
   }
 
-  /** Les cases des accrochages → le réglage ; une valeur hors bornes
-   *  revient à celle que le réglage a gardée. */
-  function applySnaps() {
-    const angle = root.querySelector("#settings-snap-angle");
-    sketchSnaps.apply({
-      enabled: root.querySelector('[data-action="snap-enabled"]').checked,
-      off: [...root.querySelectorAll("[data-snap-kind]")]
-        .filter((box) => !box.checked).map((box) => box.dataset.snapKind),
-      angleStep: Number(angle.value),
-    });
-    const kept = sketchSnaps.read();
-    angle.value = kept.angleStep;
-    for (const input of root.querySelectorAll("[data-snap-kind], #settings-snap-angle")) {
-      input.disabled = !kept.enabled;
-    }
+  /** OK : chaque changement appliqué, puis la page rechargée si l'un
+   *  d'eux le demande (langue, thème). */
+  function accept() {
+    const changed = changedFields(fields, stores, draft);
+    for (const field of changed) field.set(stores, draft[field.id]);
+    close();
+    if (changed.some((f) => f.reload)) win.location?.reload?.();
   }
 
   function onKey(event) {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      close();
-    }
+    if (event.key !== "Escape") return;
+    event.stopPropagation();
+    const resetMenu = root.querySelector(".settings-reset-menu");
+    if (resetMenu && !resetMenu.hidden) resetMenu.hidden = true;
+    else close();
   }
 
-  function onBackdrop(event) {
-    if (event.target === root) close();
-  }
-
-  /** `section` : l'id d'un titre du panneau (« snaps ») à montrer. */
+  /** `section` : l'id d'une page (« snaps ») à montrer. */
   async function open(section = null) {
     root.hidden = false;
-    render(null, { engineUrl: win.location?.origin || "" });
-    const show = () => section
-      && root.querySelector(`#settings-${section}`)?.scrollIntoView?.();
-    show();
+    draft = readValues(fields, stores);
+    tab = "system";
+    page = section ?? "general";
+    render();
+    renderInfo(null, { engineUrl: win.location?.origin || "" });
     doc.addEventListener("keydown", onKey, true);
-    root.addEventListener("click", onBackdrop);
     let ping = null;
     try { ping = await call("ping"); } catch { ping = null; }
     const extra = { engineUrl: win.location?.origin || "" };
@@ -381,16 +692,13 @@ export function createSettingsDialog({
       try { extra.appVersion = await bridge.appVersion(); } catch { /* version du moteur */ }
       try { extra.logPath = await bridge.engineLogPath(); } catch { /* pas de journal */ }
     }
-    if (!root.hidden) {
-      render(ping, extra);
-      show();
-    }
+    if (!root.hidden) renderInfo(ping, extra);
   }
 
+  /** Fermer sans appliquer (Annuler, Échap, ×). */
   function close() {
     root.hidden = true;
     doc.removeEventListener("keydown", onKey, true);
-    root.removeEventListener("click", onBackdrop);
   }
 
   function toggle() {

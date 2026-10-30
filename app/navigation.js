@@ -12,6 +12,7 @@
 // main.js et sketch.js branchent ces décisions ; aucun DOM ici.
 
 export const REVERSE_WHEEL_KEY = "freesolid.reverseWheel";
+export const ZOOM_TO_CURSOR_KEY = "freesolid.zoomToCursor";
 
 /** Geste du bouton du milieu selon les touches tenues. `rotateLocked` :
  *  l'esquisse bloque la rotation, le milieu y fait donc du panoramique. */
@@ -38,6 +39,25 @@ export function readReverseWheel(storage) {
 export function writeReverseWheel(storage, reversed) {
   try {
     storage?.setItem(REVERSE_WHEEL_KEY, reversed ? "1" : "0");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** La molette zoome vers le curseur (par défaut), sinon vers le centre
+ *  de la vue. */
+export function readZoomToCursor(storage) {
+  try {
+    return storage?.getItem(ZOOM_TO_CURSOR_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+export function writeZoomToCursor(storage, on) {
+  try {
+    storage?.setItem(ZOOM_TO_CURSOR_KEY, on ? "1" : "0");
     return true;
   } catch {
     return false;

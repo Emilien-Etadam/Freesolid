@@ -34,6 +34,9 @@ import {
   snapSketchPoint, snapTarget, writeSnapSettings,
 } from "./sketchsnap.js";
 import {
+  normalizeSketchPrefs, readSketchPrefs, writeSketchPrefs,
+} from "./sketchprefs.js";
+import {
   DIM_LABEL_RATIO, DIM_TEXT_PX, createDimSprite, createGlyphSprite,
 } from "./sketch/dimsprite.js";
 import { installCommandes } from "./sketch/commandes.js";
@@ -168,6 +171,7 @@ export function createSketchMode(deps) {
     dragLocal: null,      // dernière position d'un glisser, pour le lâcher
     solverOk: false,      // l'esquisse est chargée dans le solveur local
     snapSettings: readSnapSettings(storage), // sortes d'accrochage (réglage)
+    prefs: readSketchPrefs(storage), // vue, grille, symboles, cotes (réglage)
     quickSnap: null,      // { kind, keep } — accrochage rapide en cours
     savedCamera: null,
     matrix: new THREE.Matrix4(),
@@ -346,7 +350,7 @@ export function createSketchMode(deps) {
       kinds: snapKinds(),
       // Maj maintenu : des longueurs au pas de la grille, affichée ou non.
       lengthStep: event.shiftKey && !moving ? step : null,
-      gridStep: mode.gridSnap ? step : null,
+      gridStep: mode.prefs.gridSnap ? step : null,
       suspended: moving ? !!(event.ctrlKey || event.metaKey)
         : suspendsSnap(event),
     });
@@ -381,6 +385,24 @@ export function createSketchMode(deps) {
       ?.classList.toggle("on", mode.snapSettings.enabled);
   }
   sk.setSnapSettings = setSnapSettings;
+
+  //: Réglage d'esquisse -> son bouton dans la barre d'esquisse.
+  const PREF_BUTTONS = {
+    gridSnap: "sk-grid", showComb: "sk-comb",
+    showRelations: "sk-show-rel", showDims: "sk-show-dims",
+  };
+
+  /** Les réglages d'affichage de l'esquisse : appliqués, gardés, et les
+   *  boutons de la barre suivent. */
+  function setSketchPrefs(prefs) {
+    mode.prefs = normalizeSketchPrefs(prefs);
+    writeSketchPrefs(storage, mode.prefs);
+    for (const [key, id] of Object.entries(PREF_BUTTONS)) {
+      document.getElementById(id)?.classList.toggle("on", mode.prefs[key]);
+    }
+    if (mode.active) redraw();
+  }
+  sk.setSketchPrefs = setSketchPrefs;
 
   /** Les lignes survolées pendant le tracé : la suivante peut leur être
    *  parallèle ou perpendiculaire. Les deux dernières. */
@@ -743,7 +765,7 @@ export function createSketchMode(deps) {
       group.add(arrow);
     }
 
-    if (mode.showComb) {
+    if (mode.prefs.showComb) {
       // Peigne de courbure : une dent par point, normale à la courbe,
       // longue comme la courbure — on voit où elle se tend ou s'aplatit.
       // Les courbes sélectionnées, sinon toutes les courbes libres (pas
@@ -789,7 +811,7 @@ export function createSketchMode(deps) {
     // Calques masqués : ni symboles, ni cotes de leurs entités. Les
     // boutons de la barre masquent tous les symboles, ou toutes les cotes.
     const shown = mode.state.entities.filter((e) => !hidden.has(e.id));
-    const glyphs = mode.showRelations === false ? []
+    const glyphs = !mode.prefs.showRelations ? []
       : relationGlyphs(mode.state.constraints, shown, span * 0.025);
     for (const glyph of glyphs) {
       const sprite = createGlyphSprite(glyph.text);
@@ -803,7 +825,7 @@ export function createSketchMode(deps) {
     const dimSize = dimDrawSize();
     // Un pixel d'écran, en unités de l'esquisse.
     const px = span / Math.max(renderer.domElement.clientHeight, 1);
-    for (const dim of mode.showDims === false ? [] : mode.state.dims) {
+    for (const dim of !mode.prefs.showDims ? [] : mode.state.dims) {
       const constraint = (mode.state.constraints ?? [])
         .find((c) => c.id === dim.id);
       if ((constraint?.geos ?? [dim.geo]).some((g) => hidden.has(g))) continue;
@@ -2297,17 +2319,22 @@ export function createSketchMode(deps) {
       previewLine.visible = false;
       group.add(previewLine);
 
-      mode.savedCamera = {
-        position: camera.position.clone(),
-        target: controls.target.clone(),
-        zoom: camera.zoom,
-      };
-      const normal = new THREE.Vector3(0, 0, 1)
-        .transformDirection(mode.matrix);
-      const origin = new THREE.Vector3().setFromMatrixPosition(mode.matrix);
-      camera.position.copy(origin.clone().add(normal.multiplyScalar(220)));
-      controls.target.copy(origin);
-      controls.enableRotate = false;
+      // Vue tournée face au plan (réglage, par défaut) : la vue d'avant
+      // revient à la sortie. Sinon la vue reste, et tourne encore.
+      mode.savedCamera = null;
+      if (mode.prefs.normalView) {
+        mode.savedCamera = {
+          position: camera.position.clone(),
+          target: controls.target.clone(),
+          zoom: camera.zoom,
+        };
+        const normal = new THREE.Vector3(0, 0, 1)
+          .transformDirection(mode.matrix);
+        const origin = new THREE.Vector3().setFromMatrixPosition(mode.matrix);
+        camera.position.copy(origin.clone().add(normal.multiplyScalar(220)));
+        controls.target.copy(origin);
+        controls.enableRotate = false;
+      }
       // Matrices à jour tout de suite : un clic arrivé avant l'image
       // suivante se projette déjà dans la vue de l'esquisse.
       controls.update();
@@ -2417,6 +2444,8 @@ export function createSketchMode(deps) {
     pickQuickSnap,
     get snapSettings() { return mode.snapSettings; },
     setSnapSettings,
+    get sketchPrefs() { return mode.prefs; },
+    setSketchPrefs,
     /** Ctrl+Z dans l'esquisse : ses pas seulement (`steps` d'un coup). */
     undo: (steps) => stepHistory("undo", steps),
     /** Ctrl+Y dans l'esquisse. */

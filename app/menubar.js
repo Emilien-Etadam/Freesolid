@@ -90,7 +90,7 @@ export function menuBarModel(ribbon) {
       item("Paramètres", { click: "btn-settings" }),
     ] },
     { id: "help", label: "Aide", items: [
-      item("À propos", { click: "btn-settings" }),
+      item("À propos", { action: "about" }),
       item("Autotest du moteur", { click: "btn-selftest" }),
       item("Signaler un problème", { action: "report" }),
     ] },

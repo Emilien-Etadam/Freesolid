@@ -1,9 +1,9 @@
 // Panneaux des fonctions de FEATURES : sélection courante, ouverture
-// (aperçu, réédition, refus du moteur), poignée de profondeur, liaison
-// des boutons du ruban.
+// (aperçu, réédition, refus du moteur), poignée de profondeur — à la
+// création comme à la réédition —, liaison des boutons du ruban.
 
 import { panelNotice } from "../panel.js";
-import { num } from "../num.js";
+import { num, plainNumber } from "../num.js";
 import { resolveProfileSketch } from "../features.js";
 import { combineFinished } from "../combine.js";
 import { latestGraphOrRepeat } from "../graph.js";
@@ -118,8 +118,8 @@ export function installFeaturePanel(ctx) {
       ? extrudeDepthHandle(entry, ctx) : null;
     if (depthHandle) spec.onClose = () => depthHandle.close();
     if (entry.preview !== false) {
-      spec.onChange = (v) => {
-        schedulePreview(entry.build(v, ctx));
+      spec.onChange = (v, how) => {
+        schedulePreview(entry.build(v, ctx), how);
         if (entry.button === "btn-fillet") updateFilletRadiusBubble(v);
         depthHandle?.update(v);
       };
@@ -134,35 +134,36 @@ export function installFeaturePanel(ctx) {
     panel.open(spec);
   }
 
-  /** Flèche au bout de l'extrusion (ou de l'enlèvement) : la tirer change
-   *  la profondeur du panneau, l'aperçu suit. Profondeur « borgne » ou
-   *  « plan milieu » seulement. */
-  function extrudeDepthHandle(entry, featureCtx) {
-    const pocket = entry.button === "btn-pocket";
-    const sketch = resolveProfileSketch(featureCtx)?.name;
-    let frame = null;
+  /** Flèche de profondeur d'un panneau. `where(v)` la pose pour les
+   *  valeurs du panneau — `{ origin, dir, length, factor, key }` — ou rend
+   *  null (pas de flèche) ; `ready()` dit qu'elle sait répondre. La tirer
+   *  change la cote `key` du panneau (`factor` fois le déplacement),
+   *  l'aperçu suit. */
+  function depthArrow(where) {
+    let ready = false;
     let dragging = false;
     let closed = false;
     let last = null;
 
     function show(v) {
       last = v;
-      if (closed || !frame || dragging) return;
-      const length = num(v.length);
-      if (!(length > 0) || (v.cond !== "borgne" && v.cond !== "milieu")) {
+      if (closed || !ready || dragging) return;
+      const at = where(v);
+      if (!at) {
         ctx.handles?.hide();
         return;
       }
-      const half = v.cond === "milieu";
-      const sign = (pocket ? -1 : 1) * (v.reversed && !half ? -1 : 1);
-      const dir = frame.normal.map((c) => c * sign);
-      const reach = half ? length / 2 : length;
+      let shown = at.length;
       ctx.handles.show({
-        origin: frame.center.map((c, i) => c + dir[i] * reach), dir,
+        origin: at.origin, dir: at.dir, owner: "panel",
         onDrag: (d) => {
           dragging = true;
-          const next = Math.max(0.5, Math.round((length + d * (half ? 2 : 1)) * 2) / 2);
-          panel.restore({ length: next });
+          const next = Math.max(0.5,
+            Math.round((at.length + d * at.factor) * 2) / 2);
+          if (next === shown) return;
+          shown = next;
+          // Le fantôme suit la flèche pendant le glisser.
+          panel.restore({ [at.key]: next }, { live: true });
         },
         onEnd: () => {
           dragging = false;
@@ -171,16 +172,60 @@ export function installFeaturePanel(ctx) {
       });
     }
 
+    return {
+      update: (v) => show(v),
+      ready: () => {
+        ready = true;
+        if (last) show(last);
+      },
+      close: () => { closed = true; ctx.handles?.hide(); },
+    };
+  }
+
+  /** Flèche au bout de l'extrusion (ou de l'enlèvement) qu'on crée.
+   *  Profondeur « borgne » ou « plan milieu » seulement. */
+  function extrudeDepthHandle(entry, featureCtx) {
+    const pocket = entry.button === "btn-pocket";
+    const sketch = resolveProfileSketch(featureCtx)?.name;
+    let frame = null;
+    const arrow = depthArrow((v) => {
+      const length = num(v.length);
+      if (!(length > 0) || (v.cond !== "borgne" && v.cond !== "milieu")) {
+        return null;
+      }
+      const half = v.cond === "milieu";
+      const sign = (pocket ? -1 : 1) * (v.reversed && !half ? -1 : 1);
+      const dir = frame.normal.map((c) => c * sign);
+      const reach = half ? length / 2 : length;
+      return { origin: frame.center.map((c, i) => c + dir[i] * reach), dir,
+               length, factor: half ? 2 : 1, key: "length" };
+    });
     if (sketch) {
       call("sketch_frame", { sketch }).then((result) => {
         frame = result;
-        if (last) show(last);
+        arrow.ready();
       }).catch(() => {});
     }
-    return {
-      update: (v) => show(v),
-      close: () => { closed = true; ctx.handles?.hide(); },
-    };
+    return arrow;
+  }
+
+  /** Flèche de la fonction qu'on réédite : le moteur la pose au bout de
+   *  l'extrusion ou de l'enlèvement (`feature_drag_info`), ou n'en donne
+   *  pas. Une équation tapée dans la cote la retire. */
+  function editDepthHandle(feature) {
+    let drag = null;
+    const arrow = depthArrow((v) => {
+      const length = plainNumber(v[drag.key]);
+      if (!(length > 0)) return null;
+      const shift = (length - drag.value) / drag.factor;
+      return { origin: drag.point.map((c, i) => c + drag.normal[i] * shift),
+               dir: drag.normal, length, factor: drag.factor, key: drag.key };
+    });
+    call("feature_drag_info", { feature: feature.name }).then((info) => {
+      drag = info.drag;
+      if (drag) arrow.ready();
+    }).catch(() => {});
+    return arrow;
   }
 
   function bindFeature(entry) {
@@ -194,5 +239,5 @@ export function installFeaturePanel(ctx) {
     }
   }
 
-  return { currentSelection, openFeaturePanel, bindFeature };
+  return { currentSelection, openFeaturePanel, bindFeature, editDepthHandle };
 }

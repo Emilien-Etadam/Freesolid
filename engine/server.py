@@ -252,6 +252,14 @@ def _safe_plugin_static_path(url_path, loaded=None):
 
 class Handler(BaseHTTPRequestHandler):
 
+    def handle(self):
+        # Un client parti avant sa réponse (page rechargée pendant un
+        # aperçu) : rien à lui écrire, ce n'est pas une erreur du moteur.
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+
     # -- api -------------------------------------------------------------
 
     def do_POST(self):  # noqa: N802 - stdlib API name
@@ -319,7 +327,18 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _ignore_sigpipe():
+    """FreeCAD remet SIGPIPE à son action par défaut : écrire à un client
+    déjà parti tuait tout le moteur (code 141). Ignoré, l'écriture lève
+    BrokenPipeError, que ``Handler.handle`` avale. Windows n'a pas de
+    SIGPIPE."""
+    import signal
+    if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+
+
 def main():
+    _ignore_sigpipe()
     try:
         server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError as exc:

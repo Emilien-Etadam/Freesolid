@@ -971,6 +971,30 @@ def p67_tirer_face_bout(self, mark, report, etat):
         and abs(hole["value"] - 5) < 1e-9
         and cap["key"] == hole["key"] == "length")
 
+    # Réédition : la flèche au bout de la fonction, comme à la création.
+    def near(drag, z, dz, factor):
+        return (drag is not None and abs(drag["point"][2] - z) < 1e-6
+                and abs(drag["normal"][2] - dz) < 1e-6
+                and drag["factor"] == factor and drag["key"] == "length")
+    sketch = self._doc.getObject(cap["feature"]).Profile[0].Name
+    tip = self.feature_drag_info(cap["feature"])["drag"]
+    dig = self.feature_drag_info(hole["feature"])["drag"]
+    self.add_rect_sketch(10, 10)
+    both = self.add_pad(8, midplane=True)["features"][-1]["name"]
+    half = self.feature_drag_info(both)["drag"]
+    under = next(i for i, f in enumerate(body.Shape.Faces)
+                 if f.normalAt(0, 0).z < -0.9
+                 and abs(f.CenterOfMass.z + 4) < 1e-6)
+    pulled = self.face_drag_info(under)["drag"]
+    report["p67_fleche_reedition"] = (
+        near(tip, 20, 1, 1) and tip["value"] == 20
+        and near(dig, 15, -1, 1) and near(half, 4, 1, 2)
+        and self.feature_drag_info(sketch)["drag"] is None)
+    # Plan milieu (SideType depuis FreeCAD 1.1) : sa face se tire aussi.
+    report["p67_tirer_face_symetrique"] = (
+        pulled is not None and pulled["factor"] == 2
+        and pulled["value"] == 8)
+
 
 def p19b_paroi_mince_extremites_fermees(self, mark, report, etat):
     mark("p19b: paroi mince à extrémités fermées")

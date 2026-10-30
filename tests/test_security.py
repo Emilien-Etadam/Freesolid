@@ -426,3 +426,27 @@ def test_validate_expression_refuses_too_long():
     with pytest.raises(protocol.ProtocolError) as excinfo:
         protocol.validate_expression("a" * 300)
     assert "trop longue" in str(excinfo.value)
+
+
+# -- client parti avant sa réponse ---------------------------------------
+
+def test_sigpipe_is_ignored_by_the_engine():
+    import signal
+    if not hasattr(signal, "SIGPIPE"):
+        pytest.skip("pas de SIGPIPE sur cette plateforme")
+    before = signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    try:
+        server._ignore_sigpipe()
+        assert signal.getsignal(signal.SIGPIPE) == signal.SIG_IGN
+    finally:
+        signal.signal(signal.SIGPIPE, before)
+
+
+@pytest.mark.parametrize("error", [BrokenPipeError, ConnectionResetError])
+def test_client_gone_is_not_an_engine_error(monkeypatch, error):
+    def gone(self):
+        raise error
+    monkeypatch.setattr(server.BaseHTTPRequestHandler, "handle", gone)
+    handler = object.__new__(server.Handler)
+    server.Handler.handle(handler)
+    assert handler.close_connection

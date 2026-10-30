@@ -1693,7 +1693,7 @@ export function installTree(ctx) {
       }), ...contourGroups(feature)],
       onChange: (v) => {
         const values = revolutionEditValues(v, spec, feature.params);
-        schedulePreview(values && Object.keys(values).length
+        schedulePreview(values
           ? { op: "set_params",
               params: { feature: feature.name, values } }
           : null);
@@ -1726,7 +1726,7 @@ export function installTree(ctx) {
       }],
       onChange: (v) => {
         const values = chamferEditValues(v, spec, feature.params);
-        schedulePreview(values && Object.keys(values).length
+        schedulePreview(values
           ? { op: "set_params",
               params: { feature: feature.name, values } }
           : null);
@@ -1871,6 +1871,8 @@ export function installTree(ctx) {
         }
         return values;
       };
+      // La flèche au bout d'une extrusion, comme à la création.
+      const depth = ctx.editDepthHandle?.(feature);
       panel.open({
         icon: TREE_ICONS[feature.type_key] ?? "body",
         title: info.label,
@@ -1883,14 +1885,15 @@ export function installTree(ctx) {
                      value: String(p.expr ?? p.value) };
           }),
         }, ...contourGroups(feature)],
-        // L'édition profite du même aperçu jaune que la création.
-        onChange: (v) => {
-          const values = collectChanged(v);
-          schedulePreview(Object.keys(values).length
-            ? { op: "set_params",
-                params: { feature: feature.name, values } }
-            : null);
+        // L'édition profite du même aperçu jaune que la création, dès
+        // l'ouverture : sans changement, il montre la fonction telle
+        // qu'elle est.
+        onChange: (v, how) => {
+          schedulePreview({ op: "set_params",
+            params: { feature: feature.name, values: collectChanged(v) } }, how);
+          depth?.update(v);
         },
+        onClose: () => depth?.close(),
         onApply: (v) => applyEdit(feature, v, collectChanged(v)),
       });
     } catch (error) {

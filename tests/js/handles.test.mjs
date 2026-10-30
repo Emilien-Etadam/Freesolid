@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { axisParam } from "../../app/handles.js";
+import { axisParam, handleSize } from "../../app/handles.js";
 
 describe("poignée le long d'un axe", () => {
   it("donne la position sur l'axe vue par le rayon", () => {
@@ -14,5 +14,12 @@ describe("poignée le long d'un axe", () => {
 
   it("rien quand le rayon suit l'axe", () => {
     assert.equal(axisParam([0, 0, 10], [0, 0, -1], [0, 0, 0], [0, 0, 1]), null);
+  });
+});
+
+describe("taille de la flèche", () => {
+  it("suit la pièce, avec un minimum pour les petites", () => {
+    assert.equal(handleSize(100), 25);
+    assert.equal(handleSize(10), 7.5);
   });
 });

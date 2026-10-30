@@ -67,6 +67,7 @@
   "edit_vertex_chamfer": {"requis": ["feature", "distances"], "types": [["feature", "str"], ["distances", "list"]], "optionnels": []},
   "export_part": {"requis": ["path"], "types": [["path", "str"]], "optionnels": []},
   "face_drag_info": {"requis": ["face"], "types": [["face", "int"]], "optionnels": []},
+  "feature_drag_info": {"requis": ["feature"], "types": [["feature", "str"]], "optionnels": []},
   "feature_relations": {"requis": ["feature"], "types": [["feature", "str"]], "optionnels": []},
   "get_graph_feature": {"requis": ["feature"], "types": [["feature", "str"]], "optionnels": []},
   "get_params": {"requis": ["feature"], "types": [["feature", "str"]], "optionnels": []},

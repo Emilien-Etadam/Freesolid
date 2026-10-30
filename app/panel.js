@@ -16,7 +16,8 @@
 //     autoFocus?: boolean, // false : ne pas voler le focus clavier
 //     actions?: [{ label, title?, className?, onClick(values) }],
 //     values?: {…} — valeurs de départ (y compris des clés sans ligne),
-//     onApply(values), onCancel?(), onChange?(values),
+//     onApply(values), onCancel?(), onChange?(values, { live }) — live :
+//       valeur tirée dans la vue, l'aperçu suit sans attendre,
 //     onClose?() — à chaque fermeture (OK, annuler, panneau remplacé)
 //   }
 // Rows: { type: "number", key, label, value, unit?, min?, step?, showIf?,
@@ -140,14 +141,14 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
 
   // Chaque modification de valeur notifie la commande — c'est ce qui
   // alimente l'aperçu jaune en temps réel.
-  function changed() {
+  function changed({ live = false } = {}) {
     const focused = document.activeElement;
     if (focused?.tagName === "INPUT" && panelEl.contains(focused)) {
       editedInput = focused;
     }
     updateHint();
     if (active?.spec.onPreview && !previewOn) return; // aperçu coupé
-    active?.spec.onChange?.({ ...active.values });
+    active?.spec.onChange?.({ ...active.values }, { live });
   }
 
   function el(tag, className, text) {
@@ -777,12 +778,13 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       active.values = { ...active.values, ...values };
       changed();
     },
-    /** Remet des valeurs dans le panneau ouvert (après un refus du moteur). */
-    restore(values) {
+    /** Remet des valeurs dans le panneau ouvert (après un refus du moteur,
+     *  ou tirées dans la vue : `live`). */
+    restore(values, { live = false } = {}) {
       if (!active) return;
       active.values = { ...active.values, ...values };
       render();
-      changed();
+      changed({ live });
     },
     get active() { return active !== null; },
     /** Un panneau de commande (avec OK) est ouvert. */

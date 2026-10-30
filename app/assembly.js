@@ -37,7 +37,8 @@ export function installAssembly(ctx) {
     }
     ctx.assemblyState = null;
     selectedComponent = null;
-    ctx.handles?.hide();
+    // Le trièdre seulement : la flèche d'un panneau de pièce reste.
+    if (ctx.handles?.owner === "assembly") ctx.handles.hide();
   }
 
   function showAssemblyMeshes(data) {
@@ -106,6 +107,7 @@ export function installAssembly(ctx) {
     const size = Math.max(box.getSize(new THREE.Vector3()).length() * 0.35, 12);
     ctx.handles.show({
       origin: box.getCenter(new THREE.Vector3()).toArray(), axes: TRIAD, size,
+      owner: "assembly",
       onDrag: (d, axis) => {
         mesh.position.set(...TRIAD[axis].dir.map((c) => c * d));
         say(t("{c} : {d} mm le long de {a}", { c: comp.label,

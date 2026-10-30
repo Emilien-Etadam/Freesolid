@@ -1555,12 +1555,15 @@ export function createSketchMode(deps) {
       setCursor("grabbing");
       return;
     }
-    // Drag d'arête entière (Sketcher point 0 = courbe).
+    // Drag d'arête entière (Sketcher point 0 = courbe) : elle glisse sans
+    // se déformer — une ligne, un cercle, un arc, une spline ; une
+    // ellipse, non (le moteur ne sait pas la translater).
     const entity = overEntity(event);
     if (!entity) {
       mode.box = { x: event.clientX, y: event.clientY };
       return;
     }
+    if (!slidesWhole(entity)) return;
     const local = toLocal(event);
     if (!local) return;
     mode.drag = {
@@ -1585,14 +1588,23 @@ export function createSketchMode(deps) {
     return snap;
   }
 
-  /** Cible abs. pour sketch_move point 0 : nouveau départ (ligne) ou centre. */
+  /** Une entité qui glisse entière (sketch_move point 0). */
+  function slidesWhole(entity) {
+    return ["line", "circle", "arc"].includes(entity.type)
+      || (entity.type === "poly" && entity.kind === "spline"
+          && entity.points?.length > 1);
+  }
+
+  /** Cible abs. pour sketch_move point 0 : nouveau départ (ligne,
+   *  spline) ou centre (cercle, arc) — le repère du moteur. */
   function wholeCurveTarget(drag, local) {
     const dx = local.x - drag.grab.x, dy = local.y - drag.grab.y;
     const b = drag.base;
     if (b.type === "circle" || b.type === "arc") {
       return { x: b.c[0] + dx, y: b.c[1] + dy };
     }
-    return { x: b.p1[0] + dx, y: b.p1[1] + dy };
+    const start = b.p1 ?? b.points[0];
+    return { x: start[0] + dx, y: start[1] + dy };
   }
 
   function applyWholeCurveLocal(entity, drag, local) {

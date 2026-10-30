@@ -1315,3 +1315,92 @@ def p79_annuler_esquisse(self, mark, report, etat):
     report["p79_annuler_esquisse"] = (floor and listed and capped and redone
                                       and dragged and snapped and whole
                                       and unbooked and edited and outside)
+
+
+def p80_glisser_courbe_entiere(self, mark, report, etat):
+    mark("p80: une courbe glissée entière ne se déforme pas")
+    from engine.kernel import KernelError, dispatch
+    V = self._app().Vector
+
+    def run(op, **params):
+        out = dispatch(self, op, params)
+        if not out["ok"]:
+            raise KernelError(out["error"])
+        return out["result"]
+
+    def near(a, b):
+        return a.distanceToPoint(b) < 1e-6
+
+    self.new_part("Pièce glisser courbe")
+    name = run("sketch_start")["sketch"]
+    sk = self._get_sketch(name)
+    run("sketch_add_line", sketch=name, x1=10, y1=10, x2=40, y2=20)     # 0
+    run("sketch_add_circle", sketch=name, cx=80, cy=0, r=8)             # 1
+    run("sketch_add_arc", sketch=name, cx=0, cy=60, r=10, a1=0, a2=2)   # 2
+    run("sketch_add_spline", sketch=name,
+        points=[[50, 50], [60, 58], [70, 46], [80, 54]])                # 3
+    run("sketch_add_ellipse", sketch=name, cx=-60, cy=0, rx=12, ry=6)   # 4
+    # Une ligne : son départ va à la cible, la longueur et la direction
+    # restent (Sketcher, lui, y poserait son milieu).
+    run("sketch_move", sketch=name, geo=0, point=0, x=15, y=30)
+    line = sk.Geometry[0]
+    slid_line = (near(line.StartPoint, V(15, 30, 0))
+                 and near(line.EndPoint, V(45, 40, 0)))
+    # Un cercle, un arc : le centre va à la cible, le rayon et les
+    # angles restent.
+    run("sketch_move", sketch=name, geo=1, point=0, x=90, y=5)
+    circle = sk.Geometry[1]
+    slid_circle = (near(circle.Center, V(90, 5, 0))
+                   and abs(circle.Radius - 8) < 1e-6)
+    arc = sk.Geometry[2]
+    start = V(arc.StartPoint)
+    run("sketch_drop", sketch=name, geo=2, point=0, x=5, y=70)
+    arc = sk.Geometry[2]
+    slid_arc = (near(arc.Center, V(5, 70, 0))
+                and abs(arc.Radius - 10) < 1e-6
+                and near(arc.StartPoint, start + V(5, 10, 0)))
+    # Une spline : tous ses pôles suivent son départ.
+    poles = [V(p) for p in sk.Geometry[3].getPoles()]
+    run("sketch_move", sketch=name, geo=3, point=0, x=55, y=40)
+    slid_spline = all(near(p, q + V(5, -10, 0)) for p, q in
+                      zip(sk.Geometry[3].getPoles(), poles))
+    # Une ellipse se déformerait : refusée, rien ne bouge.
+    center = V(sk.Geometry[4].Center)
+    refused = (not dispatch(self, "sketch_move", {
+        "sketch": name, "geo": 4, "point": 0, "x": 0, "y": 0})["ok"]
+               and near(sk.Geometry[4].Center, center))
+    run("sketch_cancel", sketch=name)
+    # Le cas qui revenait au lâcher : le bord libre d'un rectangle dont un
+    # côté touche un cercle tangent garde l'abscisse où on le lâche.
+    name = run("sketch_start")["sketch"]
+    sk = self._get_sketch(name)
+    run("sketch_add_rectangle", sketch=name, x1=0, y1=0, x2=40, y2=30)
+    run("sketch_add_circle", sketch=name, cx=60, cy=15, r=20)
+    rect = range(len(sk.Geometry) - 1)
+    edge = next(g for g in rect
+                if abs(sk.Geometry[g].StartPoint.y - 30) < 1e-6
+                and abs(sk.Geometry[g].EndPoint.y - 30) < 1e-6)
+    side = next(g for g in rect
+                if abs(sk.Geometry[g].StartPoint.x - 40) < 1e-6
+                and abs(sk.Geometry[g].EndPoint.x - 40) < 1e-6)
+    run("sketch_constrain", sketch=name, kind="tangent", geo1=side,
+        geo2=len(sk.Geometry) - 1)
+    doc = self._require_doc()
+    count = doc.UndoCount
+    before = sorted((sk.Geometry[edge].StartPoint.x,
+                     sk.Geometry[edge].EndPoint.x))
+    run("sketch_move", sketch=name, geo=edge, point=0,
+        x=sk.Geometry[edge].StartPoint.x, y=40)
+    run("sketch_drop", sketch=name, geo=edge, point=0,
+        x=sk.Geometry[edge].StartPoint.x, y=45)
+    after = sorted((sk.Geometry[edge].StartPoint.x,
+                    sk.Geometry[edge].EndPoint.x))
+    kept = (abs(sk.Geometry[edge].StartPoint.y - 45) < 1e-6
+            and all(abs(a - b) < 1e-6 for a, b in zip(after, before))
+            and doc.UndoCount == count + 1)
+    run("undo", sketch=name)
+    undone = abs(sk.Geometry[edge].StartPoint.y - 30) < 1e-6
+    run("sketch_cancel", sketch=name)
+    report["p80_glisser_courbe_entiere"] = (
+        slid_line and slid_circle and slid_arc and slid_spline and refused
+        and kept and undone)

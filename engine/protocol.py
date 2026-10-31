@@ -284,6 +284,7 @@ def _assert_in_jail(resolved, *, allow_root=False):
 #: Extensions qu'un dialogue peut montrer. Le filtre fin est côté client.
 _LIST_EXTENSIONS = frozenset({
     ".fcstd", ".step", ".stp", ".stl", ".3mf", ".iges", ".igs",
+    ".sldprt", ".x_t", ".x_b",
 })
 
 

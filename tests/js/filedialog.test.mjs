@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  joinPath, needsOverwrite, visibleEntries, withExtension, writeFileDir,
+  existingName, joinPath, needsOverwrite, visibleEntries, withExtension,
+  writeFileDir,
 } from "../../app/filedialog.js";
 
 const ENTRIES = [
@@ -9,6 +10,8 @@ const ENTRIES = [
   { name: "a.FCStd", kind: "file" },
   { name: "b.stl", kind: "file" },
   { name: "c.step", kind: "file" },
+  { name: "fermoir.SLDPRT", kind: "file" },
+  { name: "cube.X_T", kind: "file" },
 ];
 
 describe("dialogue de fichiers", () => {
@@ -34,6 +37,21 @@ describe("dialogue de fichiers", () => {
   it("signale un fichier déjà présent, quelle que soit la casse", () => {
     assert.equal(needsOverwrite(ENTRIES, "a.fcstd"), true);
     assert.equal(needsOverwrite(ENTRIES, "neuf.fcstd"), false);
+  });
+
+  it("ouvre le fichier sous le nom que le dossier lui donne", () => {
+    const typed = withExtension("fermoir.sldprt", [".SLDPRT"]);
+    assert.equal(existingName(ENTRIES, typed), "fermoir.SLDPRT");
+    assert.equal(existingName(ENTRIES, withExtension("cube.x_t", [".x_t", ".x_b"])),
+      "cube.X_T");
+    assert.equal(existingName(ENTRIES, "pieces"), "");
+    assert.equal(existingName(ENTRIES, "absent.x_t"), "");
+  });
+
+  it("montre les pièces SLDPRT et Parasolid quelle que soit la casse", () => {
+    const shown = visibleEntries(ENTRIES, [".SLDPRT", ".x_t", ".x_b"]);
+    assert.deepEqual(shown.map((entry) => entry.name),
+      ["pieces", "fermoir.SLDPRT", "cube.X_T"]);
   });
 
   it("mémorise le dernier dossier", () => {

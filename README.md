@@ -41,6 +41,9 @@ Details and the release procedure: [`desktop/README.md`](desktop/README.md).
 - **Drawings**: dimensioned DXF (Front / Top / Iso views), optional X/Y/Z
   section
 - **Import/export**: STEP, IGES, STL, 3MF; open and save `.FCStd`
+- **`.SLDPRT` parts and Parasolid** (`.x_t`, `.x_b`): opened as plain
+  geometry, one body per solid, with the built-in
+  [OpenSW](https://github.com/Emilien-Etadam/OpenSW) reader — see below
 
 ## Run from source
 
@@ -101,6 +104,18 @@ When the terminal prints “FreeSolid engine ready”, open
    `freecadcmd.exe` in its installation folder.)
 4. Open **<http://localhost:8787>** in your browser.
 
+### Opening `.SLDPRT` and Parasolid files
+
+Nothing to install: FreeSolid includes the reader from
+[OpenSW](https://github.com/Emilien-Etadam/OpenSW), by the same author, in
+`engine/vendor/sldprt/`. It decodes the file in pure Python and writes a
+STEP file, which FreeSolid then imports. Only the geometry comes in, one
+body per solid. The file's feature tree is not replayed, and no Parasolid
+schema file is needed.
+
+Old `.SLDPRT` files (OLE format) also need `olefile` in FreeCAD's Python
+(`pip install olefile`); without it, only those files are refused.
+
 ## Languages
 
 The interface is available in French and English: gear button → Settings →
@@ -160,3 +175,4 @@ Vendored components:
 
 - WASM sketch solver — [`app/vendor/planegcs/README.md`](app/vendor/planegcs/README.md)
 - FreeCAD icons — [`app/icons/README.md`](app/icons/README.md)
+- `.SLDPRT` / Parasolid reader (OpenSW) — [`engine/vendor/sldprt/README.md`](engine/vendor/sldprt/README.md)

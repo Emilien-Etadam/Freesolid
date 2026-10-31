@@ -49,6 +49,13 @@ porte amont vers FreeCAD.
   Esquisse → dessiner un rectangle → Bossage extrudé ; ou double-cliquer une
   fonction de l'arbre pour rééditer sa cote (reconstruction paramétrique).
 
+- **Lecteur `.SLDPRT` / `.x_t` / `.x_b`** (`engine/foreign.py`) : celui
+  d'OpenSW, repris tel quel dans `engine/vendor/sldprt/` (son README dit
+  d'où, et comment le mettre à jour). **Ne pas le modifier ici** : corriger
+  dans OpenSW, puis recopier. Le dépôt n'a pas de vraie pièce : le
+  selftest (p18) vérifie le refus d'un fichier abîmé et remplace le
+  lecteur pour le reste.
+
 ### Multilingue
 
 Le français est la langue source. Un texte visible dans l'interface passe

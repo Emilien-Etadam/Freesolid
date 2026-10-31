@@ -16,8 +16,12 @@ const FILE_MODES = {
       { label: "Pièce (.FCStd)", extensions: [".FCStd"] },
       { label: "STEP", extensions: [".step", ".stp"] },
       { label: "IGES", extensions: [".iges", ".igs"] },
+      // Lus par le lecteur d'OpenSW, embarqué (engine/foreign.py).
+      { label: "Pièce SLDPRT", extensions: [".SLDPRT"] },
+      { label: "Parasolid", extensions: [".x_t", ".x_b"] },
       { label: "Tous les fichiers autorisés",
-        extensions: [".FCStd", ".step", ".stp", ".iges", ".igs"] },
+        extensions: [".FCStd", ".step", ".stp", ".iges", ".igs",
+          ".SLDPRT", ".x_t", ".x_b"] },
     ],
   },
   save: {
@@ -95,10 +99,16 @@ export function joinPath(dir, name) {
   return dir.endsWith(sep) ? dir + name : dir + sep + name;
 }
 
-export function needsOverwrite(entries, name) {
+/** Le nom tel que le dossier l'écrit, casse comprise, ou "". */
+export function existingName(entries, name) {
   const wanted = String(name || "").toLowerCase();
-  return (entries || []).some((entry) =>
+  const found = (entries || []).find((entry) =>
     entry?.kind === "file" && String(entry.name).toLowerCase() === wanted);
+  return found ? String(found.name) : "";
+}
+
+export function needsOverwrite(entries, name) {
+  return existingName(entries, name) !== "";
 }
 
 /** `listDir(path)` résout le dossier. `pick(mode)` renvoie un chemin ou null. */
@@ -237,14 +247,19 @@ export function installFileDialog(doc, { listDir, storage, confirmReplace } = {}
   }
 
   async function accept(typed) {
-    const name = withExtension(typed, extensions());
+    let name = withExtension(typed, extensions());
     if (!name || !listing?.path) {
       showError("Fichier introuvable.");
       return;
     }
-    if (mode.mustExist && !needsOverwrite(listing.entries, name)) {
-      showError("Fichier introuvable.");
-      return;
+    if (mode.mustExist) {
+      // Le filtre impose sa casse (« cube.step ») ; le disque garde la
+      // sienne (« cube.STEP ») et il est sensible à la casse sous Linux.
+      name = existingName(listing.entries, name);
+      if (!name) {
+        showError("Fichier introuvable.");
+        return;
+      }
     }
     if (mode.overwrite && needsOverwrite(listing.entries, name) && !ask(name)) {
       return;

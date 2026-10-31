@@ -109,6 +109,7 @@ def _etapes():
         fonctions.p15_gravure_texte,
         esquisse.p17_spline_ellipse_decalage,
         document.p18_import_step_export_3mf,
+        document.p18_lecture_opensw,
         esquisse.p3_arc_rainure_polygone,
         esquisse.p3_conge_esquisse,
         esquisse.p3_ajuster_trim,

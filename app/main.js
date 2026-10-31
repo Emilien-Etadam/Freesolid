@@ -2338,12 +2338,20 @@ async function openDocument(path) {
     await updateViewport(gen);
     if (gen !== viewGen) return;
     rememberRecent(localStore, path);
-    say(tree.imported_solids !== undefined
+    const opened = tree.imported_solids > 1
+      ? t("Importé — {n} solides, chacun base de son propre corps.",
+        { n: tree.imported_solids })
+      : tree.imported_solids !== undefined
       ? t("Importé — {n} solide(s), la forme est la base du corps.",
         { n: tree.imported_solids })
       : tree.bodies_in_file > 1
         ? t("Ouvert — {n} corps dans le fichier.", { n: tree.bodies_in_file })
-        : t("Ouvert."));
+        : t("Ouvert.");
+    // Corps qu'un lecteur .sldprt / .x_t n'a pas su écrire : le dire.
+    const skipped = tree.skipped_bodies > 0
+      ? " " + t("{k} corps illisible(s) laissé(s) de côté.", { k: tree.skipped_bodies })
+      : "";
+    say(opened + skipped);
   } catch (error) {
     if (gen !== viewGen) return;
     say(error.message, true);

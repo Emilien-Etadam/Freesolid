@@ -472,7 +472,7 @@ export function createSettingsDialog({
           <button type="button" data-url="${REPO_URL}">${T("Dépôt GitHub")}</button>
           <button type="button" data-url="${ISSUES_URL}">${T("Signaler un problème")}</button>
           <button type="button" data-url="${RELEASES_URL}">${T("Versions")}</button>
-          <button type="button" data-url="${LICENSE_URL}">${T("Licence LGPL-2.1")}</button>
+          <button type="button" data-url="${LICENSE_URL}">${T("Licence AGPL-3.0")}</button>
         </div>
       </fieldset>
       <fieldset class="settings-group"><legend>${T("Mises à jour")}</legend>

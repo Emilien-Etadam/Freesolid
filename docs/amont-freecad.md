@@ -75,20 +75,26 @@ Trois questions, dans cet ordre. La première qui répond « oui » tranche.
 ## 3. La grille des licences — ce qui peut partir en amont
 
 C'est la contrainte qui **décide de la forme de nos emprunts**, et elle est
-plus serrée que la simple compatibilité avec FreeSolid. Une contribution à
-FreeCAD doit être remontable en **LGPL-2.1-or-later** ; toute ligne qui ne
-peut pas l'être ferme la porte amont pour elle-même et pour tout ce qui en
-dérive.
+plus serrée que la simple compatibilité avec FreeSolid. FreeSolid est en
+**AGPL-3.0-or-later** depuis le 2026-10-31 (LGPL-2.1-or-later jusqu'à la
+0.4.1). Une contribution à FreeCAD, elle, doit être remontable en
+**LGPL-2.1-or-later** ; toute ligne qui ne peut pas l'être ferme la porte
+amont pour elle-même et pour tout ce qui en dérive.
+
+Nos propres lignes restent remontables quelle que soit la licence de
+FreeSolid : leur auteur peut toujours les donner à FreeCAD sous LGPL. Une
+contribution extérieure, elle, arrive en AGPL : pour la remonter, il faut
+l'accord de son auteur.
 
 | Source | Intégrable dans FreeSolid | Remontable à FreeCAD | Exemple |
 |---|---|---|---|
-| **Nos propres lignes** | oui | **oui** | `engine/guard.py`, `engine/replay.py` |
+| **Nos propres lignes** | oui | **oui** — l'auteur les cède sous LGPL | `engine/guard.py`, `engine/replay.py` ; [OpenSW](https://github.com/Emilien-Etadam/OpenSW), même auteur |
 | **LGPL-2.1(-or-later)** | oui, sans effet de bord | **oui** | [`j8sr0230/Nodes`](https://github.com/j8sr0230/Nodes) et son modèle `awkward` |
 | **MIT / BSD** | oui, avec attribution | **oui** (relicenciable en LGPL) | [`pboyer/verb`](https://github.com/pboyer/verb) (NURBS), [`sandraschi/freecad-mcp`](https://github.com/sandraschi/freecad-mcp) |
-| **Apache-2.0** | possible, mais fait passer l'ensemble distribué en LGPL-3.0 | **non** | [`vcad`](https://github.com/ecto/vcad) |
-| **GPL-2.0** | non — contaminerait FreeSolid entier | **non** | [Oblikovati](https://github.com/Oblikovati/Oblikovati) (l'application ; son contrat d'API, lui, est en Apache-2.0) |
-| **GPL-3.0** | non — contaminerait FreeSolid entier | **non** — un GPL-3 ne fusionne pas dans une bibliothèque LGPL-2.1 | [FreeCAD-Ribbon](https://github.com/APEbbers/FreeCAD-Ribbon), [Dune3D](https://github.com/dune3d/dune3d) |
-| **AGPL-3.0** | non — contaminerait FreeSolid entier | **non** | [Chili3D](https://github.com/xiangechen/chili3d), [PartMode](https://github.com/BOMWiki/partmode) |
+| **Apache-2.0** | oui — Apache-2.0 entre dans l'AGPL-3.0 | **non** | [`vcad`](https://github.com/ecto/vcad) |
+| **GPL-2.0** | non si « GPL-2.0 seule » (incompatible avec l'AGPL-3.0) ; oui si « or later » | **non** | [Oblikovati](https://github.com/Oblikovati/Oblikovati) (l'application ; son contrat d'API, lui, est en Apache-2.0) |
+| **GPL-3.0** | oui — GPL-3.0 et AGPL-3.0 se combinent (article 13) | **non** — un GPL-3 ne fusionne pas dans une bibliothèque LGPL-2.1 | [FreeCAD-Ribbon](https://github.com/APEbbers/FreeCAD-Ribbon), [Dune3D](https://github.com/dune3d/dune3d) |
+| **AGPL-3.0** | oui | **non** | [Chili3D](https://github.com/xiangechen/chili3d), [PartMode](https://github.com/BOMWiki/partmode) |
 | **« Permissive » sur parole** | ⚠️ **à vérifier fichier en main** | ⚠️ | [jsketcher](https://github.com/xibyte/jsketcher) : un « MIT » modifié imposant la cession de copyright |
 
 **Une règle de vérification, apprise le 2026-08-21 :** le nom d'une licence

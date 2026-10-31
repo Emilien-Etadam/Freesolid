@@ -50,6 +50,10 @@ seulement — qu'il y a quelque chose à prendre.
 
 ## 3. Licence : pourquoi on prend des idées et jamais des lignes
 
+*Mise à jour du 2026-10-31 : FreeSolid est passé en AGPL-3.0-or-later.
+Apache-2.0 entre dans l'AGPL-3.0, donc les points 1 et 2 ne s'appliquent
+plus. Le point 3, la porte amont, reste et suffit à maintenir la règle.*
+
 Apache-2.0 contre notre LGPL-2.1-**or-later**. Le raisonnement est en trois
 temps, et il ne conclut pas comme celui de Chili3D :
 

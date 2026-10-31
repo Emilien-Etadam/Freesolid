@@ -3,7 +3,7 @@ name = "freesolid-desktop"
 version = "0.1.0"
 edition = "2021"
 description = "FreeSolid — application de bureau"
-license = "LGPL-2.1-or-later"
+license = "AGPL-3.0-or-later"
 
 [workspace]
 members = ["freecad"]

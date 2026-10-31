@@ -11,6 +11,13 @@ Les modules purs du moteur (`engine/vocab.py`, `engine/guard.py`,
 ce qui les rend testables en CI. Les imports FreeCAD restent dans les
 corps de fonctions / méthodes.
 
+### Licence
+
+AGPL-3.0-or-later depuis le 2026-10-31 (LGPL-2.1-or-later jusqu'à la
+0.4.1). Avant de reprendre du code d'ailleurs : la grille de
+`docs/amont-freecad.md` §3 dit ce qui peut entrer et ce qui fermerait la
+porte amont vers FreeCAD.
+
 ### FreeCAD headless
 
 - Installé via micromamba dans l'environnement `freecad`.

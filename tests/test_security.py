@@ -199,6 +199,41 @@ def test_list_dir_omits_symlink_leaving_jail(tmp_path, monkeypatch):
     assert all(entry["name"] != "dehors" for entry in listed["entries"])
 
 
+def test_wide_access_opens_any_folder_but_keeps_the_other_rules(
+        tmp_path, monkeypatch):
+    """Application de bureau : le dialogue natif laisse choisir un autre
+    disque. ``..``, les dossiers cachés et les extensions restent gardés."""
+    _jail_only(monkeypatch, tmp_path / "maison")
+    (tmp_path / "maison").mkdir()
+    other = tmp_path / "autre disque"
+    other.mkdir()
+    part = other / "piece.step"
+    part.write_text("x", encoding="utf-8")
+    monkeypatch.delenv(protocol.WIDE_ACCESS_ENV, raising=False)
+    with pytest.raises(protocol.ProtocolError, match="hors du dossier"):
+        protocol.resolve_user_path(str(part), (".step",), must_exist=True)
+    monkeypatch.setenv(protocol.WIDE_ACCESS_ENV, "1")
+    assert protocol.resolve_user_path(
+        str(part), (".step",), must_exist=True) == os.path.realpath(str(part))
+    assert protocol.resolve_user_path(
+        str(other / "neuf.FCStd"), (".FCStd",)).endswith("neuf.FCStd")
+    listed = protocol.list_user_dir(str(other))
+    assert [entry["name"] for entry in listed["entries"]] == ["piece.step"]
+    hidden = other / ".cache"
+    hidden.mkdir()
+    (hidden / "piece.step").write_text("x", encoding="utf-8")
+    with pytest.raises(protocol.ProtocolError, match="hors du dossier"):
+        protocol.resolve_user_path(str(hidden / "piece.step"), (".step",))
+    with pytest.raises(protocol.ProtocolError, match="hors du dossier"):
+        protocol.resolve_user_path(str(other) + "/../maison/a.step", (".step",))
+    with pytest.raises(protocol.ProtocolError, match="extension non autorisée"):
+        protocol.resolve_user_path(str(other / "notes.txt"), (".step",))
+    # Toute autre valeur que « 1 » garde la prison.
+    monkeypatch.setenv(protocol.WIDE_ACCESS_ENV, "oui")
+    with pytest.raises(protocol.ProtocolError, match="hors du dossier"):
+        protocol.resolve_user_path(str(part), (".step",), must_exist=True)
+
+
 # -- handlers HTTP (fonctions pures) -------------------------------------
 
 def test_port_from_env():

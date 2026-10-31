@@ -37,6 +37,14 @@ servie par ce moteur. Fermer la fenêtre arrête le moteur.
    moteur reçoit aussi `FREESOLID_PARENT_PID` et s'arrête de lui-même quand
    l'application disparaît, même tuée par un installeur.
 
+**Ouvrir, Enregistrer sous et Exporter** passent par le dialogue de fichiers
+du système (greffon `dialog` de Tauri), qui rend le vrai chemin. Le moteur
+reçoit donc `FREESOLID_WIDE_ACCESS=1` : tout dossier y est permis (autre
+disque, clé USB, partage réseau), pas seulement le dossier personnel. Les
+autres règles tiennent : pas de `..`, pas de dossier caché, extensions
+permises seulement. Dans un navigateur, une page ne peut pas obtenir de
+chemin : le dialogue reste celui de FreeSolid, limité au dossier personnel.
+
 Dans l'interface, le bouton engrenage ouvre **Paramètres** : version de
 FreeSolid et de FreeCAD, chemin de `freecadcmd`, journal du moteur, liens
 vers le dépôt, recherche et installation des mises à jour, réglages

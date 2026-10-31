@@ -41,7 +41,7 @@ import { installRefGeometry } from "./refgeom.js";
 import { installGestures } from "./gestures.js";
 import { installHandles } from "./handles.js";
 import { installCommandSearch, installShortcutBar } from "./shortcutbar.js";
-import { installFileDialog } from "./filedialog.js";
+import { installFileDialog, nativeFileDialog } from "./filedialog.js";
 import { rememberRecent } from "./welcome.js";
 import {
   SELECT_KINDS, filterActive,
@@ -2314,6 +2314,8 @@ function datumBuild(v) {
 const pickFile = installFileDialog(document, {
   listDir: (path) => call("list_dir", path ? { path } : {}),
   storage: localStore,
+  // Application de bureau : le dialogue du système, avec le vrai chemin.
+  native: nativeFileDialog(window),
 });
 
 async function openDocument(path) {

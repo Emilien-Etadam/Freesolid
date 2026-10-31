@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  existingName, joinPath, needsOverwrite, visibleEntries, withExtension,
-  writeFileDir,
+  baseName, existingName, joinPath, nativeFileDialog, nativeFilters,
+  needsOverwrite, parentDir, pickNative, visibleEntries, withAllowedExtension,
+  withExtension, writeFileDir,
 } from "../../app/filedialog.js";
 
 const ENTRIES = [
@@ -62,5 +63,102 @@ describe("dialogue de fichiers", () => {
     };
     assert.equal(writeFileDir(storage, "C:\\pieces"), true);
     assert.equal(saved.get("freesolid.filedir"), "C:\\pieces");
+  });
+});
+
+function memoryStorage(start = {}) {
+  const saved = new Map(Object.entries(start));
+  return {
+    saved,
+    setItem: (key, value) => saved.set(key, value),
+    getItem: (key) => saved.get(key) ?? null,
+  };
+}
+
+const OPEN = {
+  title: "Ouvrir", mustExist: true, overwrite: false, defaultName: "",
+  filters: [
+    { label: "STEP", extensions: [".step", ".stp"] },
+    { label: "Tous les fichiers autorisés", all: true, extensions: [".FCStd", ".step"] },
+  ],
+};
+const SAVE = {
+  title: "Exporter", mustExist: false, overwrite: true, defaultName: "piece.stl",
+  filters: [
+    { label: "Maillage (.stl)", extensions: [".stl"] },
+    { label: "3MF", extensions: [".3mf"] },
+  ],
+};
+
+describe("dialogue natif (application de bureau)", () => {
+  it("n'existe que dans la fenêtre Tauri", () => {
+    const dialog = { open() {}, save() {} };
+    assert.equal(nativeFileDialog({ __TAURI__: { dialog } }), dialog);
+    assert.equal(nativeFileDialog({ __TAURI__: {} }), null);
+    assert.equal(nativeFileDialog({}), null);
+    assert.equal(nativeFileDialog(undefined), null);
+  });
+
+  it("donne les filtres sans point, dans toutes les casses, « tous » d'abord", () => {
+    assert.deepEqual(nativeFilters(OPEN.filters), [
+      { name: "Tous les fichiers autorisés",
+        extensions: ["FCStd", "fcstd", "FCSTD", "step", "STEP"] },
+      { name: "STEP", extensions: ["step", "STEP", "stp", "STP"] },
+    ]);
+  });
+
+  it("coupe un chemin quel que soit le système", () => {
+    assert.equal(parentDir("/home/pc/a.step"), "/home/pc");
+    assert.equal(parentDir("/a.step"), "/");
+    assert.equal(parentDir("D:\\Pièces\\a.step"), "D:\\Pièces");
+    assert.equal(parentDir("D:\\a.step"), "D:\\");
+    assert.equal(parentDir("a.step"), "");
+    assert.equal(baseName("D:\\Pièces\\a.step"), "a.step");
+    assert.equal(baseName("/a.step"), "a.step");
+  });
+
+  it("complète l'extension que le système n'a pas mise", () => {
+    assert.equal(withAllowedExtension("/w/piece", [".stl", ".3mf"]), "/w/piece.stl");
+    assert.equal(withAllowedExtension("/w/piece.3MF", [".stl", ".3mf"]), "/w/piece.3MF");
+    assert.equal(withAllowedExtension("/w.v2/piece", [".FCStd"]), "/w.v2/piece.FCStd");
+  });
+
+  it("ouvre depuis le dernier dossier et le retient", async () => {
+    const storage = memoryStorage({ "freesolid.filedir": "D:\\Pièces" });
+    let asked = null;
+    const dialog = {
+      open: async (options) => { asked = options; return "E:\\Clé\\fermoir.SLDPRT"; },
+    };
+    assert.equal(await pickNative(dialog, OPEN, { storage }), "E:\\Clé\\fermoir.SLDPRT");
+    assert.equal(asked.defaultPath, "D:\\Pièces");
+    assert.equal(asked.multiple, false);
+    assert.equal(asked.filters[0].name, "Tous les fichiers autorisés");
+    assert.equal(storage.saved.get("freesolid.filedir"), "E:\\Clé");
+  });
+
+  it("rend null quand on annule, sans toucher au dernier dossier", async () => {
+    const storage = memoryStorage({ "freesolid.filedir": "/d" });
+    assert.equal(await pickNative({ open: async () => null }, OPEN, { storage }), null);
+    assert.equal(storage.saved.get("freesolid.filedir"), "/d");
+  });
+
+  it("enregistre avec l'extension complétée, et demande avant d'écraser", async () => {
+    const storage = memoryStorage();
+    const dialog = { save: async () => "/media/cle/piece" };
+    const listDir = async () => ({ entries: [{ name: "piece.stl", kind: "file" }] });
+    const asked = [];
+    assert.equal(await pickNative(dialog, SAVE, {
+      storage, listDir, ask: (name) => { asked.push(name); return false; },
+    }), null);
+    assert.deepEqual(asked, ["piece.stl"]);
+    assert.equal(await pickNative(dialog, SAVE, {
+      storage, listDir, ask: () => true,
+    }), "/media/cle/piece.stl");
+    assert.equal(storage.saved.get("freesolid.filedir"), "/media/cle");
+    // Nom complet tapé : le système a déjà demandé, on ne redemande pas.
+    const complete = { save: async () => "/media/cle/piece.stl" };
+    assert.equal(await pickNative(complete, SAVE, {
+      storage, listDir, ask: () => assert.fail("déjà confirmé par le système"),
+    }), "/media/cle/piece.stl");
   });
 });

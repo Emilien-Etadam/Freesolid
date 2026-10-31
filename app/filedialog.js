@@ -1,4 +1,6 @@
-// Dialogue de fichiers. Le moteur liste le dossier (prison de chemins) ;
+// Dialogue de fichiers. Dans l'application de bureau, celui du système
+// (Tauri), qui rend le vrai chemin. Dans un navigateur, une page ne peut pas
+// obtenir de chemin : le moteur liste le dossier (prison de chemins), et
 // ici on filtre, on joint le nom et on confirme un écrasement.
 
 import { t } from "./i18n.js";
@@ -19,7 +21,7 @@ const FILE_MODES = {
       // Lus par le lecteur d'OpenSW, embarqué (engine/foreign.py).
       { label: "Pièce SLDPRT", extensions: [".SLDPRT"] },
       { label: "Parasolid", extensions: [".x_t", ".x_b"] },
-      { label: "Tous les fichiers autorisés",
+      { label: "Tous les fichiers autorisés", all: true,
         extensions: [".FCStd", ".step", ".stp", ".iges", ".igs",
           ".SLDPRT", ".x_t", ".x_b"] },
     ],
@@ -111,8 +113,96 @@ export function needsOverwrite(entries, name) {
   return existingName(entries, name) !== "";
 }
 
-/** `listDir(path)` résout le dossier. `pick(mode)` renvoie un chemin ou null. */
-export function installFileDialog(doc, { listDir, storage, confirmReplace } = {}) {
+/** Le dialogue du système, dans la fenêtre de l'application de bureau ;
+ *  null dans un navigateur. */
+export function nativeFileDialog(win) {
+  const dialog = win?.__TAURI__?.dialog;
+  return typeof dialog?.open === "function" && typeof dialog?.save === "function"
+    ? dialog : null;
+}
+
+/** Filtres au format du dialogue natif : sans point, telle qu'écrite
+ *  (« FCStd ») puis dans les deux casses — GTK compare les extensions à la
+ *  lettre. Le filtre « tous » d'abord : c'est celui que le système choisit
+ *  d'office. */
+export function nativeFilters(filters) {
+  const list = filters.map((filter) => ({
+    all: Boolean(filter.all),
+    name: t(filter.label),
+    extensions: [...new Set(filter.extensions.flatMap((ext) => {
+      const bare = ext.replace(/^\./, "");
+      return [bare, bare.toLowerCase(), bare.toUpperCase()];
+    }))],
+  }));
+  return [...list.filter((f) => f.all), ...list.filter((f) => !f.all)]
+    .map(({ name, extensions }) => ({ name, extensions }));
+}
+
+/** Le dossier d'un chemin, quel que soit le séparateur. */
+export function parentDir(path) {
+  const text = String(path || "");
+  const cut = Math.max(text.lastIndexOf("/"), text.lastIndexOf("\\"));
+  if (cut < 0) return "";
+  if (cut === 0) return text[0];
+  const dir = text.slice(0, cut);
+  return /^[A-Za-z]:$/.test(dir) ? dir + text[cut] : dir;
+}
+
+/** Le nom de fichier d'un chemin, quel que soit le séparateur. */
+export function baseName(path) {
+  const text = String(path || "");
+  return text.slice(parentDir(text).length).replace(/^[\\/]/, "");
+}
+
+/** Le chemin du dialogue natif, avec une extension permise : certains
+ *  systèmes n'ajoutent pas celle du filtre au nom tapé. */
+export function withAllowedExtension(path, extensions) {
+  const name = baseName(path);
+  const dot = name.lastIndexOf(".");
+  const ext = dot > 0 ? name.slice(dot).toLowerCase() : "";
+  return extensions.some((item) => item.toLowerCase() === ext)
+    ? path : path + extensions[0];
+}
+
+/** Choisit un fichier dans le dialogue natif ; chemin ou null. */
+export async function pickNative(dialog, spec, { storage, listDir, ask } = {}) {
+  const dir = readFileDir(storage);
+  const options = { title: t(spec.title), filters: nativeFilters(spec.filters) };
+  let path;
+  if (spec.mustExist) {
+    if (dir) options.defaultPath = dir;
+    path = await dialog.open({ ...options, multiple: false, directory: false });
+  } else {
+    options.defaultPath = dir ? joinPath(dir, spec.defaultName) : spec.defaultName;
+    path = await dialog.save(options);
+  }
+  if (Array.isArray(path)) path = path[0];
+  if (!path || typeof path !== "string") return null;
+  if (!spec.mustExist) {
+    const fixed = withAllowedExtension(
+      path, spec.filters.flatMap((filter) => filter.extensions));
+    // Le système a confirmé l'écrasement du nom tapé, pas celui du nom
+    // complété : on le demande pour celui-là.
+    if (fixed !== path && spec.overwrite && listDir && ask) {
+      let listing = null;
+      try {
+        listing = await listDir(parentDir(fixed));
+      } catch {
+        listing = null;
+      }
+      const name = baseName(fixed);
+      if (needsOverwrite(listing?.entries, name) && !ask(name)) return null;
+    }
+    path = fixed;
+  }
+  writeFileDir(storage, parentDir(path));
+  return path;
+}
+
+/** `listDir(path)` résout le dossier. `pick(mode)` renvoie un chemin ou
+ *  null. `native` : le dialogue du système (``nativeFileDialog``), essayé
+ *  d'abord ; s'il échoue, le dialogue web prend le relais. */
+export function installFileDialog(doc, { listDir, storage, confirmReplace, native } = {}) {
   const root = doc.getElementById("file-dialog");
   if (!root) return async () => null;
   const ask = confirmReplace || ((name) =>
@@ -284,6 +374,13 @@ export function installFileDialog(doc, { listDir, storage, confirmReplace } = {}
   async function pick(which) {
     const spec = FILE_MODES[which];
     if (!spec) return null;
+    if (native) {
+      try {
+        return await pickNative(native, spec, { storage, listDir, ask });
+      } catch {
+        // Permission refusée, plateforme sans dialogue : le web prend le relais.
+      }
+    }
     if (finish) close(null);
     mode = spec;
     filterIndex = 0;

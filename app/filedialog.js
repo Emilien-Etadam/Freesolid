@@ -16,7 +16,7 @@ const FILE_MODES = {
       { label: "Pièce (.FCStd)", extensions: [".FCStd"] },
       { label: "STEP", extensions: [".step", ".stp"] },
       { label: "IGES", extensions: [".iges", ".igs"] },
-      // Lus par OpenSW, programme à part (engine/foreign.py).
+      // Lus par le lecteur d'OpenSW, embarqué (engine/foreign.py).
       { label: "Pièce SLDPRT", extensions: [".SLDPRT"] },
       { label: "Parasolid", extensions: [".x_t", ".x_b"] },
       { label: "Tous les fichiers autorisés",

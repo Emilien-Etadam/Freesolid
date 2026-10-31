@@ -24,7 +24,10 @@ EXCEPTIONS = (
 def test_engine_names_no_commercial_cad():
     hits = []
     # Récursif : les sous-paquets (engine/ops/…) sont des sources du moteur.
-    paths = sorted(ENGINE.rglob("*.py"))
+    # Sauf vendor/ : repris tel quel d'un autre dépôt, comme app/vendor/
+    # côté interface.
+    paths = sorted(p for p in ENGINE.rglob("*.py")
+                   if "vendor" not in p.relative_to(ENGINE).parts)
     lang = ENGINE / "lang" / "en.json"
     if lang.is_file():
         paths.append(lang)

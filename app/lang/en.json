@@ -555,6 +555,7 @@
  "Surface : {s} cm²": "Area: {s} cm²",
  "Importé — {n} solide(s), la forme est la base du corps.": "Imported — {n} solid(s), the shape is the base of the body.",
  "Importé — {n} solides, chacun base de son propre corps.": "Imported — {n} solids, each the base of its own body.",
+ "{k} corps illisible(s) laissé(s) de côté.": "{k} unreadable bod(ies) left out.",
  "Ouvert — {n} corps dans le fichier.": "Opened — {n} bodies in the file.",
  "Ouvert.": "Opened.",
  "{f} : cliquez d'abord dans la zone graphique": "{f}: click in the graphics area first",

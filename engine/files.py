@@ -112,29 +112,29 @@ class FilesMixin:
         return tree
 
     def _import_foreign(self, path):
-        """.sldprt / .x_t / .x_b : le lecteur OpenSW en écrit un STEP à
-        part (``engine/foreign.py``), importé ensuite comme un STEP. La
-        géométrie seule — l'arbre de fonctions du fichier n'est pas
-        rejoué. La pièce ouverte reste en place si la lecture échoue."""
+        """.sldprt / .x_t / .x_b : le lecteur d'OpenSW (``engine/foreign.py``)
+        en écrit un STEP, importé ensuite comme un STEP. La géométrie
+        seule — l'arbre de fonctions du fichier n'est pas rejoué. La pièce
+        ouverte reste en place si la lecture échoue."""
         import os
         import shutil
-        import sys
         import tempfile
         from engine import foreign
         from engine.kernel import KernelError
-        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         work = tempfile.mkdtemp(prefix="freesolid-lecture-")
         try:
             self._report_progress("Lecture de la pièce par OpenSW")
+            step = os.path.join(work, "piece.step")
             try:
-                step = foreign.convert(path, work, environ=os.environ,
-                                       repo_root=repo_root, prefix=sys.prefix)
+                report = foreign.convert(path, step)
             except foreign.ForeignError as exc:
                 raise KernelError(str(exc)) from None
             self._report_progress("Import de la géométrie")
             label = os.path.splitext(os.path.basename(path))[0]
             tree = self._import_cad(step, label=label)
             tree["converted_from"] = os.path.splitext(path)[1].lower()
+            # Corps que le lecteur n'a pas su écrire : le dire, pas les taire.
+            tree["skipped_bodies"] = int(getattr(report, "skipped_bodies", 0) or 0)
             return tree
         finally:
             shutil.rmtree(work, ignore_errors=True)

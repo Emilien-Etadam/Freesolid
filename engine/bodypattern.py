@@ -816,17 +816,6 @@ class BodyPatternMixin:
             rows.append(item)
         return rows
 
-    def _pattern_family(self, body):
-        """Noms du corps répété dont ``body`` fait partie et de toutes ses
-        copies ; vide si ``body`` n'est ni répété ni une copie."""
-        def source_of(obj):
-            key = parse_copy_key(getattr(obj, "FreeSolidPatternCopy", ""))
-            return key[1] if key else None
-        root = source_of(body) or body.Name
-        family = {obj.Name for obj in self._require_doc().Objects
-                  if source_of(obj) == root}
-        return family | {root} if family else set()
-
     def _repetition_delete(self, obj):
         """Suppressions propres aux répétitions : l'arbre, ou None quand la
         suppression ordinaire suit (après ``_repetition_before_delete``)."""

@@ -557,7 +557,18 @@ def p9_multi_corps_combiner(self, mark, report, etat):
     self.sketch_add_circle(tool_sk, 0, 0, 8)
     self.sketch_finish(tool_sk)
     self.add_pad(30)
-    report["p9_others_shown"] = "others" in self.tessellate()
+    mesh = self.tessellate()
+    report["p9_others_shown"] = "others" in mesh
+    # L'autre corps se dessine face par face, numéroté comme quand il
+    # sera actif, arêtes comprises : le clic dans la vue l'active.
+    other = next((b for b in mesh.get("other_bodies", ())
+                  if b["name"] == first_body), {})
+    first = self._doc.getObject(first_body)
+    report["p9_autres_cliquables"] = (
+        other.get("label") == first.Label
+        and sorted(g["faceId"] for g in other.get("groups", ()))
+        == list(range(len(first.Shape.Faces)))
+        and bool(other.get("edges", {}).get("groups")))
     tool_body = self._require_body().Name
     self.set_active_body(first_body)
     tree = self.set_body_color(first_body, "#cc5533")
@@ -1080,8 +1091,8 @@ def p82_reseau_de_corps(self, mark, report, etat):
         len(copies) == 2 and centres == [20.0, 40.0]
         and all(abs(v - 800) < 1e-6 for v in _volumes(self).values()))
     # Le réseau est une ligne de l'arbre de sa source ; ses copies
-    # s'affichent comme elle, arêtes comprises, et la source aussi
-    # quand une copie est active.
+    # s'affichent arêtes comprises, et la source aussi quand une copie
+    # est active.
     rows = [f for f in self.get_tree()["features"]
             if f["type_key"] == "body_pattern"]
     shown = {b["name"]: b for b in self.tessellate().get("other_bodies", [])}
@@ -1093,9 +1104,9 @@ def p82_reseau_de_corps(self, mark, report, etat):
         len(rows) == 1 and rows[0]["name"] == host.Name
         and sorted(rows[0].get("copies") or ()) == sorted(
             self._doc.getObject(n).Label for n in copies)
-        and all(shown.get(n, {}).get("pattern_family")
-                and shown[n]["edges"]["indices"] for n in copies)
-        and all(from_copy.get(n, {}).get("pattern_family")
+        and all(shown.get(n, {}).get("edges", {}).get("indices")
+                for n in copies)
+        and all(from_copy.get(n, {}).get("groups")
                 for n in (source, copies[1])))
     # La source ne se combine pas avec sa copie : la copie la suit, le
     # graphe bouclerait. Rien n'est ajouté.

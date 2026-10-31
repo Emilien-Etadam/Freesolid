@@ -197,6 +197,8 @@ def _etapes():
         esquisse.p79_annuler_esquisse,
         esquisse.p80_glisser_courbe_entiere,
         document.p81_proprietes_document,
+        fonctions.p82_reseau_de_corps,
+        fonctions.p83_corps_concernes,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

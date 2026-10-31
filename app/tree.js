@@ -56,6 +56,13 @@ export const TREE_ICONS = {
   component: "insert",
 };
 
+// Ligne d'un réseau de corps (le réseau, la base de chaque copie), par genre.
+const BODY_PATTERN_ICONS = {
+  linear: "linear_pattern",
+  polar: "polar_pattern",
+  mirror: "mirror",
+};
+
 // Icônes des surfaces dans l'arbre, par genre d'objet (type_key).
 const SURFACE_ICONS = {
   surface_extrude: "surface_extrude",
@@ -108,6 +115,11 @@ export const PARAM_LABELS = {
  *  surface extrudée n'est pas une profondeur. */
 const PARAM_LABELS_BY_KIND = {
   surface_extrude: { length: ["Longueur", "mm"] },
+  linear_pattern: { length: ["Distance", "mm"],
+                    length2: ["Distance (direction 2)", "mm"] },
+  body_pattern: { length: ["Distance", "mm"],
+                  length2: ["Distance (direction 2)", "mm"],
+                  angle: ["Angle total", "°"] },
 };
 
 /** Libellés des cotes d'un genre (`type_key`), clé neutre -> [libellé, unité]. */
@@ -1262,15 +1274,58 @@ export function installTree(ctx) {
     origin.addEventListener("click", toggleOrigin);
     treeEl.appendChild(origin);
 
-    const features = tree.features ?? [];
+    // Un réseau de corps suit le corps tel que la barre le laisse : sa
+    // ligne se tient juste au-dessus d'elle, sans position de barre.
+    const all = tree.features ?? [];
+    const features = all.filter((feature) => feature.type_key !== "body_pattern");
+    const patterns = all.filter((feature) => feature.type_key === "body_pattern");
     const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip,
       { flat: flatTree });
     if (split.bar !== "none") {
       appendHistoryRows(split.before, false);
+      for (const pattern of patterns) appendBodyPatternRow(pattern);
       appendRollbackBar();
       appendHistoryRows(split.after, true);
+    } else {
+      for (const pattern of patterns) appendBodyPatternRow(pattern);
     }
     markBarSlots(split);
+  }
+
+  /** Ligne d'un réseau de corps du corps actif : double-clic pour le
+   *  rouvrir ; ni réordonnée, ni reculée par la barre. */
+  function appendBodyPatternRow(feature) {
+    const row = document.createElement("li");
+    row.className = "feat";
+    row.dataset.feat = feature.name;
+    if (feature.error) row.classList.add("error");
+    if (ctx.selectedFeatureName === feature.name) row.classList.add("sel");
+    const arrow = document.createElement("span");
+    arrow.className = "arrow";
+    row.appendChild(arrow);
+    row.appendChild(treeIcon(BODY_PATTERN_ICONS[feature.body_pattern]
+      ?? "linear_pattern"));
+    row.appendChild(document.createTextNode(feature.label));
+    row.title = `${feature.kind} — `
+      + t("double-clic : modifier · clic droit : modifier, renommer, supprimer");
+    if (feature.copies?.length) {
+      row.title += "\n" + t("Corps créés : {b}",
+                             { b: feature.copies.join(", ") });
+    }
+    if (feature.comment) {
+      const note = document.createElement("span");
+      note.className = "tree-note";
+      note.textContent = " ✎";
+      row.appendChild(note);
+      row.title = `${feature.comment}\n\n${row.title}`;
+    }
+    row.addEventListener("dblclick", () => editFeature(feature));
+    row.addEventListener("contextmenu", (event) => ctx.openMenu(event, feature));
+    row.addEventListener("click", (event) => {
+      if (consumeTreeRenameClick(event, row, feature)) return;
+      ctx.selectedFeatureName = feature.name;
+    });
+    treeEl.appendChild(row);
   }
 
   /** Lignes d'historique ; les fonctions rangées dans un même dossier
@@ -1349,6 +1404,7 @@ export function installTree(ctx) {
           : feature.vertex_chamfer ? "vertex_chamfer"
           : feature.delete_face ? "surface_delete_face"
             : feature.replace_face ? "replace_face"
+            : feature.body_pattern ? BODY_PATTERN_ICONS[feature.body_pattern]
             : TREE_ICONS[feature.type_key];
     if (icon) row.appendChild(treeIcon(icon));
     row.appendChild(document.createTextNode(
@@ -1358,6 +1414,10 @@ export function installTree(ctx) {
     if (ctx.sketchMode.editing === feature.name) row.classList.add("editing");
     row.title = `${feature.kind} — `
       + t("double-clic : modifier · clic droit : modifier, barre de retour, supprimer · glisser : réordonner");
+    if (feature.scope?.length) {
+      row.title += "\n" + t("Creuse aussi : {b}",
+                             { b: feature.scope.join(", ") });
+    }
     if (feature.comment) {
       const note = document.createElement("span");
       note.className = "tree-note";
@@ -1783,6 +1843,13 @@ export function installTree(ctx) {
   }
 
   async function editFeature(feature) {
+    // Copie d'un réseau de corps, enlèvement venu d'un autre corps : le
+    // double-clic rouvre la répétition qui les porte.
+    if (feature.edits) {
+      editFeature({ name: feature.edits, type_key: feature.edits_type,
+                    label: feature.label, kind: feature.kind });
+      return;
+    }
     if (isGraphFeature(feature) || isRepeatFeature(feature)) {
       enterGraphFeature(feature);
       return;

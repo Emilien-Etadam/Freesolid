@@ -67,6 +67,9 @@ class EquationsMixin:
             editable = editable + ("Size2", "ChamferType", "FlipDirection")
         if revolved:
             editable = editable + ("Reversed", "Midplane", "axis")
+        if "FreeSolidBodyPattern" in obj.PropertiesList:
+            # Réseau de corps : ses cotes sont des propriétés de l'hôte.
+            editable = editable + ("Length2", "Occurrences2")
         if obj.TypeId == "PartDesign::LinearPattern":
             editable = editable + ("Occurrences2",)
             pitch2 = float(getattr(obj, "FreeSolidPitch2", 0) or 0)
@@ -248,6 +251,10 @@ class EquationsMixin:
     def _editable_props(self, obj):
         """Cotes proposées à l'édition. Le chanfrein ne montre que celles
         du type en cours : une distance, deux distances, ou distance et angle."""
+        if "FreeSolidBodyPattern" in getattr(obj, "PropertiesList", ()):
+            # Réseau de corps : les cotes que l'hôte porte (get_params
+            # saute celles qu'il n'a pas).
+            return self._EDITABLE_PROPS + ("Length2", "Occurrences2")
         if getattr(obj, "TypeId", "") == "PartDesign::LinearPattern":
             # La deuxième direction n'apparaît que si elle sert.
             two = int(getattr(obj, "Occurrences2", 1) or 1) > 1

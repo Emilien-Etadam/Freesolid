@@ -1050,3 +1050,165 @@ def p19b_paroi_mince_extremites_fermees(self, mark, report, etat):
     report["p19b_extremites_refus"] = (
         refused == 2 and len([o for o in body.Group
                               if self._is_thin_helper(o)]) == 3)
+
+
+def _volumes(self):
+    """Volume de chaque corps de la pièce (outils internes exclus)."""
+    return {o.Name: o.Shape.Volume for o in self._doc.Objects
+            if o.TypeId == "PartDesign::Body"
+            and not self._is_internal_tool(o)}
+
+
+def _centre_x(self, name):
+    bb = self._doc.getObject(name).Shape.BoundBox
+    return (bb.XMin + bb.XMax) / 2, (bb.YMin + bb.YMax) / 2
+
+
+def p82_reseau_de_corps(self, mark, report, etat):
+    mark("p82: réseau de corps — chaque occurrence est un corps")
+    import tempfile
+    self.new_part("Réseau de corps")
+    self.add_rect_sketch(10, 10)
+    self.add_pad(8)
+    source = self._require_body().Name
+    self.add_body_pattern("linear", [source], length=20, count=3,
+                          axis="X", spacing=True)
+    host = self._body_pattern_hosts()[0]
+    copies = [n for n in _volumes(self) if n != source]
+    centres = sorted(round(_centre_x(self, n)[0], 6) for n in copies)
+    report["p82_lineaire"] = (
+        len(copies) == 2 and centres == [20.0, 40.0]
+        and all(abs(v - 800) < 1e-6 for v in _volumes(self).values()))
+    # Le réseau est une ligne de l'arbre de sa source ; ses copies
+    # s'affichent comme elle, arêtes comprises, et la source aussi
+    # quand une copie est active.
+    rows = [f for f in self.get_tree()["features"]
+            if f["type_key"] == "body_pattern"]
+    shown = {b["name"]: b for b in self.tessellate().get("other_bodies", [])}
+    self.set_active_body(copies[0])
+    from_copy = {b["name"]: b
+                 for b in self.tessellate().get("other_bodies", [])}
+    self.set_active_body(source)
+    report["p82_ligne_et_vue"] = (
+        len(rows) == 1 and rows[0]["name"] == host.Name
+        and sorted(rows[0].get("copies") or ()) == sorted(
+            self._doc.getObject(n).Label for n in copies)
+        and all(shown.get(n, {}).get("pattern_family")
+                and shown[n]["edges"]["indices"] for n in copies)
+        and all(from_copy.get(n, {}).get("pattern_family")
+                for n in (source, copies[1])))
+    # La source ne se combine pas avec sa copie : la copie la suit, le
+    # graphe bouclerait. Rien n'est ajouté.
+    group = len(self._require_body().Group)
+    try:
+        self.add_boolean(tool=copies[0], type="fuse")
+        looped = False
+    except KernelError as exc:
+        looped = "suit le corps actif" in str(exc)
+    report["p82_refus_boucle"] = (
+        looped and len(self._require_body().Group) == group
+        and all(abs(v - 800) < 1e-6 for v in _volumes(self).values()))
+    # La source change : les copies suivent ; la cote se réédite.
+    self.set_active_body(source)
+    top = self._top_face_id()
+    self.add_rect_sketch(4, 4, face=top)
+    self.add_pocket(2)
+    self.set_params(host.Name, {"count": 4})
+    volumes = _volumes(self)
+    report["p82_suit_la_source"] = (
+        len(volumes) == 4
+        and all(abs(v - 768) < 1e-6 for v in volumes.values()))
+    # Une copie supprimée reste sautée ; la source est protégée.
+    far = max(copies, key=lambda n: _centre_x(self, n)[0])
+    self.delete_feature(far)
+    self.set_params(host.Name, {"length": 25})
+    shifted = sorted(round(_centre_x(self, n)[0], 6)
+                     for n in _volumes(self) if n != source)
+    try:
+        self.delete_feature(source)
+        protected = False
+    except KernelError:
+        protected = True
+    report["p82_copie_sautee"] = shifted == [25.0, 75.0] and protected
+    # Symétrie d'une copie, réseau circulaire : d'autres corps encore.
+    near = min((n for n in _volumes(self) if n != source),
+               key=lambda n: _centre_x(self, n)[0])
+    before = set(_volumes(self))
+    self.add_body_pattern("mirror", [near], plane="YZ")
+    mirrored = (set(_volumes(self)) - before).pop()
+    before = set(_volumes(self))
+    self.add_body_pattern("polar", [near], count=4, angle=360, axis="Z")
+    turned = sorted((round(x, 6), round(y, 6)) for x, y in (
+        _centre_x(self, n) for n in set(_volumes(self)) - before))
+    report["p82_symetrie_circulaire"] = (
+        abs(_centre_x(self, mirrored)[0] + 25) < 1e-6
+        and turned == [(-25.0, 0.0), (0.0, -25.0), (0.0, 25.0)])
+    # Rouvert : les mêmes volumes, objets FreeCAD standard.
+    volumes = _volumes(self)
+    path = os.path.join(tempfile.gettempdir(),
+                        "freesolid-selftest-reseau-corps.FCStd")
+    self.save_part(path)
+    self.open_part(path)
+    reopened = _volumes(self)
+    report["p82_rouvert"] = (
+        set(reopened) == set(volumes)
+        and all(abs(reopened[n] - volumes[n]) < 1e-6 for n in volumes))
+
+
+def p83_corps_concernes(self, mark, report, etat):
+    mark("p83: corps concernés — les trous répétés creusent l'autre corps")
+    self.new_part("Corps concernés")
+    self.add_rect_sketch(60, 20)
+    self.add_pad(5)
+    top = self._require_body().Name
+    self.add_body("Dessous")
+    low = self._require_body().Name
+    self.add_rect_sketch(60, 20)
+    self.add_pad(5, reversed=True)
+    self.set_active_body(top)
+    sketch = self.sketch_start(face=self._top_face_id())["sketch"]
+    self.sketch_add_circle(sketch, -20, 0, 2)
+    self.sketch_finish(sketch)
+    self.add_pocket(through=True)
+    hole = math.pi * 4 * 5
+    tree = self.add_linear_pattern(20, 3, axis="X", spacing=True,
+                                   scope=[low])
+    pattern = next(f for f in tree["features"]
+                   if f["type"] == "PartDesign::LinearPattern")
+    volumes = _volumes(self)
+    report["p83_creuse_l_autre"] = (
+        abs(volumes[low] - (6000 - 3 * hole)) < 1e-6
+        and abs(volumes[top] - volumes[low]) < 1e-6
+        and pattern.get("scope") == ["Dessous"])
+    self.set_params(pattern["name"], {"count": 2})
+    two = _volumes(self)[low]
+    self.set_suppressed([pattern["name"]], True)
+    off = _volumes(self)[low]
+    self.set_suppressed([pattern["name"]], False)
+    try:
+        self.add_rect_sketch(4, 4, face=self._top_face_id())
+        self.add_pad(2)
+        self.add_linear_pattern(10, 2, axis="Y", scope=[low])
+        refused = False
+    except KernelError:
+        refused = True
+    report["p83_suit_et_refuse"] = (
+        abs(two - (6000 - 2 * hole)) < 1e-6 and abs(off - 6000) < 1e-6
+        and refused)
+    # Supprimer au milieu de la chaîne : la fonction d'après se rebranche.
+    self.set_active_body(low)
+    cut = next(f["name"] for f in self.get_tree()["features"]
+               if f.get("edits") == pattern["name"])
+    self.add_rect_sketch(4, 4)
+    self.add_pad(3)
+    self.delete_feature(cut)
+    after = _volumes(self)
+    self.set_active_body(top)
+    self.delete_feature(pattern["name"])
+    kept = _volumes(self)[top]
+    report["p83_suppression_au_milieu"] = (
+        abs(after[low] - (6000 + 48)) < 1e-6
+        and self._doc.getObject(pattern["name"]) is None
+        and abs(kept - (6000 - hole + 32)) < 1e-6
+        and not [o for o in self._doc.Objects
+                 if getattr(o, "FreeSolidBodyPatternTool", False)])

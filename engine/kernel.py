@@ -68,6 +68,7 @@ from engine.configs import ConfigsMixin
 from engine.splineedit import SplineEditMixin
 from engine.sketch3d import Sketch3dMixin
 from engine.solids import SolidsMixin
+from engine.bodypattern import BodyPatternMixin
 from engine.tree import TreeMixin
 
 
@@ -282,7 +283,7 @@ def _format_mm(value):
     return text.replace(".", ",") or "0"
 
 
-class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, MaterialsMixin, RefGeomMixin, ClipboardMixin, TemplatesMixin, TreeOrgMixin, DirectEditMixin, ConfigsMixin, SplineEditMixin, Sketch3dMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
+class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, MaterialsMixin, RefGeomMixin, ClipboardMixin, TemplatesMixin, TreeOrgMixin, DirectEditMixin, ConfigsMixin, SplineEditMixin, Sketch3dMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
     """Owns one FreeCAD document and executes protocol operations."""
 
     def __init__(self):
@@ -364,10 +365,13 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
         doc = self._require_doc()
         self._sync_revolution_axes()
         doc.recompute()
-        # Formes figées (suppression de face) : elles suivent les
-        # fonctions d'avant, une passe par niveau d'imbrication.
+        # Formes figées (suppression de face), copies d'un réseau de
+        # corps, outils des corps concernés : ils suivent les fonctions
+        # d'avant, une passe par niveau d'imbrication.
         for _ in range(8):
-            if not self._refresh_frozen_shapes():
+            changed = self._refresh_frozen_shapes()
+            changed = self._refresh_repetitions() or changed
+            if not changed:
                 break
             doc.recompute()
         if not self._assembly:
@@ -830,6 +834,8 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
         self._previewing = True
         planes = {o.Name for o in doc.Objects
                   if o.TypeId == "PartDesign::Plane"}
+        bodies = {o.Name for o in doc.Objects
+                  if o.TypeId == "PartDesign::Body"}
         try:
             getattr(self, op)(**params)
             if op == "add_datum_plane":
@@ -840,6 +846,11 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, SketchMixin, SketchDrawMi
                 if not made:
                     raise KernelError("plan de référence introuvable")
                 return {"plane": list(made[-1].Placement.Matrix.A)}
+            if op == "add_body_pattern":
+                # Le fantôme : les corps qui apparaissent, pas le corps actif.
+                return self._bodies_mesh([
+                    o for o in doc.Objects if o.TypeId == "PartDesign::Body"
+                    and o.Name not in bodies and not self._is_internal_tool(o)])
             return self.tessellate()
         finally:
             self._previewing = False

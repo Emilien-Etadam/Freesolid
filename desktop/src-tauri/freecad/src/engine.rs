@@ -67,6 +67,10 @@ pub fn command_for(freecadcmd: &Path, server_py: &Path, port: u16) -> Command {
     // Le moteur s'arrête de lui-même quand ce processus disparaît
     // (server.py, _watch_parent) : plus d'orphelin qui garde le port.
     cmd.env("FREESOLID_PARENT_PID", std::process::id().to_string());
+    // Les fichiers se choisissent dans le dialogue natif du système : tout
+    // dossier y est permis (autre disque, clé USB), pas seulement le
+    // dossier personnel (engine/protocol.py, WIDE_ACCESS_ENV).
+    cmd.env("FREESOLID_WIDE_ACCESS", "1");
     cmd.env("PYTHONIOENCODING", "utf-8");
     cmd.env("PYTHONUNBUFFERED", "1");
     cmd.stdin(Stdio::null());
@@ -234,6 +238,9 @@ mod tests {
         assert!(envs
             .iter()
             .any(|(k, v)| *k == "FREESOLID_PARENT_PID" && v.is_some()));
+        assert!(envs
+            .iter()
+            .any(|(k, v)| *k == "FREESOLID_WIDE_ACCESS" && v.map(|v| v == "1").unwrap_or(false)));
     }
 
     #[test]

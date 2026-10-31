@@ -13,6 +13,7 @@ Transport (M0) is HTTP JSON on localhost: requests are
 
 import json
 import os
+import pathlib
 import tempfile
 
 from engine.ops import CORE_OPS
@@ -238,6 +239,18 @@ def err(message: str, hint: str = "") -> dict:
     return out
 
 
+#: Posée à « 1 » par l'application de bureau, qui choisit les fichiers
+#: dans le dialogue natif du système : tout dossier y est permis (autre
+#: disque, clé USB, partage réseau). Le moteur lancé à la main garde la
+#: prison du dossier personnel. Les autres règles tiennent dans les deux
+#: cas : pas de ``..``, pas de composant caché, extensions permises.
+WIDE_ACCESS_ENV = "FREESOLID_WIDE_ACCESS"
+
+
+def _wide_access():
+    return os.environ.get(WIDE_ACCESS_ENV) == "1"
+
+
 def _allowed_path_roots():
     """Racines sous lesquelles les chemins client sont autorisés."""
     roots = [
@@ -257,8 +270,13 @@ def _assert_in_jail(resolved, *, allow_root=False):
     personnel). Un fichier n'a pas le droit d'être la racine.
     """
     matched_root = None
-    for root in _allowed_path_roots():
-        if _is_under_root(root, resolved):
+    roots = _allowed_path_roots()
+    if _wide_access():
+        # Racine du disque du chemin lui-même : « / », « D:\ » ou un
+        # partage réseau « \\serveur\partage\ ».
+        roots.append(pathlib.PurePath(resolved).anchor)
+    for root in roots:
+        if root and _is_under_root(root, resolved):
             matched_root = root
             break
     if matched_root is None:
@@ -383,8 +401,9 @@ def resolve_user_path(path, extensions, must_exist=False):
 
     Les symlinks sont résolus avant toute vérification. Le chemin doit
     rester sous le home, le répertoire temporaire, ou ``FREESOLID_DATA_DIR``
-    s'il est défini. Aucun composant relatif à cette racine ne peut
-    commencer par ``.`` (``.ssh``, ``.bashrc``, …).
+    s'il est défini — n'importe où avec ``FREESOLID_WIDE_ACCESS=1``
+    (application de bureau). Aucun composant relatif à cette racine ne
+    peut commencer par ``.`` (``.ssh``, ``.bashrc``, …).
     """
     if path is None or str(path).strip() == "":
         raise ProtocolError("chemin manquant")

@@ -3,6 +3,12 @@
 *Relevé du 2026-08-02, avant d'engager la piste « nouvelle UI sur moteur
 headless ». Conclusion en bas.*
 
+*Note du 2026-10-31 : FreeSolid est passé en AGPL-3.0-only. Dans les
+relevés antérieurs, « notre licence » désigne la LGPL-2.1-or-later. Tout ce
+qui y était empruntable le reste. Ce qui décide désormais d'un emprunt,
+c'est la porte amont vers FreeCAD : voir
+[`amont-freecad.md`](amont-freecad.md) §3.*
+
 ## Les projets existants, un par un
 
 | Projet | Ce que c'est | Verdict pour nous |
@@ -83,7 +89,7 @@ divergence est **le modèle documentaire**, et elle décide de tout :
 | Contraintes d'esquisse | solveur planegcs à ~60 fps | outils de dessin, pas de solveur comparable |
 | Fichiers | `.FCStd` natif, réouvrable dans FreeCAD | format propre + échange STEP/IGES/BREP/STL |
 | Installation | FreeCAD ≥ 1.0 requis (~800 Mo) | **zéro install**, une URL |
-| Licence | LGPL-2.1-or-later | AGPL-3.0 / commerciale |
+| Licence | AGPL-3.0-only (LGPL-2.1-or-later jusqu'à la 0.4.1) | AGPL-3.0 / commerciale |
 
 **Ce qu'on lui prend — l'UI, et rien d'autre.** Le ruban, la hiérarchie
 d'assemblage, le plan de travail dynamique, les outils de mesure
@@ -92,10 +98,12 @@ l'organisation d'interface, exactement le terrain où le projet a décidé de
 tout refaire. Bon endroit où aller chercher des idées de disposition et de
 nommage.
 
-**Ce qu'on ne lui prend pas — le code.** AGPL-3.0 contre notre
-LGPL-2.1-or-later : reprendre le moindre fichier ferait basculer FreeSolid
-entier en AGPL. Chili3D est une **référence visuelle**, jamais une réserve
-de code. Regarder, pas copier-coller.
+**Ce qu'on ne lui prend pas — le code.** Depuis le 2026-10-31, FreeSolid
+est lui aussi en AGPL-3.0 : un fichier de Chili3D serait reprenable. La
+règle tient pour une autre raison : une ligne venue de Chili3D ne pourrait
+jamais remonter à FreeCAD, qui est en LGPL (voir
+[`amont-freecad.md`](amont-freecad.md) §3). Chili3D est une **référence
+visuelle**, jamais une réserve de code. Regarder, pas copier-coller.
 
 **Ce qu'il a et que nous n'avons pas — le zéro-install.** C'est son seul
 avantage réel, et il est sérieux : notre README consacre deux tutoriels
@@ -160,7 +168,7 @@ l'étage visé — voir [`nodes-macros.md`](nodes-macros.md) §4.
 
 | Projet | Ce que c'est | Ce qu'on en retient |
 |---|---|---|
-| **[j8sr0230/Nodes](https://github.com/j8sr0230/Nodes)** | L'atelier **Nodes** de FreeCAD (ex-`FreeCAD-nodes`) : éditeur d'algorithme graphique, ~674 commits, actif, dans l'Addon Manager depuis FreeCAD 0.21, [doc](https://freecad-nodes.readthedocs.io/). Dépend de `pyqt-node-editor` (l'éditeur), `qtpy` et **`awkward`** (les données). **LGPL-2.1** | **La référence à étudier** — voir ci-dessous. Même licence que nous : le code est *empruntable*, pas seulement regardable |
+| **[j8sr0230/Nodes](https://github.com/j8sr0230/Nodes)** | L'atelier **Nodes** de FreeCAD (ex-`FreeCAD-nodes`) : éditeur d'algorithme graphique, ~674 commits, actif, dans l'Addon Manager depuis FreeCAD 0.21, [doc](https://freecad-nodes.readthedocs.io/). Dépend de `pyqt-node-editor` (l'éditeur), `qtpy` et **`awkward`** (les données). **LGPL-2.1** | **La référence à étudier** — voir ci-dessous. LGPL-2.1 comme FreeCAD : le code est *empruntable*, pas seulement regardable, et reste remontable |
 | [Nodi3D](https://github.com/Nodi3d/nodi) | Grasshopper dans le navigateur, Apache-2.0, partage de graphes par lien, export OBJ/STL/DXF. **Dernier commit le 2024-11-08** (relevé du 2026-08-21) | La preuve qu'un éditeur de nœuds tient dans un onglet ; mais géométrie maillée, pas de B-Rep exact — et le projet est à l'arrêt |
 | [kovacsv/VisualScriptCAD](https://github.com/kovacsv/VisualScriptCAD) | Modeleur 3D par script visuel sur `VisualScriptEngine`, C++, GPL-3.0, ~131 ★. **« No Maintenance » depuis 2019** | Troisième preuve de faisabilité d'un éditeur de nœuds — mais géométrie maillée, projet arrêté, licence bloquante. Sans objet depuis que le graphe est une *vue* (`nodes-macros.md`) |
 | [pboyer/verb](https://github.com/pboyer/verb) ‡ | Bibliothèque **NURBS** en **MIT** : évaluation de courbes et surfaces, dérivées, tessellation adaptative, intersections. Livrée déjà construite en JS (`verb.es.js`). Pas de solides, pas de booléens. ~811 ★, dernier commit 2025-04 | **Le seul apport directement branchable de la veille.** Le pendant de planegcs pour les courbes : B-splines calculées **côté client**, sans aller-retour serveur — pour les courbes 3D par points (phase D) et les aperçus de glisser. MIT : empruntable **et** remontable |
@@ -237,8 +245,9 @@ sujets la confirment plutôt. **Aucun des trois ne demande d'écrire de la
 géométrie**, ce qui est le bon signe.
 
 - **Chili3D** se prend en inspiration d'**interface** et jamais en code :
-  AGPL-3.0 contre notre LGPL-2.1.
-- **`j8sr0230/Nodes`** est l'inverse exact : LGPL-2.1 comme nous, donc son
+  AGPL-3.0 contre notre LGPL-2.1 d'alors ; depuis le passage de FreeSolid
+  en AGPL, c'est la porte amont qui l'exclut (§1).
+- **`j8sr0230/Nodes`** est l'inverse exact : LGPL-2.1 comme FreeCAD, donc son
   **code** est empruntable — et c'est justement sa moitié invisible
   (le modèle de données `awkward`) qui vaut le détour, pas son éditeur Qt.
 - **Le nœud Python** (N008) remplace le chantier macros. Ce n'est pas un

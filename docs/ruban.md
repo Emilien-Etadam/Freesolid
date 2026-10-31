@@ -10,7 +10,8 @@ pour les commandes qui n'ont pas d'équivalent ailleurs.
 [APEbbers/FreeCAD-Ribbon](https://github.com/APEbbers/FreeCAD-Ribbon) est
 la référence d'organisation retenue par `landscape.md` : il range les
 vraies commandes de FreeCAD, celles que nous ré-exposons une à une. Son
-code est GPL-3.0 — inutilisable chez nous (LGPL-2.1-or-later) — et son
+code est GPL-3.0 — il ne pourrait jamais remonter à FreeCAD (voir
+`amont-freecad.md` §3) — et son
 fichier de disposition fait partie de la distribution GPL. On n'a donc
 **rien copié** : on a lu sa curation par défaut (`CreateStructure.txt`,
 qui engendre `RibbonStructure_default.json` ; relevé sur le commit

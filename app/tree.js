@@ -56,6 +56,13 @@ export const TREE_ICONS = {
   component: "insert",
 };
 
+// Ligne d'un réseau de corps (la base de chaque copie), par genre.
+const BODY_PATTERN_ICONS = {
+  linear: "linear_pattern",
+  polar: "polar_pattern",
+  mirror: "mirror",
+};
+
 // Icônes des surfaces dans l'arbre, par genre d'objet (type_key).
 const SURFACE_ICONS = {
   surface_extrude: "surface_extrude",
@@ -108,6 +115,11 @@ export const PARAM_LABELS = {
  *  surface extrudée n'est pas une profondeur. */
 const PARAM_LABELS_BY_KIND = {
   surface_extrude: { length: ["Longueur", "mm"] },
+  linear_pattern: { length: ["Distance", "mm"],
+                    length2: ["Distance (direction 2)", "mm"] },
+  body_pattern: { length: ["Distance", "mm"],
+                  length2: ["Distance (direction 2)", "mm"],
+                  angle: ["Angle total", "°"] },
 };
 
 /** Libellés des cotes d'un genre (`type_key`), clé neutre -> [libellé, unité]. */
@@ -1349,6 +1361,7 @@ export function installTree(ctx) {
           : feature.vertex_chamfer ? "vertex_chamfer"
           : feature.delete_face ? "surface_delete_face"
             : feature.replace_face ? "replace_face"
+            : feature.body_pattern ? BODY_PATTERN_ICONS[feature.body_pattern]
             : TREE_ICONS[feature.type_key];
     if (icon) row.appendChild(treeIcon(icon));
     row.appendChild(document.createTextNode(
@@ -1358,6 +1371,10 @@ export function installTree(ctx) {
     if (ctx.sketchMode.editing === feature.name) row.classList.add("editing");
     row.title = `${feature.kind} — `
       + t("double-clic : modifier · clic droit : modifier, barre de retour, supprimer · glisser : réordonner");
+    if (feature.scope?.length) {
+      row.title += "\n" + t("Creuse aussi : {b}",
+                             { b: feature.scope.join(", ") });
+    }
     if (feature.comment) {
       const note = document.createElement("span");
       note.className = "tree-note";
@@ -1783,6 +1800,13 @@ export function installTree(ctx) {
   }
 
   async function editFeature(feature) {
+    // Copie d'un réseau de corps, enlèvement venu d'un autre corps : le
+    // double-clic rouvre la répétition qui les porte.
+    if (feature.edits) {
+      editFeature({ name: feature.edits, type_key: feature.edits_type,
+                    label: feature.label, kind: feature.kind });
+      return;
+    }
     if (isGraphFeature(feature) || isRepeatFeature(feature)) {
       enterGraphFeature(feature);
       return;

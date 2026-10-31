@@ -1527,5 +1527,17 @@
  "Facettes": "Facets",
  "plus fine : plus lente à afficher": "finer: slower to display",
  "Système d'unités": "Unit system",
- "Aucun document ouvert": "No document open"
+ "Aucun document ouvert": "No document open",
+ "Des fonctions": "Features",
+ "Des corps": "Bodies",
+ "Corps à répéter": "Bodies to pattern",
+ "Corps concernés": "Affected bodies",
+ "Corps actif seulement": "Active body only",
+ "Tous les corps": "All bodies",
+ "Corps choisis": "Selected bodies",
+ "Seuls les enlèvements de matière creusent les autres corps": "Only cuts remove material from the other bodies",
+ "Cochez au moins un corps à répéter": "Check at least one body to pattern",
+ "Creuse aussi : {b}": "Also cuts: {b}",
+ "Distance (direction 2)": "Distance (direction 2)",
+ "Réseau de corps": "Body pattern"
 }

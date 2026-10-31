@@ -431,6 +431,11 @@ class TreeMixin:
             raise KernelError("fonction inconnue : {}".format(feature))
         if self._plugins.run_deletes_feature(self, obj):
             return self._current_tree()
+        # Réseau de corps, copie, corps concernés : leurs règles d'abord.
+        handled = self._repetition_delete(obj)
+        if handled is not None:
+            return handled
+        leftovers = self._repetition_before_delete(obj)
         label = obj.Label
         if obj.TypeId == "PartDesign::Body":
             bodies = [o for o in doc.Objects
@@ -453,14 +458,19 @@ class TreeMixin:
         thin_helpers = self._thin_helpers(obj)
         order = {o.Name: i for i, o in enumerate(
             getattr(parent_body, "Group", None) or [])}
+        # Le solide d'avant la première fonction de la chaîne (un
+        # auxiliaire peut précéder la fonction).
+        chain = [o for o in [obj] + thin_helpers
+                 if o.isDerivedFrom("PartDesign::Feature")]
+        base = None
+        if chain:
+            first = min(chain, key=lambda o: order.get(o.Name, -1))
+            base = getattr(first, "BaseFeature", None)
         if parent_body is not None and getattr(parent_body, "Tip", None) in (
                 [obj] + thin_helpers):
-            # Le solide d'avant la première fonction de la chaîne (un
-            # auxiliaire peut précéder la fonction).
-            chain = [o for o in [obj] + thin_helpers
-                     if o.isDerivedFrom("PartDesign::Feature")]
-            first = min(chain, key=lambda o: order.get(o.Name, -1))
-            parent_body.Tip = getattr(first, "BaseFeature", None)
+            parent_body.Tip = base
+        if chain:
+            self._relink_chain(parent_body, chain, base)
         # Paroi mince : la cavité (après la fonction) part avant elle, les
         # profils décalés (avant) après.
         rank = order.get(obj.Name, -1)
@@ -471,6 +481,7 @@ class TreeMixin:
         for name in reversed(earlier):
             if doc.getObject(name) is not None:
                 doc.removeObject(name)
+        self._remove_named_parts(leftovers)
         try:
             if self._assembly:
                 doc.recompute()
@@ -480,6 +491,18 @@ class TreeMixin:
             raise KernelError(
                 "{} supprimé, mais l'aval casse : {}".format(label, exc))
         return self._current_tree()
+
+    @staticmethod
+    def _relink_chain(body, removed, base):
+        """Rebranche sur ``base`` les fonctions qui partaient d'un objet
+        supprimé. ``doc.removeObject`` leur laisse une base vide : une
+        fonction retirée au milieu de la chaîne emportait tout l'amont."""
+        for other in getattr(body, "Group", None) or ():
+            if other in removed or not other.isDerivedFrom(
+                    "PartDesign::Feature"):
+                continue
+            if getattr(other, "BaseFeature", None) in removed:
+                other.BaseFeature = base
 
     def _body_has_solid(self, body):
         """Vrai si le corps porte un solide OCCT réel (état affiché)."""
@@ -777,6 +800,7 @@ class TreeMixin:
                     parsed = None
                 if isinstance(parsed, dict):
                     item["repeat"] = parsed
+            self._repetition_tree_fields(obj, item)
             self._annotate_tree_links(item, obj, known_names)
             return item
 

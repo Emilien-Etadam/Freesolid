@@ -10,7 +10,9 @@
 //   {
 //     icon: "nodes_extrude",
 //     title: "Extrusion",
-//     groups: [{ label, rows: [row…] }],
+//     groups: [{ label, rows: [row…], showIf? }] — showIf(values) : le
+//       groupe entier (en-tête compris) paraît ou disparaît, ses zones de
+//       sélection cachées n'absorbent pas les clics,
 //     note?: string,
 //     noApply?: boolean,   // panneau info : pas de bouton OK
 //     autoFocus?: boolean, // false : ne pas voler le focus clavier
@@ -70,10 +72,17 @@ export function selectionFilled(value) {
   return true;
 }
 
+/** Le groupe est affiché pour ces valeurs (`showIf` de groupe). */
+export function groupShown(group, values) {
+  return !group.showIf || !!group.showIf(values ?? {});
+}
+
 /** Vrai si une ligne de sélection est vide : elle affiche déjà quoi choisir. */
 export function selectionLineGuides(groups, values) {
   for (const group of groups ?? []) {
+    if (!groupShown(group, values)) continue;
     for (const row of group.rows ?? []) {
+      if (row.showIf && !row.showIf(values ?? {})) continue;
       if (row.type === "selection" && !selectionFilled(values?.[row.key])) {
         return true;
       }
@@ -243,6 +252,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     if (!active) return false;
     const rows = [];
     for (const group of active.spec.groups) {
+      if (!groupShown(group, active.values)) continue;
       for (const row of group.rows ?? []) {
         // Une zone masquée (showIf) n'absorbe pas les clics.
         if (row.type === "selection"
@@ -297,6 +307,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
   function selectionRows(kind) {
     const rows = [];
     for (const group of active?.spec.groups ?? []) {
+      if (!groupShown(group, active.values)) continue;
       for (const row of group.rows ?? []) {
         if (row.type === "selection"
             && (row.accepts ?? ["face"]).includes(kind)
@@ -311,6 +322,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     if (!onPicks) return;
     const items = [];
     for (const group of active?.spec.groups ?? []) {
+      if (!groupShown(group, active.values)) continue;
       for (const row of group.rows ?? []) {
         if (row.type !== "selection") continue;
         const value = active.values[row.key];
@@ -397,6 +409,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     updateHint();
 
     for (const group of spec.groups) {
+      if (!groupShown(group, active.values)) continue;
       const box = el("div", "pgroup");
       const header = el("div", "phead");
       header.append(el("span", "", group.label), el("span", "parrow", "▾"));
@@ -754,6 +767,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
      *  l'ordre du panneau), ou null. */
     firstNeeded: (kinds) => {
       for (const group of active?.spec.groups ?? []) {
+        if (!groupShown(group, active.values)) continue;
         for (const row of group.rows ?? []) {
           if (row.type !== "selection") continue;
           if (row.showIf && !row.showIf(active.values)) continue;

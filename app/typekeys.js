@@ -23,7 +23,7 @@ export const SURFACE_KEYS = new Set([
   "surface_sweep", "surface_offset", "surface_planar", "surface_ruled",
   "surface_fillet", "surface_radiate", "surface_trim", "curve_intersection",
   "curve_project", "curve_helix", "surface_fill", "surface_extend",
-  "surface_boundary", "surface",
+  "surface_boundary", "mirroring", "surface",
 ]);
 
 /** Fonction de corps (ou corps). */

@@ -911,7 +911,10 @@ class SolidsMixin:
         doc = self._require_doc()
         return [doc.getObject(name) for name in names]
 
-    def _transform(self, type_id, configure, features=None):
+    def _transform(self, type_id, configure, features=None, scope=None):
+        """Répétition ou symétrie des fonctions ``features`` du corps
+        actif. ``scope`` : autres corps que ses enlèvements de matière
+        creusent aussi (``engine/bodypattern.py``)."""
         from engine.kernel import (
             KernelError,
             label_for_type,
@@ -927,20 +930,29 @@ class SolidsMixin:
         # Transformed : la répétition existe alors sans devenir le solide
         # du corps (volume inchangé). Un Body n'a qu'un solide — les copies
         # disjointes sont jetées ; on pose le Tip pour que la fusion compte.
+        previous = body.Tip
         body.Tip = feature
         try:
             self._recompute()
+            if scope:
+                self._attach_pattern_scope(feature, scope)
+                self._recompute()
         except KernelError:
+            # Refusée : la pointe revient où elle était, sinon le corps
+            # resterait sans solide.
+            self._drop_pattern_scope(feature)
+            body.Tip = previous
             doc.removeObject(feature.Name)
             raise
         return self.get_tree()
 
-    def add_mirror(self, plane="YZ", features=None):
+    def add_mirror(self, plane="YZ", features=None, scope=None):
         """Symétrie d'une ou plusieurs fonctions par rapport à un plan
         d'origine (XY/XZ/YZ = Dessus/Face/Droite).
 
         ``features`` : noms des fonctions à symétriser. Absent : la
         dernière fonction additive ou soustractive du corps actif.
+        ``scope`` : corps concernés, voir ``_transform``.
         """
         from engine.kernel import KernelError
         role = self._PLANE_ROLES.get(str(plane).upper())
@@ -952,7 +964,7 @@ class SolidsMixin:
         def configure(feature):
             feature.MirrorPlane = (plane_obj, [""])
         return self._transform("PartDesign::Mirrored", configure,
-                               features=features)
+                               features=features, scope=scope)
 
     def _origin_axis(self, axis):
         from engine.kernel import KernelError
@@ -976,7 +988,7 @@ class SolidsMixin:
     def add_linear_pattern(self, length, count, axis="X", features=None,
                            edge=None, spacing=False, reversed=False,
                            length2=None, count2=None, axis2=None, edge2=None,
-                           reversed2=False):
+                           reversed2=False, scope=None):
         """Réseau linéaire d'une ou plusieurs fonctions le long d'un axe
         ou d'une arête droite — et, avec ``count2``, d'une deuxième
         direction (``axis2`` ou ``edge2``, ``length2``) : un quadrillage.
@@ -984,7 +996,8 @@ class SolidsMixin:
         ``length`` : longueur totale (par défaut) ou, avec ``spacing``,
         pas entre deux occurrences (de même pour ``length2``).
         ``features`` : noms des fonctions à répéter. Absent : la dernière
-        fonction additive ou soustractive.
+        fonction additive ou soustractive. ``scope`` : corps concernés,
+        voir ``_transform``.
         """
         from engine.kernel import KernelError
         direction = self._pattern_direction(axis, edge)
@@ -1026,15 +1039,16 @@ class SolidsMixin:
                 if reversed2:
                     feature.Reversed2 = True
         return self._transform("PartDesign::LinearPattern", configure,
-                               features=features)
+                               features=features, scope=scope)
 
     def add_polar_pattern(self, count, angle=360.0, axis="Z", features=None,
-                          edge=None, reversed=False):
+                          edge=None, reversed=False, scope=None):
         """Réseau circulaire d'une ou plusieurs fonctions autour d'un
         axe d'origine ou d'une arête droite.
 
         ``features`` : noms des fonctions à répéter. Absent : la dernière
-        fonction additive ou soustractive du corps actif.
+        fonction additive ou soustractive du corps actif. ``scope`` :
+        corps concernés, voir ``_transform``.
         """
         from engine.kernel import KernelError
         axis_ref = self._pattern_direction(axis, edge)
@@ -1049,7 +1063,7 @@ class SolidsMixin:
             feature.Angle = float(angle)
             feature.Occurrences = occurrences
         return self._transform("PartDesign::PolarPattern", configure,
-                               features=features)
+                               features=features, scope=scope)
 
     def add_thickness(self, face=None, thickness=None, faces=None,
                       outward=False):

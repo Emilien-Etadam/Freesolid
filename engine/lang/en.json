@@ -658,5 +658,19 @@
  "rien à rétablir dans l'esquisse": "nothing to redo in the sketch",
  "glisser : cette courbe ne se déplace pas entière": "drag: this curve does not move as a whole",
  "propriété du document inconnue : {}": "unknown document property: {}",
- "valeur invalide pour {} : {}": "invalid value for {}: {}"
+ "valeur invalide pour {} : {}": "invalid value for {}: {}",
+ "Réseau linéaire de corps": "Linear Body Pattern",
+ "Réseau circulaire de corps": "Circular Body Pattern",
+ "Symétrie de corps": "Body Mirror",
+ "{} — depuis {}": "{} — from {}",
+ "réseau de corps : type inconnu « {} » — attendu linear, polar ou mirror": "body pattern: unknown kind « {} » — expected linear, polar or mirror",
+ "réseau de corps : cochez au moins un corps à répéter": "body pattern: tick at least one body to pattern",
+ "bodies doit être une liste de noms": "bodies must be a list of names",
+ "scope doit être une liste de noms": "scope must be a list of names",
+ "réseau : distance invalide": "pattern: invalid distance",
+ "réseau : angle invalide": "pattern: invalid angle",
+ "choisissez une arête droite": "choose a straight edge",
+ "corps concernés : direction non prise en charge": "affected bodies: unsupported direction",
+ "corps concernés : seuls les enlèvements de matière creusent les autres corps": "affected bodies: only cuts reach the other bodies",
+ "{} est répété par {} — supprimez d'abord ce réseau de corps": "{} is patterned by {} — delete that body pattern first"
 }

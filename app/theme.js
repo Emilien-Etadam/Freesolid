@@ -17,7 +17,6 @@ const SCENE = {
   gridMajor: ["--scene-grid-major", 0x4c545e],
   gridAxis: ["--scene-grid-axis", 0x66707c],
   part: ["--scene-part", 0xaebccb],
-  partMuted: ["--scene-part-muted", 0x5f6b78],
   curve: ["--scene-curve", 0x4fb8a8],
   sketch: ["--scene-sketch", 0x8fa8c8],
   edge: ["--scene-edge", 0x11141a],

@@ -68,20 +68,58 @@ export function installPicking(ctx) {
     return raycaster.intersectObjects(ctx.surfaceMeshes, false)[0] ?? null;
   }
 
-  /** Corps du même réseau que le corps actif (copie ou source) sous le
-   *  pointeur. Pas pendant une commande : le clic changerait de corps. */
-  function pickPatternBodyHit() {
-    if (!ctx.patternMeshes?.length || panel.active) return null;
-    return raycaster.intersectObjects(ctx.patternMeshes, false)[0] ?? null;
+  /** Face ou arête d'un autre corps sous le pointeur, numérotée comme
+   *  quand il sera actif. Pas pendant une commande : le clic changerait
+   *  de corps. */
+  function pickOtherBodyHit(allow) {
+    if (!ctx.othersMeshes.length || panel.active) return null;
+    const faceHit = raycaster.intersectObjects(ctx.othersMeshes, false)[0];
+    let edgeHit;
+    if (ctx.othersEdges.length && allow.edges !== false) {
+      raycaster.params.Line.threshold = linePickThreshold();
+      edgeHit = raycaster.intersectObjects(ctx.othersEdges, false)[0];
+    }
+    const { radius } = ctx.partMesh ? ctx.partCenterRadius() : { radius: 50 };
+    if (edgeHit && (!faceHit
+        || edgeHit.distance <= faceHit.distance + radius * 0.02)) {
+      const { body, groups } = edgeHit.object.userData;
+      const edgeGroup = groups.findIndex((g) => edgeHit.index >= g.start
+        && edgeHit.index < g.start + g.count);
+      if (edgeGroup >= 0) {
+        return { distance: edgeHit.distance, point: edgeHit.point,
+                 other: { ...body, edge: groups[edgeGroup].edgeId, edgeGroup } };
+      }
+    }
+    if (!faceHit) return null;
+    const { body, groups } = faceHit.object.userData;
+    const at = faceHit.faceIndex * 3;
+    const faceGroup = allow.faces === false ? -1
+      : groups.findIndex((g) => at >= g.start && at < g.start + g.count);
+    // Filtre sans les faces : le corps cache encore ce qui est derrière.
+    return { distance: faceHit.distance, point: faceHit.point,
+             other: faceGroup < 0 ? null
+               : { ...body, face: groups[faceGroup].faceId, faceGroup } };
   }
 
-  /** Le corps survolé du réseau se teinte en entier. */
-  function repaintPatternBodies() {
-    for (const mesh of ctx.patternMeshes ?? []) {
-      const material = mesh.userData.savedMaterial ?? mesh.material;
-      if (!material.userData?.own) continue;
-      material.color.copy(ctx.hoveredPatternBody?.name === mesh.userData.body.name
-        ? new THREE.Color(ctx.sceneTheme.accent) : mesh.userData.baseColor);
+  function otherKey(other) {
+    return other ? `${other.name}:${other.faceGroup}:${other.edgeGroup}` : null;
+  }
+
+  /** La face ou l'arête survolée d'un autre corps se teinte. */
+  function repaintOtherBodies() {
+    const hover = ctx.hoveredOther;
+    for (const mesh of ctx.othersMeshes) {
+      const mine = hover?.name === mesh.userData.body.name;
+      mesh.geometry.groups.forEach((g, i) => {
+        g.materialIndex = mine && i === hover.faceGroup ? 1
+          : (mesh.userData.groups[i].baseIndex ?? 0);
+      });
+    }
+    for (const lines of ctx.othersEdges) {
+      const mine = hover?.name === lines.userData.body.name;
+      lines.geometry.groups.forEach((g, i) => {
+        g.materialIndex = mine && i === hover.edgeGroup ? 1 : 0;
+      });
     }
   }
 
@@ -229,7 +267,7 @@ export function installPicking(ctx) {
       return;
     }
     if (!ctx.partMesh && !ctx.sketchLineMeshes.length && !ctx.surfaceMeshes.length
-        && !ctx.boundaryLines.length && !ctx.patternMeshes?.length) {
+        && !ctx.boundaryLines.length && !ctx.othersMeshes.length) {
       coordsEl.textContent = "";
       return;
     }
@@ -247,7 +285,7 @@ export function installPicking(ctx) {
     let groupIndex = -1;
     let surfaceHit = null;
     let boundaryHit = null;
-    let patternBody = null;
+    let other = null;
     if (!sketchHit) {
       const faceHit = ctx.partMesh
         ? raycaster.intersectObject(ctx.partMesh)[0] : undefined;
@@ -297,15 +335,15 @@ export function installPicking(ctx) {
           pointHit = bound;
         }
       }
-      // Un corps du même réseau devant tout cela : on le vise en entier.
-      const copyHit = pickPatternBodyHit();
-      if (copyHit && (!pointHit || copyHit.distance < pointHit.distance)) {
-        patternBody = copyHit.object.userData.body;
+      // Un autre corps devant tout cela : sa face ou son arête.
+      const otherHit = pickOtherBodyHit(allow);
+      if (otherHit && (!pointHit || otherHit.distance < pointHit.distance)) {
+        other = otherHit.other;
         boundaryHit = null;
         surfaceHit = null;
         groupIndex = -1;
         edgeGroupIndex = -1;
-        pointHit = copyHit;
+        pointHit = otherHit;
       }
       // Barre d'état : coordonnées du point visé sur la pièce.
       coordsEl.textContent = coordsText(pointHit?.point ?? null);
@@ -319,20 +357,20 @@ export function installPicking(ctx) {
         || sketchHit?.name !== ctx.hoveredSketch?.name
         || surfaceName !== ctx.hoveredSurface?.name
         || boundaryKey !== hoveredKey
-        || patternBody?.name !== ctx.hoveredPatternBody?.name) {
+        || otherKey(other) !== otherKey(ctx.hoveredOther)) {
       ctx.hoveredGroup = groupIndex;
       ctx.hoveredEdgeGroup = edgeGroupIndex;
       ctx.hoveredSketch = sketchHit;
       ctx.hoveredSurface = surfaceHit;
       ctx.hoveredBoundary = boundaryHit;
-      ctx.hoveredPatternBody = patternBody;
+      ctx.hoveredOther = other;
       renderer.domElement.style.cursor =
         groupIndex >= 0 || edgeGroupIndex >= 0 || sketchHit || surfaceHit
-          || boundaryHit || patternBody ? "pointer" : "";
+          || boundaryHit || other ? "pointer" : "";
       repaintGroups();
       repaintEdges();
       repaintSurfaces();
-      repaintPatternBodies();
+      repaintOtherBodies();
       ctx.repaintBoundaries();
     }
   }
@@ -354,8 +392,10 @@ export function installPicking(ctx) {
         : `${b.label} · ${t("Arête {n}", { n: b.edge })}`);
     } else if (ctx.hoveredSurface) {
       parts.push(ctx.hoveredSurface.label);
-    } else if (ctx.hoveredPatternBody) {
-      parts.push(`${ctx.hoveredPatternBody.label} · ${t("Clic : activer ce corps")}`);
+    } else if (ctx.hoveredOther) {
+      const o = ctx.hoveredOther;
+      parts.push(`${o.label} · ${o.edgeGroup === undefined
+        ? t("Face {n}", { n: o.face }) : t("Arête {n}", { n: o.edge })}`);
     } else if (ctx.hoveredEdgeGroup >= 0) {
       parts.push(t("Arête {n}", { n: ctx.edgeGroups[ctx.hoveredEdgeGroup].edgeId }));
     } else if (ctx.hoveredGroup >= 0) {
@@ -418,7 +458,7 @@ export function installPicking(ctx) {
     }
     const nothingHovered = ctx.hoveredGroup < 0 && ctx.hoveredEdgeGroup < 0
       && !ctx.hoveredSketch && !ctx.hoveredSurface && !ctx.hoveredBoundary
-      && !ctx.hoveredPatternBody;
+      && !ctx.hoveredOther;
     boxStart = event.button === 0 && nothingHovered && !ctx.assemblyState
       && !ctx.planePicking && !ctx.measuring && ctx.partEdges
       ? { x: event.clientX, y: event.clientY } : null;
@@ -484,14 +524,15 @@ export function installPicking(ctx) {
 
     if (ctx.onMeasurePointerUp()) return;
 
-    // Un corps du même réseau : il devient le corps actif, puis le même
-    // clic prend la face ou l'arête qu'il présente sous le pointeur.
-    if (ctx.hoveredPatternBody && event.button === 0) {
-      const body = ctx.hoveredPatternBody;
+    // Un autre corps : il devient le corps actif, puis le même clic prend
+    // la face ou l'arête qu'il présente sous le pointeur. Le clic du
+    // milieu reste à la navigation.
+    if (ctx.hoveredOther && event.button !== 1) {
+      const body = ctx.hoveredOther;
       Promise.resolve(refresh(call("set_active_body", { body: body.name })))
         .then(() => {
           updateHover(event);
-          if (!ctx.hoveredPatternBody) clickAt(event);
+          if (!ctx.hoveredOther) clickAt(event);
         });
       return;
     }

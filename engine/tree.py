@@ -955,8 +955,9 @@ class TreeMixin:
         from . import protocol
         body = self._require_body()
         angle = None
+        edge_deviation = None
         if deviation is None:
-            deviation, angle, _edges = self._display_mesh()
+            deviation, angle, edge_deviation = self._display_mesh()
         self._report_progress("Maillage")
         shape = getattr(body, "Shape", None)
         if self._is_hidden(body):
@@ -987,41 +988,41 @@ class TreeMixin:
             "faces": int(match.get("faces") or 0),
         }
         mesh["color"] = getattr(body, "FreeSolidColor", "") or None
-        # Les autres corps s'affichent estompés, non sélectionnables :
-        # on travaille sur le corps actif, on voit la pièce entière.
-        # Un maillage par corps (couleur propre) ; ``others`` reste le
-        # buffer combiné pour la compatibilité (selftest p9_others_shown).
+        # Les autres corps s'affichent comme le corps actif, face par face
+        # et arêtes comprises : le clic sur l'une d'elles active son corps
+        # (picking.js). Les numéros sont ceux qu'il aura une fois actif.
+        # ``others`` reste le buffer combiné pour la compatibilité
+        # (selftest p9_others_shown).
         other_bodies = []
-        family = self._pattern_family(body)
         for obj in self._doc.Objects:
             if (obj.TypeId != "PartDesign::Body" or obj is body
                     or getattr(obj, "Shape", None) is None
                     or self._is_internal_tool(obj)
                     or self._is_hidden(obj)):
                 continue
-            other_faces = []
-            for face in self._meshed(obj.Shape, deviation, angle).Faces:
-                vertices, triangles = face.tessellate(float(deviation))
-                other_faces.append(
-                    (0, [(v.x, v.y, v.z) for v in vertices], triangles))
+            other_faces = [
+                self._face_mesh(face, i, deviation)[0]
+                for i, face in enumerate(
+                    self._meshed(obj.Shape, deviation, angle).Faces)]
             if not other_faces:
                 continue
             packed = protocol.pack_mesh(other_faces)
-            extra = {
+            tints = self._face_colors(obj)
+            for group in packed["groups"]:
+                tint = tints.get(str(group.get("faceId")))
+                if tint:
+                    group["color"] = tint
+            other_bodies.append({
                 "name": obj.Name,
+                "label": obj.Label,
                 "color": getattr(obj, "FreeSolidColor", "") or None,
                 "positions": packed["positions"],
+                "normals": packed.get("normals"),
                 "indices": packed["indices"],
-            }
-            if obj.Name in family:
-                # Même réseau de corps que le corps actif (copie ou
-                # source) : un solide comme lui, arêtes comprises, que le
-                # clic active — et non un corps estompé.
-                extra["pattern_family"] = True
-                extra["label"] = obj.Label
-                extra["edges"] = protocol.pack_edges(
-                    self._object_edge_lines(obj.Shape))
-            other_bodies.append(extra)
+                "groups": packed["groups"],
+                "edges": protocol.pack_edges(self._body_edge_lines(
+                    obj.Shape, edge_deviation or float(deviation) / 2)),
+            })
         if other_bodies:
             mesh["other_bodies"] = other_bodies
             positions = []
@@ -1142,6 +1143,11 @@ class TreeMixin:
         shape = getattr(body, "Shape", None)
         if shape is None or not shape.Edges or self._is_hidden(body):
             return protocol.pack_edges([])
+        return protocol.pack_edges(self._body_edge_lines(shape, deviation))
+
+    def _body_edge_lines(self, shape, deviation):
+        """Polylignes des arêtes d'un corps, coutures omises — celles du
+        corps actif comme celles des autres corps de la vue."""
         seams = self._seam_edge_ids(shape)
         lines = []
         for i, edge in enumerate(shape.Edges):
@@ -1156,7 +1162,7 @@ class TreeMixin:
                     continue  # arête dégénérée : les ids restent justes
             lines.append((i, [(p.x, p.y, p.z) for p in points],
                           float(edge.Length), self._circle_center(edge)))
-        return protocol.pack_edges(lines)
+        return lines
 
     def _object_edge_lines(self, shape):
         """Polylignes des arêtes d'une surface ou d'une courbe, en base 0

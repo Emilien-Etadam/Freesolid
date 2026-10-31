@@ -350,6 +350,12 @@ class BodyPatternMixin:
                 copies[(key[1], key[2])] = obj
         return copies
 
+    def _body_pattern_rolled_back(self, host):
+        """Sous la barre de retour : ses copies n'existent pas encore."""
+        copies = list(self._body_pattern_copies(host).values())
+        return bool(copies) and all(
+            getattr(copy, "Tip", None) is None for copy in copies)
+
     def _body_pattern_wanted(self, host, spec):
         """{(source, occurrence): (numéro, placement ou None)} attendus.
 
@@ -811,6 +817,7 @@ class BodyPatternMixin:
                 kind, BODY_PATTERN_LABELS["linear"]))
             item["body_pattern"] = kind
             item["copies"] = [copy.Label for copy in copies]
+            item["rolled_back"] = self._body_pattern_rolled_back(host)
             if any("Invalid" in (copy.State or ()) for copy in copies):
                 item["error"] = True
             rows.append(item)

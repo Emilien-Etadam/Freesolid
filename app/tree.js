@@ -1002,7 +1002,7 @@ export function installTree(ctx) {
                                     moveEvent.clientY - start.y) < 6) return;
         dragging = true;
         row.classList.add("dragging");
-        const slots = reorderSlotPositions();
+        const slots = reorderSlotPositions(feature.body);
         if (slots.length) showInsertMark(nearestRollbackSlot(moveEvent.clientY, slots));
       };
       const onUp = (upEvent) => {
@@ -1015,8 +1015,8 @@ export function installTree(ctx) {
         // pas (lâcher hors de la ligne), le drapeau retombe aussitôt.
         suppressTreeClick = true;
         setTimeout(() => { suppressTreeClick = false; }, 0);
-        const rows = [...treeEl.querySelectorAll("li[data-hist]")];
-        const slots = reorderSlotPositions();
+        const rows = historyRowsOf(feature.body);
+        const slots = reorderSlotPositions(feature.body);
         if (!slots.length) return;
         const slot = nearestRollbackSlot(upEvent.clientY, slots);
         const own = rows.indexOf(row);
@@ -1050,9 +1050,16 @@ export function installTree(ctx) {
     return slots;
   }
 
+  /** Lignes d'historique d'un corps (`body` absent : le corps actif,
+   *  avec les surfaces) — on ne réordonne qu'à l'intérieur d'un corps. */
+  function historyRowsOf(body) {
+    return [...treeEl.querySelectorAll("li[data-hist]")]
+      .filter((li) => (li.dataset.body ?? "") === (body ?? ""));
+  }
+
   /** Positions d'insertion du glisser-réordonner, par indice de ligne. */
-  function reorderSlotPositions() {
-    const rows = [...treeEl.querySelectorAll("li[data-hist]")];
+  function reorderSlotPositions(body) {
+    const rows = historyRowsOf(body);
     if (!rows.length) return [];
     const slots = [{ y: rows[0].getBoundingClientRect().top, index: 0 }];
     for (let i = 0; i < rows.length; i++) {
@@ -1274,30 +1281,58 @@ export function installTree(ctx) {
     origin.addEventListener("click", toggleOrigin);
     treeEl.appendChild(origin);
 
-    // Un réseau de corps suit le corps tel que la barre le laisse : sa
-    // ligne se tient juste au-dessus d'elle, sans position de barre.
-    const all = tree.features ?? [];
-    const features = all.filter((feature) => feature.type_key !== "body_pattern");
-    const patterns = all.filter((feature) => feature.type_key === "body_pattern");
-    const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip,
+    // Un seul arbre : l'histoire des autres corps se range par rang avec
+    // celle du corps actif, réseaux de corps compris ; le moteur dit de
+    // quel côté de la barre.
+    const all = [...(tree.features ?? []), ...(tree.other_features ?? [])];
+    const split = splitHistoryAroundBar(all, tree.surfaces ?? [], tree.tip,
       { flat: flatTree });
     if (split.bar !== "none") {
       appendHistoryRows(split.before, false);
-      for (const pattern of patterns) appendBodyPatternRow(pattern);
       appendRollbackBar();
       appendHistoryRows(split.after, true);
-    } else {
-      for (const pattern of patterns) appendBodyPatternRow(pattern);
     }
     markBarSlots(split);
   }
 
-  /** Ligne d'un réseau de corps du corps actif : double-clic pour le
-   *  rouvrir ; ni réordonnée, ni reculée par la barre. */
-  function appendBodyPatternRow(feature) {
+  /** Ligne d'un autre corps (`feature.body`) : son corps devient actif,
+   *  puis l'action part sur la ligne du nouvel arbre. */
+  function inBody(feature, action) {
+    if (!feature.body) {
+      action(feature);
+      return;
+    }
+    Promise.resolve(refresh(call("set_active_body", { body: feature.body })))
+      .then(() => action(findSketch(ctx.lastTree, feature.name) ?? feature));
+  }
+
+  /** Clic sur une ligne d'un autre corps : elle se marque, sans changer
+   *  de corps — le double-clic qui suit ne doit pas perdre sa ligne. */
+  function markForeignRow(event, row, feature) {
+    if (consumeTreeRenameClick(event, row, feature)) return;
+    ctx.selectedFeatureName = feature.name;
+  }
+
+  /** Clic droit sur une ligne d'un autre corps : le menu s'ouvre une fois
+   *  son corps actif. */
+  function openRowMenu(event, feature) {
+    if (!feature.body) {
+      ctx.openMenu(event, feature);
+      return;
+    }
+    event.preventDefault();
+    inBody(feature, (fresh) => ctx.openMenu(event, fresh));
+  }
+
+  /** Ligne d'un réseau de corps : double-clic pour le rouvrir. La barre
+   *  se pose dessous ; elle ne se réordonne pas. */
+  function appendBodyPatternRow(feature, rolledBack) {
     const row = document.createElement("li");
     row.className = "feat";
     row.dataset.feat = feature.name;
+    row.dataset.line = feature.name;
+    if (feature.body) row.dataset.body = feature.body;
+    if (rolledBack) row.classList.add("rolled-back");
     if (feature.error) row.classList.add("error");
     if (ctx.selectedFeatureName === feature.name) row.classList.add("sel");
     const arrow = document.createElement("span");
@@ -1307,7 +1342,7 @@ export function installTree(ctx) {
       ?? "linear_pattern"));
     row.appendChild(document.createTextNode(feature.label));
     row.title = `${feature.kind} — `
-      + t("double-clic : modifier · clic droit : modifier, renommer, supprimer");
+      + t("double-clic : modifier · clic droit : modifier, barre de retour, renommer, supprimer");
     if (feature.copies?.length) {
       row.title += "\n" + t("Corps créés : {b}",
                              { b: feature.copies.join(", ") });
@@ -1319,8 +1354,8 @@ export function installTree(ctx) {
       row.appendChild(note);
       row.title = `${feature.comment}\n\n${row.title}`;
     }
-    row.addEventListener("dblclick", () => editFeature(feature));
-    row.addEventListener("contextmenu", (event) => ctx.openMenu(event, feature));
+    row.addEventListener("dblclick", () => inBody(feature, editFeature));
+    row.addEventListener("contextmenu", (event) => openRowMenu(event, feature));
     row.addEventListener("click", (event) => {
       if (consumeTreeRenameClick(event, row, feature)) return;
       ctx.selectedFeatureName = feature.name;
@@ -1361,6 +1396,8 @@ export function installTree(ctx) {
         appendSurfaceRow(row.item, {
           inFolder: false, rolledBack: rolledBack || !!row.item.rolled_back,
         });
+      } else if (row.item.type_key === "body_pattern") {
+        appendBodyPatternRow(row.item, rolledBack);
       } else {
         appendFeatureHistoryRow(row.item, rolledBack, !!folder,
           { lifted: !!row.parent });
@@ -1375,6 +1412,7 @@ export function installTree(ctx) {
     row.classList.add("feat");
     row.dataset.feat = feature.name;
     row.dataset.line = feature.name;
+    if (feature.body) row.dataset.body = feature.body;
     // Esquisse sortie de sa fonction : pas une ligne à réordonner.
     if (!lifted) row.dataset.hist = feature.name;
     if (feature.error) row.classList.add("error");
@@ -1425,16 +1463,20 @@ export function installTree(ctx) {
       row.appendChild(note);
       row.title = `${feature.comment}\n\n${row.title}`;
     }
-    row.addEventListener("dblclick", () => {
-      if (feature.type_key === "sketch") {
-        onSketchRowDblClick(feature);
+    row.addEventListener("dblclick", () => inBody(feature, (fresh) => {
+      if (fresh.type_key === "sketch") {
+        onSketchRowDblClick(fresh);
       } else {
-        editFeature(feature);
+        editFeature(fresh);
       }
-    });
-    row.addEventListener("contextmenu", (event) => ctx.openMenu(event, feature));
+    }));
+    row.addEventListener("contextmenu", (event) => openRowMenu(event, feature));
     if (!lifted) bindFeatureDrag(row, feature);
-    if (feature.type_key === "datum_plane") {
+    if (feature.body) {
+      // Un autre corps : le clic marque la ligne ; ni plan pour la
+      // prochaine esquisse, ni esquisse ou fonction donnée au panneau.
+      row.addEventListener("click", (event) => markForeignRow(event, row, feature));
+    } else if (feature.type_key === "datum_plane") {
       // Un plan de référence se choisit comme un plan d'origine.
       row.classList.add("plane");
       if (ctx.selectedDatumFeature?.name === feature.name) {
@@ -1447,13 +1489,13 @@ export function installTree(ctx) {
       row.addEventListener("mouseenter", () => refreshDatumGhost(feature));
       row.addEventListener("mouseleave", () => refreshDatumGhost(null));
     }
-    if (feature.type_key === "sketch") {
+    if (!feature.body && feature.type_key === "sketch") {
       if (ctx.selectedSketch?.name === feature.name) row.classList.add("sel");
       row.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, row, feature)) return;
         onSketchRowClick(feature);
       });
-    } else if (feature.type_key !== "datum_plane") {
+    } else if (!feature.body && feature.type_key !== "datum_plane") {
       row.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, row, feature)) return;
         ctx.selectedFeatureName = feature.name;
@@ -1485,9 +1527,15 @@ export function installTree(ctx) {
           childRow.title = t("Esquisse partagée — aussi utilisée par : {f}",
             { f: child.shared.join(", ") }) + " · " + childRow.title;
         }
-        childRow.addEventListener("dblclick", () => onSketchRowDblClick(child));
-        childRow.addEventListener("contextmenu", (event) => ctx.openMenu(event, child));
+        const own = feature.body ? { ...child, body: feature.body } : child;
+        childRow.addEventListener("dblclick",
+          () => inBody(own, onSketchRowDblClick));
+        childRow.addEventListener("contextmenu", (event) => openRowMenu(event, own));
         childRow.addEventListener("click", (event) => {
+          if (own.body) {
+            markForeignRow(event, childRow, own);
+            return;
+          }
           if (consumeTreeRenameClick(event, childRow, child)) return;
           onSketchRowClick(child);
         });

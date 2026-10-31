@@ -141,10 +141,10 @@ class SketchShareMixin:
 
     # ---------- qui utilise quelle esquisse ----------
 
-    def _sketch_consumers(self):
+    def _sketch_consumers(self, body=None):
         """Esquisse → toutes les fonctions qui la prennent pour profil,
         dans l'ordre du corps (la première « porte » l'esquisse)."""
-        body = self._require_body()
+        body = body or self._require_body()
         users = {}
         for obj in body.Group:
             if getattr(obj, "FreeSolidThinOwner", ""):

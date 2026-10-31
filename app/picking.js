@@ -14,7 +14,7 @@ import { paramLabel } from "./tree.js";
 
 export function findFeatureInTree(tree, name) {
   if (!name || !tree) return null;
-  for (const feature of tree.features ?? []) {
+  for (const feature of [...(tree.features ?? []), ...(tree.other_features ?? [])]) {
     if (feature.name === name) return feature;
     for (const child of feature.children ?? []) {
       if (child.name === name) return child;

@@ -488,8 +488,8 @@ def visible_dep_subs(dep_subs, known_names):
 #: Clés que ``get_tree`` émet lui-même. Les autres viennent des plugins
 #: (``tree_contribution``).
 CORE_TREE_KEYS = frozenset({
-    "body", "tip", "bodies", "planes", "features", "surfaces",
-    "variables", "configurations",
+    "body", "tip", "bodies", "planes", "features", "other_features",
+    "surfaces", "variables", "configurations",
 })
 
 
@@ -503,8 +503,9 @@ def dangling_deps(tree):
     vérifie contre ce que le payload **expose**, jamais contre l'ensemble
     de noms qui a servi à le filtrer : c'est précisément là que les deux
     peuvent diverger. Toute section porteuse de noms compte donc comme
-    cible légitime : ``features``, ``surfaces`` et leurs ``children``,
-    ``planes``, ``bodies`` — et chaque liste qu'un plugin ajoute au
+    cible légitime : ``features``, ``other_features`` (l'histoire des
+    autres corps), ``surfaces`` et leurs ``children``, ``planes``,
+    ``bodies`` — et chaque liste qu'un plugin ajoute au
     payload (une clé hors de ``CORE_TREE_KEYS``).
 
     Fonction pure sur un dictionnaire — pas d'import FreeCAD.
@@ -521,8 +522,8 @@ def dangling_deps(tree):
             for child in walk(item.get("children")):
                 yield child
 
-    sections = [tree.get("features"), tree.get("surfaces"),
-                tree.get("planes"), tree.get("bodies")]
+    sections = [tree.get("features"), tree.get("other_features"),
+                tree.get("surfaces"), tree.get("planes"), tree.get("bodies")]
     sections += [value for key, value in tree.items()
                  if key not in CORE_TREE_KEYS and isinstance(value, list)]
     known = set()

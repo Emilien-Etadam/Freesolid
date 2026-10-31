@@ -17,10 +17,12 @@ class TreeMixin:
         reconstruit plus (une fonction viendrait avant ce dont elle
         dépend) : la transaction est alors annulée."""
         from engine.kernel import KernelError
-        body = self._require_body()
         doc = self._require_doc()
         moved = doc.getObject(str(feature))
         anchor = doc.getObject(str(target))
+        # L'arbre montre tous les corps : on réordonne dans celui de la
+        # fonction déplacée, sans l'activer.
+        body = self._history_body_of(moved) or self._require_body()
         members = list(body.Group)
         if moved not in members or anchor not in members:
             raise KernelError("réordonner : fonction inconnue dans ce corps")
@@ -38,7 +40,8 @@ class TreeMixin:
         anchor_group = [o for o in members
                         if consumed.get(o.Name) == anchor.Name or o is anchor]
         anchor = anchor_group[-1] if after else anchor_group[0]
-        tip_at_end = body.Tip is not None and body.Tip is self._last_body_feature()
+        tip_at_end = (body.Tip is not None
+                      and body.Tip is self._last_body_feature(body))
         for obj in group:
             body.removeObject(obj)
         if after:
@@ -48,7 +51,7 @@ class TreeMixin:
             for obj in group:
                 body.insertObject(obj, anchor, False)
         if tip_at_end:
-            last = self._last_body_feature()
+            last = self._last_body_feature(body)
             if last is not None:
                 body.Tip = last
         # Chaque objet doit venir après ce qu'il référence dans le corps
@@ -73,19 +76,38 @@ class TreeMixin:
                     ", ".join(broken)))
         return self.get_tree()
 
-    def _last_body_feature(self):
+    def _last_body_feature(self, body=None):
         """Dernière fonction solide du corps (hors esquisses et plans)."""
-        body = self._require_body()
+        body = body or self._require_body()
         for obj in reversed(list(body.Group)):
             if obj.isDerivedFrom("PartDesign::Feature"):
                 return obj
         return None
 
+    def _history_bodies(self):
+        """Corps dont l'histoire paraît dans l'arbre, dans l'ordre du
+        document : tous, sauf les corps outils internes."""
+        return [o for o in self._require_doc().Objects
+                if o.TypeId == "PartDesign::Body"
+                and not self._is_internal_tool(o)]
+
+    def _history_body_of(self, obj):
+        """Le corps de l'histoire qui contient ``obj``, ou None."""
+        return next((b for b in self._history_bodies() if obj in b.Group),
+                    None)
+
+    @staticmethod
+    def _is_pattern_base(obj):
+        """Base d'une copie de réseau de corps : la ligne du réseau la
+        représente, l'histoire ne la montre pas."""
+        return bool(getattr(obj, "FreeSolidPatternOf", ""))
+
     def _consumed_sketches(self):
-        """Esquisse → nom du parent (fonction PartDesign ou surface)."""
-        body = self._require_body()
+        """Esquisse → nom du parent (fonction PartDesign ou surface), dans
+        tous les corps."""
+        self._require_body()
         consumed = {}
-        for obj in body.Group:
+        for obj in [o for b in self._history_bodies() for o in b.Group]:
             owner = getattr(obj, "FreeSolidThinOwner", "")
             if owner:
                 # Objet caché de paroi mince : il voyage avec sa fonction ;
@@ -125,13 +147,15 @@ class TreeMixin:
             obj.Visibility = not rolled
 
     def _history_role(self, obj, consumed):
-        """Rôle dans l'historique : ``feature`` / ``sketch`` / ``surface``,
-        ou None si hors historique. Un code, pas un libellé : ``kind`` reste
-        le nom affiché d'un objet."""
+        """Rôle dans l'historique : ``feature`` / ``sketch`` / ``surface``
+        / ``pattern`` (réseau de corps), ou None si hors historique. Un
+        code, pas un libellé : ``kind`` reste le nom affiché d'un objet."""
         if self._is_thin_helper(obj):
             return None
         if self._is_surface_obj(obj):
             return "surface"
+        if "FreeSolidBodyPattern" in obj.PropertiesList:
+            return "pattern"
         if obj.TypeId == "Sketcher::SketchObject":
             return None if obj.Name in consumed else "sketch"
         if obj.isDerivedFrom("PartDesign::Feature"):
@@ -141,32 +165,48 @@ class TreeMixin:
     def _tree_order(self):
         """Rang de chaque objet, celui que l'arbre affiche (``order``).
 
-        Dans le corps, l'ordre fait foi (réordonner le change sans toucher
-        l'ordre de création) : on redistribue ses rangs selon body.Group,
-        ce qui garde l'entrelacement avec les surfaces hors corps.
+        Dans chaque corps, l'ordre du corps fait foi (réordonner le change
+        sans toucher l'ordre de création) : on redistribue ses rangs selon
+        body.Group, ce qui garde l'entrelacement avec les autres corps et
+        les surfaces hors corps.
         """
-        body = self._require_body()
+        self._require_body()
         order_of = {obj.Name: i for i, obj in enumerate(self._doc.Objects)}
-        members = [o for o in body.Group if o.Name in order_of]
-        for slot, obj in zip(sorted(order_of[o.Name] for o in members),
-                             members):
-            order_of[obj.Name] = slot
+        for body in self._history_bodies():
+            members = [o for o in body.Group if o.Name in order_of]
+            for slot, obj in zip(sorted(order_of[o.Name] for o in members),
+                                 members):
+                order_of[obj.Name] = slot
+        for host in self._body_pattern_hosts():
+            # Un réseau vient avant ses copies, même quand une annulation
+            # l'a rendu en fin de document : au plus tôt de leurs bases.
+            copies = self._body_pattern_copies(host).values()
+            bases = [o.Name for copy in copies for o in copy.Group
+                     if self._is_pattern_base(o)]
+            order_of[host.Name] = min(
+                [order_of[host.Name]]
+                + [order_of[name] for name in bases if name in order_of])
         return order_of
 
     def _history_lines(self):
-        """Lignes d'historique top-niveau, dans l'ordre de l'arbre."""
+        """Lignes d'historique top-niveau de toute la pièce, dans l'ordre
+        de l'arbre : fonctions et esquisses libres de chaque corps,
+        surfaces, réseaux de corps."""
         doc = self._require_doc()
-        body = self._require_body()
         consumed = self._consumed_sketches()
         lines = []
-        for obj in body.Group:
-            role = self._history_role(obj, consumed)
-            if role in ("feature", "sketch"):
-                lines.append(obj)
+        for body in self._history_bodies():
+            for obj in body.Group:
+                if self._is_pattern_base(obj):
+                    continue
+                role = self._history_role(obj, consumed)
+                if role in ("feature", "sketch"):
+                    lines.append(obj)
         for obj in doc.Objects:
             if (self._is_surface_obj(obj)
                     and not self._is_internal_tool(obj)):
                 lines.append(obj)
+        lines.extend(self._body_pattern_hosts())
         order_of = self._tree_order()
         lines.sort(key=lambda o: order_of.get(o.Name, -1))
         return lines
@@ -174,6 +214,8 @@ class TreeMixin:
     def _history_rows(self, lines=None):
         consumed = self._consumed_sketches()
         order_of = self._tree_order()
+        owners = {o.Name: b.Name for b in self._history_bodies()
+                  for o in b.Group}
         rows = []
         for obj in (lines if lines is not None else self._history_lines()):
             role = self._history_role(obj, consumed)
@@ -183,8 +225,38 @@ class TreeMixin:
                 "name": obj.Name,
                 "order": order_of.get(obj.Name, -1),
                 "role": role,
+                "body": owners.get(obj.Name),
             })
+            if role == "pattern":
+                # Ses copies naissent avec lui : la base de chacune est sa
+                # première fonction, au rang du réseau.
+                for copy in self._body_pattern_copies(obj).values():
+                    base = next((o for o in copy.Group
+                                 if self._is_pattern_base(o)), None)
+                    if base is not None:
+                        rows.append({"name": base.Name,
+                                     "order": order_of.get(obj.Name, -1),
+                                     "role": "feature", "body": copy.Name})
         return rows
+
+    def _apply_tips(self, tips):
+        """Pose le Tip de chaque corps (``rollback_tips``). Une copie de
+        réseau s'arrête au moins à sa base sous le réseau, et n'existe pas
+        au-dessus."""
+        doc = self._require_doc()
+        for body_name, tip_name in tips.items():
+            body = doc.getObject(body_name or "")
+            if body is None:
+                continue
+            body.Tip = (self._tip_with_helpers(doc.getObject(tip_name))
+                        if tip_name else None)
+
+    def _set_bar_sketches(self, name=""):
+        """L'esquisse sortie de sa fonction par la barre, sur son corps ;
+        vide sur tous les autres."""
+        for body in self._history_bodies():
+            owned = bool(name) and any(o.Name == name for o in body.Group)
+            self._set_bar_sketch(body, name if owned else "")
 
     def _apply_rollback_flags(self, flags):
         """Applique ``flags`` (nom → reculé) aux surfaces, esquisses libres
@@ -253,15 +325,15 @@ class TreeMixin:
         """
         from engine.kernel import (
             KernelError,
-            rollback_plan,
+            rollback_tips,
         )
-        body = self._require_body()
+        self._require_body()
         history = self._history_lines()
         if feature is None or not str(feature).strip():
-            flags, tip_name = rollback_plan(self._history_rows(history), None)
-            body.Tip = None
+            flags, tips = rollback_tips(self._history_rows(history), None)
+            self._apply_tips(tips)
             self._apply_rollback_flags(flags)
-            self._set_bar_sketch(body, "")
+            self._set_bar_sketches()
             self._recompute()
             return self.get_tree()
         obj = self._require_doc().getObject(str(feature))
@@ -273,21 +345,19 @@ class TreeMixin:
         if absorbed:
             # Ni flag ni Tip pour elle : sa place dans l'ordre suffit.
             rows.append({"name": obj.Name, "role": "absorbed",
-                         "order": self._tree_order().get(obj.Name, -1)})
+                         "order": self._tree_order().get(obj.Name, -1),
+                         "body": getattr(self._history_body_of(obj),
+                                         "Name", None)})
             rows.sort(key=lambda row: row["order"])
         elif obj.Name not in {row["name"] for row in rows}:
             raise KernelError(
                 "« {} » n'est pas une ligne d'historique — la barre de "
                 "retour se pose sur une fonction, une esquisse libre ou "
                 "une surface".format(obj.Label))
-        flags, tip_name = rollback_plan(rows, obj.Name)
-        if tip_name is None:
-            body.Tip = None
-        else:
-            tip_obj = self._require_doc().getObject(tip_name)
-            body.Tip = self._tip_with_helpers(tip_obj)
+        flags, tips = rollback_tips(rows, obj.Name)
+        self._apply_tips(tips)
         self._apply_rollback_flags(flags)
-        self._set_bar_sketch(body, obj.Name if absorbed else "")
+        self._set_bar_sketches(obj.Name if absorbed else "")
         self._recompute()
         return self.get_tree()
 
@@ -304,11 +374,13 @@ class TreeMixin:
         setattr(body, _BAR_SKETCH_PROP, name)
 
     def _absorbing_feature(self, obj):
-        """Fonction du corps actif sous laquelle l'esquisse *obj* est
-        rangée, ou None (esquisse libre, de surface, autre objet)."""
-        body = self._require_body()
+        """Fonction sous laquelle l'esquisse *obj* est rangée dans son
+        corps, ou None (esquisse libre, de surface, autre objet)."""
         if (getattr(obj, "TypeId", "") != "Sketcher::SketchObject"
                 or self._is_thin_helper(obj)):
+            return None
+        body = self._history_body_of(obj)
+        if body is None:
             return None
         members = {o.Name: o for o in body.Group}
         if obj.Name not in members:
@@ -326,57 +398,58 @@ class TreeMixin:
         ``set_tip`` si elle vient plus loin. Une esquisse absorbée avant
         cette position, dont la fonction est après le Tip, en sort.
         """
-        body = self._require_body()
-        group = list(body.Group)
-        index = {o.Name: i for i, o in enumerate(group)}
-        tip = getattr(body, "Tip", None)
-        tip_at = index.get(tip.Name, -1) if tip is not None else -1
-        bar_at = max(tip_at, index.get(
-            getattr(body, _BAR_SKETCH_PROP, "") or "", -1))
-        if bar_at < 0:
-            return []
         consumed = self._consumed_sketches()
         out = []
-        for obj in group[:bar_at + 1]:
-            if (obj.TypeId != "Sketcher::SketchObject"
-                    or self._is_thin_helper(obj)):
-                continue
-            owner = consumed.get(obj.Name)
-            if owner in index and index[owner] > tip_at:
-                out.append(obj.Name)
+        for body in self._history_bodies():
+            group = list(body.Group)
+            index = {o.Name: i for i, o in enumerate(group)}
+            tip = getattr(body, "Tip", None)
+            tip_at = index.get(tip.Name, -1) if tip is not None else -1
+            bar_at = max(tip_at, index.get(
+                getattr(body, _BAR_SKETCH_PROP, "") or "", -1))
+            for obj in group[:bar_at + 1]:
+                if (obj.TypeId != "Sketcher::SketchObject"
+                        or self._is_thin_helper(obj)):
+                    continue
+                owner = consumed.get(obj.Name)
+                if owner in index and index[owner] > tip_at:
+                    out.append(obj.Name)
         return out
 
     def _rolled_back_objects(self):
         """Tout ce qui est sous la barre de retour, dans l'ordre de l'arbre :
         fonctions après le Tip et leurs esquisses (sauf celles sorties
-        au-dessus), esquisses libres et surfaces reculées."""
-        body = self._require_body()
-        group = list(body.Group)
-        index = {o.Name: i for i, o in enumerate(group)}
-        tip = getattr(body, "Tip", None)
-        tip_at = index.get(tip.Name, -1) if tip is not None else -1
+        au-dessus), esquisses libres, surfaces et réseaux de corps
+        reculés."""
         consumed = self._consumed_sketches()
         above = set(self._unabsorbed_sketches())
         out = []
-        for i, obj in enumerate(group):
-            if self._is_thin_helper(obj):
-                continue  # part avec sa fonction (delete_feature)
-            if obj.isDerivedFrom("PartDesign::Feature"):
-                if i > tip_at:
-                    out.append(obj)
-            elif (obj.TypeId == "Sketcher::SketchObject"
-                    and obj.Name not in above):
-                owner = consumed.get(obj.Name)
-                if owner in index:
-                    if index[owner] > tip_at:
+        for body in self._history_bodies():
+            group = list(body.Group)
+            index = {o.Name: i for i, o in enumerate(group)}
+            tip = getattr(body, "Tip", None)
+            tip_at = index.get(tip.Name, -1) if tip is not None else -1
+            for i, obj in enumerate(group):
+                if self._is_thin_helper(obj) or self._is_pattern_base(obj):
+                    continue  # part avec sa fonction, ou avec la copie
+                if obj.isDerivedFrom("PartDesign::Feature"):
+                    if i > tip_at:
                         out.append(obj)
-                elif self._is_rolled_back(obj):
-                    out.append(obj)
+                elif (obj.TypeId == "Sketcher::SketchObject"
+                        and obj.Name not in above):
+                    owner = consumed.get(obj.Name)
+                    if owner in index:
+                        if index[owner] > tip_at:
+                            out.append(obj)
+                    elif self._is_rolled_back(obj):
+                        out.append(obj)
         for obj in self._doc.Objects:
             if (self._is_surface_obj(obj)
                     and not self._is_internal_tool(obj)
                     and self._is_rolled_back(obj)):
                 out.append(obj)
+        out.extend(host for host in self._body_pattern_hosts()
+                   if self._body_pattern_rolled_back(host))
         order_of = self._tree_order()
         out.sort(key=lambda o: order_of.get(o.Name, -1))
         return out
@@ -402,21 +475,17 @@ class TreeMixin:
         """Barre de retour en bout d'historique — l'état final."""
         from engine.kernel import (
             KernelError,
-            rollback_plan,
+            rollback_tips,
         )
-        body = self._require_body()
+        self._require_body()
         history = self._history_lines()
         if not history:
             raise KernelError("aucune fonction dans la pièce")
-        flags, tip_name = rollback_plan(
+        flags, tips = rollback_tips(
             self._history_rows(history), history[-1].Name)
-        if tip_name is None:
-            body.Tip = None
-        else:
-            body.Tip = self._tip_with_helpers(
-                self._require_doc().getObject(tip_name))
+        self._apply_tips(tips)
         self._apply_rollback_flags(flags)
-        self._set_bar_sketch(body, "")
+        self._set_bar_sketches()
         self._recompute()
         return self.get_tree()
 
@@ -530,14 +599,15 @@ class TreeMixin:
             role = getattr(feature, "Role", "")
             if role in self._PLANE_ROLES.values():
                 names.add(feature.Name)
-        # Tout ``body.Group`` : ``get_tree`` émet chaque objet du corps —
-        # une esquisse consommée revient en ``children``, un plan ou un axe
-        # de référence n'est pas un ``PartDesign::Feature`` mais reste un
-        # nœud. Filtrer ici ferait diverger l'ensemble des cibles de ce que
-        # le payload expose, et perdrait des arêtes réelles en silence.
-        for obj in body.Group:
+        # Tout le ``Group`` de chaque corps : ``get_tree`` émet chaque objet
+        # — une esquisse consommée revient en ``children``, un plan ou un
+        # axe de référence n'est pas un ``PartDesign::Feature`` mais reste
+        # un nœud. Filtrer ici ferait diverger l'ensemble des cibles de ce
+        # que le payload expose, et perdrait des arêtes réelles en silence.
+        for obj in [o for b in self._history_bodies() for o in b.Group]:
             if (getattr(obj, "FreeSolidAxisTool", False)
-                    or self._is_thin_helper(obj)):   # hors arbre
+                    or self._is_thin_helper(obj)
+                    or self._is_pattern_base(obj)):   # hors arbre
                 continue
             names.add(obj.Name)
         for obj in self._doc.Objects:
@@ -675,6 +745,56 @@ class TreeMixin:
             item["params"] = params
         return item
 
+    def _body_tree_items(self, body, entry, consumed, unabsorbed):
+        """Lignes d'arbre d'un corps, dans son ordre : chaque fonction avec
+        ses esquisses en ``children``. ``entry`` : la ligne d'un objet."""
+        users = self._sketch_consumers(body)
+        labels = {o.Name: o.Label for o in body.Group}
+        items = []
+        for obj in body.Group:
+            if (getattr(obj, "FreeSolidAxisTool", False)
+                    or getattr(obj, "FreeSolidPierce", "")
+                    or self._is_pattern_base(obj)):
+                # Axe, lieur de percée : outils ; base d'une copie : la
+                # ligne du réseau la porte. Hors arbre.
+                continue
+            if (obj.TypeId == "Sketcher::SketchObject"
+                    and obj.Name in consumed) or self._is_thin_helper(obj):
+                continue
+            item = entry(obj)
+            children = []
+            for o in body.Group:
+                if o.TypeId != "Sketcher::SketchObject":
+                    continue
+                owners = users.get(o.Name, [])
+                if consumed.get(o.Name) != obj.Name and obj.Name not in owners:
+                    continue
+                child = entry(o)
+                if o.Name in unabsorbed and consumed.get(o.Name) == obj.Name:
+                    # Au-dessus de la barre, sa fonction en dessous.
+                    child["unabsorbed"] = True
+                if len(owners) > 1:
+                    # Esquisse partagée : affichée sous chaque fonction.
+                    child["shared"] = [labels.get(n, n) for n in owners
+                                       if n != obj.Name]
+                children.append(child)
+            if children:
+                item["children"] = children
+            items.append(item)
+        return items
+
+    def _mark_rolled_back(self, body, items):
+        """``rolled_back`` sur les fonctions volumiques : vrai après le Tip
+        de leur corps. La barre est commune à tous les corps, chacun
+        s'arrête à son Tip."""
+        index = {o.Name: i for i, o in enumerate(body.Group)}
+        tip = getattr(body, "Tip", None)
+        tip_at = index.get(tip.Name, -1) if tip is not None else -1
+        for item in items:
+            obj = self._doc.getObject(item["name"])
+            if obj.Name in index and obj.isDerivedFrom("PartDesign::Feature"):
+                item["rolled_back"] = index[obj.Name] > tip_at
+
     def get_tree(self):
         """Arbre de fonctions, vocabulaire du concepteur.
 
@@ -804,39 +924,24 @@ class TreeMixin:
             self._annotate_tree_links(item, obj, known_names)
             return item
 
-        users = self._sketch_consumers()
-        labels = {o.Name: o.Label for o in body.Group}
-        items = []
-        for obj in body.Group:
-            if (getattr(obj, "FreeSolidAxisTool", False)
-                    or getattr(obj, "FreeSolidPierce", "")):
-                continue  # axe, lieur de percée : outils, hors arbre
-            if (obj.TypeId == "Sketcher::SketchObject"
-                    and obj.Name in consumed) or self._is_thin_helper(obj):
-                continue
-            item = entry(obj)
-            children = []
-            for o in body.Group:
-                if o.TypeId != "Sketcher::SketchObject":
-                    continue
-                owners = users.get(o.Name, [])
-                if consumed.get(o.Name) != obj.Name and obj.Name not in owners:
-                    continue
-                child = entry(o)
-                if o.Name in unabsorbed and consumed.get(o.Name) == obj.Name:
-                    # Au-dessus de la barre, sa fonction en dessous.
-                    child["unabsorbed"] = True
-                if len(owners) > 1:
-                    # Esquisse partagée : affichée sous chaque fonction.
-                    child["shared"] = [labels.get(n, n) for n in owners
-                                       if n != obj.Name]
-                children.append(child)
-            if children:
-                item["children"] = children
-            items.append(item)
-        # Réseaux de corps : après les fonctions, une copie suit le corps
-        # tel qu'il finit.
+        items = self._body_tree_items(body, entry, consumed, unabsorbed)
+        self._mark_rolled_back(body, items)
+        # Réseaux de corps : chacun à son rang, reculé quand ses copies
+        # n'existent pas encore.
         items.extend(self._body_pattern_rows(body, entry))
+        # Un seul arbre : l'histoire des autres corps s'y range par rang.
+        # ``features`` reste celle du corps actif, sur laquelle les
+        # commandes agissent ; chaque ligne d'ici porte son corps.
+        other_items = []
+        for other in self._history_bodies():
+            if other is body:
+                continue
+            rows = self._body_tree_items(other, entry, consumed, unabsorbed)
+            self._mark_rolled_back(other, rows)
+            rows.extend(self._body_pattern_rows(other, entry))
+            for item in rows:
+                item["body"] = other.Name
+            other_items.extend(rows)
 
         from engine.vocab import label_for_origin
         # L'ordre d'affichage : Plan de face, Plan de dessus, Plan de droite.
@@ -883,13 +988,16 @@ class TreeMixin:
         # Variables dans le même appel : l'arbre de création affiche le
         # dossier Équations sans round-trip list_variables.
         self._annotate_comments(items)
+        self._annotate_comments(other_items)
         self._annotate_comments(surfaces)
         self._annotate_folders(items)
+        self._annotate_folders(other_items)
         for entry in surfaces:
             if self._is_hidden(self._doc.getObject(entry["name"])):
                 entry["hidden"] = True
         tree = {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,
+                "other_features": other_items,
                 "surfaces": surfaces,
                 "variables": self.list_variables()["variables"],
                 "configurations": self.list_configurations(),

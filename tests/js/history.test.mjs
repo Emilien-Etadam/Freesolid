@@ -40,6 +40,23 @@ describe("chronologicalHistory", () => {
 });
 
 describe("splitHistoryAroundBar", () => {
+  it("plusieurs corps — chaque fonction suit le drapeau du moteur", () => {
+    // Corps actif (tip) et autre corps entrelacés : Pad001, né après la
+    // barre, passe dessous même si son rang précède Pocket.
+    const features = [
+      { ...feat("Pad", 1), rolled_back: false },
+      { ...feat("Pocket", 3, "pocket"), rolled_back: false },
+    ];
+    const others = [
+      { ...feat("Pad001", 2), body: "Body001", rolled_back: true },
+      { ...feat("Pad002", 0), body: "Body001", rolled_back: false },
+    ];
+    const split = splitHistoryAroundBar([...features, ...others], [], "Pocket");
+    assert.deepEqual(split.before.map((row) => row.item.name),
+      ["Pad002", "Pad", "Pocket"]);
+    assert.deepEqual(split.after.map((row) => row.item.name), ["Pad001"]);
+  });
+
   it("solides seuls — barre après le tip", () => {
     const features = [feat("Pad", 1), feat("Pocket", 2, "pocket")];
     const split = splitHistoryAroundBar(features, [], "Pad");

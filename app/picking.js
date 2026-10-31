@@ -68,6 +68,23 @@ export function installPicking(ctx) {
     return raycaster.intersectObjects(ctx.surfaceMeshes, false)[0] ?? null;
   }
 
+  /** Corps du même réseau que le corps actif (copie ou source) sous le
+   *  pointeur. Pas pendant une commande : le clic changerait de corps. */
+  function pickPatternBodyHit() {
+    if (!ctx.patternMeshes?.length || panel.active) return null;
+    return raycaster.intersectObjects(ctx.patternMeshes, false)[0] ?? null;
+  }
+
+  /** Le corps survolé du réseau se teinte en entier. */
+  function repaintPatternBodies() {
+    for (const mesh of ctx.patternMeshes ?? []) {
+      const material = mesh.userData.savedMaterial ?? mesh.material;
+      if (!material.userData?.own) continue;
+      material.color.copy(ctx.hoveredPatternBody?.name === mesh.userData.body.name
+        ? new THREE.Color(ctx.sceneTheme.accent) : mesh.userData.baseColor);
+    }
+  }
+
   function repaintSurfaces() {
     for (const mesh of ctx.surfaceMeshes) {
       const name = mesh.userData.surface?.name;
@@ -212,7 +229,7 @@ export function installPicking(ctx) {
       return;
     }
     if (!ctx.partMesh && !ctx.sketchLineMeshes.length && !ctx.surfaceMeshes.length
-        && !ctx.boundaryLines.length) {
+        && !ctx.boundaryLines.length && !ctx.patternMeshes?.length) {
       coordsEl.textContent = "";
       return;
     }
@@ -230,6 +247,7 @@ export function installPicking(ctx) {
     let groupIndex = -1;
     let surfaceHit = null;
     let boundaryHit = null;
+    let patternBody = null;
     if (!sketchHit) {
       const faceHit = ctx.partMesh
         ? raycaster.intersectObject(ctx.partMesh)[0] : undefined;
@@ -279,6 +297,16 @@ export function installPicking(ctx) {
           pointHit = bound;
         }
       }
+      // Un corps du même réseau devant tout cela : on le vise en entier.
+      const copyHit = pickPatternBodyHit();
+      if (copyHit && (!pointHit || copyHit.distance < pointHit.distance)) {
+        patternBody = copyHit.object.userData.body;
+        boundaryHit = null;
+        surfaceHit = null;
+        groupIndex = -1;
+        edgeGroupIndex = -1;
+        pointHit = copyHit;
+      }
       // Barre d'état : coordonnées du point visé sur la pièce.
       coordsEl.textContent = coordsText(pointHit?.point ?? null);
     }
@@ -290,18 +318,21 @@ export function installPicking(ctx) {
     if (groupIndex !== ctx.hoveredGroup || edgeGroupIndex !== ctx.hoveredEdgeGroup
         || sketchHit?.name !== ctx.hoveredSketch?.name
         || surfaceName !== ctx.hoveredSurface?.name
-        || boundaryKey !== hoveredKey) {
+        || boundaryKey !== hoveredKey
+        || patternBody?.name !== ctx.hoveredPatternBody?.name) {
       ctx.hoveredGroup = groupIndex;
       ctx.hoveredEdgeGroup = edgeGroupIndex;
       ctx.hoveredSketch = sketchHit;
       ctx.hoveredSurface = surfaceHit;
       ctx.hoveredBoundary = boundaryHit;
+      ctx.hoveredPatternBody = patternBody;
       renderer.domElement.style.cursor =
         groupIndex >= 0 || edgeGroupIndex >= 0 || sketchHit || surfaceHit
-          || boundaryHit ? "pointer" : "";
+          || boundaryHit || patternBody ? "pointer" : "";
       repaintGroups();
       repaintEdges();
       repaintSurfaces();
+      repaintPatternBodies();
       ctx.repaintBoundaries();
     }
   }
@@ -323,6 +354,8 @@ export function installPicking(ctx) {
         : `${b.label} · ${t("Arête {n}", { n: b.edge })}`);
     } else if (ctx.hoveredSurface) {
       parts.push(ctx.hoveredSurface.label);
+    } else if (ctx.hoveredPatternBody) {
+      parts.push(`${ctx.hoveredPatternBody.label} · ${t("Clic : activer ce corps")}`);
     } else if (ctx.hoveredEdgeGroup >= 0) {
       parts.push(t("Arête {n}", { n: ctx.edgeGroups[ctx.hoveredEdgeGroup].edgeId }));
     } else if (ctx.hoveredGroup >= 0) {
@@ -384,7 +417,8 @@ export function installPicking(ctx) {
       updateHover(event);
     }
     const nothingHovered = ctx.hoveredGroup < 0 && ctx.hoveredEdgeGroup < 0
-      && !ctx.hoveredSketch && !ctx.hoveredSurface && !ctx.hoveredBoundary;
+      && !ctx.hoveredSketch && !ctx.hoveredSurface && !ctx.hoveredBoundary
+      && !ctx.hoveredPatternBody;
     boxStart = event.button === 0 && nothingHovered && !ctx.assemblyState
       && !ctx.planePicking && !ctx.measuring && ctx.partEdges
       ? { x: event.clientX, y: event.clientY } : null;
@@ -416,6 +450,11 @@ export function installPicking(ctx) {
                               event.clientY - pressPosition.y);
     pressPosition = null;
     if (travel > 5) return;
+    clickAt(event);
+  });
+
+  /** Le clic (sans glisser) : il prend ce que le survol vise. */
+  function clickAt(event) {
     if (ctx.assemblyState) {
       raycaster.setFromCamera(pointer, camera);
       const hit = ctx.asmGroup
@@ -444,6 +483,18 @@ export function installPicking(ctx) {
     }
 
     if (ctx.onMeasurePointerUp()) return;
+
+    // Un corps du même réseau : il devient le corps actif, puis le même
+    // clic prend la face ou l'arête qu'il présente sous le pointeur.
+    if (ctx.hoveredPatternBody && event.button === 0) {
+      const body = ctx.hoveredPatternBody;
+      Promise.resolve(refresh(call("set_active_body", { body: body.name })))
+        .then(() => {
+          updateHover(event);
+          if (!ctx.hoveredPatternBody) clickAt(event);
+        });
+      return;
+    }
 
     const clearPlaneChoice = () => {
       if (ctx.selectedPlane !== null || ctx.selectedDatumFeature !== null) {
@@ -636,7 +687,7 @@ export function installPicking(ctx) {
       ctx.pluginRuntime?.runPointerIdle(pointerCtx());
     }
     if (ctx.lastTree) ctx.renderTree(ctx.lastTree);
-  });
+  }
 
   function disposeFeatureDimSprites() {
     for (const sprite of ctx.featureDimSprites) {

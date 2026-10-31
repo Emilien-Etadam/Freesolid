@@ -247,6 +247,7 @@
  "type inconnu « {} » — attendu : none, lamage ou fraisage": "unknown type \"{}\" — expected: none, lamage (counterbore) or fraisage (countersink)",
  "type « {} » inconnu pour {} de « {} » — attendu int, float, str, nom, list, dict ou bool": "unknown type \"{}\" for {} of \"{}\" — expected int, float, str, nom, list, dict or bool",
  "un corps ne se combine pas avec lui-même — choisissez un autre corps outil": "a body does not combine with itself — choose another tool body",
+ "« {} » suit le corps actif : les combiner ici le ferait dépendre de lui-même — activez « {} » et prenez ce corps comme outil": "\"{}\" follows the active body: combining them here would make it depend on itself — activate \"{}\" and use this body as the tool",
  "un lissage demande au moins deux profils": "a loft needs at least two profiles",
  "un polygone a au moins 3 côtés": "a polygon has at least 3 sides",
  "un solide demande le mode fuse ou cut": "a solid needs the fuse or cut mode",

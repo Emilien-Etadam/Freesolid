@@ -36,11 +36,12 @@ export function installFeaturePanel(ctx) {
     }
     // Fonction cliquée dans l'arbre avant la commande (répétitions,
     // symétrie) : elle remplit d'emblée la case, comme une face présélectionnée.
-    // Pas la ligne d'une copie de corps ni un enlèvement venu d'un autre
-    // corps (`edits`) : elles ne se répètent pas.
+    // Pas un réseau de corps, la ligne d'une de ses copies ni un enlèvement
+    // venu d'un autre corps (`edits`) : ils ne se répètent pas.
     const feature = accepts.includes("feature")
       && findFeatureInTree(app.lastTree, app.selectedFeatureName);
-    if (feature && feature.type_key !== "sketch" && !feature.edits) {
+    if (feature && feature.type_key !== "sketch"
+        && feature.type_key !== "body_pattern" && !feature.edits) {
       return { kind: "feature", items: [
         { kind: "feature", name: feature.name, label: feature.label }] };
     }

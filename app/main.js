@@ -182,6 +182,11 @@ let selectedEdges = new Set();
 let partMesh = null;
 let partEdges = null;
 let othersMeshes = []; // corps non actifs, un mesh chacun
+// Même réseau de corps que le corps actif (copies, source) : opaques,
+// arêtes tracées, le clic les active (picking.js).
+let patternMeshes = [];
+let copyEdgeLines = [];
+let copyMaterials = [];
 let partBaseMaterial = null; // clone possédé — couleur du corps actif
 let partFaceMaterials = []; // clones possédés — faces colorées
 let meshGroups = [];
@@ -283,6 +288,11 @@ function showMesh(mesh) {
   detachMesh(partMesh);
   for (const extra of othersMeshes) detachMesh(extra);
   othersMeshes = [];
+  for (const lines of copyEdgeLines) detachMesh(lines);
+  patternMeshes = [];
+  copyEdgeLines = [];
+  copyMaterials = [];
+  ctx.hoveredPatternBody = null;
   partMesh = partBaseMaterial = null;
   meshGroups = mesh.groups;
   lastFaceMatch = mesh.face_match ?? null;
@@ -320,11 +330,20 @@ function showMesh(mesh) {
     if (!extra.indices.length) continue;
     const geometry = new THREE.BufferGeometry();
     applyPackedGeometry(geometry, extra);
-    const otherMesh = new THREE.Mesh(
-      geometry, ownedMaterial(othersMaterial, hexColor(extra.color)));
-    otherMesh.raycast = () => {};
+    const material = ownedMaterial(
+      extra.pattern_family ? baseMaterial : othersMaterial, hexColor(extra.color));
+    const otherMesh = new THREE.Mesh(geometry, material);
     volumesGroup.add(otherMesh);
     othersMeshes.push(otherMesh);
+    if (extra.pattern_family) {
+      otherMesh.userData.body = { name: extra.name, label: extra.label };
+      otherMesh.userData.baseColor = material.color.clone();
+      patternMeshes.push(otherMesh);
+      copyMaterials.push(material);
+      addCopyEdges(extra.edges);
+    } else {
+      otherMesh.raycast = () => {};
+    }
   }
   for (const surface of Array.isArray(mesh.surfaces) ? mesh.surfaces : []) {
     if (!surface.indices?.length) continue;
@@ -456,6 +475,20 @@ function addBoundaryLines(item, curve) {
   boundarySnaps.push(...edgeSnapPoints(edges));
 }
 
+/** Arêtes d'un corps du même réseau : à voir, pas à viser. */
+function addCopyEdges(edges) {
+  if (!edges?.indices?.length) return;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position",
+    new THREE.Float32BufferAttribute(edges.positions, 3));
+  geometry.setIndex(edges.indices);
+  const lines = new THREE.LineSegments(geometry, edgeBaseMaterial);
+  lines.raycast = () => {};
+  lines.renderOrder = 2;
+  volumesGroup.add(lines);
+  copyEdgeLines.push(lines);
+}
+
 function boundaryKey(name, edge) { return `${name}:${edge}`; }
 
 let boundaryOwnsEdges = false; // selectedEdges vient des bords du panneau
@@ -548,6 +581,7 @@ function applyDisplay() {
     edgeBaseMaterial.color.setHex(
       fx.faces && !fx.mask ? sceneTheme.edge : sceneTheme.edgeOnBg);
   }
+  for (const lines of copyEdgeLines) lines.visible = fx.edges;
   if (hiddenEdgeLines) {
     hiddenEdgeLines.removeFromParent();
     hiddenEdgeLines = null;
@@ -721,6 +755,7 @@ function hideGhost() {
   baseMaterial.opacity = 1;
   if (partBaseMaterial) partBaseMaterial.opacity = 1;
   for (const material of partFaceMaterials) material.opacity = 1;
+  for (const material of copyMaterials) material.opacity = 1;
   hoverMaterial.opacity = selectedMaterial.opacity = 1;
 }
 
@@ -781,6 +816,7 @@ function showGhost(mesh) {
   baseMaterial.opacity = 0.15; // la pièce s'efface derrière le résultat
   if (partBaseMaterial) partBaseMaterial.opacity = 0.15;
   for (const material of partFaceMaterials) material.opacity = 0.15;
+  for (const material of copyMaterials) material.opacity = 0.15;
   hoverMaterial.opacity = selectedMaterial.opacity = 0.3;
 }
 
@@ -930,6 +966,7 @@ expose("hoveredBoundary", () => hoveredBoundary,
   (v) => { hoveredBoundary = v; });
 expose("planeMeshes", () => planeMeshes, (v) => { planeMeshes = v; });
 expose("othersMeshes", () => othersMeshes);
+expose("patternMeshes", () => patternMeshes);
 Object.assign(ctx, {
   THREE, scene, camera, renderer, controls, container, viewSize, ORTHO_HEIGHT,
   say, call, panel, pickEl, measureEl, coordsEl, refresh, selectComponent,

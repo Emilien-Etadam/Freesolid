@@ -1079,6 +1079,35 @@ def p82_reseau_de_corps(self, mark, report, etat):
     report["p82_lineaire"] = (
         len(copies) == 2 and centres == [20.0, 40.0]
         and all(abs(v - 800) < 1e-6 for v in _volumes(self).values()))
+    # Le réseau est une ligne de l'arbre de sa source ; ses copies
+    # s'affichent comme elle, arêtes comprises, et la source aussi
+    # quand une copie est active.
+    rows = [f for f in self.get_tree()["features"]
+            if f["type_key"] == "body_pattern"]
+    shown = {b["name"]: b for b in self.tessellate().get("other_bodies", [])}
+    self.set_active_body(copies[0])
+    from_copy = {b["name"]: b
+                 for b in self.tessellate().get("other_bodies", [])}
+    self.set_active_body(source)
+    report["p82_ligne_et_vue"] = (
+        len(rows) == 1 and rows[0]["name"] == host.Name
+        and sorted(rows[0].get("copies") or ()) == sorted(
+            self._doc.getObject(n).Label for n in copies)
+        and all(shown.get(n, {}).get("pattern_family")
+                and shown[n]["edges"]["indices"] for n in copies)
+        and all(from_copy.get(n, {}).get("pattern_family")
+                for n in (source, copies[1])))
+    # La source ne se combine pas avec sa copie : la copie la suit, le
+    # graphe bouclerait. Rien n'est ajouté.
+    group = len(self._require_body().Group)
+    try:
+        self.add_boolean(tool=copies[0], type="fuse")
+        looped = False
+    except KernelError as exc:
+        looped = "suit le corps actif" in str(exc)
+    report["p82_refus_boucle"] = (
+        looped and len(self._require_body().Group) == group
+        and all(abs(v - 800) < 1e-6 for v in _volumes(self).values()))
     # La source change : les copies suivent ; la cote se réédite.
     self.set_active_body(source)
     top = self._top_face_id()

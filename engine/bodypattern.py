@@ -795,6 +795,38 @@ class BodyPatternMixin:
         if labels:
             item["scope"] = labels
 
+    def _body_pattern_rows(self, body, entry):
+        """Lignes d'arbre de ``body`` : chaque réseau de corps qui le
+        répète, avec son genre et les corps qu'il crée (``copies``).
+        ``entry`` : la ligne ordinaire de ``get_tree``."""
+        rows = []
+        for host in self._body_pattern_hosts():
+            spec = self._body_pattern_spec(host) or {}
+            if body.Name not in (spec.get("sources") or ()):
+                continue
+            kind = spec.get("kind", "linear")
+            copies = list(self._body_pattern_copies(host).values())
+            item = entry(host)
+            item["kind"] = self._t(BODY_PATTERN_LABELS.get(
+                kind, BODY_PATTERN_LABELS["linear"]))
+            item["body_pattern"] = kind
+            item["copies"] = [copy.Label for copy in copies]
+            if any("Invalid" in (copy.State or ()) for copy in copies):
+                item["error"] = True
+            rows.append(item)
+        return rows
+
+    def _pattern_family(self, body):
+        """Noms du corps répété dont ``body`` fait partie et de toutes ses
+        copies ; vide si ``body`` n'est ni répété ni une copie."""
+        def source_of(obj):
+            key = parse_copy_key(getattr(obj, "FreeSolidPatternCopy", ""))
+            return key[1] if key else None
+        root = source_of(body) or body.Name
+        family = {obj.Name for obj in self._require_doc().Objects
+                  if source_of(obj) == root}
+        return family | {root} if family else set()
+
     def _repetition_delete(self, obj):
         """Suppressions propres aux répétitions : l'arbre, ou None quand la
         suppression ordinaire suit (après ``_repetition_before_delete``)."""

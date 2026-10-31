@@ -36,5 +36,7 @@ describe("cible du menu de l'arbre", () => {
     assert.equal(canModifyMenuTarget({ type_key: "surface_fill" }), true);
     assert.equal(canModifyMenuTarget({ type_key: "component" }), false);
     assert.equal(canModifyMenuTarget({ type_key: "pad", graph: {} }), true);
+    // Réseau de corps : le double-clic et « Modifier » le rouvrent.
+    assert.equal(canModifyMenuTarget({ type_key: "body_pattern" }), true);
   });
 });

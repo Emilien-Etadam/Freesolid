@@ -834,6 +834,9 @@ class TreeMixin:
             if children:
                 item["children"] = children
             items.append(item)
+        # Réseaux de corps : après les fonctions, une copie suit le corps
+        # tel qu'il finit.
+        items.extend(self._body_pattern_rows(body, entry))
 
         from engine.vocab import label_for_origin
         # L'ordre d'affichage : Plan de face, Plan de dessus, Plan de droite.
@@ -989,6 +992,7 @@ class TreeMixin:
         # Un maillage par corps (couleur propre) ; ``others`` reste le
         # buffer combiné pour la compatibilité (selftest p9_others_shown).
         other_bodies = []
+        family = self._pattern_family(body)
         for obj in self._doc.Objects:
             if (obj.TypeId != "PartDesign::Body" or obj is body
                     or getattr(obj, "Shape", None) is None
@@ -1003,12 +1007,21 @@ class TreeMixin:
             if not other_faces:
                 continue
             packed = protocol.pack_mesh(other_faces)
-            other_bodies.append({
+            extra = {
                 "name": obj.Name,
                 "color": getattr(obj, "FreeSolidColor", "") or None,
                 "positions": packed["positions"],
                 "indices": packed["indices"],
-            })
+            }
+            if obj.Name in family:
+                # Même réseau de corps que le corps actif (copie ou
+                # source) : un solide comme lui, arêtes comprises, que le
+                # clic active — et non un corps estompé.
+                extra["pattern_family"] = True
+                extra["label"] = obj.Label
+                extra["edges"] = protocol.pack_edges(
+                    self._object_edge_lines(obj.Shape))
+            other_bodies.append(extra)
         if other_bodies:
             mesh["other_bodies"] = other_bodies
             positions = []

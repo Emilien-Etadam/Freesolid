@@ -91,7 +91,14 @@ class SolidsMixin:
             raise KernelError(
                 "un corps ne se combine pas avec lui-même — choisissez "
                 "un autre corps outil")
-        types = {"cut": "Cut", "fuse": "Fuse", "common": "Common"}
+        if body in (tool_obj.OutListRecursive or ()):
+            # Une copie de réseau de corps suit sa source : l'absorber
+            # dans la source bouclerait le graphe, sans erreur visible.
+            raise KernelError(
+                "« {} » suit le corps actif : les combiner ici le ferait "
+                "dépendre de lui-même — activez « {} » et prenez ce corps "
+                "comme outil".format(tool_obj.Label, tool_obj.Label))
+        types ={"cut": "Cut", "fuse": "Fuse", "common": "Common"}
         labels = {"cut": self._t("Combiner — Soustraire"),
                   "fuse": self._t("Combiner — Ajouter"),
                   "common": self._t("Combiner — Intersection")}

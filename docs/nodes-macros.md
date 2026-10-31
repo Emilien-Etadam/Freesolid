@@ -248,7 +248,7 @@ signalée par un simple préfixe Σ, montre enfin **d'où** elle est pilotée.
    fonction existante ne se recâble pas, et l'historique reste linéaire —
    le graphe est un historique dessiné en graphe, pas une toile libre.
 6. **Catalogue de nœuds** — la taxonomie et les icônes de
-   `j8sr0230/Nodes` (LGPL-2.1, notre licence) reprises comme **conception et
+   `j8sr0230/Nodes` (LGPL-2.1, celle de FreeCAD) reprises comme **conception et
    ressources**, pas comme code : leur framework tourne dans le Python GUI de
    FreeCAD avec `awkward` et Qt, quand notre évaluateur est stdlib pure et
    headless. Ce qu'on économise est le travail de conception — quels nœuds

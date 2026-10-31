@@ -199,6 +199,7 @@ def _etapes():
         document.p81_proprietes_document,
         fonctions.p82_reseau_de_corps,
         fonctions.p83_corps_concernes,
+        fonctions.p84_arbre_unique,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

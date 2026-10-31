@@ -1082,6 +1082,7 @@ def p82_reseau_de_corps(self, mark, report, etat):
     self.add_rect_sketch(10, 10)
     self.add_pad(8)
     source = self._require_body().Name
+    pad = self._require_body().Tip.Name
     self.add_body_pattern("linear", [source], length=20, count=3,
                           axis="X", spacing=True)
     host = self._body_pattern_hosts()[0]
@@ -1129,6 +1130,49 @@ def p82_reseau_de_corps(self, mark, report, etat):
     report["p82_suit_la_source"] = (
         len(volumes) == 4
         and all(abs(v - 768) < 1e-6 for v in volumes.values()))
+    # Le réseau a son rang : l'enlèvement ajouté ensuite vient dessous.
+    # La barre au-dessus de lui, ses copies n'existent pas encore ; posée
+    # sur lui, elles reviennent, sans l'enlèvement.
+    pocket = self._require_body().Tip.Name
+    host_name = host.Name
+    ranks = {f["name"]: f["order"] for f in self.get_tree()["features"]}
+    grown = list(self._body_pattern_copies(host).values())
+    hidden = {f["name"]: f.get("rolled_back")
+              for f in self.set_tip(pad)["features"]}
+    unborn = all(copy.Tip is None for copy in grown)
+    shown = {f["name"]: f.get("rolled_back")
+             for f in self.set_tip(host.Name)["features"]}
+    back = _volumes(self)
+    self.tip_to_end()
+    # Une fonction sur une copie vient aussi sous le réseau, et y reste
+    # quand on annule sa suppression (FreeCAD rend les objets en fin de
+    # document).
+    from engine.kernel import dispatch
+    grown = [copy.Name for copy in grown]
+    self.set_active_body(grown[0])
+    self.add_fillet(radius=0.5, face=self._top_face_id())
+    fillet = self._require_body().Tip.Name
+    for op, params in (("set_tip", {"feature": pad}),
+                       ("delete_rolled_back", {})):
+        if not dispatch(self, op, params)["ok"]:
+            raise KernelError(op)
+    gone = all(self._doc.getObject(name) is None
+               for name in grown + [fillet, host_name])
+    self.undo()
+    self.tip_to_end()
+    self.set_active_body(source)
+    host = self._doc.getObject(host_name)
+    tree = self.get_tree()
+    restored = {f["name"]: f["order"]
+                for f in tree["features"] + tree["other_features"]}
+    report["p82_reseau_a_son_rang"] = (
+        ranks[pad] < ranks[host.Name] < ranks[pocket]
+        and hidden.get(host.Name) is True and unborn
+        and shown.get(host.Name) is False and shown.get(pocket) is True
+        and len(back) == 4
+        and all(abs(v - 800) < 1e-6 for v in back.values())
+        and gone and restored[host_name] < restored.get(fillet, -1)
+        and len(_volumes(self)) == 4)
     # Une copie supprimée reste sautée ; la source est protégée.
     far = max(copies, key=lambda n: _centre_x(self, n)[0])
     self.delete_feature(far)
@@ -1223,3 +1267,62 @@ def p83_corps_concernes(self, mark, report, etat):
         and abs(kept - (6000 - hole + 32)) < 1e-6
         and not [o for o in self._doc.Objects
                  if getattr(o, "FreeSolidBodyPatternTool", False)])
+
+
+def p84_arbre_unique(self, mark, report, etat):
+    mark("p84: un seul arbre, une seule barre pour tous les corps")
+    from engine import protocol
+    self.new_part("Arbre unique")
+    self.add_rect_sketch(20, 20)
+    self.add_pad(5)
+    first = self._require_body().Name
+    pad = self._require_body().Tip.Name
+    self.add_body()
+    second = self._require_body().Name
+    state = self.sketch_start()
+    self.sketch_add_circle(state["sketch"], 30, 0, 5)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(10)
+    other_pad = self._require_body().Tip.Name
+    self.set_active_body(first)
+    self.add_rect_sketch(4, 4, face=self._top_face_id())
+    self.add_pocket(2)
+    pocket = self._require_body().Tip.Name
+    # L'arbre du premier corps montre aussi l'histoire du second, à son
+    # rang : Extrusion, puis celle du second corps, puis l'enlèvement.
+    tree = self.get_tree()
+    ranks = {f["name"]: f["order"]
+             for f in tree["features"] + tree["other_features"]}
+    foreign = {f["name"]: f.get("body") for f in tree["other_features"]}
+    report["p84_arbre_unique"] = (
+        foreign.get(other_pad) == second
+        and ranks[pad] < ranks[other_pad] < ranks[pocket]
+        and not protocol.dangling_deps(tree))
+    # La barre recule tous les corps : après l'extrusion du premier, le
+    # second n'existe pas encore ; un cran plus bas, il revient.
+    tree = self.set_tip(pad)
+    flags = {f["name"]: f.get("rolled_back")
+             for f in tree["features"] + tree["other_features"]}
+    born_later = self._doc.getObject(second).Tip is None
+    self.set_tip(other_pad)
+    volumes = _volumes(self)
+    report["p84_barre_commune"] = (
+        born_later and flags.get(pocket) and flags.get(other_pad)
+        and not flags.get(pad)
+        and abs(volumes[first] - 2000) < 1e-6
+        and abs(volumes[second] - math.pi * 250) < 1e-6)
+    # On réordonne dans un corps, pas d'un corps à l'autre.
+    self.tip_to_end()
+    try:
+        self.reorder_feature(pocket, other_pad)
+        crossed = True
+    except KernelError:
+        crossed = False
+    # Sous la barre, tout part — dans chaque corps.
+    self.set_tip(pad)
+    self.delete_rolled_back()
+    report["p84_sous_la_barre"] = (
+        not crossed
+        and self._doc.getObject(pocket) is None
+        and self._doc.getObject(other_pad) is None
+        and self._doc.getObject(pad) is not None)

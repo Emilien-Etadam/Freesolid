@@ -111,8 +111,9 @@ export function installContextMenu(ctx) {
   function openMenu(event, feature) {
     event.preventDefault();
     if (feature.type_key === "body_pattern") {
-      // Réseau de corps : ni barre de retour, ni dossier, ni désactivation.
-      openOnly(event, ["ctx-modify", "ctx-rename", "ctx-delete"]);
+      // Réseau de corps : ni dossier, ni désactivation.
+      openOnly(event, ["ctx-modify", "ctx-rename", "ctx-rollback", "ctx-end",
+        "ctx-delete"]);
       menuFeature = feature;
       return;
     }

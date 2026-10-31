@@ -1540,6 +1540,6 @@
  "Creuse aussi : {b}": "Also cuts: {b}",
  "Distance (direction 2)": "Distance (direction 2)",
  "Réseau de corps": "Body pattern",
- "double-clic : modifier · clic droit : modifier, renommer, supprimer": "double-click: edit · right-click: edit, rename, delete",
+ "double-clic : modifier · clic droit : modifier, barre de retour, renommer, supprimer": "double-click: edit · right-click: edit, rollback bar, rename, delete",
  "Corps créés : {b}": "Bodies created: {b}"
 }

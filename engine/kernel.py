@@ -161,8 +161,10 @@ def rollback_plan(history, target_name=None):
 
     *history* : séquence de dicts ``{name, order, role}`` déjà triée par
     ``order``, avec ``role`` ∈ ``{"feature", "sketch", "surface",
-    "absorbed"}``. ``absorbed`` : l'esquisse rangée sous sa fonction — la
-    barre peut se poser juste après elle, elle ne prend pas de flag.
+    "absorbed", "pattern"}``. ``absorbed`` : l'esquisse rangée sous sa
+    fonction — la barre peut se poser juste après elle, elle ne prend pas
+    de flag. ``pattern`` : un réseau de corps, ni flag ni Tip ; la base de
+    chaque copie est une ligne ``feature`` à son rang.
     *target_name* : dernière ligne visible, ou ``None`` (barre en tête).
 
     Retour : ``(flags, tip)`` — ``flags`` mappe chaque nom sketch/surface
@@ -192,6 +194,25 @@ def rollback_plan(history, target_name=None):
         elif row["role"] == "feature" and row["order"] <= target_order:
             tip = row["name"]
     return flags, tip
+
+
+def rollback_tips(history, target_name=None):
+    """``rollback_plan`` pour toute la pièce : un Tip par corps.
+
+    Chaque ligne ``feature`` porte ``body``, le nom de son corps. Retour :
+    ``(flags, tips)`` — ``tips`` mappe chaque corps qui a des fonctions
+    vers sa dernière fonction au-dessus de la barre, ou ``None``.
+    """
+    flags, _ = rollback_plan(history, target_name)
+    features = [row for row in history if row["role"] == "feature"]
+    tips = {row["body"]: None for row in features}
+    if target_name is not None:
+        target_order = next(row["order"] for row in history
+                            if row["name"] == target_name)
+        for row in features:
+            if row["order"] <= target_order:
+                tips[row["body"]] = row["name"]
+    return flags, tips
 
 
 def _explain(exc) -> str:

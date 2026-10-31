@@ -13,7 +13,7 @@ corps de fonctions / méthodes.
 
 ### Licence
 
-AGPL-3.0-or-later depuis le 2026-10-31 (LGPL-2.1-or-later jusqu'à la
+AGPL-3.0-only depuis le 2026-10-31 (LGPL-2.1-or-later jusqu'à la
 0.4.1). Avant de reprendre du code d'ailleurs : la grille de
 `docs/amont-freecad.md` §3 dit ce qui peut entrer et ce qui fermerait la
 porte amont vers FreeCAD.

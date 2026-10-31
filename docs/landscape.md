@@ -3,7 +3,7 @@
 *Relevé du 2026-08-02, avant d'engager la piste « nouvelle UI sur moteur
 headless ». Conclusion en bas.*
 
-*Note du 2026-10-31 : FreeSolid est passé en AGPL-3.0-or-later. Dans les
+*Note du 2026-10-31 : FreeSolid est passé en AGPL-3.0-only. Dans les
 relevés antérieurs, « notre licence » désigne la LGPL-2.1-or-later. Tout ce
 qui y était empruntable le reste. Ce qui décide désormais d'un emprunt,
 c'est la porte amont vers FreeCAD : voir
@@ -89,7 +89,7 @@ divergence est **le modèle documentaire**, et elle décide de tout :
 | Contraintes d'esquisse | solveur planegcs à ~60 fps | outils de dessin, pas de solveur comparable |
 | Fichiers | `.FCStd` natif, réouvrable dans FreeCAD | format propre + échange STEP/IGES/BREP/STL |
 | Installation | FreeCAD ≥ 1.0 requis (~800 Mo) | **zéro install**, une URL |
-| Licence | AGPL-3.0-or-later (LGPL-2.1-or-later jusqu'à la 0.4.1) | AGPL-3.0 / commerciale |
+| Licence | AGPL-3.0-only (LGPL-2.1-or-later jusqu'à la 0.4.1) | AGPL-3.0 / commerciale |
 
 **Ce qu'on lui prend — l'UI, et rien d'autre.** Le ruban, la hiérarchie
 d'assemblage, le plan de travail dynamique, les outils de mesure

@@ -149,7 +149,7 @@ PYTHONIOENCODING=utf-8 freecadcmd scripts/run-selftest.py
 
 ## Licenses
 
-AGPL-3.0-or-later. You may use, modify and redistribute FreeSolid, and run
+AGPL-3.0-only. You may use, modify and redistribute FreeSolid, and run
 it as an online service. If you do, its users must be able to get the source
 code of your version, modifications included.
 

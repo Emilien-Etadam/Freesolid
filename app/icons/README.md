@@ -9,7 +9,7 @@ répertoires :
   `general/`, `geometry/`, `tools/`, `constraints/` (Sketcher_*, Constraint_*)
 
 Licence : LGPL, héritée de FreeCAD — compatible avec la licence de ce projet
-(AGPL-3.0-or-later). Aucune ressource SolidWorks n'est utilisée ni imitée.
+(AGPL-3.0-only). Aucune ressource SolidWorks n'est utilisée ni imitée.
 
 Les fichiers `FreeSolid_*.svg` sont des icônes originales du projet (même
 licence), là où FreeCAD n'en fournit pas (relation colinéaire, réglages).

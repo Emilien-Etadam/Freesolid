@@ -76,7 +76,7 @@ Trois questions, dans cet ordre. La première qui répond « oui » tranche.
 
 C'est la contrainte qui **décide de la forme de nos emprunts**, et elle est
 plus serrée que la simple compatibilité avec FreeSolid. FreeSolid est en
-**AGPL-3.0-or-later** depuis le 2026-10-31 (LGPL-2.1-or-later jusqu'à la
+**AGPL-3.0-only** depuis le 2026-10-31 (LGPL-2.1-or-later jusqu'à la
 0.4.1). Une contribution à FreeCAD, elle, doit être remontable en
 **LGPL-2.1-or-later** ; toute ligne qui ne peut pas l'être ferme la porte
 amont pour elle-même et pour tout ce qui en dérive.

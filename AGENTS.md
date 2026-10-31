@@ -42,6 +42,12 @@ corps de fonctions / méthodes.
   Esquisse → dessiner un rectangle → Bossage extrudé ; ou double-cliquer une
   fonction de l'arbre pour rééditer sa cote (reconstruction paramétrique).
 
+- **Lecteur `.SLDPRT` / `.x_t` / `.x_b`** (`engine/foreign.py`) : le
+  programme OpenSW, cloné à côté du dépôt (ou désigné par
+  `FREESOLID_OPENSW`), lancé dans son propre processus — AGPL-3.0, donc
+  jamais copié ici. Le selftest (p18) le remplace par un faux lecteur ;
+  pour un essai réel, cloner `https://github.com/Emilien-Etadam/OpenSW`.
+
 ### Multilingue
 
 Le français est la langue source. Un texte visible dans l'interface passe

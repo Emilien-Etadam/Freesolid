@@ -2338,7 +2338,10 @@ async function openDocument(path) {
     await updateViewport(gen);
     if (gen !== viewGen) return;
     rememberRecent(localStore, path);
-    say(tree.imported_solids !== undefined
+    say(tree.imported_solids > 1
+      ? t("Importé — {n} solides, chacun base de son propre corps.",
+        { n: tree.imported_solids })
+      : tree.imported_solids !== undefined
       ? t("Importé — {n} solide(s), la forme est la base du corps.",
         { n: tree.imported_solids })
       : tree.bodies_in_file > 1

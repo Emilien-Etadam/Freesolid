@@ -41,6 +41,9 @@ Details and the release procedure: [`desktop/README.md`](desktop/README.md).
 - **Drawings**: dimensioned DXF (Front / Top / Iso views), optional X/Y/Z
   section
 - **Import/export**: STEP, IGES, STL, 3MF; open and save `.FCStd`
+- **`.SLDPRT` parts and Parasolid** (`.x_t`, `.x_b`): opened as plain
+  geometry, one body per solid, through the separate
+  [OpenSW](https://github.com/Emilien-Etadam/OpenSW) reader — see below
 
 ## Run from source
 
@@ -100,6 +103,24 @@ When the terminal prints “FreeSolid engine ready”, open
    (If FreeCAD is installed elsewhere, adjust the path — look for
    `freecadcmd.exe` in its installation folder.)
 4. Open **<http://localhost:8787>** in your browser.
+
+### Opening `.SLDPRT` and Parasolid files
+
+FreeSolid does not decode these formats itself. It runs
+[OpenSW](https://github.com/Emilien-Etadam/OpenSW), a separate program
+(AGPL-3.0), in its own process. OpenSW writes a STEP file, and FreeSolid
+imports that. Only the geometry comes in, one body per solid. The file's
+feature tree is not replayed.
+
+```bash
+git clone https://github.com/Emilien-Etadam/OpenSW.git   # next to Freesolid/
+```
+
+FreeSolid looks for `OpenSW/` next to its own folder. If you cloned it
+somewhere else, set `FREESOLID_OPENSW` to that folder. The reader needs
+Python 3.10 or later. FreeSolid uses the Python that comes with FreeCAD;
+to use another one, set `FREESOLID_PYTHON`. Old `.SLDPRT` files (OLE
+format) also need `pip install olefile` for that Python.
 
 ## Languages
 

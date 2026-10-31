@@ -66,11 +66,14 @@ class FilesMixin:
         Body and says so; a file with none (Part-workbench models, meshes)
         is refused with the reason.
         """
+        from engine import foreign
         from engine.kernel import KernelError
         App = self._app()
         path = self._user_path(
-            path, (".FCStd", ".step", ".stp", ".iges", ".igs"),
-            must_exist=True)
+            path, (".FCStd", ".step", ".stp", ".iges", ".igs")
+            + foreign.EXTENSIONS, must_exist=True)
+        if foreign.is_foreign(path):
+            return self._import_foreign(path)
         if path.lower().endswith((".step", ".stp", ".iges", ".igs")):
             return self._import_cad(path)
         self._close_current()
@@ -108,9 +111,37 @@ class FilesMixin:
         tree["bodies_in_file"] = len(bodies)
         return tree
 
-    def _import_cad(self, path):
-        """Import STEP/IGES : le solide arrive comme base d'un corps —
-        toutes les fonctions s'appliquent ensuite dessus."""
+    def _import_foreign(self, path):
+        """.sldprt / .x_t / .x_b : le lecteur OpenSW en écrit un STEP à
+        part (``engine/foreign.py``), importé ensuite comme un STEP. La
+        géométrie seule — l'arbre de fonctions du fichier n'est pas
+        rejoué. La pièce ouverte reste en place si la lecture échoue."""
+        import os
+        import shutil
+        import sys
+        import tempfile
+        from engine import foreign
+        from engine.kernel import KernelError
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        work = tempfile.mkdtemp(prefix="freesolid-lecture-")
+        try:
+            self._report_progress("Lecture de la pièce par OpenSW")
+            try:
+                step = foreign.convert(path, work, environ=os.environ,
+                                       repo_root=repo_root, prefix=sys.prefix)
+            except foreign.ForeignError as exc:
+                raise KernelError(str(exc)) from None
+            self._report_progress("Import de la géométrie")
+            label = os.path.splitext(os.path.basename(path))[0]
+            tree = self._import_cad(step, label=label)
+            tree["converted_from"] = os.path.splitext(path)[1].lower()
+            return tree
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    def _import_cad(self, path, label=None):
+        """Import STEP/IGES : chaque solide arrive comme base de son propre
+        corps — toutes les fonctions s'appliquent ensuite dessus."""
         import os
         from engine.kernel import (
             KernelError,
@@ -124,20 +155,29 @@ class FilesMixin:
         shape = Part.Shape()
         try:
             shape.read(path)
-            label = os.path.splitext(os.path.basename(path))[0]
-            body = self._doc.addObject("PartDesign::Body", "Body")
-            body.Label = label
-            self._body = body
+            label = label or os.path.splitext(os.path.basename(path))[0]
             solids = shape.Solids
-            base = self._doc.addObject("Part::Feature", "Imported")
-            base.Label = self._t("Import — {}").format(label)
-            if solids:
-                base.Shape = solids[0]
+            parts = solids or [shape]
+            for index, part in enumerate(parts, start=1):
+                body = self._doc.addObject("PartDesign::Body", "Body")
+                body.Label = (label if len(parts) == 1
+                              else "{} ({})".format(label, index))
+                if self._body is None:
+                    self._body = body
+                base = self._doc.addObject("Part::Feature", "Imported")
+                base.Shape = part
+                if not solids:
+                    # Que des surfaces : elles restent visibles dans la
+                    # section Surfaces, le corps attend une première fonction.
+                    base.Label = self._t("Import — {}").format(body.Label)
+                    continue
+                base.Label = self._t("Forme importée — {}").format(body.Label)
                 body.BaseFeature = base
-            else:
-                # Que des surfaces : elles restent visibles dans la section
-                # Surfaces, le corps attend une première fonction.
-                base.Shape = shape
+                # FreeCAD enveloppe la forme dans un PartDesign::FeatureBase
+                # nommé « BaseFeature » : c'est lui que l'arbre montre.
+                for wrapper in body.Group:
+                    if wrapper.TypeId == "PartDesign::FeatureBase":
+                        wrapper.Label = self._t("Import — {}").format(body.Label)
             self._doc.recompute()
             tree = self.get_tree()
             tree["imported_solids"] = len(solids)

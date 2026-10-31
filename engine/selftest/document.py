@@ -204,6 +204,82 @@ def p18_import_step_export_3mf(self, mark, report, etat):
     report["p18_3mf_ok"] = self.export_part(threemf)["size"] > 0
 
 
+_FAUX_OPENSW = """\
+import os, shutil, sys
+args = sys.argv[1:]
+out, source = args[args.index("-o") + 1], args[-1]
+stem = os.path.splitext(os.path.basename(source))[0]
+if "refus" in stem:
+    sys.stderr.write(os.path.basename(source) + " → .STEP: LoadError: refusé\\n")
+    sys.exit(1)
+shutil.copyfile({step!r}, os.path.join(out, stem + ".STEP"))
+"""
+
+
+def p18_lecture_opensw(self, mark, report, etat):
+    """.x_t / .SLDPRT : le lecteur est un programme à part. Un faux
+    OpenSW, qui recopie un STEP à deux solides, suffit à vérifier le
+    chemin du moteur : processus séparé, un corps par solide, refus lisible
+    sans perdre la pièce ouverte."""
+    mark("p18: lecture .x_t / .SLDPRT par OpenSW")
+    import Part
+    from engine import foreign
+    App = self._app()
+    tmp = tempfile.gettempdir()
+    step = os.path.join(tmp, "freesolid-selftest-2corps.step")
+    Part.makeCompound([
+        Part.makeBox(10, 10, 10),
+        Part.makeBox(4, 4, 4, App.Vector(20, 0, 0)),
+    ]).exportStep(step)
+    reader = os.path.join(tmp, "freesolid-selftest-opensw")
+    os.makedirs(os.path.join(reader, "tools"), exist_ok=True)
+    with open(os.path.join(reader, foreign.CONVERTER), "w",
+              encoding="utf-8") as handle:
+        handle.write(_FAUX_OPENSW.format(step=step))
+    sources = {}
+    for name in ("freesolid-selftest.x_t", "freesolid-selftest-refus.SLDPRT"):
+        sources[name] = os.path.join(tmp, name)
+        with open(sources[name], "wb") as handle:
+            handle.write(b"PS")
+    before = os.environ.get(foreign.READER_ENV)
+    os.environ[foreign.READER_ENV] = reader
+    try:
+        tree = self.open_part(sources["freesolid-selftest.x_t"])
+        volumes = sorted(round(b.Shape.Volume, 6) for b in self._doc.Objects
+                         if b.TypeId == "PartDesign::Body")
+        report["p18_opensw_corps_ok"] = (
+            tree.get("imported_solids") == 2 and len(tree["bodies"]) == 2
+            and volumes == [64.0, 1000.0]
+            and tree.get("converted_from") == ".x_t")
+        # La forme importée vit dans son corps : ni surface listée, ni
+        # second maillage par-dessus le solide.
+        report["p18_import_sans_doublon_ok"] = (
+            tree["surfaces"] == [] and not self.tessellate().get("surfaces")
+            and [f["label"] for f in tree["features"]]
+            == ["Import — freesolid-selftest (1)"])
+        doc = self._doc.Name
+        try:
+            self.open_part(sources["freesolid-selftest-refus.SLDPRT"])
+            refused = ""
+        except KernelError as exc:
+            refused = str(exc)
+        report["p18_opensw_refus_ok"] = (
+            refused == "OpenSW n'a pas pu lire ce fichier : LoadError: refusé"
+            and self._doc is not None and self._doc.Name == doc)
+        os.environ[foreign.READER_ENV] = os.path.join(tmp, "nulle-part")
+        try:
+            self.open_part(sources["freesolid-selftest.x_t"])
+            missing = ""
+        except KernelError as exc:
+            missing = str(exc)
+        report["p18_opensw_absent_ok"] = "ne désigne pas un dépôt" in missing
+    finally:
+        if before is None:
+            os.environ.pop(foreign.READER_ENV, None)
+        else:
+            os.environ[foreign.READER_ENV] = before
+
+
 def cycle_de_vie_open_part(self, mark, report, etat):
     mark("cycle de vie: open_part sans Body + UndoLimit")
     App = self._app()

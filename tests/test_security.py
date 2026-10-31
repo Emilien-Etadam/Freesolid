@@ -134,6 +134,8 @@ def test_list_dir_dirs_first_and_skips_hidden_and_unknown(tmp_path, monkeypatch)
     (tmp_path / "pieces").mkdir()
     (tmp_path / "b.FCStd").write_text("x", encoding="utf-8")
     (tmp_path / "a.stl").write_text("x", encoding="utf-8")
+    (tmp_path / "c.SLDPRT").write_text("x", encoding="utf-8")
+    (tmp_path / "d.x_t").write_text("x", encoding="utf-8")
     (tmp_path / "notes.txt").write_text("x", encoding="utf-8")
     secret = tmp_path / ".secret"
     secret.mkdir()
@@ -141,7 +143,7 @@ def test_list_dir_dirs_first_and_skips_hidden_and_unknown(tmp_path, monkeypatch)
     listed = protocol.list_user_dir(None)
     assert listed["parent"] is None
     assert [entry["name"] for entry in listed["entries"]] == [
-        "pieces", "a.stl", "b.FCStd"]
+        "pieces", "a.stl", "b.FCStd", "c.SLDPRT", "d.x_t"]
     assert listed["entries"][0]["kind"] == "dir"
 
 

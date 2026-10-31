@@ -33,6 +33,13 @@ class SurfaceCommonMixin:
         if type_id == "PartDesign::SubShapeBinder":
             return bool(getattr(obj, "FreeSolidComposite", False)
                         or getattr(obj, "FreeSolidKind", "") == "deleteface")
+        if type_id == "Part::Feature" and any(
+                getattr(user, "BaseFeature", None) is obj
+                for user in getattr(obj, "InList", None) or ()):
+            # Forme importée posée en base d'un corps : elle vit dans le
+            # corps, pas dans la section Surfaces — sinon elle s'y listait
+            # et se dessinait une seconde fois sur le solide.
+            return False
         return type_id in self._SURFACE_TYPE_IDS
 
     #: Propriétés FreeSolid d'une spline 3D (points, interpolée, fermée).

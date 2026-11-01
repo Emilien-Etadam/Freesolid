@@ -17,6 +17,7 @@ import {
   checkedContours, contourRows, vertexChamferDistances, vertexChamferRows,
 } from "./features.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
+import { solidParam } from "./contextmenu.js";
 import { readScene } from "./theme.js";
 
 const sceneTheme = readScene();
@@ -597,10 +598,22 @@ export function installTree(ctx) {
     return open;
   }
 
-  /** Une ligne du dossier des corps. Un corps qui garde plusieurs
-   *  solides en donne une par solide (`label` : « Extrusion[2] ») ; toutes
-   *  activent le même corps. */
-  function appendBodyRow(bodyInfo, label = bodyInfo.label) {
+  /** Ce que le dossier montre d'un solide d'un corps qui en garde
+   *  plusieurs : un corps à part, avec son nom, sa couleur et son
+   *  masquage. `solid` (son rang) suit les commandes du menu. */
+  function solidRowInfo(bodyInfo, solid, index) {
+    return {
+      ...bodyInfo,
+      label: solid.label,
+      color: solid.color ?? bodyInfo.color,
+      hidden: !!(bodyInfo.hidden || solid.hidden),
+      solid: index,
+    };
+  }
+
+  /** Une ligne du dossier des corps. Toutes les lignes des solides d'un
+   *  même corps activent ce corps. */
+  function appendBodyRow(bodyInfo) {
     const bodyItem = document.createElement("li");
     const empty = bodyInfo.has_solid !== true;
     bodyItem.className = "body in-folder"
@@ -616,13 +629,16 @@ export function installTree(ctx) {
     }
     // Le nom : celui de sa dernière fonction, ou celui qu'on lui a donné.
     const suffix = empty ? " — " + t("vide") : "";
-    bodyItem.appendChild(document.createTextNode(label + suffix
+    bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix
       + (bodyInfo.material ? ` · ${bodyInfo.material.name}` : "")
       + (bodyInfo.hidden ? " — " + t("masqué") : "")));
     if (bodyInfo.name) {
       bodyItem.dataset.feat = bodyInfo.name;
-      bodyItem.title = bodyInfo.active ? label
-        : `${label} — ${t("Clic : activer ce corps")}`;
+      if (Number.isInteger(bodyInfo.solid)) {
+        bodyItem.dataset.solid = String(bodyInfo.solid);
+      }
+      bodyItem.title = bodyInfo.active ? bodyInfo.label
+        : `${bodyInfo.label} — ${t("Clic : activer ce corps")}`;
       bodyItem.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, bodyItem, bodyInfo)) return;
         if (!bodyInfo.active) {
@@ -876,19 +892,20 @@ export function installTree(ctx) {
   // la barre de retour montre où elle ira ; le moteur la déplace avec ses
   // esquisses, et refuse si l'arbre ne se reconstruit plus.
   let suppressTreeClick = false;
-  let treeRenameClick = { name: null, at: null };
+  let treeRenameClick = { name: null, solid: undefined, at: null };
   let renameState = null;
 
   function consumeTreeRenameClick(event, row, feature) {
     if (!feature?.name || event.target.closest(".arrow, input")) return false;
     const action = renameClickAction({
       previousAt: treeRenameClick.at,
-      sameRow: treeRenameClick.name === feature.name,
+      sameRow: treeRenameClick.name === feature.name
+        && treeRenameClick.solid === feature.solid,
       now: Date.now(),
       moved: false,
       dragging: row.classList.contains("dragging") || suppressTreeClick,
     });
-    treeRenameClick = { name: feature.name, at: Date.now() };
+    treeRenameClick = { name: feature.name, solid: feature.solid, at: Date.now() };
     if (action === "select") {
       for (const item of treeEl.querySelectorAll("li.sel")) {
         if (item !== row) item.classList.remove("sel");
@@ -954,7 +971,8 @@ export function installTree(ctx) {
       return;
     }
     finishRenameField(state.input, label);
-    refreshAny(call("rename", { feature: state.feature.name, label }));
+    refreshAny(call("rename", { feature: state.feature.name, label,
+      ...solidParam(state.feature) }));
   }
 
   function cancelInlineRename() {
@@ -964,25 +982,31 @@ export function installTree(ctx) {
     finishRenameField(state.input, state.shown);
   }
 
-  function treeRowFor(name) {
+  /** La ligne d'un nœud ; `solid` : celle d'un des solides d'un corps. */
+  function treeRowFor(name, solid) {
     if (!name) return null;
-    return treeEl.querySelector(`li[data-feat="${CSS.escape(name)}"]`);
+    const own = Number.isInteger(solid) ? `[data-solid="${solid}"]` : "";
+    return treeEl.querySelector(`li[data-feat="${CSS.escape(name)}"]${own}`);
   }
 
-  function renameRecord(name) {
-    return findFeatureInTree(ctx.lastTree, name)
-      ?? (ctx.lastTree?.bodies ?? []).find((body) => body.name === name)
-      ?? null;
+  function renameRecord(name, solid) {
+    const body = (ctx.lastTree?.bodies ?? []).find((b) => b.name === name);
+    const own = body?.solids?.[solid];
+    if (own) return solidRowInfo(body, own, solid);
+    return findFeatureInTree(ctx.lastTree, name) ?? body ?? null;
   }
 
   function beginRenameSelected() {
     if (treeEl.querySelector("li.dragging")) return;
-    const clicked = treeRenameClick.name ? treeRowFor(treeRenameClick.name) : null;
+    const clicked = treeRenameClick.name
+      ? treeRowFor(treeRenameClick.name, treeRenameClick.solid) : null;
     const row = clicked?.classList.contains("sel")
       ? clicked
       : treeEl.querySelector("li.sel[data-feat]");
     if (!row) return;
-    const feature = renameRecord(row.dataset.feat);
+    const solid = row.dataset.solid === undefined
+      ? undefined : Number(row.dataset.solid);
+    const feature = renameRecord(row.dataset.feat, solid);
     if (!feature?.label) return;
     beginInlineRename(row, feature);
   }
@@ -1174,8 +1198,9 @@ export function installTree(ctx) {
       { title: t("Corps de la pièce — clic : déplier") });
     if (bodiesOpen) {
       for (const bodyInfo of bodies) {
-        for (const label of bodyInfo.solids ?? [bodyInfo.label]) {
-          appendBodyRow(bodyInfo, label);
+        if (!bodyInfo.solids?.length) appendBodyRow(bodyInfo);
+        for (const [index, solid] of (bodyInfo.solids ?? []).entries()) {
+          appendBodyRow(solidRowInfo(bodyInfo, solid, index));
         }
       }
     }

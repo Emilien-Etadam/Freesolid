@@ -813,18 +813,6 @@ class TreeMixin:
             return body.Label
         return self._thin_owner(tip).Label
 
-    def _body_solid_titles(self, body):
-        """Un corps qui garde plusieurs solides — contours disjoints,
-        enlèvement qui le coupe en deux — compte pour autant de corps dans
-        le dossier, chacun numéroté entre crochets : « Extrusion[1] »,
-        « Extrusion[2] ». Vide pour un seul solide."""
-        shape = getattr(body, "Shape", None)
-        count = len(shape.Solids) if shape is not None else 0
-        if count < 2:
-            return []
-        title = self._body_title(body)
-        return ["{}[{}]".format(title, i + 1) for i in range(count)]
-
     def _mark_rolled_back(self, body, items):
         """``rolled_back`` sur les fonctions volumiques : vrai après le Tip
         de leur corps. La barre est commune à tous les corps, chacun
@@ -1019,7 +1007,9 @@ class TreeMixin:
                 "hidden": self._is_hidden(obj),
                 "material": self._material_of(obj),
             }
-            solids = self._body_solid_titles(obj)
+            # Plusieurs solides : un corps chacun dans le dossier, avec
+            # son nom, sa couleur, son masquage (engine/bodysolids.py).
+            solids = self._body_solids(obj)
             if solids:
                 info["solids"] = solids
             bodies.append(info)
@@ -1118,8 +1108,13 @@ class TreeMixin:
             shape = None  # masqué : ni dessiné, ni visé
         faces = []
         splines = []
+        hidden_faces, _, solid_tints = (
+            self._solid_display(body) if shape is not None
+            else (set(), set(), {}))
         if shape is not None and shape.Faces:
             for i, face in enumerate(self._meshed(shape, deviation, angle).Faces):
+                if i in hidden_faces:
+                    continue  # solide masqué : les autres gardent leurs ids
                 packed, spline = self._face_mesh(face, i, deviation)
                 faces.append(packed)
                 splines.append(spline)
@@ -1132,6 +1127,10 @@ class TreeMixin:
             tint = face_colors.get(str(group.get("faceId")))
             if tint:
                 group["color"] = tint
+            elif str(group.get("faceId")) in solid_tints:
+                # La couleur de son solide : pas une couleur de face.
+                group["color"] = solid_tints[str(group.get("faceId"))]
+                group["solid_tint"] = True
             feature = producers.get(group.get("faceId"))
             if feature:
                 group["feature"] = self._thin_owner(
@@ -1154,14 +1153,17 @@ class TreeMixin:
                     or self._is_internal_tool(obj)
                     or self._is_hidden(obj)):
                 continue
+            hidden_faces, hidden_edges, solid_tints = \
+                self._solid_display(obj)
             other_faces = [
                 self._face_mesh(face, i, deviation)[0]
                 for i, face in enumerate(
-                    self._meshed(obj.Shape, deviation, angle).Faces)]
+                    self._meshed(obj.Shape, deviation, angle).Faces)
+                if i not in hidden_faces]
             if not other_faces:
                 continue
             packed = protocol.pack_mesh(other_faces)
-            tints = self._face_colors(obj)
+            tints = {**solid_tints, **self._face_colors(obj)}
             for group in packed["groups"]:
                 tint = tints.get(str(group.get("faceId")))
                 if tint:
@@ -1175,7 +1177,8 @@ class TreeMixin:
                 "indices": packed["indices"],
                 "groups": packed["groups"],
                 "edges": protocol.pack_edges(self._body_edge_lines(
-                    obj.Shape, edge_deviation or float(deviation) / 2)),
+                    obj.Shape, edge_deviation or float(deviation) / 2,
+                    skip=hidden_edges)),
             })
         if other_bodies:
             mesh["other_bodies"] = other_bodies
@@ -1297,15 +1300,17 @@ class TreeMixin:
         shape = getattr(body, "Shape", None)
         if shape is None or not shape.Edges or self._is_hidden(body):
             return protocol.pack_edges([])
-        return protocol.pack_edges(self._body_edge_lines(shape, deviation))
+        return protocol.pack_edges(self._body_edge_lines(
+            shape, deviation, skip=self._solid_display(body)[1]))
 
-    def _body_edge_lines(self, shape, deviation):
+    def _body_edge_lines(self, shape, deviation, skip=()):
         """Polylignes des arêtes d'un corps, coutures omises — celles du
-        corps actif comme celles des autres corps de la vue."""
+        corps actif comme celles des autres corps de la vue. ``skip`` :
+        rangs à taire (arêtes d'un solide masqué)."""
         seams = self._seam_edge_ids(shape)
         lines = []
         for i, edge in enumerate(shape.Edges):
-            if i in seams:
+            if i in seams or i in skip:
                 continue
             try:
                 points = edge.discretize(QuasiDeflection=float(deviation))

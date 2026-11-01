@@ -57,7 +57,8 @@ OPS = (
     Op("rebuild_errors"),              # lecture : fonctions en erreur
     Op("set_comment", Req(("feature", str), optional={"text": str}),
        undo=True),
-    Op("set_hidden", Req(("objects", list), optional={"hidden": bool})),
+    Op("set_hidden", Req(("objects", list),
+                         optional={"hidden": bool, "solid": int})),
     Op("edge_chain", Req(("edge", int), optional={"mode": str, "face": int})),
     Op("set_suppressed", Req(("features", list),
                              optional={"suppressed": bool}), undo=True),
@@ -77,7 +78,8 @@ OPS = (
     Op("list_variables"),
     Op("set_variable", Req(("name", str), "value"), undo=True),
     Op("delete_variable", Req(("name", str)), undo=True),
-    Op("rename", Req(("feature", str), ("label", str)), undo=True),
+    Op("rename", Req(("feature", str), ("label", str), optional={"solid": int}),
+       undo=True),
     Op("get_params", Req(("feature", str))),  # editable numeric properties
     Op("set_tip", undo=True),          # optional: feature — nom d'une
                                        # ligne d'historique (fonction,

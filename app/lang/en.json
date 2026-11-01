@@ -385,6 +385,7 @@
  "Supprimer la liaison": "Delete the link",
  "Supprimer tout ce qui est sous la barre de retour ? Une esquisse sortie au-dessus de la barre reste.": "Delete everything below the rollback bar? A sketch taken out above the bar stays.",
  "Supprimer « {f} » ?": "Delete \"{f}\"?",
+ "Supprimer « {f} » et les autres solides de son corps ({n} en tout) ?": "Delete \"{f}\" and the other solids of its body ({n} in all)?",
  "Surface": "Surface",
  "Surface / courbe — clic : sélectionner pour une commande · double-clic : modifier · clic droit : modifier, renommer, supprimer": "Surface / curve — click: select for a command · double-click: edit · right-click: edit, rename, delete",
  "Surface de révolution": "Revolved Surface",

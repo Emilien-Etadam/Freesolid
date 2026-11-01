@@ -48,11 +48,12 @@ class SolidsMixin:
         self._body = obj
         return self.get_tree()
 
-    def set_body_color(self, body, color):
+    def set_body_color(self, body, color, solid=None):
         """Couleur d'affichage d'un corps, persistée dans le .FCStd.
 
         Headless : pas de ViewObject. Propriété custom ``FreeSolidColor``.
         ``color`` = ``#rrggbb``, ou ``None`` / ``""`` pour le défaut.
+        ``solid`` : un seul des solides d'un corps qui en garde plusieurs.
         """
         from engine.kernel import (
             KernelError,
@@ -63,6 +64,9 @@ class SolidsMixin:
         if obj is None or obj.TypeId != "PartDesign::Body":
             raise KernelError("corps inconnu : {}".format(body))
         value = parse_body_color(color)
+        if solid is not None:
+            self._set_solid(obj, solid, color=value)
+            return self.get_tree()
         if "FreeSolidColor" not in obj.PropertiesList:
             obj.addProperty("App::PropertyString", "FreeSolidColor",
                             "FreeSolid", "Couleur d'affichage")

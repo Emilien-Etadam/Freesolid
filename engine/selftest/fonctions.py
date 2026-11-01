@@ -1350,8 +1350,32 @@ def p84_arbre_unique(self, mark, report, etat):
     self.sketch_add_rectangle(state["sketch"], 20, 0, 30, 10)
     self.sketch_finish(state["sketch"])
     self.add_pad(5, sketch=state["sketch"])
-    title = self._require_body().Tip.Label
+    body = self._require_body()
+    pad = body.Tip
+    title = pad.Label
     split = self.get_tree()["bodies"]
+    # Chaque solide a sa couleur, son nom, son masquage : ils le suivent
+    # quand la cote change et quand un congé change l'ordre des solides.
+    right = 0 if body.Shape.Solids[0].CenterOfMass.x > 15 else 1
+    self.set_body_color(body.Name, "#cc3333", solid=right)
+    self.rename(body.Name, "Bloc", solid=right)
+    self.set_hidden([body.Name], True, solid=1 - right)
+    shown = self.tessellate()
+    pad.Length = 7
+    self._recompute()
+    top = next(i for i, f in enumerate(body.Shape.Faces)
+               if f.CenterOfMass.x > 15 and abs(f.CenterOfMass.z - 7) < 1e-6)
+    self.add_fillet(radius=1, face=top)
+    rows = {row["label"]: row for row in self.get_tree()["bodies"][0]["solids"]}
+    after = self.tessellate()
+    report["p84_reglages_par_solide"] = (
+        {g.get("color") for g in shown["groups"]} == {"#cc3333"}
+        and len(shown["groups"]) == 6
+        and set(rows) == {"Bloc", title}
+        and rows["Bloc"]["color"] == "#cc3333" and not rows["Bloc"]["hidden"]
+        and rows[title]["hidden"] and rows[title]["color"] is None
+        and {g.get("color") for g in after["groups"]} == {"#cc3333"})
+    self.set_hidden([body.Name], False, solid=1 - right)
     state = self.sketch_start(plane="XY")
     self.sketch_add_rectangle(state["sketch"], 5, 0, 25, 3)
     self.sketch_finish(state["sketch"])
@@ -1359,5 +1383,6 @@ def p84_arbre_unique(self, mark, report, etat):
     joined = self.get_tree()["bodies"]
     report["p84_solides_du_corps"] = (
         len(split) == 1
-        and split[0].get("solids") == [title + "[1]", title + "[2]"]
+        and [row["label"] for row in split[0].get("solids", [])]
+        == [title + "[1]", title + "[2]"]
         and len(joined) == 1 and "solids" not in joined[0])

@@ -17,6 +17,12 @@ export function isBodyMenuTarget(feature) {
   return feature != null && typeof feature.active === "boolean";
 }
 
+/** Ligne d'un solide d'un corps qui en garde plusieurs : les commandes
+ *  du corps (couleur, masquer, renommer) ne visent que ce solide. */
+export function solidParam(target) {
+  return Number.isInteger(target?.solid) ? { solid: target.solid } : {};
+}
+
 /** Fonction de corps (hors plan de référence et corps) : elle se
  *  désactive sans être supprimée. */
 export function isSuppressibleTarget(feature) {
@@ -164,7 +170,7 @@ export function installContextMenu(ctx) {
 
   document.getElementById("ctx-rename").addEventListener("click", () => {
     if (!menuFeature) return;
-    const row = treeRowFor(menuFeature.name);
+    const row = treeRowFor(menuFeature.name, menuFeature.solid);
     if (!row) return;
     beginInlineRename(row, menuFeature);
   });
@@ -279,20 +285,23 @@ export function installContextMenu(ctx) {
 
   document.getElementById("ctx-hide").addEventListener("click", () => {
     if (!menuFeature || !isHideableTarget(menuFeature)) return;
-    refreshAny(call("set_hidden",
-      { objects: [menuFeature.name], hidden: !menuFeature.hidden }));
+    refreshAny(call("set_hidden", { objects: [menuFeature.name],
+      hidden: !menuFeature.hidden, ...solidParam(menuFeature) }));
   });
 
   // Matière d'un corps : la bibliothèque, ou une masse volumique propre.
+  // Elle vaut pour tous les solides du corps : le titre les nomme.
   document.getElementById("ctx-material").addEventListener("click", async () => {
     if (!menuFeature) return;
     const body = menuFeature;
     const library = await call("material_library").catch(() => null);
     if (!library) return;
     const current = body.material;
+    const names = Number.isInteger(body.solid)
+      ? body.solids.map((solid) => solid.label).join(", ") : body.label;
     panel.open({
       icon: "material",
-      title: t("Matière — {b}", { b: body.label }),
+      title: t("Matière — {b}", { b: names }),
       groups: [{ label: t("Matière"), rows: [
         { type: "select", key: "material", value: current?.id ?? "",
           options: [
@@ -318,17 +327,20 @@ export function installContextMenu(ctx) {
   document.getElementById("ctx-color").addEventListener("click", () => {
     if (!menuFeature) return;
     const bodyName = menuFeature.name;
+    const solid = solidParam(menuFeature);
     const picker = document.getElementById("body-color-picker");
     picker.value = hexColor(menuFeature.color) || cssHex(sceneTheme.part);
     picker.addEventListener("change", () => {
-      refresh(call("set_body_color", { body: bodyName, color: picker.value }));
+      refresh(call("set_body_color",
+        { body: bodyName, color: picker.value, ...solid }));
     }, { once: true });
     picker.click();
   });
 
   document.getElementById("ctx-color-reset").addEventListener("click", () => {
     if (!menuFeature) return;
-    refresh(call("set_body_color", { body: menuFeature.name, color: null }));
+    refresh(call("set_body_color",
+      { body: menuFeature.name, color: null, ...solidParam(menuFeature) }));
   });
 
   document.getElementById("ctx-ground").addEventListener("click", () => {
@@ -361,7 +373,12 @@ export function installContextMenu(ctx) {
   barItem("ctx-flat", () => ctx.setFlatTree(!ctx.isFlatTree()));
   document.getElementById("ctx-delete").addEventListener("click", () => {
     if (!menuFeature) return;
-    if (confirm(t("Supprimer « {f} » ?", { f: menuFeature.label })))
+    // Un solide part avec les autres solides de son corps.
+    const question = Number.isInteger(menuFeature.solid)
+      ? t("Supprimer « {f} » et les autres solides de son corps ({n} en tout) ?",
+        { f: menuFeature.label, n: menuFeature.solids.length })
+      : t("Supprimer « {f} » ?", { f: menuFeature.label });
+    if (confirm(question))
       refreshAny(call("delete_feature", { feature: menuFeature.name }));
   });
 
@@ -394,7 +411,7 @@ export function installContextMenu(ctx) {
       hit = {
         kind: "face",
         face: group.faceId,
-        colored: !!group.color,
+        colored: !!group.color && !group.solid_tint,
         feature: feature ? {
           name: feature.name, label: feature.label, sketch: sketch?.name,
           item: feature, sketchItem: sketch,

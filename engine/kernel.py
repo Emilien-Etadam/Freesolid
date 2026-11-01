@@ -69,6 +69,7 @@ from engine.splineedit import SplineEditMixin
 from engine.sketch3d import Sketch3dMixin
 from engine.solids import SolidsMixin
 from engine.bodypattern import BodyPatternMixin
+from engine.bodysolids import BodySolidsMixin
 from engine.tree import TreeMixin
 
 
@@ -304,7 +305,7 @@ def _format_mm(value):
     return text.replace(".", ",") or "0"
 
 
-class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, MaterialsMixin, RefGeomMixin, ClipboardMixin, TemplatesMixin, TreeOrgMixin, DirectEditMixin, ConfigsMixin, SplineEditMixin, Sketch3dMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
+class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, BodySolidsMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, MaterialsMixin, RefGeomMixin, ClipboardMixin, TemplatesMixin, TreeOrgMixin, DirectEditMixin, ConfigsMixin, SplineEditMixin, Sketch3dMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
     """Owns one FreeCAD document and executes protocol operations."""
 
     def __init__(self):
@@ -878,8 +879,9 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, SketchM
             _abort(doc)
             doc.recompute()
 
-    def rename(self, feature, label):
-        """Renommer une fonction, une esquisse ou la pièce."""
+    def rename(self, feature, label, solid=None):
+        """Renommer une fonction, une esquisse ou la pièce. ``solid`` :
+        un seul des solides d'un corps qui en garde plusieurs."""
         doc = self._require_doc()
         obj = doc.getObject(feature)
         if obj is None:
@@ -887,7 +889,9 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, SketchM
         label = str(label).strip()
         if not label:
             raise KernelError("le nom ne peut pas être vide")
-        if obj.TypeId == "PartDesign::Body":
+        if obj.TypeId == "PartDesign::Body" and solid is not None:
+            self._set_solid(obj, solid, label=label)
+        elif obj.TypeId == "PartDesign::Body":
             self._name_body(obj, label)
         else:
             obj.Label = label

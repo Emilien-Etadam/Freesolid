@@ -72,6 +72,8 @@
  "concentrique : deux cercles ou arcs": "concentric: two circles or arcs",
  "contrainte inconnue « {} » — attendu : {}": "unknown constraint \"{}\" — expected: {}",
  "corps inconnu : {}": "unknown body: {}",
+ "solide inconnu : {}": "unknown solid: {}",
+ "un solide se règle dans un seul corps": "a solid is set within a single body",
  "corps outil inconnu : {}": "unknown tool body: {}",
  "cote inconnue : {}": "unknown dimension: {}",
  "cote non gérée entre ces deux entités — deux points, un point et une ligne, ou deux lignes": "dimension not supported between these two entities — two points, a point and a line, or two lines",

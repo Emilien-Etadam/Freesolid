@@ -62,8 +62,8 @@ OPS = (
     Op("add_body", undo=True,          # optional: name — devient le corps actif
        no_replay="pas une fonction du groupe"),
     Op("set_active_body", Req(("body", str))),
-    Op("set_body_color", Req(("body", str), "color"), undo=True),
-                                       # "#rrggbb" | null | "" (défaut)
+    Op("set_body_color", Req(("body", str), "color", optional={"solid": int}),
+       undo=True),                     # "#rrggbb" | null | "" (défaut)
     Op("add_boolean", Req(("tool", str)), undo=True, preview=True,
        no_replay="corps outil, pas un profil"),
                                        # optional: type (cut|fuse|common)

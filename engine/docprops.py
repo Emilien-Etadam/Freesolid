@@ -146,10 +146,11 @@ class DocPropsMixin:
     def _is_hidden(obj):
         return bool(getattr(obj, "FreeSolidHidden", False))
 
-    def set_hidden(self, objects, hidden=True):
+    def set_hidden(self, objects, hidden=True, solid=None):
         """Masque (ou affiche) des corps ou des surfaces : ils restent dans
         la pièce et dans l'arbre, la vue ne les dessine plus. Enregistré
-        dans le fichier."""
+        dans le fichier. ``solid`` : un seul des solides d'un corps qui en
+        garde plusieurs (``objects`` ne nomme alors que ce corps)."""
         from engine.kernel import KernelError
         doc = self._require_doc()
         targets = []
@@ -161,6 +162,18 @@ class DocPropsMixin:
             targets.append(obj)
         if not targets:
             raise KernelError("choisissez un corps ou une surface")
+        if solid is not None:
+            if len(targets) != 1 or targets[0].TypeId != "PartDesign::Body":
+                raise KernelError("un solide se règle dans un seul corps")
+            body = targets[0]
+            if self._is_hidden(body):
+                # Masqué en entier : chaque solide le devient, puis
+                # celui-ci change seul.
+                for other in range(len(body.Shape.Solids)):
+                    self._set_solid(body, other, hidden=True)
+                body.FreeSolidHidden = False
+            self._set_solid(body, solid, hidden=bool(hidden))
+            return self._current_tree()
         for obj in targets:
             if "FreeSolidHidden" not in obj.PropertiesList:
                 if not hidden:

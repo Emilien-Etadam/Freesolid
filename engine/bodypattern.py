@@ -1,9 +1,12 @@
 """Répéter au-delà du corps actif : réseau de corps, corps concernés.
 
 **Réseau de corps** (``add_body_pattern``) — chaque occurrence est un
-nouveau corps qui suit sa source :
+nouveau corps qui suit sa source telle qu'elle est à la place du réseau
+dans l'arbre :
 
-- un lieur de forme placé (``SubShapeBinder``) lit le corps source ;
+- un lieur de forme placé (``SubShapeBinder``) lit la dernière fonction
+  de la source avant le réseau ; ce qui vient après ne passe pas dans les
+  copies ;
 - un second lieur fige ce placement dans la géométrie, car la base d'un
   corps ignore la position de l'objet qu'elle reçoit ;
 - la symétrie passe par ``Part::Mirroring``.
@@ -11,8 +14,10 @@ nouveau corps qui suit sa source :
 L'hôte, un ``App::DocumentObjectGroup`` qui range ces lieurs, porte les
 cotes rééditables (``Length``, ``Occurrences``…). Après chaque
 reconstruction, le moteur aligne les copies sur ces cotes
-(``_refresh_repetitions``) : il en ajoute, en retire, les déplace. Une
-copie supprimée à la main est sautée ensuite.
+(``_refresh_repetitions``) : il en ajoute, en retire, les déplace, et
+rebranche leurs lieurs quand la fonction lue change (supprimée, ou une
+autre amenée avant le réseau). Une copie supprimée à la main est sautée
+ensuite.
 
 **Corps concernés** d'une répétition de fonctions (``scope``) — les
 enlèvements de matière répétés creusent aussi les corps choisis. Dans
@@ -356,6 +361,16 @@ class BodyPatternMixin:
         return bool(copies) and all(
             getattr(copy, "Tip", None) is None for copy in copies)
 
+    def _pattern_source_at(self, host, source):
+        """Ce que ``host`` répète de ``source`` : sa dernière fonction
+        avant le réseau dans l'arbre, cavité de paroi mince comprise."""
+        order_of = self._tree_order()
+        at = order_of.get(host.Name, -1)
+        before = [o for o in source.Group
+                  if o.isDerivedFrom("PartDesign::Feature")
+                  and order_of.get(o.Name, -1) < at]
+        return self._tip_with_helpers(before[-1]) if before else source
+
     def _body_pattern_wanted(self, host, spec):
         """{(source, occurrence): (numéro, placement ou None)} attendus.
 
@@ -423,6 +438,7 @@ class BodyPatternMixin:
                                      number, placement)
                 changed = True
                 continue
+            read = self._pattern_source_at(host, doc.getObject(source))
             if spec.get("kind") == "mirror":
                 mirror = doc.getObject(getattr(body, "FreeSolidPatternInner",
                                                ""))
@@ -434,30 +450,38 @@ class BodyPatternMixin:
                     mirror.Normal = normal
                     mirror.Base = origin
                     changed = True
+                if mirror is not None and mirror.Source is not read:
+                    mirror.Source = read
+                    changed = True
                 continue
             inner = doc.getObject(getattr(body, "FreeSolidPatternInner", ""))
-            if inner is not None and not inner.Placement.isSame(placement,
-                                                                _SAME):
+            if inner is None:
+                continue
+            if not inner.Placement.isSame(placement, _SAME):
                 inner.Placement = placement
+                changed = True
+            if [link[0] for link in inner.Support] != [read]:
+                inner.Support = [(read, ("",))]
                 changed = True
         return changed
 
     def _make_body_copy(self, host, spec, source, key, number, placement):
-        """Un corps qui suit ``source``, placé par ``placement`` (ou par
-        la symétrie de l'hôte)."""
+        """Un corps qui suit ``source`` à la place du réseau, placé par
+        ``placement`` (ou par la symétrie de l'hôte)."""
         import FreeCAD as App
         doc = self._require_doc()
+        read = self._pattern_source_at(host, source)
         parts = []
         if spec.get("kind") == "mirror":
             mirror = doc.addObject("Part::Mirroring", "BodyMirror")
-            mirror.Source = source
+            mirror.Source = read
             mirror.Normal = App.Vector(*spec.get("normal"))
             mirror.Base = App.Vector(*spec.get("base"))
             parts = [mirror]
             inner = base = mirror
         else:
             inner = doc.addObject("PartDesign::SubShapeBinder", "BodyCopy")
-            inner.Support = [(source, ("",))]
+            inner.Support = [(read, ("",))]
             inner.Placement = placement
             # La base d'un corps ignore le placement de ce qu'elle reçoit :
             # un second lieur le fige dans la géométrie.
@@ -816,7 +840,7 @@ class BodyPatternMixin:
             item["kind"] = self._t(BODY_PATTERN_LABELS.get(
                 kind, BODY_PATTERN_LABELS["linear"]))
             item["body_pattern"] = kind
-            item["copies"] = [copy.Label for copy in copies]
+            item["copies"] = [self._body_title(copy) for copy in copies]
             item["rolled_back"] = self._body_pattern_rolled_back(host)
             if any("Invalid" in (copy.State or ()) for copy in copies):
                 item["error"] = True

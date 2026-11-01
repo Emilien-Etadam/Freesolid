@@ -23,11 +23,17 @@ class SolidsMixin:
         """Nouveau corps dans la pièce — il devient le corps actif.
 
         Un corps regroupe ses fonctions, matérialisé ici par un Body.
-        Les fonctions suivantes s'empilent dans ce corps.
+        Les fonctions suivantes s'empilent dans ce corps. Un nom donné
+        (autre que « Corps ») reste dans le dossier des corps ; sinon le
+        corps y prend celui de sa dernière fonction.
         """
         doc = self._require_doc()
         body = doc.addObject("PartDesign::Body", "Body")
-        body.Label = str(name).strip() if name else self._t("Corps")
+        name = str(name or "").strip()
+        if name and name not in ("Corps", self._t("Corps")):
+            self._name_body(body, name)
+        else:
+            body.Label = self._t("Corps")
         self._body = body
         doc.recompute()
         return self.get_tree()

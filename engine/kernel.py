@@ -887,7 +887,10 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, SketchM
         label = str(label).strip()
         if not label:
             raise KernelError("le nom ne peut pas être vide")
-        obj.Label = label
+        if obj.TypeId == "PartDesign::Body":
+            self._name_body(obj, label)
+        else:
+            obj.Label = label
         return self._current_tree()
 
 

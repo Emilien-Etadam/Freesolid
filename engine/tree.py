@@ -6,6 +6,8 @@ les méthodes importent le noyau à l'appel, pour éviter un cycle.
 
 #: Esquisse sortie de sa fonction par la barre de retour (propriété du corps).
 _BAR_SKETCH_PROP = "FreeSolidBarSketch"
+#: Corps nommé à la main : le dossier garde son nom (propriété du corps).
+_NAMED_PROP = "FreeSolidNamed"
 
 
 class TreeMixin:
@@ -783,6 +785,34 @@ class TreeMixin:
             items.append(item)
         return items
 
+    def _name_body(self, body, label):
+        """Nommer un corps à la main : le dossier garde ce nom au lieu de
+        celui de sa dernière fonction."""
+        body.Label = label
+        if _NAMED_PROP not in body.PropertiesList:
+            body.addProperty("App::PropertyBool", _NAMED_PROP, "FreeSolid",
+                             "Nommé à la main : le dossier garde ce nom")
+        setattr(body, _NAMED_PROP, True)
+
+    def _body_title(self, body):
+        """Nom d'un corps dans son dossier : celui de la dernière fonction
+        qui l'a changé, comme dans les modeleurs courants. Une copie de
+        réseau sans fonction à elle : « réseau[n] ». Le sien quand on l'a
+        nommé, quand il est vide ou n'a qu'une forme importée."""
+        tip = getattr(body, "Tip", None)
+        if getattr(body, _NAMED_PROP, False) or tip is None:
+            return body.Label
+        if self._is_pattern_base(tip):
+            host = self._body_pattern_host_of(tip)
+            copies = list(self._body_pattern_copies(host).values()) \
+                if host is not None else []
+            if body in copies:
+                return "{}[{}]".format(host.Label, copies.index(body) + 1)
+            return body.Label
+        if tip.TypeId == "PartDesign::FeatureBase":
+            return body.Label
+        return self._thin_owner(tip).Label
+
     def _mark_rolled_back(self, body, items):
         """``rolled_back`` sur les fonctions volumiques : vrai après le Tip
         de leur corps. La barre est commune à tous les corps, chacun
@@ -965,7 +995,7 @@ class TreeMixin:
                 continue  # corps outil interne : artefact hors arbre
             bodies.append({
                 "name": obj.Name,
-                "label": obj.Label,
+                "label": self._body_title(obj),
                 "type_key": type_key_for(obj.TypeId),
                 "active": obj is body,
                 "count": len([o for o in obj.Group
@@ -1122,7 +1152,7 @@ class TreeMixin:
                     group["color"] = tint
             other_bodies.append({
                 "name": obj.Name,
-                "label": obj.Label,
+                "label": self._body_title(obj),
                 "color": getattr(obj, "FreeSolidColor", "") or None,
                 "positions": packed["positions"],
                 "normals": packed.get("normals"),

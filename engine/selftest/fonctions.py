@@ -560,12 +560,13 @@ def p9_multi_corps_combiner(self, mark, report, etat):
     mesh = self.tessellate()
     report["p9_others_shown"] = "others" in mesh
     # L'autre corps se dessine face par face, numéroté comme quand il
-    # sera actif, arêtes comprises : le clic dans la vue l'active.
+    # sera actif, arêtes comprises : le clic dans la vue l'active. Son nom
+    # est celui du dossier, sa dernière fonction.
     other = next((b for b in mesh.get("other_bodies", ())
                   if b["name"] == first_body), {})
     first = self._doc.getObject(first_body)
     report["p9_autres_cliquables"] = (
-        other.get("label") == first.Label
+        other.get("label") == first.Tip.Label
         and sorted(g["faceId"] for g in other.get("groups", ()))
         == list(range(len(first.Shape.Faces)))
         and bool(other.get("edges", {}).get("groups")))
@@ -1101,35 +1102,41 @@ def p82_reseau_de_corps(self, mark, report, etat):
     from_copy = {b["name"]: b
                  for b in self.tessellate().get("other_bodies", [])}
     self.set_active_body(source)
+    titles = ["{}[{}]".format(host.Label, i) for i in (1, 2)]
     report["p82_ligne_et_vue"] = (
         len(rows) == 1 and rows[0]["name"] == host.Name
-        and sorted(rows[0].get("copies") or ()) == sorted(
-            self._doc.getObject(n).Label for n in copies)
+        and sorted(rows[0].get("copies") or ()) == titles
         and all(shown.get(n, {}).get("edges", {}).get("indices")
                 for n in copies)
         and all(from_copy.get(n, {}).get("groups")
                 for n in (source, copies[1])))
-    # La source ne se combine pas avec sa copie : la copie la suit, le
-    # graphe bouclerait. Rien n'est ajouté.
-    group = len(self._require_body().Group)
-    try:
-        self.add_boolean(tool=copies[0], type="fuse")
-        looped = False
-    except KernelError as exc:
-        looped = "suit le corps actif" in str(exc)
-    report["p82_refus_boucle"] = (
-        looped and len(self._require_body().Group) == group
-        and all(abs(v - 800) < 1e-6 for v in _volumes(self).values()))
-    # La source change : les copies suivent ; la cote se réédite.
+    # Le dossier nomme chaque corps d'après sa dernière fonction ; un
+    # corps nommé à la main garde son nom.
+    named = {b["name"]: b["label"] for b in self.get_tree()["bodies"]}
+    self.rename(copies[1], "Bloc")
+    renamed = {b["name"]: b["label"] for b in self.get_tree()["bodies"]}
+    report["p82_noms_des_corps"] = (
+        named[source] == self._doc.getObject(pad).Label
+        and sorted(named[n] for n in copies) == titles
+        and renamed[copies[1]] == "Bloc")
+    # La source change après le réseau : les copies n'en héritent pas ;
+    # une cote d'avant le réseau passe. La cote du réseau se réédite.
     self.set_active_body(source)
     top = self._top_face_id()
     self.add_rect_sketch(4, 4, face=top)
     self.add_pocket(2)
     self.set_params(host.Name, {"count": 4})
-    volumes = _volumes(self)
+    after = _volumes(self)
+    self.set_params(pad, {"length": 10})
+    upstream = _volumes(self)
+    self.set_params(pad, {"length": 8})
     report["p82_suit_la_source"] = (
-        len(volumes) == 4
-        and all(abs(v - 768) < 1e-6 for v in volumes.values()))
+        len(after) == 4 and abs(after[source] - 768) < 1e-6
+        and all(abs(v - 800) < 1e-6
+                for n, v in after.items() if n != source)
+        and abs(upstream[source] - 968) < 1e-6
+        and all(abs(v - 1000) < 1e-6
+                for n, v in upstream.items() if n != source))
     # Le réseau a son rang : l'enlèvement ajouté ensuite vient dessous.
     # La barre au-dessus de lui, ses copies n'existent pas encore ; posée
     # sur lui, elles reviennent, sans l'enlèvement.
@@ -1208,6 +1215,14 @@ def p82_reseau_de_corps(self, mark, report, etat):
     report["p82_rouvert"] = (
         set(reopened) == set(volumes)
         and all(abs(reopened[n] - volumes[n]) < 1e-6 for n in volumes))
+    # La source se combine avec sa propre copie : la copie lit une
+    # fonction d'avant le réseau, le graphe ne boucle pas.
+    self.set_active_body(source)
+    copy = next(c.Name for c in self._body_pattern_copies(
+        self._doc.getObject(host_name)).values() if c.Name != near)
+    self.add_boolean(tool=copy, type="fuse")
+    report["p82_combine_sa_copie"] = abs(
+        _volumes(self)[source] - reopened[source] - reopened[copy]) < 1e-6
 
 
 def p83_corps_concernes(self, mark, report, etat):

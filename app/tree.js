@@ -611,16 +611,15 @@ export function installTree(ctx) {
       swatch.style.background = bodyInfo.color;
       bodyItem.appendChild(swatch);
     }
-    const suffix = empty
-      ? " — " + t("vide")
-      : (bodyInfo.active ? ""
-        : " — " + t("{n} élément(s)", { n: bodyInfo.count }));
+    // Le nom : celui de sa dernière fonction, ou celui qu'on lui a donné.
+    const suffix = empty ? " — " + t("vide") : "";
     bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix
       + (bodyInfo.material ? ` · ${bodyInfo.material.name}` : "")
       + (bodyInfo.hidden ? " — " + t("masqué") : "")));
     if (bodyInfo.name) {
       bodyItem.dataset.feat = bodyInfo.name;
-      if (!bodyInfo.active) bodyItem.title = t("Clic : activer ce corps");
+      bodyItem.title = bodyInfo.active ? bodyInfo.label
+        : `${bodyInfo.label} — ${t("Clic : activer ce corps")}`;
       bodyItem.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, bodyItem, bodyInfo)) return;
         if (!bodyInfo.active) {

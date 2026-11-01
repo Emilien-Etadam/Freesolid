@@ -150,14 +150,17 @@ class TreeMixin:
 
     def _history_role(self, obj, consumed):
         """Rôle dans l'historique : ``feature`` / ``sketch`` / ``surface``
-        / ``pattern`` (réseau de corps), ou None si hors historique. Un
-        code, pas un libellé : ``kind`` reste le nom affiché d'un objet."""
+        / ``pattern`` (réseau de corps) / ``remove`` (suppression de corps),
+        ou None si hors historique. Un code, pas un libellé : ``kind`` reste
+        le nom affiché d'un objet."""
         if self._is_thin_helper(obj):
             return None
         if self._is_surface_obj(obj):
             return "surface"
         if "FreeSolidBodyPattern" in obj.PropertiesList:
             return "pattern"
+        if "FreeSolidRemoveBodies" in obj.PropertiesList:
+            return "remove"
         if obj.TypeId == "Sketcher::SketchObject":
             return None if obj.Name in consumed else "sketch"
         if obj.isDerivedFrom("PartDesign::Feature"):
@@ -188,12 +191,18 @@ class TreeMixin:
             order_of[host.Name] = min(
                 [order_of[host.Name]]
                 + [order_of[name] for name in bases if name in order_of])
+        for host in self._removal_hosts():
+            # De même, une suppression vient avant ses étapes cachées.
+            order_of[host.Name] = min(
+                [order_of[host.Name]]
+                + [order_of[part.Name] for part in self._removal_parts(host)
+                   if part.Name in order_of])
         return order_of
 
     def _history_lines(self):
         """Lignes d'historique top-niveau de toute la pièce, dans l'ordre
         de l'arbre : fonctions et esquisses libres de chaque corps,
-        surfaces, réseaux de corps."""
+        surfaces, réseaux de corps, suppressions de corps."""
         doc = self._require_doc()
         consumed = self._consumed_sketches()
         lines = []
@@ -209,6 +218,7 @@ class TreeMixin:
                     and not self._is_internal_tool(obj)):
                 lines.append(obj)
         lines.extend(self._body_pattern_hosts())
+        lines.extend(self._removal_hosts())
         order_of = self._tree_order()
         lines.sort(key=lambda o: order_of.get(o.Name, -1))
         return lines
@@ -239,6 +249,13 @@ class TreeMixin:
                         rows.append({"name": base.Name,
                                      "order": order_of.get(obj.Name, -1),
                                      "role": "feature", "body": copy.Name})
+            if role == "remove":
+                # Ses étapes cachées ôtent des solides à son rang.
+                for part in self._removal_parts(obj):
+                    rows.append({"name": part.Name,
+                                 "order": order_of.get(obj.Name, -1),
+                                 "role": "feature",
+                                 "body": owners.get(part.Name)})
         return rows
 
     def _apply_tips(self, tips):
@@ -452,6 +469,8 @@ class TreeMixin:
                 out.append(obj)
         out.extend(host for host in self._body_pattern_hosts()
                    if self._body_pattern_rolled_back(host))
+        out.extend(host for host in self._removal_hosts()
+                   if self._is_rolled_back(host))
         order_of = self._tree_order()
         out.sort(key=lambda o: order_of.get(o.Name, -1))
         return out
@@ -501,6 +520,11 @@ class TreeMixin:
         if obj is None:
             raise KernelError("fonction inconnue : {}".format(feature))
         if self._plugins.run_deletes_feature(self, obj):
+            return self._current_tree()
+        if "FreeSolidRemoveBodies" in obj.PropertiesList:
+            # Les corps qu'elle supprimait reviennent.
+            self._drop_removal(obj)
+            self._recompute()
             return self._current_tree()
         # Réseau de corps, copie, corps concernés : leurs règles d'abord.
         handled = self._repetition_delete(obj)
@@ -800,6 +824,8 @@ class TreeMixin:
         réseau sans fonction à elle : « réseau[n] ». Le sien quand on l'a
         nommé, quand il est vide ou n'a qu'une forme importée."""
         tip = getattr(body, "Tip", None)
+        while getattr(tip, "FreeSolidRemoveof", ""):
+            tip = tip.BaseFeature  # ôter un solide ne change pas les autres
         if getattr(body, _NAMED_PROP, False) or tip is None:
             return body.Label
         if self._is_pattern_base(tip):
@@ -861,11 +887,13 @@ class TreeMixin:
         import json
         from engine.kernel import label_for_type
         from engine.vocab import type_key_for
+        self._keep_active_body()
         body = self._require_body()
         order_of = self._tree_order()
         consumed = self._consumed_sketches()
         unabsorbed = set(self._unabsorbed_sketches())
         known_names = self._tree_known_names(body)
+        removed = self._removed_names()
 
         def entry(obj):
             item = {
@@ -959,6 +987,8 @@ class TreeMixin:
         # Réseaux de corps : chacun à son rang, reculé quand ses copies
         # n'existent pas encore.
         items.extend(self._body_pattern_rows(body, entry))
+        # Suppressions de corps : des lignes de la pièce, à leur rang.
+        items.extend(self._removal_rows(entry))
         # Un seul arbre : l'histoire des autres corps s'y range par rang.
         # ``features`` reste celle du corps actif, sur laquelle les
         # commandes agissent ; chaque ligne d'ici porte son corps.
@@ -993,6 +1023,8 @@ class TreeMixin:
                 continue
             if self._is_internal_tool(obj):
                 continue  # corps outil interne : artefact hors arbre
+            if obj.Name in removed:
+                continue  # supprimé par une fonction au-dessus de la barre
             info = {
                 "name": obj.Name,
                 "label": self._body_title(obj),
@@ -1031,6 +1063,8 @@ class TreeMixin:
         for entry in surfaces:
             if self._is_hidden(self._doc.getObject(entry["name"])):
                 entry["hidden"] = True
+            if entry["name"] in removed:
+                entry["removed"] = True  # hors du dossier, pas de l'histoire
         tree = {"body": body.Label, "tip": tip, "bodies": bodies,
                 "planes": planes, "features": items,
                 "other_features": other_items,
@@ -1098,6 +1132,7 @@ class TreeMixin:
         """
         from . import protocol
         body = self._require_body()
+        removed = self._removed_names()
         angle = None
         edge_deviation = None
         if deviation is None:
@@ -1151,7 +1186,7 @@ class TreeMixin:
             if (obj.TypeId != "PartDesign::Body" or obj is body
                     or getattr(obj, "Shape", None) is None
                     or self._is_internal_tool(obj)
-                    or self._is_hidden(obj)):
+                    or self._is_hidden(obj) or obj.Name in removed):
                 continue
             hidden_faces, hidden_edges, solid_tints = \
                 self._solid_display(obj)
@@ -1200,7 +1235,8 @@ class TreeMixin:
             if not self._is_surface_obj(obj):
                 continue
             if (self._is_rolled_back(obj) or self._is_internal_tool(obj)
-                    or obj.Name in consumed or self._is_hidden(obj)):
+                    or obj.Name in consumed or self._is_hidden(obj)
+                    or obj.Name in removed):
                 continue
             shape = getattr(obj, "Shape", None)
             if shape is None:

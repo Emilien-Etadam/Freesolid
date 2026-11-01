@@ -164,7 +164,7 @@ describe("l'organisation transposée", () => {
     assert.deepEqual(sequence(groupe("features", "Modélisation")), [
       "btn-pad", "btn-revolution", "btn-pocket", "btn-groove", "btn-hole",
       "btn-loft", "btn-sweep", "btn-helix", "btn-text",
-      "btn-graph-feature", "btn-boolean",
+      "btn-graph-feature", "btn-boolean", "btn-remove-bodies",
     ]);
   });
 

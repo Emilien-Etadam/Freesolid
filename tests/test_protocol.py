@@ -527,6 +527,7 @@ def test_ops_snapshot_keys():
             "add_pocket",
             "add_polar_pattern",
             "add_rect_sketch",
+            "add_remove_bodies",
             "add_repeat_feature",
             "add_replace_face",
             "add_revolution",

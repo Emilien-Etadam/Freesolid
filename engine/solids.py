@@ -45,6 +45,9 @@ class SolidsMixin:
         obj = doc.getObject(str(body))
         if obj is None or obj.TypeId != "PartDesign::Body":
             raise KernelError("corps inconnu : {}".format(body))
+        if obj.Name in self._removed_names():
+            raise KernelError("{} est supprimé par une fonction — reculez "
+                              "la barre au-dessus d'elle".format(obj.Label))
         self._body = obj
         return self.get_tree()
 

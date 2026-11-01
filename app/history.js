@@ -26,6 +26,7 @@ export const STEP_LABELS = {
   add_helix: "Hélice",
   add_body: "Corps",
   add_boolean: "Combiner",
+  add_remove_bodies: "Supprimer des corps",
   add_text: "Texte",
   set_body_color: "Couleur du corps",
   set_param: "Modifier la fonction",

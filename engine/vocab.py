@@ -181,6 +181,8 @@ TYPE_KEYS: dict[str, str] = {
     "App::Link": "component",
     # Hôte d'un réseau de corps : ses cotes, ses lieurs (hors de l'arbre).
     "App::DocumentObjectGroup": "body_pattern",
+    # Suppression de corps : la ligne de l'arbre, ses corps en JSON.
+    "App::DocumentObject": "remove_bodies",
     "App::VarSet": "varset",
 }
 

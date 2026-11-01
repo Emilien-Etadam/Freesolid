@@ -1386,3 +1386,114 @@ def p84_arbre_unique(self, mark, report, etat):
         and [row["label"] for row in split[0].get("solids", [])]
         == [title + "[1]", title + "[2]"]
         and len(joined) == 1 and "solids" not in joined[0])
+
+
+def p85_supprimer_des_corps(self, mark, report, etat):
+    mark("p85: supprimer des corps — une fonction d'historique")
+    import tempfile
+    from engine.kernel import dispatch
+    self.new_part("Supprimer des corps")
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_rectangle(state["sketch"], 0, 0, 10, 10)
+    self.sketch_add_rectangle(state["sketch"], 20, 0, 30, 10)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    first = self._require_body().Name
+    pad = self._require_body().Tip.Name
+    self.add_body()
+    second = self._require_body().Name
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_circle(state["sketch"], 50, 5, 4)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(8, sketch=state["sketch"])
+    state = self.sketch_start(plane="XZ")
+    self.sketch_add_line(state["sketch"], 0, 20, 30, 20)
+    self.sketch_finish(state["sketch"])
+    surface = self.surface_extrude(10, sketch=state["sketch"])[
+        "surfaces"][-1]["name"]
+    # Un des deux solides du premier corps : une étape cachée l'ôte de
+    # la forme, la cote d'avant passe toujours.
+    body = self._doc.getObject(first)
+    right = 0 if body.Shape.Solids[0].CenterOfMass.x > 15 else 1
+    tree = self.add_remove_bodies([{"name": first, "solid": right}])
+    row = next(f for f in tree["features"]
+               if f["type_key"] == "remove_bodies")
+    self._doc.getObject(pad).Length = 7
+    self._recompute()
+    report["p85_un_solide"] = (
+        len(body.Shape.Solids) == 1 and abs(body.Shape.Volume - 700) < 1e-6
+        and body.Shape.Solids[0].CenterOfMass.x < 15
+        and row["removes"] == ["Extrusion[{}]".format(right + 1)]
+        and row["rolled_back"] is False and not row.get("keep"))
+    # Le second corps et la surface : ni dans les dossiers, ni dans la
+    # vue, ni actifs ; leur histoire reste.
+    tree = self.add_remove_bodies([{"name": second}, {"name": surface}])
+    mesh = self.tessellate()
+    try:
+        self.set_active_body(second)
+        refused = False
+    except KernelError:
+        refused = True
+    surfaces = {s["name"]: s for s in tree["surfaces"]}
+    report["p85_corps_et_surface"] = (
+        [b["name"] for b in tree["bodies"]] == [first]
+        and tree["body"] == body.Label and refused
+        and surfaces[surface].get("removed") is True
+        and not mesh.get("other_bodies") and not mesh.get("surfaces")
+        and any(f.get("body") == second for f in tree["other_features"]))
+    # La barre au-dessus des deux fonctions : tout revient.
+    hosts = [f["name"] for f in tree["features"]
+             if f["type_key"] == "remove_bodies"]
+    tree = self.set_tip(pad)
+    back = (len(body.Shape.Solids) == 2
+            and {b["name"] for b in tree["bodies"]} >= {first, second})
+    self.tip_to_end()
+    # Garder tout ce qui reste, ou tout supprimer : refusés.
+    try:
+        self.add_remove_bodies([{"name": first}], keep=True)
+        nothing = False
+    except KernelError:
+        nothing = True
+    try:
+        self.add_remove_bodies([{"name": first}])
+        all_gone = False
+    except KernelError:
+        all_gone = True
+    report["p85_barre_et_refus"] = back and nothing and all_gone
+    # Supprimer la fonction rend ses corps ; Annuler la remet.
+    op = "delete_feature"
+    if not dispatch(self, op, {"feature": hosts[1]})["ok"]:
+        raise KernelError(op)
+    tree = self.get_tree()
+    returned = ({b["name"] for b in tree["bodies"]} == {first, second}
+                and len(self.tessellate().get("surfaces") or []) == 1)
+    self.undo()
+    tree = self.get_tree()
+    path = os.path.join(tempfile.gettempdir(),
+                        "freesolid-selftest-supprimer-corps.FCStd")
+    self.save_part(path)
+    self.open_part(path)
+    reopened = self.get_tree()
+    report["p85_supprimer_annuler_rouvrir"] = (
+        returned
+        and [b["name"] for b in tree["bodies"]] == [first]
+        and [b["name"] for b in reopened["bodies"]] == [first]
+        and len(self._require_body().Shape.Solids) == 1
+        and sum(f["type_key"] == "remove_bodies"
+                for f in reopened["features"]) == 2)
+    # Garder seulement le premier corps : le second et la surface partent.
+    self.new_part("Garder des corps")
+    self.add_rect_sketch(10, 10)
+    self.add_pad(5)
+    kept = self._require_body().Name
+    self.add_body()
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_circle(state["sketch"], 30, 0, 4)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    tree = self.add_remove_bodies([{"name": kept}], keep=True)
+    row = next(f for f in tree["features"]
+               if f["type_key"] == "remove_bodies")
+    report["p85_garder"] = (
+        [b["name"] for b in tree["bodies"]] == [kept] and row["keep"] is True
+        and row["kind"] == self._t("Garder des corps"))

@@ -23,6 +23,19 @@ export function solidParam(target) {
   return Number.isInteger(target?.solid) ? { solid: target.solid } : {};
 }
 
+/** Ce que « Supprimer » vise sur une ligne de dossier — un corps qui a de
+ *  la matière, l'un de ses solides, une surface : la fonction « Supprimer
+ *  des corps » l'ôtera, comme dans les modeleurs courants. `null` sur une
+ *  ligne d'histoire et sur un corps vide, qui se suppriment pour de bon. */
+export function folderRemovalTarget(feature) {
+  if (!feature?.name) return null;
+  if (isBodyMenuTarget(feature)) {
+    return feature.has_solid === true
+      ? { name: feature.name, ...solidParam(feature) } : null;
+  }
+  return feature.inFolder ? { name: feature.name } : null;
+}
+
 /** Fonction de corps (hors plan de référence et corps) : elle se
  *  désactive sans être supprimée. */
 export function isSuppressibleTarget(feature) {
@@ -120,6 +133,12 @@ export function installContextMenu(ctx) {
       // Réseau de corps : ni dossier, ni désactivation.
       openOnly(event, ["ctx-modify", "ctx-rename", "ctx-rollback", "ctx-end",
         "ctx-delete"]);
+      menuFeature = feature;
+      return;
+    }
+    if (feature.type_key === "remove_bodies") {
+      // Suppression de corps : pas de réédition (v1), ni dossier.
+      openOnly(event, ["ctx-rename", "ctx-rollback", "ctx-end", "ctx-delete"]);
       menuFeature = feature;
       return;
     }
@@ -373,12 +392,13 @@ export function installContextMenu(ctx) {
   barItem("ctx-flat", () => ctx.setFlatTree(!ctx.isFlatTree()));
   document.getElementById("ctx-delete").addEventListener("click", () => {
     if (!menuFeature) return;
-    // Un solide part avec les autres solides de son corps.
-    const question = Number.isInteger(menuFeature.solid)
-      ? t("Supprimer « {f} » et les autres solides de son corps ({n} en tout) ?",
-        { f: menuFeature.label, n: menuFeature.solids.length })
-      : t("Supprimer « {f} » ?", { f: menuFeature.label });
-    if (confirm(question))
+    // Dans un dossier : le panneau « Supprimer des corps », la ligne cochée.
+    const target = folderRemovalTarget(menuFeature);
+    if (target) {
+      ctx.openRemoveBodies(target);
+      return;
+    }
+    if (confirm(t("Supprimer « {f} » ?", { f: menuFeature.label })))
       refreshAny(call("delete_feature", { feature: menuFeature.name }));
   });
 

@@ -13,7 +13,7 @@ import { readScene } from "./theme.js";
 import {
   readDisplay, writeDisplay, displayEffects,
 } from "./display.js";
-import { FEATURES } from "./features.js";
+import { FEATURES, removalKey } from "./features.js";
 import { installContextMenu } from "./contextmenu.js";
 import { installMeasure } from "./measure.js";
 import { VIEW_KEYS, VIEWS, installViewCube } from "./viewcube.js";
@@ -2284,6 +2284,13 @@ document.getElementById("btn-sketch").addEventListener("click", () =>
 
 // Chaque entrée de FEATURES ouvre son panneau (main/featurepanel.js).
 for (const entry of FEATURES) bindFeature(entry);
+
+// « Supprimer » sur une ligne du dossier des corps : le panneau de la
+// fonction, cette ligne déjà cochée.
+ctx.openRemoveBodies = (target) => featureCommand(() => {
+  openFeaturePanel(FEATURES.find((entry) => entry.op === "add_remove_bodies"));
+  panel.restore({ [removalKey(target)]: true });
+});
 
 document.getElementById("btn-body").addEventListener("click", () =>
   featureCommand(() => {

@@ -53,6 +53,7 @@ export {
   patternFeaturesGroup,
   patternFeaturesParams,
 } from "./features/repetitions.js";
+export { removalKey } from "./features/combiner.js";
 export {
   boundaryParam,
   deleteFacesBuild,

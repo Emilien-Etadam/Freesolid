@@ -48,6 +48,7 @@ export const TREE_ICONS = {
   sweep_cut: "PartDesign_SubtractivePipe",
   helix: "nodes_helix",
   boolean: "boolean",
+  remove_bodies: "remove_bodies",
   body: "body",
   surface_extrude: "nodes_extrude",
   surface_revolve: "revolve",
@@ -705,7 +706,9 @@ export function installTree(ctx) {
       onSurfaceClick(surface);
     });
     item.addEventListener("dblclick", () => onSurfaceDblClick(surface));
-    item.addEventListener("contextmenu", (event) => ctx.openMenu(event, surface));
+    // Dans le dossier, « Supprimer » ôte la surface par une fonction.
+    item.addEventListener("contextmenu", (event) => ctx.openMenu(event,
+      inFolder ? { ...surface, inFolder: true } : surface));
     treeEl.appendChild(item);
     if (hasChildren && isExpanded(surface.name)) {
       for (const child of children) {
@@ -1177,7 +1180,9 @@ export function installTree(ctx) {
 
     const bodies = tree.bodies
       ?? [{ name: null, label: tree.body, active: true, count: 0 }];
-    const surfaces = tree.surfaces ?? [];
+    // Une surface ôtée par « Supprimer des corps » quitte le dossier ; sa
+    // ligne reste dans l'histoire.
+    const surfaces = (tree.surfaces ?? []).filter((surface) => !surface.removed);
     const variables = tree.variables ?? [];
     // Chaque solide compte pour un corps, comme dans le dossier.
     const solidCount = bodies.filter((body) => body.has_solid === true)
@@ -1396,6 +1401,42 @@ export function installTree(ctx) {
     treeEl.appendChild(row);
   }
 
+  /** Ligne d'une suppression de corps : la barre se pose dessous, ses
+   *  corps reviennent quand on la recule. Ni réédition, ni réordre. */
+  function appendRemoveBodiesRow(feature, rolledBack) {
+    const row = document.createElement("li");
+    row.className = "feat";
+    row.dataset.feat = feature.name;
+    row.dataset.line = feature.name;
+    if (rolledBack) row.classList.add("rolled-back");
+    if (feature.error) row.classList.add("error");
+    if (ctx.selectedFeatureName === feature.name) row.classList.add("sel");
+    const arrow = document.createElement("span");
+    arrow.className = "arrow";
+    row.appendChild(arrow);
+    row.appendChild(treeIcon("remove_bodies"));
+    row.appendChild(document.createTextNode(feature.label));
+    row.title = `${feature.kind} — `
+      + t("clic droit : barre de retour, renommer, supprimer");
+    if (feature.removes?.length) {
+      row.title += "\n" + t(feature.keep ? "Corps gardés : {b}"
+        : "Corps supprimés : {b}", { b: feature.removes.join(", ") });
+    }
+    if (feature.comment) {
+      const note = document.createElement("span");
+      note.className = "tree-note";
+      note.textContent = " ✎";
+      row.appendChild(note);
+      row.title = `${feature.comment}\n\n${row.title}`;
+    }
+    row.addEventListener("contextmenu", (event) => ctx.openMenu(event, feature));
+    row.addEventListener("click", (event) => {
+      if (consumeTreeRenameClick(event, row, feature)) return;
+      ctx.selectedFeatureName = feature.name;
+    });
+    treeEl.appendChild(row);
+  }
+
   /** Lignes d'historique ; les fonctions rangées dans un même dossier
    *  (qui se suivent) passent sous une ligne de dossier repliable — sauf
    *  dans l'arbre à plat, sans dossiers. Une esquisse sortie de sa
@@ -1431,6 +1472,8 @@ export function installTree(ctx) {
         });
       } else if (row.item.type_key === "body_pattern") {
         appendBodyPatternRow(row.item, rolledBack);
+      } else if (row.item.type_key === "remove_bodies") {
+        appendRemoveBodiesRow(row.item, rolledBack);
       } else {
         appendFeatureHistoryRow(row.item, rolledBack, !!folder,
           { lifted: !!row.parent });

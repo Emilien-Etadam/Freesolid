@@ -175,6 +175,7 @@ export const ICONS = {
   rel_tangent: "Constraint_Tangent.svg",
   rel_vertical: "Constraint_Vertical.svg",
   relations: "Sketcher_ToggleConstraint.svg",
+  remove_bodies: "fs_remove_bodies.svg",
   replace_face: "fs_replace_face.svg",
   revolve: "PartDesign_Revolution.svg",
   rollback: "fs_rollback.svg",

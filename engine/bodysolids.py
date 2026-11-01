@@ -100,13 +100,20 @@ class BodySolidsMixin:
             if isinstance(entries, list) else []
 
     def _solid_origins(self, body):
-        """Origines des faces de chaque solide, dans l'ordre de
-        ``Shape.Solids`` : « objet|nom » de l'élément d'où la face vient.
-        Vide pour un corps d'un seul solide."""
+        """Origines des faces de chaque solide du corps. Vide pour un
+        corps d'un seul solide."""
         shape = getattr(body, "Shape", None)
         tip = getattr(body, "Tip", None)
         if shape is None or tip is None or len(shape.Solids) < 2:
             return []
+        return self._feature_solid_origins(tip, shape)
+
+    def _feature_solid_origins(self, feature, shape=None):
+        """Origines des faces de chaque solide de ``feature`` (ou de
+        ``shape``, sa forme placée), dans l'ordre de ``Shape.Solids`` :
+        « objet|nom » de l'élément d'où la face vient."""
+        tip = feature
+        shape = shape if shape is not None else feature.Shape
         reverse = shape.ElementReverseMap
         index_of = {}
         for i, face in enumerate(shape.Faces):

@@ -813,6 +813,18 @@ class TreeMixin:
             return body.Label
         return self._thin_owner(tip).Label
 
+    def _body_solid_titles(self, body):
+        """Un corps qui garde plusieurs solides — contours disjoints,
+        enlèvement qui le coupe en deux — compte pour autant de corps dans
+        le dossier, chacun numéroté entre crochets : « Extrusion[1] »,
+        « Extrusion[2] ». Vide pour un seul solide."""
+        shape = getattr(body, "Shape", None)
+        count = len(shape.Solids) if shape is not None else 0
+        if count < 2:
+            return []
+        title = self._body_title(body)
+        return ["{}[{}]".format(title, i + 1) for i in range(count)]
+
     def _mark_rolled_back(self, body, items):
         """``rolled_back`` sur les fonctions volumiques : vrai après le Tip
         de leur corps. La barre est commune à tous les corps, chacun
@@ -993,7 +1005,7 @@ class TreeMixin:
                 continue
             if self._is_internal_tool(obj):
                 continue  # corps outil interne : artefact hors arbre
-            bodies.append({
+            info = {
                 "name": obj.Name,
                 "label": self._body_title(obj),
                 "type_key": type_key_for(obj.TypeId),
@@ -1006,7 +1018,11 @@ class TreeMixin:
                 "has_solid": self._body_has_solid(obj),
                 "hidden": self._is_hidden(obj),
                 "material": self._material_of(obj),
-            })
+            }
+            solids = self._body_solid_titles(obj)
+            if solids:
+                info["solids"] = solids
+            bodies.append(info)
         consumed = self._consumed_surfaces()
         surfaces = [self._surface_tree_entry(o, order_of, known_names,
                                              consumed)

@@ -1341,3 +1341,23 @@ def p84_arbre_unique(self, mark, report, etat):
         and self._doc.getObject(pocket) is None
         and self._doc.getObject(other_pad) is None
         and self._doc.getObject(pad) is not None)
+    # Deux contours disjoints extrudés laissent deux solides : deux corps
+    # dans le dossier, numérotés ; une extrusion qui les relie n'en
+    # laisse qu'un.
+    self.new_part("Deux contours")
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_rectangle(state["sketch"], 0, 0, 10, 10)
+    self.sketch_add_rectangle(state["sketch"], 20, 0, 30, 10)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    title = self._require_body().Tip.Label
+    split = self.get_tree()["bodies"]
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_rectangle(state["sketch"], 5, 0, 25, 3)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    joined = self.get_tree()["bodies"]
+    report["p84_solides_du_corps"] = (
+        len(split) == 1
+        and split[0].get("solids") == [title + "[1]", title + "[2]"]
+        and len(joined) == 1 and "solids" not in joined[0])

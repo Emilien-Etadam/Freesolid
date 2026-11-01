@@ -597,7 +597,10 @@ export function installTree(ctx) {
     return open;
   }
 
-  function appendBodyRow(bodyInfo) {
+  /** Une ligne du dossier des corps. Un corps qui garde plusieurs
+   *  solides en donne une par solide (`label` : « Extrusion[2] ») ; toutes
+   *  activent le même corps. */
+  function appendBodyRow(bodyInfo, label = bodyInfo.label) {
     const bodyItem = document.createElement("li");
     const empty = bodyInfo.has_solid !== true;
     bodyItem.className = "body in-folder"
@@ -613,13 +616,13 @@ export function installTree(ctx) {
     }
     // Le nom : celui de sa dernière fonction, ou celui qu'on lui a donné.
     const suffix = empty ? " — " + t("vide") : "";
-    bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix
+    bodyItem.appendChild(document.createTextNode(label + suffix
       + (bodyInfo.material ? ` · ${bodyInfo.material.name}` : "")
       + (bodyInfo.hidden ? " — " + t("masqué") : "")));
     if (bodyInfo.name) {
       bodyItem.dataset.feat = bodyInfo.name;
-      bodyItem.title = bodyInfo.active ? bodyInfo.label
-        : `${bodyInfo.label} — ${t("Clic : activer ce corps")}`;
+      bodyItem.title = bodyInfo.active ? label
+        : `${label} — ${t("Clic : activer ce corps")}`;
       bodyItem.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, bodyItem, bodyInfo)) return;
         if (!bodyInfo.active) {
@@ -1152,8 +1155,10 @@ export function installTree(ctx) {
       ?? [{ name: null, label: tree.body, active: true, count: 0 }];
     const surfaces = tree.surfaces ?? [];
     const variables = tree.variables ?? [];
-    const solidCount = bodies.filter((body) => body.has_solid === true).length;
-    const bodiesDefaultOpen = bodies.length > 1
+    // Chaque solide compte pour un corps, comme dans le dossier.
+    const solidCount = bodies.filter((body) => body.has_solid === true)
+      .reduce((count, body) => count + (body.solids?.length || 1), 0);
+    const bodiesDefaultOpen = bodies.length > 1 || solidCount > 1
       || bodies.some((body) => body.error);
     const surfacesDefaultOpen = surfaces.some((surface) => surface.error
       || (surface.children ?? []).some((child) => child.error));
@@ -1168,7 +1173,11 @@ export function installTree(ctx) {
       bodiesDefaultOpen,
       { title: t("Corps de la pièce — clic : déplier") });
     if (bodiesOpen) {
-      for (const bodyInfo of bodies) appendBodyRow(bodyInfo);
+      for (const bodyInfo of bodies) {
+        for (const label of bodyInfo.solids ?? [bodyInfo.label]) {
+          appendBodyRow(bodyInfo, label);
+        }
+      }
     }
 
     const surfacesOpen = appendFolder(

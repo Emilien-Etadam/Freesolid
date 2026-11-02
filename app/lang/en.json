@@ -1543,6 +1543,7 @@
  "Corps actif seulement": "Active body only",
  "Tous les corps": "All bodies",
  "Corps choisis": "Selected bodies",
+ "Corps traversés": "Bodies it crosses",
  "Seuls les enlèvements de matière creusent les autres corps": "Only cuts remove material from the other bodies",
  "Cochez au moins un corps à répéter": "Check at least one body to pattern",
  "Creuse aussi : {b}": "Also cuts: {b}",

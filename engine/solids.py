@@ -527,6 +527,63 @@ class SolidsMixin:
                 continue
         return touched
 
+    def _cut_others(self, body, feature, bodies):
+        """L'enlèvement ``feature`` creuse aussi d'autres corps : ``bodies``,
+        ou sans liste ceux qu'il traverse, comme les modeleurs courants —
+        une étape cachée dans chacun (``_attach_pattern_scope``). Appelé sa
+        forme calculée ; recalcule s'il en creuse un."""
+        from engine.kernel import KernelError
+        if bodies is None:
+            removed = self._removed_names()
+            candidates = [o for o in self._history_bodies()
+                          if o is not body and o.Name not in removed
+                          and getattr(o, "Tip", None) is not None]
+            others = self._crossed_bodies(body, feature, candidates)
+        elif not isinstance(bodies, (list, tuple)):
+            raise KernelError("bodies : une liste de corps attendue")
+        else:
+            others = []
+            for name in bodies:
+                other = self._merge_body(name)
+                if other is not body and other not in others:
+                    others.append(other)
+        if not others:
+            return
+        self._attach_pattern_scope(feature, [o.Name for o in others])
+        self._recompute()
+
+    def _crossed_bodies(self, body, feature, candidates):
+        """Parmi ``candidates``, les corps où l'enlèvement ``feature`` ôte
+        de la matière."""
+        try:
+            seeds = self._scope_seeds(feature, extend=True)
+            if not seeds:
+                return []
+            removed = seeds[0].copy()
+            removed.Placement = body.Placement.multiply(removed.Placement)
+            box = removed.BoundBox
+        except Exception:  # noqa: BLE001 — OCCT : rien de sûr, rien de creusé
+            return []
+        crossed = []
+        for other in candidates:
+            try:
+                shape = other.Shape
+                if (shape.isNull() or not shape.Solids
+                        or not box.intersect(shape.BoundBox)):
+                    continue
+                if removed.common(shape).Volume > 1e-6:
+                    crossed.append(other)
+            except Exception:  # noqa: BLE001 — OCCT : pas de creux sûr
+                continue
+        return crossed
+
+    def _undo_cut_others(self, feature):
+        """Retire les étapes cachées d'un enlèvement refusé."""
+        try:
+            self._drop_pattern_scope(feature)
+        except Exception:  # noqa: BLE001 — la transaction défait le reste
+            pass
+
     @staticmethod
     def _added_shape(body, feature):
         """La forme qu'ajoute ou ôte ``feature``, dans le repère global :
@@ -1010,12 +1067,14 @@ class SolidsMixin:
 
     def add_pocket(self, length=None, through=False, reversed=False,
                    sketch=None, midplane=False, cond=None, thin=None,
-                   **conditions):
+                   bodies=None, **conditions):
         """Cut with the latest sketch — an extruded cut.
 
         No length (or ``through``) means « À travers tout » — the option
         chosen by default on a cut. ``cond`` and the
-        other conditions: see ``engine.extrude``.
+        other conditions: see ``engine.extrude``. ``bodies`` : les autres
+        corps qu'il creuse, sans liste ceux qu'il traverse
+        (``_cut_others``).
         """
         from engine.kernel import KernelError
         body = self._require_body()
@@ -1048,7 +1107,9 @@ class SolidsMixin:
         self._own_thin_helpers(pocket, helpers)
         try:
             self._recompute()
+            self._cut_others(body, pocket, bodies)
         except KernelError:
+            self._undo_cut_others(pocket)
             self._remove_all([pocket] + helpers)
             raise
         return self.get_tree()
@@ -1096,7 +1157,9 @@ class SolidsMixin:
         """Lissage (ou enlèvement) entre plusieurs profils —
         typiquement des esquisses posées sur des plans de référence.
         ``merge``, ``body``, ``bodies`` : comme l'extrusion
-        (``_result_body``) ; un enlèvement creuse le corps actif."""
+        (``_result_body``) ; un enlèvement creuse le corps actif, et
+        ``bodies`` ou, sans liste, les corps qu'il traverse
+        (``_cut_others``)."""
         from engine.kernel import (
             KernelError,
             label_for_type,
@@ -1134,7 +1197,11 @@ class SolidsMixin:
             self._own_thin_helpers(loft, helpers)
             helpers += self._fuse_result(body, loft, fused)
             self._recompute()
+            if subtractive:
+                self._cut_others(body, loft, bodies)
         except Exception:
+            if loft is not None:
+                self._undo_cut_others(loft)
             self._remove_all(([body] if made else []) + helpers
                              + ([loft] if loft is not None else []))
             raise
@@ -1146,7 +1213,9 @@ class SolidsMixin:
         """Balayage (ou enlèvement) : un profil suit une
         trajectoire — deux esquisses, souvent sur des plans différents.
         ``merge``, ``body``, ``bodies`` : comme l'extrusion
-        (``_result_body``) ; un enlèvement creuse le corps actif."""
+        (``_result_body``) ; un enlèvement creuse le corps actif, et
+        ``bodies`` ou, sans liste, les corps qu'il traverse
+        (``_cut_others``)."""
         from engine.kernel import (
             KernelError,
             label_for_type,
@@ -1223,7 +1292,11 @@ class SolidsMixin:
                 pipe, helpers + ([binder] if binder is not None else []))
             helpers += self._fuse_result(body, pipe, fused)
             self._recompute()
+            if subtractive:
+                self._cut_others(body, pipe, bodies)
         except Exception:
+            if pipe is not None:
+                self._undo_cut_others(pipe)
             self._remove_all(([body] if made else [])
                              + ([binder] if binder is not None else [])
                              + helpers
@@ -1493,7 +1566,8 @@ class SolidsMixin:
         côté. ``axis`` peut être ``horizontal``, ``line:<id>`` (une ligne
         de l'esquisse, de construction de préférence) ou ``X``, ``Y``, ``Z``.
         ``merge``, ``body``, ``bodies`` : comme l'extrusion
-        (``_result_body``) ; une gorge creuse le corps actif.
+        (``_result_body``) ; une gorge creuse le corps actif, et ``bodies``
+        ou, sans liste, les corps qu'elle traverse (``_cut_others``).
         """
         from engine.kernel import (
             KernelError,
@@ -1534,7 +1608,11 @@ class SolidsMixin:
             helpers += self._fuse_result(body, feature, fused)
             self._drop_unused_axis_tools()
             self._recompute()
+            if type_id == "PartDesign::Groove":
+                self._cut_others(body, feature, bodies)
         except Exception:
+            if feature is not None:
+                self._undo_cut_others(feature)
             self._remove_all(([body] if made else []) + helpers
                              + ([feature] if feature is not None else []))
             self._drop_unused_axis_tools()
@@ -1553,11 +1631,12 @@ class SolidsMixin:
             bodies=bodies)
 
     def add_groove(self, angle=360.0, sketch=None, axis=None,
-                   reversed=False, midplane=False):
-        """Enlèvement par révolution."""
+                   reversed=False, midplane=False, bodies=None):
+        """Enlèvement par révolution. ``bodies`` : les autres corps qu'il
+        creuse, sans liste ceux qu'il traverse (``_cut_others``)."""
         return self._revolved(
             "PartDesign::Groove", angle, sketch, axis=axis,
-            reversed=reversed, midplane=midplane)
+            reversed=reversed, midplane=midplane, bodies=bodies)
 
     def _last_solid_feature(self):
         """The feature a pattern/mirror duplicates: the latest add/sub one.
@@ -2116,7 +2195,7 @@ class SolidsMixin:
 
     def add_hole(self, diameter, depth=None, through=False, cut="none",
                  cut_diameter=None, cut_depth=None, cut_angle=None,
-                 face=None, points=None):
+                 face=None, points=None, bodies=None):
         """Perçage.
 
         Avec ``face`` et ``points`` (les centres cliqués sur la face, en
@@ -2125,7 +2204,8 @@ class SolidsMixin:
         OK ». Sinon le profil est la dernière esquisse non utilisée : ses
         cercles positionnent les trous. Dans les deux cas le diamètre
         saisi remplace celui des cercles. Borgne ou à travers tout,
-        lamage ou fraisage optionnel.
+        lamage ou fraisage optionnel. ``bodies`` : comme l'enlèvement
+        extrudé.
         """
         from engine.kernel import (
             KernelError,
@@ -2168,7 +2248,9 @@ class SolidsMixin:
         hole.Label = label_for_type("PartDesign::Hole", self.lang)
         try:
             self._recompute()
+            self._cut_others(body, hole, bodies)
         except KernelError:
+            self._undo_cut_others(hole)
             doc.removeObject(hole.Name)
             if points:
                 doc.removeObject(profile.Name)

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   FEATURES,
-  extrudeBuild, extrudeEditInitial, extrudeEditProblem, extrudeEditValues,
+  cutGroups, cutParams, extrudeBuild, extrudeEditInitial, extrudeEditProblem, extrudeEditValues,
   extrudeGroups, extrudeInvalid, fusedGroups, fusedValues, holeEditInitial,
   holeEditValues, holeGroups, mergeGroups, mergeParams, mergeProblem, shellEditGroups, shellEditValues,
 } from "../../app/features.js";
@@ -461,6 +461,81 @@ describe("fusionner ou non : révolution, lissage, balayage", () => {
       assert.equal(entry(button).groups(empty)
         .find((g) => g.label === "Résultat"), undefined);
     }
+  });
+});
+
+describe("corps concernés d'un enlèvement", () => {
+  const bodies = [
+    { name: "Body", label: "Extrusion", active: true, has_solid: true },
+    { name: "Body001", label: "Extrusion1", active: false, has_solid: true },
+    { name: "Body002", label: "Corps", active: false, has_solid: false },
+  ];
+  const ctx = { lastTree: { bodies, features: [] },
+                selectedSketch: { name: "Sketch", label: "Esquisse" } };
+  const entry = (button) => FEATURES.find((e) => e.button === button);
+  const scope = (button, c = ctx) => entry(button).groups(c)
+    .find((g) => g.label === "Corps concernés");
+
+  it("pas de groupe sans autre corps solide", () => {
+    assert.deepEqual(cutGroups([bodies[0], bodies[2]]), []);
+    assert.deepEqual(cutParams({ cutScope: "active" }, [bodies[0]]), {});
+  });
+
+  it("corps traversés par défaut ; une case par autre corps solide", () => {
+    const [group] = cutGroups(bodies);
+    const [mode, ...checks] = group.rows;
+    assert.equal(mode.key, "cutScope");
+    assert.equal(mode.value, "crossed");
+    assert.deepEqual(checks.map((r) => r.label), ["Extrusion1"]);
+    assert.equal(checks[0].showIf({ cutScope: "crossed" }), false);
+    assert.equal(checks[0].showIf({ cutScope: "selected" }), true);
+  });
+
+  it("traversés : rien à envoyer ; actif seul : une liste vide ; "
+     + "choisis : les cochés", () => {
+    assert.deepEqual(cutParams({}, bodies), {});
+    assert.deepEqual(cutParams({ cutScope: "crossed" }, bodies), {});
+    assert.deepEqual(cutParams({ cutScope: "active" }, bodies),
+                     { bodies: [] });
+    assert.deepEqual(cutParams({ cutScope: "selected" }, bodies),
+                     { bodies: [] });
+    assert.deepEqual(cutParams(
+      { cutScope: "selected", "cut:Body001": true }, bodies),
+    { bodies: ["Body001"] });
+  });
+
+  it("enlèvement extrudé, gorge, perçage ; lissage et balayage en "
+     + "enlèvement", () => {
+    for (const button of ["btn-pocket", "btn-groove", "btn-hole"]) {
+      assert.ok(scope(button), button);
+    }
+    assert.equal(scope("btn-pad"), undefined);
+    assert.equal(scope("btn-revolution"), undefined);
+    const pocket = entry("btn-pocket").build(
+      { cond: "travers", cutScope: "active" }, ctx).params;
+    assert.deepEqual(pocket.bodies, []);
+    assert.equal(entry("btn-pocket").build({ cond: "travers" }, ctx)
+      .params.bodies, undefined);
+    const groove = entry("btn-groove").build(
+      { angle: 90, cond: "one", axis: "vertical", cutScope: "selected",
+        "cut:Body001": true }, ctx).params;
+    assert.deepEqual(groove.bodies, ["Body001"]);
+    const hole = entry("btn-hole").build(
+      { diameter: 5, cond: "travers", cut: "none", cutScope: "active" },
+      ctx).params;
+    assert.deepEqual(hole.bodies, []);
+    for (const button of ["btn-loft", "btn-sweep"]) {
+      const group = scope(button);
+      assert.equal(group.showIf({ subtractive: true }), true);
+      assert.equal(group.showIf({ subtractive: false }), false);
+    }
+    const loft = (v) => entry("btn-loft").build({
+      profiles: { items: [{ name: "A" }, { name: "B" }] }, ...v }, ctx).params;
+    assert.deepEqual(loft({ subtractive: true, cutScope: "active" }).bodies,
+                     []);
+    assert.equal(loft({ subtractive: true }).bodies, undefined);
+    // Un ajout fusionne : les corps concernés n'y comptent pas.
+    assert.equal(loft({ merge: true, cutScope: "active" }).bodies, undefined);
   });
 });
 

@@ -22,12 +22,12 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 | Fonction | Aperçu à la création | Réédition : ce qui revient | Ne revient pas | Aperçu à la réédition | Barre de retour | Selftest de réédition |
 |---|---|---|---|---|---|---|
 | Extrusion | oui + flèche | le panneau de la création : condition de fin (sauf passer à « jusqu'à la face » ; borgne seulement pour le premier volume d'un corps), décalage, inverser, dépouille, direction 2 (condition, profondeur, dépouille), épaisseurs et côté de la paroi mince, contours, corps fondus (une case par corps) | face d'arrivée, activer la paroi mince ou en changer le genre, esquisse, « Fusionner » et le corps de la fonction | oui + flèche (la flèche s'efface quand le sens ou la condition change) | oui | oui (conditions, direction 2, paroi mince, extrémités fermées, corps fondus) |
-| Enlèvement extrudé | oui + flèche | comme l'Extrusion | comme l'Extrusion | oui + flèche | oui | oui (à travers tout, borgne, refus de « jusqu'à la face ») |
+| Enlèvement extrudé | oui + flèche | comme l'Extrusion, sans les corps fondus | comme l'Extrusion, et les corps creusés | oui + flèche | oui | oui (à travers tout, borgne, refus de « jusqu'à la face », corps creusés qui suivent la cote) |
 | Révolution | oui | angle, axe, inverser, plan médian, contours, corps fondus | esquisse, « Fusionner » et le corps de la fonction | oui | oui | oui (axe, plan médian, corps fondus) |
-| Enlèvement de révolution | oui | comme la Révolution | comme la Révolution | oui | oui | non (seule la Révolution est testée) |
-| Perçage | oui | le panneau de la création sans les positions : type (simple, lamage, fraisage), cotes du type, angle du fraisage, à travers ou borgne, profondeur | positions et face | oui | oui | oui (type, condition de fin) |
-| Lissage | oui | rien | tout : profils et ordre, soustractif, lissage droit, boucle fermée, « Fusionner » et les corps fondus | — | oui | non |
-| Balayage | oui | rien | tout : profil, trajectoire, soustractif, « Fusionner » et les corps fondus | — | oui | non |
+| Enlèvement de révolution | oui | comme la Révolution, sans les corps fondus | comme la Révolution, et les corps creusés | oui | oui | non (seule la Révolution est testée) |
+| Perçage | oui | le panneau de la création sans les positions : type (simple, lamage, fraisage), cotes du type, angle du fraisage, à travers ou borgne, profondeur | positions, face et corps creusés | oui | oui | oui (type, condition de fin) |
+| Lissage | oui | rien | tout : profils et ordre, soustractif, lissage droit, boucle fermée, « Fusionner », les corps fondus ou creusés | — | oui | non |
+| Balayage | oui | rien | tout : profil, trajectoire, soustractif, « Fusionner », les corps fondus ou creusés | — | oui | non |
 | Hélice | oui | pas, hauteur, angle | esquisse profil | oui | oui | non |
 | Texte | oui | texte, taille, profondeur, position | face d'appui, relief ou gravure, police | non | oui | oui |
 

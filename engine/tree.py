@@ -256,6 +256,24 @@ class TreeMixin:
                                  "order": order_of.get(obj.Name, -1),
                                  "role": "feature",
                                  "body": owners.get(part.Name)})
+        # Un enlèvement : ses étapes cachées creusent les autres corps à son
+        # rang, mais jamais avant ce qui les précède dans leur corps (un
+        # enlèvement remonté au-dessus de fonctions de ce corps).
+        named = {row["name"] for row in rows}
+        for body in self._history_bodies():
+            reached = -1
+            for obj in body.Group:
+                source = getattr(obj, "FreeSolidScopeOf", "")
+                if not (source and self._is_thin_helper(obj)):
+                    reached = max(reached, order_of.get(obj.Name, -1))
+                    continue
+                if source not in named:
+                    continue
+                reached = max(reached, order_of.get(source, -1))
+                at = next((i for i, row in enumerate(rows)
+                           if row["order"] > reached), len(rows))
+                rows.insert(at, {"name": obj.Name, "order": reached,
+                                 "role": "feature", "body": body.Name})
         return rows
 
     def _apply_tips(self, tips):
@@ -866,6 +884,7 @@ class TreeMixin:
         réseau sans fonction à elle : « réseau[n] ». Le sien quand on l'a
         nommé, quand il est vide ou n'a qu'une forme importée. ``tip`` :
         le corps arrêté à cette fonction."""
+        current = tip is None or tip is getattr(body, "Tip", None)
         tip = tip if tip is not None else getattr(body, "Tip", None)
         while getattr(tip, "FreeSolidRemoveof", ""):
             tip = tip.BaseFeature  # ôter un solide ne change pas les autres
@@ -880,7 +899,27 @@ class TreeMixin:
             return body.Label
         if tip.TypeId == "PartDesign::FeatureBase":
             return body.Label
-        return self._thin_owner(tip).Label
+        owner = self._thin_owner(tip)
+        if current and getattr(owner, "FreeSolidScope", ""):
+            # Un enlèvement qui creuse d'autres corps les nomme tous :
+            # numérotés, comme les solides d'un corps.
+            sharing = [other for other in self._history_bodies()
+                       if self._title_owner(other) is owner]
+            if len(sharing) > 1 and body in sharing:
+                return "{}[{}]".format(owner.Label, sharing.index(body) + 1)
+        return owner.Label
+
+    def _title_owner(self, body):
+        """La fonction dont ``body`` porte le nom à sa pointe, ou None (nommé
+        à la main, vide, base importée ou copie de réseau)."""
+        tip = getattr(body, "Tip", None)
+        while getattr(tip, "FreeSolidRemoveof", ""):
+            tip = tip.BaseFeature
+        if (getattr(body, _NAMED_PROP, False) or tip is None
+                or self._is_pattern_base(tip)
+                or tip.TypeId == "PartDesign::FeatureBase"):
+            return None
+        return self._thin_owner(tip)
 
     def _mark_rolled_back(self, body, items):
         """``rolled_back`` sur les fonctions volumiques : vrai après le Tip

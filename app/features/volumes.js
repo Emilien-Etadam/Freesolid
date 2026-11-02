@@ -206,12 +206,14 @@ function revolved({ button, op, icon, title, merge = false }) {
   return withSketchProfile({
     button, op, icon, title,
     groups: (ctx) => [...revolutionGroups(resolveProfileSketch(ctx)),
-                      ...(merge ? mergeGroups(ctx?.lastTree?.bodies) : [])],
+                      ...(merge ? mergeGroups(ctx?.lastTree?.bodies)
+                        : cutGroups(ctx?.lastTree?.bodies))],
     build: (v, ctx) => {
       const built = revolutionCreationParams(v, op);
-      if (!built || !merge) return built;
-      built.params = { ...built.params,
-                       ...mergeParams(v, ctx?.lastTree?.bodies) };
+      if (!built) return built;
+      const bodies = ctx?.lastTree?.bodies;
+      built.params = { ...built.params, ...(merge
+        ? mergeParams(v, bodies) : cutParams(v, bodies)) };
       return built;
     },
     invalid: () => revolutionProblem(),
@@ -712,10 +714,51 @@ export function fusedValues(v, feature, tree) {
   return same ? {} : { bodies: checked };
 }
 
-// Lissage, balayage : un enlèvement creuse le corps actif, sans fusion.
+// ---------- corps concernés d'un enlèvement ----------
+// Comme dans les modeleurs courants, un enlèvement creuse tous les corps
+// qu'il traverse — le moteur les trouve. Sinon le corps actif seul, ou
+// les corps cochés. Seulement quand la pièce a un autre corps solide.
+
+const cutKey = (name) => `cut:${name}`;
+const otherSolidBodies = (bodies) => (bodies ?? [])
+  .filter((b) => b.has_solid === true && !b.active);
+
+/** Groupe « Corps concernés » d'un enlèvement, vide sans autre corps.
+ *  `when` : comme pour `mergeGroups`. */
+export function cutGroups(bodies, { when } = {}) {
+  const others = otherSolidBodies(bodies);
+  if (!others.length) return [];
+  return [{
+    label: "Corps concernés",
+    ...(when ? { showIf: when } : {}),
+    rows: [
+      { type: "select", key: "cutScope", value: "crossed",
+        options: [["crossed", "Corps traversés"],
+                  ["active", "Corps actif seulement"],
+                  ["selected", "Corps choisis"]] },
+      ...others.map((b) => ({
+        type: "check", key: cutKey(b.name), label: b.label, value: false,
+        showIf: (v) => v.cutScope === "selected" })),
+    ],
+  }];
+}
+
+/** Params moteur : rien, et le moteur prend les corps traversés ; sinon
+ *  `bodies`, les autres corps creusés (vide : le corps actif seul). */
+export function cutParams(v, bodies) {
+  if (!otherSolidBodies(bodies).length) return {};
+  if (v.cutScope === "active") return { bodies: [] };
+  if (v.cutScope !== "selected") return {};
+  return { bodies: otherSolidBodies(bodies)
+    .filter((b) => v[cutKey(b.name)]).map((b) => b.name) };
+}
+
+// Lissage, balayage : fusionner un ajout ; un enlèvement creuse le corps
+// actif et ses corps concernés.
 const added = (v) => !v.subtractive;
 const addedMergeParams = (v, ctx) => (added(v)
-  ? mergeParams(v, ctx?.lastTree?.bodies) : {});
+  ? mergeParams(v, ctx?.lastTree?.bodies)
+  : cutParams(v, ctx?.lastTree?.bodies));
 
 export function extrudeInvalid(v) {
   if (v.cond === "face" && v.face?.face == null) {
@@ -749,8 +792,15 @@ export const VOLUMES = [
     op: "add_pocket",
     icon: "pocket",
     title: "Enlèvement extrudé",
-    groups: () => extrudeGroups("pocket"),
-    build: (v) => extrudeBuild("add_pocket", v),
+    groups: (ctx) => [...extrudeGroups("pocket"),
+                      ...cutGroups(ctx?.lastTree?.bodies)],
+    build: (v, ctx) => {
+      const built = extrudeBuild("add_pocket", v);
+      if (!built) return built;
+      built.params = { ...built.params,
+                       ...cutParams(v, ctx?.lastTree?.bodies) };
+      return built;
+    },
     invalid: extrudeInvalid,
     refresh: "part",
   }),
@@ -772,19 +822,21 @@ export const VOLUMES = [
     op: "add_hole",
     icon: "hole",
     title: "Perçage",
-    groups: () => [
+    groups: (ctx) => [
       { label: "Positions",
         rows: [{ type: "selection", key: "pos", accepts: ["point"],
                  multiple: true,
                  hint: "Cliquez les centres des trous sur une face" }] },
       ...holeGroups(),
+      ...cutGroups(ctx?.lastTree?.bodies),
     ],
     note: "Sans position cliquée, la dernière esquisse sert (un cercle " +
           "par perçage). Le diamètre saisi remplace celui des cercles.",
-    build: (v) => {
+    build: (v, ctx) => {
       const diameter = num(v.diameter);
       if (!(diameter > 0)) return null;
-      const params = { diameter, cut: v.cut };
+      const params = { diameter, cut: v.cut,
+                       ...cutParams(v, ctx?.lastTree?.bodies) };
       const positions = holePositions(v.pos);
       if (positions?.error) return null;
       if (positions) Object.assign(params, positions);
@@ -835,6 +887,7 @@ export const VOLUMES = [
             value: false },
         ] },
       ...mergeGroups(ctx?.lastTree?.bodies, { when: added }),
+      ...cutGroups(ctx?.lastTree?.bodies, { when: (v) => !added(v) }),
     ],
     build: (v, ctx) => {
       const items = v.profiles?.items ?? [];
@@ -866,6 +919,7 @@ export const VOLUMES = [
         rows: [{ type: "check", key: "subtractive",
                  label: "Enlever de la matière", value: false }] },
       ...mergeGroups(ctx?.lastTree?.bodies, { when: added }),
+      ...cutGroups(ctx?.lastTree?.bodies, { when: (v) => !added(v) }),
     ],
     build: (v, ctx) => {
       if (!v.profile || !v.spine) return null;

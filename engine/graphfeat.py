@@ -34,8 +34,8 @@ class GraphMixin:
         obj.FreeSolidRepeatTool = True
 
     def _is_internal_tool(self, obj):
-        """Artefact interne (gravure, graphe, répétition, surface, ou
-        objet qu'un plugin réclame) : hors de l'arbre.
+        """Artefact interne (gravure, graphe, répétition, réseau de corps,
+        surface, ou objet qu'un plugin réclame) : hors de l'arbre.
 
         Un seul test, plusieurs propriétés. Deux prédicats parallèles
         divergeraient — c'est le défaut que N001b a dû corriger.
@@ -44,6 +44,7 @@ class GraphMixin:
                     or getattr(obj, "FreeSolidGraphTool", False)
                     or getattr(obj, "FreeSolidRepeatTool", False)
                     or getattr(obj, "FreeSolidSurfaceTool", False)
+                    or getattr(obj, "FreeSolidBodyPatternTool", False)
                     or self._plugins.run_internal_object(self, obj))
 
     def _current_variables(self):

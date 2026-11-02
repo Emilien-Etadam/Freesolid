@@ -503,6 +503,7 @@ def test_ops_snapshot_keys():
     assert sorted(protocol.CORE_OP_NAMES) == [
             "activate_configuration",
             "add_body",
+            "add_body_pattern",
             "add_boolean",
             "add_chamfer",
             "add_configuration",

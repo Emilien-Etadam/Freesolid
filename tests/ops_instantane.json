@@ -2,6 +2,7 @@
  "ops": {
   "activate_configuration": {"requis": ["name"], "types": [["name", "str"]], "optionnels": []},
   "add_body": {"requis": [], "types": [], "optionnels": []},
+  "add_body_pattern": {"requis": ["kind", "bodies"], "types": [["kind", "str"], ["bodies", "list"]], "optionnels": [["length", "float"], ["count", "int"], ["axis", "str"], ["edge", "int"], ["spacing", "bool"], ["reversed", "bool"], ["length2", "float"], ["count2", "int"], ["axis2", "str"], ["edge2", "int"], ["reversed2", "bool"], ["angle", "float"], ["plane", "str"]]},
   "add_boolean": {"requis": ["tool"], "types": [["tool", "str"]], "optionnels": []},
   "add_chamfer": {"requis": ["size"], "types": [["size", "float"]], "optionnels": [["size2", "float"], ["angle", "float"], ["chamfer_type", "str"], ["flip", "bool"]]},
   "add_configuration": {"requis": ["name"], "types": [["name", "str"]], "optionnels": []},
@@ -18,12 +19,12 @@
   "add_helix": {"requis": ["pitch", "height"], "types": [["pitch", "float"], ["height", "float"]], "optionnels": []},
   "add_hole": {"requis": ["diameter"], "types": [["diameter", "float"]], "optionnels": [["face", "int"], ["points", "list"]]},
   "add_joint": {"requis": ["component1", "component2"], "types": [["component1", "str"], ["component2", "str"]], "optionnels": [["angle", "float"], ["flip", "bool"]]},
-  "add_linear_pattern": {"requis": ["length", "count"], "types": [["length", "float"], ["count", "int"]], "optionnels": [["features", "list"], ["axis", "str"], ["edge", "int"], ["spacing", "bool"], ["reversed", "bool"], ["length2", "float"], ["count2", "int"], ["axis2", "str"], ["edge2", "int"], ["reversed2", "bool"]]},
+  "add_linear_pattern": {"requis": ["length", "count"], "types": [["length", "float"], ["count", "int"]], "optionnels": [["features", "list"], ["axis", "str"], ["edge", "int"], ["spacing", "bool"], ["reversed", "bool"], ["length2", "float"], ["count2", "int"], ["axis2", "str"], ["edge2", "int"], ["reversed2", "bool"], ["scope", "list"]]},
   "add_loft": {"requis": ["sketches"], "types": [["sketches", "list"]], "optionnels": []},
-  "add_mirror": {"requis": [], "types": [], "optionnels": [["features", "list"]]},
+  "add_mirror": {"requis": [], "types": [], "optionnels": [["features", "list"], ["scope", "list"]]},
   "add_pad": {"requis": [], "types": [], "optionnels": [["length", "float"], ["contours", "list"], ["cond", "str"], ["face", "int"], ["offset", "float"], ["taper", "float"], ["midplane", "bool"], ["reversed", "bool"], ["cond2", "str"], ["length2", "float"], ["face2", "int"], ["offset2", "float"], ["taper2", "float"], ["sketch", "str"], ["thin", "dict"]]},
   "add_pocket": {"requis": [], "types": [], "optionnels": [["length", "float"], ["through", "bool"], ["contours", "list"], ["cond", "str"], ["face", "int"], ["offset", "float"], ["taper", "float"], ["midplane", "bool"], ["reversed", "bool"], ["cond2", "str"], ["length2", "float"], ["face2", "int"], ["offset2", "float"], ["taper2", "float"], ["sketch", "str"], ["thin", "dict"]]},
-  "add_polar_pattern": {"requis": ["count"], "types": [["count", "int"]], "optionnels": [["features", "list"], ["axis", "str"], ["edge", "int"], ["angle", "float"], ["reversed", "bool"]]},
+  "add_polar_pattern": {"requis": ["count"], "types": [["count", "int"]], "optionnels": [["features", "list"], ["axis", "str"], ["edge", "int"], ["angle", "float"], ["reversed", "bool"], ["scope", "list"]]},
   "add_rect_sketch": {"requis": ["width", "height"], "types": [["width", "float"], ["height", "float"]], "optionnels": []},
   "add_repeat_feature": {"requis": ["features", "mode"], "types": [["features", "list"], ["mode", "str"]], "optionnels": [["instances", "list"], ["graph", "dict"]]},
   "add_replace_face": {"requis": ["face", "surface"], "types": [["face", "int"], ["surface", "str"]], "optionnels": []},
@@ -217,6 +218,7 @@
  "annulables": [
   "activate_configuration",
   "add_body",
+  "add_body_pattern",
   "add_boolean",
   "add_chamfer",
   "add_configuration",
@@ -368,6 +370,7 @@
   "tip_to_end"
  ],
  "previsualisables": [
+  "add_body_pattern",
   "add_boolean",
   "add_chamfer",
   "add_datum_plane",

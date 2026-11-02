@@ -13,6 +13,7 @@ export const STEP_LABELS = {
   add_mirror: "Symétrie",
   add_linear_pattern: "Répétition linéaire",
   add_polar_pattern: "Répétition circulaire",
+  add_body_pattern: "Réseau de corps",
   add_thickness: "Coque",
   add_draft: "Dépouille",
   add_hole: "Perçage",

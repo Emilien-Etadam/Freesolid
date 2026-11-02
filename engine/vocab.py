@@ -175,8 +175,12 @@ TYPE_KEYS: dict[str, str] = {
     "Surface::Filling": "surface_fill",
     "Surface::Extend": "surface_extend",
     "Surface::GeomFillSurface": "surface_boundary",
+    # Symétrie d'un réseau de corps (outil interne, hors de l'arbre).
+    "Part::Mirroring": "mirroring",
     # Document.
     "App::Link": "component",
+    # Hôte d'un réseau de corps : ses cotes, ses lieurs (hors de l'arbre).
+    "App::DocumentObjectGroup": "body_pattern",
     "App::VarSet": "varset",
 }
 
@@ -238,6 +242,10 @@ PARAM_KEYS: dict[str, dict[str, str]] = {
         "Length2": "length2", "Occurrences2": "count2",
     },
     "polar_pattern": {"Angle": "angle", "Occurrences": "count"},
+    "body_pattern": {
+        "Length": "length", "Occurrences": "count",
+        "Length2": "length2", "Occurrences2": "count2", "Angle": "angle",
+    },
     "helix": _HELIX_PARAM_KEYS,
     "helix_cut": _HELIX_PARAM_KEYS,
     "surface_extrude": {"LengthFwd": "length"},

@@ -3,9 +3,103 @@
 import { num } from "../num.js";
 
 // ---------- répétitions et symétrie ----------
+// Répéter des fonctions du corps actif, ou des corps entiers : chaque
+// occurrence d'un corps devient un nouveau corps qui suit sa source
+// (add_body_pattern).
 // Fonctions à répéter : clic dans l'arbre (plusieurs, un second clic
 // retire) ; vide = la dernière fonction. Direction : un axe d'origine ou
 // une arête droite cliquée dans la zone graphique.
+// Corps concernés : les enlèvements de matière répétés creusent aussi
+// les autres corps choisis.
+
+const repeatsBodies = (v) => v.target === "bodies";
+
+export function patternTargetGroup() {
+  return {
+    label: "Répéter",
+    rows: [{ type: "select", key: "target", value: "features",
+             options: [["features", "Des fonctions"],
+                       ["bodies", "Des corps"]] }],
+  };
+}
+
+/** Une case par corps de la pièce ; le corps actif est coché. */
+export function patternBodiesGroup(ctx) {
+  return {
+    label: "Corps à répéter",
+    showIf: repeatsBodies,
+    rows: (ctx?.lastTree?.bodies ?? []).map((body) => ({
+      type: "check", key: `src:${body.name}`, label: body.label,
+      value: !!body.active })),
+  };
+}
+
+/** Corps cochés → noms, dans l'ordre de l'arbre. */
+export function patternBodiesParams(v) {
+  return Object.keys(v).filter((key) => key.startsWith("src:") && v[key])
+    .map((key) => key.slice(4));
+}
+
+const otherBodies = (ctx) =>
+  (ctx?.lastTree?.bodies ?? []).filter((body) => !body.active);
+
+/** Corps concernés : rien tant que la pièce n'a qu'un corps. */
+export function patternScopeGroup(ctx) {
+  const others = otherBodies(ctx);
+  if (!others.length) return null;
+  return {
+    label: "Corps concernés",
+    showIf: (v) => !repeatsBodies(v),
+    rows: [
+      { type: "select", key: "scopeMode", value: "active",
+        options: [["active", "Corps actif seulement"],
+                  ["all", "Tous les corps"],
+                  ["selected", "Corps choisis"]] },
+      ...others.map((body) => ({
+        type: "check", key: `scope:${body.name}`, label: body.label,
+        value: false, showIf: (v) => v.scopeMode === "selected" })),
+      { type: "note", readonly: true,
+        text: "Seuls les enlèvements de matière creusent les autres corps",
+        showIf: (v) => v.scopeMode && v.scopeMode !== "active" },
+    ],
+  };
+}
+
+export function patternScopeParams(v, ctx) {
+  const others = otherBodies(ctx);
+  const chosen = v.scopeMode === "all" ? others
+    : v.scopeMode === "selected"
+      ? others.filter((body) => v[`scope:${body.name}`]) : [];
+  return chosen.length ? { scope: chosen.map((body) => body.name) } : {};
+}
+
+/** Groupes d'une répétition : quoi répéter, puis `own` (direction, plan). */
+function patternGroups(ctx, own) {
+  return [
+    patternTargetGroup(),
+    { ...patternFeaturesGroup(ctx), showIf: (v) => !repeatsBodies(v) },
+    patternBodiesGroup(ctx),
+    ...own,
+    patternScopeGroup(ctx),
+  ].filter(Boolean);
+}
+
+/** Des corps → add_body_pattern (`kind`) ; des fonctions → `op`. */
+function patternBuild(v, ctx, op, kind, params) {
+  if (repeatsBodies(v)) {
+    const bodies = patternBodiesParams(v);
+    return bodies.length
+      ? { op: "add_body_pattern", params: { kind, bodies, ...params } }
+      : null;
+  }
+  return { op, params: { ...params, ...patternFeaturesParams(v),
+                         ...patternScopeParams(v, ctx) } };
+}
+
+function patternInvalid(v) {
+  return repeatsBodies(v) && !patternBodiesParams(v).length
+    ? "Cochez au moins un corps à répéter" : "Valeurs invalides";
+}
 
 export function patternFeaturesGroup(ctx) {
   return {
@@ -55,11 +149,10 @@ export function patternDirectionParams(v) {
 export const REPETITIONS = [
   {
     button: "btn-linpattern",
-    op: "add_linear_pattern",
+    op: ["add_linear_pattern", "add_body_pattern"],
     icon: "linear_pattern",
     title: "Réseau linéaire",
-    groups: (ctx) => [
-      patternFeaturesGroup(ctx),
+    groups: (ctx) => patternGroups(ctx, [
       {
         label: "Direction 1",
         rows: [
@@ -89,28 +182,26 @@ export const REPETITIONS = [
             value: 2, min: 2, step: 1, showIf: (v) => v.dir2 },
         ],
       },
-    ],
-    build: (v) => {
+    ]),
+    build: (v, ctx) => {
       const length = num(v.length);
       const count = parseInt(v.count, 10);
       const second = v.dir2 ? linearSecondDirection(v) : {};
       return length && count >= 2 && second
-        ? { op: "add_linear_pattern",
-            params: { ...patternDirectionParams(v), length, count,
-                      spacing: v.mode === "spacing", ...second,
-                      ...patternFeaturesParams(v) } }
+        ? patternBuild(v, ctx, "add_linear_pattern", "linear",
+          { ...patternDirectionParams(v), length, count,
+            spacing: v.mode === "spacing", ...second })
         : null;
     },
-    invalid: "Valeurs invalides",
+    invalid: patternInvalid,
     refresh: "part",
   },
   {
     button: "btn-polpattern",
-    op: "add_polar_pattern",
+    op: ["add_polar_pattern", "add_body_pattern"],
     icon: "polar_pattern",
     title: "Réseau circulaire",
-    groups: (ctx) => [
-      patternFeaturesGroup(ctx),
+    groups: (ctx) => patternGroups(ctx, [
       {
         label: "Axe",
         rows: [
@@ -121,26 +212,24 @@ export const REPETITIONS = [
             value: 4, min: 2, step: 1 },
         ],
       },
-    ],
-    build: (v) => {
+    ]),
+    build: (v, ctx) => {
       const angle = num(v.angle);
       const count = parseInt(v.count, 10);
       return angle && count >= 2
-        ? { op: "add_polar_pattern",
-            params: { ...patternDirectionParams(v), count, angle,
-                      ...patternFeaturesParams(v) } }
+        ? patternBuild(v, ctx, "add_polar_pattern", "polar",
+          { ...patternDirectionParams(v), count, angle })
         : null;
     },
-    invalid: "Valeurs invalides",
+    invalid: patternInvalid,
     refresh: "part",
   },
   {
     button: "btn-mirror",
-    op: "add_mirror",
+    op: ["add_mirror", "add_body_pattern"],
     icon: "mirror",
     title: "Symétrie",
-    groups: (ctx) => [
-      patternFeaturesGroup(ctx),
+    groups: (ctx) => patternGroups(ctx, [
       {
         label: "Plan de symétrie",
         rows: [
@@ -149,9 +238,10 @@ export const REPETITIONS = [
                       ["XY", "Plan de dessus"]] },
         ],
       },
-    ],
-    build: (v) => ({ op: "add_mirror",
-                     params: { plane: v.plane, ...patternFeaturesParams(v) } }),
+    ]),
+    build: (v, ctx) => patternBuild(v, ctx, "add_mirror", "mirror",
+                                    { plane: v.plane }),
+    invalid: patternInvalid,
     refresh: "part",
   },
 ];

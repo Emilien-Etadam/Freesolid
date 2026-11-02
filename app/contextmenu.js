@@ -41,7 +41,7 @@ export function canModifyMenuTarget(feature) {
   const key = feature.type_key;
   if (!key || key === "datum_plane") return false;
   if (isFrozenSurface(feature)) return false;
-  if (key === "sketch") return true;
+  if (key === "sketch" || key === "body_pattern") return true;
   return isBodyFeatureKey(key) || isSurfaceKey(key);
 }
 
@@ -110,6 +110,12 @@ export function installContextMenu(ctx) {
 
   function openMenu(event, feature) {
     event.preventDefault();
+    if (feature.type_key === "body_pattern") {
+      // Réseau de corps : ni barre de retour, ni dossier, ni désactivation.
+      openOnly(event, ["ctx-modify", "ctx-rename", "ctx-delete"]);
+      menuFeature = feature;
+      return;
+    }
     menuFeature = feature;
     for (const item of menuEl.children) {
       item.hidden = OWN_ITEMS.has(item.id);

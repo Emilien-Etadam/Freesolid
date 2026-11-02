@@ -577,6 +577,7 @@ class TreeMixin:
             if doc.getObject(name) is not None:
                 doc.removeObject(name)
         self._remove_named_parts(leftovers)
+        self._drop_emptied_body(parent_body)
         try:
             if self._assembly:
                 doc.recompute()
@@ -586,6 +587,17 @@ class TreeMixin:
             raise KernelError(
                 "{} supprimé, mais l'aval casse : {}".format(label, exc))
         return self._current_tree()
+
+    def _drop_emptied_body(self, body):
+        """Un corps né d'une extrusion non fusionnée part avec sa dernière
+        fonction : le corps n'était que son résultat."""
+        if (body is None or not getattr(body, "FreeSolidNewBody", False)
+                or list(body.Group)):
+            return
+        was_active = self._body is body
+        self._require_doc().removeObject(body.Name)
+        if was_active:
+            self._body = self._body_of_newest()
 
     @staticmethod
     def _relink_chain(body, removed, base):
@@ -776,6 +788,16 @@ class TreeMixin:
         ses esquisses en ``children``. ``entry`` : la ligne d'un objet."""
         users = self._sketch_consumers(body)
         labels = {o.Name: o.Label for o in body.Group}
+        # Les esquisses du corps, puis celles d'autres corps qu'une
+        # fonction d'ici prend par un liant : elles se rangent sous elle.
+        sketches = [o for o in body.Group
+                    if o.TypeId == "Sketcher::SketchObject"]
+        for name, owner in consumed.items():
+            other = self._doc.getObject(name)
+            if (owner in labels and other is not None
+                    and other.TypeId == "Sketcher::SketchObject"
+                    and other.Name not in labels):
+                sketches.append(other)
         items = []
         for obj in body.Group:
             if (getattr(obj, "FreeSolidAxisTool", False)
@@ -789,9 +811,7 @@ class TreeMixin:
                 continue
             item = entry(obj)
             children = []
-            for o in body.Group:
-                if o.TypeId != "Sketcher::SketchObject":
-                    continue
+            for o in sketches:
                 owners = users.get(o.Name, [])
                 if consumed.get(o.Name) != obj.Name and obj.Name not in owners:
                     continue

@@ -700,15 +700,18 @@ def p19_paroi_mince(self, mark, report, etat):
     self.delete_feature(last)
     helpers = [o for o in self._require_body().Group
                if self._is_thin_helper(o)]
+    # Ceux de la première paroi seulement : son profil décalé et l'axe
+    # qui suit la normale de l'esquisse.
+    own = self._thin_helpers(self._doc.getObject(thin_pad["name"]))
     report["p19_paroi_mince"] = (closed_ok and edit_ok and open_ok
-                                 and len(helpers) == 1)
+                                 and len(own) == 2 and helpers == own)
     try:
         self.add_pad(5, thin={"type": "deux", "thickness": 1})
         report["p19_paroi_mince_refus"] = False
     except KernelError:
         report["p19_paroi_mince_refus"] = (
-            len([o for o in self._require_body().Group
-                 if self._is_thin_helper(o)]) == 1)
+            [o for o in self._require_body().Group
+             if self._is_thin_helper(o)] == own)
 
 
 def p38_coque_plusieurs_faces(self, mark, report, etat):
@@ -1043,8 +1046,9 @@ def p19b_paroi_mince_extremites_fermees(self, mark, report, etat):
     self.delete_feature(capped)
     ok = ok and not [o for o in body.Group
                      if self._is_thin_helper(o)]
-    self.add_pad(20, midplane=True, thin={
+    tree = self.add_pad(20, midplane=True, thin={
         "type": "milieu", "thickness": 2, "caps": 1})
+    own = self._thin_helpers(self._doc.getObject(tree["features"][-1]["name"]))
     bb = body.Shape.BoundBox
     ok = (ok and near(42 * 22 * 20 - 38 * 18 * 18)
           and abs(bb.ZMin + 10) < 1e-6 and abs(bb.ZMax - 10) < 1e-6)
@@ -1059,9 +1063,10 @@ def p19b_paroi_mince_extremites_fermees(self, mark, report, etat):
             call_refused()
         except KernelError:
             refused += 1
+    # Deux profils décalés, l'axe de la normale, la cavité ; rien de plus.
     report["p19b_extremites_refus"] = (
-        refused == 2 and len([o for o in body.Group
-                              if self._is_thin_helper(o)]) == 3)
+        refused == 2 and len(own) == 4
+        and [o for o in body.Group if self._is_thin_helper(o)] == own)
 
 
 def p91_conditions_d_extrusion(self, mark, report, etat):
@@ -1196,6 +1201,122 @@ def p92_coque_et_percage_reedites(self, mark, report, etat):
     report["p92_type_du_percage"] = (
         ok and not any("Invalid" in (o.State or ())
                        for o in self._doc.Objects))
+
+
+def p93_fusionner_ou_non(self, mark, report, etat):
+    mark("p93: une extrusion fusionne avec un corps choisi ou en crée un")
+    from engine.kernel import dispatch
+    self.new_part("Fusionner")
+    self.add_rect_sketch(40, 20)
+    self.add_pad(10)
+    first = self._require_body()
+
+    def top_face(body, z):
+        return next(i for i, f in enumerate(body.Shape.Faces)
+                    if abs(f.CenterOfMass.z - z) < 1e-6)
+
+    def sketch(x1, y1, x2, y2, **where):
+        name = self.sketch_start(**where)["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    # Esquisse sur la face du dessus, extrusion non fusionnée : un corps
+    # neuf, le premier ne bouge pas, l'esquisse se range sous sa fonction.
+    profile = sketch(0, 0, 10, 10, face=top_face(first, 10))
+    answer = dispatch(self, "add_pad", {"length": 5, "merge": False})
+    tree = answer.get("result") or {}
+    made = self._require_body()
+    pad = made.Tip
+    box = made.Shape.BoundBox
+    rows = tree.get("features") or []
+    report["p93_nouveau_corps"] = (
+        answer.get("ok") is True and made is not first
+        and abs(first.Shape.Volume - 8000) < 1e-6
+        and abs(made.Shape.Volume - 500) < 1e-6
+        and abs(box.ZMin - 10) < 1e-6 and abs(box.ZMax - 15) < 1e-6
+        and len(tree.get("bodies") or []) == 2
+        and any(r["name"] == pad.Name
+                and [c["name"] for c in r.get("children", [])] == [profile]
+                for r in rows)
+        and not any(r["name"] == profile
+                    for r in rows + (tree.get("other_features") or []))
+        and not protocol_dangling(tree))
+
+    # Ctrl+Z : plus de corps neuf, on revient au premier ; Ctrl+Y le rend.
+    dispatch(self, "undo", {})
+    back = self._require_body()
+    undone = (back is first and len(self.get_tree()["bodies"]) == 1)
+    dispatch(self, "redo", {})
+    made = next(o for o in self._doc.Objects
+                if o.TypeId == "PartDesign::Body" and o is not first)
+    # Supprimer sa seule fonction emporte le corps.
+    dispatch(self, "delete_feature", {"feature": made.Tip.Name})
+    gone = (len(self.get_tree()["bodies"]) == 1
+            and self._require_body() is first)
+    dispatch(self, "undo", {})
+    report["p93_annuler_et_supprimer"] = (
+        undone and gone and len(self.get_tree()["bodies"]) == 2)
+
+    # Fusionner avec l'autre corps : l'esquisse reste dans le premier.
+    made = next(o for o in self._doc.Objects
+                if o.TypeId == "PartDesign::Body" and o is not first)
+    self._body = first
+    before = made.Shape.Volume
+    profile = sketch(0, 0, 5, 5, plane="XY")
+    self.add_pad(25, body=made.Name)
+    report["p93_fusion_avec_un_corps"] = (
+        self._require_body() is made
+        and abs(first.Shape.Volume - 8000) < 1e-6
+        and abs(made.Shape.Volume - before - 500) < 1e-6
+        and len(made.Shape.Solids) == 1
+        and self._doc.getObject(profile).getParentGeoFeatureGroup() is first)
+
+    # Refus : un « jusqu'à » sans solide, une face d'un autre corps.
+    self._body = first
+    sketch(60, 0, 70, 5, plane="XY")
+    count = len(self._doc.Objects)
+    suivant = dispatch(self, "add_pad", {"merge": False, "cond": "suivant"})
+    face = dispatch(self, "add_pad", {"body": made.Name, "cond": "face",
+                                      "face": 0})
+    preview = dispatch(self, "preview", {"op": "add_pad", "params": {
+        "length": 3, "merge": False}})
+    report["p93_refus"] = (
+        suivant.get("ok") is False and face.get("ok") is False
+        and preview.get("ok") is True and self._body is first
+        and len(self._doc.Objects) == count)
+
+    # Contours choisis, nouveau corps ; plan de face : la normale de
+    # l'esquisse, comme une extrusion de l'esquisse elle-même.
+    name = sketch(60, 0, 70, 5, plane="XY")
+    self.sketch_edit(name)
+    self.sketch_add_rectangle(name, 80, 0, 90, 5)
+    self.sketch_finish(name)
+    self.add_pad(2, sketch=name, merge=False, contours=[1])
+    alone = self._require_body()
+    box = alone.Shape.BoundBox
+    ok = (abs(alone.Shape.Volume - 100) < 1e-6
+          and abs(box.XMin - 80) < 1e-6)
+    self._body = first
+    sketch(100, 0, 110, 5, plane="XZ")
+    self.add_pad(4, merge=False)
+    box = self._require_body().Shape.BoundBox
+    report["p93_contours_et_sens"] = (
+        ok and abs(box.YMin + 4) < 1e-6 and abs(box.YMax) < 1e-6)
+
+    # Paroi mince sur le plan de face : du même côté que l'extrusion pleine.
+    self.new_part("Paroi de face")
+    sketch(2, 3, 12, 8, plane="XZ")
+    self.add_pad(5, thin={"type": "un", "thickness": 1})
+    box = self._require_body().Shape.BoundBox
+    report["p93_paroi_mince_suit_l_esquisse"] = (
+        abs(box.YMin + 5) < 1e-6 and abs(box.YMax) < 1e-6
+        and not any("Invalid" in (o.State or ()) for o in self._doc.Objects))
+
+
+def protocol_dangling(tree):
+    from engine import protocol
+    return protocol.dangling_deps(tree)
 
 
 def _volumes(self):

@@ -76,7 +76,9 @@ OPS = (
     Op("edit_remove_bodies", Req(("feature", str), ("targets", list),
                                  optional={"keep": bool}), undo=True),
     # Conditions de fin : engine/extrude.py. Sans length : jusqu'à…
+    # merge faux : un nouveau corps ; body : le corps où fusionner.
     Op("add_pad", Req(optional={"length": float, "contours": list,
+                                "merge": bool, "body": str,
                                 **_EXTRUDE_OPTIONAL}),
        undo=True, preview=True, creates="PartDesign::Pad",
        replay=_rejouer_extrusion),

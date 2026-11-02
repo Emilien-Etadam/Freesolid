@@ -343,6 +343,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       for (const row of group.rows ?? []) {
         if (row.type !== "selection") continue;
         if (!selectionFilled(active.values[row.key])) continue;
+        // Un corps garde son nom quand la géométrie change.
+        if ((row.accepts ?? ["face"]).every((k) => k === "body")) continue;
         active.values[row.key] = row.multiple ? { items: [] } : null;
         cleared++;
       }
@@ -534,7 +536,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
         box.textContent = value.edges.length <= 3
           ? value.edges.map((e) => t("Arête {n}", { n: e })).join(", ")
           : t("{n} arêtes", { n: value.edges.length });
-      } else if (value.kind === "sketch" || value.kind === "surface") {
+      } else if (value.kind === "sketch" || value.kind === "surface"
+                 || value.kind === "body") {
         box.textContent = value.label;
       } else if (value.kind === "asmface") {
         box.textContent = `${value.componentLabel} · `
@@ -781,6 +784,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     /** Une zone de sélection VIDE attend ce genre de choix. */
     needs: (kind) => selectionRows(kind).some(
       (row) => !selectionFilled(active.values[row.key])),
+    /** Une zone affichée prend ce genre de clic, remplie ou non. */
+    accepts: (kind) => selectionRows(kind).length > 0,
     /** OK, comme le bouton ✓ — sans effet sur un panneau d'information. */
     apply: () => { if (active && !active.spec.noApply) close(true); },
     notifyPick,

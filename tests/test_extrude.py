@@ -3,8 +3,9 @@
 import pytest
 
 from engine.extrude import (ExtrudeError, cavity_plan, check_cavity,
-                            extrude_options, extrude_settings, extrude_state,
-                            thin_cap_offsets, thin_offsets, thin_settings)
+                            check_new_body, extrude_options, extrude_settings,
+                            extrude_state, thin_cap_offsets, thin_offsets,
+                            thin_settings)
 
 
 def test_borgne_par_defaut():
@@ -147,3 +148,12 @@ def test_reedition_refuse_le_plan_milieu_non_borgne():
         extrude_options("pad", cond="suivant", midplane=True)
     with pytest.raises(ExtrudeError):
         extrude_options("pocket", cond="dernier", cond2="nulle")
+
+
+def test_nouveau_corps_en_profondeur_borgne():
+    check_new_body()
+    check_new_body("borgne", "borgne")
+    for cond, cond2 in (("suivant", None), ("face", None),
+                        ("borgne", "dernier")):
+        with pytest.raises(ExtrudeError):
+            check_new_body(cond, cond2)

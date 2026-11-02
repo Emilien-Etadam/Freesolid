@@ -235,11 +235,13 @@ const usesLength = (cond) => cond === "borgne" || cond === "milieu";
 export function extrudeGroups(kind, edit = null) {
   // Extrémités fermées : la cavité veut des profondeurs borgnes.
   const caps = (edit?.thin?.caps ?? 0) > 0;
+  // Premier volume de son corps : aucun « jusqu'à » n'a où s'arrêter.
+  const blind = caps || !!edit?.alone;
   const conditions = EXTRUDE_CONDITIONS[kind].filter(([c]) => !edit
-    || (caps ? c === "borgne" || c === "milieu"
+    || (blind ? c === "borgne" || c === "milieu"
       : c !== "face" || edit.cond === "face"));
   const second = EXTRUDE_CONDITIONS[kind].filter(([c]) =>
-    c !== "face" && c !== "milieu" && (!caps || c === "borgne"));
+    c !== "face" && c !== "milieu" && (!blind || c === "borgne"));
   const depth = (key, value, showIf) => (edit
     ? measureRow(key, "Profondeur", value, "mm", showIf)
     : { type: "number", key, label: "Profondeur", value, unit: "mm",
@@ -343,6 +345,7 @@ export function extrudeEditInitial(feature) {
   const thin = feature.thin;
   return {
     cond: state.midplane ? "milieu" : state.cond,
+    alone: !!state.alone,
     length: value("length", 10),
     offset: state.offset,
     reversed: state.reversed,
@@ -583,6 +586,52 @@ export function extrudeEditProblem(v, feature) {
     ? "Épaisseur de paroi invalide" : "Profondeur invalide";
 }
 
+// ---------- fusionner ou non (extrusion) ----------
+// Décochée : un nouveau corps. Cochée : le corps actif, ou celui qu'on
+// clique dans la vue. Seulement quand la pièce a déjà un volume.
+
+/** Groupe « Résultat » d'une extrusion, vide sans corps solide. */
+export function mergeGroups(bodies) {
+  const solid = (bodies ?? []).filter((b) => b.has_solid === true);
+  if (!solid.length) return [];
+  const active = (bodies ?? []).find((b) => b.active && b.has_solid === true);
+  return [{
+    label: "Résultat",
+    rows: [
+      { type: "check", key: "merge", label: "Fusionner", value: true },
+      { type: "selection", key: "body", accepts: ["body"], label: "Corps",
+        hint: "Cliquez un corps dans la vue",
+        value: active
+          ? { kind: "body", name: active.name, label: active.label } : null,
+        showIf: (v) => v.merge !== false },
+    ],
+  }];
+}
+
+const activeBodyName = (bodies) => (bodies ?? []).find((b) => b.active)?.name;
+
+/** Ce que la fusion interdit, sinon null. */
+export function mergeProblem(v, bodies) {
+  if (v.merge === false) {
+    const blind = v.cond === "milieu" || (v.cond === "borgne"
+      && (!v.dir2 || v.cond2 === "borgne"));
+    return blind ? null : "Nouveau corps : profondeur borgne ou plan milieu";
+  }
+  const target = v.body?.name;
+  if (v.cond === "face" && target && target !== activeBodyName(bodies)) {
+    return "Jusqu'à la face : fusionnez avec le corps actif";
+  }
+  return null;
+}
+
+/** Params moteur de la fusion : `merge: false`, ou le corps choisi s'il
+ *  n'est pas le corps actif. */
+export function mergeParams(v, bodies) {
+  if (v.merge === false) return { merge: false };
+  const target = v.body?.name;
+  return target && target !== activeBodyName(bodies) ? { body: target } : {};
+}
+
 export function extrudeInvalid(v) {
   if (v.cond === "face" && v.face?.face == null) {
     return "Jusqu'à la face : cliquez la face d'arrivée";
@@ -597,9 +646,17 @@ export const VOLUMES = [
     op: "add_pad",
     icon: "nodes_extrude",
     title: "Extrusion",
-    groups: () => extrudeGroups("pad"),
-    build: (v) => extrudeBuild("add_pad", v),
-    invalid: extrudeInvalid,
+    groups: (ctx) => [...extrudeGroups("pad"),
+                      ...mergeGroups(ctx?.lastTree?.bodies)],
+    build: (v, ctx) => {
+      const bodies = ctx?.lastTree?.bodies;
+      const built = extrudeBuild("add_pad", v);
+      if (!built || mergeProblem(v, bodies)) return null;
+      built.params = { ...built.params, ...mergeParams(v, bodies) };
+      return built;
+    },
+    invalid: (v, ctx) => mergeProblem(v, ctx?.lastTree?.bodies)
+      ?? extrudeInvalid(v),
     refresh: "part",
   }),
   withSketchProfile({

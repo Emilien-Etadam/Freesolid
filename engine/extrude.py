@@ -136,6 +136,13 @@ def extrude_options(kind, cond="borgne", midplane=False, reversed=False,
     return props
 
 
+def check_new_body(cond="borgne", cond2=None):
+    """Extrusion qui ouvre un nouveau corps : rien n'arrête un « jusqu'à »
+    (pas de solide avant elle), seules les profondeurs borgnes valent."""
+    if (cond or "borgne") != "borgne" or cond2 not in (None, "borgne"):
+        raise ExtrudeError("nouveau corps : profondeur borgne ou plan milieu")
+
+
 #: Paroi mince : un côté, plan milieu, deux côtés (épaisseurs distinctes).
 THIN_TYPES = ("un", "milieu", "deux")
 

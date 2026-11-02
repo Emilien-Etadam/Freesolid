@@ -114,7 +114,10 @@ const panel = createPropertyPanel({
     clearFilletRadiusBubble();
     sketchInfoOpen = false;
   },
-  onPicks: (items) => setSelectedBoundaries(items),
+  onPicks: (items) => {
+    setSelectedBoundaries(items);
+    setPickedBodies(items);
+  },
   onToggle: () => {
     updateConfirmCorner();
     updateTreeFlyout();
@@ -492,6 +495,17 @@ function repaintBoundaries() {
           ? 1 : 0);
     });
   }
+}
+
+/** Corps retenus par le panneau (fusionner avec…) : surlignés, sauf le
+ *  corps actif — la fonction le prend sans qu'on le choisisse. */
+function setPickedBodies(items) {
+  const active = lastTree?.bodies?.find((b) => b.active)?.name;
+  const picked = (items ?? []).filter((i) => i.kind === "body"
+    && i.name !== active).map((i) => i.name);
+  if (!picked.length && !ctx.pickedBodies?.size) return;
+  ctx.pickedBodies = new Set(picked);
+  repaintOtherBodies();
 }
 
 /** Bords retenus par le panneau : surlignés dans la vue. */
@@ -968,7 +982,7 @@ Object.assign(ctx, {
 const {
   raycaster, pointer, setPointerFromEvent,
   repaintGroups, repaintSurfaces, findFeatureInTree, clearFeatureDims,
-  selectEdgeIds,
+  selectEdgeIds, repaintOtherBodies,
 } = installPicking(ctx);
 ctx.selectEdgeIds = selectEdgeIds;
 ctx.raycaster = raycaster;

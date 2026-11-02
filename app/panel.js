@@ -156,6 +156,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       editedInput = focused;
     }
     updateHint();
+    // Une case qui masque une zone de sélection en ôte le surlignage.
+    if (!live) reportPicks();
     if (active?.spec.onPreview && !previewOn) return; // aperçu coupé
     active?.spec.onChange?.({ ...active.values }, { live });
   }
@@ -325,6 +327,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       if (!groupShown(group, active.values)) continue;
       for (const row of group.rows ?? []) {
         if (row.type !== "selection") continue;
+        // Une zone masquée (showIf) ne surligne rien.
+        if (row.showIf && !row.showIf(active.values)) continue;
         const value = active.values[row.key];
         if (value?.items) items.push(...value.items);
         else if (value) items.push(value);
@@ -784,8 +788,6 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     /** Une zone de sélection VIDE attend ce genre de choix. */
     needs: (kind) => selectionRows(kind).some(
       (row) => !selectionFilled(active.values[row.key])),
-    /** Une zone affichée prend ce genre de clic, remplie ou non. */
-    accepts: (kind) => selectionRows(kind).length > 0,
     /** OK, comme le bouton ✓ — sans effet sur un panneau d'information. */
     apply: () => { if (active && !active.spec.noApply) close(true); },
     notifyPick,

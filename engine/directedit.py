@@ -85,8 +85,9 @@ class DirectEditMixin:
         if (obj is None or not _depth_editable(obj)
                 or target.Surface.TypeId != "Part::GeomPlane"):
             return {"drag": None}
-        profile = getattr(obj, "Profile", None)
-        sketch = profile[0] if profile else None
+        # L'esquisse, pas le liant d'un profil d'un autre corps ou d'une
+        # paroi mince : c'est elle qui porte le plan et la normale.
+        sketch = self._profile_sketch(obj)
         if sketch is None:
             return {"drag": None}
         App = self._app()
@@ -124,15 +125,17 @@ class DirectEditMixin:
         obj = self._require_doc().getObject(str(feature))
         if obj is None:
             raise KernelError("fonction inconnue : {}".format(feature))
+        # L'axe caché qui suit la normale de l'esquisse (profil par un
+        # liant) ne change pas la direction : la flèche reste juste.
+        axis = getattr(obj, "ReferenceAxis", None)
         if (not _depth_editable(obj)
                 or str(getattr(obj, "SideType", "One side"))
                 not in ("One side", "Symmetric")
                 or getattr(obj, "UseCustomVector", False)
-                or getattr(obj, "ReferenceAxis", None) is not None):
+                or (axis is not None and not self._is_thin_helper(axis[0]))):
             return {"drag": None}
-        profile = getattr(obj, "Profile", None)
-        sketch = profile[0] if profile else None
-        if sketch is None or sketch.TypeId != "Sketcher::SketchObject":
+        sketch = self._profile_sketch(obj)
+        if sketch is None:
             return {"drag": None}
         frame = self.sketch_frame(sketch.Name)
         length = float(obj.Length.Value)

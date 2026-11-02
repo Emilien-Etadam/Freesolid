@@ -580,7 +580,7 @@ export function installPicking(ctx) {
 
     // Le panneau attend un corps : le clic prend celui qu'il survole.
     if (wantsBody()) {
-      if (ctx.hoveredBody && event.button !== 1) {
+      if (ctx.hoveredBody && event.button === 0) {
         const { name, label } = ctx.hoveredBody;
         panel.notifyPick("body", { kind: "body", name, label });
       }

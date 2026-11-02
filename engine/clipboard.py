@@ -22,8 +22,9 @@ class ClipboardMixin:
         if source.TypeId == "Sketcher::SketchObject":
             sketch, solid = source, None
         else:
-            profile = getattr(source, "Profile", None)
-            sketch = profile[0] if profile else None
+            if self._thin_spec(source) is not None:
+                raise KernelError("une paroi mince ne se colle pas encore")
+            sketch, _ = self._profile_of(source)  # à travers un liant
             if sketch is None or sketch.TypeId != "Sketcher::SketchObject":
                 raise KernelError("seules une esquisse ou une fonction à "
                                   "esquisse se collent")
@@ -52,6 +53,10 @@ class ClipboardMixin:
                 twin = doc.copyObject(solid, False)
                 body.addObject(twin)
                 twin.Profile = (copy, [""])
+                axis = getattr(twin, "ReferenceAxis", None)
+                if axis is not None and self._is_thin_helper(axis[0]):
+                    # L'esquisse collée est dans le corps : sa normale.
+                    twin.ReferenceAxis = None
             self._recompute()
         except KernelError:
             raise  # la transaction de l'op défait la copie

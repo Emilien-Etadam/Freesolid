@@ -113,6 +113,12 @@ const panel = createPropertyPanel({
     clearGhost();
     clearFilletRadiusBubble();
     sketchInfoOpen = false;
+    if (ctx.hoveredBody) {
+      // Le corps survolé pour le panneau ne reste pas teinté.
+      ctx.hoveredBody = null;
+      repaintGroups();
+      repaintOtherBodies();
+    }
   },
   onPicks: (items) => {
     setSelectedBoundaries(items);
@@ -314,6 +320,7 @@ function showMesh(mesh) {
   othersEdges = [];
   othersMaterials = [];
   ctx.hoveredOther = null;
+  ctx.hoveredBody = null;
   partMesh = partBaseMaterial = null;
   meshGroups = mesh.groups;
   lastFaceMatch = mesh.face_match ?? null;

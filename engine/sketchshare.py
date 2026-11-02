@@ -130,14 +130,30 @@ class SketchShareMixin:
     # ---------- création avec contours choisis ----------
 
     def _with_contours(self, method, contours, *args, **kwargs):
+        active = self._body
         tree = method(*args, **kwargs)
         if contours:
-            # La fonction faite, pas la cavité cachée qui la suit.
-            tip = self._thin_owner(self._require_body().Tip)
-            self._apply_contours(tip, contours)
-            self._recompute()
+            try:
+                # La fonction faite, pas la cavité cachée qui la suit.
+                tip = self._thin_owner(self._require_body().Tip)
+                self._apply_contours(tip, contours)
+                self._recompute()
+            except Exception:
+                # La transaction défait la fonction : le corps actif aussi.
+                self._body = active
+                raise
             tree = self.get_tree()
         return tree
+
+    def _profile_sketch(self, feature):
+        """L'esquisse derrière le profil d'une fonction : directe, par le
+        liant d'un autre corps ou par les profils d'une paroi mince."""
+        sk, _ = self._profile_of(feature)
+        if getattr(sk, "TypeId", "") != "Sketcher::SketchObject":
+            _, sk = self._thin_chain(feature)
+        if getattr(sk, "TypeId", "") != "Sketcher::SketchObject":
+            return None
+        return sk
 
     def add_pad(self, *args, contours=None, **kwargs):
         return self._with_contours(super().add_pad, contours, *args, **kwargs)

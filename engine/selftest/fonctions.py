@@ -1064,6 +1064,140 @@ def p19b_paroi_mince_extremites_fermees(self, mark, report, etat):
                               if self._is_thin_helper(o)]) == 3)
 
 
+def p91_conditions_d_extrusion(self, mark, report, etat):
+    mark("p91: les conditions d'une extrusion se rééditent")
+    from engine.kernel import dispatch
+    self.new_part("Conditions rééditées")
+    self.add_rect_sketch(40, 20)
+    body = self._require_body()
+    tree = self.add_pad(10)
+    pad = tree["features"][-1]["name"]
+
+    def near(expected):
+        return abs(body.Shape.Volume - expected) < 1e-3
+
+    def spans(low, high):
+        box = body.Shape.BoundBox
+        return abs(box.ZMin - low) < 1e-6 and abs(box.ZMax - high) < 1e-6
+
+    def row(tree, name):
+        return next(f for f in tree["features"] if f["name"] == name)
+
+    ok = row(tree, pad).get("extrude", {}).get("cond") == "borgne"
+    self.set_params(pad, {"midplane": True})
+    ok = ok and near(8000) and spans(-5, 5)
+    tree = self.set_params(pad, {"midplane": False, "cond2": "borgne",
+                                 "length2": 4})
+    ok = (ok and near(40 * 20 * 14) and spans(-4, 10)
+          and any(p["key"] == "length2" for p in row(tree, pad)["params"]))
+    # Par le protocole : « cond2 » nul referme le côté 2.
+    answer = dispatch(self, "set_params", {
+        "feature": pad, "values": {"cond2": None, "reversed": True}})
+    ok = ok and answer.get("ok") is True and near(8000) and spans(-10, 0)
+    self.add_rect_sketch(10, 10)
+    tree = self.add_pocket()
+    pocket = tree["features"][-1]["name"]
+    ok = (ok and near(8000 - 1000)
+          and row(tree, pocket).get("extrude", {}).get("cond") == "travers")
+    self.set_params(pocket, {"cond": "borgne", "length": 3})
+    ok = ok and near(8000 - 300)
+    refused = dispatch(self, "set_params", {
+        "feature": pocket, "values": {"cond": "face", "length": 5}})
+    ok = (ok and refused.get("ok") is False
+          and "face d'arrivée" in refused["error"]
+          and near(8000 - 300) and self._doc.getObject(pocket).Type == "Length")
+    report["p91_conditions_extrusion"] = ok
+
+    # Paroi mince : le côté se change ; fermée, la cavité suit le plan
+    # milieu et refuse une condition non borgne.
+    self.new_part("Paroi rééditée")
+    self.add_rect_sketch(40, 20)
+    body = self._require_body()
+    thin = self.add_pad(10, thin={"type": "un", "thickness": 2})
+    thin = thin["features"][-1]["name"]
+    ok = near(44 * 24 * 10 - 8000)
+    self.set_params(thin, {"thinReversed": True})
+    ok = ok and near(8000 - 36 * 16 * 10)
+    self.delete_feature(thin)
+    capped = self.add_pad(10, thin={"type": "un", "thickness": 2, "caps": 1})
+    capped = capped["features"][-1]["name"]
+    closed = 44 * 24 * 10 - 40 * 20 * 8
+    ok = ok and near(closed)
+    self.set_params(capped, {"midplane": True})
+    ok = ok and near(closed) and spans(-5, 5)
+    try:
+        self.set_params(capped, {"midplane": False, "cond": "suivant"})
+        ok = False
+    except KernelError as exc:
+        ok = ok and "extrémités fermées" in str(exc)
+    report["p91_paroi_mince_reeditee"] = (
+        ok and near(closed) and spans(-5, 5)
+        and not any("Invalid" in (o.State or ())
+                    for o in self._doc.Objects))
+
+
+def p92_coque_et_percage_reedites(self, mark, report, etat):
+    mark("p92: le sens de la coque, le type et la fin du perçage se rééditent")
+    from engine.kernel import dispatch
+    self.new_part("Coque rééditée")
+    self.add_rect_sketch(40, 40)
+    self.add_pad(20)
+    body = self._require_body()
+
+    def top_face():
+        return next(i for i, f in enumerate(body.Shape.Faces)
+                    if abs(f.CenterOfMass.z - 20) < 1e-6)
+
+    def row(tree, name):
+        return next(f for f in tree["features"] if f["name"] == name)
+
+    tree = self.add_thickness(faces=[top_face()], thickness=2)
+    shell = body.Tip.Name
+    ok = (row(tree, shell).get("shell") == {"outward": False}
+          and abs(body.Shape.Volume - (32000 - 36 * 36 * 18)) < 1e-3)
+    self.set_params(shell, {"outward": True})
+    box = body.Shape.BoundBox
+    ok = (ok and abs(box.XMax - 22) < 1e-6 and abs(box.ZMin + 2) < 1e-6
+          and abs(box.ZMax - 20) < 1e-6)
+    outward = body.Shape.Volume
+    # Vers l'intérieur et trop épaisse : refusée, la coque reste dehors.
+    refused = dispatch(self, "set_params", {
+        "feature": shell, "values": {"outward": False, "thickness": 30}})
+    report["p92_sens_de_la_coque"] = (
+        ok and refused.get("ok") is False
+        and abs(body.Shape.Volume - outward) < 1e-6
+        and self._doc.getObject(shell).Reversed is False)
+
+    self.new_part("Perçage réédité")
+    self.add_rect_sketch(40, 40)
+    self.add_pad(20)
+    body = self._require_body()
+    tree = self.add_hole(6, through=True, face=top_face(),
+                         points=[[0, 0, 20]])
+    hole = body.Tip
+    state = row(tree, hole.Name).get("hole") or {}
+    ok = (state.get("cut") == "none" and state.get("cond") == "travers"
+          and [p["key"] for p in row(tree, hole.Name)["params"]]
+          == ["diameter"])
+    self.set_params(hole.Name, {"cut": "lamage", "cutDiameter": 10,
+                                "cutDepth": 3})
+    ok = (ok and hole.HoleCutType == "Counterbore"
+          and abs(body.Shape.Volume - (32000 - math.pi * (9 * 17 + 25 * 3)))
+          < 1e-3)
+    through = body.Shape.Volume
+    self.set_params(hole.Name, {"cond": "borgne", "depth": 8})
+    ok = ok and hole.DepthType == "Dimension" and body.Shape.Volume > through
+    tree = self.set_params(hole.Name, {"cut": "fraisage", "cutDiameter": 12,
+                                       "cutAngle": 90})
+    ok = (ok and hole.HoleCutType == "Countersink"
+          and abs(float(hole.HoleCutDiameter) - 12) < 1e-9
+          and [p["key"] for p in row(tree, hole.Name)["params"]]
+          == ["diameter", "depth", "cutDiameter", "cutAngle"])
+    report["p92_type_du_percage"] = (
+        ok and not any("Invalid" in (o.State or ())
+                       for o in self._doc.Objects))
+
+
 def _volumes(self):
     """Volume de chaque corps de la pièce (outils internes exclus)."""
     return {o.Name: o.Shape.Volume for o in self._doc.Objects

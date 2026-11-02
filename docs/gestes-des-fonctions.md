@@ -2,7 +2,7 @@
 
 Cette grille sert à repérer où les fonctions ne se comportent pas pareil. Pour chacune, elle dit si l'on peut rééditer après coup ce qu'on a choisi à la création, et si les gestes (aperçu, double-clic, menu « Modifier », barre de retour) sont les mêmes d'une fonction à l'autre.
 
-État décrit : 2026-11-02, après #151 (« Modifier » au menu suit le double-clic) et #153 (« Désactiver » suit le moteur). La grille vient de la lecture du code et des selftests, contrôlée par un relevé : ce que l'arbre dit de chaque ligne fabriquée par le selftest (`has_params`, 51 genres), et quelques gestes rejoués dans le navigateur. Ce qui n'a pas été tranché est marqué « à vérifier ».
+État décrit : 2026-11-02, après #151 (« Modifier » au menu suit le double-clic), #153 (« Désactiver » suit le moteur) et la réédition des options de création (Extrusion, Enlèvement, Coque, Perçage, surfaces décalée et radiée). La grille vient de la lecture du code et des selftests, contrôlée par un relevé : ce que l'arbre dit de chaque ligne fabriquée par le selftest (`has_params`, 51 genres), et quelques gestes rejoués dans le navigateur. Ce qui n'a pas été tranché est marqué « à vérifier ».
 
 Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jour dans le même changement (et, si un écart disparaît ou apparaît, la section « Écarts, par thème »). Les références vont au fichier et à la fonction, jamais à une ligne. « Écart n° N » renvoie au tableau de `docs/ecarts-solidworks.md`.
 
@@ -21,11 +21,11 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 
 | Fonction | Aperçu à la création | Réédition : ce qui revient | Ne revient pas | Aperçu à la réédition | Barre de retour | Selftest de réédition |
 |---|---|---|---|---|---|---|
-| Extrusion | oui + flèche | longueur, épaisseurs de paroi mince, contours | condition de fin, face d'arrivée, inverser, dépouille, direction 2, activer la paroi mince, esquisse | oui + flèche | oui | oui (longueur, expressions, épaisseur, contours) |
-| Enlèvement extrudé | oui + flèche | comme l'Extrusion | comme l'Extrusion | oui + flèche | oui | non |
+| Extrusion | oui + flèche | le panneau de la création : condition de fin (sauf passer à « jusqu'à la face »), décalage, inverser, dépouille, direction 2 (condition, profondeur, dépouille), épaisseurs et côté de la paroi mince, contours | face d'arrivée, activer la paroi mince ou en changer le genre, esquisse | oui + flèche (la flèche s'efface quand le sens ou la condition change) | oui | oui (conditions, direction 2, paroi mince, extrémités fermées) |
+| Enlèvement extrudé | oui + flèche | comme l'Extrusion | comme l'Extrusion | oui + flèche | oui | oui (à travers tout, borgne, refus de « jusqu'à la face ») |
 | Révolution | oui | angle, axe, inverser, plan médian, contours | esquisse | oui | oui | oui (axe, plan médian) |
 | Enlèvement de révolution | oui | comme la Révolution | comme la Révolution | oui | oui | non (seule la Révolution est testée) |
-| Perçage | oui | diamètre, profondeur, diamètre et profondeur du lamage | type (simple, lamage, fraisage), angle, à travers ou borgne, positions et face | oui | oui | oui (diamètre) |
+| Perçage | oui | le panneau de la création sans les positions : type (simple, lamage, fraisage), cotes du type, angle du fraisage, à travers ou borgne, profondeur | positions et face | oui | oui | oui (type, condition de fin) |
 | Lissage | oui | rien | tout : profils et ordre, soustractif, lissage droit, boucle fermée | — | oui | non |
 | Balayage | oui | rien | tout : profil, trajectoire, soustractif | — | oui | non |
 | Hélice | oui | pas, hauteur, angle | esquisse profil | oui | oui | non |
@@ -38,7 +38,7 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 | Congé | oui + bulle de rayon | rayon | arêtes ou face | oui, sans la bulle | oui | oui (rayon) |
 | Chanfrein | oui | type, taille, taille 2, angle, sens | arêtes ou face | oui | oui | oui |
 | Chanfrein de sommet | oui | distances | le sommet | non | à vérifier (booléen, jusqu'à deux lignes) | oui |
-| Coque | oui | épaisseur | faces à ouvrir, « vers l'extérieur » | oui | oui | oui (épaisseur) |
+| Coque | oui | épaisseur, « vers l'extérieur » | faces à ouvrir | oui | oui | oui (sens, refus d'une coque trop épaisse) |
 | Dépouille | oui | angle | face, plan neutre | oui | oui | non |
 | Combiner | non, voulu | rien | opération, corps outil | — | oui | non |
 | Supprimer des corps | non | complète : corps ou solides cochés, ôter ou garder | rien | non | oui (drapeau) | oui |
@@ -73,10 +73,10 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 | Couper avec une surface | oui | inverser le côté, épaisseur (si bande) | surface outil, passage entre un côté et une bande | non | oui | oui |
 | Surface plane | non | rien | esquisse du contour | — | oui (drapeau) | non |
 | Surface balayée | non | rien | profil, trajectoire | — | oui (drapeau) | non |
-| Surface décalée | non | distance (signée) | surface source | à vérifier | oui (drapeau) | non |
+| Surface décalée | non | distance et « inverser le côté », comme à la création | surface source | non | oui (drapeau) | non |
 | Surface de remplissage | non | rien | contour, case « tangent » | — | oui (drapeau) | non |
 | Surface frontière | non | rien | 2 à 4 courbes | — | oui (drapeau) | non |
-| Surface radiée | non | distance (libellée « Épaisseur ») | contour, côté | à vérifier | oui (drapeau) | non |
+| Surface radiée | non | distance et « vers l'intérieur », comme à la création (pilotée par une équation : la distance signée, dans le panneau des cotes) | contour | non | oui (drapeau) | non |
 | Surface médiane | non, voulu | rien (forme figée) | tout : les deux faces ou toutes les parois, épaisseur | — | oui (drapeau) | non |
 | Surface réglée | non | rien | les deux courbes | — | oui (drapeau) | non |
 
@@ -169,17 +169,23 @@ Où ça se décide : le panneau de réédition ne contient que les cotes (`app/t
 
 Des réglages simples, parfois un seul booléen, présents à la création et absents à la réédition.
 
-- **Extrusion et Enlèvement** : condition de fin, face d'arrivée et décalage, inverser, dépouille, direction 2, activer la paroi mince. `PARAM_KEYS` en nomme certaines (inverser, plan médian), mais `set_params` ne les accepte que pour la Révolution. Le tableau de `docs/ecarts-solidworks.md` dit « fait » pour ces fonctions sans dire que la réédition est partielle.
-- **Perçage** : type, angle, à travers ou borgne. Les quatre cotes (diamètre, profondeur, lamage) sont montrées dès que la propriété existe, quel que soit le type de perçage (lu dans `get_params`).
-- **Coque** : la case « vers l'extérieur » est un simple booléen, rééditable pour la Révolution et pas ici. Le selftest change le sens en supprimant puis recréant.
+Corrigé pour quatre fonctions : leur double-clic rouvre le panneau de la création, rempli de ce que la fonction est.
+
+- **Extrusion et Enlèvement** : condition de fin, décalage, inverser, dépouille, direction 2 et paroi mince (épaisseurs, côté). Le moteur envoie les conditions dans l'arbre (`extrude`, dans les mots de la création) et `set_params` les pose ensemble, sous les clés du formulaire. La cavité d'une paroi à extrémités fermées suit le plan milieu et refuse, comme à la création, une condition non borgne ou une dépouille.
+- **Coque** : la case « vers l'extérieur » (clé `outward`). La garde de la création vaut aussi à la réédition : une coque vers l'intérieur qui n'évide rien est refusée.
+- **Perçage** : type, condition de fin, angle du fraisage. Les cotes suivent le type : la profondeur seulement en borgne, le Ø de tête sans « Perçage » simple, la profondeur du lamage pour le lamage, l'angle pour le fraisage. FreeCAD remet les cotes de tête à ses valeurs quand le type change : le panneau les renvoie alors toutes.
+- **Surface décalée et Surface radiée** : la case de sens de la création, au lieu du signe de la distance (voir thème 7).
+
+Reste :
+
+- **Extrusion et Enlèvement** : passer à « jusqu'à la face » ou changer de face (une sélection, thème 4), activer la paroi mince ou changer son genre (un, plan milieu, deux côtés), ce qui ajoute ou retire des profils cachés.
 - **Dépouille** : le plan neutre.
-- **Texte** : relief ou gravure, police.
-- **Surface décalée, radiée, Épaissir** : la case de sens existe à la création, pas à la réédition (voir thème 7).
-- **Couper avec une surface** : passer de « tout un côté » à « bande épaisse ».
+- **Texte** : relief ou gravure, police. Le relief est dans la forme des lettres et dans le genre du booléen : il faut reconstruire.
+- **Couper avec une surface** : passer de « tout un côté » à « bande épaisse » change le genre de l'outil.
 - **Fonctions graphe et Répétition variable** : ajout ou enlèvement, fonctions répétées, nature de la fonction.
 - **Réédition partielle qui laisse croire à une réédition complète** : Congé de surfaces (rayon seul), Prolonger, Ajuster, Hélice 3D (ni axe ni sens), Forme libre.
 
-Où ça se décide : `engine/equations.py` (`_EDITABLE_PROPS`, et la liste des propriétés ajoutées pour la Révolution dans `set_params`) ; `engine/vocab.py` (`PARAM_KEYS`) ; `app/tree.js` (`editFeature`).
+Où ça se décide : `engine/equations.py` (`set_params`, `_editable_props`) ; `engine/solids.py` (`_extrude_state`, `_set_extrude_options`, `_hole_state`) ; `engine/extrude.py` (`extrude_state`, `extrude_options`) ; `engine/vocab.py` (`PARAM_KEYS`) ; `app/features/volumes.js` et `habillage.js` (panneaux partagés entre création et réédition) ; `app/tree.js` (`editFeature`) ; `app/editkind.js`.
 
 ### 6. L'aperçu absent ou inégal
 
@@ -194,7 +200,7 @@ Où ça se décide : `app/main/featurepanel.js` (branche l'aperçu sauf `preview
 
 ### 7. Le sens dit de plusieurs façons
 
-- **Surface décalée, Surface radiée, Épaissir** : trois fonctions voisines, trois façons de dire le sens. À la création, des cases (« Inverser le côté », « Vers l'intérieur ») ; à la réédition, le signe du champ. La Surface radiée est de plus libellée « Épaisseur » alors que c'est une distance.
+- **Surface décalée, Surface radiée, Épaissir** : la décalée et la radiée ont maintenant la même case à la création et à la réédition (« Inverser le côté », « Vers l'intérieur »), et la radiée est libellée « Distance ». Épaissir n'a pas de case : le signe de l'épaisseur, aux deux moments. Une radiée dont la distance est pilotée par une équation garde le panneau des cotes, où le sens reste le signe.
 - **Texte** : « Hauteur », « Décalage X/Y » à la création, « Taille », « X », « Y » à la réédition.
 - **Hélice** : l'angle n'existe qu'à la réédition.
 - **Dépouille** : libellé « Faces à dépouiller » au pluriel pour une seule face, alors que la Coque en accepte plusieurs.

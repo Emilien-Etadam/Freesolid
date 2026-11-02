@@ -52,6 +52,7 @@ class EquationsMixin:
             KernelError,
             _explain,
             parse_user_number,
+            shell_too_thick_message,
         )
         doc = self._require_doc()
         obj = doc.getObject(feature)
@@ -75,6 +76,31 @@ class EquationsMixin:
             editable = editable + ("Size2", "ChamferType", "FlipDirection")
         if revolved:
             editable = editable + ("Reversed", "Midplane", "axis")
+        shelled = obj.TypeId == "PartDesign::Thickness"
+        if shelled:
+            editable = editable + ("Reversed",)
+        if obj.TypeId == "PartDesign::Hole":
+            editable = editable + ("HoleCutType", "DepthType",
+                                   "HoleCutCountersinkAngle")
+            # Le type d'abord : FreeCAD y remet les cotes de tête à ses
+            # valeurs, celles demandées passent après.
+            first = ("HoleCutType", "DepthType")
+            values = {**{p: values[p] for p in first if p in values},
+                      **{p: v for p, v in values.items() if p not in first}}
+        if obj.TypeId in self._EXTRUDE_KINDS:
+            # Conditions de fin : posées ensemble, avant les cotes.
+            editable = editable + ("Length2", "FreeSolidThinReversed")
+            options = {prop: values[prop] for prop in values
+                       if prop in self._EXTRUDE_OPTIONS}
+            if options:
+                values = {prop: value for prop, value in values.items()
+                          if prop not in options}
+                try:
+                    self._set_extrude_options(obj, options, previous,
+                                              exprs_before)
+                except KernelError:
+                    self._restore_props(obj, previous)
+                    raise
         if "FreeSolidBodyPattern" in obj.PropertiesList:
             # Réseau de corps : ses cotes sont des propriétés de l'hôte.
             editable = editable + ("Length2", "Occurrences2")
@@ -114,6 +140,46 @@ class EquationsMixin:
                     self._restore_props(obj, previous)
                     raise KernelError(_explain(exc))
                 continue
+            if prop == "Reversed" and shelled:
+                # Clé « outward » : vers l'extérieur, l'inverse de FreeCAD.
+                if isinstance(value, bool):
+                    flag = value
+                elif type(value) is int and value in (0, 1):
+                    flag = bool(value)
+                else:
+                    self._restore_props(obj, previous)
+                    raise KernelError("sens de la coque : booléen attendu")
+                previous.append((prop, None, getattr(obj, prop, None)))
+                try:
+                    obj.Reversed = not flag
+                except Exception as exc:  # noqa: BLE001
+                    self._restore_props(obj, previous)
+                    raise KernelError(_explain(exc))
+                continue
+            if prop in ("HoleCutType", "DepthType"):
+                table = (self._HOLE_CUTS if prop == "HoleCutType"
+                         else self._HOLE_DEPTHS)
+                token = str(value).strip() if value is not None else ""
+                if token not in table:
+                    self._restore_props(obj, previous)
+                    raise KernelError(
+                        "perçage : « {} » inconnu — attendu : {}".format(
+                            token, ", ".join(table)))
+                if prop == "HoleCutType":
+                    # FreeCAD recalcule les cotes de tête au changement de
+                    # type : gardées ici, un refus les rend telles quelles,
+                    # après le type (``_restore_props`` remonte la liste).
+                    for head in ("HoleCutDiameter", "HoleCutDepth",
+                                 "HoleCutCountersinkAngle"):
+                        previous.append((head, exprs_before.get(head),
+                                         getattr(obj, head, None)))
+                previous.append((prop, None, getattr(obj, prop, None)))
+                try:
+                    setattr(obj, prop, table[token])
+                except Exception as exc:  # noqa: BLE001
+                    self._restore_props(obj, previous)
+                    raise KernelError(_explain(exc))
+                continue
             if prop in ("Reversed", "Midplane") and revolved:
                 if isinstance(value, bool):
                     flag = value
@@ -144,6 +210,23 @@ class EquationsMixin:
                                  getattr(obj, prop, None)))
                 try:
                     setattr(obj, prop, self._CHAMFER_TYPES[token])
+                except Exception as exc:  # noqa: BLE001
+                    self._restore_props(obj, previous)
+                    raise KernelError(_explain(exc))
+                continue
+            if prop == "FreeSolidThinReversed":
+                # Le côté de la paroi : _sync_thin recopie les décalages.
+                if isinstance(value, bool):
+                    flag = value
+                elif type(value) is int and value in (0, 1):
+                    flag = bool(value)
+                else:
+                    self._restore_props(obj, previous)
+                    raise KernelError(
+                        "côté de la paroi mince : booléen attendu")
+                previous.append((prop, None, getattr(obj, prop, None)))
+                try:
+                    setattr(obj, prop, flag)
                 except Exception as exc:  # noqa: BLE001
                     self._restore_props(obj, previous)
                     raise KernelError(_explain(exc))
@@ -207,6 +290,8 @@ class EquationsMixin:
                 invalid = self._invalid_dressup_message(obj)
                 if invalid is not None:
                     raise KernelError(invalid)
+            if shelled and self._shell_left_full(obj):
+                raise KernelError(shell_too_thick_message())
         except KernelError as exc:
             self._restore_props(obj, previous)
             try:
@@ -218,6 +303,17 @@ class EquationsMixin:
                 "{} — la pièce n'a pas été modifiée".format(exc))
         self._drop_unused_axis_tools()
         return self.get_tree()
+
+    @staticmethod
+    def _shell_left_full(obj):
+        """Coque vers l'intérieur qui n'évide rien : trop épaisse, FreeCAD
+        l'accepte parfois sans rien retirer (garde de ``add_thickness``)."""
+        base = getattr(obj, "BaseFeature", None)
+        shape = getattr(base, "Shape", None)
+        if (not getattr(obj, "Reversed", False) or shape is None
+                or shape.isNull()):
+            return False
+        return float(obj.Shape.Volume) >= float(shape.Volume) - 1e-3
 
     @staticmethod
     def _props_from_keys(obj, values):
@@ -265,6 +361,21 @@ class EquationsMixin:
             # Réseau de corps : les cotes que l'hôte porte (get_params
             # saute celles qu'il n'a pas).
             return self._EDITABLE_PROPS + ("Length2", "Occurrences2")
+        if getattr(obj, "TypeId", "") == "PartDesign::Hole":
+            # Perçage : les cotes que son type et sa condition de fin
+            # prennent.
+            cut = str(getattr(obj, "HoleCutType", ""))
+            blind = str(getattr(obj, "DepthType", "")) == "Dimension"
+            return (("Diameter",) + (("Depth",) if blind else ())
+                    + (("HoleCutDiameter",) if cut not in ("", "None")
+                       else ())
+                    + (("HoleCutDepth",) if cut == "Counterbore" else ())
+                    + (("HoleCutCountersinkAngle",) if cut == "Countersink"
+                       else ()))
+        if getattr(obj, "TypeId", "") in self._EXTRUDE_KINDS:
+            # Extrusion : la profondeur du côté 2 quand il existe.
+            two = str(getattr(obj, "SideType", "")) == "Two sides"
+            return self._EDITABLE_PROPS + (("Length2",) if two else ())
         if getattr(obj, "TypeId", "") == "PartDesign::LinearPattern":
             # La deuxième direction n'apparaît que si elle sert.
             two = int(getattr(obj, "Occurrences2", 1) or 1) > 1

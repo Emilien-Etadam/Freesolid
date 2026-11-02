@@ -938,6 +938,19 @@ class TreeMixin:
                 item["thin"] = thin
             if obj.TypeId in ("PartDesign::Revolution", "PartDesign::Groove"):
                 item["revolution"] = self._revolution_state(obj)
+            extrude = (self._extrude_state(obj)
+                       if "FreeSolidTextString" not in obj.PropertiesList
+                       else None)
+            if extrude is not None:
+                # Conditions de fin : la réédition rouvre le panneau de la
+                # création.
+                item["extrude"] = extrude
+            if obj.TypeId == "PartDesign::Thickness":
+                item["shell"] = {"outward": not bool(obj.Reversed)}
+            if obj.TypeId == "PartDesign::Hole":
+                hole = self._hole_state(obj)
+                if hole is not None:
+                    item["hole"] = hole
             if obj.TypeId in ("PartDesign::Pad", "PartDesign::Pocket",
                               "PartDesign::Revolution", "PartDesign::Groove"):
                 profile = self._profile_entry(obj)

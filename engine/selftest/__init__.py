@@ -206,6 +206,8 @@ def _etapes():
         fonctions.p88_desactiver_suit_le_moteur,
         fonctions.p89_moities_d_un_solide,
         fonctions.p90_copie_repetee,
+        fonctions.p91_conditions_d_extrusion,
+        fonctions.p92_coque_et_percage_reedites,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

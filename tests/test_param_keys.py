@@ -29,6 +29,10 @@ EXTRA_PROPS = {
     "revolution": ("Reversed", "Midplane", "axis"),
     "groove": ("Reversed", "Midplane", "axis"),
     "linear_pattern": ("Occurrences2", "Length2"),
+    "pad": ("Length2", "Type", "Type2", "Midplane", "Reversed", "TaperAngle",
+            "TaperAngle2", "Offset", "FreeSolidThinReversed"),
+    "thickness": ("Reversed",),
+    "hole": ("HoleCutType", "DepthType", "HoleCutCountersinkAngle"),
 }
 
 
@@ -203,6 +207,7 @@ CASES = {
     "thickness": ("PartDesign::Thickness", {"Value": 1.0}),
     "draft": ("PartDesign::Draft", {"Angle": 3.0}),
     "hole": ("PartDesign::Hole", {
+        "HoleCutType": "Counterbore", "DepthType": "Dimension",
         "Diameter": 6.0, "Depth": 15.0, "HoleCutDiameter": 10.0,
         "HoleCutDepth": 3.0}),
     "linear_pattern": ("PartDesign::LinearPattern", {
@@ -344,10 +349,115 @@ def test_une_cote_absente_est_refusee_sous_sa_cle():
 
 
 def test_une_cle_connue_mais_non_editable_est_refusee_sous_son_nom():
-    """``reversed`` d'une extrusion se règle à la création : le refus nomme
+    """``length2`` d'une répétition linéaire suit son pas : le refus nomme
     la clé demandée, pas la propriété FreeCAD."""
-    obj = _Obj("F", "PartDesign::Pad", Length=10.0, Reversed=False)
+    obj = _Obj("F", "PartDesign::LinearPattern", Length=30.0, Occurrences=3,
+               Length2=10.0)
     kernel = _kernel(obj)
-    with pytest.raises(KernelError, match="propriété non éditable : reversed$"):
-        kernel.set_params("F", {"reversed": True})
+    with pytest.raises(KernelError, match="propriété non éditable : length2$"):
+        kernel.set_params("F", {"length2": 12})
+    assert obj.Length2 == 10.0
+
+
+def _pad(type_id="PartDesign::Pad", **props):
+    base = {"SideType": "One side", "Type": "Length", "Type2": "Length",
+            "Reversed": False, "Midplane": False, "TaperAngle": 0.0,
+            "TaperAngle2": 0.0, "Offset": 0.0, "Length": 10.0,
+            "Length2": 10.0, "UpToFace": None, "UpToFace2": None}
+    return _Obj("F", type_id, **{**base, **props})
+
+
+def test_les_conditions_d_une_extrusion_se_reeditent():
+    """Condition de fin, sens, plan milieu, deuxième direction, dépouille :
+    par les clés du formulaire de création, en un seul appel."""
+    obj = _pad()
+    kernel = _kernel(obj)
+    kernel.set_params("F", {"cond": "suivant", "reversed": True})
+    assert (obj.SideType, obj.Type, obj.Reversed) == (
+        "One side", "UpToFirst", True)
+    kernel.set_params("F", {"cond": "borgne", "midplane": True,
+                            "length": 20})
+    assert (obj.SideType, obj.Type, obj.Reversed, obj.Length) == (
+        "Symmetric", "Length", False, 20)
+    kernel.set_params("F", {"midplane": False, "cond2": "borgne",
+                            "length2": 4, "taper": 2, "taper2": -3})
+    assert (obj.SideType, obj.Type2, obj.Length2) == ("Two sides", "Length", 4)
+    # Dépouille positive = vers l'intérieur, comme à la création.
+    assert (obj.TaperAngle, obj.TaperAngle2) == (-2.0, 3.0)
+    assert kernel._extrude_state(obj) == {
+        "cond": "borgne", "midplane": False, "reversed": False,
+        "taper": 2.0, "offset": 0.0, "cond2": "borgne", "taper2": -3.0,
+        "face": False}
+    kernel.set_params("F", {"cond2": None})
+    assert obj.SideType == "One side"
+
+
+def test_a_travers_tout_d_un_enlevement():
+    obj = _pad("PartDesign::Pocket", Length=5.0)
+    kernel = _kernel(obj)
+    kernel.set_params("F", {"cond": "travers"})
+    assert obj.Type == "ThroughAll"
+    assert kernel._extrude_state(obj)["cond"] == "travers"
+
+
+def test_jusqu_a_la_face_sans_face_est_refuse_sans_rien_changer():
+    """La face d'arrivée ne se choisit pas à la réédition : sans face, la
+    condition est refusée et la fonction reste telle quelle."""
+    obj = _pad(Reversed=True)
+    kernel = _kernel(obj)
+    with pytest.raises(KernelError, match="pas de face d'arrivée"):
+        kernel.set_params("F", {"cond": "face", "reversed": False,
+                                "length": 3})
+    assert (obj.Type, obj.Reversed, obj.Length) == ("Length", True, 10.0)
+    with pytest.raises(KernelError, match="booléen attendu"):
+        kernel.set_params("F", {"reversed": "oui"})
+    assert obj.Reversed is True
+
+
+def test_le_cote_de_la_paroi_mince_se_reedite():
+    obj = _pad(FreeSolidThinType="un", FreeSolidThinReversed=False,
+               Thickness=2.0)
+    kernel = _kernel(obj)
+    kernel.set_params("F", {"thinReversed": True})
+    assert obj.FreeSolidThinReversed is True
+    with pytest.raises(KernelError, match="n'a pas de propriété thinReversed"):
+        _kernel(_pad()).set_params("F", {"thinReversed": True})
+
+
+def test_le_sens_de_la_coque_se_reedite():
+    """« outward » : vers l'extérieur, quand FreeCAD dit ``Reversed`` pour
+    vers l'intérieur."""
+    obj = _Obj("F", "PartDesign::Thickness", Value=2.0, Reversed=True)
+    kernel = _kernel(obj)
+    kernel.set_params("F", {"outward": True})
     assert obj.Reversed is False
+    with pytest.raises(KernelError, match="booléen attendu"):
+        kernel.set_params("F", {"outward": "oui", "thickness": 3})
+    assert (obj.Reversed, obj.Value) == (False, 2.0)
+
+
+def test_le_type_et_la_fin_d_un_percage_se_reeditent():
+    """Le type passe avant les cotes de tête (FreeCAD les remet à ses
+    valeurs quand il change) ; les cotes suivent le type."""
+    class _Hole(_Obj):
+        def __setattr__(self, name, value):
+            super().__setattr__(name, value)
+            if name == "HoleCutType":
+                super().__setattr__("HoleCutDiameter", 9.6)
+
+    obj = _Hole("F", "PartDesign::Hole", HoleCutType="None",
+                DepthType="ThroughAll", Diameter=6.0, Depth=121.2,
+                HoleCutDiameter=0.0, HoleCutDepth=0.0,
+                HoleCutCountersinkAngle=90.0)
+    kernel = _kernel(obj)
+    assert [p["key"] for p in kernel.get_params("F")["params"]] == ["diameter"]
+    kernel.set_params("F", {"cutDiameter": 11, "cutAngle": 82,
+                            "cut": "fraisage", "cond": "borgne", "depth": 8})
+    assert (obj.HoleCutType, obj.DepthType) == ("Countersink", "Dimension")
+    assert (obj.HoleCutDiameter, obj.HoleCutCountersinkAngle, obj.Depth) == (
+        11, 82, 8)
+    assert [p["key"] for p in kernel.get_params("F")["params"]] == [
+        "diameter", "depth", "cutDiameter", "cutAngle"]
+    with pytest.raises(KernelError, match="« taraudage » inconnu"):
+        kernel.set_params("F", {"cut": "taraudage"})
+    assert obj.HoleCutType == "Countersink"

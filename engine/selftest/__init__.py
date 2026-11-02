@@ -204,6 +204,8 @@ def _etapes():
         fonctions.p86_reediter_une_suppression,
         fonctions.p87_modifier_suit_le_double_clic,
         fonctions.p88_desactiver_suit_le_moteur,
+        fonctions.p89_moities_d_un_solide,
+        fonctions.p90_copie_repetee,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

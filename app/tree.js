@@ -1338,7 +1338,11 @@ export function installTree(ctx) {
   /** Ligne d'un autre corps (`feature.body`) : son corps devient actif,
    *  puis l'action part sur la ligne du nouvel arbre. */
   function inBody(feature, action) {
-    if (!feature.body) {
+    // Un corps ôté par « Supprimer des corps » ne se rend pas actif (le
+    // moteur refuse) : sa ligne se rouvre et se règle quand même.
+    const present = (ctx.lastTree?.bodies ?? [])
+      .some((body) => body.name === feature.body);
+    if (!feature.body || !present) {
       action(feature);
       return;
     }

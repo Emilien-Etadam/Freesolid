@@ -31,11 +31,14 @@ _SETTINGS = ("label", "color", "hidden")
 def match_entries(origins, entries):
     """Pour chaque solide (ensemble d'origines), l'indice de l'entrée qui
     en partage le plus — la plus récente à égalité — ou ``None`` quand
-    aucune n'en partage."""
+    aucune n'en partage. Une entrée ne vaut pas pour un solide qui porte
+    l'une de ses origines exclues (``excl``, voir ``set_entry``)."""
     matched = []
     for keys in origins:
         best, best_score = None, 0
         for index, entry in enumerate(entries):
+            if keys & set(entry.get("excl") or ()):
+                continue
             score = len(keys & set(entry.get("keys") or ()))
             if score and score >= best_score:
                 best, best_score = index, score
@@ -67,12 +70,15 @@ def solid_rows(titles, entries, matched):
     return rows
 
 
-def set_entry(entries, matched, solid, keys, **changes):
+def set_entry(entries, matched, solid, keys, others=(), **changes):
     """Règle un solide. Son entrée prend ses origines du moment ; quand
     elle vaut aussi pour un autre solide (deux moitiés), le solide en
-    reçoit une à lui, copie de la partagée. Un réglage vide (``None``,
-    ``""``, ``False``) s'efface ; une entrée sans réglage disparaît.
-    Renvoie la nouvelle liste."""
+    reçoit une à lui, copie de la partagée. ``others`` : les origines des
+    autres solides du corps ; celles qu'il n'a pas sont exclues de son
+    entrée — deux moitiés partagent des origines, régler l'une ne règle
+    pas l'autre. Coupé ensuite, le solide transmet son entrée à ses deux
+    moitiés. Un réglage vide (``None``, ``""``, ``False``) s'efface ; une
+    entrée sans réglage disparaît. Renvoie la nouvelle liste."""
     entries = [dict(entry) for entry in entries]
     index = matched[solid]
     if index is None or matched.count(index) > 1:
@@ -81,6 +87,11 @@ def set_entry(entries, matched, solid, keys, **changes):
     else:
         entry = entries[index]
     entry["keys"] = sorted(keys)
+    excl = set().union(*others) - set(keys)
+    if excl:
+        entry["excl"] = sorted(excl)
+    else:
+        entry.pop("excl", None)
     for name, value in changes.items():
         if value in (None, "", False):
             entry.pop(name, None)
@@ -199,8 +210,10 @@ class BodySolidsMixin:
         if not 0 <= int(solid) < len(origins):
             raise KernelError("solide inconnu : {}".format(solid))
         entries = self._stored_solids(body)
+        others = [keys for i, keys in enumerate(origins) if i != int(solid)]
         updated = set_entry(entries, match_entries(origins, entries),
-                            int(solid), origins[int(solid)], **changes)
+                            int(solid), origins[int(solid)], others,
+                            **changes)
         if SOLIDS_PROP not in body.PropertiesList:
             body.addProperty("App::PropertyString", SOLIDS_PROP, "FreeSolid",
                              "Réglages de chaque solide du corps")

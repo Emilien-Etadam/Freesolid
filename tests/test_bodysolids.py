@@ -59,6 +59,31 @@ def test_setting_one_half_gives_it_its_own_entry():
     assert [r["color"] for r in rows] == ["#33cc66", "#3366cc"]
 
 
+def test_setting_one_fresh_half_leaves_the_other_alone():
+    """Coupé avant tout réglage : les deux moitiés partagent des origines,
+    la couleur de l'une ne passe pas à l'autre."""
+    half_a = {"Sketch|g5;SKT", "Sketch|g7;SKT", "Sketch|g8;SKT", "Cut|a"}
+    half_b = {"Sketch|g5;SKT", "Sketch|g7;SKT", "Sketch|g6;SKT", "Cut|b"}
+    entries = set_entry([], [None, None], 0, half_a, [half_b],
+                        color="#cc3333")
+    rows = solid_rows(["Coupe", "Coupe"], entries,
+                      match_entries([half_a, half_b], entries))
+    assert [r["color"] for r in rows] == ["#cc3333", None]
+    # Masquer l'autre ensuite : deux entrées, chacune à sa moitié.
+    entries = set_entry(entries, match_entries([half_a, half_b], entries),
+                        1, half_b, [half_a], hidden=True)
+    rows = solid_rows(["Coupe", "Coupe"], entries,
+                      match_entries([half_a, half_b], entries))
+    assert [(r["color"], r["hidden"]) for r in rows] == [
+        ("#cc3333", False), (None, True)]
+    # La moitié colorée coupée à son tour : ses deux morceaux héritent.
+    piece_1 = {"Sketch|g5;SKT", "Sketch|g8;SKT", "Cut|a", "Cut2|x"}
+    piece_2 = {"Sketch|g7;SKT", "Sketch|g8;SKT", "Cut|a", "Cut2|y"}
+    rows = solid_rows(["Coupe"] * 3, entries,
+                      match_entries([piece_1, piece_2, half_b], entries))
+    assert [r["color"] for r in rows] == ["#cc3333", "#cc3333", None]
+
+
 def test_clearing_every_setting_drops_the_entry():
     entries = set_entry([], [None, None], 0, LEFT, color="#cc3333")
     entries = set_entry(entries, match_entries([LEFT, RIGHT], entries), 0,

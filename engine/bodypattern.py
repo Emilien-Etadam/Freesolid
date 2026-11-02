@@ -509,9 +509,22 @@ class BodyPatternMixin:
                 self._stamp_text(child, "FreeSolidPatternOf", host.Name)
         return body
 
+    def _refuse_repeated(self, body):
+        """Un corps qu'un réseau de corps répète ne part pas sous lui —
+        ni supprimé, ni retiré par le réseau qui l'a créé."""
+        from engine.kernel import KernelError
+        for other in self._body_pattern_hosts():
+            spec = self._body_pattern_spec(other) or {}
+            if body.Name in (spec.get("sources") or ()):
+                raise KernelError(
+                    "{} est répété par {} — supprimez d'abord ce réseau "
+                    "de corps".format(body.Label, other.Label))
+
     def _remove_body_copy(self, body):
         """Une copie, ses fonctions et ses lieurs. Si elle était le corps
-        actif, sa source le devient."""
+        actif, sa source le devient. Refusé quand un autre réseau la
+        répète : il perdrait sa source sans le dire."""
+        self._refuse_repeated(body)
         doc = self._require_doc()
         parts = [n for n in str(getattr(body, "FreeSolidPatternParts", "")
                                 ).split(";") if n]
@@ -861,12 +874,7 @@ class BodyPatternMixin:
         from engine.kernel import KernelError
         doc = self._require_doc()
         if obj.TypeId == "PartDesign::Body":
-            for other in self._body_pattern_hosts():
-                spec = self._body_pattern_spec(other) or {}
-                if obj.Name in (spec.get("sources") or ()):
-                    raise KernelError(
-                        "{} est répété par {} — supprimez d'abord ce réseau "
-                        "de corps".format(obj.Label, other.Label))
+            self._refuse_repeated(obj)
         host = self._body_pattern_host_of(obj)
         if host is not None:
             self._remove_body_pattern(host)

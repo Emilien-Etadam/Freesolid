@@ -1705,3 +1705,48 @@ def p88_desactiver_suit_le_moteur(self, mark, report, etat):
     report["p88_reactiver"] = (
         off[pad].get("suppressed") is True
         and "suppressed" not in back[pad])
+
+
+def p89_moities_d_un_solide(self, mark, report, etat):
+    mark("p89: régler une moitié d'un solide coupé ne règle pas l'autre")
+    self.new_part("Moitiés")
+    self.add_rect_sketch(60, 20)
+    self.add_pad(5)
+    body = self._require_body()
+    sketch = self.sketch_start(face=self._top_face_id())["sketch"]
+    self.sketch_add_rectangle(sketch, -2, -15, 2, 15)
+    self.sketch_finish(sketch)
+    self.add_pocket(through=True)
+    left = 0 if body.Shape.Solids[0].CenterOfMass.x < 0 else 1
+    self.set_body_color(body.Name, "#cc3333", solid=left)
+    self.set_hidden([body.Name], True, solid=1 - left)
+    rows = self.get_tree()["bodies"][0]["solids"]
+    report["p89_moities_d_un_solide"] = (
+        len(rows) == 2
+        and rows[left]["color"] == "#cc3333" and not rows[left]["hidden"]
+        and rows[1 - left]["color"] is None and rows[1 - left]["hidden"])
+
+
+def p90_copie_repetee(self, mark, report, etat):
+    mark("p90: une copie qu'un autre réseau répète ne part pas sans le dire")
+    self.new_part("Copie répétée")
+    self.add_rect_sketch(10, 10)
+    self.add_pad(8)
+    source = self._require_body().Name
+    self.add_body_pattern("linear", [source], length=20, count=3,
+                          axis="X", spacing=True)
+    host = self._body_pattern_hosts()[0].Name
+    far = max((n for n in _volumes(self) if n != source),
+              key=lambda n: _centre_x(self, n)[0])
+    self.add_body_pattern("mirror", [far], plane="YZ")
+    before = sorted(_volumes(self))
+    from engine.kernel import dispatch
+    shrunk = dispatch(self, "set_params",
+                      {"feature": host, "values": {"count": 2}})
+    deleted = dispatch(self, "delete_feature", {"feature": host})
+    report["p90_copie_repetee"] = (
+        shrunk.get("ok") is False and "est répété par" in shrunk["error"]
+        and deleted.get("ok") is False and "est répété par" in deleted["error"]
+        and sorted(_volumes(self)) == before
+        and not any("Invalid" in (o.State or ())
+                    for o in self._doc.Objects))

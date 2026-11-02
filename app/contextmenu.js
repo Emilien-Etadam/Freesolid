@@ -37,8 +37,13 @@ export function folderRemovalTarget(feature) {
 }
 
 /** Fonction de corps (hors plan de référence et corps) : elle se
- *  désactive sans être supprimée. */
+ *  désactive sans être supprimée. Le moteur dit ce qu'il accepte
+ *  (`suppressible`) ; sans son avis (ligne d'un plugin), la liste des
+ *  genres. */
 export function isSuppressibleTarget(feature) {
+  if (typeof feature?.suppressible === "boolean") {
+    return feature.suppressible && !isBodyMenuTarget(feature);
+  }
   const key = feature?.type_key ?? "";
   return isBodyFeatureKey(key) && key !== "datum_plane"
     && key !== "body" && !isBodyMenuTarget(feature);

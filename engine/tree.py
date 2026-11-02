@@ -906,6 +906,8 @@ class TreeMixin:
                 "error": "Invalid" in (obj.State or ()),
                 "order": order_of.get(obj.Name, -1),
                 "has_params": self._has_params(obj),
+                # Ce que set_suppressed accepte : « Désactiver » le suit.
+                "suppressible": "Suppressed" in obj.PropertiesList,
             }
             if getattr(obj, "Suppressed", False):
                 item["suppressed"] = True

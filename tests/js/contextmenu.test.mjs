@@ -2,7 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  canModifyMenuTarget, isBodyMenuTarget, isHideableTarget, solidParam,
+  canModifyMenuTarget, isBodyMenuTarget, isHideableTarget,
+  isSuppressibleTarget, solidParam,
 } from "../../app/contextmenu.js";
 
 describe("cible du menu de l'arbre", () => {
@@ -52,6 +53,28 @@ describe("cible du menu de l'arbre", () => {
     assert.equal(isHideableTarget(composite, { surface: true }), true);
     assert.equal(isHideableTarget({ name: "Body", active: true }), true);
     assert.equal(isHideableTarget({ name: "Pad", type_key: "pad" }), false);
+  });
+});
+
+describe("« Désactiver »", () => {
+  it("suit le moteur : un axe ou une courbe composite ne se désactive pas", () => {
+    assert.equal(isSuppressibleTarget(
+      { name: "Pad", type_key: "pad", suppressible: true }), true);
+    assert.equal(isSuppressibleTarget(
+      { name: "Line", type_key: "datum_axis", suppressible: false }), false);
+    assert.equal(isSuppressibleTarget(
+      { name: "Binder", type_key: "binder", suppressible: false }), false);
+    // Un corps ne se désactive pas, même si le moteur ne dit rien.
+    assert.equal(isSuppressibleTarget(
+      { name: "Body", type_key: "body", active: true, suppressible: true }),
+    false);
+  });
+
+  it("sans avis du moteur, la liste des genres", () => {
+    assert.equal(isSuppressibleTarget({ name: "Pad", type_key: "pad" }), true);
+    assert.equal(isSuppressibleTarget(
+      { name: "Plane", type_key: "datum_plane" }), false);
+    assert.equal(isSuppressibleTarget(null), false);
   });
 });
 

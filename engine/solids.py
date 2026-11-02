@@ -153,36 +153,140 @@ class SolidsMixin:
         return self.get_tree()
 
     def add_pad(self, length=None, sketch=None, reversed=False,
-                midplane=False, thin=None, **conditions):
+                midplane=False, thin=None, merge=True, body=None,
+                **conditions):
         """Extrusion. ``conditions`` : voir ``engine.extrude`` —
         cond, face, offset, taper, cond2, length2, face2, offset2, taper2.
-        ``thin`` : paroi mince, voir ``engine.extrude.thin_settings``."""
+        ``thin`` : paroi mince, voir ``engine.extrude.thin_settings``.
+        ``merge`` faux : un nouveau corps ; ``body`` : le corps où
+        fusionner, le corps actif par défaut (``_extrude_body``)."""
         from engine.kernel import KernelError
-        body = self._require_body()
-        doc = self._require_doc()
         if sketch is not None:
             profile = self._get_sketch(sketch)
         else:
             profile = self._latest_sketch()
+        body, made = self._extrude_body(profile, merge, body, conditions)
         tip = body.Tip  # les faces visées appartiennent à l'état d'avant
-        spec, helpers = self._thin_profile(body, profile, thin)
-        pad = body.newObject("PartDesign::Pad", "Pad")
-        pad.Profile = helpers[-1] if helpers else profile
+        helpers = []
+        pad = None
         try:
+            spec, helpers = self._thin_profile(body, profile, thin)
+            helpers += self._profile_helpers(body, profile, helpers)
+            pad = body.newObject("PartDesign::Pad", "Pad")
+            self._link_profile(pad, profile, helpers)
             self._apply_extrude(pad, "pad", tip, length=length,
                                 reversed=reversed, midplane=midplane,
                                 **conditions)
             pad.Label = self._t("Extrusion")
             if spec is not None:
                 self._mark_thin(pad, spec)
-                self._own_thin_helpers(pad, helpers)
-                if spec["caps"]:
-                    helpers += self._thin_cavity(body, pad, profile, spec)
+            self._own_thin_helpers(pad, helpers)
+            if spec is not None and spec["caps"]:
+                helpers += self._thin_cavity(body, pad, profile, spec)
             self._recompute()
         except KernelError:
-            self._remove_all([pad] + helpers)
+            # Le corps neuf part en dernier, vidé d'abord.
+            self._remove_all(([body] if made else [])
+                             + ([pad] if pad is not None else []) + helpers)
             raise
+        self._body = body
         return self.get_tree()
+
+    def _extrude_body(self, profile, merge, body, conditions):
+        """Corps où ranger une extrusion : ``(corps, nouveau)``.
+
+        Fusionner : le corps actif, ou ``body``. Sinon un nouveau corps —
+        sauf si l'esquisse est seule dans le sien, qui le devient. Une
+        face d'arrivée se clique sur le corps actif : elle ne vaut que
+        là."""
+        from engine.kernel import KernelError
+        from engine.extrude import ExtrudeError, check_new_body
+        doc = self._require_doc()
+        active = self._require_body()
+        if merge:
+            if body is None:
+                return active, False
+            target = doc.getObject(str(body))
+            if (target is None or target.TypeId != "PartDesign::Body"
+                    or self._is_internal_tool(target)):
+                raise KernelError("corps inconnu : {}".format(body))
+            if target.Name in self._removed_names():
+                raise KernelError("{} est supprimé par une fonction — "
+                                  "reculez la barre au-dessus d'elle"
+                                  .format(target.Label))
+            if target is not active and (
+                    conditions.get("cond") == "face"
+                    or conditions.get("cond2") == "face"):
+                raise KernelError(
+                    "jusqu'à la face : fusionnez avec le corps actif, "
+                    "celui de la face cliquée")
+            return target, False
+        try:
+            check_new_body(conditions.get("cond"), conditions.get("cond2"))
+        except ExtrudeError as exc:
+            raise KernelError(str(exc))
+        home = profile.getParentGeoFeatureGroup()
+        if (getattr(home, "TypeId", "") == "PartDesign::Body"
+                and not any(o.isDerivedFrom("PartDesign::Feature")
+                            for o in home.Group)):
+            return home, False
+        made = doc.addObject("PartDesign::Body", "Body")
+        made.Label = self._t("Corps")
+        made.addProperty("App::PropertyBool", "FreeSolidNewBody", "FreeSolid",
+                         "Né d'une fonction non fusionnée")
+        made.FreeSolidNewBody = True
+        return made, True
+
+    def _profile_helpers(self, body, profile, helpers):
+        """Objets cachés d'un profil rangé hors de son esquisse :
+
+        - une esquisse d'un autre corps entre par un liant (l'esquisse
+          reste où elle est, avec son appui et ses autres fonctions) ;
+        - un profil par liant (paroi mince comprise) prend sa direction
+          sur un axe qui suit la normale de l'esquisse : FreeCAD prendrait
+          celle du plan du liant, parfois à l'opposé.
+
+        ``helpers`` : les liants de paroi mince déjà faits."""
+        made = []
+        if not helpers and profile.getParentGeoFeatureGroup() is not body:
+            binder = self._new_thin_binder(body, profile, 0.0, False,
+                                           "Profil lié")
+            binder.addProperty("App::PropertyBool", "FreeSolidProfileCopy",
+                               "FreeSolid", "Copie liée d'une esquisse")
+            binder.FreeSolidProfileCopy = True
+            made.append(binder)
+        if helpers or made:
+            axis = self._new_thin_helper(body, "PartDesign::Line",
+                                         "SketchNormal",
+                                         "Normale de l'esquisse")
+            axis.AttachmentSupport = [(profile, "")]
+            axis.MapMode = "ObjectZ"
+            axis.Visibility = False
+            made.insert(0, axis)
+        return made
+
+    def _link_profile(self, feature, profile, helpers):
+        """Profil et direction d'une extrusion : l'esquisse, ou le dernier
+        liant de ``helpers`` le long de l'axe de normale."""
+        binders = [h for h in helpers
+                   if h.TypeId == "PartDesign::SubShapeBinder"]
+        feature.Profile = binders[-1] if binders else profile
+        axis = self._sketch_normal_axis(helpers)
+        if axis is not None:
+            feature.ReferenceAxis = (axis, [""])
+
+    @staticmethod
+    def _sketch_normal_axis(helpers):
+        return next((h for h in helpers if h.TypeId == "PartDesign::Line"),
+                    None)
+
+    def _profile_copy_of(self, feature):
+        """Le liant d'une esquisse d'un autre corps, profil de ``feature``."""
+        profile = getattr(feature, "Profile", None)
+        linked = profile[0] if isinstance(profile, tuple) else profile
+        if getattr(linked, "FreeSolidProfileCopy", False):
+            return linked
+        return None
 
     #: Objets d'une paroi mince : hors arbre, ils suivent leur fonction
     #: (``FreeSolidThinOwner`` = son nom ; une chaîne, pas un lien — un lien
@@ -293,6 +397,9 @@ class SolidsMixin:
             helpers.append(cavity)
             self._own_thin_helpers(feature, helpers)
             cavity.Profile = binder
+            axis = getattr(feature, "ReferenceAxis", None)
+            if axis and axis[0] is not None:
+                cavity.ReferenceAxis = axis   # la direction de la fonction
             self._plan_cavity(feature, cavity)
         except Exception as exc:  # noqa: BLE001
             self._remove_all(helpers)
@@ -499,6 +606,8 @@ class SolidsMixin:
         state = extrude_state(kind, props)
         if state is not None:
             state["face"] = bool(getattr(obj, "UpToFace", None))
+            # Premier volume de son corps : aucun « jusqu'à » ne l'arrête.
+            state["alone"] = getattr(obj, "BaseFeature", None) is None
         return state
 
     def _set_extrude_options(self, obj, options, previous, exprs_before):
@@ -513,6 +622,7 @@ class SolidsMixin:
                 "{} : conditions de fin que la réédition ne sait pas "
                 "changer".format(obj.Label))
         state.pop("face")
+        state.pop("alone")
         for prop, value in options.items():
             name = self._EXTRUDE_OPTIONS[prop]
             if name in ("midplane", "reversed"):
@@ -580,8 +690,13 @@ class SolidsMixin:
             raise KernelError(
                 "extrémités fermées : réservées à l'extrusion")
         spec, helpers = self._thin_profile(body, profile, thin)
+        try:
+            helpers += self._profile_helpers(body, profile, helpers)
+        except Exception:
+            self._remove_all(helpers)
+            raise
         pocket = body.newObject("PartDesign::Pocket", "Pocket")
-        pocket.Profile = helpers[-1] if helpers else profile
+        self._link_profile(pocket, profile, helpers)
         if cond is None:
             cond = "travers" if (through or length is None) else "borgne"
         try:
@@ -594,7 +709,7 @@ class SolidsMixin:
         pocket.Label = self._t("Enlèvement extrudé")
         if spec is not None:
             self._mark_thin(pocket, spec)
-            self._own_thin_helpers(pocket, helpers)
+        self._own_thin_helpers(pocket, helpers)
         try:
             self._recompute()
         except KernelError:

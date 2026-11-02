@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   extrudeBuild, extrudeEditInitial, extrudeEditProblem, extrudeEditValues,
   extrudeGroups, extrudeInvalid, holeEditInitial, holeEditValues, holeGroups,
-  shellEditGroups, shellEditValues,
+  mergeGroups, mergeParams, mergeProblem, shellEditGroups, shellEditValues,
 } from "../../app/features.js";
 
 describe("extrudeBuild", () => {
@@ -275,5 +275,66 @@ describe("réédition du perçage", () => {
       .flatMap((g) => g.rows.map((r) => r.key));
     assert.ok(!keys.includes("pos"));
     assert.ok(keys.includes("cut") && keys.includes("cond"));
+  });
+});
+
+describe("fusionner ou non", () => {
+  const bodies = [
+    { name: "Body", label: "Extrusion", active: true, has_solid: true },
+    { name: "Body001", label: "Extrusion1", active: false, has_solid: true },
+  ];
+
+  it("pas de groupe tant que la pièce n'a pas de volume", () => {
+    assert.deepEqual(mergeGroups([]), []);
+    assert.deepEqual(mergeGroups([{ name: "Body", active: true,
+                                    has_solid: false }]), []);
+  });
+
+  it("coché, la zone Corps part du corps actif", () => {
+    const [group] = mergeGroups(bodies);
+    const [merge, body] = group.rows;
+    assert.equal(merge.value, true);
+    assert.deepEqual(body.accepts, ["body"]);
+    assert.deepEqual(body.value,
+                     { kind: "body", name: "Body", label: "Extrusion" });
+    assert.equal(body.showIf({ merge: false }), false);
+    assert.equal(body.showIf({ merge: true }), true);
+  });
+
+  it("décoché : un nouveau corps ; un autre corps : son nom", () => {
+    assert.deepEqual(mergeParams({ merge: false }, bodies), { merge: false });
+    assert.deepEqual(mergeParams(
+      { merge: true, body: { kind: "body", name: "Body001" } }, bodies),
+      { body: "Body001" });
+    assert.deepEqual(mergeParams(
+      { merge: true, body: { kind: "body", name: "Body" } }, bodies), {});
+    assert.deepEqual(mergeParams({}, bodies), {});
+  });
+
+  it("un nouveau corps veut une profondeur borgne", () => {
+    assert.equal(mergeProblem({ merge: false, cond: "borgne" }, bodies), null);
+    assert.equal(mergeProblem({ merge: false, cond: "milieu" }, bodies), null);
+    assert.match(mergeProblem({ merge: false, cond: "suivant" }, bodies),
+                 /Nouveau corps/);
+    assert.match(mergeProblem(
+      { merge: false, cond: "borgne", dir2: true, cond2: "dernier" }, bodies),
+      /Nouveau corps/);
+  });
+
+  it("jusqu'à la face : sur le corps actif seulement", () => {
+    const other = { kind: "body", name: "Body001" };
+    assert.match(mergeProblem({ merge: true, cond: "face", body: other },
+                              bodies), /corps actif/);
+    assert.equal(mergeProblem({ merge: true, cond: "face",
+                                body: { kind: "body", name: "Body" } },
+                              bodies), null);
+  });
+
+  it("le premier volume d'un corps se réédite en borgne seulement", () => {
+    const f = feature({ alone: true });
+    const [direction1, direction2] = extrudeGroups("pad", extrudeEditInitial(f));
+    assert.deepEqual(direction1.rows[0].options.map(([c]) => c),
+                     ["borgne", "milieu"]);
+    assert.deepEqual(direction2.rows[1].options.map(([c]) => c), ["borgne"]);
   });
 });

@@ -397,6 +397,18 @@ def _dump_sketch(sketch, body_shape=None):
     return dump
 
 
+def _profile_name(kernel, obj):
+    """L'esquisse du profil, à travers le liant d'une esquisse d'un autre
+    corps. Une paroi mince ne se rejoue pas : son rejeu serait plein."""
+    if kernel._thin_spec(obj) is not None:
+        raise KernelError("capture refusée : {} est une paroi mince"
+                          .format(obj.Label))
+    if kernel._profile_copy_of(obj) is not None:
+        sketch, _ = kernel._profile_of(obj)
+        return getattr(sketch, "Name", None)
+    return _linked_name(getattr(obj, "Profile", None))
+
+
 def _capture_feature(kernel, obj):
     params = {}
     for entry in kernel.get_params(obj.Name)["params"]:
@@ -417,7 +429,7 @@ def _capture_feature(kernel, obj):
         "label": obj.Label,
         "type_id": obj.TypeId,
         "params": params,
-        "profile": _linked_name(getattr(obj, "Profile", None)),
+        "profile": _profile_name(kernel, obj),
         "reversed": bool(getattr(obj, "Reversed", False)),
         "midplane": bool(getattr(obj, "Midplane", False)),
         "through": through,

@@ -89,7 +89,20 @@ export function installDebug(ctx) {
     return ndcToScreen(projected.x, projected.y, rect);
   }
 
+  /** Centre à l'écran de chaque autre corps : `{ nom: { x, y } }`. */
+  function otherBodyScreenPoints() {
+    const rect = renderer.domElement.getBoundingClientRect();
+    const points = {};
+    for (const mesh of ctx.othersMeshes) {
+      const center = new THREE.Box3().setFromObject(mesh)
+        .getCenter(new THREE.Vector3()).project(camera);
+      points[mesh.userData.body.name] = ndcToScreen(center.x, center.y, rect);
+    }
+    return points;
+  }
+
   window.__freesolidDebug = {
+    get otherBodyScreenPoints() { return otherBodyScreenPoints(); },
     get volumeVisibleCount() { return volumeVisibleCount(); },
     get volumeScreenPoint() { return volumeScreenPoint(); },
     get isOrthographic() { return camera.isOrthographicCamera === true; },

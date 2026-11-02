@@ -381,10 +381,30 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, BodySol
         return self._doc
 
     def _require_body(self):
-        self._require_doc()
+        doc = self._require_doc()
+        name = getattr(self._body, "Name", None) if self._body else None
+        if self._body is not None and (not name
+                                       or doc.getObject(name) is None):
+            # Ctrl+Z a retiré le corps actif (un corps neuf) : on revient
+            # à celui du dernier objet, là où l'on travaillait.
+            self._body = self._body_of_newest()
         if self._body is None:
             raise KernelError("aucun corps — commencez par new_part")
         return self._body
+
+    def _body_of_newest(self):
+        owners = {}
+        for obj in self._require_doc().Objects:
+            if (obj.TypeId == "PartDesign::Body"
+                    and not self._is_internal_tool(obj)):
+                for child in obj.Group:
+                    owners[child.Name] = obj
+        for obj in reversed(self._require_doc().Objects):
+            if obj.Name in owners:
+                return owners[obj.Name]
+        return next((o for o in self._require_doc().Objects
+                     if o.TypeId == "PartDesign::Body"
+                     and not self._is_internal_tool(o)), None)
 
     def _recompute(self):
         doc = self._require_doc()
@@ -858,6 +878,7 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, BodySol
             raise KernelError("params doit être un objet JSON")
         doc.openTransaction("freesolid-preview")
         self._previewing = True
+        active = self._body  # une extrusion en nouveau corps le change
         planes = {o.Name for o in doc.Objects
                   if o.TypeId == "PartDesign::Plane"}
         bodies = {o.Name for o in doc.Objects
@@ -880,6 +901,7 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, BodySol
             return self.tessellate()
         finally:
             self._previewing = False
+            self._body = active
             _abort(doc)
             doc.recompute()
 

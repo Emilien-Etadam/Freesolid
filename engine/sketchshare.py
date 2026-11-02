@@ -60,7 +60,15 @@ class SketchShareMixin:
                              for i, w in enumerate(wires)]}
 
     def _profile_of(self, feature):
-        """(esquisse, arêtes choisies) du profil d'une fonction."""
+        """(esquisse, arêtes choisies) du profil d'une fonction — à
+        travers le liant d'une esquisse d'un autre corps."""
+        copy = self._profile_copy_of(feature)
+        if copy is not None:
+            support = list(getattr(copy, "Support", None) or [])
+            if not support:
+                return None, []
+            sk, subs = support[0][0], support[0][1]
+            return sk, [s for s in subs if s]
         profile = getattr(feature, "Profile", None)
         if isinstance(profile, tuple):
             sk = profile[0]
@@ -81,10 +89,16 @@ class SketchShareMixin:
         if any(not 0 <= i < len(wires) for i in chosen):
             raise KernelError("contour inconnu dans l'esquisse")
         if not chosen or len(chosen) == len(wires):
+            names = []
+        else:
+            names = [name for i in chosen for name in wires[i]["edges"]]
+        copy = self._profile_copy_of(feature)
+        if copy is not None:
+            copy.Support = [(sk, tuple(names) or ("",))]
+        elif names:
+            feature.Profile = (sk, names)
+        else:
             feature.Profile = sk
-            return
-        names = [name for i in chosen for name in wires[i]["edges"]]
-        feature.Profile = (sk, names)
 
     def set_profile_contours(self, feature, contours):
         """Réédition : les contours de l'esquisse qu'utilise la fonction."""
@@ -116,13 +130,30 @@ class SketchShareMixin:
     # ---------- création avec contours choisis ----------
 
     def _with_contours(self, method, contours, *args, **kwargs):
+        active = self._body
         tree = method(*args, **kwargs)
         if contours:
-            tip = self._require_body().Tip
-            self._apply_contours(tip, contours)
-            self._recompute()
+            try:
+                # La fonction faite, pas la cavité cachée qui la suit.
+                tip = self._thin_owner(self._require_body().Tip)
+                self._apply_contours(tip, contours)
+                self._recompute()
+            except Exception:
+                # La transaction défait la fonction : le corps actif aussi.
+                self._body = active
+                raise
             tree = self.get_tree()
         return tree
+
+    def _profile_sketch(self, feature):
+        """L'esquisse derrière le profil d'une fonction : directe, par le
+        liant d'un autre corps ou par les profils d'une paroi mince."""
+        sk, _ = self._profile_of(feature)
+        if getattr(sk, "TypeId", "") != "Sketcher::SketchObject":
+            _, sk = self._thin_chain(feature)
+        if getattr(sk, "TypeId", "") != "Sketcher::SketchObject":
+            return None
+        return sk
 
     def add_pad(self, *args, contours=None, **kwargs):
         return self._with_contours(super().add_pad, contours, *args, **kwargs)

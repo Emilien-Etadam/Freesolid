@@ -156,6 +156,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       editedInput = focused;
     }
     updateHint();
+    // Une case qui masque une zone de sélection en ôte le surlignage.
+    if (!live) reportPicks();
     if (active?.spec.onPreview && !previewOn) return; // aperçu coupé
     active?.spec.onChange?.({ ...active.values }, { live });
   }
@@ -325,6 +327,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       if (!groupShown(group, active.values)) continue;
       for (const row of group.rows ?? []) {
         if (row.type !== "selection") continue;
+        // Une zone masquée (showIf) ne surligne rien.
+        if (row.showIf && !row.showIf(active.values)) continue;
         const value = active.values[row.key];
         if (value?.items) items.push(...value.items);
         else if (value) items.push(value);
@@ -343,6 +347,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       for (const row of group.rows ?? []) {
         if (row.type !== "selection") continue;
         if (!selectionFilled(active.values[row.key])) continue;
+        // Un corps garde son nom quand la géométrie change.
+        if ((row.accepts ?? ["face"]).every((k) => k === "body")) continue;
         active.values[row.key] = row.multiple ? { items: [] } : null;
         cleared++;
       }
@@ -534,7 +540,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
         box.textContent = value.edges.length <= 3
           ? value.edges.map((e) => t("Arête {n}", { n: e })).join(", ")
           : t("{n} arêtes", { n: value.edges.length });
-      } else if (value.kind === "sketch" || value.kind === "surface") {
+      } else if (value.kind === "sketch" || value.kind === "surface"
+                 || value.kind === "body") {
         box.textContent = value.label;
       } else if (value.kind === "asmface") {
         box.textContent = `${value.componentLabel} · `

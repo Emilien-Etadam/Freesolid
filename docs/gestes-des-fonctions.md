@@ -21,7 +21,7 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 
 | Fonction | Aperçu à la création | Réédition : ce qui revient | Ne revient pas | Aperçu à la réédition | Barre de retour | Selftest de réédition |
 |---|---|---|---|---|---|---|
-| Extrusion | oui + flèche | le panneau de la création : condition de fin (sauf passer à « jusqu'à la face »), décalage, inverser, dépouille, direction 2 (condition, profondeur, dépouille), épaisseurs et côté de la paroi mince, contours | face d'arrivée, activer la paroi mince ou en changer le genre, esquisse | oui + flèche (la flèche s'efface quand le sens ou la condition change) | oui | oui (conditions, direction 2, paroi mince, extrémités fermées) |
+| Extrusion | oui + flèche | le panneau de la création : condition de fin (sauf passer à « jusqu'à la face » ; borgne seulement pour le premier volume d'un corps), décalage, inverser, dépouille, direction 2 (condition, profondeur, dépouille), épaisseurs et côté de la paroi mince, contours | face d'arrivée, activer la paroi mince ou en changer le genre, esquisse, « Fusionner » et le corps choisi | oui + flèche (la flèche s'efface quand le sens ou la condition change) | oui | oui (conditions, direction 2, paroi mince, extrémités fermées) |
 | Enlèvement extrudé | oui + flèche | comme l'Extrusion | comme l'Extrusion | oui + flèche | oui | oui (à travers tout, borgne, refus de « jusqu'à la face ») |
 | Révolution | oui | angle, axe, inverser, plan médian, contours | esquisse | oui | oui | oui (axe, plan médian) |
 | Enlèvement de révolution | oui | comme la Révolution | comme la Révolution | oui | oui | non (seule la Révolution est testée) |
@@ -178,7 +178,7 @@ Corrigé pour quatre fonctions : leur double-clic rouvre le panneau de la créat
 
 Reste :
 
-- **Extrusion et Enlèvement** : passer à « jusqu'à la face » ou changer de face (une sélection, thème 4), activer la paroi mince ou changer son genre (un, plan milieu, deux côtés), ce qui ajoute ou retire des profils cachés.
+- **Extrusion et Enlèvement** : passer à « jusqu'à la face » ou changer de face (une sélection, thème 4), activer la paroi mince ou changer son genre (un, plan milieu, deux côtés), ce qui ajoute ou retire des profils cachés. Pour l'Extrusion, « Fusionner » et le corps choisi : les changer déplacerait la fonction d'un corps à l'autre, avec ce qui la suit.
 - **Dépouille** : le plan neutre.
 - **Texte** : relief ou gravure, police. Le relief est dans la forme des lettres et dans le genre du booléen : il faut reconstruire.
 - **Couper avec une surface** : passer de « tout un côté » à « bande épaisse » change le genre de l'outil.

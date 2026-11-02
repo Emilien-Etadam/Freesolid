@@ -101,6 +101,44 @@ export function installPicking(ctx) {
                : { ...body, face: groups[faceGroup].faceId, faceGroup } };
   }
 
+  /** Un panneau attend un corps (fusionner avec…) et pas de face : la
+   *  vue vise des corps entiers, le corps actif compris. */
+  function wantsBody() {
+    return !!panel.active && panel.accepts("body") && !panel.accepts("face");
+  }
+
+  function hoverWholeBody() {
+    const meshes = [ctx.partMesh, ...ctx.othersMeshes].filter(Boolean);
+    const hit = meshes.length
+      ? raycaster.intersectObjects(meshes, false)[0] : null;
+    let body = null;
+    if (hit && hit.object === ctx.partMesh) {
+      const active = (ctx.lastTree?.bodies ?? []).find((b) => b.active);
+      if (active) body = { name: active.name, label: active.label, active: true };
+    } else if (hit) {
+      const { name, label } = hit.object.userData.body;
+      body = { name, label };
+    }
+    coordsEl.textContent = coordsText(hit?.point ?? null);
+    const stale = ctx.hoveredGroup >= 0 || ctx.hoveredEdgeGroup >= 0
+      || ctx.hoveredOther || ctx.hoveredSketch || ctx.hoveredSurface
+      || ctx.hoveredBoundary;
+    if (!stale && body?.name === ctx.hoveredBody?.name) return;
+    ctx.hoveredGroup = -1;
+    ctx.hoveredEdgeGroup = -1;
+    ctx.hoveredOther = null;
+    ctx.hoveredSketch = null;
+    ctx.hoveredSurface = null;
+    ctx.hoveredBoundary = null;
+    ctx.hoveredBody = body;
+    renderer.domElement.style.cursor = body ? "pointer" : "";
+    repaintGroups();
+    repaintEdges();
+    repaintSurfaces();
+    repaintOtherBodies();
+    ctx.repaintBoundaries();
+  }
+
   function otherKey(other) {
     return other ? `${other.name}:${other.faceGroup}:${other.edgeGroup}` : null;
   }
@@ -109,10 +147,14 @@ export function installPicking(ctx) {
   function repaintOtherBodies() {
     const hover = ctx.hoveredOther;
     for (const mesh of ctx.othersMeshes) {
-      const mine = hover?.name === mesh.userData.body.name;
+      const name = mesh.userData.body.name;
+      const mine = hover?.name === name;
+      // Corps entier : survolé, ou retenu par le panneau.
+      const whole = ctx.hoveredBody?.name === name ? 1
+        : ctx.pickedBodies?.has(name) ? 2 : null;
       mesh.geometry.groups.forEach((g, i) => {
-        g.materialIndex = mine && i === hover.faceGroup ? 1
-          : (mesh.userData.groups[i].baseIndex ?? 0);
+        g.materialIndex = whole ?? (mine && i === hover.faceGroup ? 1
+          : (mesh.userData.groups[i].baseIndex ?? 0));
       });
     }
     for (const lines of ctx.othersEdges) {
@@ -272,6 +314,15 @@ export function installPicking(ctx) {
       return;
     }
     raycaster.setFromCamera(pointer, camera);
+    if (wantsBody()) {
+      hoverWholeBody();
+      return;
+    }
+    if (ctx.hoveredBody) {
+      ctx.hoveredBody = null;
+      repaintGroups();
+      repaintOtherBodies();
+    }
 
     // Filtre de sélection : un type écarté n'est plus visé. La face reste
     // calculée pour cacher ce qui est derrière elle.
@@ -379,12 +430,15 @@ export function installPicking(ctx) {
     if (ctx.partMesh) {
       ctx.partMesh.geometry.groups.forEach((g, i) => {
         const isSelected = ctx.meshGroups[i].faceId === ctx.selectedFaceId;
-        g.materialIndex = isSelected ? 2 : (i === ctx.hoveredGroup ? 1
+        const hovered = ctx.hoveredBody?.active || i === ctx.hoveredGroup;
+        g.materialIndex = isSelected ? 2 : (hovered ? 1
           : (ctx.meshGroups[i].baseIndex ?? 0));
       });
     }
     const parts = [];
-    if (ctx.hoveredSketch) {
+    if (ctx.hoveredBody) {
+      parts.push(t("Corps : {s}", { s: ctx.hoveredBody.label }));
+    } else if (ctx.hoveredSketch) {
       parts.push(ctx.hoveredSketch.label);
     } else if (ctx.hoveredBoundary) {
       const b = ctx.hoveredBoundary;
@@ -523,6 +577,15 @@ export function installPicking(ctx) {
     }
 
     if (ctx.onMeasurePointerUp()) return;
+
+    // Le panneau attend un corps : le clic prend celui qu'il survole.
+    if (wantsBody()) {
+      if (ctx.hoveredBody && event.button === 0) {
+        const { name, label } = ctx.hoveredBody;
+        panel.notifyPick("body", { kind: "body", name, label });
+      }
+      return;
+    }
 
     // Un autre corps : il devient le corps actif, puis le même clic prend
     // la face ou l'arête qu'il présente sous le pointeur. Le clic du
@@ -920,6 +983,6 @@ export function installPicking(ctx) {
   return {
     raycaster, pointer, setPointerFromEvent,
     repaintGroups, repaintSurfaces, findFeatureInTree, clearFeatureDims,
-    selectEdgeIds,
+    selectEdgeIds, repaintOtherBodies,
   };
 }

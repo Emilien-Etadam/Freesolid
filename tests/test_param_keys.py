@@ -387,7 +387,7 @@ def test_les_conditions_d_une_extrusion_se_reeditent():
     assert kernel._extrude_state(obj) == {
         "cond": "borgne", "midplane": False, "reversed": False,
         "taper": 2.0, "offset": 0.0, "cond2": "borgne", "taper2": -3.0,
-        "face": False}
+        "face": False, "alone": True}
     kernel.set_params("F", {"cond2": None})
     assert obj.SideType == "One side"
 

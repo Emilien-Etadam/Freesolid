@@ -211,6 +211,7 @@ def _etapes():
         fonctions.p93_fusionner_ou_non,
         fonctions.p94_fusionner_les_autres_volumes,
         fonctions.p95_fusionner_plusieurs_corps,
+        fonctions.p96_corps_fondus_reedites,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

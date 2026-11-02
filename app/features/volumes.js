@@ -657,6 +657,48 @@ export function mergeParams(v, bodies) {
            ...(others.length ? { bodies: others } : {}) };
 }
 
+// ---------- corps fondus, à la réédition ----------
+// Un corps fondu ne se voit plus à part dans la vue : la réédition donne
+// une case par corps — cochée pour ceux que la fonction fond, décochée
+// pour les autres corps du dossier. Le corps de la fonction ne bouge pas.
+
+const FUSING = ["pad", "revolution"];
+const fuseKey = (name) => `fuse:${name}`;
+
+/** Les cases de la réédition : les corps fondus, puis les autres corps
+ *  solides du dossier, sauf celui de la fonction. */
+export function fusedCandidates(feature, tree) {
+  if (!FUSING.includes(feature?.type_key)) return [];
+  const own = feature.body ?? activeBodyName(tree?.bodies);
+  const fused = feature.fused ?? [];
+  const others = (tree?.bodies ?? []).filter((b) => b.has_solid === true
+    && b.name !== own && !fused.some((f) => f.name === b.name));
+  return [...fused.map(({ name, label }) => ({ name, label, fused: true })),
+          ...others.map(({ name, label }) => ({ name, label, fused: false }))];
+}
+
+/** Groupe « Corps fondus » de la réédition, vide sans autre corps. */
+export function fusedGroups(feature, tree) {
+  const candidates = fusedCandidates(feature, tree);
+  if (!candidates.length) return [];
+  return [{
+    label: "Corps fondus",
+    rows: candidates.map((c) => ({ type: "check", key: fuseKey(c.name),
+                                   label: c.label, value: c.fused })),
+  }];
+}
+
+/** `{ bodies }` quand les cases ont changé, sinon `{}`. */
+export function fusedValues(v, feature, tree) {
+  const candidates = fusedCandidates(feature, tree);
+  const checked = candidates
+    .filter((c) => v[fuseKey(c.name)] ?? c.fused).map((c) => c.name);
+  const before = candidates.filter((c) => c.fused).map((c) => c.name);
+  const same = checked.length === before.length
+    && checked.every((name) => before.includes(name));
+  return same ? {} : { bodies: checked };
+}
+
 // Lissage, balayage : un enlèvement creuse le corps actif, sans fusion.
 const added = (v) => !v.subtractive;
 const addedMergeParams = (v, ctx) => (added(v)

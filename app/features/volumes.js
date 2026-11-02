@@ -680,39 +680,39 @@ export function mergeParams(v, bodies) {
 
 const FUSING = ["pad", "revolution"];
 const CUTTING = ["pocket", "groove", "hole"];
-const fuseKey = (name) => `fuse:${name}`;
+const bodyKey = (name) => `body:${name}`;
 
 /** Les cases de la réédition : les corps fondus (ou creusés), puis les
  *  autres corps solides du dossier, sauf celui de la fonction. */
-export function fusedCandidates(feature, tree) {
+export function bodyChoices(feature, tree) {
   const kind = feature?.type_key;
   if (!FUSING.includes(kind) && !CUTTING.includes(kind)) return [];
   const own = feature.body ?? activeBodyName(tree?.bodies);
-  const fused = (CUTTING.includes(kind) ? feature.cut : feature.fused) ?? [];
+  const held = (CUTTING.includes(kind) ? feature.cut : feature.fused) ?? [];
   const others = (tree?.bodies ?? []).filter((b) => b.has_solid === true
-    && b.name !== own && !fused.some((f) => f.name === b.name));
-  return [...fused.map(({ name, label }) => ({ name, label, fused: true })),
-          ...others.map(({ name, label }) => ({ name, label, fused: false }))];
+    && b.name !== own && !held.some((f) => f.name === b.name));
+  return [...held.map(({ name, label }) => ({ name, label, held: true })),
+          ...others.map(({ name, label }) => ({ name, label, held: false }))];
 }
 
 /** Groupe « Corps fondus » (« Corps creusés ») de la réédition, vide sans
  *  autre corps. */
-export function fusedGroups(feature, tree) {
-  const candidates = fusedCandidates(feature, tree);
+export function bodyChoiceGroups(feature, tree) {
+  const candidates = bodyChoices(feature, tree);
   if (!candidates.length) return [];
   return [{
     label: CUTTING.includes(feature.type_key) ? "Corps creusés" : "Corps fondus",
-    rows: candidates.map((c) => ({ type: "check", key: fuseKey(c.name),
-                                   label: c.label, value: c.fused })),
+    rows: candidates.map((c) => ({ type: "check", key: bodyKey(c.name),
+                                   label: c.label, value: c.held })),
   }];
 }
 
 /** `{ bodies }` quand les cases ont changé, sinon `{}`. */
-export function fusedValues(v, feature, tree) {
-  const candidates = fusedCandidates(feature, tree);
+export function bodyChoiceValues(v, feature, tree) {
+  const candidates = bodyChoices(feature, tree);
   const checked = candidates
-    .filter((c) => v[fuseKey(c.name)] ?? c.fused).map((c) => c.name);
-  const before = candidates.filter((c) => c.fused).map((c) => c.name);
+    .filter((c) => v[bodyKey(c.name)] ?? c.held).map((c) => c.name);
+  const before = candidates.filter((c) => c.held).map((c) => c.name);
   const same = checked.length === before.length
     && checked.every((name) => before.includes(name));
   return same ? {} : { bodies: checked };

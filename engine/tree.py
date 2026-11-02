@@ -182,8 +182,7 @@ class TreeMixin:
             # source (``_history_rows``) : glissées dans la chaîne d'un
             # corps, elles n'y décalent pas les fonctions.
             members = [o for o in body.Group if o.Name in order_of
-                       and not (getattr(o, "FreeSolidScopeOf", "")
-                                and self._is_thin_helper(o))]
+                       and not self._hidden_cut_source(o)]
             for slot, obj in zip(sorted(order_of[o.Name] for o in members),
                                  members):
                 order_of[obj.Name] = slot
@@ -268,8 +267,8 @@ class TreeMixin:
         for body in self._history_bodies():
             reached = -1
             for obj in body.Group:
-                source = getattr(obj, "FreeSolidScopeOf", "")
-                if not (source and self._is_thin_helper(obj)):
+                source = self._hidden_cut_source(obj)
+                if not source:
                     reached = max(reached, order_of.get(obj.Name, -1))
                     continue
                 if source not in named:
@@ -573,7 +572,7 @@ class TreeMixin:
         handled = self._repetition_delete(obj)
         if handled is not None:
             return handled
-        leftovers = self._repetition_before_delete(obj)
+        leftovers = self._scope_before_delete(obj)
         label = obj.Label
         if obj.TypeId == "PartDesign::Body":
             bodies = [o for o in doc.Objects
@@ -890,10 +889,8 @@ class TreeMixin:
         nommé, quand il est vide ou n'a qu'une forme importée. ``tip`` :
         le corps arrêté à cette fonction."""
         current = tip is None or tip is getattr(body, "Tip", None)
-        tip = tip if tip is not None else getattr(body, "Tip", None)
-        while getattr(tip, "FreeSolidRemoveof", ""):
-            tip = tip.BaseFeature  # ôter un solide ne change pas les autres
-        if getattr(body, _NAMED_PROP, False) or tip is None:
+        tip = self._title_tip(body, tip)
+        if tip is None:
             return body.Label
         if self._is_pattern_base(tip):
             host = self._body_pattern_host_of(tip)
@@ -914,14 +911,19 @@ class TreeMixin:
                 return "{}[{}]".format(owner.Label, sharing.index(body) + 1)
         return owner.Label
 
+    def _title_tip(self, body, tip=None):
+        """La fonction où lire le nom du dossier de ``body`` : sa pointe, ou
+        ``tip``. None s'il est nommé à la main ou vide."""
+        tip = tip if tip is not None else getattr(body, "Tip", None)
+        while getattr(tip, "FreeSolidRemoveof", ""):
+            tip = tip.BaseFeature  # ôter un solide ne change pas les autres
+        return None if getattr(body, _NAMED_PROP, False) else tip
+
     def _title_owner(self, body):
         """La fonction dont ``body`` porte le nom à sa pointe, ou None (nommé
         à la main, vide, base importée ou copie de réseau)."""
-        tip = getattr(body, "Tip", None)
-        while getattr(tip, "FreeSolidRemoveof", ""):
-            tip = tip.BaseFeature
-        if (getattr(body, _NAMED_PROP, False) or tip is None
-                or self._is_pattern_base(tip)
+        tip = self._title_tip(body)
+        if (tip is None or self._is_pattern_base(tip)
                 or tip.TypeId == "PartDesign::FeatureBase"):
             return None
         return self._thin_owner(tip)

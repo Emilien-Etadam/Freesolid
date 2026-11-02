@@ -1,8 +1,7 @@
-"""Répéter au-delà du corps actif : réseau de corps, corps concernés.
+"""Réseau de corps : répéter des corps entiers.
 
-**Réseau de corps** (``add_body_pattern``) — chaque occurrence est un
-nouveau corps qui suit sa source telle qu'elle est à la place du réseau
-dans l'arbre :
+Chaque occurrence (``add_body_pattern``) est un nouveau corps qui suit sa
+source telle qu'elle est à la place du réseau dans l'arbre :
 
 - un lieur de forme placé (``SubShapeBinder``) lit la dernière fonction
   de la source avant le réseau ; ce qui vient après ne passe pas dans les
@@ -19,16 +18,9 @@ rebranche leurs lieurs quand la fonction lue change (supprimée, ou une
 autre amenée avant le réseau). Une copie supprimée à la main est sautée
 ensuite.
 
-**Corps concernés** d'une répétition de fonctions (``scope``) — les
-enlèvements de matière répétés creusent aussi les corps choisis. Dans
-chacun, un booléen Soustraire prend pour outil une forme figée interne :
-les formes d'enlèvement, placées comme FreeCAD place les occurrences. Le
-moteur la recalcule quand la répétition ou ses fonctions changent.
-
-Un enlèvement seul (extrudé, gorge, perçage…) a aussi ses corps
-concernés : ceux qu'il traverse. Son booléen est alors une étape cachée
-(``_is_cut_source``), qui compte au rang de l'enlèvement dans la barre
-de retour, comme les étapes d'une suppression de corps.
+Les pas et les angles d'une répétition (``linear_steps``,
+``polar_angles``) servent aussi aux corps concernés
+(``engine/bodyscope.py``).
 
 Tout est en objets FreeCAD standard : le fichier s'ouvre dans FreeCAD.
 Les calculs de pas et d'angles sont purs, testés en CI ; les imports
@@ -36,7 +28,6 @@ FreeCAD restent dans les méthodes.
 """
 
 import json
-import math
 
 #: Genres de réseau de corps, et le libellé de l'hôte.
 BODY_PATTERN_LABELS = {
@@ -45,20 +36,8 @@ BODY_PATTERN_LABELS = {
     "mirror": "Symétrie de corps",
 }
 
-#: Fonctions qui enlèvent de la matière : les seules qui creusent les
-#: corps concernés.
-_SUBTRACTIVE_TYPES = frozenset({
-    "PartDesign::Pocket", "PartDesign::Groove", "PartDesign::Hole",
-})
-
 #: Écart sous lequel deux placements sont les mêmes.
 _SAME = 1e-9
-
-
-def is_subtractive_type(type_id):
-    """Vrai pour une fonction qui enlève de la matière."""
-    return (type_id in _SUBTRACTIVE_TYPES
-            or str(type_id).startswith("PartDesign::Subtractive"))
 
 
 def linear_steps(mode, occurrences, length, offset,
@@ -109,15 +88,6 @@ def polar_angles(mode, occurrences, angle, offset=0.0,
     total = float(angle)
     gap = total / count if abs(total - 360.0) < 1e-7 else total / (count - 1)
     return [gap * i for i in range(count)]
-
-
-def scope_names(text):
-    """Noms des corps concernés, rangés « Body001;Body002 »."""
-    return [name for name in str(text or "").split(";") if name]
-
-
-def format_scope(names):
-    return ";".join(names)
 
 
 def copy_key(host, source, index):
@@ -536,7 +506,7 @@ class BodyPatternMixin:
                                 ).split(";") if n]
         key = parse_copy_key(getattr(body, "FreeSolidPatternCopy", ""))
         active = self._body is body
-        later = self._repetition_before_delete(body)
+        later = self._scope_before_delete(body)
         for child in list(body.Group):
             if doc.getObject(child.Name) is not None:
                 doc.removeObject(child.Name)
@@ -569,277 +539,9 @@ class BodyPatternMixin:
         name = getattr(obj, "FreeSolidPatternOf", "")
         return doc.getObject(name) if name else None
 
-    # ---------- corps concernés ----------
-
-    def _attach_pattern_scope(self, pattern, names):
-        """Les enlèvements répétés de ``pattern`` creusent aussi les corps
-        ``names``."""
-        from engine.kernel import KernelError
-        if not isinstance(names, (list, tuple)):
-            raise KernelError("scope doit être une liste de noms")
-        doc = self._require_doc()
-        source = pattern.getParentGeoFeatureGroup()
-        targets = []
-        for name in names:
-            obj = doc.getObject(str(name))
-            if (obj is None or obj.TypeId != "PartDesign::Body"
-                    or self._is_internal_tool(obj)):
-                raise KernelError("corps inconnu : {}".format(name))
-            if obj is not source and obj not in targets:
-                targets.append(obj)
-        if not targets:
-            return
-        if not self._scope_seeds(pattern):
-            raise KernelError(
-                "corps concernés : seuls les enlèvements de matière "
-                "creusent les autres corps")
-        for target in targets:
-            self._make_scope_cut(pattern, target)
-        self._stamp_text(pattern, "FreeSolidScope",
-                         format_scope(t.Name for t in targets))
-
-    @staticmethod
-    def _is_cut_source(obj):
-        """Un enlèvement seul, et non une répétition : ses corps concernés
-        sont des étapes cachées."""
-        return (is_subtractive_type(getattr(obj, "TypeId", ""))
-                and "Originals" not in getattr(obj, "PropertiesList", ()))
-
-    def _scope_seeds(self, pattern, extend=False):
-        """Formes d'enlèvement des fonctions répétées — ou de l'enlèvement
-        seul —, dans le repère de leur corps. ``extend`` : celles « à
-        travers tout » prolongées au-delà de tous les corps."""
-        reach = self._through_reach() if extend else 0.0
-        seeds = []
-        originals = ([pattern] if self._is_cut_source(pattern)
-                     else getattr(pattern, "Originals", None) or ())
-        for feature in originals:
-            if (not is_subtractive_type(feature.TypeId)
-                    or getattr(feature, "Suppressed", False)):
-                continue
-            shape = feature.AddSubShape.copy()
-            if shape.isNull():
-                continue
-            shape.Placement = feature.Placement.multiply(shape.Placement)
-            if reach:
-                shape = self._through_extended(feature, shape, reach)
-            seeds.append(shape)
-        return seeds
-
-    def _through_reach(self):
-        """De quoi traverser toute la pièce : la diagonale de l'encombrement
-        de tous les corps, arrondie à la puissance de deux au-dessus (l'outil
-        ne se refait pas à chaque retouche d'un corps)."""
-        import FreeCAD as App
-        box = App.BoundBox()
-        for body in self._history_bodies():
-            try:
-                shape = body.Shape
-                if not shape.isNull() and shape.Solids:
-                    box.add(shape.BoundBox)
-            except Exception:  # noqa: BLE001 — forme OCCT inaccessible
-                continue
-        if not box.isValid():
-            return 0.0
-        return 2.0 ** math.ceil(math.log2(box.DiagonalLength + 1.0))
-
-    @staticmethod
-    def _through_ends(feature):
-        """Bouts « à travers tout » de ``feature`` : ``"far"`` (le plus loin
-        de l'esquisse), ``"both"`` ou None."""
-        if feature.TypeId == "PartDesign::Hole":
-            through = getattr(feature, "DepthType", "") == "ThroughAll"
-            return "far" if through else None
-        if feature.TypeId != "PartDesign::Pocket":
-            return None
-        first = getattr(feature, "Type", "") == "ThroughAll"
-        side = getattr(feature, "SideType", "One side")
-        if side == "Two sides":
-            second = getattr(feature, "Type2", "") == "ThroughAll"
-            return "both" if first and second else None
-        if not first:
-            return None
-        return "both" if (side == "Symmetric"
-                          or getattr(feature, "Midplane", False)) else "far"
-
-    def _through_extended(self, feature, seed, reach):
-        """``seed`` prolongé au-delà de ses bouts « à travers tout » : FreeCAD
-        ne traverse que l'encombrement du corps de l'enlèvement, les
-        modeleurs courants tous les corps qu'il creuse. La section prise un
-        peu en deçà du bout (au-dessus de la pointe d'un perçage) est
-        extrudée de ``reach`` plus la taille de l'outil."""
-        import Part
-        ends = self._through_ends(feature)
-        if ends is None:
-            return seed
-        try:
-            plane = feature.Profile[0].Shape.findPlane()
-            normal, origin = plane.Axis, plane.Position
-            heights = [(v.Point - origin).dot(normal) for v in seed.Vertexes]
-            low, high = min(heights), max(heights)
-            if ends == "far":
-                signs = [1.0 if abs(high) >= abs(low) else -1.0]
-            else:
-                signs = [1.0, -1.0]
-            inset = (float(feature.Diameter) if feature.TypeId
-                     == "PartDesign::Hole" else 0.01)
-            length = reach + seed.BoundBox.DiagonalLength
-            shape = seed
-            for sign in signs:
-                end = high if sign > 0 else low
-                at = origin.dot(normal) + end - sign * inset
-                wires = seed.slice(normal, at)
-                if not wires:
-                    continue
-                face = Part.makeFace(wires, "Part::FaceMakerBullseye")
-                shape = shape.fuse(face.extrude(normal * sign
-                                                * (inset + length)))
-            return shape.removeSplitter() if shape is not seed else seed
-        except Exception:  # noqa: BLE001 — OCCT : l'outil tel quel
-            return seed
-
-    def _scope_transforms(self, pattern):
-        """Placements des occurrences (la première comprise) dans le repère
-        du corps : ``("move", placement)`` ou ``("mirror", point,
-        normale)``."""
-        import FreeCAD as App
-        if self._is_cut_source(pattern):
-            return [("move", App.Placement())]
-        kind = pattern.TypeId
-        if kind == "PartDesign::Mirrored":
-            obj, subs = pattern.MirrorPlane
-            base, normal = self._link_plane(obj, subs[0] if subs else "")
-            return [("move", App.Placement()), ("mirror", base, normal)]
-        if kind == "PartDesign::PolarPattern":
-            obj, subs = pattern.Axis
-            base, direction = self._link_line(obj, subs[0] if subs else "")
-            if pattern.Reversed:
-                direction = direction * -1
-            angles = polar_angles(
-                pattern.Mode, pattern.Occurrences, pattern.Angle.Value,
-                pattern.Offset.Value, list(pattern.Spacings),
-                list(getattr(pattern, "SpacingPattern", ()) or ()))
-            return [("move", App.Placement(App.Vector(),
-                                           App.Rotation(direction, a), base))
-                    for a in angles]
-        obj, subs = pattern.Direction
-        _, first = self._link_line(obj, subs[0] if subs else "")
-        if pattern.Reversed:
-            first = first * -1
-        steps = linear_steps(
-            pattern.Mode, pattern.Occurrences, pattern.Length.Value,
-            pattern.Offset.Value, list(pattern.Spacings),
-            list(pattern.SpacingPattern))
-        second, steps2 = App.Vector(), [0.0]
-        if int(pattern.Occurrences2) > 1 and pattern.Direction2:
-            obj2, subs2 = pattern.Direction2
-            _, second = self._link_line(obj2, subs2[0] if subs2 else "")
-            if pattern.Reversed2:
-                second = second * -1
-            steps2 = linear_steps(
-                pattern.Mode2, pattern.Occurrences2, pattern.Length2.Value,
-                pattern.Offset2.Value, list(pattern.Spacings2),
-                list(pattern.SpacingPattern2))
-        return [("move", App.Placement(first * a + second * b,
-                                       App.Rotation()))
-                for a in steps for b in steps2]
-
-    def _scope_signature(self, pattern, target):
-        """Empreinte de ce dont dépend l'outil : il n'est refait que si
-        elle change."""
-        source = pattern.getParentGeoFeatureGroup()
-        data = []
-        for seed in self._scope_seeds(pattern):
-            box = seed.BoundBox
-            data.append([round(v, 6) for v in (
-                seed.Volume, seed.Area, box.XMin, box.YMin, box.ZMin,
-                box.XMax, box.YMax, box.ZMax)])
-        for item in self._scope_transforms(pattern):
-            if item[0] == "move":
-                data.append([round(v, 9) for v in item[1].Matrix.A])
-            else:
-                data.append([round(v, 9) for v in (*item[1], *item[2])])
-        for body in (source, target):
-            data.append([round(v, 9)
-                         for v in body.getGlobalPlacement().Matrix.A])
-        data.append(self._through_reach())
-        return json.dumps(data)
-
-    def _scope_tool(self, pattern, target):
-        """L'outil figé : chaque forme d'enlèvement à chaque occurrence,
-        dans le repère de ``target``."""
-        import Part
-        source = pattern.getParentGeoFeatureGroup()
-        outer = target.getGlobalPlacement().inverse().multiply(
-            source.getGlobalPlacement())
-        shapes = []
-        for seed in self._scope_seeds(pattern, extend=True):
-            for item in self._scope_transforms(pattern):
-                if item[0] == "move":
-                    shape = seed.copy()
-                    shape.Placement = item[1].multiply(shape.Placement)
-                else:
-                    shape = seed.mirror(item[1], item[2])
-                shape.Placement = outer.multiply(shape.Placement)
-                shapes.append(shape)
-        tool = (shapes[0].multiFuse(shapes[1:]) if len(shapes) > 1
-                else shapes[0])
-        if not tool.Placement.isIdentity():
-            # La base d'un corps ignore la position de sa forme.
-            tool = Part.makeCompound([tool])
-        return tool
-
-    def _make_scope_cut(self, pattern, target):
-        """Dans ``target`` : Soustraire l'outil figé de ``pattern``."""
-        doc = self._require_doc()
-        shape = doc.addObject("Part::Feature", "ScopeShape")
-        shape.Shape = self._scope_tool(pattern, target)
-        self._stamp_text(shape, "FreeSolidScopeSig",
-                         self._scope_signature(pattern, target))
-        self._mark_body_pattern_tool(shape)
-        shape.Visibility = False
-        # L'outil va droit dans le booléen : un corps intermédiaire, rangé
-        # dans le booléen, lierait hors de sa portée (avertissement FreeCAD
-        # à chaque reconstruction).
-        cut = target.newObject("PartDesign::Boolean", "Boolean")
-        cut.Type = "Cut"
-        try:
-            cut.addObjects([shape])
-        except AttributeError:
-            cut.Group = [shape]
-        source = pattern.getParentGeoFeatureGroup()
-        cut.Label = self._t("{} — depuis {}".format(pattern.Label,
-                                                    source.Label))
-        self._stamp_text(cut, "FreeSolidScopeOf", pattern.Name)
-        self._stamp_text(cut, "FreeSolidScopeParts", shape.Name)
-        if self._is_cut_source(pattern):
-            # Hors de l'arbre : l'enlèvement le représente, et le survol
-            # d'une face qu'il a creusée le désigne.
-            cut.addProperty("App::PropertyBool", self._THIN_HELPER,
-                            "FreeSolid", "Étape cachée d'un enlèvement")
-            setattr(cut, self._THIN_HELPER, True)
-            self._stamp_text(cut, "FreeSolidThinOwner", pattern.Name)
-        return cut
-
-    def _scope_cuts(self, pattern):
-        return [o for o in self._require_doc().Objects
-                if getattr(o, "FreeSolidScopeOf", "") == pattern.Name]
-
-    def _remove_scope_cut(self, cut):
-        """Retire un booléen de corps concerné et son outil ; la pointe de
-        son corps recule d'abord s'il l'était, la fonction suivante se
-        rebranche sur la précédente."""
-        doc = self._require_doc()
-        parts = self._repetition_parts_of(cut)
-        body = cut.getParentGeoFeatureGroup()
-        base = getattr(cut, "BaseFeature", None)
-        if body is not None and getattr(body, "Tip", None) is cut:
-            body.Tip = base
-        self._relink_chain(body, [cut], base)
-        doc.removeObject(cut.Name)
-        self._remove_named_parts(parts)
-
     def _remove_named_parts(self, names):
+        """Retire des objets internes par leur nom ; un corps avec ses
+        fonctions."""
         doc = self._require_doc()
         for name in names:
             obj = doc.getObject(name)
@@ -849,48 +551,6 @@ class BodyPatternMixin:
                 for child in list(obj.Group):
                     doc.removeObject(child.Name)
             doc.removeObject(name)
-
-    def _drop_pattern_scope(self, pattern):
-        for cut in self._scope_cuts(pattern):
-            self._remove_scope_cut(cut)
-        if "FreeSolidScope" in pattern.PropertiesList:
-            pattern.FreeSolidScope = ""
-
-    @staticmethod
-    def _repetition_parts_of(obj):
-        """Objets internes qu'un booléen de corps concerné emporte."""
-        return [n for n in str(getattr(obj, "FreeSolidScopeParts", "")
-                               ).split(";") if n]
-
-    def _refresh_pattern_scopes(self):
-        """Refait l'outil des corps concernés dont l'empreinte a changé."""
-        changed = False
-        doc = self._require_doc()
-        for pattern in doc.Objects:
-            if not scope_names(getattr(pattern, "FreeSolidScope", "")):
-                continue
-            off = bool(getattr(pattern, "Suppressed", False))
-            for cut in self._scope_cuts(pattern):
-                if bool(getattr(cut, "Suppressed", False)) != off:
-                    cut.Suppressed = off
-                    changed = True
-                if off:
-                    continue
-                target = cut.getParentGeoFeatureGroup()
-                parts = self._repetition_parts_of(cut)
-                shape = doc.getObject(parts[-1]) if parts else None
-                if target is None or shape is None:
-                    continue
-                try:
-                    signature = self._scope_signature(pattern, target)
-                    if getattr(shape, "FreeSolidScopeSig", "") == signature:
-                        continue
-                    shape.Shape = self._scope_tool(pattern, target)
-                except Exception:  # noqa: BLE001 — l'outil d'avant reste
-                    continue
-                shape.FreeSolidScopeSig = signature
-                changed = True
-        return changed
 
     # ---------- reconstruction, arbre, suppression ----------
 
@@ -916,12 +576,13 @@ class BodyPatternMixin:
         changed = False
         for host in self._body_pattern_hosts():
             changed = self._sync_body_pattern(host) or changed
-        return self._refresh_pattern_scopes() or changed
+        return self._refresh_scopes() or changed
 
     def _repetition_tree_fields(self, obj, item):
         """Champs d'arbre : ``edits`` (l'objet que le double-clic rouvre),
         ``edits_type``, ``edits_has_params``, ``body_pattern`` et
         ``scope``."""
+        from engine.bodyscope import scope_names
         from engine.vocab import type_key_for
         doc = self._require_doc()
         host = self._body_pattern_host_of(obj)
@@ -971,7 +632,7 @@ class BodyPatternMixin:
 
     def _repetition_delete(self, obj):
         """Suppressions propres aux répétitions : l'arbre, ou None quand la
-        suppression ordinaire suit (après ``_repetition_before_delete``)."""
+        suppression ordinaire suit (après ``_scope_before_delete``)."""
         from engine.kernel import KernelError
         doc = self._require_doc()
         if obj.TypeId == "PartDesign::Body":
@@ -995,24 +656,3 @@ class BodyPatternMixin:
             self._recompute()
             return self._current_tree()
         return None
-
-    def _repetition_before_delete(self, obj):
-        """Avant une suppression ordinaire : les corps concernés de ce qui
-        part. Rend les objets internes à retirer après."""
-        doc = self._require_doc()
-        doomed = [obj] + (list(obj.Group)
-                          if obj.TypeId == "PartDesign::Body" else [])
-        later = []
-        for item in doomed:
-            if scope_names(getattr(item, "FreeSolidScope", "")):
-                self._drop_pattern_scope(item)
-            pattern = doc.getObject(getattr(item, "FreeSolidScopeOf", "")
-                                    or "")
-            if pattern is not None:
-                body = item.getParentGeoFeatureGroup()
-                names = [n for n in scope_names(
-                    getattr(pattern, "FreeSolidScope", ""))
-                    if body is None or n != body.Name]
-                pattern.FreeSolidScope = format_scope(names)
-            later += self._repetition_parts_of(item)
-        return later

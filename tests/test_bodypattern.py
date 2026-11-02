@@ -1,16 +1,11 @@
-"""Réseau de corps, corps concernés : calculs purs, sans FreeCAD."""
-
-import pytest
+"""Réseau de corps : calculs purs, sans FreeCAD."""
 
 from engine.bodypattern import (
     body_pattern_offsets,
     copy_key,
-    format_scope,
-    is_subtractive_type,
     linear_steps,
     parse_copy_key,
     polar_angles,
-    scope_names,
 )
 
 
@@ -62,22 +57,3 @@ def test_cle_de_copie_aller_retour():
     for bad in ("", None, "a|b", "a||c", "a|b|c|d"):
         assert parse_copy_key(bad) is None
 
-
-def test_corps_concernes_ranges_en_texte():
-    assert scope_names("Body001;;Body002") == ["Body001", "Body002"]
-    assert scope_names(None) == []
-    assert format_scope(["Body001", "Body002"]) == "Body001;Body002"
-
-
-@pytest.mark.parametrize("type_id, expected", [
-    ("PartDesign::Pocket", True),
-    ("PartDesign::Groove", True),
-    ("PartDesign::Hole", True),
-    ("PartDesign::SubtractiveBox", True),
-    ("PartDesign::SubtractiveLoft", True),
-    ("PartDesign::Pad", False),
-    ("PartDesign::AdditiveBox", False),
-    ("PartDesign::Fillet", False),
-])
-def test_seuls_les_enlevements_creusent(type_id, expected):
-    assert is_subtractive_type(type_id) is expected

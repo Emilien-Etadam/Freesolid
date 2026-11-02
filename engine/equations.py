@@ -63,13 +63,13 @@ class EquationsMixin:
         # Les corps qu'un volume fond, ou qu'un enlèvement creuse : pas
         # une cote, ses objets cachés.
         values = dict(values)
-        fusing = "bodies" in values
-        fused = values.pop("bodies", None)
+        chosen = "bodies" in values
+        bodies = values.pop("bodies", None)
         values, asked = self._props_from_keys(obj, values)
-        if fusing and self._is_cut_source(obj):
-            self._set_cut_bodies(obj, fused)
-        elif fusing:
-            self._set_fused_bodies(obj, fused)
+        if chosen and self._is_cut_source(obj):
+            self._set_cut_bodies(obj, bodies)
+        elif chosen:
+            self._set_fused_bodies(obj, bodies)
         # Atomicité : une expression était stockée AVANT que le recompute
         # ne la valide — un identifiant inconnu (« _ ») laissait la pièce
         # Invalid pour toujours (barre bloquée, cascade « Tool shape is

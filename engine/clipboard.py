@@ -9,6 +9,11 @@ restent dans les méthodes.
 class ClipboardMixin:
     """Op : paste_feature."""
 
+    _MULTI_PROFILE_TYPES = frozenset({
+        "PartDesign::AdditiveLoft", "PartDesign::SubtractiveLoft",
+        "PartDesign::AdditivePipe", "PartDesign::SubtractivePipe",
+    })
+
     def paste_feature(self, feature, face=None, plane=None, datum=None):
         """Colle une copie de ``feature`` sur la face ``face`` du solide,
         le plan d'origine ``plane`` ou le plan de référence ``datum`` —
@@ -24,6 +29,11 @@ class ClipboardMixin:
         else:
             if self._thin_spec(source) is not None:
                 raise KernelError("une paroi mince ne se colle pas encore")
+            if source.TypeId in self._MULTI_PROFILE_TYPES:
+                # Ses sections ou sa trajectoire resteraient celles de la
+                # source : la copie n'en serait pas une.
+                raise KernelError("un lissage ou un balayage ne se colle "
+                                  "pas encore")
             sketch, _ = self._profile_of(source)  # à travers un liant
             if sketch is None or sketch.TypeId != "Sketcher::SketchObject":
                 raise KernelError("seules une esquisse ou une fonction à "
@@ -54,9 +64,18 @@ class ClipboardMixin:
                 body.addObject(twin)
                 twin.Profile = (copy, [""])
                 axis = getattr(twin, "ReferenceAxis", None)
-                if axis is not None and self._is_thin_helper(axis[0]):
+                token = getattr(axis[0], "FreeSolidSketchAxis", "") \
+                    if axis is not None else ""
+                if token:
+                    # Révolution d'une esquisse d'un autre corps : l'axe
+                    # de l'esquisse collée, qui est dans le corps.
+                    twin.ReferenceAxis = (copy, [self._SKETCH_AXES[token]])
+                elif axis is not None and self._is_thin_helper(axis[0]):
                     # L'esquisse collée est dans le corps : sa normale.
                     twin.ReferenceAxis = None
+                elif axis is not None and axis[0] is sketch:
+                    # Un axe de l'esquisse : celui de la copie.
+                    twin.ReferenceAxis = (copy, list(axis[1]))
             self._recompute()
         except KernelError:
             raise  # la transaction de l'op défait la copie

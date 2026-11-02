@@ -597,6 +597,8 @@ class TreeMixin:
             if doc.getObject(name) is not None:
                 doc.removeObject(name)
         self._remove_named_parts(leftovers)
+        # Un axe interne de révolution sans fonction ne garde pas le corps.
+        self._drop_unused_axis_tools()
         self._drop_emptied_body(parent_body)
         try:
             if self._assembly:

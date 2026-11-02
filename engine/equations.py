@@ -122,13 +122,16 @@ class EquationsMixin:
                 raise KernelError("propriété non éditable : {}".format(
                     asked.get(prop, prop)))
             if prop == "axis":
-                profile = self._as_object(getattr(obj, "Profile", None))
+                # L'esquisse, à travers le liant d'un autre corps ; l'axe
+                # se range dans le corps de la fonction.
+                profile, _ = self._profile_of(obj)
                 if profile is None:
                     self._restore_props(obj, previous)
                     raise KernelError("l'axe de révolution doit être une ligne")
                 token = str(value).strip() if value is not None else ""
                 try:
-                    reference = self._revolution_reference(profile, token)
+                    reference = self._revolution_reference(
+                        profile, token, obj.getParentGeoFeatureGroup(), obj)
                 except KernelError:
                     self._restore_props(obj, previous)
                     raise

@@ -382,11 +382,11 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, BodySol
 
     def _require_body(self):
         doc = self._require_doc()
-        name = getattr(self._body, "Name", None) if self._body else None
+        name = _active_body_name(self)
         if self._body is not None and (not name
                                        or doc.getObject(name) is None):
-            # Ctrl+Z a retiré le corps actif (un corps neuf) : on revient
-            # à celui du dernier objet, là où l'on travaillait.
+            # Le corps actif a été retiré (Ctrl+Y d'une suppression qui
+            # l'emporte) : on revient à celui du dernier objet.
             self._body = self._body_of_newest()
         if self._body is None:
             raise KernelError("aucun corps — commencez par new_part")
@@ -803,9 +803,23 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, BodySol
             raise KernelError("rien à annuler dans l'esquisse")
         if not room:
             raise KernelError("rien à annuler")
-        for _ in range(max(1, min(int(steps), room))):
+        names = list(doc.UndoNames)
+        count = max(1, min(int(steps), room))
+        for _ in range(count):
             doc.undo()
+        if sketch is None:
+            self._restore_body_before(names[count - 1])
         return self._after_history(sketch)
+
+    def _restore_body_before(self, name):
+        """Ctrl+Z : le corps actif d'avant la plus ancienne op défaite —
+        une fusion dans un autre corps, un nouveau corps, y ramènent."""
+        from engine.docprops import body_before
+        before = body_before(name)
+        found = self._doc.getObject(before) if before else None
+        if (found is not None and found.TypeId == "PartDesign::Body"
+                and not self._is_internal_tool(found)):
+            self._body = found
 
     def redo(self, steps=1, sketch=None):
         """Rétablir ; ``sketch`` : comme pour ``undo``."""
@@ -850,9 +864,10 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, BodySol
         except KernelError:
             return None
 
-    def _origin_feature(self, role):
-        """One of the body's origin planes/axes, by role (XY_Plane, Z_Axis…)."""
-        body = self._require_body()
+    def _origin_feature(self, role, body=None):
+        """One of the body's origin planes/axes, by role (XY_Plane, Z_Axis…)
+        — of the active body unless ``body`` is given."""
+        body = body or self._require_body()
         origin = getattr(body, "Origin", None)
         features = getattr(origin, "OriginFeatures", None) or ()
         for feature in features:
@@ -971,6 +986,15 @@ def _close_booking(abort=False):
         pass
 
 
+def _active_body_name(kernel):
+    """Le corps actif, que la transaction retient pour Ctrl+Z ; None sans
+    corps, ou s'il a été retiré."""
+    try:
+        return getattr(getattr(kernel, "_body", None), "Name", None) or None
+    except Exception:  # noqa: BLE001 - objet FreeCAD supprimé
+        return None
+
+
 def _transactional(kernel, op):
     extra = getattr(getattr(kernel, "_plugins", None), "transactional", ())
     return op in _TRANSACTIONAL or op in extra
@@ -993,7 +1017,8 @@ def dispatch(kernel: Kernel, op: str, params: dict):
         # session : Ctrl+Z dans l'esquisse ne défait que ses pas.
         session = getattr(kernel, "_sketch_session", None)
         doc.openTransaction(transaction_name(
-            op, session.get("id") if session else None))
+            op, session.get("id") if session else None,
+            _active_body_name(kernel)))
     try:
         method = getattr(kernel, op, None)
         if callable(method):

@@ -202,11 +202,18 @@ export function revolutionEditValues(v, revolution, params) {
   return values;
 }
 
-function revolved({ button, op, icon, title }) {
+function revolved({ button, op, icon, title, merge = false }) {
   return withSketchProfile({
     button, op, icon, title,
-    groups: (ctx) => revolutionGroups(resolveProfileSketch(ctx)),
-    build: (v) => revolutionCreationParams(v, op),
+    groups: (ctx) => [...revolutionGroups(resolveProfileSketch(ctx)),
+                      ...(merge ? mergeGroups(ctx?.lastTree?.bodies) : [])],
+    build: (v, ctx) => {
+      const built = revolutionCreationParams(v, op);
+      if (!built || !merge) return built;
+      built.params = { ...built.params,
+                       ...mergeParams(v, ctx?.lastTree?.bodies) };
+      return built;
+    },
     invalid: () => revolutionProblem(),
     refresh: "part",
   });
@@ -586,17 +593,20 @@ export function extrudeEditProblem(v, feature) {
     ? "Épaisseur de paroi invalide" : "Profondeur invalide";
 }
 
-// ---------- fusionner ou non (extrusion) ----------
+// ---------- fusionner ou non (extrusion, révolution, lissage, balayage) ----------
 // Décochée : un nouveau corps. Cochée : le corps actif, ou celui qu'on
 // clique dans la vue. Seulement quand la pièce a déjà un volume.
 
-/** Groupe « Résultat » d'une extrusion, vide sans corps solide. */
-export function mergeGroups(bodies) {
+/** Groupe « Résultat » d'un volume, vide sans corps solide. `when` : le
+ *  groupe ne s'affiche que si ces valeurs le veulent (pas pour un
+ *  enlèvement de matière). */
+export function mergeGroups(bodies, { when } = {}) {
   const solid = (bodies ?? []).filter((b) => b.has_solid === true);
   if (!solid.length) return [];
   const active = (bodies ?? []).find((b) => b.active && b.has_solid === true);
   return [{
     label: "Résultat",
+    ...(when ? { showIf: when } : {}),
     rows: [
       { type: "check", key: "merge", label: "Fusionner", value: true },
       { type: "selection", key: "body", accepts: ["body"], label: "Corps",
@@ -631,6 +641,11 @@ export function mergeParams(v, bodies) {
   const target = v.body?.name;
   return target && target !== activeBodyName(bodies) ? { body: target } : {};
 }
+
+// Lissage, balayage : un enlèvement creuse le corps actif, sans fusion.
+const added = (v) => !v.subtractive;
+const addedMergeParams = (v, ctx) => (added(v)
+  ? mergeParams(v, ctx?.lastTree?.bodies) : {});
 
 export function extrudeInvalid(v) {
   if (v.cond === "face" && v.face?.face == null) {
@@ -674,6 +689,7 @@ export const VOLUMES = [
     op: "add_revolution",
     icon: "revolve",
     title: "Révolution",
+    merge: true,
   }),
   revolved({
     button: "btn-groove",
@@ -733,7 +749,7 @@ export const VOLUMES = [
     op: "add_loft",
     icon: "loft",
     title: "Lissage",
-    groups: () => [
+    groups: (ctx) => [
       { label: "Profils",
         rows: [{ type: "selection", key: "profiles", accepts: ["sketch"],
                  multiple: true,
@@ -748,15 +764,17 @@ export const VOLUMES = [
           { type: "check", key: "closed", label: "Boucle fermée",
             value: false },
         ] },
+      ...mergeGroups(ctx?.lastTree?.bodies, { when: added }),
     ],
-    build: (v) => {
+    build: (v, ctx) => {
       const items = v.profiles?.items ?? [];
       if (items.length < 2) return null;
       return { op: "add_loft", params: {
         sketches: items.map((i) => i.name),
         subtractive: !!v.subtractive,
         ruled: !!v.ruled,
-        closed: !!v.closed } };
+        closed: !!v.closed,
+        ...addedMergeParams(v, ctx) } };
     },
     invalid: "Lissage : au moins deux profils",
     refresh: "part",
@@ -766,7 +784,7 @@ export const VOLUMES = [
     op: "add_sweep",
     icon: "sweep",
     title: "Balayage",
-    groups: () => [
+    groups: (ctx) => [
       { label: "Profil",
         rows: [{ type: "selection", key: "profile", accepts: ["sketch"],
                  hint: "Cliquez l'esquisse du profil dans l'arbre" }] },
@@ -777,14 +795,16 @@ export const VOLUMES = [
       { label: "Options",
         rows: [{ type: "check", key: "subtractive",
                  label: "Enlever de la matière", value: false }] },
+      ...mergeGroups(ctx?.lastTree?.bodies, { when: added }),
     ],
-    build: (v) => {
+    build: (v, ctx) => {
       if (!v.profile || !v.spine) return null;
       if (v.profile.name === v.spine.name) return null;
       return { op: "add_sweep", params: {
         profile: v.profile.name,
         spine: v.spine.name,
-        subtractive: !!v.subtractive } };
+        subtractive: !!v.subtractive,
+        ...addedMergeParams(v, ctx) } };
     },
     invalid: "Balayage : un profil puis une trajectoire (différents)",
     refresh: "part",

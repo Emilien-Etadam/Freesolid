@@ -94,6 +94,8 @@ OPS = (
         "reversed": bool,
         "midplane": bool,
         "contours": list,        # index des contours de l'esquisse pris
+        "merge": bool,           # faux : un nouveau corps
+        "body": str,             # le corps où fusionner (défaut : l'actif)
     }),
        undo=True, preview=True, creates="PartDesign::Revolution",
        replay=_rejouer_revolution),    # sketch reste libre (nom d'esquisse)
@@ -109,10 +111,13 @@ OPS = (
     Op("set_profile_contours", Req(("feature", str), ("contours", list)),
        undo=True),
                                        # [] : toute l'esquisse
-    Op("add_loft", Req(("sketches", list)), undo=True, preview=True,
+    Op("add_loft", Req(("sketches", list),
+                       optional={"merge": bool, "body": str}),
+       undo=True, preview=True,
        no_replay="plusieurs profils (Sections), pas get_params"),
                                        # optional: subtractive, ruled, closed
-    Op("add_sweep", Req(("profile", str), ("spine", str)),
+    Op("add_sweep", Req(("profile", str), ("spine", str),
+                        optional={"merge": bool, "body": str}),
        undo=True, preview=True,
        no_replay="Profile + Spine, pas get_params"),  # optional: subtractive
     Op("add_helix", Req(("pitch", float), ("height", float)),

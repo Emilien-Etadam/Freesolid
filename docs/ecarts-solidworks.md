@@ -123,6 +123,7 @@ ordre.
 | 66 | Assemblage : vue éclatée par étapes, collisions pendant le glisser, sous-assemblages | P2 | mis de côté (décision du 2026-10-13) |
 | 67 | Configurations | P2 | fait : dossier Configurations de l’arbre (+ Nouvelle configuration…, clic = activer, clic droit = renommer ou supprimer) ; une configuration relève les cotes, les fonctions désactivées et les variables, ce qu’on change pendant qu’elle est active lui appartient ; Outils → Tableau des configurations… (une ligne par cote, une colonne par configuration). Les cotes pilotées par une équation suivent leurs variables |
 | 68 | Export PDF / IGES, impression | P3 | mis de côté (décision du 2026-10-13) |
+| 69 | Pièce multicorps : une seule histoire, le corps choisi par le clic (demande du 2026-10-31) | P1 | en cours. Fait : tous les corps s'affichent comme le corps actif et se visent face par face ou arête par arête ; le clic active le corps visé et prend ce qu'il vise. Restent : un seul arbre dans l'ordre de création, une barre de retour pour toute la pièce, une extrusion qui ne touche aucun corps en crée un |
 
 ### Questions de conception en attente
 

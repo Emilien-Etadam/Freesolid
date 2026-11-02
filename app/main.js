@@ -181,12 +181,11 @@ let selectedEdges = new Set();
 
 let partMesh = null;
 let partEdges = null;
-let othersMeshes = []; // corps non actifs, un mesh chacun
-// Même réseau de corps que le corps actif (copies, source) : opaques,
-// arêtes tracées, le clic les active (picking.js).
-let patternMeshes = [];
-let copyEdgeLines = [];
-let copyMaterials = [];
+// Corps non actifs : un mesh face par face et ses arêtes chacun, vus
+// comme le corps actif ; le clic sur l'un d'eux l'active (picking.js).
+let othersMeshes = [];
+let othersEdges = [];
+let othersMaterials = []; // clones possédés — s'estompent pendant l'aperçu
 let partBaseMaterial = null; // clone possédé — couleur du corps actif
 let partFaceMaterials = []; // clones possédés — faces colorées
 let meshGroups = [];
@@ -196,10 +195,6 @@ let edgeData = null; // le maillage des arêtes, où l'esquisse s'accroche
 let hoveredEdgeGroup = -1;
 let hoveredGroup = -1;
 
-const othersMaterial = new THREE.MeshStandardMaterial({
-  color: sceneTheme.partMuted, metalness: 0.1, roughness: 0.7,
-  transparent: true, opacity: 0.45, depthWrite: false,
-});
 // Surfaces : même teinte que le solide, DoubleSide (peau ouverte).
 const surfaceHoverMaterial = hoverMaterial.clone();
 surfaceHoverMaterial.side = THREE.DoubleSide;
@@ -283,16 +278,39 @@ function detachSurfaceMeshes() {
 
 let lastClearedSelections = false;
 
+/** Un corps face par face : sa matière, survol et sélection, puis une
+ *  matière par couleur de face, que ``g.baseIndex`` désigne. */
+function facedBodyMesh(packed, color) {
+  const geometry = new THREE.BufferGeometry();
+  applyPackedGeometry(geometry, packed);
+  for (const g of packed.groups) geometry.addGroup(g.start, g.count, 0);
+  const base = ownedMaterial(baseMaterial, hexColor(color));
+  const materials = [base, hoverMaterial, selectedMaterial];
+  const byColor = new Map();
+  const faceMaterials = [];
+  packed.groups.forEach((g, i) => {
+    const tint = hexColor(g.color);
+    if (!tint) return;
+    if (!byColor.has(tint)) {
+      const material = ownedMaterial(baseMaterial, tint);
+      byColor.set(tint, materials.length);
+      materials.push(material);
+      faceMaterials.push(material);
+    }
+    g.baseIndex = byColor.get(tint);
+    geometry.groups[i].materialIndex = g.baseIndex;
+  });
+  return { mesh: new THREE.Mesh(geometry, materials), base, faceMaterials };
+}
+
 function showMesh(mesh) {
   ctx.handles?.hide(); // la géométrie change : la poignée ne vaut plus
   detachMesh(partMesh);
-  for (const extra of othersMeshes) detachMesh(extra);
+  for (const extra of [...othersMeshes, ...othersEdges]) detachMesh(extra);
   othersMeshes = [];
-  for (const lines of copyEdgeLines) detachMesh(lines);
-  patternMeshes = [];
-  copyEdgeLines = [];
-  copyMaterials = [];
-  ctx.hoveredPatternBody = null;
+  othersEdges = [];
+  othersMaterials = [];
+  ctx.hoveredOther = null;
   partMesh = partBaseMaterial = null;
   meshGroups = mesh.groups;
   lastFaceMatch = mesh.face_match ?? null;
@@ -320,30 +338,16 @@ function showMesh(mesh) {
   for (const lines of sketchLineMeshes) detachMesh(lines);
   sketchLineMeshes = [];
   hoveredSketch = null;
-  const othersList = mesh.other_bodies?.length
-    ? mesh.other_bodies
-    : (mesh.others?.indices.length
-      ? [{ color: null, positions: mesh.others.positions,
-           indices: mesh.others.indices }]
-      : []);
-  for (const extra of othersList) {
+  for (const extra of mesh.other_bodies ?? []) {
     if (!extra.indices.length) continue;
-    const geometry = new THREE.BufferGeometry();
-    applyPackedGeometry(geometry, extra);
-    const material = ownedMaterial(
-      extra.pattern_family ? baseMaterial : othersMaterial, hexColor(extra.color));
-    const otherMesh = new THREE.Mesh(geometry, material);
-    volumesGroup.add(otherMesh);
-    othersMeshes.push(otherMesh);
-    if (extra.pattern_family) {
-      otherMesh.userData.body = { name: extra.name, label: extra.label };
-      otherMesh.userData.baseColor = material.color.clone();
-      patternMeshes.push(otherMesh);
-      copyMaterials.push(material);
-      addCopyEdges(extra.edges);
-    } else {
-      otherMesh.raycast = () => {};
-    }
+    const body = { name: extra.name, label: extra.label };
+    const built = facedBodyMesh(extra, extra.color);
+    built.mesh.userData.body = body;
+    built.mesh.userData.groups = extra.groups;
+    volumesGroup.add(built.mesh);
+    othersMeshes.push(built.mesh);
+    othersMaterials.push(built.base, ...built.faceMaterials);
+    addOtherEdges(body, extra.edges);
   }
   for (const surface of Array.isArray(mesh.surfaces) ? mesh.surfaces : []) {
     if (!surface.indices?.length) continue;
@@ -385,30 +389,11 @@ function showMesh(mesh) {
     return;
   }
 
-  const geometry = new THREE.BufferGeometry();
-  applyPackedGeometry(geometry, mesh);
-  for (const g of mesh.groups) geometry.addGroup(g.start, g.count, 0);
-
-  geometry.computeBoundingSphere(); // les vues standard cadrent dessus
-
-  partBaseMaterial = ownedMaterial(baseMaterial, hexColor(mesh.color));
-  // Faces colorées : une matière par couleur, après survol et sélection.
-  const materials = [partBaseMaterial, hoverMaterial, selectedMaterial];
-  const byColor = new Map();
-  partFaceMaterials = [];
-  mesh.groups.forEach((g, i) => {
-    const color = hexColor(g.color);
-    if (!color) return;
-    if (!byColor.has(color)) {
-      const material = ownedMaterial(baseMaterial, color);
-      byColor.set(color, materials.length);
-      materials.push(material);
-      partFaceMaterials.push(material);
-    }
-    g.baseIndex = byColor.get(color);
-    geometry.groups[i].materialIndex = g.baseIndex;
-  });
-  partMesh = new THREE.Mesh(geometry, materials);
+  const built = facedBodyMesh(mesh, mesh.color);
+  built.mesh.geometry.computeBoundingSphere(); // les vues standard cadrent dessus
+  partMesh = built.mesh;
+  partBaseMaterial = built.base;
+  partFaceMaterials = built.faceMaterials;
   volumesGroup.add(partMesh);
   applyVolumeVisibility();
   rebuildPlanes(); // les plans de base suivent la taille de la pièce
@@ -475,18 +460,22 @@ function addBoundaryLines(item, curve) {
   boundarySnaps.push(...edgeSnapPoints(edges));
 }
 
-/** Arêtes d'un corps du même réseau : à voir, pas à viser. */
-function addCopyEdges(edges) {
+/** Arêtes d'un autre corps : un groupe par arête, survolées comme
+ *  celles du corps actif. */
+function addOtherEdges(body, edges) {
   if (!edges?.indices?.length) return;
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position",
     new THREE.Float32BufferAttribute(edges.positions, 3));
   geometry.setIndex(edges.indices);
-  const lines = new THREE.LineSegments(geometry, edgeBaseMaterial);
-  lines.raycast = () => {};
+  for (const g of edges.groups) geometry.addGroup(g.start, g.count, 0);
+  const lines = new THREE.LineSegments(geometry,
+    [edgeBaseMaterial, edgeHoverMaterial]);
+  lines.userData.body = body;
+  lines.userData.groups = edges.groups;
   lines.renderOrder = 2;
   volumesGroup.add(lines);
-  copyEdgeLines.push(lines);
+  othersEdges.push(lines);
 }
 
 function boundaryKey(name, edge) { return `${name}:${edge}`; }
@@ -581,7 +570,7 @@ function applyDisplay() {
     edgeBaseMaterial.color.setHex(
       fx.faces && !fx.mask ? sceneTheme.edge : sceneTheme.edgeOnBg);
   }
-  for (const lines of copyEdgeLines) lines.visible = fx.edges;
+  for (const lines of othersEdges) lines.visible = fx.edges;
   if (hiddenEdgeLines) {
     hiddenEdgeLines.removeFromParent();
     hiddenEdgeLines = null;
@@ -755,7 +744,7 @@ function hideGhost() {
   baseMaterial.opacity = 1;
   if (partBaseMaterial) partBaseMaterial.opacity = 1;
   for (const material of partFaceMaterials) material.opacity = 1;
-  for (const material of copyMaterials) material.opacity = 1;
+  for (const material of othersMaterials) material.opacity = 1;
   hoverMaterial.opacity = selectedMaterial.opacity = 1;
 }
 
@@ -816,7 +805,7 @@ function showGhost(mesh) {
   baseMaterial.opacity = 0.15; // la pièce s'efface derrière le résultat
   if (partBaseMaterial) partBaseMaterial.opacity = 0.15;
   for (const material of partFaceMaterials) material.opacity = 0.15;
-  for (const material of copyMaterials) material.opacity = 0.15;
+  for (const material of othersMaterials) material.opacity = 0.15;
   hoverMaterial.opacity = selectedMaterial.opacity = 0.3;
 }
 
@@ -966,7 +955,7 @@ expose("hoveredBoundary", () => hoveredBoundary,
   (v) => { hoveredBoundary = v; });
 expose("planeMeshes", () => planeMeshes, (v) => { planeMeshes = v; });
 expose("othersMeshes", () => othersMeshes);
-expose("patternMeshes", () => patternMeshes);
+expose("othersEdges", () => othersEdges);
 Object.assign(ctx, {
   THREE, scene, camera, renderer, controls, container, viewSize, ORTHO_HEIGHT,
   say, call, panel, pickEl, measureEl, coordsEl, refresh, selectComponent,

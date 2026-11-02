@@ -1662,5 +1662,46 @@ def p87_modifier_suit_le_double_clic(self, mark, report, etat):
     report["p87_corps_concernes"] = (
         sorted(repeats.values()) == [False, True]
         and {f["edits"] for f in cuts} == set(repeats)
-        and all(f["edits_has_params"] is repeats[f["edits"]] for f in cuts))
+        and all(f["edits_has_params"] is repeats[f["edits"]]
+                and f["suppressible"] is False for f in cuts))
 
+
+def p88_desactiver_suit_le_moteur(self, mark, report, etat):
+    mark("p88: l'arbre dit quelles lignes se désactivent (« Désactiver »)")
+    self.new_part("Désactiver")
+    self.add_rect_sketch(10, 10)
+    self.add_pad(5)
+    pad = self._require_body().Tip.Name
+    self.add_datum_axis(axis="Z")
+    self.add_datum_point(point=[0, 0, 5])
+    self.add_datum_cs(point=[0, 0, 5])
+    curves = []
+    for pts in ([[0, 0, 10], [15, 0, 15], [30, 0, 10]],
+                [[30, 0, 10], [32, 15, 14], [30, 30, 10]]):
+        curves.append(self.add_curve3d(pts)["surfaces"][-1]["name"])
+    tree = self.curve_composite([{"name": c} for c in curves])
+    composite = tree["surfaces"][-1]
+    datums = [f for f in tree["features"] if f.get("type_key") in (
+        "datum_axis", "datum_point", "datum_cs")]
+    rows = {f["name"]: f for f in tree["features"]}
+
+    def refused(name):
+        try:
+            self.set_suppressed([name], True)
+        except KernelError:
+            return True
+        return False
+
+    report["p88_desactiver_suit_le_moteur"] = (
+        rows[pad]["suppressible"] is True
+        and len(datums) == 3
+        and all(d["suppressible"] is False and refused(d["name"])
+                for d in datums)
+        and composite["suppressible"] is False
+        and refused(composite["name"])
+        and not refused(pad))
+    off = {f["name"]: f for f in self.get_tree()["features"]}
+    back = {f["name"]: f for f in self.set_suppressed([pad], False)["features"]}
+    report["p88_reactiver"] = (
+        off[pad].get("suppressed") is True
+        and "suppressed" not in back[pad])

@@ -906,8 +906,9 @@ class TreeMixin:
                 "error": "Invalid" in (obj.State or ()),
                 "order": order_of.get(obj.Name, -1),
                 "has_params": self._has_params(obj),
+                "suppressible": self._is_suppressible(obj),
             }
-            if getattr(obj, "Suppressed", False):
+            if item["suppressible"] and obj.Suppressed:
                 item["suppressed"] = True
             if obj.TypeId in ("PartDesign::Plane", "PartDesign::Line",
                               "PartDesign::Point",

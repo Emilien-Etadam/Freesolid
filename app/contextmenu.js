@@ -36,9 +36,14 @@ export function folderRemovalTarget(feature) {
   return feature.inFolder ? { name: feature.name } : null;
 }
 
-/** Fonction de corps (hors plan de référence et corps) : elle se
- *  désactive sans être supprimée. */
+/** Ce qui se désactive sans être supprimé : ce que le moteur accepte
+ *  (`suppressible`), jamais un corps. Sans l'avis du moteur (ligne d'un
+ *  plugin), les fonctions de corps de `typekeys.js` hors plan de
+ *  référence. */
 export function isSuppressibleTarget(feature) {
+  if (typeof feature?.suppressible === "boolean") {
+    return feature.suppressible && !isBodyMenuTarget(feature);
+  }
   const key = feature?.type_key ?? "";
   return isBodyFeatureKey(key) && key !== "datum_plane"
     && key !== "body" && !isBodyMenuTarget(feature);

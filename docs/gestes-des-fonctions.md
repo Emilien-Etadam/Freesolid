@@ -2,7 +2,7 @@
 
 Cette grille sert à repérer où les fonctions ne se comportent pas pareil. Pour chacune, elle dit si l'on peut rééditer après coup ce qu'on a choisi à la création, et si les gestes (aperçu, double-clic, menu « Modifier », barre de retour) sont les mêmes d'une fonction à l'autre.
 
-État décrit : 2026-11-02, après #151 (« Modifier » au menu suit le double-clic). La grille vient de la lecture du code et des selftests, contrôlée par un relevé : ce que l'arbre dit de chaque ligne fabriquée par le selftest (`has_params`, 51 genres), et quelques gestes rejoués dans le navigateur. Ce qui n'a pas été tranché est marqué « à vérifier ».
+État décrit : 2026-11-02, après #151 (« Modifier » au menu suit le double-clic) et #153 (« Désactiver » suit le moteur). La grille vient de la lecture du code et des selftests, contrôlée par un relevé : ce que l'arbre dit de chaque ligne fabriquée par le selftest (`has_params`, 51 genres), et quelques gestes rejoués dans le navigateur. Ce qui n'a pas été tranché est marqué « à vérifier ».
 
 Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jour dans le même changement (et, si un écart disparaît ou apparaît, la section « Écarts, par thème »). Les références vont au fichier et à la fonction, jamais à une ligne. « Écart n° N » renvoie au tableau de `docs/ecarts-solidworks.md`.
 
@@ -120,20 +120,19 @@ Reste : le menu de la vue 3D n'a ni Masquer ni Supprimer, que le menu de l'arbre
 
 Où ça se décide : `app/editkind.js` ; `engine/equations.py` (`_has_params`, `_editable_props`) ; `app/contextmenu.js` (`canModifyMenuTarget`) ; `app/viewmenu.js`.
 
-### 2. Désactiver et Masquer : les règles ne suivent pas les fonctions
+### 2. Désactiver et Masquer : les règles ne suivaient pas les fonctions
 
-- **Désactiver proposé, refusé par le moteur** : Axe, Point et Repère de référence, Courbe composite et Supprimer la face d'une surface. Le menu n'exclut que le Plan, alors que le moteur ne désactive que les objets qui portent la propriété `Suppressed` (message « seule une fonction de volume se désactive »). Vérifié : aucun de ces cinq genres (`PartDesign::Line`, `Point`, `CoordinateSystem`, `SubShapeBinder`) ne porte `Suppressed` dans FreeCAD 1.1.3, et le menu de la Courbe composite propose « Désactiver ».
-- **Pas de Désactiver du tout** : le réseau de corps et la Suppression de corps (menu réduit voulu), et toutes les surfaces, y compris Épaissir, dont le résultat est un solide, et Couper avec une surface, qui est une fonction de corps et se désactive.
-- **Désactiver sur les fonctions graphe et la Répétition variable** : le menu ne les exclut pas ; effet à vérifier. Idem pour le Texte, dont le corps outil caché reste en place : à vérifier.
+- **Désactiver proposé, refusé par le moteur** : Axe, Point et Repère de référence, Courbe composite et Supprimer la face d'une surface. Le menu n'excluait que le Plan, alors que le moteur ne désactive que les objets qui portent la propriété `Suppressed` (message « seule une fonction de volume se désactive »), et qu'aucun de ces genres (`PartDesign::Line`, `Point`, `CoordinateSystem`, `SubShapeBinder`) ne la porte dans FreeCAD 1.1.3. Corrigé par #153 : l'arbre dit si une ligne se désactive (`suppressible`), le menu le suit. Une ligne qu'une répétition creuse dans un autre corps ne se désactive pas seule : on désactive la répétition.
+- **Ce qui ne se désactive pas** : tout ce qui n'est pas une fonction de corps PartDesign. Les surfaces (y compris Épaissir, dont le résultat est un solide), les références, le réseau de corps, la Suppression de corps. Les modeleurs courants désactivent tout : il faudrait un mécanisme à FreeSolid, comme le drapeau qui fait reculer les surfaces avec la barre de retour.
+- **Fonctions graphe, Répétition variable, Texte** : le menu propose « Désactiver » quand le moteur l'accepte ; l'effet sur la pièce reste à vérifier (le corps outil caché du Texte, par exemple).
 - **Masquer** : il manquait à la Courbe composite et à Supprimer la face d'une surface, dont le genre (`binder`) n'était pas dans la liste des surfaces. Corrigé par #151 : toute ligne du dossier des surfaces se masque. Les fonctions de corps ne se masquent pas (seuls les corps et les surfaces du premier niveau).
 
 Où ça se décide :
 
+- `engine/tree.py` (`entry`) et `engine/surfacefeat/commun.py` (`_surface_tree_entry`) : le champ `suppressible` ;
+- `engine/docprops.py`, `_is_suppressible` (la règle), `set_suppressed` et `set_hidden` ;
 - `app/contextmenu.js`, `isSuppressibleTarget`, `isHideableTarget` et `openMenu` ;
-- `app/typekeys.js` ;
-- `engine/docprops.py`, `set_suppressed` et `set_hidden`.
-
-Piste : un champ envoyé par le moteur dans l'arbre (« se désactive »), comme `has_params` pour « Modifier », plutôt qu'une liste de genres côté interface.
+- `app/typekeys.js` : la liste des genres, pour une ligne de plugin sans l'avis du moteur.
 
 ### 3. Fonctions sans aucune réédition
 

@@ -15,7 +15,8 @@ const params = (item) => (item.has_params === false ? null : "params");
 /** Fonction de corps, esquisse, suppression ou réseau de corps. */
 export function featureEditor(item) {
   if (!item?.type_key || typeof item.active === "boolean") return null;
-  if (item.edits) return "edits"; // la répétition qui porte la ligne
+  // La répétition qui porte la ligne, si elle a de quoi se rééditer.
+  if (item.edits) return item.edits_has_params === false ? null : "edits";
   if (isGraphFeature(item) || isRepeatFeature(item)) return "graph";
   if (item.type_key === "sketch") return "sketch";
   if (item.vertex_chamfer) return "vertex_chamfer";

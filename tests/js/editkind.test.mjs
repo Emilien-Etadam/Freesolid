@@ -27,6 +27,11 @@ describe("éditeur d'une fonction", () => {
 
   it("sans cote ni éditeur : rien ; sans avis du moteur : on tente", () => {
     assert.equal(featureEditor({ type_key: "mirror", has_params: false }), null);
+    // Copie d'une symétrie de corps : la symétrie n'a pas de cote.
+    assert.equal(featureEditor({ type_key: "feature", edits: "Pattern",
+      edits_has_params: false }), null);
+    assert.equal(featureEditor({ type_key: "feature", edits: "Pattern",
+      edits_has_params: true }), "edits");
     assert.equal(featureEditor({ type_key: "loft", has_params: false }), null);
     assert.equal(featureEditor({ type_key: "pad" }), "params");
     assert.equal(featureEditor({ type_key: "body", active: true }), null);

@@ -2078,7 +2078,7 @@ export function installTree(ctx) {
     // répétition qui les porte.
     edits: (feature) => editFeature({ name: feature.edits,
       type_key: feature.edits_type, label: feature.label,
-      kind: feature.kind }),
+      kind: feature.kind, has_params: feature.edits_has_params }),
     graph: (feature) => enterGraphFeature(feature),
     sketch: (feature) => {
       closeGraph();

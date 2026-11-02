@@ -806,7 +806,8 @@ class BodyPatternMixin:
 
     def _repetition_tree_fields(self, obj, item):
         """Champs d'arbre : ``edits`` (l'objet que le double-clic rouvre),
-        ``edits_type``, ``body_pattern`` et ``scope``."""
+        ``edits_type``, ``edits_has_params``, ``body_pattern`` et
+        ``scope``."""
         from engine.vocab import type_key_for
         doc = self._require_doc()
         host = self._body_pattern_host_of(obj)
@@ -819,6 +820,11 @@ class BodyPatternMixin:
         if pattern is not None:
             item["edits"] = pattern.Name
             item["edits_type"] = type_key_for(pattern.TypeId)
+        if "edits" in item:
+            # Une symétrie n'a pas de cote : « Modifier » se tait sur ses
+            # copies comme sur elle.
+            item["edits_has_params"] = self._has_params(
+                doc.getObject(item["edits"]))
         names = scope_names(getattr(obj, "FreeSolidScope", ""))
         labels = [doc.getObject(n).Label for n in names
                   if doc.getObject(n) is not None]

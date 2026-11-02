@@ -822,9 +822,11 @@ class BodyPatternMixin:
             item["edits_type"] = type_key_for(pattern.TypeId)
         if "edits" in item:
             # Une symétrie n'a pas de cote : « Modifier » se tait sur ses
-            # copies comme sur elle.
+            # copies comme sur elle. Une ligne dérivée se désactive par sa
+            # répétition : désactivée seule, la répétition la referait.
             item["edits_has_params"] = self._has_params(
                 doc.getObject(item["edits"]))
+            item["suppressible"] = False
         names = scope_names(getattr(obj, "FreeSolidScope", ""))
         labels = [doc.getObject(n).Label for n in names
                   if doc.getObject(n) is not None]

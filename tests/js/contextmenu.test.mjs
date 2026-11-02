@@ -64,7 +64,7 @@ describe("« Désactiver »", () => {
       { name: "Line", type_key: "datum_axis", suppressible: false }), false);
     assert.equal(isSuppressibleTarget(
       { name: "Binder", type_key: "binder", suppressible: false }), false);
-    // Un corps ne se désactive pas, même si le moteur ne dit rien.
+    // Un corps ne se désactive pas, même si le moteur dit oui.
     assert.equal(isSuppressibleTarget(
       { name: "Body", type_key: "body", active: true, suppressible: true }),
     false);
@@ -74,6 +74,8 @@ describe("« Désactiver »", () => {
     assert.equal(isSuppressibleTarget({ name: "Pad", type_key: "pad" }), true);
     assert.equal(isSuppressibleTarget(
       { name: "Plane", type_key: "datum_plane" }), false);
+    assert.equal(isSuppressibleTarget(
+      { name: "Body", type_key: "body", active: false }), false);
     assert.equal(isSuppressibleTarget(null), false);
   });
 });

@@ -149,7 +149,7 @@ class SurfaceCommonMixin:
             "sketches": [sk.Name for sk in sketches],
             "order": order_of.get(obj.Name, -1),
             "has_params": self._has_params(obj),
-            "suppressible": "Suppressed" in obj.PropertiesList,
+            "suppressible": self._is_suppressible(obj),
         }
         wire(entry, obj)
         # Couture / courbe / fichiers legacy : pas d'objet paramétrique.

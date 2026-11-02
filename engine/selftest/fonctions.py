@@ -1662,7 +1662,9 @@ def p87_modifier_suit_le_double_clic(self, mark, report, etat):
     report["p87_corps_concernes"] = (
         sorted(repeats.values()) == [False, True]
         and {f["edits"] for f in cuts} == set(repeats)
-        and all(f["edits_has_params"] is repeats[f["edits"]] for f in cuts))
+        and all(f["edits_has_params"] is repeats[f["edits"]]
+                and f["suppressible"] is False for f in cuts))
+
 
 def p88_desactiver_suit_le_moteur(self, mark, report, etat):
     mark("p88: l'arbre dit quelles lignes se désactivent (« Désactiver »)")
@@ -1697,7 +1699,9 @@ def p88_desactiver_suit_le_moteur(self, mark, report, etat):
                 for d in datums)
         and composite["suppressible"] is False
         and refused(composite["name"])
-        and not refused(pad)
-        and self.set_suppressed([pad], False) is not None)
-
-
+        and not refused(pad))
+    off = {f["name"]: f for f in self.get_tree()["features"]}
+    back = {f["name"]: f for f in self.set_suppressed([pad], False)["features"]}
+    report["p88_reactiver"] = (
+        off[pad].get("suppressed") is True
+        and "suppressed" not in back[pad])

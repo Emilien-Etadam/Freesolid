@@ -184,6 +184,13 @@ class DocPropsMixin:
             obj.FreeSolidHidden = bool(hidden)
         return self._current_tree()
 
+    @staticmethod
+    def _is_suppressible(obj):
+        """Ce que ``set_suppressed`` accepte : un objet qui porte
+        ``Suppressed`` (fonction de corps PartDesign). L'arbre le dit
+        (``suppressible``), « Désactiver » le suit."""
+        return "Suppressed" in getattr(obj, "PropertiesList", ())
+
     def set_suppressed(self, features, suppressed=True):
         """Désactive (ou réactive) des fonctions : elles restent dans
         l'arbre avec leurs réglages, la pièce se calcule sans elles. Une
@@ -194,7 +201,7 @@ class DocPropsMixin:
         targets = []
         for name in features or ():
             obj = doc.getObject(str(name))
-            if obj is None or "Suppressed" not in obj.PropertiesList:
+            if obj is None or not self._is_suppressible(obj):
                 raise KernelError(
                     "seule une fonction de volume se désactive : {}".format(
                         getattr(obj, "Label", name)))

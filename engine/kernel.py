@@ -69,6 +69,8 @@ from engine.splineedit import SplineEditMixin
 from engine.sketch3d import Sketch3dMixin
 from engine.solids import SolidsMixin
 from engine.bodypattern import BodyPatternMixin
+from engine.bodysolids import BodySolidsMixin
+from engine.removebodies import RemoveBodiesMixin
 from engine.tree import TreeMixin
 
 
@@ -150,7 +152,7 @@ def resolve_pattern_originals(names, catalog):
 
 
 #: Lignes hors chaîne PartDesign — flag ``FreeSolidRolledBack``.
-_ROLLBACK_ROLES = frozenset({"sketch", "surface"})
+_ROLLBACK_ROLES = frozenset({"sketch", "surface", "remove"})
 
 #: Propriété custom persistée dans le .FCStd (source de vérité du recul).
 _ROLLED_BACK_PROP = "FreeSolidRolledBack"
@@ -161,8 +163,12 @@ def rollback_plan(history, target_name=None):
 
     *history* : séquence de dicts ``{name, order, role}`` déjà triée par
     ``order``, avec ``role`` ∈ ``{"feature", "sketch", "surface",
-    "absorbed"}``. ``absorbed`` : l'esquisse rangée sous sa fonction — la
-    barre peut se poser juste après elle, elle ne prend pas de flag.
+    "absorbed", "pattern", "remove"}``. ``absorbed`` : l'esquisse rangée
+    sous sa fonction — la barre peut se poser juste après elle, elle ne
+    prend pas de flag. ``pattern`` : un réseau de corps, ni flag ni Tip ;
+    la base de chaque copie est une ligne ``feature`` à son rang.
+    ``remove`` : une suppression de corps, qui prend un flag comme une
+    surface ; ses étapes cachées sont des lignes ``feature`` à son rang.
     *target_name* : dernière ligne visible, ou ``None`` (barre en tête).
 
     Retour : ``(flags, tip)`` — ``flags`` mappe chaque nom sketch/surface
@@ -192,6 +198,25 @@ def rollback_plan(history, target_name=None):
         elif row["role"] == "feature" and row["order"] <= target_order:
             tip = row["name"]
     return flags, tip
+
+
+def rollback_tips(history, target_name=None):
+    """``rollback_plan`` pour toute la pièce : un Tip par corps.
+
+    Chaque ligne ``feature`` porte ``body``, le nom de son corps. Retour :
+    ``(flags, tips)`` — ``tips`` mappe chaque corps qui a des fonctions
+    vers sa dernière fonction au-dessus de la barre, ou ``None``.
+    """
+    flags, _ = rollback_plan(history, target_name)
+    features = [row for row in history if row["role"] == "feature"]
+    tips = {row["body"]: None for row in features}
+    if target_name is not None:
+        target_order = next(row["order"] for row in history
+                            if row["name"] == target_name)
+        for row in features:
+            if row["order"] <= target_order:
+                tips[row["body"]] = row["name"]
+    return flags, tips
 
 
 def _explain(exc) -> str:
@@ -283,7 +308,7 @@ def _format_mm(value):
     return text.replace(".", ",") or "0"
 
 
-class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, MaterialsMixin, RefGeomMixin, ClipboardMixin, TemplatesMixin, TreeOrgMixin, DirectEditMixin, ConfigsMixin, SplineEditMixin, Sketch3dMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
+class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, BodySolidsMixin, RemoveBodiesMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, MaterialsMixin, RefGeomMixin, ClipboardMixin, TemplatesMixin, TreeOrgMixin, DirectEditMixin, ConfigsMixin, SplineEditMixin, Sketch3dMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
     """Owns one FreeCAD document and executes protocol operations."""
 
     def __init__(self):
@@ -370,6 +395,7 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, SketchM
         # d'avant, une passe par niveau d'imbrication.
         for _ in range(8):
             changed = self._refresh_frozen_shapes()
+            changed = self._refresh_removals() or changed
             changed = self._refresh_repetitions() or changed
             if not changed:
                 break
@@ -857,8 +883,9 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, SketchM
             _abort(doc)
             doc.recompute()
 
-    def rename(self, feature, label):
-        """Renommer une fonction, une esquisse ou la pièce."""
+    def rename(self, feature, label, solid=None):
+        """Renommer une fonction, une esquisse ou la pièce. ``solid`` :
+        un seul des solides d'un corps qui en garde plusieurs."""
         doc = self._require_doc()
         obj = doc.getObject(feature)
         if obj is None:
@@ -866,7 +893,12 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, SketchM
         label = str(label).strip()
         if not label:
             raise KernelError("le nom ne peut pas être vide")
-        obj.Label = label
+        if obj.TypeId == "PartDesign::Body" and solid is not None:
+            self._set_solid(obj, solid, label=label)
+        elif obj.TypeId == "PartDesign::Body":
+            self._name_body(obj, label)
+        else:
+            obj.Label = label
         return self._current_tree()
 
 

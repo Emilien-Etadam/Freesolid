@@ -62,11 +62,19 @@ OPS = (
     Op("add_body", undo=True,          # optional: name — devient le corps actif
        no_replay="pas une fonction du groupe"),
     Op("set_active_body", Req(("body", str))),
-    Op("set_body_color", Req(("body", str), "color"), undo=True),
-                                       # "#rrggbb" | null | "" (défaut)
+    Op("set_body_color", Req(("body", str), "color", optional={"solid": int}),
+       undo=True),                     # "#rrggbb" | null | "" (défaut)
     Op("add_boolean", Req(("tool", str)), undo=True, preview=True,
        no_replay="corps outil, pas un profil"),
                                        # optional: type (cut|fuse|common)
+    Op("add_remove_bodies", Req(("targets", list), optional={"keep": bool}),
+       undo=True, creates="App::DocumentObject",
+       no_replay="des corps choisis, pas des cotes"),
+                                       # targets: [{name, solid?}]
+    Op("remove_bodies_info", Req(("feature", str))),
+                                       # lecture : les cases au rang de la fonction
+    Op("edit_remove_bodies", Req(("feature", str), ("targets", list),
+                                 optional={"keep": bool}), undo=True),
     # Conditions de fin : engine/extrude.py. Sans length : jusqu'à…
     Op("add_pad", Req(optional={"length": float, "contours": list,
                                 **_EXTRUDE_OPTIONAL}),

@@ -23,11 +23,17 @@ class SolidsMixin:
         """Nouveau corps dans la pièce — il devient le corps actif.
 
         Un corps regroupe ses fonctions, matérialisé ici par un Body.
-        Les fonctions suivantes s'empilent dans ce corps.
+        Les fonctions suivantes s'empilent dans ce corps. Un nom donné
+        (autre que « Corps ») reste dans le dossier des corps ; sinon le
+        corps y prend celui de sa dernière fonction.
         """
         doc = self._require_doc()
         body = doc.addObject("PartDesign::Body", "Body")
-        body.Label = str(name).strip() if name else self._t("Corps")
+        name = str(name or "").strip()
+        if name and name not in ("Corps", self._t("Corps")):
+            self._name_body(body, name)
+        else:
+            body.Label = self._t("Corps")
         self._body = body
         doc.recompute()
         return self.get_tree()
@@ -39,14 +45,18 @@ class SolidsMixin:
         obj = doc.getObject(str(body))
         if obj is None or obj.TypeId != "PartDesign::Body":
             raise KernelError("corps inconnu : {}".format(body))
+        if obj.Name in self._removed_names():
+            raise KernelError("{} est supprimé par une fonction — reculez "
+                              "la barre au-dessus d'elle".format(obj.Label))
         self._body = obj
         return self.get_tree()
 
-    def set_body_color(self, body, color):
+    def set_body_color(self, body, color, solid=None):
         """Couleur d'affichage d'un corps, persistée dans le .FCStd.
 
         Headless : pas de ViewObject. Propriété custom ``FreeSolidColor``.
         ``color`` = ``#rrggbb``, ou ``None`` / ``""`` pour le défaut.
+        ``solid`` : un seul des solides d'un corps qui en garde plusieurs.
         """
         from engine.kernel import (
             KernelError,
@@ -57,6 +67,9 @@ class SolidsMixin:
         if obj is None or obj.TypeId != "PartDesign::Body":
             raise KernelError("corps inconnu : {}".format(body))
         value = parse_body_color(color)
+        if solid is not None:
+            self._set_solid(obj, solid, color=value)
+            return self.get_tree()
         if "FreeSolidColor" not in obj.PropertiesList:
             obj.addProperty("App::PropertyString", "FreeSolidColor",
                             "FreeSolid", "Couleur d'affichage")

@@ -560,12 +560,13 @@ def p9_multi_corps_combiner(self, mark, report, etat):
     mesh = self.tessellate()
     report["p9_others_shown"] = "others" in mesh
     # L'autre corps se dessine face par face, numéroté comme quand il
-    # sera actif, arêtes comprises : le clic dans la vue l'active.
+    # sera actif, arêtes comprises : le clic dans la vue l'active. Son nom
+    # est celui du dossier, sa dernière fonction.
     other = next((b for b in mesh.get("other_bodies", ())
                   if b["name"] == first_body), {})
     first = self._doc.getObject(first_body)
     report["p9_autres_cliquables"] = (
-        other.get("label") == first.Label
+        other.get("label") == first.Tip.Label
         and sorted(g["faceId"] for g in other.get("groups", ()))
         == list(range(len(first.Shape.Faces)))
         and bool(other.get("edges", {}).get("groups")))
@@ -1082,6 +1083,7 @@ def p82_reseau_de_corps(self, mark, report, etat):
     self.add_rect_sketch(10, 10)
     self.add_pad(8)
     source = self._require_body().Name
+    pad = self._require_body().Tip.Name
     self.add_body_pattern("linear", [source], length=20, count=3,
                           axis="X", spacing=True)
     host = self._body_pattern_hosts()[0]
@@ -1100,35 +1102,84 @@ def p82_reseau_de_corps(self, mark, report, etat):
     from_copy = {b["name"]: b
                  for b in self.tessellate().get("other_bodies", [])}
     self.set_active_body(source)
+    titles = ["{}[{}]".format(host.Label, i) for i in (1, 2)]
     report["p82_ligne_et_vue"] = (
         len(rows) == 1 and rows[0]["name"] == host.Name
-        and sorted(rows[0].get("copies") or ()) == sorted(
-            self._doc.getObject(n).Label for n in copies)
+        and sorted(rows[0].get("copies") or ()) == titles
         and all(shown.get(n, {}).get("edges", {}).get("indices")
                 for n in copies)
         and all(from_copy.get(n, {}).get("groups")
                 for n in (source, copies[1])))
-    # La source ne se combine pas avec sa copie : la copie la suit, le
-    # graphe bouclerait. Rien n'est ajouté.
-    group = len(self._require_body().Group)
-    try:
-        self.add_boolean(tool=copies[0], type="fuse")
-        looped = False
-    except KernelError as exc:
-        looped = "suit le corps actif" in str(exc)
-    report["p82_refus_boucle"] = (
-        looped and len(self._require_body().Group) == group
-        and all(abs(v - 800) < 1e-6 for v in _volumes(self).values()))
-    # La source change : les copies suivent ; la cote se réédite.
+    # Le dossier nomme chaque corps d'après sa dernière fonction ; un
+    # corps nommé à la main garde son nom.
+    named = {b["name"]: b["label"] for b in self.get_tree()["bodies"]}
+    self.rename(copies[1], "Bloc")
+    renamed = {b["name"]: b["label"] for b in self.get_tree()["bodies"]}
+    report["p82_noms_des_corps"] = (
+        named[source] == self._doc.getObject(pad).Label
+        and sorted(named[n] for n in copies) == titles
+        and renamed[copies[1]] == "Bloc")
+    # La source change après le réseau : les copies n'en héritent pas ;
+    # une cote d'avant le réseau passe. La cote du réseau se réédite.
     self.set_active_body(source)
     top = self._top_face_id()
     self.add_rect_sketch(4, 4, face=top)
     self.add_pocket(2)
     self.set_params(host.Name, {"count": 4})
-    volumes = _volumes(self)
+    after = _volumes(self)
+    self.set_params(pad, {"length": 10})
+    upstream = _volumes(self)
+    self.set_params(pad, {"length": 8})
     report["p82_suit_la_source"] = (
-        len(volumes) == 4
-        and all(abs(v - 768) < 1e-6 for v in volumes.values()))
+        len(after) == 4 and abs(after[source] - 768) < 1e-6
+        and all(abs(v - 800) < 1e-6
+                for n, v in after.items() if n != source)
+        and abs(upstream[source] - 968) < 1e-6
+        and all(abs(v - 1000) < 1e-6
+                for n, v in upstream.items() if n != source))
+    # Le réseau a son rang : l'enlèvement ajouté ensuite vient dessous.
+    # La barre au-dessus de lui, ses copies n'existent pas encore ; posée
+    # sur lui, elles reviennent, sans l'enlèvement.
+    pocket = self._require_body().Tip.Name
+    host_name = host.Name
+    ranks = {f["name"]: f["order"] for f in self.get_tree()["features"]}
+    grown = list(self._body_pattern_copies(host).values())
+    hidden = {f["name"]: f.get("rolled_back")
+              for f in self.set_tip(pad)["features"]}
+    unborn = all(copy.Tip is None for copy in grown)
+    shown = {f["name"]: f.get("rolled_back")
+             for f in self.set_tip(host.Name)["features"]}
+    back = _volumes(self)
+    self.tip_to_end()
+    # Une fonction sur une copie vient aussi sous le réseau, et y reste
+    # quand on annule sa suppression (FreeCAD rend les objets en fin de
+    # document).
+    from engine.kernel import dispatch
+    grown = [copy.Name for copy in grown]
+    self.set_active_body(grown[0])
+    self.add_fillet(radius=0.5, face=self._top_face_id())
+    fillet = self._require_body().Tip.Name
+    for op, params in (("set_tip", {"feature": pad}),
+                       ("delete_rolled_back", {})):
+        if not dispatch(self, op, params)["ok"]:
+            raise KernelError(op)
+    gone = all(self._doc.getObject(name) is None
+               for name in grown + [fillet, host_name])
+    self.undo()
+    self.tip_to_end()
+    self.set_active_body(source)
+    host = self._doc.getObject(host_name)
+    tree = self.get_tree()
+    restored = {f["name"]: f["order"]
+                for f in tree["features"] + tree["other_features"]}
+    report["p82_reseau_a_son_rang"] = (
+        ranks[pad] < ranks[host.Name] < ranks[pocket]
+        and hidden.get(host.Name) is True and unborn
+        and shown.get(host.Name) is False and shown.get(pocket) is True
+        and len(back) == 4
+        and all(abs(v - 800) < 1e-6 for v in back.values())
+        and gone and restored[host_name] < restored.get(fillet, -1)
+        and len(_volumes(self)) == 4)
     # Une copie supprimée reste sautée ; la source est protégée.
     far = max(copies, key=lambda n: _centre_x(self, n)[0])
     self.delete_feature(far)
@@ -1164,6 +1215,14 @@ def p82_reseau_de_corps(self, mark, report, etat):
     report["p82_rouvert"] = (
         set(reopened) == set(volumes)
         and all(abs(reopened[n] - volumes[n]) < 1e-6 for n in volumes))
+    # La source se combine avec sa propre copie : la copie lit une
+    # fonction d'avant le réseau, le graphe ne boucle pas.
+    self.set_active_body(source)
+    copy = next(c.Name for c in self._body_pattern_copies(
+        self._doc.getObject(host_name)).values() if c.Name != near)
+    self.add_boolean(tool=copy, type="fuse")
+    report["p82_combine_sa_copie"] = abs(
+        _volumes(self)[source] - reopened[source] - reopened[copy]) < 1e-6
 
 
 def p83_corps_concernes(self, mark, report, etat):
@@ -1223,3 +1282,320 @@ def p83_corps_concernes(self, mark, report, etat):
         and abs(kept - (6000 - hole + 32)) < 1e-6
         and not [o for o in self._doc.Objects
                  if getattr(o, "FreeSolidBodyPatternTool", False)])
+
+
+def p84_arbre_unique(self, mark, report, etat):
+    mark("p84: un seul arbre, une seule barre pour tous les corps")
+    from engine import protocol
+    self.new_part("Arbre unique")
+    self.add_rect_sketch(20, 20)
+    self.add_pad(5)
+    first = self._require_body().Name
+    pad = self._require_body().Tip.Name
+    self.add_body()
+    second = self._require_body().Name
+    state = self.sketch_start()
+    self.sketch_add_circle(state["sketch"], 30, 0, 5)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(10)
+    other_pad = self._require_body().Tip.Name
+    self.set_active_body(first)
+    self.add_rect_sketch(4, 4, face=self._top_face_id())
+    self.add_pocket(2)
+    pocket = self._require_body().Tip.Name
+    # L'arbre du premier corps montre aussi l'histoire du second, à son
+    # rang : Extrusion, puis celle du second corps, puis l'enlèvement.
+    tree = self.get_tree()
+    ranks = {f["name"]: f["order"]
+             for f in tree["features"] + tree["other_features"]}
+    foreign = {f["name"]: f.get("body") for f in tree["other_features"]}
+    report["p84_arbre_unique"] = (
+        foreign.get(other_pad) == second
+        and ranks[pad] < ranks[other_pad] < ranks[pocket]
+        and not protocol.dangling_deps(tree))
+    # La barre recule tous les corps : après l'extrusion du premier, le
+    # second n'existe pas encore ; un cran plus bas, il revient.
+    tree = self.set_tip(pad)
+    flags = {f["name"]: f.get("rolled_back")
+             for f in tree["features"] + tree["other_features"]}
+    born_later = self._doc.getObject(second).Tip is None
+    self.set_tip(other_pad)
+    volumes = _volumes(self)
+    report["p84_barre_commune"] = (
+        born_later and flags.get(pocket) and flags.get(other_pad)
+        and not flags.get(pad)
+        and abs(volumes[first] - 2000) < 1e-6
+        and abs(volumes[second] - math.pi * 250) < 1e-6)
+    # On réordonne dans un corps, pas d'un corps à l'autre.
+    self.tip_to_end()
+    try:
+        self.reorder_feature(pocket, other_pad)
+        crossed = True
+    except KernelError:
+        crossed = False
+    # Sous la barre, tout part — dans chaque corps.
+    self.set_tip(pad)
+    self.delete_rolled_back()
+    report["p84_sous_la_barre"] = (
+        not crossed
+        and self._doc.getObject(pocket) is None
+        and self._doc.getObject(other_pad) is None
+        and self._doc.getObject(pad) is not None)
+    # Deux contours disjoints extrudés laissent deux solides : deux corps
+    # dans le dossier, numérotés ; une extrusion qui les relie n'en
+    # laisse qu'un.
+    self.new_part("Deux contours")
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_rectangle(state["sketch"], 0, 0, 10, 10)
+    self.sketch_add_rectangle(state["sketch"], 20, 0, 30, 10)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    body = self._require_body()
+    pad = body.Tip
+    title = pad.Label
+    split = self.get_tree()["bodies"]
+    # Chaque solide a sa couleur, son nom, son masquage : ils le suivent
+    # quand la cote change et quand un congé change l'ordre des solides.
+    right = 0 if body.Shape.Solids[0].CenterOfMass.x > 15 else 1
+    self.set_body_color(body.Name, "#cc3333", solid=right)
+    self.rename(body.Name, "Bloc", solid=right)
+    self.set_hidden([body.Name], True, solid=1 - right)
+    shown = self.tessellate()
+    pad.Length = 7
+    self._recompute()
+    top = next(i for i, f in enumerate(body.Shape.Faces)
+               if f.CenterOfMass.x > 15 and abs(f.CenterOfMass.z - 7) < 1e-6)
+    self.add_fillet(radius=1, face=top)
+    rows = {row["label"]: row for row in self.get_tree()["bodies"][0]["solids"]}
+    after = self.tessellate()
+    report["p84_reglages_par_solide"] = (
+        {g.get("color") for g in shown["groups"]} == {"#cc3333"}
+        and len(shown["groups"]) == 6
+        and set(rows) == {"Bloc", title}
+        and rows["Bloc"]["color"] == "#cc3333" and not rows["Bloc"]["hidden"]
+        and rows[title]["hidden"] and rows[title]["color"] is None
+        and {g.get("color") for g in after["groups"]} == {"#cc3333"})
+    self.set_hidden([body.Name], False, solid=1 - right)
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_rectangle(state["sketch"], 5, 0, 25, 3)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    joined = self.get_tree()["bodies"]
+    report["p84_solides_du_corps"] = (
+        len(split) == 1
+        and [row["label"] for row in split[0].get("solids", [])]
+        == [title + "[1]", title + "[2]"]
+        and len(joined) == 1 and "solids" not in joined[0])
+
+
+def p85_supprimer_des_corps(self, mark, report, etat):
+    mark("p85: supprimer des corps — une fonction d'historique")
+    import tempfile
+    from engine.kernel import dispatch
+    self.new_part("Supprimer des corps")
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_rectangle(state["sketch"], 0, 0, 10, 10)
+    self.sketch_add_rectangle(state["sketch"], 20, 0, 30, 10)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    first = self._require_body().Name
+    pad = self._require_body().Tip.Name
+    self.add_body()
+    second = self._require_body().Name
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_circle(state["sketch"], 50, 5, 4)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(8, sketch=state["sketch"])
+    state = self.sketch_start(plane="XZ")
+    self.sketch_add_line(state["sketch"], 0, 20, 30, 20)
+    self.sketch_finish(state["sketch"])
+    surface = self.surface_extrude(10, sketch=state["sketch"])[
+        "surfaces"][-1]["name"]
+    # Un des deux solides du premier corps : une étape cachée l'ôte de
+    # la forme, la cote d'avant passe toujours.
+    body = self._doc.getObject(first)
+    right = 0 if body.Shape.Solids[0].CenterOfMass.x > 15 else 1
+    tree = self.add_remove_bodies([{"name": first, "solid": right}])
+    row = next(f for f in tree["features"]
+               if f["type_key"] == "remove_bodies")
+    self._doc.getObject(pad).Length = 7
+    self._recompute()
+    report["p85_un_solide"] = (
+        len(body.Shape.Solids) == 1 and abs(body.Shape.Volume - 700) < 1e-6
+        and body.Shape.Solids[0].CenterOfMass.x < 15
+        and row["removes"] == ["Extrusion[{}]".format(right + 1)]
+        and row["rolled_back"] is False and not row.get("keep"))
+    # Le second corps et la surface : ni dans les dossiers, ni dans la
+    # vue, ni actifs ; leur histoire reste.
+    tree = self.add_remove_bodies([{"name": second}, {"name": surface}])
+    mesh = self.tessellate()
+    try:
+        self.set_active_body(second)
+        refused = False
+    except KernelError:
+        refused = True
+    surfaces = {s["name"]: s for s in tree["surfaces"]}
+    report["p85_corps_et_surface"] = (
+        [b["name"] for b in tree["bodies"]] == [first]
+        and tree["body"] == body.Label and refused
+        and surfaces[surface].get("removed") is True
+        and not mesh.get("other_bodies") and not mesh.get("surfaces")
+        and any(f.get("body") == second for f in tree["other_features"]))
+    # La barre au-dessus des deux fonctions : tout revient.
+    hosts = [f["name"] for f in tree["features"]
+             if f["type_key"] == "remove_bodies"]
+    tree = self.set_tip(pad)
+    back = (len(body.Shape.Solids) == 2
+            and {b["name"] for b in tree["bodies"]} >= {first, second})
+    self.tip_to_end()
+    # Garder tout ce qui reste, ou tout supprimer : refusés.
+    try:
+        self.add_remove_bodies([{"name": first}], keep=True)
+        nothing = False
+    except KernelError:
+        nothing = True
+    try:
+        self.add_remove_bodies([{"name": first}])
+        all_gone = False
+    except KernelError:
+        all_gone = True
+    report["p85_barre_et_refus"] = back and nothing and all_gone
+    # Supprimer la fonction rend ses corps ; Annuler la remet.
+    op = "delete_feature"
+    if not dispatch(self, op, {"feature": hosts[1]})["ok"]:
+        raise KernelError(op)
+    tree = self.get_tree()
+    returned = ({b["name"] for b in tree["bodies"]} == {first, second}
+                and len(self.tessellate().get("surfaces") or []) == 1)
+    self.undo()
+    tree = self.get_tree()
+    path = os.path.join(tempfile.gettempdir(),
+                        "freesolid-selftest-supprimer-corps.FCStd")
+    self.save_part(path)
+    self.open_part(path)
+    reopened = self.get_tree()
+    report["p85_supprimer_annuler_rouvrir"] = (
+        returned
+        and [b["name"] for b in tree["bodies"]] == [first]
+        and [b["name"] for b in reopened["bodies"]] == [first]
+        and len(self._require_body().Shape.Solids) == 1
+        and sum(f["type_key"] == "remove_bodies"
+                for f in reopened["features"]) == 2)
+    # Garder seulement le premier corps : le second et la surface partent.
+    self.new_part("Garder des corps")
+    self.add_rect_sketch(10, 10)
+    self.add_pad(5)
+    kept = self._require_body().Name
+    self.add_body()
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_circle(state["sketch"], 30, 0, 4)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    tree = self.add_remove_bodies([{"name": kept}], keep=True)
+    row = next(f for f in tree["features"]
+               if f["type_key"] == "remove_bodies")
+    report["p85_garder"] = (
+        [b["name"] for b in tree["bodies"]] == [kept] and row["keep"] is True
+        and row["kind"] == self._t("Garder des corps"))
+
+
+def p86_reediter_une_suppression(self, mark, report, etat):
+    mark("p86: rééditer une suppression de corps, à son rang")
+    import tempfile
+    from engine.kernel import dispatch
+    self.new_part("Rééditer une suppression")
+    state = self.sketch_start(plane="XY")
+    for x in (0, 20, 40):
+        self.sketch_add_rectangle(state["sketch"], x, 0, x + 10, 10)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    body = self._require_body()
+    first, pad = body.Name, body.Tip.Name
+    self.add_body()
+    second = self._require_body().Name
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_circle(state["sketch"], 70, 5, 4)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(8, sketch=state["sketch"])
+    self.set_active_body(first)
+
+    def rank_of(x):
+        """Rang, avant la suppression, du solide centré en ``x``."""
+        solids = self._doc.getObject(pad).Shape.Solids
+        return next(i for i, s in enumerate(solids)
+                    if abs(s.CenterOfMass.x - x) < 1)
+
+    def centers():
+        solids = self._doc.getObject(first).Shape.Solids  # rouvert : autre objet
+        return sorted(round(s.CenterOfMass.x) for s in solids)
+
+    tree = self.add_remove_bodies([{"name": first, "solid": rank_of(25)}])
+    host = next(f["name"] for f in tree["features"]
+                if f["type_key"] == "remove_bodies")
+    # Une extrusion ajoutée ensuite, collée au bloc de gauche.
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_rectangle(state["sketch"], 0, 10, 10, 20)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    later = body.Tip.Name
+    info = self.remove_bodies_info(host)
+    mine = [c for c in info["candidates"] if c["name"] == first]
+    report["p86_cases_au_rang"] = (
+        len(mine) == 3 and info["keep"] is False
+        and [c["checked"] for c in mine] == [
+            i == rank_of(25) for i in range(3)]
+        and any(c["name"] == second and not c["checked"]
+                for c in info["candidates"])
+        and centers() == [5, 45])
+    # Un autre solide : l'étape cachée change de cible, l'extrusion
+    # d'après reste.
+    tree = self.edit_remove_bodies(host, [{"name": first,
+                                           "solid": rank_of(45)}])
+    row = next(f for f in tree["features"] if f["name"] == host)
+    report["p86_changer_de_solide"] = (
+        centers() == [5, 25] and abs(body.Shape.Volume - 1500) < 1e-6
+        and len(self._removal_parts(self._doc.getObject(host))) == 1
+        and len(row["removes"]) == 1)
+    # Garder seulement le second corps : le premier part en entier, son
+    # étape cachée aussi.
+    tree = self.edit_remove_bodies(host, [{"name": second}], keep=True)
+    obj = self._doc.getObject(host)
+    whole = ([b["name"] for b in tree["bodies"]] == [second]
+             and not self._removal_parts(obj)
+             and obj.Label == self._t("Garder des corps")
+             and not any("FreeSolidRemovekeys" in o.PropertiesList
+                         for o in self._doc.Objects)
+             and self._doc.getObject(later).BaseFeature.Name == pad)
+    # Retour à un seul solide, par l'enveloppe annulable : l'étape cachée
+    # s'insère entre l'extrusion du début et celle d'après.
+    op = "edit_remove_bodies"
+    if not dispatch(self, op, {"feature": host, "keep": False,
+                               "targets": [{"name": first,
+                                            "solid": rank_of(5)}]})["ok"]:
+        raise KernelError(op)
+    parts = self._removal_parts(obj)
+    inserted = (len(parts) == 1 and parts[0].BaseFeature.Name == pad
+                and self._doc.getObject(later).BaseFeature is parts[0]
+                and body.Tip.Name == later and centers() == [5, 25, 45]
+                and abs(body.Shape.Volume - 1500) < 1e-6
+                and obj.Label == self._t("Supprimer des corps"))
+    report["p86_inserer_au_milieu"] = whole and inserted
+    self.undo()
+    undone = (not self._removal_parts(obj)
+              and [b["name"] for b in self.get_tree()["bodies"]] == [second])
+    self.redo()
+    redone = len(self._removal_parts(obj)) == 1 and centers() == [5, 25, 45]
+    # Un nom choisi ne suit pas le mode.
+    self.rename(host, "Mes corps")
+    self.edit_remove_bodies(host, [{"name": second}], keep=True)
+    self.edit_remove_bodies(host, [{"name": first, "solid": rank_of(5)}])
+    named = self._doc.getObject(host).Label == "Mes corps"
+    path = os.path.join(tempfile.gettempdir(),
+                        "freesolid-selftest-reediter-suppression.FCStd")
+    self.save_part(path)
+    self.open_part(path)
+    info = self.remove_bodies_info(host)
+    checked = [c.get("solid") for c in info["candidates"] if c["checked"]]
+    report["p86_annuler_nommer_rouvrir"] = (
+        undone and redone and named and checked == [rank_of(5)]
+        and centers() == [5, 25, 45])

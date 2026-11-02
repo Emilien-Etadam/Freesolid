@@ -54,6 +54,9 @@ export {
   patternFeaturesParams,
 } from "./features/repetitions.js";
 export {
+  REMOVE_BODIES_NOTE, removalKey, removeBodiesGroups, removeBodiesParams,
+} from "./features/combiner.js";
+export {
   boundaryParam,
   deleteFacesBuild,
   deleteFacesParams,

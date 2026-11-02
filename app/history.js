@@ -26,6 +26,7 @@ export const STEP_LABELS = {
   add_helix: "Hélice",
   add_body: "Corps",
   add_boolean: "Combiner",
+  add_remove_bodies: "Supprimer des corps",
   add_text: "Texte",
   set_body_color: "Couleur du corps",
   set_param: "Modifier la fonction",
@@ -56,7 +57,8 @@ export const STEP_LABELS = {
   add_replace_face: "Fonction", add_sketch3d: "Fonction",
   add_surface_cut: "Fonction", add_vertex_chamfer: "Fonction",
   array_component: "Modification", edit_curve3d: "Modification",
-  edit_graph_feature: "Modification", edit_repeat_feature: "Modification",
+  edit_graph_feature: "Modification", edit_remove_bodies: "Modification",
+  edit_repeat_feature: "Modification",
   edit_sketch3d: "Modification", edit_surface_cut: "Modification",
   edit_surface_extend: "Modification", edit_surface_fillet: "Modification",
   edit_surface_freeform: "Modification", edit_surface_trim: "Modification",
@@ -181,7 +183,9 @@ function liftChildren(sides, flat) {
  *
  *  Une surface, une esquisse libre ou une référence (plan, axe, point)
  *  est *après* ssi `rolled_back` est vrai.
- *  Une fonction volumique est après le tip (tip absent + fonctions
+ *  Une fonction volumique aussi, quand le moteur pose `rolled_back` (la
+ *  barre est commune à tous les corps, chacun s'arrête à son Tip) ;
+ *  sans ce champ, elle est après le tip (tip absent + fonctions
  *  présentes = toutes après). Barre `"none"` si aucune ligne.
  *
  *  Une esquisse que la barre a sortie de sa fonction (`unabsorbed`) passe
@@ -200,7 +204,7 @@ export function splitHistoryAroundBar(features, surfaces, tip, { flat = false } 
   const after = [];
   let passedTip = false;
   for (const row of history) {
-    if (!isVolumeRow(row)) {
+    if (!isVolumeRow(row) || typeof row.item.rolled_back === "boolean") {
       if (row.item.rolled_back) after.push(row);
       else before.push(row);
     } else if (!tip && hasVolume) {

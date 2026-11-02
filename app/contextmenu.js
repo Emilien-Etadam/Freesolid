@@ -17,6 +17,25 @@ export function isBodyMenuTarget(feature) {
   return feature != null && typeof feature.active === "boolean";
 }
 
+/** Ligne d'un solide d'un corps qui en garde plusieurs : les commandes
+ *  du corps (couleur, masquer, renommer) ne visent que ce solide. */
+export function solidParam(target) {
+  return Number.isInteger(target?.solid) ? { solid: target.solid } : {};
+}
+
+/** Ce que « Supprimer » vise sur une ligne de dossier — un corps qui a de
+ *  la matière, l'un de ses solides, une surface : la fonction « Supprimer
+ *  des corps » l'ôtera, comme dans les modeleurs courants. `null` sur une
+ *  ligne d'histoire et sur un corps vide, qui se suppriment pour de bon. */
+export function folderRemovalTarget(feature) {
+  if (!feature?.name) return null;
+  if (isBodyMenuTarget(feature)) {
+    return feature.has_solid === true
+      ? { name: feature.name, ...solidParam(feature) } : null;
+  }
+  return feature.inFolder ? { name: feature.name } : null;
+}
+
 /** Fonction de corps (hors plan de référence et corps) : elle se
  *  désactive sans être supprimée. */
 export function isSuppressibleTarget(feature) {
@@ -41,7 +60,9 @@ export function canModifyMenuTarget(feature) {
   const key = feature.type_key;
   if (!key || key === "datum_plane") return false;
   if (isFrozenSurface(feature)) return false;
-  if (key === "sketch" || key === "body_pattern") return true;
+  if (key === "sketch" || key === "body_pattern" || key === "remove_bodies") {
+    return true;
+  }
   return isBodyFeatureKey(key) || isSurfaceKey(key);
 }
 
@@ -111,8 +132,16 @@ export function installContextMenu(ctx) {
   function openMenu(event, feature) {
     event.preventDefault();
     if (feature.type_key === "body_pattern") {
-      // Réseau de corps : ni barre de retour, ni dossier, ni désactivation.
-      openOnly(event, ["ctx-modify", "ctx-rename", "ctx-delete"]);
+      // Réseau de corps : ni dossier, ni désactivation.
+      openOnly(event, ["ctx-modify", "ctx-rename", "ctx-rollback", "ctx-end",
+        "ctx-delete"]);
+      menuFeature = feature;
+      return;
+    }
+    if (feature.type_key === "remove_bodies") {
+      // Suppression de corps : comme un réseau de corps.
+      openOnly(event, ["ctx-modify", "ctx-rename", "ctx-rollback", "ctx-end",
+        "ctx-delete"]);
       menuFeature = feature;
       return;
     }
@@ -163,7 +192,7 @@ export function installContextMenu(ctx) {
 
   document.getElementById("ctx-rename").addEventListener("click", () => {
     if (!menuFeature) return;
-    const row = treeRowFor(menuFeature.name);
+    const row = treeRowFor(menuFeature.name, menuFeature.solid);
     if (!row) return;
     beginInlineRename(row, menuFeature);
   });
@@ -278,20 +307,23 @@ export function installContextMenu(ctx) {
 
   document.getElementById("ctx-hide").addEventListener("click", () => {
     if (!menuFeature || !isHideableTarget(menuFeature)) return;
-    refreshAny(call("set_hidden",
-      { objects: [menuFeature.name], hidden: !menuFeature.hidden }));
+    refreshAny(call("set_hidden", { objects: [menuFeature.name],
+      hidden: !menuFeature.hidden, ...solidParam(menuFeature) }));
   });
 
   // Matière d'un corps : la bibliothèque, ou une masse volumique propre.
+  // Elle vaut pour tous les solides du corps : le titre les nomme.
   document.getElementById("ctx-material").addEventListener("click", async () => {
     if (!menuFeature) return;
     const body = menuFeature;
     const library = await call("material_library").catch(() => null);
     if (!library) return;
     const current = body.material;
+    const names = Number.isInteger(body.solid)
+      ? body.solids.map((solid) => solid.label).join(", ") : body.label;
     panel.open({
       icon: "material",
-      title: t("Matière — {b}", { b: body.label }),
+      title: t("Matière — {b}", { b: names }),
       groups: [{ label: t("Matière"), rows: [
         { type: "select", key: "material", value: current?.id ?? "",
           options: [
@@ -317,17 +349,20 @@ export function installContextMenu(ctx) {
   document.getElementById("ctx-color").addEventListener("click", () => {
     if (!menuFeature) return;
     const bodyName = menuFeature.name;
+    const solid = solidParam(menuFeature);
     const picker = document.getElementById("body-color-picker");
     picker.value = hexColor(menuFeature.color) || cssHex(sceneTheme.part);
     picker.addEventListener("change", () => {
-      refresh(call("set_body_color", { body: bodyName, color: picker.value }));
+      refresh(call("set_body_color",
+        { body: bodyName, color: picker.value, ...solid }));
     }, { once: true });
     picker.click();
   });
 
   document.getElementById("ctx-color-reset").addEventListener("click", () => {
     if (!menuFeature) return;
-    refresh(call("set_body_color", { body: menuFeature.name, color: null }));
+    refresh(call("set_body_color",
+      { body: menuFeature.name, color: null, ...solidParam(menuFeature) }));
   });
 
   document.getElementById("ctx-ground").addEventListener("click", () => {
@@ -360,6 +395,12 @@ export function installContextMenu(ctx) {
   barItem("ctx-flat", () => ctx.setFlatTree(!ctx.isFlatTree()));
   document.getElementById("ctx-delete").addEventListener("click", () => {
     if (!menuFeature) return;
+    // Dans un dossier : le panneau « Supprimer des corps », la ligne cochée.
+    const target = folderRemovalTarget(menuFeature);
+    if (target) {
+      ctx.openRemoveBodies(target);
+      return;
+    }
     if (confirm(t("Supprimer « {f} » ?", { f: menuFeature.label })))
       refreshAny(call("delete_feature", { feature: menuFeature.name }));
   });
@@ -393,7 +434,7 @@ export function installContextMenu(ctx) {
       hit = {
         kind: "face",
         face: group.faceId,
-        colored: !!group.color,
+        colored: !!group.color && !group.solid_tint,
         feature: feature ? {
           name: feature.name, label: feature.label, sketch: sketch?.name,
           item: feature, sketchItem: sketch,

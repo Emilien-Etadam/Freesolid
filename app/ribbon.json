@@ -28,7 +28,8 @@
             {"id": "btn-helix", "titre": "Hélice — ressorts, filets réels", "icon": "nodes_helix", "libelle": "Hélice"},
             {"id": "btn-text", "titre": "Gravure / bossage de texte sur une face — marquage de pièces", "icon": "nodes_text", "libelle": "Texte"},
             {"id": "btn-graph-feature", "titre": "Fonction graphe — flux de nœuds, boucles et listes, une forme en sortie", "icon": "graph_feature", "libelle": "Fonction graphe"},
-            {"id": "btn-boolean", "titre": "Combiner deux corps : Soustraire / Ajouter / Intersection", "icon": "boolean", "libelle": "Combiner"}
+            {"id": "btn-boolean", "titre": "Combiner deux corps : Soustraire / Ajouter / Intersection", "icon": "boolean", "libelle": "Combiner"},
+            {"id": "btn-remove-bodies", "titre": "Supprimer des corps, ou ne garder que ceux qu'on coche — une fonction de l'arbre", "icon": "remove_bodies", "libelle": "Supprimer des corps"}
           ]
         },
         {

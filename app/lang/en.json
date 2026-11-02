@@ -540,7 +540,6 @@
  "Utilisée par : {f}": "Used by: {f}",
  "libre": "free",
  "vide": "empty",
- "{n} élément(s)": "{n} item(s)",
  "double-clic : modifier l'esquisse · clic droit : modifier": "double-click: edit the sketch · right-click: edit",
  "double-clic : modifier · clic droit : modifier, barre de retour, supprimer · glisser : réordonner": "double-click: edit · right-click: edit, rollback bar, delete · drag: reorder",
  "Liaison géométrique — {s}": "Geometric link — {s}",
@@ -1540,6 +1539,15 @@
  "Creuse aussi : {b}": "Also cuts: {b}",
  "Distance (direction 2)": "Distance (direction 2)",
  "Réseau de corps": "Body pattern",
- "double-clic : modifier · clic droit : modifier, renommer, supprimer": "double-click: edit · right-click: edit, rename, delete",
- "Corps créés : {b}": "Bodies created: {b}"
+ "double-clic : modifier · clic droit : modifier, barre de retour, renommer, supprimer": "double-click: edit · right-click: edit, rollback bar, rename, delete",
+ "Corps créés : {b}": "Bodies created: {b}",
+ "Supprimer des corps": "Delete bodies",
+ "Supprimer des corps, ou ne garder que ceux qu'on coche — une fonction de l'arbre": "Delete bodies, or keep only the checked ones — a feature in the tree",
+ "Supprimer des corps : la pièce n'a pas encore de corps": "Delete bodies: the part has no body yet",
+ "Supprimer les corps cochés": "Delete the checked bodies",
+ "Garder seulement les corps cochés": "Keep only the checked bodies",
+ "Les corps ôtés reviennent quand on recule la barre au-dessus de la fonction, ou qu'on la supprime.": "Removed bodies come back when you roll the bar back above the feature, or delete it.",
+ "Cochez au moins un corps": "Check at least one body",
+ "Corps supprimés : {b}": "Bodies deleted: {b}",
+ "Corps gardés : {b}": "Bodies kept: {b}"
 }

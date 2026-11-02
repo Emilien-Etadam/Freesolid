@@ -135,6 +135,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: "btn-polpattern", tab: "features" },
     { id: "btn-mirror", tab: "features" },
     { id: "btn-boolean", tab: "features" },
+    { id: "btn-remove-bodies", tab: "features" },
     { id: "btn-surf-extrude", tab: "surfaces" },
     { id: "btn-surf-revolve", tab: "surfaces" },
     { id: "btn-surf-loft", tab: "surfaces" },
@@ -1052,7 +1053,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // Le compte du NOYAU seul. La palette vient de `graphPaletteItems(FEATURES)`
   // et un plugin y ajoute les siennes : avec un plugin installé, c'est plus.
   // Ajouter une fonction au noyau doit faire bouger ce nombre — c'est le but.
-  const PALETTE_NOYAU = 47;
+  const PALETTE_NOYAU = 48;
   if (paletteState.count !== PALETTE_NOYAU) {
     errors.push("N005 : palette " + paletteState.count
       + " items (attendu " + PALETTE_NOYAU + " sans plugin)");

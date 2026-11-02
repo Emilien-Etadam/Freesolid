@@ -28,6 +28,23 @@ export function nextTab(current, { panelOpen, panelWasOpen }) {
   return current;
 }
 
+/** Lignes de l'onglet Affichage : un corps par solide, comme le dossier
+ *  des corps (`solid` : son rang dans son corps), puis les surfaces. */
+export function displayRows(tree) {
+  const bodies = (tree?.bodies ?? []).filter((b) => b.has_solid !== false)
+    .flatMap((b) => (b.solids?.length
+      ? b.solids.map((solid, index) => ({
+        name: b.name, label: solid.label, solid: index,
+        hidden: !!(b.hidden || solid.hidden), color: solid.color ?? b.color,
+      }))
+      : [{ name: b.name, label: b.label, hidden: b.hidden, color: b.color }]));
+  return [
+    ...bodies,
+    ...(tree?.surfaces ?? []).map((s) => ({ name: s.name, label: s.label,
+                                            hidden: s.hidden, surface: true })),
+  ];
+}
+
 const STYLES = [
   ["shaded-edges", "Ombré + arêtes"],
   ["shaded", "Ombré seul"],
@@ -177,12 +194,7 @@ export function installManagerTabs(ctx) {
     displayEl.append(styles, heading("Corps"));
     const list = document.createElement("ul");
     list.className = "mgr-list";
-    const rows = [
-      ...(tree?.bodies ?? []).filter((b) => b.has_solid !== false)
-        .map((b) => ({ name: b.name, label: b.label, hidden: b.hidden, color: b.color })),
-      ...(tree?.surfaces ?? []).map((s) => ({ name: s.name, label: s.label,
-                                              hidden: s.hidden, surface: true })),
-    ];
+    const rows = displayRows(tree);
     if (!rows.length) {
       const empty = document.createElement("li");
       empty.className = "mgr-empty";
@@ -201,7 +213,8 @@ export function installManagerTabs(ctx) {
       eye.title = label;
       eye.setAttribute("aria-label", label);
       eye.addEventListener("click", () => {
-        ctx.refresh(ctx.call("set_hidden", { objects: [row.name], hidden: !row.hidden }));
+        ctx.refresh(ctx.call("set_hidden", { objects: [row.name], hidden: !row.hidden,
+          ...(Number.isInteger(row.solid) ? { solid: row.solid } : {}) }));
       });
       const swatch = document.createElement("span");
       swatch.className = "mgr-swatch";

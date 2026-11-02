@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  canModifyMenuTarget, isBodyMenuTarget, isFrozenSurface,
+  canModifyMenuTarget, isBodyMenuTarget, isFrozenSurface, solidParam,
 } from "../../app/contextmenu.js";
 
 describe("cible du menu de l'arbre", () => {
@@ -38,5 +38,14 @@ describe("cible du menu de l'arbre", () => {
     assert.equal(canModifyMenuTarget({ type_key: "pad", graph: {} }), true);
     // Réseau de corps : le double-clic et « Modifier » le rouvrent.
     assert.equal(canModifyMenuTarget({ type_key: "body_pattern" }), true);
+  });
+});
+
+describe("solidParam", () => {
+  it("la ligne d'un solide envoie son rang, un corps entier rien", () => {
+    assert.deepEqual(solidParam({ name: "Body", active: true, solid: 0 }), { solid: 0 });
+    assert.deepEqual(solidParam({ name: "Body", active: true, solid: 2 }), { solid: 2 });
+    assert.deepEqual(solidParam({ name: "Body", active: true }), {});
+    assert.deepEqual(solidParam(null), {});
   });
 });

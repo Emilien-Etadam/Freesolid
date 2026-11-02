@@ -5,7 +5,7 @@ import tempfile
 
 import pytest
 
-from engine.kernel import Kernel, KernelError, rollback_plan
+from engine.kernel import Kernel, KernelError, rollback_plan, rollback_tips
 
 
 def _hist(*rows):
@@ -118,6 +118,52 @@ def test_rollback_plan_on_absorbed_sketch():
     flags, tip = rollback_plan(history, "Sketch001")
     assert tip == "Pad"
     assert flags == {"Sketch002": True}
+
+
+def _bodies(*rows):
+    return [{"name": name, "order": order, "role": role, "body": body}
+            for name, order, role, body in rows]
+
+
+def test_rollback_tips_one_tip_per_body():
+    # Deux corps entrelacés : chacun s'arrête sur sa dernière fonction
+    # au-dessus de la barre.
+    history = _bodies(("Pad", 1, "feature", "Body"),
+                      ("Pad001", 2, "feature", "Body001"),
+                      ("Pocket", 3, "feature", "Body"),
+                      ("Sketch005", 4, "sketch", "Body001"),
+                      ("Pad002", 5, "feature", "Body001"))
+    flags, tips = rollback_tips(history, "Pocket")
+    assert tips == {"Body": "Pocket", "Body001": "Pad001"}
+    assert flags == {"Sketch005": True}
+
+
+def test_rollback_tips_body_born_after_the_bar():
+    history = _bodies(("Pad", 1, "feature", "Body"),
+                      ("Pad001", 2, "feature", "Body001"))
+    _, tips = rollback_tips(history, "Pad")
+    assert tips == {"Body": "Pad", "Body001": None}
+
+
+def test_rollback_tips_pattern_copies_born_with_the_pattern():
+    # La base d'une copie a le rang de son réseau : la barre posée sur le
+    # réseau la garde, posée au-dessus elle n'existe pas encore.
+    history = _bodies(("Pad", 1, "feature", "Body"),
+                      ("BodyPattern", 2, "pattern", None),
+                      ("FeatureBase", 2, "feature", "Body001"),
+                      ("Fillet", 3, "feature", "Body001"))
+    assert rollback_tips(history, "BodyPattern")[1] == {
+        "Body": "Pad", "Body001": "FeatureBase"}
+    assert rollback_tips(history, "Pad")[1] == {"Body": "Pad", "Body001": None}
+    assert rollback_tips(history, "Fillet")[1]["Body001"] == "Fillet"
+
+
+def test_rollback_tips_bar_at_top_and_unknown():
+    history = _bodies(("Pad", 1, "feature", "Body"),
+                      ("Pad001", 2, "feature", "Body001"))
+    assert rollback_tips(history, None)[1] == {"Body": None, "Body001": None}
+    with pytest.raises(KernelError):
+        rollback_tips(history, "Inconnue")
 
 
 @pytest.mark.skipif(not _freecad_available(), reason="FreeCAD requis")

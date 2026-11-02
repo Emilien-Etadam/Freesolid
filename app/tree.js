@@ -15,8 +15,10 @@ import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
   revolutionGroups, revolutionEditValues, revolutionProblem,
   checkedContours, contourRows, vertexChamferDistances, vertexChamferRows,
+  REMOVE_BODIES_NOTE, removeBodiesGroups, removeBodiesParams,
 } from "./features.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
+import { solidParam } from "./contextmenu.js";
 import { readScene } from "./theme.js";
 
 const sceneTheme = readScene();
@@ -47,6 +49,7 @@ export const TREE_ICONS = {
   sweep_cut: "PartDesign_SubtractivePipe",
   helix: "nodes_helix",
   boolean: "boolean",
+  remove_bodies: "remove_bodies",
   body: "body",
   surface_extrude: "nodes_extrude",
   surface_revolve: "revolve",
@@ -597,6 +600,21 @@ export function installTree(ctx) {
     return open;
   }
 
+  /** Ce que le dossier montre d'un solide d'un corps qui en garde
+   *  plusieurs : un corps à part, avec son nom, sa couleur et son
+   *  masquage. `solid` (son rang) suit les commandes du menu. */
+  function solidRowInfo(bodyInfo, solid, index) {
+    return {
+      ...bodyInfo,
+      label: solid.label,
+      color: solid.color ?? bodyInfo.color,
+      hidden: !!(bodyInfo.hidden || solid.hidden),
+      solid: index,
+    };
+  }
+
+  /** Une ligne du dossier des corps. Toutes les lignes des solides d'un
+   *  même corps activent ce corps. */
   function appendBodyRow(bodyInfo) {
     const bodyItem = document.createElement("li");
     const empty = bodyInfo.has_solid !== true;
@@ -611,16 +629,18 @@ export function installTree(ctx) {
       swatch.style.background = bodyInfo.color;
       bodyItem.appendChild(swatch);
     }
-    const suffix = empty
-      ? " — " + t("vide")
-      : (bodyInfo.active ? ""
-        : " — " + t("{n} élément(s)", { n: bodyInfo.count }));
+    // Le nom : celui de sa dernière fonction, ou celui qu'on lui a donné.
+    const suffix = empty ? " — " + t("vide") : "";
     bodyItem.appendChild(document.createTextNode(bodyInfo.label + suffix
       + (bodyInfo.material ? ` · ${bodyInfo.material.name}` : "")
       + (bodyInfo.hidden ? " — " + t("masqué") : "")));
     if (bodyInfo.name) {
       bodyItem.dataset.feat = bodyInfo.name;
-      if (!bodyInfo.active) bodyItem.title = t("Clic : activer ce corps");
+      if (Number.isInteger(bodyInfo.solid)) {
+        bodyItem.dataset.solid = String(bodyInfo.solid);
+      }
+      bodyItem.title = bodyInfo.active ? bodyInfo.label
+        : `${bodyInfo.label} — ${t("Clic : activer ce corps")}`;
       bodyItem.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, bodyItem, bodyInfo)) return;
         if (!bodyInfo.active) {
@@ -687,7 +707,9 @@ export function installTree(ctx) {
       onSurfaceClick(surface);
     });
     item.addEventListener("dblclick", () => onSurfaceDblClick(surface));
-    item.addEventListener("contextmenu", (event) => ctx.openMenu(event, surface));
+    // Dans le dossier, « Supprimer » ôte la surface par une fonction.
+    item.addEventListener("contextmenu", (event) => ctx.openMenu(event,
+      inFolder ? { ...surface, inFolder: true } : surface));
     treeEl.appendChild(item);
     if (hasChildren && isExpanded(surface.name)) {
       for (const child of children) {
@@ -874,19 +896,20 @@ export function installTree(ctx) {
   // la barre de retour montre où elle ira ; le moteur la déplace avec ses
   // esquisses, et refuse si l'arbre ne se reconstruit plus.
   let suppressTreeClick = false;
-  let treeRenameClick = { name: null, at: null };
+  let treeRenameClick = { name: null, solid: undefined, at: null };
   let renameState = null;
 
   function consumeTreeRenameClick(event, row, feature) {
     if (!feature?.name || event.target.closest(".arrow, input")) return false;
     const action = renameClickAction({
       previousAt: treeRenameClick.at,
-      sameRow: treeRenameClick.name === feature.name,
+      sameRow: treeRenameClick.name === feature.name
+        && treeRenameClick.solid === feature.solid,
       now: Date.now(),
       moved: false,
       dragging: row.classList.contains("dragging") || suppressTreeClick,
     });
-    treeRenameClick = { name: feature.name, at: Date.now() };
+    treeRenameClick = { name: feature.name, solid: feature.solid, at: Date.now() };
     if (action === "select") {
       for (const item of treeEl.querySelectorAll("li.sel")) {
         if (item !== row) item.classList.remove("sel");
@@ -952,7 +975,8 @@ export function installTree(ctx) {
       return;
     }
     finishRenameField(state.input, label);
-    refreshAny(call("rename", { feature: state.feature.name, label }));
+    refreshAny(call("rename", { feature: state.feature.name, label,
+      ...solidParam(state.feature) }));
   }
 
   function cancelInlineRename() {
@@ -962,25 +986,31 @@ export function installTree(ctx) {
     finishRenameField(state.input, state.shown);
   }
 
-  function treeRowFor(name) {
+  /** La ligne d'un nœud ; `solid` : celle d'un des solides d'un corps. */
+  function treeRowFor(name, solid) {
     if (!name) return null;
-    return treeEl.querySelector(`li[data-feat="${CSS.escape(name)}"]`);
+    const own = Number.isInteger(solid) ? `[data-solid="${solid}"]` : "";
+    return treeEl.querySelector(`li[data-feat="${CSS.escape(name)}"]${own}`);
   }
 
-  function renameRecord(name) {
-    return findFeatureInTree(ctx.lastTree, name)
-      ?? (ctx.lastTree?.bodies ?? []).find((body) => body.name === name)
-      ?? null;
+  function renameRecord(name, solid) {
+    const body = (ctx.lastTree?.bodies ?? []).find((b) => b.name === name);
+    const own = body?.solids?.[solid];
+    if (own) return solidRowInfo(body, own, solid);
+    return findFeatureInTree(ctx.lastTree, name) ?? body ?? null;
   }
 
   function beginRenameSelected() {
     if (treeEl.querySelector("li.dragging")) return;
-    const clicked = treeRenameClick.name ? treeRowFor(treeRenameClick.name) : null;
+    const clicked = treeRenameClick.name
+      ? treeRowFor(treeRenameClick.name, treeRenameClick.solid) : null;
     const row = clicked?.classList.contains("sel")
       ? clicked
       : treeEl.querySelector("li.sel[data-feat]");
     if (!row) return;
-    const feature = renameRecord(row.dataset.feat);
+    const solid = row.dataset.solid === undefined
+      ? undefined : Number(row.dataset.solid);
+    const feature = renameRecord(row.dataset.feat, solid);
     if (!feature?.label) return;
     beginInlineRename(row, feature);
   }
@@ -1002,7 +1032,7 @@ export function installTree(ctx) {
                                     moveEvent.clientY - start.y) < 6) return;
         dragging = true;
         row.classList.add("dragging");
-        const slots = reorderSlotPositions();
+        const slots = reorderSlotPositions(feature.body);
         if (slots.length) showInsertMark(nearestRollbackSlot(moveEvent.clientY, slots));
       };
       const onUp = (upEvent) => {
@@ -1015,8 +1045,8 @@ export function installTree(ctx) {
         // pas (lâcher hors de la ligne), le drapeau retombe aussitôt.
         suppressTreeClick = true;
         setTimeout(() => { suppressTreeClick = false; }, 0);
-        const rows = [...treeEl.querySelectorAll("li[data-hist]")];
-        const slots = reorderSlotPositions();
+        const rows = historyRowsOf(feature.body);
+        const slots = reorderSlotPositions(feature.body);
         if (!slots.length) return;
         const slot = nearestRollbackSlot(upEvent.clientY, slots);
         const own = rows.indexOf(row);
@@ -1050,9 +1080,16 @@ export function installTree(ctx) {
     return slots;
   }
 
+  /** Lignes d'historique d'un corps (`body` absent : le corps actif,
+   *  avec les surfaces) — on ne réordonne qu'à l'intérieur d'un corps. */
+  function historyRowsOf(body) {
+    return [...treeEl.querySelectorAll("li[data-hist]")]
+      .filter((li) => (li.dataset.body ?? "") === (body ?? ""));
+  }
+
   /** Positions d'insertion du glisser-réordonner, par indice de ligne. */
-  function reorderSlotPositions() {
-    const rows = [...treeEl.querySelectorAll("li[data-hist]")];
+  function reorderSlotPositions(body) {
+    const rows = historyRowsOf(body);
     if (!rows.length) return [];
     const slots = [{ y: rows[0].getBoundingClientRect().top, index: 0 }];
     for (let i = 0; i < rows.length; i++) {
@@ -1144,10 +1181,14 @@ export function installTree(ctx) {
 
     const bodies = tree.bodies
       ?? [{ name: null, label: tree.body, active: true, count: 0 }];
-    const surfaces = tree.surfaces ?? [];
+    // Une surface ôtée par « Supprimer des corps » quitte le dossier ; sa
+    // ligne reste dans l'histoire.
+    const surfaces = (tree.surfaces ?? []).filter((surface) => !surface.removed);
     const variables = tree.variables ?? [];
-    const solidCount = bodies.filter((body) => body.has_solid === true).length;
-    const bodiesDefaultOpen = bodies.length > 1
+    // Chaque solide compte pour un corps, comme dans le dossier.
+    const solidCount = bodies.filter((body) => body.has_solid === true)
+      .reduce((count, body) => count + (body.solids?.length || 1), 0);
+    const bodiesDefaultOpen = bodies.length > 1 || solidCount > 1
       || bodies.some((body) => body.error);
     const surfacesDefaultOpen = surfaces.some((surface) => surface.error
       || (surface.children ?? []).some((child) => child.error));
@@ -1162,7 +1203,12 @@ export function installTree(ctx) {
       bodiesDefaultOpen,
       { title: t("Corps de la pièce — clic : déplier") });
     if (bodiesOpen) {
-      for (const bodyInfo of bodies) appendBodyRow(bodyInfo);
+      for (const bodyInfo of bodies) {
+        if (!bodyInfo.solids?.length) appendBodyRow(bodyInfo);
+        for (const [index, solid] of (bodyInfo.solids ?? []).entries()) {
+          appendBodyRow(solidRowInfo(bodyInfo, solid, index));
+        }
+      }
     }
 
     const surfacesOpen = appendFolder(
@@ -1274,30 +1320,58 @@ export function installTree(ctx) {
     origin.addEventListener("click", toggleOrigin);
     treeEl.appendChild(origin);
 
-    // Un réseau de corps suit le corps tel que la barre le laisse : sa
-    // ligne se tient juste au-dessus d'elle, sans position de barre.
-    const all = tree.features ?? [];
-    const features = all.filter((feature) => feature.type_key !== "body_pattern");
-    const patterns = all.filter((feature) => feature.type_key === "body_pattern");
-    const split = splitHistoryAroundBar(features, tree.surfaces ?? [], tree.tip,
+    // Un seul arbre : l'histoire des autres corps se range par rang avec
+    // celle du corps actif, réseaux de corps compris ; le moteur dit de
+    // quel côté de la barre.
+    const all = [...(tree.features ?? []), ...(tree.other_features ?? [])];
+    const split = splitHistoryAroundBar(all, tree.surfaces ?? [], tree.tip,
       { flat: flatTree });
     if (split.bar !== "none") {
       appendHistoryRows(split.before, false);
-      for (const pattern of patterns) appendBodyPatternRow(pattern);
       appendRollbackBar();
       appendHistoryRows(split.after, true);
-    } else {
-      for (const pattern of patterns) appendBodyPatternRow(pattern);
     }
     markBarSlots(split);
   }
 
-  /** Ligne d'un réseau de corps du corps actif : double-clic pour le
-   *  rouvrir ; ni réordonnée, ni reculée par la barre. */
-  function appendBodyPatternRow(feature) {
+  /** Ligne d'un autre corps (`feature.body`) : son corps devient actif,
+   *  puis l'action part sur la ligne du nouvel arbre. */
+  function inBody(feature, action) {
+    if (!feature.body) {
+      action(feature);
+      return;
+    }
+    Promise.resolve(refresh(call("set_active_body", { body: feature.body })))
+      .then(() => action(findSketch(ctx.lastTree, feature.name) ?? feature));
+  }
+
+  /** Clic sur une ligne d'un autre corps : elle se marque, sans changer
+   *  de corps — le double-clic qui suit ne doit pas perdre sa ligne. */
+  function markForeignRow(event, row, feature) {
+    if (consumeTreeRenameClick(event, row, feature)) return;
+    ctx.selectedFeatureName = feature.name;
+  }
+
+  /** Clic droit sur une ligne d'un autre corps : le menu s'ouvre une fois
+   *  son corps actif. */
+  function openRowMenu(event, feature) {
+    if (!feature.body) {
+      ctx.openMenu(event, feature);
+      return;
+    }
+    event.preventDefault();
+    inBody(feature, (fresh) => ctx.openMenu(event, fresh));
+  }
+
+  /** Ligne d'un réseau de corps : double-clic pour le rouvrir. La barre
+   *  se pose dessous ; elle ne se réordonne pas. */
+  function appendBodyPatternRow(feature, rolledBack) {
     const row = document.createElement("li");
     row.className = "feat";
     row.dataset.feat = feature.name;
+    row.dataset.line = feature.name;
+    if (feature.body) row.dataset.body = feature.body;
+    if (rolledBack) row.classList.add("rolled-back");
     if (feature.error) row.classList.add("error");
     if (ctx.selectedFeatureName === feature.name) row.classList.add("sel");
     const arrow = document.createElement("span");
@@ -1307,10 +1381,48 @@ export function installTree(ctx) {
       ?? "linear_pattern"));
     row.appendChild(document.createTextNode(feature.label));
     row.title = `${feature.kind} — `
-      + t("double-clic : modifier · clic droit : modifier, renommer, supprimer");
+      + t("double-clic : modifier · clic droit : modifier, barre de retour, renommer, supprimer");
     if (feature.copies?.length) {
       row.title += "\n" + t("Corps créés : {b}",
                              { b: feature.copies.join(", ") });
+    }
+    if (feature.comment) {
+      const note = document.createElement("span");
+      note.className = "tree-note";
+      note.textContent = " ✎";
+      row.appendChild(note);
+      row.title = `${feature.comment}\n\n${row.title}`;
+    }
+    row.addEventListener("dblclick", () => inBody(feature, editFeature));
+    row.addEventListener("contextmenu", (event) => openRowMenu(event, feature));
+    row.addEventListener("click", (event) => {
+      if (consumeTreeRenameClick(event, row, feature)) return;
+      ctx.selectedFeatureName = feature.name;
+    });
+    treeEl.appendChild(row);
+  }
+
+  /** Ligne d'une suppression de corps : double-clic pour la rouvrir. La
+   *  barre se pose dessous, ses corps reviennent quand on la recule ;
+   *  elle ne se réordonne pas. */
+  function appendRemoveBodiesRow(feature, rolledBack) {
+    const row = document.createElement("li");
+    row.className = "feat";
+    row.dataset.feat = feature.name;
+    row.dataset.line = feature.name;
+    if (rolledBack) row.classList.add("rolled-back");
+    if (feature.error) row.classList.add("error");
+    if (ctx.selectedFeatureName === feature.name) row.classList.add("sel");
+    const arrow = document.createElement("span");
+    arrow.className = "arrow";
+    row.appendChild(arrow);
+    row.appendChild(treeIcon("remove_bodies"));
+    row.appendChild(document.createTextNode(feature.label));
+    row.title = `${feature.kind} — `
+      + t("double-clic : modifier · clic droit : modifier, barre de retour, renommer, supprimer");
+    if (feature.removes?.length) {
+      row.title += "\n" + t(feature.keep ? "Corps gardés : {b}"
+        : "Corps supprimés : {b}", { b: feature.removes.join(", ") });
     }
     if (feature.comment) {
       const note = document.createElement("span");
@@ -1361,6 +1473,10 @@ export function installTree(ctx) {
         appendSurfaceRow(row.item, {
           inFolder: false, rolledBack: rolledBack || !!row.item.rolled_back,
         });
+      } else if (row.item.type_key === "body_pattern") {
+        appendBodyPatternRow(row.item, rolledBack);
+      } else if (row.item.type_key === "remove_bodies") {
+        appendRemoveBodiesRow(row.item, rolledBack);
       } else {
         appendFeatureHistoryRow(row.item, rolledBack, !!folder,
           { lifted: !!row.parent });
@@ -1375,6 +1491,7 @@ export function installTree(ctx) {
     row.classList.add("feat");
     row.dataset.feat = feature.name;
     row.dataset.line = feature.name;
+    if (feature.body) row.dataset.body = feature.body;
     // Esquisse sortie de sa fonction : pas une ligne à réordonner.
     if (!lifted) row.dataset.hist = feature.name;
     if (feature.error) row.classList.add("error");
@@ -1425,16 +1542,20 @@ export function installTree(ctx) {
       row.appendChild(note);
       row.title = `${feature.comment}\n\n${row.title}`;
     }
-    row.addEventListener("dblclick", () => {
-      if (feature.type_key === "sketch") {
-        onSketchRowDblClick(feature);
+    row.addEventListener("dblclick", () => inBody(feature, (fresh) => {
+      if (fresh.type_key === "sketch") {
+        onSketchRowDblClick(fresh);
       } else {
-        editFeature(feature);
+        editFeature(fresh);
       }
-    });
-    row.addEventListener("contextmenu", (event) => ctx.openMenu(event, feature));
+    }));
+    row.addEventListener("contextmenu", (event) => openRowMenu(event, feature));
     if (!lifted) bindFeatureDrag(row, feature);
-    if (feature.type_key === "datum_plane") {
+    if (feature.body) {
+      // Un autre corps : le clic marque la ligne ; ni plan pour la
+      // prochaine esquisse, ni esquisse ou fonction donnée au panneau.
+      row.addEventListener("click", (event) => markForeignRow(event, row, feature));
+    } else if (feature.type_key === "datum_plane") {
       // Un plan de référence se choisit comme un plan d'origine.
       row.classList.add("plane");
       if (ctx.selectedDatumFeature?.name === feature.name) {
@@ -1447,13 +1568,13 @@ export function installTree(ctx) {
       row.addEventListener("mouseenter", () => refreshDatumGhost(feature));
       row.addEventListener("mouseleave", () => refreshDatumGhost(null));
     }
-    if (feature.type_key === "sketch") {
+    if (!feature.body && feature.type_key === "sketch") {
       if (ctx.selectedSketch?.name === feature.name) row.classList.add("sel");
       row.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, row, feature)) return;
         onSketchRowClick(feature);
       });
-    } else if (feature.type_key !== "datum_plane") {
+    } else if (!feature.body && feature.type_key !== "datum_plane") {
       row.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, row, feature)) return;
         ctx.selectedFeatureName = feature.name;
@@ -1485,9 +1606,15 @@ export function installTree(ctx) {
           childRow.title = t("Esquisse partagée — aussi utilisée par : {f}",
             { f: child.shared.join(", ") }) + " · " + childRow.title;
         }
-        childRow.addEventListener("dblclick", () => onSketchRowDblClick(child));
-        childRow.addEventListener("contextmenu", (event) => ctx.openMenu(event, child));
+        const own = feature.body ? { ...child, body: feature.body } : child;
+        childRow.addEventListener("dblclick",
+          () => inBody(own, onSketchRowDblClick));
+        childRow.addEventListener("contextmenu", (event) => openRowMenu(event, own));
         childRow.addEventListener("click", (event) => {
+          if (own.body) {
+            markForeignRow(event, childRow, own);
+            return;
+          }
           if (consumeTreeRenameClick(event, childRow, child)) return;
           onSketchRowClick(child);
         });
@@ -1842,6 +1969,35 @@ export function installTree(ctx) {
     })());
   }
 
+  /** Suppression de corps : le panneau de la création, sur les corps qui
+   *  existent à son rang, cochés selon ce qu'elle vise. OK la réécrit sur
+   *  place, sans changer son rang. */
+  async function editRemoveBodies(feature) {
+    let info;
+    try {
+      info = await call("remove_bodies_info", { feature: feature.name });
+    } catch (error) {
+      say(error.message, true);
+      return;
+    }
+    const params = (v) => removeBodiesParams(v, info.candidates);
+    panel.open({
+      icon: "remove_bodies",
+      title: info.label,
+      groups: removeBodiesGroups(info.candidates, info.keep),
+      note: REMOVE_BODIES_NOTE,
+      hint: (v) => (params(v) ? null : "Cochez au moins un corps"),
+      onApply: (v) => {
+        if (!params(v)) {
+          say(t("Cochez au moins un corps"), true);
+          return;
+        }
+        refresh(call("edit_remove_bodies",
+          { feature: feature.name, ...params(v) }));
+      },
+    });
+  }
+
   async function editFeature(feature) {
     // Copie d'un réseau de corps, enlèvement venu d'un autre corps : le
     // double-clic rouvre la répétition qui les porte.
@@ -1910,6 +2066,10 @@ export function installTree(ctx) {
     }
     if (feature.surface_cut) {
       editSurfaceCut(feature);
+      return;
+    }
+    if (feature.type_key === "remove_bodies") {
+      editRemoveBodies(feature);
       return;
     }
     if (feature.type_key === "chamfer" && feature.chamfer) {

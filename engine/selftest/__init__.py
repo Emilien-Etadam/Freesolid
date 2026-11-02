@@ -216,6 +216,7 @@ def _etapes():
         fonctions.p97_fusion_des_corps_touches,
         fonctions.p98_enlevement_traversant,
         fonctions.p99_corps_creuses_reedites,
+        fonctions.p100_repetition_traversante,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

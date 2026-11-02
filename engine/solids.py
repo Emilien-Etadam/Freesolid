@@ -1407,7 +1407,8 @@ class SolidsMixin:
     def _transform(self, type_id, configure, features=None, scope=None):
         """Répétition ou symétrie des fonctions ``features`` du corps
         actif. ``scope`` : autres corps que ses enlèvements de matière
-        creusent aussi (``engine/bodyscope.py``)."""
+        creusent aussi ; sans liste, ceux que ses occurrences traversent
+        (``engine/bodyscope.py``)."""
         from engine.kernel import (
             KernelError,
             label_for_type,
@@ -1427,9 +1428,8 @@ class SolidsMixin:
         body.Tip = feature
         try:
             self._recompute()
-            if scope:
-                self._attach_scope(feature, scope)
-                self._recompute()
+            self._mark_scope_instances(feature)
+            self._cut_others(body, feature, scope)
         except KernelError:
             # Refusée : la pointe revient où elle était, sinon le corps
             # resterait sans solide.

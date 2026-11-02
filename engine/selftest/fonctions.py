@@ -2325,6 +2325,97 @@ def p99_corps_creuses_reedites(self, mark, report, etat):
         above and abs(b.Shape.Volume - 3600) < 1e-6 and clean())
 
 
+def p100_repetition_traversante(self, mark, report, etat):
+    mark("p100: une répétition creuse les corps que ses occurrences "
+         "traversent")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2):
+        name = self.sketch_start(plane="XY")["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def rows():
+        tree = self.get_tree()
+        return tree["features"] + tree.get("other_features", [])
+
+    def volumes():
+        return [round(a.Shape.Volume, 6), round(b.Shape.Volume, 6)]
+
+    # A et B côte à côte, 20 × 20 × 10 chacun ; une rainure de A dans B
+    # (100 de chaque côté), répétée deux fois le long de Y.
+    self.new_part("Répétition traversante")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(20, 0, 40, 20)
+    call("add_pad", length=10, merge=False)
+    b = self._require_body()
+    self.set_active_body(a.Name)
+    rect(15, 2, 25, 4)
+    call("add_pocket", through=True, reversed=True)
+    pocket = self._thin_owner(a.Tip).Name
+    made = call("add_linear_pattern", length=6, count=3, axis="Y",
+                spacing=True, features=[pocket])
+    pattern = self._doc.getObject(a.Tip.Name)
+    steps = [c.Name for c in self._scope_cuts(pattern)]
+    row = next(r for r in rows() if r["name"] == pattern.Name)
+    # Ses étapes dans B sont cachées : la ligne de la répétition les porte.
+    report["p100_creuse_les_traverses"] = (
+        made.get("ok") is True and volumes() == [3700, 3700]
+        and len(steps) == 1 and self._is_thin_helper(b.Tip)
+        and not [r for r in rows()
+                 if r["name"] in steps or r.get("edits") == pattern.Name]
+        and len(row.get("scope", [])) == 1 and clean())
+
+    # B suit la barre, la cote, « Désactiver » ; ramenée à une occurrence,
+    # la répétition ne creuse plus rien.
+    call("set_tip", feature=pocket)
+    above = volumes() == [3900, 3900]
+    call("tip_to_end")
+    call("set_params", feature=pattern.Name, values={"count": 2})
+    two = volumes() == [3800, 3800]
+    call("set_suppressed", features=[pattern.Name], suppressed=True)
+    off = volumes() == [3900, 3900]
+    call("set_suppressed", features=[pattern.Name], suppressed=False)
+    call("set_params", feature=pattern.Name, values={"count": 1})
+    one = volumes() == [3900, 3900]
+    call("set_params", feature=pattern.Name, values={"count": 3})
+    report["p100_suit_la_repetition"] = (
+        above and two and off and one and volumes() == [3700, 3700]
+        and clean())
+
+    # Les occurrences seules : décocher B dans l'enlèvement rend sa place.
+    call("set_params", feature=pocket, values={"bodies": []})
+    report["p100_occurrences_seules"] = (
+        volumes() == [3700, 3800] and clean())
+
+    # Corps actif seulement : une liste vide.
+    alone = call("add_linear_pattern", length=3, count=2, axis="Y",
+                 spacing=True, features=[pocket], scope=[])
+    report["p100_corps_actif_seul"] = (
+        alone.get("ok") is True and volumes() == [3600, 3800] and clean())
+
+    # Une répétition d'un fichier d'avant : toutes ses occurrences
+    # creusent, ses booléens restent des lignes de l'arbre.
+    pattern.removeProperty(self._SCOPE_INSTANCES)
+    for step in self._scope_cuts(pattern):
+        step.removeProperty(self._THIN_HELPER)
+        step.removeProperty("FreeSolidThinOwner")
+    self._recompute()
+    report["p100_fichier_d_avant"] = (
+        volumes() == [3600, 3700]
+        and [r["edits"] for r in rows() if r["name"] in steps]
+        == [pattern.Name] and clean())
+
+
 def protocol_dangling(tree):
     from engine import protocol
     return protocol.dangling_deps(tree)
@@ -2505,7 +2596,9 @@ def p83_corps_concernes(self, mark, report, etat):
     sketch = self.sketch_start(face=self._top_face_id())["sketch"]
     self.sketch_add_circle(sketch, -20, 0, 2)
     self.sketch_finish(sketch)
-    self.add_pocket(through=True, bodies=[])  # la répétition creuse l'autre
+    # Le trou ne creuse que son corps : seules les occurrences répétées
+    # creusent l'autre.
+    self.add_pocket(through=True, bodies=[])
     hole = math.pi * 4 * 5
     tree = self.add_linear_pattern(20, 3, axis="X", spacing=True,
                                    scope=[low])
@@ -2513,9 +2606,9 @@ def p83_corps_concernes(self, mark, report, etat):
                    if f["type"] == "PartDesign::LinearPattern")
     volumes = _volumes(self)
     report["p83_creuse_l_autre"] = (
-        abs(volumes[low] - (6000 - 3 * hole)) < 1e-6
-        and abs(volumes[top] - volumes[low]) < 1e-6
-        and pattern.get("scope") == ["Dessous"])
+        abs(volumes[low] - (6000 - 2 * hole)) < 1e-6
+        and abs(volumes[top] - (6000 - 3 * hole)) < 1e-6
+        and len(pattern.get("scope", [])) == 1)
     self.set_params(pattern["name"], {"count": 2})
     two = _volumes(self)[low]
     self.set_suppressed([pattern["name"]], True)
@@ -2529,23 +2622,20 @@ def p83_corps_concernes(self, mark, report, etat):
     except KernelError:
         refused = True
     report["p83_suit_et_refuse"] = (
-        abs(two - (6000 - 2 * hole)) < 1e-6 and abs(off - 6000) < 1e-6
+        abs(two - (6000 - hole)) < 1e-6 and abs(off - 6000) < 1e-6
         and refused)
-    # Supprimer au milieu de la chaîne : la fonction d'après se rebranche.
+    # Supprimer la répétition : son étape cachée, au milieu de la chaîne
+    # de l'autre corps, part ; la fonction d'après s'y rebranche.
     self.set_active_body(low)
-    cut = next(f["name"] for f in self.get_tree()["features"]
-               if f.get("edits") == pattern["name"])
     self.add_rect_sketch(4, 4)
     self.add_pad(3, bodies=[])  # entre dans l'autre corps : sans le fondre
-    self.delete_feature(cut)
-    after = _volumes(self)
     self.set_active_body(top)
     self.delete_feature(pattern["name"])
-    kept = _volumes(self)[top]
+    after = _volumes(self)
     report["p83_suppression_au_milieu"] = (
         abs(after[low] - (6000 + 48)) < 1e-6
         and self._doc.getObject(pattern["name"]) is None
-        and abs(kept - (6000 - hole + 32)) < 1e-6
+        and abs(after[top] - (6000 - hole + 32)) < 1e-6
         and not [o for o in self._doc.Objects
                  if getattr(o, "FreeSolidBodyPatternTool", False)])
 
@@ -2921,7 +3011,15 @@ def p87_modifier_suit_le_double_clic(self, mark, report, etat):
     tree = self.add_linear_pattern(5, 2, axis="Y", scope=[low])
     repeats = {f["name"]: f["has_params"] for f in tree["features"]
                if f.get("type_key") in ("mirror", "linear_pattern")}
-    # Les lignes creusées sont dans l'arbre de l'autre corps.
+    # Les lignes creusées d'un fichier d'avant sont dans l'arbre de
+    # l'autre corps (une répétition neuve en fait des étapes cachées).
+    for name in repeats:
+        repeat = self._doc.getObject(name)
+        repeat.removeProperty(self._SCOPE_INSTANCES)
+        for step in self._scope_cuts(repeat):
+            step.removeProperty(self._THIN_HELPER)
+            step.removeProperty("FreeSolidThinOwner")
+    self._recompute()
     self.set_active_body(low)
     cuts = [f for f in self.get_tree()["features"]
             if f.get("edits") in repeats]

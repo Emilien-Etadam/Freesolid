@@ -114,7 +114,7 @@ Maintenant le moteur dit dans l'arbre si une fonction a des cotes (`has_params`)
 
 Le relevé a trouvé en chemin trois fausses cotes : la `Length` du plan et de l'axe de référence (une taille d'affichage) et la `Height` de la projection (sans effet en mode « Edges »). Le double-clic ouvrait pour elles un panneau sans effet. Elles ne sont plus des cotes (`engine/equations.py`, `_NO_DIMENSIONS`).
 
-Et une ligne qu'une répétition à corps concernés creuse dans un autre corps rouvre cette répétition : creusée par une symétrie, elle proposait « Modifier » pour rien. L'arbre dit maintenant si la répétition rouverte a des cotes (`edits_has_params`).
+Et une ligne qu'une répétition à corps concernés creuse dans un autre corps rouvre cette répétition : creusée par une symétrie, elle proposait « Modifier » pour rien. L'arbre dit maintenant si la répétition rouverte a des cotes (`edits_has_params`). Une répétition neuve creuse les autres corps par des étapes cachées : ces lignes ne restent que dans les fichiers d'avant.
 
 Reste : le menu de la vue 3D n'a ni Masquer ni Supprimer, que le menu de l'arbre a.
 

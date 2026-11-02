@@ -73,11 +73,20 @@ describe("répéter des corps", () => {
 });
 
 describe("corps concernés", () => {
-  it("corps actif seulement : pas de scope", () => {
-    const built = entry("btn-linpattern").build(
-      { ...LINEAR, scopeMode: "active" }, CTX);
+  it("corps traversés par défaut : pas de scope, le moteur les trouve", () => {
+    const [group] = entry("btn-linpattern").groups(CTX)
+      .filter((g) => g.label === "Corps concernés");
+    assert.equal(group.rows[0].value, "crossed");
+    const built = entry("btn-linpattern").build(LINEAR, CTX);
     assert.equal(built.op, "add_linear_pattern");
     assert.equal("scope" in built.params, false);
+    assert.deepEqual(patternScopeParams({ scopeMode: "crossed" }, CTX), {});
+  });
+
+  it("corps actif seulement : un scope vide", () => {
+    const built = entry("btn-linpattern").build(
+      { ...LINEAR, scopeMode: "active" }, CTX);
+    assert.deepEqual(built.params.scope, []);
   });
 
   it("tous les corps, ou ceux cochés", () => {
@@ -85,7 +94,8 @@ describe("corps concernés", () => {
       { scope: ["Body001", "Body002"] });
     assert.deepEqual(patternScopeParams({ scopeMode: "selected",
       "scope:Body002": true }, CTX), { scope: ["Body002"] });
-    assert.deepEqual(patternScopeParams({ scopeMode: "selected" }, CTX), {});
+    assert.deepEqual(patternScopeParams({ scopeMode: "selected" }, CTX),
+      { scope: [] });
     const built = entry("btn-polpattern").build({
       target: "features", dirKind: "axis", axis: "Z", angle: "360",
       count: "4", scopeMode: "all" }, CTX);

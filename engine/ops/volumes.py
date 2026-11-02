@@ -10,8 +10,8 @@ from engine.ops._base import Op, Req
 _EXTRUDE_OPTIONAL = {"cond": str, "face": int, "offset": float, "taper": float, "midplane": bool, "reversed": bool, "cond2": str, "length2": float, "face2": int, "offset2": float, "taper2": float, "sketch": str, "thin": dict}
 
 
-# Le rejeu ne fond aucun corps (``bodies=[]``) : il bâtit dans un corps
-# provisoire, qui toucherait le corps hôte.
+# Le rejeu ne fond ni ne creuse aucun autre corps (``bodies=[]``) : il
+# bâtit dans un corps provisoire, au contact du corps hôte.
 def _rejouer_extrusion(kernel, feat, sketch, cote):
     kernel.add_pad(
         length=cote("Length"),
@@ -24,11 +24,11 @@ def _rejouer_extrusion(kernel, feat, sketch, cote):
 def _rejouer_enlevement(kernel, feat, sketch, cote):
     if feat["through"]:
         kernel.add_pocket(through=True, sketch=sketch,
-                          reversed=feat["reversed"])
+                          reversed=feat["reversed"], bodies=[])
     else:
         kernel.add_pocket(
             length=cote("Length"),
-            sketch=sketch, reversed=feat["reversed"])
+            sketch=sketch, reversed=feat["reversed"], bodies=[])
 
 
 def _rejouer_revolution(kernel, feat, sketch, cote):
@@ -47,18 +47,19 @@ def _rejouer_enlevement_revolution(kernel, feat, sketch, cote):
         sketch=sketch,
         axis=feat.get("axis") or "vertical",
         reversed=bool(feat.get("reversed")),
-        midplane=bool(feat.get("midplane")))
+        midplane=bool(feat.get("midplane")),
+        bodies=[])
 
 
 def _rejouer_percage(kernel, feat, sketch, cote):
     # add_hole consomme _latest_sketch — le profil a été cloné juste avant.
     diameter = cote("Diameter")
     if feat["through"]:
-        kernel.add_hole(diameter=diameter, through=True)
+        kernel.add_hole(diameter=diameter, through=True, bodies=[])
     else:
         kernel.add_hole(
             diameter=diameter,
-            depth=cote("Depth"))
+            depth=cote("Depth"), bodies=[])
 
 
 OPS = (
@@ -89,8 +90,10 @@ OPS = (
        undo=True, preview=True, creates="PartDesign::Pad",
        replay=_rejouer_extrusion),
     # Sans profondeur ni condition = à travers tout.
+    # bodies : les autres corps qu'il creuse — absent, ceux qu'il traverse.
     Op("add_pocket", Req(optional={"length": float, "through": bool,
-                                   "contours": list, **_EXTRUDE_OPTIONAL}),
+                                   "contours": list, "bodies": list,
+                                   **_EXTRUDE_OPTIONAL}),
        undo=True, preview=True, creates="PartDesign::Pocket",
        replay=_rejouer_enlevement),
     # Palier 2 — fonctions volumiques, aucune interaction nouvelle.
@@ -113,6 +116,7 @@ OPS = (
         "reversed": bool,
         "midplane": bool,
         "contours": list,
+        "bodies": list,          # corps creusés (absent : ceux traversés)
     }),
        undo=True, preview=True, creates="PartDesign::Groove",
        replay=_rejouer_enlevement_revolution),
@@ -133,7 +137,8 @@ OPS = (
     Op("add_helix", Req(("pitch", float), ("height", float)),
        undo=True, preview=True,
        no_replay="Pitch/Height hors whitelist get_params"),  # optional: sketch
-    Op("add_hole", Req(("diameter", float), optional={"face": int, "points": list}),
+    Op("add_hole", Req(("diameter", float), optional={"face": int, "points": list,
+                                                     "bodies": list}),
        undo=True, preview=True, creates="PartDesign::Hole",
        replay=_rejouer_percage),
                                        # optional: depth | through, cut

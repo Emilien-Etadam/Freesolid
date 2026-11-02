@@ -677,6 +677,7 @@
  "capture refusée : {} n'a pas de BaseFeature (fonction à indices en tête de corps)": "capture refused: {} has no BaseFeature (indexed feature at the start of the body)",
  "capture refusée : {} est une paroi mince": "capture refused: {} is a thin wall",
  "capture refusée : {} fond d'autres corps": "capture refused: {} merges other bodies",
+ "capture refusée : {} creuse d'autres corps": "capture refused: {} cuts other bodies",
  "cote {} absente de {}": "dimension {} missing from {}",
  "rejeu impossible pour {} ({})": "cannot replay {} ({})",
  "répétition refusée : instance n° {} sur {}, fonction « {} », {}": "pattern refused: instance no. {} of {}, feature \"{}\", {}",

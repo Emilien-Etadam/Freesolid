@@ -25,12 +25,18 @@ chacun, un booléen Soustraire prend pour outil une forme figée interne :
 les formes d'enlèvement, placées comme FreeCAD place les occurrences. Le
 moteur la recalcule quand la répétition ou ses fonctions changent.
 
+Un enlèvement seul (extrudé, gorge, perçage…) a aussi ses corps
+concernés : ceux qu'il traverse. Son booléen est alors une étape cachée
+(``_is_cut_source``), qui compte au rang de l'enlèvement dans la barre
+de retour, comme les étapes d'une suppression de corps.
+
 Tout est en objets FreeCAD standard : le fichier s'ouvre dans FreeCAD.
 Les calculs de pas et d'angles sont purs, testés en CI ; les imports
 FreeCAD restent dans les méthodes.
 """
 
 import json
+import math
 
 #: Genres de réseau de corps, et le libellé de l'hôte.
 BODY_PATTERN_LABELS = {
@@ -592,11 +598,22 @@ class BodyPatternMixin:
         self._stamp_text(pattern, "FreeSolidScope",
                          format_scope(t.Name for t in targets))
 
-    def _scope_seeds(self, pattern):
-        """Formes d'enlèvement des fonctions répétées, dans le repère de
-        leur corps."""
+    @staticmethod
+    def _is_cut_source(obj):
+        """Un enlèvement seul, et non une répétition : ses corps concernés
+        sont des étapes cachées."""
+        return (is_subtractive_type(getattr(obj, "TypeId", ""))
+                and "Originals" not in getattr(obj, "PropertiesList", ()))
+
+    def _scope_seeds(self, pattern, extend=False):
+        """Formes d'enlèvement des fonctions répétées — ou de l'enlèvement
+        seul —, dans le repère de leur corps. ``extend`` : celles « à
+        travers tout » prolongées au-delà de tous les corps."""
+        reach = self._through_reach() if extend else 0.0
         seeds = []
-        for feature in getattr(pattern, "Originals", None) or ():
+        originals = ([pattern] if self._is_cut_source(pattern)
+                     else getattr(pattern, "Originals", None) or ())
+        for feature in originals:
             if (not is_subtractive_type(feature.TypeId)
                     or getattr(feature, "Suppressed", False)):
                 continue
@@ -604,14 +621,90 @@ class BodyPatternMixin:
             if shape.isNull():
                 continue
             shape.Placement = feature.Placement.multiply(shape.Placement)
+            if reach:
+                shape = self._through_extended(feature, shape, reach)
             seeds.append(shape)
         return seeds
+
+    def _through_reach(self):
+        """De quoi traverser toute la pièce : la diagonale de l'encombrement
+        de tous les corps, arrondie à la puissance de deux au-dessus (l'outil
+        ne se refait pas à chaque retouche d'un corps)."""
+        import FreeCAD as App
+        box = App.BoundBox()
+        for body in self._history_bodies():
+            try:
+                shape = body.Shape
+                if not shape.isNull() and shape.Solids:
+                    box.add(shape.BoundBox)
+            except Exception:  # noqa: BLE001 — forme OCCT inaccessible
+                continue
+        if not box.isValid():
+            return 0.0
+        return 2.0 ** math.ceil(math.log2(box.DiagonalLength + 1.0))
+
+    @staticmethod
+    def _through_ends(feature):
+        """Bouts « à travers tout » de ``feature`` : ``"far"`` (le plus loin
+        de l'esquisse), ``"both"`` ou None."""
+        if feature.TypeId == "PartDesign::Hole":
+            through = getattr(feature, "DepthType", "") == "ThroughAll"
+            return "far" if through else None
+        if feature.TypeId != "PartDesign::Pocket":
+            return None
+        first = getattr(feature, "Type", "") == "ThroughAll"
+        side = getattr(feature, "SideType", "One side")
+        if side == "Two sides":
+            second = getattr(feature, "Type2", "") == "ThroughAll"
+            return "both" if first and second else None
+        if not first:
+            return None
+        return "both" if (side == "Symmetric"
+                          or getattr(feature, "Midplane", False)) else "far"
+
+    def _through_extended(self, feature, seed, reach):
+        """``seed`` prolongé au-delà de ses bouts « à travers tout » : FreeCAD
+        ne traverse que l'encombrement du corps de l'enlèvement, les
+        modeleurs courants tous les corps qu'il creuse. La section prise un
+        peu en deçà du bout (au-dessus de la pointe d'un perçage) est
+        extrudée de ``reach`` plus la taille de l'outil."""
+        import Part
+        ends = self._through_ends(feature)
+        if ends is None:
+            return seed
+        try:
+            plane = feature.Profile[0].Shape.findPlane()
+            normal, origin = plane.Axis, plane.Position
+            heights = [(v.Point - origin).dot(normal) for v in seed.Vertexes]
+            low, high = min(heights), max(heights)
+            if ends == "far":
+                signs = [1.0 if abs(high) >= abs(low) else -1.0]
+            else:
+                signs = [1.0, -1.0]
+            inset = (float(feature.Diameter) if feature.TypeId
+                     == "PartDesign::Hole" else 0.01)
+            length = reach + seed.BoundBox.DiagonalLength
+            shape = seed
+            for sign in signs:
+                end = high if sign > 0 else low
+                at = origin.dot(normal) + end - sign * inset
+                wires = seed.slice(normal, at)
+                if not wires:
+                    continue
+                face = Part.makeFace(wires, "Part::FaceMakerBullseye")
+                shape = shape.fuse(face.extrude(normal * sign
+                                                * (inset + length)))
+            return shape.removeSplitter() if shape is not seed else seed
+        except Exception:  # noqa: BLE001 — OCCT : l'outil tel quel
+            return seed
 
     def _scope_transforms(self, pattern):
         """Placements des occurrences (la première comprise) dans le repère
         du corps : ``("move", placement)`` ou ``("mirror", point,
         normale)``."""
         import FreeCAD as App
+        if self._is_cut_source(pattern):
+            return [("move", App.Placement())]
         kind = pattern.TypeId
         if kind == "PartDesign::Mirrored":
             obj, subs = pattern.MirrorPlane
@@ -669,6 +762,7 @@ class BodyPatternMixin:
         for body in (source, target):
             data.append([round(v, 9)
                          for v in body.getGlobalPlacement().Matrix.A])
+        data.append(self._through_reach())
         return json.dumps(data)
 
     def _scope_tool(self, pattern, target):
@@ -679,7 +773,7 @@ class BodyPatternMixin:
         outer = target.getGlobalPlacement().inverse().multiply(
             source.getGlobalPlacement())
         shapes = []
-        for seed in self._scope_seeds(pattern):
+        for seed in self._scope_seeds(pattern, extend=True):
             for item in self._scope_transforms(pattern):
                 if item[0] == "move":
                     shape = seed.copy()
@@ -718,6 +812,13 @@ class BodyPatternMixin:
                                                     source.Label))
         self._stamp_text(cut, "FreeSolidScopeOf", pattern.Name)
         self._stamp_text(cut, "FreeSolidScopeParts", shape.Name)
+        if self._is_cut_source(pattern):
+            # Hors de l'arbre : l'enlèvement le représente, et le survol
+            # d'une face qu'il a creusée le désigne.
+            cut.addProperty("App::PropertyBool", self._THIN_HELPER,
+                            "FreeSolid", "Étape cachée d'un enlèvement")
+            setattr(cut, self._THIN_HELPER, True)
+            self._stamp_text(cut, "FreeSolidThinOwner", pattern.Name)
         return cut
 
     def _scope_cuts(self, pattern):
@@ -841,7 +942,7 @@ class BodyPatternMixin:
                 doc.getObject(item["edits"]))
             item["suppressible"] = False
         names = scope_names(getattr(obj, "FreeSolidScope", ""))
-        labels = [doc.getObject(n).Label for n in names
+        labels = [self._body_title(doc.getObject(n)) for n in names
                   if doc.getObject(n) is not None]
         if labels:
             item["scope"] = labels

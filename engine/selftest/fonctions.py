@@ -2007,6 +2007,185 @@ def p97_fusion_des_corps_touches(self, mark, report, etat):
         and clean())
 
 
+def p98_enlevement_traversant(self, mark, report, etat):
+    mark("p98: un enlèvement creuse tous les corps qu'il traverse")
+    from engine.kernel import dispatch
+    from engine.replay import capture_group
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2, **where):
+        name = self.sketch_start(**(where or {"plane": "XY"}))["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def rows():
+        tree = self.get_tree()
+        return [r["name"] for r in tree["features"]
+                + tree.get("other_features", [])]
+
+    def side_by_side(title):
+        # A et B côte à côte, 20 × 20 × 10 chacun.
+        self.new_part(title)
+        rect(0, 0, 20, 20)
+        self.add_pad(10)
+        a = self._require_body()
+        rect(20, 0, 40, 20)
+        call("add_pad", length=10, merge=False)
+        b = self._require_body()
+        self.set_active_body(a.Name)
+        return a, b
+
+    def shape_parts():
+        return [o.Name for o in self._doc.Objects
+                if o.Name.startswith("ScopeShape")]
+
+    # Une rainure à travers tout, de A dans B : les deux sont creusés, une
+    # seule ligne dans l'arbre, et elle dit ce qu'elle creuse aussi.
+    a, b = side_by_side("Enlèvement traversant")
+    b_pad = b.Tip.Name
+    before = rows()
+    rect(10, 5, 30, 15)
+    cut = call("add_pocket", through=True, reversed=True)
+    pocket = self._thin_owner(a.Tip).Name
+    tree = self.get_tree()
+    row = next(r for r in tree["features"] if r["name"] == pocket)
+    # Les deux corps portent son nom, numérotés ; la bulle nomme B ainsi.
+    label = self._doc.getObject(pocket).Label
+    named = [label + "[1]", label + "[2]"]
+    report["p98_deux_corps_creuses"] = (
+        cut.get("ok") is True and abs(a.Shape.Volume - 3000) < 1e-6
+        and abs(b.Shape.Volume - 3000) < 1e-6
+        and sorted(rows()) == sorted(before + [pocket])
+        and [r["label"] for r in tree["bodies"]] == named
+        and row.get("scope") == named[1:]
+        and self._is_thin_helper(b.Tip) and clean())
+
+    # La barre au-dessus de l'enlèvement le retire de B aussi ; posée sur
+    # lui, B est creusé.
+    call("set_tip", feature=b_pad)
+    above = abs(b.Shape.Volume - 4000) < 1e-6
+    call("set_tip", feature=pocket)
+    at = abs(b.Shape.Volume - 3000) < 1e-6
+    call("tip_to_end")
+    report["p98_barre_de_retour"] = above and at and clean()
+
+    # B suit la cote rééditée, « Désactiver », la suppression et Ctrl+Z.
+    call("set_params", feature=pocket, values={"cond": "borgne", "length": 3})
+    deep = abs(b.Shape.Volume - 3700) < 1e-6
+    call("set_suppressed", features=[pocket], suppressed=True)
+    off = abs(b.Shape.Volume - 4000) < 1e-6
+    call("set_suppressed", features=[pocket], suppressed=False)
+    on = abs(b.Shape.Volume - 3700) < 1e-6
+    call("delete_feature", feature=pocket)
+    gone = abs(b.Shape.Volume - 4000) < 1e-6 and not shape_parts()
+    call("undo")
+    report["p98_suit_la_fonction"] = (
+        deep and off and on and gone and abs(b.Shape.Volume - 3700) < 1e-6
+        and len(shape_parts()) == 1 and clean())
+
+    # Corps actif seulement : une liste vide.
+    rect(2, 2, 38, 4)
+    alone = call("add_pocket", length=2, reversed=True, bodies=[])
+    report["p98_corps_actif_seul"] = (
+        alone.get("ok") is True and abs(b.Shape.Volume - 3700) < 1e-6
+        and abs(a.Shape.Volume - (3700 - 72)) < 1e-6 and clean())
+
+    # Le rejeu d'une répétition ne capture pas un enlèvement qui creuse
+    # d'autres corps : il ne creuserait que le sien.
+    try:
+        capture_group(self, [pocket])
+        captured = True
+    except KernelError as exc:
+        captured = "creuse d'autres corps" not in str(exc)
+    report["p98_rejeu_refuse"] = not captured
+
+    # Celui du corps actif seul se répète, et son rejeu ne laisse aucune
+    # étape cachée derrière lui.
+    a, b = side_by_side("Répétition d'un enlèvement")
+    rect(14, 4, 18, 8)
+    self.add_pad(15)
+    boss = self._thin_owner(a.Tip).Name
+    rect(15, 5, 17, 7)
+    call("add_pocket", through=True, reversed=True, bodies=[])
+    hole = self._thin_owner(a.Tip).Name
+    repeated = call("add_repeat_feature", features=[boss, hole],
+                    instances=[{"offset": [0, 0, 0]}, {"offset": [-8, 0, 0]}],
+                    mode="fuse")
+    report["p98_repetition_d_un_enlevement"] = (
+        repeated.get("ok") is True
+        and abs(a.Shape.Volume - (4000 + 20 + 60)) < 1e-6
+        and abs(b.Shape.Volume - 4000) < 1e-6 and not shape_parts()
+        and clean())
+
+    # Une gorge et un perçage à cheval sur les deux corps.
+    a, b = side_by_side("Gorge traversante")
+    ring = rect(15, 8, 25, 10, plane="XZ")
+    groove = call("add_groove", sketch=ring, angle=360)
+    grooved = (groove.get("ok") is True and b.Shape.Volume < 4000 - 1e-6
+               and a.Shape.Volume < 4000 - 1e-6
+               and self._is_thin_helper(b.Tip))
+    a, b = side_by_side("Perçage traversant")
+    hole = call("add_hole", diameter=4, through=True,
+                face=self._top_face_id(), points=[[20, 10, 10]])
+    half = math.pi * 4 * 10 / 2
+    report["p98_gorge_et_percage"] = (
+        grooved and hole.get("ok") is True
+        and abs(b.Shape.Volume - (4000 - half)) < 1e-4
+        and abs(a.Shape.Volume - (4000 - half)) < 1e-4 and clean())
+
+    # Remonté au-dessus d'une fonction de son corps plus ancienne que celles
+    # de B, il creuse encore B : son étape cachée vient après elles.
+    a, b = side_by_side("Enlèvement remonté")
+    rect(0, 0, 20, 5)
+    call("add_pad", length=12, body=a.Name)
+    boss = self._thin_owner(a.Tip).Name
+    rect(20, 0, 30, 5)
+    call("add_pad", length=12, body=b.Name)
+    self.set_active_body(a.Name)
+    rect(10, 8, 30, 12)
+    call("add_pocket", through=True, reversed=True)
+    pocket = self._thin_owner(a.Tip).Name
+    moved = call("reorder_feature", feature=pocket, target=boss)
+    call("tip_to_end")
+    at_end = abs(b.Shape.Volume - (4100 - 400)) < 1e-6
+    tree = self.get_tree()
+    last = max(tree["features"] + tree["other_features"],
+               key=lambda row: row["order"])["name"]
+    call("set_tip", feature=last)
+    report["p98_reordonne"] = (
+        moved.get("ok") is True and at_end
+        and abs(b.Shape.Volume - 3700) < 1e-6 and clean())
+
+    # Une plaque mince sur un bloc haut : « à travers tout » traverse le
+    # bloc entier, pas seulement l'encombrement de la plaque — perçage
+    # compris, et quand la plaque change d'épaisseur.
+    self.new_part("À travers tout, loin")
+    rect(0, 0, 20, 20)
+    self.add_pad(2)
+    a = self._require_body()
+    rect(0, 0, 20, 20)
+    call("add_pad", length=100, reversed=True, merge=False)
+    b = self._require_body()
+    self.set_active_body(a.Name)
+    plate = a.Tip.Name
+    rect(5, 5, 15, 15, face=self._top_face_id())
+    call("add_pocket", through=True)
+    drilled = call("add_hole", diameter=4, through=True,
+                   face=self._top_face_id(), points=[[2.5, 2.5, 2]])
+    bore = math.pi * 4 * 100
+    deep = abs(b.Shape.Volume - (40000 - 10000 - bore)) < 1e-4
+    call("set_params", feature=plate, values={"length": 3})
+    report["p98_a_travers_tout_loin"] = (
+        drilled.get("ok") is True and deep
+        and abs(b.Shape.Volume - (40000 - 10000 - bore)) < 1e-4 and clean())
+
+
 def protocol_dangling(tree):
     from engine import protocol
     return protocol.dangling_deps(tree)
@@ -2187,7 +2366,7 @@ def p83_corps_concernes(self, mark, report, etat):
     sketch = self.sketch_start(face=self._top_face_id())["sketch"]
     self.sketch_add_circle(sketch, -20, 0, 2)
     self.sketch_finish(sketch)
-    self.add_pocket(through=True)
+    self.add_pocket(through=True, bodies=[])  # la répétition creuse l'autre
     hole = math.pi * 4 * 5
     tree = self.add_linear_pattern(20, 3, axis="X", spacing=True,
                                    scope=[low])

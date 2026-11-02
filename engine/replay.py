@@ -408,6 +408,10 @@ def _profile_name(kernel, obj):
         # Son rejeu ne fondrait rien.
         raise KernelError("capture refusée : {} fond d'autres corps"
                           .format(obj.Label))
+    if getattr(obj, "FreeSolidScope", ""):
+        # Son rejeu ne creuserait que le corps de la répétition.
+        raise KernelError("capture refusée : {} creuse d'autres corps"
+                          .format(obj.Label))
     if kernel._profile_copy_of(obj) is not None:
         sketch, _ = kernel._profile_of(obj)
         return getattr(sketch, "Name", None)

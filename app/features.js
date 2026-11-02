@@ -26,6 +26,8 @@ export {
   checkedContours,
   contourLabel,
   contourRows,
+  cutGroups,
+  cutParams,
   extrudeBuild,
   extrudeEditInitial,
   extrudeEditProblem,

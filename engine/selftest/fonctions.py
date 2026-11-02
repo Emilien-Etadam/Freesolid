@@ -1599,3 +1599,68 @@ def p86_reediter_une_suppression(self, mark, report, etat):
     report["p86_annuler_nommer_rouvrir"] = (
         undone and redone and named and checked == [rank_of(5)]
         and centers() == [5, 25, 45])
+
+
+def p87_modifier_suit_le_double_clic(self, mark, report, etat):
+    mark("p87: l'arbre dit quelles lignes ont des cotes (« Modifier »)")
+    self.new_part("Modifier")
+    self.add_rect_sketch(10, 10)
+    self.add_pad(5)
+    pad = self._require_body().Tip.Name
+    self.add_mirror(plane="XZ")
+    mirror = self._require_body().Tip.Name
+    state = self.sketch_start(plane="XZ")
+    self.sketch_add_line(state["sketch"], 0, 20, 30, 20)
+    self.sketch_finish(state["sketch"])
+    self.surface_extrude(10, sketch=state["sketch"])
+    # Plan et axe de référence : leur « Length » est une taille
+    # d'affichage, pas une cote.
+    self.add_datum_plane(base="XY", offset=5)
+    tree = self.add_datum_axis(axis="Z")
+    rows = {f["name"]: f for f in tree["features"]}
+    surface = tree["surfaces"][-1]
+    datums = [f for f in tree["features"]
+              if f.get("type_key") in ("datum_plane", "datum_axis")]
+    report["p87_cotes_dans_l_arbre"] = (
+        rows[pad]["has_params"] is True and rows[mirror]["has_params"] is False
+        and surface["has_params"] is True
+        and self.get_params(mirror)["params"] == []
+        and bool(self.get_params(pad)["params"]))
+    try:
+        self.set_params(datums[0]["name"], {"Length": 50})
+        datum_refused = False
+    except KernelError:
+        datum_refused = True
+    report["p87_reference_sans_cote"] = (
+        len(datums) == 2 and datum_refused
+        and all(d["has_params"] is False
+                and self.get_params(d["name"])["params"] == []
+                for d in datums))
+    # Corps concernés : la ligne creusée dans l'autre corps rouvre la
+    # répétition, et dit si elle a des cotes (une symétrie n'en a pas).
+    self.new_part("Modifier — corps concernés")
+    self.add_rect_sketch(40, 20)
+    self.add_pad(5)
+    top = self._require_body().Name
+    self.add_body("Dessous")
+    low = self._require_body().Name
+    self.add_rect_sketch(40, 20)
+    self.add_pad(5, reversed=True)
+    self.set_active_body(top)
+    sketch = self.sketch_start(face=self._top_face_id())["sketch"]
+    self.sketch_add_circle(sketch, 10, 0, 2)
+    self.sketch_finish(sketch)
+    self.add_pocket(through=True)
+    self.add_mirror(plane="YZ", scope=[low])
+    tree = self.add_linear_pattern(5, 2, axis="Y", scope=[low])
+    repeats = {f["name"]: f["has_params"] for f in tree["features"]
+               if f.get("type_key") in ("mirror", "linear_pattern")}
+    # Les lignes creusées sont dans l'arbre de l'autre corps.
+    self.set_active_body(low)
+    cuts = [f for f in self.get_tree()["features"]
+            if f.get("edits") in repeats]
+    report["p87_corps_concernes"] = (
+        sorted(repeats.values()) == [False, True]
+        and {f["edits"] for f in cuts} == set(repeats)
+        and all(f["edits_has_params"] is repeats[f["edits"]] for f in cuts))
+

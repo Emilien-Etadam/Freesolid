@@ -18,6 +18,7 @@ import {
   REMOVE_BODIES_NOTE, removeBodiesGroups, removeBodiesParams,
 } from "./features.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
+import { featureEditor, isFrozen, surfaceEditor } from "./editkind.js";
 import { solidParam } from "./contextmenu.js";
 import { readScene } from "./theme.js";
 
@@ -1634,56 +1635,30 @@ export function installTree(ctx) {
 
   // Property names -> designer-facing labels for the edit panel.
 
+  const SURFACE_EDITORS = {
+    graph: (surface) => enterGraphFeature(surface),
+    curve3d: (surface) => ctx.openCurve3d(surface),
+    sketch3d: (surface) => ctx.openSketch3d?.(surface),
+    extend: (surface) => editExtend(surface),
+    trim: (surface) => editTrim(surface),
+    offset: (surface) => editOffset(surface),
+    surface_fillet: (surface) => editSurfaceFillet(surface),
+    poles: (surface) => ctx.openPoles(surface),
+    flatten: (surface) => showFlatten(surface),
+    freeform: (surface) => editFreeform(surface),
+    params: (surface) => editParams({ name: surface.name,
+      label: surface.label, type_key: surface.type_key }),
+  };
+
   async function editSurface(surface) {
-    if (isGraphFeature(surface) || isRepeatFeature(surface)) {
-      enterGraphFeature(surface);
-      return;
-    }
-    if (surface.curve) {
-      ctx.openCurve3d(surface);
-      return;
-    }
-    if (surface.sketch3d) {
-      ctx.openSketch3d?.(surface);
-      return;
-    }
-    if (surface.surface?.kind === "extend") {
-      editExtend(surface);
-      return;
-    }
-    if (surface.surface?.kind === "trim") {
-      editTrim(surface);
-      return;
-    }
-    if (surface.surface?.kind === "offset") {
-      editOffset(surface);
-      return;
-    }
-    if (surface.surface?.kind === "fillet") {
-      editSurfaceFillet(surface);
-      return;
-    }
-    if (surface.surface?.kind === "freeform" && surface.surface.moves) {
-      ctx.openPoles(surface);
-      return;
-    }
-    if (surface.surface?.kind === "flatten") {
-      showFlatten(surface);
-      return;
-    }
-    if (surface.surface?.kind === "freeform") {
-      editFreeform(surface);
-      return;
-    }
-    if (surface.static || surface.type_key === "shape") {
+    const editor = surfaceEditor(surface);
+    if (editor) {
+      await SURFACE_EDITORS[editor](surface);
+    } else if (isFrozen(surface)) {
       say("Surface figée — non éditable");
-      return;
+    } else {
+      say(t("{f} : aucun paramètre numérique éditable", { f: surface.label }));
     }
-    await editFeature({
-      name: surface.name,
-      label: surface.label,
-      type_key: surface.type_key,
-    });
   }
 
   // Prolongement : la distance (et le bord d'origine) se rééditent.
@@ -1998,89 +1973,57 @@ export function installTree(ctx) {
     });
   }
 
-  async function editFeature(feature) {
-    // Copie d'un réseau de corps, enlèvement venu d'un autre corps : le
-    // double-clic rouvre la répétition qui les porte.
-    if (feature.edits) {
-      editFeature({ name: feature.edits, type_key: feature.edits_type,
-                    label: feature.label, kind: feature.kind });
-      return;
-    }
-    if (isGraphFeature(feature) || isRepeatFeature(feature)) {
-      enterGraphFeature(feature);
-      return;
-    }
-    if (feature.type_key === "sketch") {
-      closeGraph();
-      ctx.sketchMode.enter(call("sketch_edit", { feature: feature.name }));
-      return;
-    }
-    if (feature.vertex_chamfer) {
-      panel.open({
-        icon: "vertex_chamfer",
-        title: feature.label,
-        groups: [{ label: t("Distances"),
-          rows: vertexChamferRows(feature.vertex_chamfer) }],
-        onApply: (v) => {
-          const distances = vertexChamferDistances(v);
-          if (!distances) {
-            say(t("Distance de chanfrein invalide"), true);
-            return;
-          }
-          refresh(call("edit_vertex_chamfer",
-            { feature: feature.name, distances }));
-        },
-      });
-      return;
-    }
-    if (feature.text) {
-      // Gravure rééditable (P032) : panneau dédié -> edit_text.
-      const txt = feature.text;
-      panel.open({
-        icon: TREE_ICONS[feature.type_key] ?? "body",
-        title: feature.label,
-        groups: [{
-          label: t("Gravure"),
-          rows: [
-            { type: "text", key: "text", label: t("Texte"), value: txt.text },
-            { type: "number", key: "size", label: t("Taille"), unit: "mm",
-              value: txt.size },
-            { type: "number", key: "depth", label: t("Profondeur"), unit: "mm",
-              value: txt.depth },
-            { type: "number", key: "x", label: t("X"), unit: "mm", value: txt.x },
-            { type: "number", key: "y", label: t("Y"), unit: "mm", value: txt.y },
-          ],
-        }],
-        onApply: (v) => {
-          refresh(call("edit_text", {
-            feature: feature.name,
-            text: String(v.text ?? txt.text),
-            size: num(v.size) ?? txt.size,
-            depth: num(v.depth) ?? txt.depth,
-            x: num(v.x) ?? txt.x,
-            y: num(v.y) ?? txt.y,
-          }));
-        },
-      });
-      return;
-    }
-    if (feature.surface_cut) {
-      editSurfaceCut(feature);
-      return;
-    }
-    if (feature.type_key === "remove_bodies") {
-      editRemoveBodies(feature);
-      return;
-    }
-    if (feature.type_key === "chamfer" && feature.chamfer) {
-      editChamfer(feature);
-      return;
-    }
-    if ((feature.type_key === "revolution"
-         || feature.type_key === "groove") && feature.revolution) {
-      editRevolved(feature);
-      return;
-    }
+  function editVertexChamfer(feature) {
+    panel.open({
+      icon: "vertex_chamfer",
+      title: feature.label,
+      groups: [{ label: t("Distances"),
+        rows: vertexChamferRows(feature.vertex_chamfer) }],
+      onApply: (v) => {
+        const distances = vertexChamferDistances(v);
+        if (!distances) {
+          say(t("Distance de chanfrein invalide"), true);
+          return;
+        }
+        refresh(call("edit_vertex_chamfer",
+          { feature: feature.name, distances }));
+      },
+    });
+  }
+
+  // Gravure rééditable (P032) : panneau dédié -> edit_text.
+  function editText(feature) {
+    const txt = feature.text;
+    panel.open({
+      icon: TREE_ICONS[feature.type_key] ?? "body",
+      title: feature.label,
+      groups: [{
+        label: t("Gravure"),
+        rows: [
+          { type: "text", key: "text", label: t("Texte"), value: txt.text },
+          { type: "number", key: "size", label: t("Taille"), unit: "mm",
+            value: txt.size },
+          { type: "number", key: "depth", label: t("Profondeur"), unit: "mm",
+            value: txt.depth },
+          { type: "number", key: "x", label: t("X"), unit: "mm", value: txt.x },
+          { type: "number", key: "y", label: t("Y"), unit: "mm", value: txt.y },
+        ],
+      }],
+      onApply: (v) => {
+        refresh(call("edit_text", {
+          feature: feature.name,
+          text: String(v.text ?? txt.text),
+          size: num(v.size) ?? txt.size,
+          depth: num(v.depth) ?? txt.depth,
+          x: num(v.x) ?? txt.x,
+          y: num(v.y) ?? txt.y,
+        }));
+      },
+    });
+  }
+
+  /** Les cotes de get_params, avec l'aperçu jaune et la flèche. */
+  async function editParams(feature) {
     try {
       const info = await call("get_params", { feature: feature.name });
       if (!info.params.length) {
@@ -2128,6 +2071,36 @@ export function installTree(ctx) {
     }
   }
 
+  // Éditeur de chaque genre (editkind.js) : le double-clic et
+  // « Modifier » ouvrent le même.
+  const FEATURE_EDITORS = {
+    // Copie d'un réseau de corps, enlèvement venu d'un autre corps : la
+    // répétition qui les porte.
+    edits: (feature) => editFeature({ name: feature.edits,
+      type_key: feature.edits_type, label: feature.label,
+      kind: feature.kind, has_params: feature.edits_has_params }),
+    graph: (feature) => enterGraphFeature(feature),
+    sketch: (feature) => {
+      closeGraph();
+      ctx.sketchMode.enter(call("sketch_edit", { feature: feature.name }));
+    },
+    vertex_chamfer: editVertexChamfer,
+    text: editText,
+    surface_cut: (feature) => editSurfaceCut(feature),
+    chamfer: (feature) => editChamfer(feature),
+    revolution: (feature) => editRevolved(feature),
+    remove_bodies: (feature) => editRemoveBodies(feature),
+    params: editParams,
+  };
+
+  async function editFeature(feature) {
+    const editor = featureEditor(feature);
+    if (!editor) {
+      say(t("{f} : aucun paramètre numérique éditable", { f: feature.label }));
+      return;
+    }
+    await FEATURE_EDITORS[editor](feature);
+  }
 
   return {
     updateTreeFlyout, refreshDatumGhost, onDatumRow, treeIcon,

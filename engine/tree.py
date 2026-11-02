@@ -905,6 +905,7 @@ class TreeMixin:
                 "type_key": type_key_for(obj.TypeId),
                 "error": "Invalid" in (obj.State or ()),
                 "order": order_of.get(obj.Name, -1),
+                "has_params": self._has_params(obj),
             }
             if getattr(obj, "Suppressed", False):
                 item["suppressed"] = True

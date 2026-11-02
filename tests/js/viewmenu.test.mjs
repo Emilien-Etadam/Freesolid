@@ -34,6 +34,17 @@ describe("viewMenuItems", () => {
     assert.ok(items.length <= 11, String(items.length));
   });
 
+  it("rien à rouvrir : ni « Modifier la fonction » ni « Modifier »", () => {
+    const face = { kind: "face",
+      feature: { name: "Mirrored", label: "Symétrie", editable: false } };
+    assert.ok(!keys(viewMenuItems({ hit: face })).includes("edit-feature"));
+    assert.ok(!contextToolbarKeys(face).includes("edit-feature"));
+    const frozen = { kind: "surface", label: "Couture", editable: false };
+    assert.ok(!keys(viewMenuItems({ hit: frozen })).includes("edit-surface"));
+    const open = { kind: "surface", label: "Surface extrudée" };
+    assert.ok(keys(viewMenuItems({ hit: open })).includes("edit-surface"));
+  });
+
   it("face d'une fonction sans esquisse : pas de « Modifier l'esquisse »", () => {
     const k = keys(viewMenuItems({
       hit: { kind: "face", feature: { name: "Fillet", label: "Congé" } } }));

@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  canModifyMenuTarget, isBodyMenuTarget, isFrozenSurface, solidParam,
+  canModifyMenuTarget, isBodyMenuTarget, isHideableTarget, solidParam,
 } from "../../app/contextmenu.js";
 
 describe("cible du menu de l'arbre", () => {
@@ -15,29 +15,43 @@ describe("cible du menu de l'arbre", () => {
     assert.equal(isBodyMenuTarget({ active: "yes" }), false);
   });
 
-  it("une surface figée n'est ni un graphe ni une répétition", () => {
-    assert.equal(isFrozenSurface(null), false);
-    assert.equal(isFrozenSurface({ type_key: "pad" }), false);
-    assert.equal(isFrozenSurface({ static: true }), true);
-    assert.equal(isFrozenSurface({ type_key: "shape" }), true);
-    assert.equal(isFrozenSurface({ static: true, graph: {} }), false);
-    assert.equal(isFrozenSurface({ type_key: "shape", repeat: {} }), false);
-  });
-
-  it("modifie une esquisse, une fonction ou une surface", () => {
+  it("« Modifier » quand le double-clic rouvre quelque chose", () => {
     assert.equal(canModifyMenuTarget(null), false);
     assert.equal(canModifyMenuTarget({}), false);
     assert.equal(canModifyMenuTarget({ active: false, type_key: "body" }), false);
-    assert.equal(canModifyMenuTarget({ type_key: "datum_plane" }), false);
-    assert.equal(canModifyMenuTarget({ type_key: "shape" }), false);
+    assert.equal(canModifyMenuTarget({ type_key: "component", grounded: true }),
+      false);
     assert.equal(canModifyMenuTarget({ type_key: "sketch" }), true);
-    assert.equal(canModifyMenuTarget({ type_key: "pad" }), true);
-    assert.equal(canModifyMenuTarget({ type_key: "surface_extrude" }), true);
-    assert.equal(canModifyMenuTarget({ type_key: "surface_fill" }), true);
-    assert.equal(canModifyMenuTarget({ type_key: "component" }), false);
-    assert.equal(canModifyMenuTarget({ type_key: "pad", graph: {} }), true);
-    // Réseau de corps : le double-clic et « Modifier » le rouvrent.
+    assert.equal(canModifyMenuTarget({ type_key: "pad", has_params: true }), true);
+    // Pas de cote, pas d'éditeur à lui : le double-clic n'ouvrirait rien.
+    assert.equal(canModifyMenuTarget({ type_key: "mirror", has_params: false }),
+      false);
+    assert.equal(canModifyMenuTarget(
+      { type_key: "datum_plane", has_params: false }), false);
+    assert.equal(canModifyMenuTarget(
+      { type_key: "pad", graph: {}, has_params: false }), true);
+    // Réseau de corps, suppression de corps : le double-clic les rouvre.
     assert.equal(canModifyMenuTarget({ type_key: "body_pattern" }), true);
+    assert.equal(canModifyMenuTarget(
+      { type_key: "remove_bodies", has_params: false }), true);
+    // Surfaces : figées non, spline 3D oui même figée.
+    const surface = { surface: true };
+    assert.equal(canModifyMenuTarget({ type_key: "shape", static: true },
+      surface), false);
+    assert.equal(canModifyMenuTarget(
+      { type_key: "shape", static: true, curve: {} }, surface), true);
+    assert.equal(canModifyMenuTarget(
+      { type_key: "surface_loft", has_params: false }, surface), false);
+    assert.equal(canModifyMenuTarget(
+      { type_key: "surface_extrude", has_params: true }, surface), true);
+  });
+
+  it("une ligne du dossier des surfaces se masque, courbe composite comprise", () => {
+    const composite = { name: "Binder", type_key: "binder" };
+    assert.equal(isHideableTarget(composite), false);
+    assert.equal(isHideableTarget(composite, { surface: true }), true);
+    assert.equal(isHideableTarget({ name: "Body", active: true }), true);
+    assert.equal(isHideableTarget({ name: "Pad", type_key: "pad" }), false);
   });
 });
 

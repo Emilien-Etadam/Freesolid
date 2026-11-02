@@ -84,10 +84,11 @@ function viewSection(ctx) {
 
 function featureSection(feature) {
   if (!feature) return [];
-  const items = [
-    { header: feature.label },
-    { key: "edit-feature", label: "Modifier la fonction" },
-  ];
+  const items = [{ header: feature.label }];
+  // `editable: false` : le double-clic n'a rien à rouvrir (editkind.js).
+  if (feature.editable !== false) {
+    items.push({ key: "edit-feature", label: "Modifier la fonction" });
+  }
   if (feature.sketch) items.push({ key: "edit-sketch", label: "Modifier l'esquisse" });
   items.push(
     { key: "rollback", label: "Amener la barre de retour ici" },
@@ -101,7 +102,8 @@ function featureSection(feature) {
 export function contextToolbarKeys(hit) {
   if (hit?.kind === "face") {
     return ["sketch-on-face", "normal-to", "fillet", "chamfer", "shell",
-      ...(hit.feature ? ["edit-feature"] : [])];
+      ...(hit.feature && hit.feature.editable !== false
+        ? ["edit-feature"] : [])];
   }
   if (hit?.kind === "edge") return ["fillet", "chamfer", "measure"];
   if (hit?.kind === "sketch") return ["edit-sketch", "pad", "pocket", "revolve"];
@@ -213,7 +215,8 @@ export function viewMenuItems(ctx = {}) {
   } else if (hit?.kind === "surface") {
     items = [
       { header: hit.label ?? "Surface" },
-      { key: "edit-surface", label: "Modifier" },
+      ...(hit.editable !== false
+        ? [{ key: "edit-surface", label: "Modifier" }] : []),
     ];
   }
   if (items.length) items.push(SEP);

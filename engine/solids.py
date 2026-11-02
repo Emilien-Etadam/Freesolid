@@ -275,15 +275,8 @@ class SolidsMixin:
             KernelError,
             _explain,
         )
-        from engine.extrude import ExtrudeError, cavity_plan, thin_cap_offsets
-        side = str(getattr(feature, "SideType", "One side"))
-        borgne = (feature.Type == "Length"
-                  and (side != "Two sides" or feature.Type2 == "Length"))
-        tapered = any(abs(float(getattr(feature, prop, 0) or 0)) > 1e-9
-                      for prop in ("TaperAngle", "TaperAngle2"))
-        if not borgne or tapered:
-            raise KernelError(
-                "extrémités fermées : profondeur borgne, sans dépouille")
+        from engine.extrude import ExtrudeError, thin_cap_offsets
+        self._check_caps_conditions(feature)
         try:
             self._check_cavity(feature)
         except ExtrudeError as exc:
@@ -300,16 +293,36 @@ class SolidsMixin:
             helpers.append(cavity)
             self._own_thin_helpers(feature, helpers)
             cavity.Profile = binder
-            plan = cavity_plan(side, feature.Name)
-            cavity.SideType = plan.pop("SideType")
-            # L'enlèvement part à l'opposé de l'extrusion.
-            cavity.Reversed = not feature.Reversed
-            for prop, expr in plan.items():
-                cavity.setExpression(prop, expr)
+            self._plan_cavity(feature, cavity)
         except Exception as exc:  # noqa: BLE001
             self._remove_all(helpers)
             raise KernelError(_explain(exc))
         return helpers
+
+    def _check_caps_conditions(self, feature):
+        """Extrémités fermées : la cavité se règle sur des profondeurs
+        borgnes, sans dépouille."""
+        from engine.kernel import KernelError
+        side = str(getattr(feature, "SideType", "One side"))
+        borgne = (feature.Type == "Length"
+                  and (side != "Two sides" or feature.Type2 == "Length"))
+        tapered = any(abs(float(getattr(feature, prop, 0) or 0)) > 1e-9
+                      for prop in ("TaperAngle", "TaperAngle2"))
+        if not borgne or tapered:
+            raise KernelError(
+                "extrémités fermées : profondeur borgne, sans dépouille")
+
+    def _plan_cavity(self, feature, cavity):
+        """Cavité d'une paroi fermée : ses côtés, son sens et ses
+        profondeurs suivent la fonction (``cavity_plan``)."""
+        from engine.extrude import cavity_plan
+        plan = cavity_plan(str(getattr(feature, "SideType", "One side")),
+                           feature.Name)
+        cavity.SideType = plan["SideType"]
+        # L'enlèvement part à l'opposé de l'extrusion.
+        cavity.Reversed = not feature.Reversed
+        for prop in ("Length", "Length2"):
+            cavity.setExpression(prop, plan.get(prop))
 
     def _check_cavity(self, feature):
         from engine.extrude import check_cavity
@@ -392,7 +405,8 @@ class SolidsMixin:
         return max(features, key=lambda o: order.get(o.Name, -1))
 
     def _sync_thin(self, obj):
-        """Recopie les épaisseurs de la fonction dans ses liants."""
+        """Recopie les épaisseurs de la fonction dans ses liants, et ses
+        conditions de fin dans sa cavité."""
         from engine.kernel import KernelError
         from engine.extrude import (
             ExtrudeError, thin_cap_offsets, thin_offsets, thin_settings)
@@ -403,12 +417,17 @@ class SolidsMixin:
         try:
             spec = thin_settings(**spec)
             if spec["caps"]:
+                self._check_caps_conditions(obj)
                 self._check_cavity(obj)
                 outer, inner = thin_cap_offsets(spec)
                 binders = [h for h in self._thin_helpers(obj)
                            if h.TypeId == "PartDesign::SubShapeBinder"]
                 steps = [(outer, False), (inner, False)]
                 chain = binders
+                # Conditions rééditées : la cavité suit les côtés et le sens.
+                for cavity in self._thin_helpers(obj):
+                    if cavity.TypeId == "PartDesign::Pocket":
+                        self._plan_cavity(obj, cavity)
             else:
                 steps = thin_offsets(spec)
         except ExtrudeError as exc:
@@ -450,6 +469,98 @@ class SolidsMixin:
                         "jusqu'à la face : la pièce n'a pas encore de face")
                 value = (tip, ["Face{}".format(int(value) + 1)])
             setattr(obj, name, value)
+
+    #: Conditions d'une extrusion que ``set_params`` réédite : propriété
+    #: (``Type`` et ``Type2`` reçoivent la condition de la création) ->
+    #: paramètre de ``engine.extrude.extrude_options``.
+    _EXTRUDE_OPTIONS = {"Type": "cond", "Type2": "cond2",
+                        "Midplane": "midplane", "Reversed": "reversed",
+                        "TaperAngle": "taper", "TaperAngle2": "taper2",
+                        "Offset": "offset"}
+    _EXTRUDE_KINDS = {"PartDesign::Pad": "pad", "PartDesign::Pocket": "pocket"}
+
+    def _extrude_state(self, obj):
+        """Conditions de fin d'une extrusion ou d'un enlèvement, dans les
+        mots de la création (``engine.extrude.extrude_state``), plus
+        ``face`` : la face d'arrivée existe. None sinon."""
+        from engine.extrude import extrude_state
+        kind = self._EXTRUDE_KINDS.get(getattr(obj, "TypeId", ""))
+        if kind is None:
+            return None
+        props = {}
+        for prop in ("SideType", "Type", "Type2", "Reversed", "TaperAngle",
+                     "TaperAngle2", "Offset"):
+            value = getattr(obj, prop, None)
+            props[prop] = getattr(value, "Value", value)
+        if "SideType" not in obj.PropertiesList:
+            # FreeCAD 1.0 : un booléen pour le plan milieu.
+            props["SideType"] = ("Symmetric" if getattr(obj, "Midplane", False)
+                                 else "One side")
+        state = extrude_state(kind, props)
+        if state is not None:
+            state["face"] = bool(getattr(obj, "UpToFace", None))
+        return state
+
+    def _set_extrude_options(self, obj, options, previous, exprs_before):
+        """Pose les conditions rééditées (``options`` : propriété de
+        ``_EXTRUDE_OPTIONS`` -> valeur) par-dessus celles de la fonction.
+        ``previous`` reçoit de quoi tout défaire (``set_params``)."""
+        from engine.kernel import KernelError, _explain, parse_user_number
+        from engine.extrude import ExtrudeError, extrude_options
+        state = self._extrude_state(obj)
+        if state is None:
+            raise KernelError(
+                "{} : conditions de fin que la réédition ne sait pas "
+                "changer".format(obj.Label))
+        state.pop("face")
+        for prop, value in options.items():
+            name = self._EXTRUDE_OPTIONS[prop]
+            if name in ("midplane", "reversed"):
+                if not isinstance(value, bool) and not (
+                        type(value) is int and value in (0, 1)):
+                    raise KernelError("sens de l'extrusion : booléen attendu")
+                value = bool(value)
+            elif name in ("taper", "taper2", "offset"):
+                number = (parse_user_number(value) if isinstance(value, str)
+                          else value)
+                if isinstance(number, bool) or not isinstance(
+                        number, (int, float)):
+                    raise KernelError(
+                        "{} : valeur numérique attendue".format(name))
+                value = float(number)
+            elif name == "cond2":
+                value = str(value) if value else None
+            else:
+                value = str(value)
+            state[name] = value
+        try:
+            props = extrude_options(
+                self._EXTRUDE_KINDS[obj.TypeId], **state)
+        except ExtrudeError as exc:
+            raise KernelError(str(exc))
+        for prop, face in (("Type", "UpToFace"), ("Type2", "UpToFace2")):
+            if props.get(prop) == "UpToFace" and not getattr(obj, face, None):
+                raise KernelError(
+                    "jusqu'à la face : la fonction n'a pas de face d'arrivée")
+        side = props.pop("SideType")
+        if "SideType" in obj.PropertiesList:
+            props = {"SideType": side, **props}
+        elif side == "Two sides":
+            raise KernelError(
+                "deuxième direction : FreeCAD {} requis".format("1.1"))
+        else:
+            props["Midplane"] = side == "Symmetric"
+        for prop, value in props.items():
+            previous.append((prop, exprs_before.get(prop),
+                             getattr(obj, prop, None)))
+            try:
+                obj.setExpression(prop, None)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                setattr(obj, prop, value)
+            except Exception as exc:  # noqa: BLE001
+                raise KernelError(_explain(exc))
 
     def add_pocket(self, length=None, through=False, reversed=False,
                    sketch=None, midplane=False, cond=None, thin=None,
@@ -1338,6 +1449,31 @@ class SolidsMixin:
     def _prop_float(obj, name):
         value = getattr(obj, name, 0)
         return float(getattr(value, "Value", value))
+
+    #: Condition de fin d'un perçage : mot de la création -> ``DepthType``.
+    _HOLE_DEPTHS = {"travers": "ThroughAll", "borgne": "Dimension"}
+
+    def _hole_state(self, obj):
+        """Perçage relu pour la réédition, dans les mots de la création :
+        ``{cut, cond, depth, cutDiameter, cutDepth, cutAngle}`` — une cote
+        que le type ne prend pas vaut None. None pour un perçage taraudé
+        ou d'un type que le panneau n'a pas."""
+        cuts = {value: word for word, value in self._HOLE_CUTS.items()}
+        depths = {value: word for word, value in self._HOLE_DEPTHS.items()}
+        cut = cuts.get(str(getattr(obj, "HoleCutType", "")))
+        cond = depths.get(str(getattr(obj, "DepthType", "")))
+        if cut is None or cond is None or getattr(obj, "Threaded", False):
+            return None
+        def size(prop, wanted):
+            value = self._prop_float(obj, prop) if wanted else 0.0
+            return value if value > 0 else None
+        return {
+            "cut": cut, "cond": cond,
+            "depth": size("Depth", cond == "borgne"),
+            "cutDiameter": size("HoleCutDiameter", cut != "none"),
+            "cutDepth": size("HoleCutDepth", cut == "lamage"),
+            "cutAngle": size("HoleCutCountersinkAngle", cut == "fraisage"),
+        }
 
     def _chamfer_state(self, obj):
         """État relu pour l'arbre et la réédition."""

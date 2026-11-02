@@ -14,6 +14,9 @@ import { renameClickAction } from "./rename.js";
 import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
   revolutionGroups, revolutionEditValues, revolutionProblem,
+  extrudeEditInitial, extrudeEditProblem, extrudeEditValues, extrudeGroups,
+  holeEditInitial, holeEditValues, holeGroups, shellEditGroups,
+  shellEditValues,
   checkedContours, contourRows, vertexChamferDistances, vertexChamferRows,
   REMOVE_BODIES_NOTE, removeBodiesGroups, removeBodiesParams,
 } from "./features.js";
@@ -1646,6 +1649,7 @@ export function installTree(ctx) {
     extend: (surface) => editExtend(surface),
     trim: (surface) => editTrim(surface),
     offset: (surface) => editOffset(surface),
+    radiate: (surface) => editRadiate(surface),
     surface_fillet: (surface) => editSurfaceFillet(surface),
     poles: (surface) => ctx.openPoles(surface),
     flatten: (surface) => showFlatten(surface),
@@ -1797,23 +1801,53 @@ export function installTree(ctx) {
     });
   }
 
-  // Surface décalée : sa distance (négative = de l'autre côté).
-  function editOffset(surface) {
+  /** Distance d'une surface décalée ou radiée et son côté, comme à la
+   *  création : le moteur la garde signée (négative = de l'autre côté). */
+  function editSignedDistance(surface, signed, { icon, side }) {
     panel.open({
-      icon: "surface_offset",
+      icon,
       title: surface.label,
       groups: [{
         label: t("Paramètres"),
         rows: [{ type: "number", key: "distance", label: t("Distance"),
-                 value: surface.surface.distance, unit: "mm" }],
+                 value: Math.abs(signed), unit: "mm" },
+               { type: "check", key: "side", label: side,
+                 value: signed < 0 }],
       }],
       onApply: (v) => {
-        const distance = num(v.distance);
-        if (distance === null) return;
+        const size = num(v.distance);
+        if (size === null) return;
+        const distance = v.side ? -Math.abs(size) : Math.abs(size);
+        if (distance === signed) return;
         refresh(call("set_params", {
           feature: surface.name, values: { distance } }));
       },
     });
+  }
+
+  function editOffset(surface) {
+    editSignedDistance(surface, surface.surface.distance,
+      { icon: "surface_offset", side: t("Inverser le côté") });
+  }
+
+  // Surface radiée : une distance pilotée par une équation garde le
+  // panneau des cotes, qui la montre.
+  async function editRadiate(surface) {
+    let info;
+    try {
+      info = await call("get_params", { feature: surface.name });
+    } catch (error) {
+      say(error.message, true);
+      return;
+    }
+    const distance = info.params.find((p) => p.key === "distance");
+    if (!distance || distance.expr) {
+      editParams({ name: surface.name, label: surface.label,
+                   type_key: surface.type_key });
+      return;
+    }
+    editSignedDistance(surface, distance.value,
+      { icon: "surface_radiate", side: t("Vers l'intérieur") });
   }
 
   // Ajustement : garder l'autre partie (la partie écartée n'est plus
@@ -1868,6 +1902,65 @@ export function installTree(ctx) {
         const values = revolutionEditValues(v, spec, feature.params);
         if (values === null) {
           say(revolutionProblem(), true);
+          return;
+        }
+        applyEdit(feature, v, values);
+      },
+    });
+  }
+
+  /** Extrusion ou enlèvement : le panneau de la création, rempli de ses
+   *  conditions, de ses cotes et de sa paroi mince. */
+  function editExtrude(feature) {
+    const kind = feature.type_key === "pocket" ? "pocket" : "pad";
+    // La flèche du moteur vaut pour le sens d'avant : elle s'efface tant
+    // que le sens ou la condition change.
+    const depth = ctx.editDepthHandle?.(feature);
+    const sameWay = (values) => !["cond", "midplane", "reversed", "cond2"]
+      .some((key) => key in values);
+    panel.open({
+      icon: TREE_ICONS[feature.type_key] ?? "body",
+      title: feature.label,
+      groups: [...extrudeGroups(kind, extrudeEditInitial(feature)),
+               ...contourGroups(feature)],
+      onChange: (v, how) => {
+        const values = extrudeEditValues(v, feature);
+        schedulePreview(values
+          ? { op: "set_params",
+              params: { feature: feature.name, values } }
+          : null, how);
+        depth?.update(values && sameWay(values) ? v : {});
+      },
+      onClose: () => depth?.close(),
+      onApply: (v) => {
+        const values = extrudeEditValues(v, feature);
+        if (values === null) {
+          say(extrudeEditProblem(v, feature), true);
+          return;
+        }
+        applyEdit(feature, v, values);
+      },
+    });
+  }
+
+  /** Panneau de réédition qui renvoie ses changements par set_params :
+   *  `build(v)` les donne (null si invalide), `problem` dit pourquoi. */
+  function editWithValues(feature, groups, build, problem) {
+    panel.open({
+      icon: TREE_ICONS[feature.type_key] ?? "body",
+      title: feature.label,
+      groups,
+      onChange: (v, how) => {
+        const values = build(v);
+        schedulePreview(values
+          ? { op: "set_params",
+              params: { feature: feature.name, values } }
+          : null, how);
+      },
+      onApply: (v) => {
+        const values = build(v);
+        if (values === null) {
+          say(problem, true);
           return;
         }
         applyEdit(feature, v, values);
@@ -2093,6 +2186,13 @@ export function installTree(ctx) {
     surface_cut: (feature) => editSurfaceCut(feature),
     chamfer: (feature) => editChamfer(feature),
     revolution: (feature) => editRevolved(feature),
+    extrude: (feature) => editExtrude(feature),
+    // Coque : épaisseur et sens ; perçage : type, cotes, condition de fin.
+    shell: (feature) => editWithValues(feature, shellEditGroups(feature),
+      (v) => shellEditValues(v, feature), "Épaisseur invalide"),
+    hole: (feature) => editWithValues(feature,
+      holeGroups(holeEditInitial(feature)),
+      (v) => holeEditValues(v, feature), "Valeurs du perçage invalides"),
     remove_bodies: (feature) => editRemoveBodies(feature),
     params: editParams,
   };

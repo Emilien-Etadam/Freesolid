@@ -228,46 +228,65 @@ const EXTRUDE_CONDITIONS = {
 
 const usesLength = (cond) => cond === "borgne" || cond === "milieu";
 
-export function extrudeGroups(kind) {
-  const conditions = EXTRUDE_CONDITIONS[kind];
-  const second = conditions.filter(([c]) => c !== "face" && c !== "milieu");
+/** Groupes du panneau extrusion / enlèvement. `edit` : les valeurs de la
+ *  fonction qu'on réédite (`extrudeEditInitial`). La face d'arrivée ne se
+ *  re-choisit pas ; la paroi mince garde son genre, ses épaisseurs et son
+ *  côté se changent. */
+export function extrudeGroups(kind, edit = null) {
+  // Extrémités fermées : la cavité veut des profondeurs borgnes.
+  const caps = (edit?.thin?.caps ?? 0) > 0;
+  const conditions = EXTRUDE_CONDITIONS[kind].filter(([c]) => !edit
+    || (caps ? c === "borgne" || c === "milieu"
+      : c !== "face" || edit.cond === "face"));
+  const second = EXTRUDE_CONDITIONS[kind].filter(([c]) =>
+    c !== "face" && c !== "milieu" && (!caps || c === "borgne"));
+  const depth = (key, value, showIf) => (edit
+    ? measureRow(key, "Profondeur", value, "mm", showIf)
+    : { type: "number", key, label: "Profondeur", value, unit: "mm",
+        min: 0.01, showIf });
+  const tapered = !caps;
   return [
     {
       label: "Direction 1",
       rows: [
-        { type: "select", key: "cond", value: conditions[0][0],
+        { type: "select", key: "cond", value: edit?.cond ?? conditions[0][0],
           options: conditions },
-        { type: "number", key: "length", label: "Profondeur", value: 10,
-          unit: "mm", min: 0.01, showIf: (v) => usesLength(v.cond) },
-        { type: "selection", key: "face", accepts: ["face"],
-          label: "Face d'arrivée", hint: "Cliquez la face d'arrivée",
+        depth("length", edit?.length ?? 10, (v) => usesLength(v.cond)),
+        ...(edit ? [] : [
+          { type: "selection", key: "face", accepts: ["face"],
+            label: "Face d'arrivée", hint: "Cliquez la face d'arrivée",
+            showIf: (v) => v.cond === "face" }]),
+        { type: "number", key: "offset", label: "Décalage",
+          value: edit?.offset ?? 0, unit: "mm",
           showIf: (v) => v.cond === "face" },
-        { type: "number", key: "offset", label: "Décalage", value: 0,
-          unit: "mm", showIf: (v) => v.cond === "face" },
         { type: "check", key: "reversed", label: "Inverser la direction",
-          value: false, showIf: (v) => v.cond !== "milieu" },
-        { type: "number", key: "taper", label: "Dépouille", value: 0,
-          unit: "°" },
-        { type: "check", key: "taperOut", label: "Dépouille vers l'extérieur",
-          value: false, showIf: (v) => (num(v.taper) ?? 0) !== 0 },
+          value: edit?.reversed ?? false, showIf: (v) => v.cond !== "milieu" },
+        ...(tapered ? [
+          { type: "number", key: "taper", label: "Dépouille",
+            value: edit?.taper ?? 0, unit: "°" },
+          { type: "check", key: "taperOut",
+            label: "Dépouille vers l'extérieur",
+            value: edit?.taperOut ?? false,
+            showIf: (v) => (num(v.taper) ?? 0) !== 0 },
+        ] : []),
       ],
     },
     {
       label: "Direction 2",
       rows: [
         { type: "check", key: "dir2", label: "Deuxième direction",
-          value: false, showIf: (v) => v.cond !== "milieu" },
-        { type: "select", key: "cond2", value: second[0][0], options: second,
-          showIf: (v) => v.dir2 && v.cond !== "milieu" },
-        { type: "number", key: "length2", label: "Profondeur", value: 10,
-          unit: "mm", min: 0.01,
-          showIf: (v) => v.dir2 && v.cond !== "milieu"
-            && v.cond2 === "borgne" },
-        { type: "number", key: "taper2", label: "Dépouille", value: 0,
-          unit: "°", showIf: (v) => v.dir2 && v.cond !== "milieu" },
+          value: edit?.dir2 ?? false, showIf: (v) => v.cond !== "milieu" },
+        { type: "select", key: "cond2", value: edit?.cond2 ?? second[0][0],
+          options: second, showIf: (v) => v.dir2 && v.cond !== "milieu" },
+        depth("length2", edit?.length2 ?? 10, (v) => v.dir2
+          && v.cond !== "milieu" && v.cond2 === "borgne"),
+        ...(tapered ? [
+          { type: "number", key: "taper2", label: "Dépouille",
+            value: edit?.taper2 ?? 0, unit: "°",
+            showIf: (v) => v.dir2 && v.cond !== "milieu" }] : []),
       ],
     },
-    {
+    ...(edit ? thinEditGroups(edit.thin) : [{
       label: "Paroi mince",
       rows: [
         { type: "check", key: "thin", label: "Paroi d'épaisseur constante",
@@ -289,8 +308,111 @@ export function extrudeGroups(kind) {
             showIf: (v) => v.thin && v.thinCaps && capsAllowed(v) },
         ] : []),
       ],
-    },
+    }]),
   ];
+}
+
+/** Paroi mince d'une fonction qu'on réédite : ses épaisseurs et son côté. */
+function thinEditGroups(thin) {
+  if (!thin) return [];
+  return [{
+    label: "Paroi mince",
+    rows: [
+      measureRow("thinT", "Épaisseur", thin.thinT, "mm"),
+      ...(thin.type === "deux"
+        ? [measureRow("thinT2", "Épaisseur côté 2", thin.thinT2, "mm")] : []),
+      ...(thin.type !== "milieu" ? [
+        { type: "check", key: "thinReversed", label: "Inverser le côté",
+          value: !!thin.reversed }] : []),
+      ...(thin.caps > 0
+        ? [measureRow("thinCapT", "Épaisseur des extrémités", thin.thinCapT,
+                      "mm")] : []),
+    ],
+  }];
+}
+
+/** Valeurs du panneau pour une fonction qu'on réédite : ses conditions
+ *  (`feature.extrude`), ses cotes, expressions comprises (`params`), sa
+ *  paroi mince (`thin`). */
+export function extrudeEditInitial(feature) {
+  const state = feature.extrude;
+  const value = (key, fallback) => {
+    const found = (feature.params ?? []).find((p) => p.key === key);
+    return found?.expr ?? found?.value ?? fallback;
+  };
+  const thin = feature.thin;
+  return {
+    cond: state.midplane ? "milieu" : state.cond,
+    length: value("length", 10),
+    offset: state.offset,
+    reversed: state.reversed,
+    taper: Math.abs(state.taper),
+    taperOut: state.taper < 0,
+    dir2: !!state.cond2,
+    cond2: state.cond2 ?? undefined,
+    length2: value("length2", 10),
+    taper2: state.taper2,
+    thin: thin ? {
+      type: thin.type, reversed: thin.reversed, caps: thin.caps,
+      thinT: value("thinT", thin.thickness),
+      thinT2: value("thinT2", thin.thickness2),
+      thinCapT: value("thinCapT", thin.caps),
+    } : null,
+  };
+}
+
+/**
+ * Valeurs `set_params` pour rééditer une extrusion ou un enlèvement : ce
+ * qui a changé, dans les clés de la création. `{}` si rien n'a changé,
+ * `null` si une cote visible est invalide.
+ */
+export function extrudeEditValues(v, feature) {
+  const state = feature.extrude;
+  const params = feature.params;
+  const values = {};
+  const midplane = v.cond === "milieu";
+  const cond = midplane ? "borgne" : v.cond;
+  const dir2 = !!v.dir2 && !midplane;
+  const cond2 = dir2 ? v.cond2 : null;
+  const reversed = midplane ? false : !!v.reversed;
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const taperSize = Math.abs(num(v.taper) ?? 0);
+  const taper = v.taperOut ? -taperSize : taperSize;
+  const taper2 = dir2 ? (num(v.taper2) ?? 0) : 0;
+  if (cond !== state.cond) values.cond = cond;
+  if (midplane !== state.midplane) values.midplane = midplane;
+  if (reversed !== state.reversed) values.reversed = reversed;
+  if (!near(taper, state.taper)) values.taper = taper;
+  if (cond2 !== (state.cond2 ?? null)) values.cond2 = cond2;
+  if (dir2 && !near(taper2, state.taper2)) values.taper2 = taper2;
+  if (cond === "face") {
+    const offset = num(v.offset) ?? 0;
+    if (!near(offset, state.offset)) values.offset = offset;
+  }
+  const bounds = { min: 0, max: Infinity };
+  const measure = (key, fallback, always = false) => {
+    const stored = storedMeasure(params, key, fallback);
+    const read = readMeasure(v[key], stored, bounds);
+    if (read == null) return false;
+    if (always || !sameMeasure(read, stored)) values[key] = read;
+    return true;
+  };
+  if (usesLength(v.cond) && !measure("length", 10)) return null;
+  // Côté 2 ouvert ici : sa profondeur part, même telle qu'affichée.
+  if (cond2 === "borgne"
+      && !measure("length2", 10, state.cond2 !== "borgne")) return null;
+  const thin = feature.thin;
+  if (thin) {
+    if (!measure("thinT", thin.thickness)) return null;
+    if (thin.type === "deux" && !measure("thinT2", thin.thickness2)) {
+      return null;
+    }
+    if (thin.caps > 0 && !measure("thinCapT", thin.caps)) return null;
+    if (thin.type !== "milieu" && !!v.thinReversed !== !!thin.reversed) {
+      values.thinReversed = !!v.thinReversed;
+    }
+  }
+  return values;
 }
 
 // Extrémités fermées (extrusion, profil fermé) : profondeurs borgnes et
@@ -358,6 +480,108 @@ export function extrudeBuild(op, v) {
   return { op, params };
 }
 
+// ---------- perçage ----------
+
+/** Cotes d'un perçage à l'ouverture du panneau : celles de la création. */
+const HOLE_DEFAULTS = { diameter: 6, depth: 15, cutDiameter: 11, cutDepth: 3,
+                        cutAngle: 90 };
+
+/** Type et condition de fin d'un perçage, à la création comme à la
+ *  réédition (`edit` : `holeEditInitial`). */
+export function holeGroups(edit = null) {
+  const v0 = edit ?? { cut: "none", cond: "travers", ...HOLE_DEFAULTS };
+  const measure = (key, label, unit, min, showIf) => {
+    const row = edit ? measureRow(key, label, v0[key], unit)
+      : { type: "number", key, label, value: v0[key], unit, min };
+    if (showIf) row.showIf = showIf;
+    return row;
+  };
+  return [
+    {
+      label: "Type de perçage",
+      rows: [
+        { type: "select", key: "cut", value: v0.cut,
+          options: [["none", "Perçage"], ["lamage", "Lamage"],
+                    ["fraisage", "Fraisage"]] },
+        measure("diameter", "Diamètre", "mm", 0.01),
+        measure("cutDiameter", "Ø de tête", "mm", 0.01,
+                (v) => v.cut !== "none"),
+        measure("cutDepth", "Prof. lamage", "mm", 0.01,
+                (v) => v.cut === "lamage"),
+        measure("cutAngle", "Angle", "°", 1, (v) => v.cut === "fraisage"),
+      ],
+    },
+    {
+      label: "Condition de fin",
+      rows: [
+        { type: "select", key: "cond", value: v0.cond,
+          options: [["travers", "À travers tout"],
+                    ["borgne", "Borgne"]] },
+        measure("depth", "Profondeur", "mm", 0.01,
+                (v) => v.cond === "borgne"),
+      ],
+    },
+  ];
+}
+
+/** Valeurs du panneau pour un perçage qu'on réédite : son type et sa
+ *  condition (`feature.hole`), ses cotes (expressions comprises) ; une
+ *  cote que son type ne prend pas reprend celle de la création. */
+export function holeEditInitial(feature) {
+  const hole = feature.hole;
+  const initial = { cut: hole.cut, cond: hole.cond };
+  for (const [key, fallback] of Object.entries(HOLE_DEFAULTS)) {
+    const found = (feature.params ?? []).find((p) => p.key === key);
+    initial[key] = found?.expr ?? found?.value ?? hole[key] ?? fallback;
+  }
+  return initial;
+}
+
+/**
+ * Valeurs `set_params` d'un perçage réédité : `{}` si rien n'a changé,
+ * null si une cote visible est invalide. FreeCAD remet les cotes de tête
+ * à ses valeurs quand le type change : elles repartent alors toutes.
+ */
+export function holeEditValues(v, feature) {
+  const hole = feature.hole;
+  const initial = holeEditInitial(feature);
+  const values = {};
+  const retyped = v.cut !== hole.cut;
+  if (retyped) values.cut = v.cut;
+  if (v.cond !== hole.cond) values.cond = v.cond;
+  const measure = (key, always = false) => {
+    const stored = storedMeasure(feature.params, key, initial[key]);
+    const read = readMeasure(v[key], stored, { min: 0, max: Infinity });
+    if (read != null && (always || !sameMeasure(read, stored))) {
+      values[key] = read;
+    }
+    return read;
+  };
+  const diameter = measure("diameter");
+  if (diameter == null) return null;
+  if (v.cond === "borgne"
+      && measure("depth", hole.cond !== "borgne") == null) return null;
+  if (v.cut !== "none") {
+    const head = measure("cutDiameter", retyped);
+    if (head == null) return null;
+    // Le lamage englobe le trou.
+    if (typeof head === "number" && typeof diameter === "number"
+        && !(head > diameter)) return null;
+    const extra = v.cut === "lamage" ? "cutDepth" : "cutAngle";
+    if (measure(extra, retyped) == null) return null;
+  }
+  return values;
+}
+
+/** Ce qui manque à une réédition refusée (`extrudeEditValues` à null). */
+export function extrudeEditProblem(v, feature) {
+  const bad = (key) => key in v && readMeasure(
+    v[key], storedMeasure(feature.params, key, 1),
+    { min: 0, max: Infinity }) == null;
+  return feature.thin && ["thinT", "thinT2", "thinCapT"].some(bad)
+    ? "Épaisseur de paroi invalide" : "Profondeur invalide";
+}
+
 export function extrudeInvalid(v) {
   if (v.cond === "face" && v.face?.face == null) {
     return "Jusqu'à la face : cliquez la face d'arrivée";
@@ -409,34 +633,7 @@ export const VOLUMES = [
         rows: [{ type: "selection", key: "pos", accepts: ["point"],
                  multiple: true,
                  hint: "Cliquez les centres des trous sur une face" }] },
-      {
-        label: "Type de perçage",
-        rows: [
-          { type: "select", key: "cut", value: "none",
-            options: [["none", "Perçage"], ["lamage", "Lamage"],
-                      ["fraisage", "Fraisage"]] },
-          { type: "number", key: "diameter", label: "Diamètre", value: 6,
-            unit: "mm", min: 0.01 },
-          { type: "number", key: "cutDiameter", label: "Ø de tête",
-            value: 11, unit: "mm", min: 0.01,
-            showIf: (v) => v.cut !== "none" },
-          { type: "number", key: "cutDepth", label: "Prof. lamage",
-            value: 3, unit: "mm", min: 0.01,
-            showIf: (v) => v.cut === "lamage" },
-          { type: "number", key: "cutAngle", label: "Angle", value: 90,
-            unit: "°", min: 1, showIf: (v) => v.cut === "fraisage" },
-        ],
-      },
-      {
-        label: "Condition de fin",
-        rows: [
-          { type: "select", key: "cond", value: "travers",
-            options: [["travers", "À travers tout"],
-                      ["borgne", "Borgne"]] },
-          { type: "number", key: "depth", label: "Profondeur", value: 15,
-            unit: "mm", min: 0.01, showIf: (v) => v.cond === "borgne" },
-        ],
-      },
+      ...holeGroups(),
     ],
     note: "Sans position cliquée, la dernière esquisse sert (un cercle " +
           "par perçage). Le diamètre saisi remplace celui des cercles.",

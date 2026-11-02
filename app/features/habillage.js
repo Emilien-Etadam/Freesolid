@@ -26,6 +26,30 @@ export function shellBuild(v) {
            params: { faces, thickness, outward: !!v.outward } };
 }
 
+/** Coque qu'on réédite : son épaisseur et son sens (les faces ouvertes
+ *  restent celles de la création). */
+export function shellEditGroups(feature) {
+  return [{ label: "Paramètres", rows: [
+    measureRow("thickness", "Épaisseur",
+               chamferFieldValue(feature.params, "thickness", 2), "mm"),
+    { type: "check", key: "outward", label: "Coque vers l'extérieur",
+      value: !!feature.shell?.outward },
+  ] }];
+}
+
+/** Valeurs `set_params` d'une coque rééditée : `{}` si rien n'a changé,
+ *  null si l'épaisseur est invalide. */
+export function shellEditValues(v, feature) {
+  const stored = storedMeasure(feature.params, "thickness", 2);
+  const thickness = readMeasure(v.thickness, stored,
+                                { min: 0, max: Infinity });
+  if (thickness == null) return null;
+  const values = {};
+  if (!sameMeasure(thickness, stored)) values.thickness = thickness;
+  if (!!v.outward !== !!feature.shell?.outward) values.outward = !!v.outward;
+  return values;
+}
+
 function expressionText(raw) {
   const text = String(raw ?? "").trim();
   return text.length > 0 && plainNumber(text) == null;

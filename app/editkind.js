@@ -25,6 +25,10 @@ export function featureEditor(item) {
   if (item.type_key === "chamfer" && item.chamfer) return "chamfer";
   if ((item.type_key === "revolution" || item.type_key === "groove")
       && item.revolution) return "revolution";
+  if ((item.type_key === "pad" || item.type_key === "pocket")
+      && item.extrude) return "extrude";
+  if (item.type_key === "thickness" && item.shell) return "shell";
+  if (item.type_key === "hole" && item.hole) return "hole";
   if (item.type_key === "remove_bodies") return "remove_bodies";
   return params(item);
 }
@@ -43,6 +47,8 @@ export function surfaceEditor(item) {
   if (kind === "freeform") return item.surface.moves ? "poles" : "freeform";
   if (kind === "flatten") return "flatten";
   if (isFrozen(item)) return null;
+  // Radiée : distance et sens, comme à la création.
+  if (item.type_key === "surface_radiate") return params(item) && "radiate";
   return params(item);
 }
 

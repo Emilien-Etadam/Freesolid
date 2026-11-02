@@ -78,6 +78,64 @@ def extrude_settings(kind, cond="borgne", length=None, face=None,
     return props
 
 
+def extrude_state(kind, props):
+    """Conditions d'une extrusion qui existe, dans les mots de la
+    création : ``{cond, midplane, reversed, taper, offset, cond2,
+    taper2}`` (``cond2`` : None sur un seul côté). ``props`` : ses
+    propriétés ``SideType``, ``Type``, ``Type2``, ``Reversed``,
+    ``TaperAngle``, ``TaperAngle2``, ``Offset``. None quand le panneau
+    ne sait pas la montrer (``UpToShape``, plan milieu non borgne…)."""
+    names = {value: cond for cond, value in _TYPES[kind].items()
+             if cond != ("dernier" if kind == "pocket" else "travers")}
+    side = props.get("SideType", "One side")
+    cond = names.get(props.get("Type"))
+    if cond is None:
+        return None
+    state = {"cond": cond, "midplane": side == "Symmetric",
+             "reversed": bool(props.get("Reversed")),
+             "taper": -float(props.get("TaperAngle") or 0.0),
+             "offset": float(props.get("Offset") or 0.0),
+             "cond2": None, "taper2": 0.0}
+    if side == "Symmetric" and cond != "borgne":
+        return None
+    if side == "Two sides":
+        state["cond2"] = names.get(props.get("Type2"))
+        if state["cond2"] in (None, "face"):
+            return None
+        state["taper2"] = -float(props.get("TaperAngle2") or 0.0)
+    return state
+
+
+def extrude_options(kind, cond="borgne", midplane=False, reversed=False,
+                    taper=0.0, offset=0.0, cond2=None, taper2=0.0):
+    """Propriétés à poser pour changer les conditions d'une extrusion qui
+    existe (``extrude_state`` en donne les valeurs d'avant). Les
+    profondeurs sont des cotes, rééditées à part ; la face d'arrivée
+    reste celle de la fonction."""
+    if kind not in _TYPES:
+        raise ExtrudeError("fonction inconnue : {}".format(kind))
+    if midplane and cond2:
+        raise ExtrudeError(
+            "plan milieu et deuxième direction s'excluent")
+    if midplane and cond != "borgne":
+        raise ExtrudeError("plan milieu : profondeur borgne seulement")
+    types = _TYPES[kind]
+    for value in (cond, cond2):
+        if value is not None and value not in types:
+            raise ExtrudeError("condition de fin inconnue : {}".format(value))
+    props = {"SideType": ("Symmetric" if midplane
+                          else "Two sides" if cond2 else "One side"),
+             "Type": types[cond],
+             "Reversed": bool(reversed) and not midplane,
+             "TaperAngle": -float(taper or 0.0)}
+    if cond == "face":
+        props["Offset"] = float(offset or 0.0)
+    if cond2:
+        props["Type2"] = types[cond2]
+        props["TaperAngle2"] = -float(taper2 or 0.0)
+    return props
+
+
 #: Paroi mince : un côté, plan milieu, deux côtés (épaisseurs distinctes).
 THIN_TYPES = ("un", "milieu", "deux")
 

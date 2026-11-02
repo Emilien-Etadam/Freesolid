@@ -1,7 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { extrudeBuild, extrudeGroups, extrudeInvalid } from "../../app/features.js";
+import {
+  extrudeBuild, extrudeEditInitial, extrudeEditProblem, extrudeEditValues,
+  extrudeGroups, extrudeInvalid, holeEditInitial, holeEditValues, holeGroups,
+  shellEditGroups, shellEditValues,
+} from "../../app/features.js";
 
 describe("extrudeBuild", () => {
   it("borgne : profondeur positive", () => {
@@ -103,5 +107,167 @@ describe("coque", async () => {
     assert.equal(shellBuild({ faces: { items: [] }, thickness: 2 }), null);
     assert.equal(shellBuild({ faces: { items: [{ face: 1 }] }, thickness: 0 }),
       null);
+  });
+});
+
+/** Une extrusion de l'arbre, telle que le moteur l'envoie. */
+function feature(extrude = {}, extra = {}) {
+  return {
+    name: "Pad", type_key: "pad",
+    extrude: { cond: "borgne", midplane: false, reversed: false, taper: 0,
+               offset: 0, cond2: null, taper2: 0, face: false, ...extrude },
+    params: [{ key: "length", value: 10 }],
+    ...extra,
+  };
+}
+
+/** Les valeurs du panneau à l'ouverture : celles de ses lignes. */
+function opened(f, kind = "pad") {
+  const v = {};
+  for (const group of extrudeGroups(kind, extrudeEditInitial(f))) {
+    for (const row of group.rows) v[row.key] = row.value;
+  }
+  return v;
+}
+
+describe("réédition de l'extrusion", () => {
+  it("rouvre le panneau tel quel : rien à envoyer", () => {
+    for (const f of [
+      feature(),
+      feature({ cond: "suivant", reversed: true, taper: -3 }),
+      feature({ midplane: true }),
+      feature({ cond2: "borgne", taper2: 2 },
+              { params: [{ key: "length", value: 8 },
+                         { key: "length2", value: 4 }] }),
+      feature({}, { params: [{ key: "length", value: 10, expr: "2*L" }] }),
+    ]) {
+      assert.deepEqual(extrudeEditValues(opened(f), f), {});
+    }
+  });
+
+  it("envoie la condition, le sens et la dépouille qui changent", () => {
+    const f = feature();
+    assert.deepEqual(extrudeEditValues(
+      { ...opened(f), cond: "suivant", reversed: true, taper: 4,
+        taperOut: true }, f),
+      { cond: "suivant", reversed: true, taper: -4 });
+    assert.deepEqual(extrudeEditValues(
+      { ...opened(f), cond: "milieu", reversed: true, length: "20" }, f),
+      { midplane: true, length: 20 });
+  });
+
+  it("ouvrir le côté 2 envoie sa profondeur, même inchangée", () => {
+    const f = feature();
+    assert.deepEqual(extrudeEditValues(
+      { ...opened(f), dir2: true, cond2: "borgne" }, f),
+      { cond2: "borgne", length2: 10 });
+    const two = feature({ cond2: "borgne" });
+    assert.deepEqual(extrudeEditValues({ ...opened(two), dir2: false }, two),
+      { cond2: null });
+  });
+
+  it("refuse une profondeur vide et le dit", () => {
+    const f = feature();
+    const v = { ...opened(f), length: "" };
+    assert.equal(extrudeEditValues(v, f), null);
+    assert.equal(extrudeEditProblem(v, f), "Profondeur invalide");
+  });
+
+  it("ne re-choisit pas la face d'arrivée", () => {
+    const rows = (f) => extrudeGroups("pad", extrudeEditInitial(f))
+      .flatMap((g) => g.rows);
+    const conds = (f) => rows(f).find((r) => r.key === "cond").options
+      .map(([c]) => c);
+    assert.ok(!rows(feature()).some((r) => r.key === "face"));
+    assert.ok(!conds(feature()).includes("face"));
+    const toFace = feature({ cond: "face", offset: 1.5, face: true });
+    assert.ok(conds(toFace).includes("face"));
+    assert.deepEqual(extrudeEditValues(
+      { ...opened(toFace), offset: "2" }, toFace), { offset: 2 });
+  });
+
+  it("paroi mince : épaisseurs et côté, extrémités fermées borgnes", () => {
+    const thin = { type: "un", thickness: 2, thickness2: 0, reversed: false,
+                   caps: 0 };
+    const f = feature({}, { thin, params: [{ key: "length", value: 10 },
+                                           { key: "thinT", value: 2 }] });
+    assert.deepEqual(extrudeEditValues(
+      { ...opened(f), thinReversed: true, thinT: "3" }, f),
+      { thinT: 3, thinReversed: true });
+    const bad = { ...opened(f), thinT: "" };
+    assert.equal(extrudeEditProblem(bad, f), "Épaisseur de paroi invalide");
+    const capped = feature({}, { thin: { ...thin, caps: 1 } });
+    const groups = extrudeGroups("pad", extrudeEditInitial(capped));
+    const keys = groups.flatMap((g) => g.rows.map((r) => r.key));
+    assert.ok(!keys.includes("taper") && keys.includes("thinCapT"));
+    assert.deepEqual(groups[0].rows[0].options.map(([c]) => c),
+      ["borgne", "milieu"]);
+  });
+});
+
+/** Les valeurs d'un panneau à l'ouverture. */
+function rowValues(groups) {
+  const v = {};
+  for (const group of groups) {
+    for (const row of group.rows) v[row.key] = row.value;
+  }
+  return v;
+}
+
+describe("réédition de la coque", () => {
+  const shell = { name: "Thickness", type_key: "thickness",
+                  shell: { outward: false },
+                  params: [{ key: "thickness", value: 2 }] };
+  it("rien à envoyer à l'ouverture ; le sens et l'épaisseur changent", () => {
+    const v = rowValues(shellEditGroups(shell));
+    assert.deepEqual(shellEditValues(v, shell), {});
+    assert.deepEqual(shellEditValues({ ...v, outward: true, thickness: "3" },
+                                     shell), { thickness: 3, outward: true });
+    assert.equal(shellEditValues({ ...v, thickness: "" }, shell), null);
+  });
+});
+
+describe("réédition du perçage", () => {
+  const hole = (state, params) => ({
+    name: "Hole", type_key: "hole",
+    hole: { cut: "none", cond: "travers", depth: null, cutDiameter: null,
+            cutDepth: null, cutAngle: null, ...state },
+    params: params ?? [{ key: "diameter", value: 6 }],
+  });
+  const opened = (f) => rowValues(holeGroups(holeEditInitial(f)));
+
+  it("rien à envoyer à l'ouverture", () => {
+    for (const f of [
+      hole(),
+      hole({ cut: "lamage", cond: "borgne", depth: 8, cutDiameter: 10,
+             cutDepth: 3 },
+           [{ key: "diameter", value: 6 }, { key: "depth", value: 8 },
+            { key: "cutDiameter", value: 10 }, { key: "cutDepth", value: 3 }]),
+    ]) {
+      assert.deepEqual(holeEditValues(opened(f), f), {});
+    }
+  });
+
+  it("un nouveau type renvoie ses cotes de tête, une fin borgne sa profondeur", () => {
+    const f = hole();
+    assert.deepEqual(holeEditValues(
+      { ...opened(f), cut: "fraisage", cond: "borgne" }, f),
+      { cut: "fraisage", cond: "borgne", depth: 15, cutDiameter: 11,
+        cutAngle: 90 });
+    assert.deepEqual(holeEditValues({ ...opened(f), cut: "lamage" }, f),
+      { cut: "lamage", cutDiameter: 11, cutDepth: 3 });
+  });
+
+  it("une tête plus petite que le trou est refusée", () => {
+    const f = hole();
+    assert.equal(holeEditValues(
+      { ...opened(f), cut: "lamage", cutDiameter: 5 }, f), null);
+  });
+
+  it("le panneau de réédition n'a pas de positions", () => {
+    const keys = holeGroups(holeEditInitial(hole()))
+      .flatMap((g) => g.rows.map((r) => r.key));
+    assert.ok(!keys.includes("pos"));
+    assert.ok(keys.includes("cut") && keys.includes("cond"));
   });
 });

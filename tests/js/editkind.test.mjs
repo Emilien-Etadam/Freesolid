@@ -21,6 +21,15 @@ describe("éditeur d'une fonction", () => {
     assert.equal(featureEditor({ type_key: "chamfer", chamfer: {} }), "chamfer");
     assert.equal(featureEditor({ type_key: "groove", revolution: {} }),
       "revolution");
+    assert.equal(featureEditor({ type_key: "pocket", extrude: {} }), "extrude");
+    assert.equal(featureEditor({ type_key: "thickness", shell: {} }), "shell");
+    assert.equal(featureEditor({ type_key: "hole", hole: {} }), "hole");
+    // Perçage taraudé : le moteur n'envoie pas `hole`, les cotes suffisent.
+    assert.equal(featureEditor({ type_key: "hole", has_params: true }),
+      "params");
+    // Une gravure est un enlèvement : son panneau d'abord.
+    assert.equal(featureEditor({ type_key: "pocket", text: {}, extrude: {} }),
+      "text");
     assert.equal(featureEditor({ type_key: "remove_bodies" }), "remove_bodies");
     assert.equal(featureEditor({ type_key: "pad", has_params: true }), "params");
   });
@@ -56,6 +65,10 @@ describe("éditeur d'une surface", () => {
 
   it("une surface figée ou sans cote ne se réédite pas", () => {
     assert.equal(surfaceEditor({ type_key: "shape", static: true }), null);
+    assert.equal(surfaceEditor({ type_key: "surface_radiate",
+                                 has_params: true }), "radiate");
+    assert.equal(surfaceEditor({ type_key: "surface_radiate",
+                                 has_params: false }), null);
     assert.equal(surfaceEditor({ type_key: "surface_loft", has_params: false }),
       null);
     assert.equal(surfaceEditor({ type_key: "surface", surface: { kind: "split" },

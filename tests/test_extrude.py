@@ -3,8 +3,8 @@
 import pytest
 
 from engine.extrude import (ExtrudeError, cavity_plan, check_cavity,
-                            extrude_settings, thin_cap_offsets, thin_offsets,
-                            thin_settings)
+                            extrude_options, extrude_settings, extrude_state,
+                            thin_cap_offsets, thin_offsets, thin_settings)
 
 
 def test_borgne_par_defaut():
@@ -114,3 +114,36 @@ def test_cavite_suit_la_fonction():
     with pytest.raises(ExtrudeError):
         check_cavity("One side", 10, 0, 5)
     check_cavity("Two sides", 4, 4, 3)
+
+
+@pytest.mark.parametrize("kind, state", [
+    ("pad", {"cond": "borgne"}),
+    ("pad", {"cond": "dernier", "reversed": True, "taper": 4}),
+    ("pad", {"cond": "borgne", "midplane": True}),
+    ("pad", {"cond": "face", "offset": 1.5}),
+    ("pad", {"cond": "suivant", "cond2": "borgne", "taper2": -2}),
+    ("pocket", {"cond": "travers", "reversed": True}),
+    ("pocket", {"cond": "borgne", "cond2": "travers"}),
+])
+def test_reedition_aller_retour(kind, state):
+    """Ce que la réédition pose se relit à l'identique."""
+    full = {"cond": "borgne", "midplane": False, "reversed": False,
+            "taper": 0.0, "offset": 0.0, "cond2": None, "taper2": 0.0,
+            **state}
+    assert extrude_state(kind, extrude_options(kind, **full)) == full
+
+
+def test_reedition_sans_mot_pour_la_condition():
+    """Une condition que le panneau n'a pas : rien à montrer."""
+    assert extrude_state("pad", {"Type": "UpToShape"}) is None
+    assert extrude_state("pocket", {"SideType": "Symmetric",
+                                    "Type": "ThroughAll"}) is None
+    assert extrude_state("pad", {"SideType": "Two sides", "Type": "Length",
+                                 "Type2": "UpToFace"}) is None
+
+
+def test_reedition_refuse_le_plan_milieu_non_borgne():
+    with pytest.raises(ExtrudeError):
+        extrude_options("pad", cond="suivant", midplane=True)
+    with pytest.raises(ExtrudeError):
+        extrude_options("pocket", cond="dernier", cond2="nulle")

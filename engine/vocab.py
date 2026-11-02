@@ -213,8 +213,13 @@ def type_key_for(obj_type: str) -> str:
 _EXTRUDE_PARAM_KEYS = {
     "Length": "length", "Length2": "length2",
     "Reversed": "reversed", "Midplane": "midplane",
+    # Conditions de fin : ``Type`` et ``Type2`` reçoivent la condition du
+    # formulaire (borgne, suivant…), pas la valeur FreeCAD.
+    "Type": "cond", "Type2": "cond2", "TaperAngle": "taper",
+    "TaperAngle2": "taper2", "Offset": "offset",
     # Paroi mince : propriétés FreeSolid posées sur la fonction.
     "Thickness": "thinT", "Thickness2": "thinT2", "CapThickness": "thinCapT",
+    "FreeSolidThinReversed": "thinReversed",
 }
 _REVOLVED_PARAM_KEYS = {
     "Angle": "angle", "Reversed": "reversed", "Midplane": "midplane",
@@ -233,11 +238,15 @@ PARAM_KEYS: dict[str, dict[str, str]] = {
         "ChamferType": "kind", "Size": "size", "Size2": "size2",
         "Angle": "angle", "FlipDirection": "flip",
     },
-    "thickness": {"Value": "thickness"},
+    # Coque : ``Reversed`` de FreeCAD veut dire vers l'intérieur.
+    "thickness": {"Value": "thickness", "Reversed": "outward"},
     "draft": {"Angle": "angle"},
     "hole": {
         "Diameter": "diameter", "Depth": "depth",
         "HoleCutDiameter": "cutDiameter", "HoleCutDepth": "cutDepth",
+        "HoleCutCountersinkAngle": "cutAngle",
+        # Type et condition de fin : les mots du formulaire.
+        "HoleCutType": "cut", "DepthType": "cond",
     },
     "linear_pattern": {
         "Length": "length", "Occurrences": "count",

@@ -983,7 +983,8 @@ def _cotes_neutres_ok(self, names):
             thin = self._thin_spec(obj) is not None
             for prop in table:
                 if prop == "axis" or (not thin and prop in (
-                        "Thickness", "Thickness2", "CapThickness")):
+                        "Thickness", "Thickness2", "CapThickness",
+                        "FreeSolidThinReversed")):
                     continue
                 good = good and hasattr(obj, prop)
             good = good and all(p["key"] == table.get(p["prop"])

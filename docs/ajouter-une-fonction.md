@@ -127,7 +127,13 @@ correspond ; `app/features.js` rassemble les familles.
     dans `PARAM_LABELS`, par clé ; l'interface ne lit et n'écrit que la
     clé (`key` de `get_params`, `set_params`) ;
   - côté moteur, sa propriété doit figurer dans `_EDITABLE_PROPS`
-    (`engine/equations.py`).
+    (`engine/equations.py`) ;
+  - une option de la création (case, liste) revient aussi à la
+    réédition : sa clé du formulaire dans `PARAM_KEYS`, une branche de
+    `set_params` qui traduit la valeur du formulaire en propriété, et
+    l'état de la fonction dans l'arbre pour remplir le panneau (`shell`,
+    `hole`, `extrude`). Le panneau de la création sert aux deux, sans ses
+    sélections (`shellEditGroups`, `holeGroups`, `extrudeGroups`).
 
 **11–12.** Le libellé d'annulation est en français ; sa traduction et
 celles de tous les textes du panneau vont dans `app/lang/en.json`. Les

@@ -6,7 +6,7 @@
 import { t } from "./i18n.js";
 import { iconSrc } from "./icons.js";
 import { cssHex } from "./theme.js";
-import { isGraphFeature, isRepeatFeature } from "./graph.js";
+import { featureEditor, isSurfaceRow, surfaceEditor } from "./editkind.js";
 import { isBodyFeatureKey, isSurfaceKey } from "./typekeys.js";
 import { SNAP_KINDS } from "./sketchsnap.js";
 import {
@@ -44,26 +44,19 @@ export function isSuppressibleTarget(feature) {
     && key !== "body" && !isBodyMenuTarget(feature);
 }
 
-/** Corps, ou surface du premier niveau : ce qu'on masque et affiche. */
-export function isHideableTarget(feature) {
+/** Corps, ou ligne du dossier des surfaces (`surface`, courbes
+ *  composites comprises) : ce qu'on masque et affiche. */
+export function isHideableTarget(feature, { surface = false } = {}) {
   if (!feature?.name || typeof feature.grounded === "boolean") return false;
-  return isBodyMenuTarget(feature) || isSurfaceKey(feature.type_key);
+  return isBodyMenuTarget(feature) || surface || isSurfaceKey(feature.type_key);
 }
 
-export function isFrozenSurface(feature) {
-  if (isGraphFeature(feature) || isRepeatFeature(feature)) return false;
-  return !!(feature?.static || feature?.type_key === "shape");
-}
-
-export function canModifyMenuTarget(feature) {
-  if (!feature || isBodyMenuTarget(feature)) return false;
-  const key = feature.type_key;
-  if (!key || key === "datum_plane") return false;
-  if (isFrozenSurface(feature)) return false;
-  if (key === "sketch" || key === "body_pattern" || key === "remove_bodies") {
-    return true;
-  }
-  return isBodyFeatureKey(key) || isSurfaceKey(key);
+/** « Modifier » quand le double-clic rouvre quelque chose (editkind.js).
+ *  `surface` : la ligne est une surface de l'arbre. */
+export function canModifyMenuTarget(feature, { surface = false } = {}) {
+  if (!feature?.type_key || isBodyMenuTarget(feature)
+      || typeof feature.grounded === "boolean") return false;
+  return (surface ? surfaceEditor(feature) : featureEditor(feature)) !== null;
 }
 
 /** Branche les deux menus. Renvoie les ouvertures appelées par l'arbre,
@@ -119,10 +112,12 @@ export function installContextMenu(ctx) {
     document.getElementById("ctx-flat").classList.toggle("checked", ctx.isFlatTree());
   }
 
+  const onSurfaceRow = (feature) => isSurfaceRow(ctx.lastTree, feature.name);
+
   function modifyMenuTarget(feature) {
     if (feature.type_key === "sketch") {
       onSketchRowDblClick(feature);
-    } else if (isSurfaceKey(feature.type_key)) {
+    } else if (onSurfaceRow(feature)) {
       editSurface(feature);
     } else {
       editFeature(feature);
@@ -151,16 +146,18 @@ export function installContextMenu(ctx) {
       item.classList.remove("disabled");
     }
     const onBody = isBodyMenuTarget(feature);
+    const surface = onSurfaceRow(feature);
     // Un composant d'assemblage : fixer / libérer, pas de barre de retour.
     const onComponent = !!ctx.assemblyState && typeof feature.grounded === "boolean";
-    document.getElementById("ctx-modify").hidden = !canModifyMenuTarget(feature);
+    document.getElementById("ctx-modify").hidden =
+      !canModifyMenuTarget(feature, { surface });
     document.getElementById("ctx-color").hidden = !onBody;
     document.getElementById("ctx-material").hidden = !onBody;
     document.getElementById("ctx-color-reset").hidden = !onBody;
     document.getElementById("ctx-comment").hidden = onBody || onComponent;
     document.getElementById("ctx-copy").hidden = !ctx.canCopyFeature(feature);
     const isFeature = !onBody && !onComponent && !!feature.type_key
-      && !isSurfaceKey(feature.type_key);
+      && !surface && !isSurfaceKey(feature.type_key);
     document.getElementById("ctx-folder").hidden = !isFeature;
     document.getElementById("ctx-unfolder").hidden = !isFeature || !feature.folder;
     document.getElementById("ctx-relations").hidden = !isFeature;
@@ -171,7 +168,7 @@ export function installContextMenu(ctx) {
     suppress.hidden = !isSuppressibleTarget(feature) || !!ctx.assemblyState;
     suppress.textContent = t(feature.suppressed ? "Réactiver" : "Désactiver");
     const hide = document.getElementById("ctx-hide");
-    hide.hidden = !isHideableTarget(feature);
+    hide.hidden = !isHideableTarget(feature, { surface });
     hide.textContent = t(feature.hidden ? "Afficher" : "Masquer");
     const ground = document.getElementById("ctx-ground");
     ground.hidden = !onComponent;
@@ -186,7 +183,8 @@ export function installContextMenu(ctx) {
   document.addEventListener("click", () => { menuEl.style.display = "none"; });
 
   document.getElementById("ctx-modify").addEventListener("click", () => {
-    if (!menuFeature || !canModifyMenuTarget(menuFeature)) return;
+    if (!menuFeature || !canModifyMenuTarget(menuFeature,
+      { surface: onSurfaceRow(menuFeature) })) return;
     modifyMenuTarget(menuFeature);
   });
 
@@ -425,7 +423,11 @@ export function installContextMenu(ctx) {
     } else if (ctx.hoveredSketch) {
       hit = { kind: "sketch", sketch: ctx.hoveredSketch, label: ctx.hoveredSketch.label };
     } else if (ctx.hoveredSurface) {
-      hit = { kind: "surface", surface: ctx.hoveredSurface, label: ctx.hoveredSurface.label };
+      const record = (ctx.lastTree?.surfaces ?? [])
+        .find((s) => s.name === ctx.hoveredSurface.name);
+      hit = { kind: "surface", surface: ctx.hoveredSurface,
+              label: ctx.hoveredSurface.label,
+              editable: surfaceEditor(record) !== null };
     } else if (ctx.hoveredGroup >= 0) {
       const group = ctx.meshGroups[ctx.hoveredGroup];
       const feature = findFeatureInTree(ctx.lastTree, group.feature);
@@ -438,6 +440,7 @@ export function installContextMenu(ctx) {
         feature: feature ? {
           name: feature.name, label: feature.label, sketch: sketch?.name,
           item: feature, sketchItem: sketch,
+          editable: featureEditor(feature) !== null,
         } : null,
       };
     }

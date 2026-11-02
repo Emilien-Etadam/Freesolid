@@ -268,6 +268,11 @@ class EquationsMixin:
             return ("Size", "Angle")
         return ("Size",)
 
+    def _has_params(self, obj):
+        """Vrai quand ``get_params`` propose au moins une cote : l'arbre le
+        dit (``has_params``), le menu « Modifier » le suit."""
+        return any(hasattr(obj, prop) for prop in self._editable_props(obj))
+
     def get_params(self, feature):
         """Editable numeric properties of a feature, with current values.
 

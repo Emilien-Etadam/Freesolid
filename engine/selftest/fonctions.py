@@ -1599,3 +1599,25 @@ def p86_reediter_une_suppression(self, mark, report, etat):
     report["p86_annuler_nommer_rouvrir"] = (
         undone and redone and named and checked == [rank_of(5)]
         and centers() == [5, 25, 45])
+
+
+def p87_modifier_suit_le_double_clic(self, mark, report, etat):
+    mark("p87: l'arbre dit quelles lignes ont des cotes (« Modifier »)")
+    self.new_part("Modifier")
+    self.add_rect_sketch(10, 10)
+    self.add_pad(5)
+    pad = self._require_body().Tip.Name
+    self.add_mirror(plane="XZ")
+    mirror = self._require_body().Tip.Name
+    state = self.sketch_start(plane="XZ")
+    self.sketch_add_line(state["sketch"], 0, 20, 30, 20)
+    self.sketch_finish(state["sketch"])
+    tree = self.surface_extrude(10, sketch=state["sketch"])
+    rows = {f["name"]: f for f in tree["features"]}
+    surface = tree["surfaces"][-1]
+    report["p87_cotes_dans_l_arbre"] = (
+        rows[pad]["has_params"] is True and rows[mirror]["has_params"] is False
+        and surface["has_params"] is True
+        and self.get_params(mirror)["params"] == []
+        and bool(self.get_params(pad)["params"]))
+

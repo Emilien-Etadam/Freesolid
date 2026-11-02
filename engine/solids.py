@@ -111,7 +111,7 @@ class SolidsMixin:
                 "« {} » suit le corps actif : les combiner ici le ferait "
                 "dépendre de lui-même — activez « {} » et prenez ce corps "
                 "comme outil".format(tool_obj.Label, tool_obj.Label))
-        types ={"cut": "Cut", "fuse": "Fuse", "common": "Common"}
+        types = {"cut": "Cut", "fuse": "Fuse", "common": "Common"}
         labels = {"cut": self._t("Combiner — Soustraire"),
                   "fuse": self._t("Combiner — Ajouter"),
                   "common": self._t("Combiner — Intersection")}

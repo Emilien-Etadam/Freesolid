@@ -23,11 +23,12 @@ Plus bas, un exemple complet : la Coque (`add_thickness`).
 | 7 | `app/features/<famille>.js` | l'entrée de `FEATURES` |
 | 8 | `app/ribbon.json` | le bouton |
 | 9 | `app/icons.js` (+ `app/icons/`) | le rôle d'icône |
-| 10 | `app/tree.js`, `app/typekeys.js` | l'icône du genre (`TREE_ICONS`), le libellé des cotes rééditables (`PARAM_LABELS`), la famille du genre |
+| 10 | `app/tree.js`, `app/typekeys.js`, `app/editkind.js` | l'icône du genre (`TREE_ICONS`), le libellé des cotes rééditables (`PARAM_LABELS`), la famille du genre ; une réédition qui n'est pas celle des cotes : `editkind.js` la nomme, `FEATURE_EDITORS` ou `SURFACE_EDITORS` l'ouvre (le double-clic et « Modifier » suivent) |
 | 11 | `app/history.js` | le libellé d'annulation (`STEP_LABELS`) |
 | 12 | `app/lang/en.json` | chaque texte visible : bouton, infobulle, panneau, refus, libellé d'annulation |
 | 13 | `scripts/smoke/smoke.js` | le bouton dans `FEATURE_PANELS` |
 | 14 | `tests/js/…` | un test du `build()` du panneau |
+| 15 | `docs/gestes-des-fonctions.md` | sa ligne : ce qui revient à la réédition, ce qui ne revient pas, aperçus, barre de retour |
 
 ### Moteur
 

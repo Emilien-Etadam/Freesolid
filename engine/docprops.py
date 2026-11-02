@@ -10,29 +10,43 @@ cachée ``FreeSolidComment``) : l'arbre la montre en infobulle. Les
 propriétés du fichier reprennent celles du document FreeCAD (auteur,
 société, description) et ses propriétés libres (``Meta``) ; elles
 partent avec le .FCStd. Les imports FreeCAD restent dans les méthodes ;
-``undo_steps``, ``session_steps``, ``transaction_name`` et ``clean_meta``
-sont testées en CI.
+``undo_steps``, ``session_steps``, ``transaction_name``, ``body_before``
+et ``clean_meta`` sont testées en CI.
 """
 
 #: Préfixe des transactions ouvertes par ``dispatch`` (kernel.py).
 _PREFIX = "freesolid-"
 #: Marque, après le nom de l'op, de la session d'esquisse en cours.
 _SESSION = "@"
+#: Marque, entre l'op et la session, du corps actif avant l'op.
+_BODY = "#"
 
 
-def transaction_name(op, session=None):
+def transaction_name(op, session=None, body=None):
     """Le nom de la transaction d'une op : « freesolid-<op> », suivi de
-    « @<n> » pendant la session d'esquisse numéro ``n`` — Ctrl+Z, dans
-    l'esquisse, ne défait que les pas qui la portent (session_steps)."""
-    return _PREFIX + op + ("{}{}".format(_SESSION, session) if session else "")
+    « #<corps> », le corps actif avant l'op, que Ctrl+Z rend
+    (``body_before``), puis de « @<n> » pendant la session d'esquisse
+    numéro ``n`` — Ctrl+Z, dans l'esquisse, ne défait que les pas qui la
+    portent (session_steps)."""
+    return (_PREFIX + op + ("{}{}".format(_BODY, body) if body else "")
+            + ("{}{}".format(_SESSION, session) if session else ""))
 
 
 def undo_steps(names):
     """Noms de transactions → noms d'ops, du plus récent au plus ancien
     (l'ordre de FreeCAD). Une transaction étrangère garde son nom."""
-    return [name[len(_PREFIX):].split(_SESSION)[0]
+    return [name[len(_PREFIX):].split(_SESSION)[0].split(_BODY)[0]
             if name.startswith(_PREFIX) else name
             for name in names or ()]
+
+
+def body_before(name):
+    """Le corps actif avant l'op de la transaction ``name``, ou None."""
+    name = str(name or "")
+    if not name.startswith(_PREFIX):
+        return None
+    head = name[len(_PREFIX):].split(_SESSION)[0]
+    return head.partition(_BODY)[2] or None
 
 
 def session_steps(names, session):

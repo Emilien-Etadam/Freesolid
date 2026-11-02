@@ -1314,6 +1314,188 @@ def p93_fusionner_ou_non(self, mark, report, etat):
         and not any("Invalid" in (o.State or ()) for o in self._doc.Objects))
 
 
+def p94_fusionner_les_autres_volumes(self, mark, report, etat):
+    mark("p94: révolution, lissage et balayage fusionnent ou non ; "
+         "Ctrl+Z rend le corps actif")
+    import math
+    from engine.kernel import dispatch
+
+    def start():
+        self.new_part("Autres volumes")
+        self.add_rect_sketch(40, 20)
+        self.add_pad(10)
+        return self._require_body()
+
+    def rect(x1, y1, x2, y2, **where):
+        name = self.sketch_start(**where)["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def box(feature):
+        b = feature.AddSubShape.BoundBox
+        return [round(v, 6) for v in (b.XMin, b.YMin, b.ZMin,
+                                      b.XMax, b.YMax, b.ZMax)]
+
+    def clean():
+        return not any("Invalid" in (o.State or ())
+                       for o in self._doc.Objects)
+
+    # Révolution en nouveau corps, d'une esquisse du premier : même
+    # volume et même côté que la révolution de l'esquisse elle-même, pour
+    # chaque axe d'esquisse ; Ctrl+Z rend le premier corps.
+    same = True
+    for axis in ("vertical", "horizontal", "line:1"):
+        first = start()
+        profile = rect(30, 5, 40, 15, plane="XZ")
+        dispatch(self, "add_revolution", {"angle": 90, "axis": axis,
+                                          "merge": False})
+        made = self._require_body()
+        linked = (made is not first, box(made.Tip),
+                  round(made.Tip.AddSubShape.Volume, 6))
+        dispatch(self, "undo", {})
+        back = self._require_body() is first
+        self.add_revolution(90, sketch=profile, axis=axis)
+        direct = (True, box(first.Tip),
+                  round(first.Tip.AddSubShape.Volume, 6))
+        same = same and back and linked == direct and clean()
+    report["p94_revolution_nouveau_corps"] = same
+
+    # Réédition de l'axe depuis un autre corps actif : la ligne cachée
+    # resert, l'axe interne d'une ligne va dans le corps de la fonction,
+    # le volume suit. Supprimer la révolution emporte son corps.
+    first = start()
+    rect(30, 5, 40, 15, plane="XZ")
+    self.add_revolution(90, merge=False)
+    made = self._require_body()
+    revolution = made.Tip.Name
+    self._body = first
+    volumes = []
+    homes = []
+    for token in ("horizontal", "X", "line:2", "vertical"):
+        answer = dispatch(self, "set_params", {
+            "feature": revolution, "values": {"axis": token}})
+        obj = self._doc.getObject(revolution)
+        volumes.append((answer.get("ok"),
+                        self._revolution_axis_token(obj),
+                        round(obj.AddSubShape.Volume, 2)))
+        homes.append(obj.ReferenceAxis[0].getParentGeoFeatureGroup() is made)
+    side = round(100 * 5 * math.pi / 2, 2)
+    edited = (
+        volumes == [(True, "horizontal", round(100 * 10 * math.pi / 2, 2)),
+                    (True, "X", round(100 * 10 * math.pi / 2, 2)),
+                    (True, "line:2", side),
+                    (True, "vertical", round(100 * 35 * math.pi / 2, 2))]
+        and all(homes)
+        and len(self._thin_helpers(self._doc.getObject(revolution))) == 2
+        and self._revolution_state(obj)["profile"] != obj.Profile[0].Name)
+    self._body = made
+    dispatch(self, "set_params", {"feature": revolution,
+                                  "values": {"axis": "line:2"}})
+    self.delete_feature(revolution)
+    report["p94_reedition_de_l_axe"] = (
+        edited and len(self.get_tree()["bodies"]) == 1)
+
+    # Fusion dans un autre corps, puis Ctrl+Z : le corps d'avant redevient
+    # actif — extrusion comme révolution.
+    first = start()
+    rect(50, 0, 70, 10, plane="XY")
+    self.add_pad(5, merge=False)
+    other = self._require_body()
+    self._body = first
+    rect(52, 2, 58, 8, plane="XY")
+    dispatch(self, "add_pad", {"length": 8, "body": other.Name})
+    pad_back = (self._require_body() is other
+                and dispatch(self, "undo", {}).get("ok") is True
+                and self._require_body() is first)
+    self._body = first
+    rect(55, 0, 65, 5, plane="XZ")
+    before = other.Shape.Volume
+    dispatch(self, "add_revolution", {"angle": 90, "body": other.Name})
+    grown = other.Shape.Volume - before
+    dispatch(self, "undo", {})
+    report["p94_ctrl_z_rend_le_corps"] = (
+        pad_back and grown > 0 and self._require_body() is first)
+
+    # Lissage en nouveau corps : le même que dans le corps des esquisses.
+    first = start()
+    self.add_datum_plane(base="XY", offset=20)
+    plane = [o.Name for o in self._doc.Objects
+             if o.TypeId == "PartDesign::Plane"][-1]
+    low = rect(60, 0, 70, 10, plane="XY")
+    high = rect(62, 2, 68, 8, datum=plane)
+    tree = dispatch(self, "add_loft", {"sketches": [low, high],
+                                       "merge": False}).get("result") or {}
+    made = self._require_body()
+    linked = (box(made.Tip), round(made.Tip.AddSubShape.Volume, 6))
+    dispatch(self, "undo", {})
+    self.add_loft([low, high])
+    report["p94_lissage_nouveau_corps"] = (
+        made is not first and self._require_body() is first
+        and linked == (box(first.Tip),
+                       round(first.Tip.AddSubShape.Volume, 6))
+        and not protocol_dangling(tree) and clean())
+
+    # Balayage en nouveau corps ; un profil en deux morceaux est refusé
+    # (le liant n'en donnerait qu'un), sans rien laisser.
+    first = start()
+    circle = self.sketch_start(plane="XZ")["sketch"]
+    self.sketch_add_circle(circle, 60, 0, 2)
+    self.sketch_finish(circle)
+    path = self.sketch_start(plane="XY")["sketch"]
+    self.sketch_add_line(path, 60, 0, 60, -30)
+    self.sketch_finish(path)
+    self.add_sweep(circle, path, merge=False)
+    made = self._require_body()
+    swept = (made is not first
+             and abs(made.Shape.Volume - math.pi * 4 * 30) < 1e-6)
+    self.delete_feature(made.Tip.Name)
+    gone = len(self.get_tree()["bodies"]) == 1
+    self.sketch_edit(circle)
+    self.sketch_add_circle(circle, 66, 0, 1)
+    self.sketch_finish(circle)
+    count = len(self._doc.Objects)
+    refused = dispatch(self, "add_sweep", {"profile": circle, "spine": path,
+                                           "merge": False})
+    refused_ok = (refused.get("ok") is False
+                  and "seul tenant" in str(refused.get("error"))
+                  and len(self._doc.Objects) == count
+                  and self._require_body() is first)
+    # Sur une courbe 3D : son liant part aussi avec le balayage.
+    curve = self.add_curve3d([[-60, 0, 0], [-60, 0, 30], [-40, 0, 50]],
+                             spline=True)["surfaces"][-1]["name"]
+    ring = self.sketch_start(plane="XY")["sketch"]
+    self.sketch_add_circle(ring, -60, 0, 3)
+    self.sketch_finish(ring)
+    self.add_sweep(ring, curve, merge=False)
+    curved = self._require_body()
+    on_curve = curved is not first and curved.Shape.Volume > 0
+    # Un balayage ne se colle pas : sa trajectoire resterait la sienne.
+    pasted = dispatch(self, "paste_feature", {"feature": curved.Tip.Name,
+                                              "plane": "XY"})
+    self.delete_feature(curved.Tip.Name)
+    report["p94_balayage_nouveau_corps"] = (
+        swept and gone and refused_ok and on_curve
+        and pasted.get("ok") is False
+        and len(self.get_tree()["bodies"]) == 1 and clean())
+
+    # Copier-coller d'une révolution d'un autre corps : l'axe de
+    # l'esquisse collée.
+    first = start()
+    rect(30, 5, 40, 15, plane="XZ")
+    self.add_revolution(90, merge=False)
+    made = self._require_body()
+    source = made.Tip
+    pasted = dispatch(self, "paste_feature", {"feature": source.Name,
+                                              "plane": "XZ"})
+    twin = made.Tip
+    report["p94_coller_une_revolution"] = (
+        pasted.get("ok") is True and twin is not source
+        and twin.ReferenceAxis[0] is twin.Profile[0]
+        and abs(twin.AddSubShape.Volume - source.AddSubShape.Volume) < 1e-6
+        and clean())
+
+
 def protocol_dangling(tree):
     from engine import protocol
     return protocol.dangling_deps(tree)

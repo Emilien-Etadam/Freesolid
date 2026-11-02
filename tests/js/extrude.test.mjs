@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  FEATURES,
   extrudeBuild, extrudeEditInitial, extrudeEditProblem, extrudeEditValues,
   extrudeGroups, extrudeInvalid, holeEditInitial, holeEditValues, holeGroups,
   mergeGroups, mergeParams, mergeProblem, shellEditGroups, shellEditValues,
@@ -336,5 +337,56 @@ describe("fusionner ou non", () => {
     assert.deepEqual(direction1.rows[0].options.map(([c]) => c),
                      ["borgne", "milieu"]);
     assert.deepEqual(direction2.rows[1].options.map(([c]) => c), ["borgne"]);
+  });
+});
+
+describe("fusionner ou non : révolution, lissage, balayage", () => {
+  const bodies = [
+    { name: "Body", label: "Extrusion", active: true, has_solid: true },
+    { name: "Body001", label: "Extrusion1", active: false, has_solid: true },
+  ];
+  const ctx = { lastTree: { bodies, features: [] },
+                selectedSketch: { name: "Sketch", label: "Esquisse" } };
+  const entry = (button) => FEATURES.find((e) => e.button === button);
+  const result = (button) => entry(button).groups(ctx)
+    .find((g) => g.label === "Résultat");
+  const other = { kind: "body", name: "Body001", label: "Extrusion1" };
+
+  it("la révolution fusionne ou ouvre un corps ; la gorge, non", () => {
+    assert.ok(result("btn-revolution"));
+    assert.equal(result("btn-groove"), undefined);
+    const build = (v) => entry("btn-revolution").build(
+      { angle: 90, cond: "one", axis: "vertical", ...v }, ctx).params;
+    assert.equal(build({ merge: false }).merge, false);
+    assert.equal(build({ merge: true, body: other }).body, "Body001");
+    assert.equal(build({ merge: true }).body, undefined);
+    assert.equal(entry("btn-groove").build(
+      { angle: 90, cond: "one", merge: false }, ctx).params.merge, undefined);
+  });
+
+  it("lissage et balayage : le groupe se cache pour un enlèvement", () => {
+    for (const button of ["btn-loft", "btn-sweep"]) {
+      const group = result(button);
+      assert.equal(group.showIf({ subtractive: false }), true);
+      assert.equal(group.showIf({ subtractive: true }), false);
+    }
+    const loft = (v) => entry("btn-loft").build({
+      profiles: { items: [{ name: "A" }, { name: "B" }] }, ...v }, ctx).params;
+    assert.equal(loft({ merge: false }).merge, false);
+    assert.equal(loft({ merge: false, subtractive: true }).merge, undefined);
+    const sweep = (v) => entry("btn-sweep").build({
+      profile: { name: "A" }, spine: { name: "B" }, ...v }, ctx).params;
+    assert.equal(sweep({ merge: true, body: other }).body, "Body001");
+    assert.equal(sweep({ subtractive: true, merge: true, body: other }).body,
+                 undefined);
+  });
+
+  it("sans volume dans la pièce, pas de groupe Résultat", () => {
+    const empty = { lastTree: { bodies: [], features: [] },
+                    selectedSketch: { name: "Sketch" } };
+    for (const button of ["btn-revolution", "btn-loft", "btn-sweep"]) {
+      assert.equal(entry(button).groups(empty)
+        .find((g) => g.label === "Résultat"), undefined);
+    }
   });
 });

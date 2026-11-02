@@ -1,6 +1,6 @@
 """Commentaires, propriétés du fichier, historique — parties pures."""
 from engine.docprops import (
-    clean_meta, session_steps, transaction_name, undo_steps,
+    body_before, clean_meta, session_steps, transaction_name, undo_steps,
 )
 
 
@@ -28,6 +28,19 @@ def test_ctrl_z_in_a_sketch_only_counts_its_own_steps():
     # « @14 » n'est pas « @4 ».
     assert session_steps([transaction_name("sketch_add_line", 14)], 4) == 0
     assert session_steps(None, 1) == 0
+
+
+def test_the_transaction_keeps_the_body_active_before_the_op():
+    name = transaction_name("add_pad", 7, "Body001")
+    assert name == "freesolid-add_pad#Body001@7"
+    assert body_before(name) == "Body001"
+    assert body_before(transaction_name("add_pad", body="Body")) == "Body"
+    # L'historique et Ctrl+Z dans l'esquisse n'en voient rien.
+    assert undo_steps([name]) == ["add_pad"]
+    assert session_steps([name], 7) == 1
+    assert body_before(transaction_name("add_pad")) is None
+    assert body_before("Autre#Body") is None
+    assert body_before(None) is None
 
 
 def test_clean_meta_drops_empty_names_and_values():

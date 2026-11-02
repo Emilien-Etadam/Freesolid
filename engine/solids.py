@@ -159,13 +159,13 @@ class SolidsMixin:
         cond, face, offset, taper, cond2, length2, face2, offset2, taper2.
         ``thin`` : paroi mince, voir ``engine.extrude.thin_settings``.
         ``merge`` faux : un nouveau corps ; ``body`` : le corps où
-        fusionner, le corps actif par défaut (``_extrude_body``)."""
+        fusionner, le corps actif par défaut (``_result_body``)."""
         from engine.kernel import KernelError
         if sketch is not None:
             profile = self._get_sketch(sketch)
         else:
             profile = self._latest_sketch()
-        body, made = self._extrude_body(profile, merge, body, conditions)
+        body, made = self._result_body([profile], merge, body, conditions)
         tip = body.Tip  # les faces visées appartiennent à l'état d'avant
         helpers = []
         pad = None
@@ -192,15 +192,17 @@ class SolidsMixin:
         self._body = body
         return self.get_tree()
 
-    def _extrude_body(self, profile, merge, body, conditions):
-        """Corps où ranger une extrusion : ``(corps, nouveau)``.
+    def _result_body(self, profiles, merge, body, conditions=None):
+        """Corps où ranger un volume (extrusion, révolution, lissage,
+        balayage) : ``(corps, nouveau)``.
 
         Fusionner : le corps actif, ou ``body``. Sinon un nouveau corps —
-        sauf si l'esquisse est seule dans le sien, qui le devient. Une
-        face d'arrivée se clique sur le corps actif : elle ne vaut que
-        là."""
+        sauf si les esquisses sont seules dans le leur, qui le devient.
+        Une face d'arrivée se clique sur le corps actif : elle ne vaut que
+        là. ``conditions`` : celles d'une extrusion."""
         from engine.kernel import KernelError
         from engine.extrude import ExtrudeError, check_new_body
+        conditions = conditions or {}
         doc = self._require_doc()
         active = self._require_body()
         if merge:
@@ -225,7 +227,10 @@ class SolidsMixin:
             check_new_body(conditions.get("cond"), conditions.get("cond2"))
         except ExtrudeError as exc:
             raise KernelError(str(exc))
-        home = profile.getParentGeoFeatureGroup()
+        homes = {getattr(p.getParentGeoFeatureGroup(), "Name", None)
+                 for p in profiles}
+        name = homes.pop() if len(homes) == 1 else None
+        home = doc.getObject(name) if name else None
         if (getattr(home, "TypeId", "") == "PartDesign::Body"
                 and not any(o.isDerivedFrom("PartDesign::Feature")
                             for o in home.Group)):
@@ -248,13 +253,9 @@ class SolidsMixin:
 
         ``helpers`` : les liants de paroi mince déjà faits."""
         made = []
-        if not helpers and profile.getParentGeoFeatureGroup() is not body:
-            binder = self._new_thin_binder(body, profile, 0.0, False,
-                                           "Profil lié")
-            binder.addProperty("App::PropertyBool", "FreeSolidProfileCopy",
-                               "FreeSolid", "Copie liée d'une esquisse")
-            binder.FreeSolidProfileCopy = True
-            made.append(binder)
+        copy = None if helpers else self._profile_copy(body, profile)
+        if copy is not None:
+            made.append(copy)
         if helpers or made:
             axis = self._new_thin_helper(body, "PartDesign::Line",
                                          "SketchNormal",
@@ -264,6 +265,17 @@ class SolidsMixin:
             axis.Visibility = False
             made.insert(0, axis)
         return made
+
+    def _profile_copy(self, body, sketch, label="Profil lié"):
+        """Le liant caché qui fait entrer dans ``body`` une esquisse d'un
+        autre corps, ou None si elle y est déjà."""
+        if sketch.getParentGeoFeatureGroup() is body:
+            return None
+        binder = self._new_thin_binder(body, sketch, 0.0, False, label)
+        binder.addProperty("App::PropertyBool", "FreeSolidProfileCopy",
+                           "FreeSolid", "Copie liée d'une esquisse")
+        binder.FreeSolidProfileCopy = True
+        return binder
 
     def _link_profile(self, feature, profile, helpers):
         """Profil et direction d'une extrusion : l'esquisse, ou le dernier
@@ -756,44 +768,64 @@ class SolidsMixin:
         return self.get_tree()
 
     def add_loft(self, sketches, subtractive=False, ruled=False,
-                 closed=False):
+                 closed=False, merge=True, body=None):
         """Lissage (ou enlèvement) entre plusieurs profils —
-        typiquement des esquisses posées sur des plans de référence."""
+        typiquement des esquisses posées sur des plans de référence.
+        ``merge``, ``body`` : comme l'extrusion (``_result_body``) ; un
+        enlèvement creuse le corps actif."""
         from engine.kernel import (
             KernelError,
             label_for_type,
         )
-        body = self._require_body()
-        doc = self._require_doc()
+        active = self._require_body()
         if not isinstance(sketches, (list, tuple)) or len(sketches) < 2:
             raise KernelError("un lissage demande au moins deux profils")
         profiles = [self._get_sketch(str(n)) for n in sketches]
+        if subtractive:
+            body, made = active, False
+        else:
+            body, made = self._result_body(profiles, merge, body)
         type_id = ("PartDesign::SubtractiveLoft" if subtractive
                    else "PartDesign::AdditiveLoft")
-        loft = body.newObject(type_id, type_id.split("::")[-1])
-        loft.Profile = profiles[0]
+        helpers = []
+        loft = None
         try:
-            loft.Sections = profiles[1:]
-        except TypeError:
-            loft.Sections = [(p, ("",)) for p in profiles[1:]]
-        loft.Ruled = bool(ruled)
-        loft.Closed = bool(closed)
-        loft.Label = label_for_type(type_id, self.lang)
-        try:
+            # Une esquisse d'un autre corps entre par un liant caché.
+            links = []
+            for sketch in profiles:
+                copy = self._profile_copy(body, sketch)
+                if copy is not None:
+                    helpers.append(copy)
+                links.append(copy or sketch)
+            loft = body.newObject(type_id, type_id.split("::")[-1])
+            loft.Profile = links[0]
+            try:
+                loft.Sections = links[1:]
+            except TypeError:
+                loft.Sections = [(p, ("",)) for p in links[1:]]
+            loft.Ruled = bool(ruled)
+            loft.Closed = bool(closed)
+            loft.Label = label_for_type(type_id, self.lang)
+            self._own_thin_helpers(loft, helpers)
             self._recompute()
-        except KernelError:
-            doc.removeObject(loft.Name)
+        except Exception:
+            self._remove_all(([body] if made else []) + helpers
+                             + ([loft] if loft is not None else []))
             raise
+        self._body = body
         return self.get_tree()
 
-    def add_sweep(self, profile, spine, subtractive=False):
+    def add_sweep(self, profile, spine, subtractive=False, merge=True,
+                  body=None):
         """Balayage (ou enlèvement) : un profil suit une
-        trajectoire — deux esquisses, souvent sur des plans différents."""
+        trajectoire — deux esquisses, souvent sur des plans différents.
+        ``merge``, ``body`` : comme l'extrusion (``_result_body``) ; un
+        enlèvement creuse le corps actif."""
         from engine.kernel import (
             KernelError,
             label_for_type,
         )
-        body = self._require_body()
+        active = self._require_body()
         doc = self._require_doc()
         section = self._get_sketch(str(profile))
         # La trajectoire : une esquisse OU une courbe 3D (Part::Feature).
@@ -809,39 +841,67 @@ class SolidsMixin:
         if section.Name == path.Name:
             raise KernelError("profil et trajectoire doivent être "
                               "différents")
-        binder = None
-        if path.TypeId == "Part::Feature":
-            # PartDesign n'accepte que des liens internes au corps
-            # (« out of the allowed scope » sinon) : un SubShapeBinder
-            # importe la courbe 3D dans le corps.
-            binder = body.newObject("PartDesign::SubShapeBinder",
-                                    "SpineBinder")
-            try:
-                binder.Support = [(path, ("",))]
-            except TypeError:
-                binder.Support = (path, [""])
-            binder.Label = self._t("Trajectoire — {}").format(path.Label)
-            doc.recompute()
-            path = binder
+        sketches = [section] + ([path] if path.TypeId == "Sketcher::"
+                                "SketchObject" else [])
+        if subtractive:
+            body, made = active, False
+        else:
+            body, made = self._result_body(sketches, merge, body)
         type_id = ("PartDesign::SubtractivePipe" if subtractive
                    else "PartDesign::AdditivePipe")
-        pipe = body.newObject(type_id, type_id.split("::")[-1])
-        pipe.Profile = section
+        binder = None
+        helpers = []
+        pipe = None
         try:
-            pipe.Spine = path
-        except TypeError:
-            pipe.Spine = (path, ("",))
-        pipe.Label = label_for_type(type_id, self.lang)
-        try:
-            self._recompute()
-        except KernelError:
-            doc.removeObject(pipe.Name)
-            if binder is not None:
+            if path.TypeId == "Part::Feature":
+                # PartDesign n'accepte que des liens internes au corps
+                # (« out of the allowed scope » sinon) : un SubShapeBinder
+                # importe la courbe 3D dans le corps.
+                binder = body.newObject("PartDesign::SubShapeBinder",
+                                        "SpineBinder")
                 try:
-                    doc.removeObject(binder.Name)
-                except Exception:
-                    pass
+                    binder.Support = [(path, ("",))]
+                except TypeError:
+                    binder.Support = (path, [""])
+                binder.Label = self._t("Trajectoire — {}").format(path.Label)
+                doc.recompute()
+                path = binder
+            else:
+                # Esquisse d'un autre corps : un liant caché, comme le profil.
+                copy = self._profile_copy(body, path, "Trajectoire liée")
+                if copy is not None:
+                    helpers.append(copy)
+                    path = copy
+            copy = self._profile_copy(body, section)
+            if copy is not None:
+                helpers.insert(0, copy)
+                # FreeCAD ne prend en entier que le profil d'une esquisse ;
+                # d'un liant, une seule face : le profil doit être d'un
+                # seul tenant, ou une partie serait perdue.
+                doc.recompute()
+                if len(copy.Shape.Faces) != 1:
+                    raise KernelError(
+                        "balayage dans un autre corps : le profil doit "
+                        "être d'un seul tenant")
+            pipe = body.newObject(type_id, type_id.split("::")[-1])
+            pipe.Profile = (copy, ["Face1"]) if copy is not None else section
+            try:
+                pipe.Spine = path
+            except TypeError:
+                pipe.Spine = (path, ("",))
+            pipe.Label = label_for_type(type_id, self.lang)
+            # Les liants partent avec le balayage, celui de la courbe 3D
+            # compris : un corps neuf n'en garde rien.
+            self._own_thin_helpers(
+                pipe, helpers + ([binder] if binder is not None else []))
+            self._recompute()
+        except Exception:
+            self._remove_all(([body] if made else [])
+                             + ([binder] if binder is not None else [])
+                             + helpers
+                             + ([pipe] if pipe is not None else []))
             raise
+        self._body = body
         return self.get_tree()
 
     def add_helix(self, pitch, height, sketch=None):
@@ -867,14 +927,23 @@ class SolidsMixin:
             raise
         return self.get_tree()
 
-    def _revolution_reference(self, profile, axis):
-        """Référence d'axe : axe d'esquisse, ligne, ou axe d'origine."""
+    def _revolution_reference(self, profile, axis, body=None,
+                              feature=None, made=None):
+        """Référence d'axe : axe d'esquisse, ligne, ou axe d'origine — dans
+        ``body`` (le corps actif par défaut). Une esquisse d'un autre corps
+        n'y est pas : son axe passe par une ligne cachée accrochée à elle
+        (``made`` reçoit les nouvelles, ``feature`` garde la sienne)."""
         from engine.kernel import KernelError
+        body = body or self._require_body()
+        linked = profile.getParentGeoFeatureGroup() is not body
         token = str(axis or "vertical").strip() or "vertical"
         if token in self._SKETCH_AXES:
+            if linked:
+                return (self._sketch_axis_line(body, profile, token,
+                                               feature, made), [""])
             return (profile, [self._SKETCH_AXES[token]])
         if token.upper() in self._AXIS_ROLES:
-            return (self._origin_axis(token), [""])
+            return (self._origin_axis(token, body), [""])
         if token.startswith("line:"):
             try:
                 gid = int(token.split(":", 1)[1])
@@ -887,9 +956,10 @@ class SolidsMixin:
             if getattr(geo, "TypeId", "") != "Part::GeomLineSegment":
                 raise KernelError("l'axe de révolution doit être une ligne")
             # La géométrie de construction n'est pas dans la forme de
-            # l'esquisse : une ligne de référence, cachée, la porte.
-            if self._is_construction(profile, gid, geo):
-                return (self._axis_datum(profile, gid), [""])
+            # l'esquisse, ni l'esquisse dans un autre corps : une ligne de
+            # référence, cachée, la porte.
+            if linked or self._is_construction(profile, gid, geo):
+                return (self._axis_datum(profile, gid, body), [""])
             edge = 0
             for index, item in enumerate(geometry):
                 if self._is_construction(profile, index, item):
@@ -901,9 +971,35 @@ class SolidsMixin:
         raise KernelError(
             "axe de révolution inconnu « {} »".format(token))
 
-    def _axis_datum(self, profile, gid):
-        """Ligne de référence cachée, calée sur une ligne de construction."""
-        body = self._require_body()
+    def _sketch_axis_line(self, body, profile, token, feature=None,
+                          made=None):
+        """L'axe vertical ou horizontal d'une esquisse d'un autre corps :
+        une ligne cachée accrochée à elle, qui suit sa fonction. Celle de
+        ``feature`` resert à la réédition."""
+        line = next((h for h in (self._thin_helpers(feature)
+                                 if feature is not None else [])
+                     if getattr(h, "FreeSolidSketchAxis", "")), None)
+        if line is None:
+            line = self._new_thin_helper(body, "PartDesign::Line",
+                                         "SketchAxis", "Axe de l'esquisse")
+            line.addProperty("App::PropertyString", "FreeSolidSketchAxis",
+                             "FreeSolid", "Axe d'esquisse porté")
+            line.Visibility = False
+            if feature is not None:
+                self._own_thin_helpers(feature, [line])
+            if made is not None:
+                made.append(line)
+        line.AttachmentSupport = [(profile, "")]
+        line.MapMode = "ObjectY" if token == "vertical" else "ObjectX"
+        # « ObjectY » pose la ligne vers -Y de l'esquisse : retournée, elle
+        # suit son axe vertical, et la révolution tourne du même côté.
+        line.MapReversed = token == "vertical"
+        line.FreeSolidSketchAxis = token
+        return line
+
+    def _axis_datum(self, profile, gid, body=None):
+        """Ligne de référence cachée, calée sur une ligne de l'esquisse."""
+        body = body or self._require_body()
         for obj in body.Group:
             if not getattr(obj, "FreeSolidAxisTool", False):
                 continue
@@ -1006,6 +1102,8 @@ class SolidsMixin:
         target_name = getattr(target, "Name", "") or ""
         if getattr(target, "FreeSolidAxisTool", False):
             return "line:{}".format(int(getattr(target, "AxisGeo", -1)))
+        if getattr(target, "FreeSolidSketchAxis", ""):
+            return str(target.FreeSolidSketchAxis)
         if target_name and target_name == profile_name:
             if sub == "H_Axis":
                 return "horizontal"
@@ -1029,7 +1127,7 @@ class SolidsMixin:
         return "vertical"
 
     def _revolution_state(self, obj):
-        profile = self._as_object(getattr(obj, "Profile", None))
+        profile, _ = self._profile_of(obj)   # à travers un liant
         return {
             "axis": self._revolution_axis_token(obj),
             "angle": self._prop_float(obj, "Angle"),
@@ -1059,19 +1157,20 @@ class SolidsMixin:
         return lines
 
     def _revolved(self, type_id, angle, sketch, axis=None,
-                  reversed=False, midplane=False):
+                  reversed=False, midplane=False, merge=True, body=None):
         """Révolution ou gorge : même axe, ajout ou enlèvement.
 
         Sans axe, l'axe vertical de l'esquisse — le profil se dessine à
         côté. ``axis`` peut être ``horizontal``, ``line:<id>`` (une ligne
         de l'esquisse, de construction de préférence) ou ``X``, ``Y``, ``Z``.
+        ``merge``, ``body`` : comme l'extrusion (``_result_body``) ; une
+        gorge creuse le corps actif.
         """
         from engine.kernel import (
             KernelError,
             label_for_type,
         )
-        body = self._require_body()
-        doc = self._require_doc()
+        active = self._require_body()
         try:
             degrees = float(angle)
         except (TypeError, ValueError):
@@ -1080,31 +1179,46 @@ class SolidsMixin:
             raise KernelError("angle de révolution invalide")
         profile = (self._get_sketch(sketch) if sketch is not None
                    else self._latest_sketch())
-        reference = self._revolution_reference(profile, axis)
-        feature = body.newObject(type_id, type_id.split("::")[-1])
-        feature.Profile = profile
-        feature.ReferenceAxis = reference
-        feature.Angle = degrees
-        if reversed:
-            feature.Reversed = True
-        if midplane:
-            feature.Midplane = True
-        feature.Label = label_for_type(type_id, self.lang)
-        self._drop_unused_axis_tools()
+        if type_id == "PartDesign::Revolution":
+            body, made = self._result_body([profile], merge, body)
+        else:
+            body, made = active, False
+        helpers = []
+        feature = None
         try:
+            copy = self._profile_copy(body, profile)
+            if copy is not None:
+                helpers.append(copy)
+            reference = self._revolution_reference(profile, axis, body,
+                                                   made=helpers)
+            feature = body.newObject(type_id, type_id.split("::")[-1])
+            feature.Profile = copy or profile
+            feature.ReferenceAxis = reference
+            feature.Angle = degrees
+            if reversed:
+                feature.Reversed = True
+            if midplane:
+                feature.Midplane = True
+            feature.Label = label_for_type(type_id, self.lang)
+            self._own_thin_helpers(feature, helpers)
+            self._drop_unused_axis_tools()
             self._recompute()
-        except KernelError:
-            doc.removeObject(feature.Name)
+        except Exception:
+            self._remove_all(([body] if made else []) + helpers
+                             + ([feature] if feature is not None else []))
             self._drop_unused_axis_tools()
             raise
+        self._body = body
         return self.get_tree()
 
     def add_revolution(self, angle=360.0, sketch=None, axis=None,
-                       reversed=False, midplane=False):
-        """Révolution."""
+                       reversed=False, midplane=False, merge=True,
+                       body=None):
+        """Révolution. ``merge`` faux : un nouveau corps ; ``body`` : le
+        corps où fusionner."""
         return self._revolved(
             "PartDesign::Revolution", angle, sketch, axis=axis,
-            reversed=reversed, midplane=midplane)
+            reversed=reversed, midplane=midplane, merge=merge, body=body)
 
     def add_groove(self, angle=360.0, sketch=None, axis=None,
                    reversed=False, midplane=False):
@@ -1212,13 +1326,13 @@ class SolidsMixin:
         return self._transform("PartDesign::Mirrored", configure,
                                features=features, scope=scope)
 
-    def _origin_axis(self, axis):
+    def _origin_axis(self, axis, body=None):
         from engine.kernel import KernelError
         role = self._AXIS_ROLES.get(str(axis).upper())
         if role is None:
             raise KernelError(
                 "axe inconnu « {} » — attendu X, Y ou Z".format(axis))
-        return self._origin_feature(role)
+        return self._origin_feature(role, body)
 
     def _pattern_direction(self, axis, edge):
         """Direction d'une répétition : arête droite de la pièce (numéro

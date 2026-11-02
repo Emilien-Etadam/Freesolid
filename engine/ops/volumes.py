@@ -10,12 +10,15 @@ from engine.ops._base import Op, Req
 _EXTRUDE_OPTIONAL = {"cond": str, "face": int, "offset": float, "taper": float, "midplane": bool, "reversed": bool, "cond2": str, "length2": float, "face2": int, "offset2": float, "taper2": float, "sketch": str, "thin": dict}
 
 
+# Le rejeu ne fond aucun corps (``bodies=[]``) : il bâtit dans un corps
+# provisoire, qui toucherait le corps hôte.
 def _rejouer_extrusion(kernel, feat, sketch, cote):
     kernel.add_pad(
         length=cote("Length"),
         sketch=sketch,
         reversed=feat["reversed"],
-        midplane=feat["midplane"])
+        midplane=feat["midplane"],
+        bodies=[])
 
 
 def _rejouer_enlevement(kernel, feat, sketch, cote):
@@ -34,7 +37,8 @@ def _rejouer_revolution(kernel, feat, sketch, cote):
         sketch=sketch,
         axis=feat.get("axis") or "vertical",
         reversed=bool(feat.get("reversed")),
-        midplane=bool(feat.get("midplane")))
+        midplane=bool(feat.get("midplane")),
+        bodies=[])
 
 
 def _rejouer_enlevement_revolution(kernel, feat, sketch, cote):
@@ -77,7 +81,8 @@ OPS = (
                                  optional={"keep": bool}), undo=True),
     # Conditions de fin : engine/extrude.py. Sans length : jusqu'à…
     # merge faux : un nouveau corps ; body : le corps où fusionner ;
-    # bodies : d'autres corps qui s'y fondent.
+    # bodies : d'autres corps qui s'y fondent. Sans body ni bodies : ceux
+    # qu'il touche.
     Op("add_pad", Req(optional={"length": float, "contours": list,
                                 "merge": bool, "body": str, "bodies": list,
                                 **_EXTRUDE_OPTIONAL}),
@@ -97,7 +102,8 @@ OPS = (
         "contours": list,        # index des contours de l'esquisse pris
         "merge": bool,           # faux : un nouveau corps
         "body": str,             # le corps où fusionner (défaut : l'actif)
-        "bodies": list,          # d'autres corps qui s'y fondent
+        "bodies": list,          # corps à y fondre (sans body ni bodies :
+                                 # ceux touchés)
     }),
        undo=True, preview=True, creates="PartDesign::Revolution",
        replay=_rejouer_revolution),    # sketch reste libre (nom d'esquisse)

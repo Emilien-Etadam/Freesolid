@@ -291,54 +291,83 @@ describe("fusionner ou non", () => {
                                     has_solid: false }]), []);
   });
 
-  it("coché, la zone Corps part du corps actif et en prend plusieurs", () => {
+  it("coché, les corps touchés se fondent ; sinon la zone Corps, qui part "
+     + "du corps actif et en prend plusieurs", () => {
     const [group] = mergeGroups(bodies);
-    const [merge, body] = group.rows;
+    const [merge, touched, body] = group.rows;
     assert.equal(merge.value, true);
+    assert.equal(touched.key, "touched");
+    assert.equal(touched.value, true);
+    assert.equal(touched.showIf({ merge: false }), false);
+    assert.equal(touched.showIf({ merge: true }), true);
     assert.deepEqual(body.accepts, ["body"]);
     assert.equal(body.multiple, true);
     assert.deepEqual(body.value, { kind: "body", items: [
       { kind: "body", name: "Body", label: "Extrusion" }] });
     assert.equal(body.showIf({ merge: false }), false);
-    assert.equal(body.showIf({ merge: true }), true);
+    assert.equal(body.showIf({ merge: true }), false);
+    assert.equal(body.showIf({ merge: true, touched: false }), true);
+  });
+
+  it("corps touchés : rien à envoyer, le moteur les trouve", () => {
+    const zone = (...names) => ({ kind: "body",
+      items: names.map((name) => ({ kind: "body", name })) });
+    assert.deepEqual(mergeParams({}, bodies), {});
+    assert.deepEqual(mergeParams({ merge: true }, bodies), {});
+    // La zone cachée ne compte pas.
+    assert.deepEqual(mergeParams(
+      { merge: true, touched: true, body: zone("Body001") }, bodies), {});
   });
 
   it("décoché : un nouveau corps ; un autre corps : son nom", () => {
     const zone = (...names) => ({ kind: "body",
       items: names.map((name) => ({ kind: "body", name })) });
+    const picked = (body) => ({ merge: true, touched: false, body });
     assert.deepEqual(mergeParams({ merge: false }, bodies), { merge: false });
-    assert.deepEqual(mergeParams(
-      { merge: true, body: zone("Body001") }, bodies), { body: "Body001" });
-    assert.deepEqual(mergeParams({ merge: true, body: zone("Body") }, bodies),
-                     {});
-    assert.deepEqual(mergeParams({ merge: true, body: zone() }, bodies), {});
-    assert.deepEqual(mergeParams({}, bodies), {});
+    assert.deepEqual(mergeParams(picked(zone("Body001")), bodies),
+                     { body: "Body001", bodies: [] });
+    // Une liste, même vide : sans elle, le moteur fondrait les corps touchés.
+    assert.deepEqual(mergeParams(picked(zone("Body")), bodies),
+                     { bodies: [] });
+    assert.deepEqual(mergeParams(picked(zone()), bodies), { bodies: [] });
     // L'ancienne forme, un seul corps, vaut toujours.
     assert.deepEqual(mergeParams(
-      { merge: true, body: { kind: "body", name: "Body001" } }, bodies),
-      { body: "Body001" });
+      picked({ kind: "body", name: "Body001" }), bodies),
+      { body: "Body001", bodies: [] });
+  });
+
+  it("corps actif vide : pas de corps touchés, la zone seule", () => {
+    const fresh = [
+      { name: "Body", label: "Extrusion", active: false, has_solid: true },
+      { name: "Body001", label: "Corps", active: true, has_solid: false },
+    ];
+    const [group] = mergeGroups(fresh);
+    assert.deepEqual(group.rows.map((r) => r.key), ["merge", "body"]);
+    assert.deepEqual(group.rows[1].value, { kind: "body", items: [] });
+    assert.equal(group.rows[1].showIf({ merge: true }), true);
+    assert.deepEqual(mergeParams({ merge: true }, fresh), { bodies: [] });
   });
 
   it("plusieurs corps : rangée dans le corps actif s'il en est, les autres "
      + "s'y fondent", () => {
     const zone = (...names) => ({ kind: "body",
       items: names.map((name) => ({ kind: "body", name })) });
+    const picked = (body, more) => ({ merge: true, touched: false, body,
+                                      ...more });
     assert.deepEqual(mergeParams(
-      { merge: true, body: zone("Body", "Body001", "Body002") }, bodies),
+      picked(zone("Body", "Body001", "Body002")), bodies),
       { bodies: ["Body001", "Body002"] });
-    assert.deepEqual(mergeParams(
-      { merge: true, body: zone("Body001", "Body") }, bodies),
-      { bodies: ["Body001"] });
+    assert.deepEqual(mergeParams(picked(zone("Body001", "Body")), bodies),
+                     { bodies: ["Body001"] });
     // Sans le corps actif : le premier cliqué reçoit la fonction.
     assert.deepEqual(mergeParams(
-      { merge: true, body: zone("Body002", "Body001", "Body002") }, bodies),
+      picked(zone("Body002", "Body001", "Body002")), bodies),
       { body: "Body002", bodies: ["Body001"] });
     assert.match(mergeProblem(
-      { merge: true, cond: "face", body: zone("Body002", "Body001") },
-      bodies), /corps actif/);
+      picked(zone("Body002", "Body001"), { cond: "face" }), bodies),
+      /corps actif/);
     assert.equal(mergeProblem(
-      { merge: true, cond: "face", body: zone("Body001", "Body") }, bodies),
-      null);
+      picked(zone("Body001", "Body"), { cond: "face" }), bodies), null);
   });
 
   it("un nouveau corps veut une profondeur borgne", () => {
@@ -353,10 +382,13 @@ describe("fusionner ou non", () => {
 
   it("jusqu'à la face : sur le corps actif seulement", () => {
     const other = { kind: "body", name: "Body001" };
-    assert.match(mergeProblem({ merge: true, cond: "face", body: other },
-                              bodies), /corps actif/);
-    assert.equal(mergeProblem({ merge: true, cond: "face",
+    assert.match(mergeProblem({ merge: true, touched: false, cond: "face",
+                                body: other }, bodies), /corps actif/);
+    assert.equal(mergeProblem({ merge: true, touched: false, cond: "face",
                                 body: { kind: "body", name: "Body" } },
+                              bodies), null);
+    // Corps touchés : la fonction reste dans le corps actif.
+    assert.equal(mergeProblem({ merge: true, cond: "face", body: other },
                               bodies), null);
   });
 
@@ -387,10 +419,13 @@ describe("fusionner ou non : révolution, lissage, balayage", () => {
     const build = (v) => entry("btn-revolution").build(
       { angle: 90, cond: "one", axis: "vertical", ...v }, ctx).params;
     assert.equal(build({ merge: false }).merge, false);
-    assert.equal(build({ merge: true, body: other }).body, "Body001");
+    assert.equal(build({ merge: true, touched: false, body: other }).body,
+                 "Body001");
     assert.equal(build({ merge: true }).body, undefined);
-    assert.deepEqual(build({ merge: true, body: { kind: "body", items: [
-      { kind: "body", name: "Body" }, other] } }).bodies, ["Body001"]);
+    assert.equal(build({ merge: true }).bodies, undefined);
+    assert.deepEqual(build({ merge: true, touched: false, body: {
+      kind: "body", items: [{ kind: "body", name: "Body" }, other] } }).bodies,
+    ["Body001"]);
     assert.equal(entry("btn-groove").build(
       { angle: 90, cond: "one", merge: false }, ctx).params.merge, undefined);
   });
@@ -407,13 +442,16 @@ describe("fusionner ou non : révolution, lissage, balayage", () => {
     assert.equal(loft({ merge: false, subtractive: true }).merge, undefined);
     const sweep = (v) => entry("btn-sweep").build({
       profile: { name: "A" }, spine: { name: "B" }, ...v }, ctx).params;
-    assert.equal(sweep({ merge: true, body: other }).body, "Body001");
-    assert.equal(sweep({ subtractive: true, merge: true, body: other }).body,
-                 undefined);
+    assert.equal(sweep({ merge: true, touched: false, body: other }).body,
+                 "Body001");
+    assert.equal(sweep({ subtractive: true, merge: true, touched: false,
+                         body: other }).body, undefined);
     const both = { kind: "body", items: [{ kind: "body", name: "Body" }, other] };
-    assert.deepEqual(loft({ merge: true, body: both }).bodies, ["Body001"]);
-    assert.equal(loft({ subtractive: true, merge: true, body: both }).bodies,
-                 undefined);
+    assert.deepEqual(loft({ merge: true, touched: false, body: both }).bodies,
+                     ["Body001"]);
+    assert.equal(loft({ subtractive: true, merge: true, touched: false,
+                        body: both }).bodies, undefined);
+    assert.equal(loft({ merge: true }).bodies, undefined);
   });
 
   it("sans volume dans la pièce, pas de groupe Résultat", () => {

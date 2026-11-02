@@ -99,11 +99,14 @@ class BodySolidsMixin:
         return [e for e in entries if isinstance(e, dict)] \
             if isinstance(entries, list) else []
 
-    def _solid_origins(self, body):
-        """Origines des faces de chaque solide du corps. Vide pour un
-        corps d'un seul solide."""
-        shape = getattr(body, "Shape", None)
-        tip = getattr(body, "Tip", None)
+    def _solid_origins(self, body, tip=None):
+        """Origines des faces de chaque solide du corps — ou du corps
+        arrêté à ``tip``. Vide pour un seul solide."""
+        if tip is None:
+            shape = getattr(body, "Shape", None)
+            tip = getattr(body, "Tip", None)
+        else:
+            shape = getattr(tip, "Shape", None)
         if shape is None or tip is None or len(shape.Solids) < 2:
             return []
         return self._feature_solid_origins(tip, shape)
@@ -142,7 +145,7 @@ class BodySolidsMixin:
             origins.append(keys)
         return origins
 
-    def _solid_authors(self, body):
+    def _solid_authors(self, body, tip=None):
         """Pour chaque solide, la dernière fonction qui l'a changé, comme
         le nom d'un corps dans les modeleurs courants. On remonte
         l'historique tant que la forme d'avant garde un solide identique
@@ -152,7 +155,7 @@ class BodySolidsMixin:
             return tuple(round(v, 6) for v in (
                 solid.Volume, solid.Area, center.x, center.y, center.z))
 
-        tip = body.Tip
+        tip = tip if tip is not None else body.Tip
         pending = {i: signature(solid)
                    for i, solid in enumerate(tip.Shape.Solids)}
         authors = [tip] * len(pending)
@@ -169,19 +172,21 @@ class BodySolidsMixin:
             feature = base
         return authors
 
-    def _body_solids(self, body):
+    def _body_solids(self, body, tip=None):
         """Les solides d'un corps qui en garde plusieurs, tels que le
         dossier les montre (``solid_rows``) ; vide pour un seul. Un corps
-        nommé à la main, ou à la base importée, donne son nom à tous."""
-        origins = self._solid_origins(body)
+        nommé à la main, ou à la base importée, donne son nom à tous.
+        ``tip`` : le corps arrêté à cette fonction."""
+        tip = tip if tip is not None else body.Tip
+        origins = self._solid_origins(body, tip)
         if not origins:
             return []
         titles = []
-        for feature in self._solid_authors(body):
-            if (feature is body.Tip
+        for feature in self._solid_authors(body, tip):
+            if (feature is tip
                     or getattr(body, "FreeSolidNamed", False)
                     or feature.TypeId == "PartDesign::FeatureBase"):
-                titles.append(self._body_title(body))
+                titles.append(self._body_title(body, tip))
             else:
                 titles.append(self._thin_owner(feature).Label)
         entries = self._stored_solids(body)

@@ -71,6 +71,10 @@ OPS = (
        undo=True, creates="App::DocumentObject",
        no_replay="des corps choisis, pas des cotes"),
                                        # targets: [{name, solid?}]
+    Op("remove_bodies_info", Req(("feature", str))),
+                                       # lecture : les cases au rang de la fonction
+    Op("edit_remove_bodies", Req(("feature", str), ("targets", list),
+                                 optional={"keep": bool}), undo=True),
     # Conditions de fin : engine/extrude.py. Sans length : jusqu'à…
     Op("add_pad", Req(optional={"length": float, "contours": list,
                                 **_EXTRUDE_OPTIONAL}),

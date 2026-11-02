@@ -1497,3 +1497,105 @@ def p85_supprimer_des_corps(self, mark, report, etat):
     report["p85_garder"] = (
         [b["name"] for b in tree["bodies"]] == [kept] and row["keep"] is True
         and row["kind"] == self._t("Garder des corps"))
+
+
+def p86_reediter_une_suppression(self, mark, report, etat):
+    mark("p86: rééditer une suppression de corps, à son rang")
+    import tempfile
+    from engine.kernel import dispatch
+    self.new_part("Rééditer une suppression")
+    state = self.sketch_start(plane="XY")
+    for x in (0, 20, 40):
+        self.sketch_add_rectangle(state["sketch"], x, 0, x + 10, 10)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    body = self._require_body()
+    first, pad = body.Name, body.Tip.Name
+    self.add_body()
+    second = self._require_body().Name
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_circle(state["sketch"], 70, 5, 4)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(8, sketch=state["sketch"])
+    self.set_active_body(first)
+
+    def rank_of(x):
+        """Rang, avant la suppression, du solide centré en ``x``."""
+        solids = self._doc.getObject(pad).Shape.Solids
+        return next(i for i, s in enumerate(solids)
+                    if abs(s.CenterOfMass.x - x) < 1)
+
+    def centers():
+        solids = self._doc.getObject(first).Shape.Solids  # rouvert : autre objet
+        return sorted(round(s.CenterOfMass.x) for s in solids)
+
+    tree = self.add_remove_bodies([{"name": first, "solid": rank_of(25)}])
+    host = next(f["name"] for f in tree["features"]
+                if f["type_key"] == "remove_bodies")
+    # Une extrusion ajoutée ensuite, collée au bloc de gauche.
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_rectangle(state["sketch"], 0, 10, 10, 20)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(5, sketch=state["sketch"])
+    later = body.Tip.Name
+    info = self.remove_bodies_info(host)
+    mine = [c for c in info["candidates"] if c["name"] == first]
+    report["p86_cases_au_rang"] = (
+        len(mine) == 3 and info["keep"] is False
+        and [c["checked"] for c in mine] == [
+            i == rank_of(25) for i in range(3)]
+        and any(c["name"] == second and not c["checked"]
+                for c in info["candidates"])
+        and centers() == [5, 45])
+    # Un autre solide : l'étape cachée change de cible, l'extrusion
+    # d'après reste.
+    tree = self.edit_remove_bodies(host, [{"name": first,
+                                           "solid": rank_of(45)}])
+    row = next(f for f in tree["features"] if f["name"] == host)
+    report["p86_changer_de_solide"] = (
+        centers() == [5, 25] and abs(body.Shape.Volume - 1500) < 1e-6
+        and len(self._removal_parts(self._doc.getObject(host))) == 1
+        and len(row["removes"]) == 1)
+    # Garder seulement le second corps : le premier part en entier, son
+    # étape cachée aussi.
+    tree = self.edit_remove_bodies(host, [{"name": second}], keep=True)
+    obj = self._doc.getObject(host)
+    whole = ([b["name"] for b in tree["bodies"]] == [second]
+             and not self._removal_parts(obj)
+             and obj.Label == self._t("Garder des corps")
+             and not any("FreeSolidRemovekeys" in o.PropertiesList
+                         for o in self._doc.Objects)
+             and self._doc.getObject(later).BaseFeature.Name == pad)
+    # Retour à un seul solide, par l'enveloppe annulable : l'étape cachée
+    # s'insère entre l'extrusion du début et celle d'après.
+    op = "edit_remove_bodies"
+    if not dispatch(self, op, {"feature": host, "keep": False,
+                               "targets": [{"name": first,
+                                            "solid": rank_of(5)}]})["ok"]:
+        raise KernelError(op)
+    parts = self._removal_parts(obj)
+    inserted = (len(parts) == 1 and parts[0].BaseFeature.Name == pad
+                and self._doc.getObject(later).BaseFeature is parts[0]
+                and body.Tip.Name == later and centers() == [5, 25, 45]
+                and abs(body.Shape.Volume - 1500) < 1e-6
+                and obj.Label == self._t("Supprimer des corps"))
+    report["p86_inserer_au_milieu"] = whole and inserted
+    self.undo()
+    undone = (not self._removal_parts(obj)
+              and [b["name"] for b in self.get_tree()["bodies"]] == [second])
+    self.redo()
+    redone = len(self._removal_parts(obj)) == 1 and centers() == [5, 25, 45]
+    # Un nom choisi ne suit pas le mode.
+    self.rename(host, "Mes corps")
+    self.edit_remove_bodies(host, [{"name": second}], keep=True)
+    self.edit_remove_bodies(host, [{"name": first, "solid": rank_of(5)}])
+    named = self._doc.getObject(host).Label == "Mes corps"
+    path = os.path.join(tempfile.gettempdir(),
+                        "freesolid-selftest-reediter-suppression.FCStd")
+    self.save_part(path)
+    self.open_part(path)
+    info = self.remove_bodies_info(host)
+    checked = [c.get("solid") for c in info["candidates"] if c["checked"]]
+    report["p86_annuler_nommer_rouvrir"] = (
+        undone and redone and named and checked == [rank_of(5)]
+        and centers() == [5, 25, 45])

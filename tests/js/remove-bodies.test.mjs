@@ -9,6 +9,8 @@ import {
   removalKey,
   removalTargets,
   removeBodiesBuild,
+  removeBodiesGroups,
+  removeBodiesParams,
 } from "../../app/features/combiner.js";
 import { FEATURES } from "../../app/features.js";
 import { folderRemovalTarget } from "../../app/contextmenu.js";
@@ -46,7 +48,7 @@ describe("supprimer des corps", () => {
       [removalKey({ name: "Body001" })]: false,
       [removalKey({ name: "Surface" })]: true,
     };
-    assert.deepEqual(removalTargets(v, tree),
+    assert.deepEqual(removalTargets(v, removalCandidates(tree)),
       [{ name: "Body", solid: 1 }, { name: "Surface" }]);
     assert.deepEqual(removeBodiesBuild(v, { lastTree: tree }), {
       op: "add_remove_bodies",
@@ -67,6 +69,29 @@ describe("supprimer des corps", () => {
     const labels = entry.groups({ lastTree: tree }).map((g) => g.label);
     assert.deepEqual(labels,
       ["Opération", "Corps volumiques", "Corps surfaciques"]);
+  });
+
+  it("la réédition rouvre le même panneau, cases et mode du moteur", () => {
+    // remove_bodies_info : les corps au rang de la fonction, cochés.
+    const candidates = [
+      { name: "Body", solid: 0, label: "Extrusion[1]", checked: false },
+      { name: "Body", solid: 1, label: "Extrusion[2]", checked: true },
+      { name: "Surface", label: "Surface extrudée", surface: true,
+        checked: true },
+    ];
+    const groups = removeBodiesGroups(candidates, true);
+    assert.equal(groups[0].rows[0].value, "keep");
+    assert.deepEqual(groups[1].rows.map((r) => [r.key, r.value]),
+      [["rm:Body:0", false], ["rm:Body:1", true]]);
+    assert.deepEqual(groups[2].rows.map((r) => [r.key, r.value]),
+      [["rm:Surface", true]]);
+    const v = Object.fromEntries(groups.flatMap((g) => g.rows)
+      .map((r) => [r.key, r.value]));
+    assert.deepEqual(removeBodiesParams(v, candidates), {
+      targets: [{ name: "Body", solid: 1 }, { name: "Surface" }],
+      keep: true,
+    });
+    assert.equal(removeBodiesParams({ mode: "remove" }, candidates), null);
   });
 
   it("« Supprimer » sur une ligne de dossier vise le corps, le solide ou la surface", () => {

@@ -60,7 +60,9 @@ export function canModifyMenuTarget(feature) {
   const key = feature.type_key;
   if (!key || key === "datum_plane") return false;
   if (isFrozenSurface(feature)) return false;
-  if (key === "sketch" || key === "body_pattern") return true;
+  if (key === "sketch" || key === "body_pattern" || key === "remove_bodies") {
+    return true;
+  }
   return isBodyFeatureKey(key) || isSurfaceKey(key);
 }
 
@@ -137,8 +139,9 @@ export function installContextMenu(ctx) {
       return;
     }
     if (feature.type_key === "remove_bodies") {
-      // Suppression de corps : pas de réédition (v1), ni dossier.
-      openOnly(event, ["ctx-rename", "ctx-rollback", "ctx-end", "ctx-delete"]);
+      // Suppression de corps : comme un réseau de corps.
+      openOnly(event, ["ctx-modify", "ctx-rename", "ctx-rollback", "ctx-end",
+        "ctx-delete"]);
       menuFeature = feature;
       return;
     }

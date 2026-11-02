@@ -818,12 +818,13 @@ class TreeMixin:
                              "Nommé à la main : le dossier garde ce nom")
         setattr(body, _NAMED_PROP, True)
 
-    def _body_title(self, body):
+    def _body_title(self, body, tip=None):
         """Nom d'un corps dans son dossier : celui de la dernière fonction
         qui l'a changé, comme dans les modeleurs courants. Une copie de
         réseau sans fonction à elle : « réseau[n] ». Le sien quand on l'a
-        nommé, quand il est vide ou n'a qu'une forme importée."""
-        tip = getattr(body, "Tip", None)
+        nommé, quand il est vide ou n'a qu'une forme importée. ``tip`` :
+        le corps arrêté à cette fonction."""
+        tip = tip if tip is not None else getattr(body, "Tip", None)
         while getattr(tip, "FreeSolidRemoveof", ""):
             tip = tip.BaseFeature  # ôter un solide ne change pas les autres
         if getattr(body, _NAMED_PROP, False) or tip is None:

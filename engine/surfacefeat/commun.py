@@ -400,13 +400,16 @@ class SurfaceCommonMixin:
                 changed = True
         return changed
 
-    def _consumed_surfaces(self):
+    def _consumed_surfaces(self, counts=None):
         """Noms des surfaces remplacées par une autre : source d'un
         ajustement, d'un prolongement, d'un épaississement ou d'une
-        couture. Elles restent dans l'historique, plus dans la vue."""
+        couture. Elles restent dans l'historique, plus dans la vue.
+        ``counts(objet)`` : les remplaçantes qui comptent — par défaut,
+        celles au-dessus de la barre."""
         consumed = set()
         for obj in self._require_doc().Objects:
-            if self._is_rolled_back(obj):
+            if (not counts(obj) if counts is not None
+                    else self._is_rolled_back(obj)):
                 continue
             if obj.TypeId == "Surface::Extend":
                 face = getattr(obj, "Face", None)

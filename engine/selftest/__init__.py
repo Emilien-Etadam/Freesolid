@@ -201,6 +201,7 @@ def _etapes():
         fonctions.p83_corps_concernes,
         fonctions.p84_arbre_unique,
         fonctions.p85_supprimer_des_corps,
+    fonctions.p86_reediter_une_suppression,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

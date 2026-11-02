@@ -15,6 +15,7 @@ import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
   revolutionGroups, revolutionEditValues, revolutionProblem,
   checkedContours, contourRows, vertexChamferDistances, vertexChamferRows,
+  REMOVE_BODIES_NOTE, removeBodiesGroups, removeBodiesParams,
 } from "./features.js";
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
 import { solidParam } from "./contextmenu.js";
@@ -1401,8 +1402,9 @@ export function installTree(ctx) {
     treeEl.appendChild(row);
   }
 
-  /** Ligne d'une suppression de corps : la barre se pose dessous, ses
-   *  corps reviennent quand on la recule. Ni réédition, ni réordre. */
+  /** Ligne d'une suppression de corps : double-clic pour la rouvrir. La
+   *  barre se pose dessous, ses corps reviennent quand on la recule ;
+   *  elle ne se réordonne pas. */
   function appendRemoveBodiesRow(feature, rolledBack) {
     const row = document.createElement("li");
     row.className = "feat";
@@ -1417,7 +1419,7 @@ export function installTree(ctx) {
     row.appendChild(treeIcon("remove_bodies"));
     row.appendChild(document.createTextNode(feature.label));
     row.title = `${feature.kind} — `
-      + t("clic droit : barre de retour, renommer, supprimer");
+      + t("double-clic : modifier · clic droit : modifier, barre de retour, renommer, supprimer");
     if (feature.removes?.length) {
       row.title += "\n" + t(feature.keep ? "Corps gardés : {b}"
         : "Corps supprimés : {b}", { b: feature.removes.join(", ") });
@@ -1429,6 +1431,7 @@ export function installTree(ctx) {
       row.appendChild(note);
       row.title = `${feature.comment}\n\n${row.title}`;
     }
+    row.addEventListener("dblclick", () => editFeature(feature));
     row.addEventListener("contextmenu", (event) => ctx.openMenu(event, feature));
     row.addEventListener("click", (event) => {
       if (consumeTreeRenameClick(event, row, feature)) return;
@@ -1966,6 +1969,35 @@ export function installTree(ctx) {
     })());
   }
 
+  /** Suppression de corps : le panneau de la création, sur les corps qui
+   *  existent à son rang, cochés selon ce qu'elle vise. OK la réécrit sur
+   *  place, sans changer son rang. */
+  async function editRemoveBodies(feature) {
+    let info;
+    try {
+      info = await call("remove_bodies_info", { feature: feature.name });
+    } catch (error) {
+      say(error.message, true);
+      return;
+    }
+    const params = (v) => removeBodiesParams(v, info.candidates);
+    panel.open({
+      icon: "remove_bodies",
+      title: info.label,
+      groups: removeBodiesGroups(info.candidates, info.keep),
+      note: REMOVE_BODIES_NOTE,
+      hint: (v) => (params(v) ? null : "Cochez au moins un corps"),
+      onApply: (v) => {
+        if (!params(v)) {
+          say(t("Cochez au moins un corps"), true);
+          return;
+        }
+        refresh(call("edit_remove_bodies",
+          { feature: feature.name, ...params(v) }));
+      },
+    });
+  }
+
   async function editFeature(feature) {
     // Copie d'un réseau de corps, enlèvement venu d'un autre corps : le
     // double-clic rouvre la répétition qui les porte.
@@ -2034,6 +2066,10 @@ export function installTree(ctx) {
     }
     if (feature.surface_cut) {
       editSurfaceCut(feature);
+      return;
+    }
+    if (feature.type_key === "remove_bodies") {
+      editRemoveBodies(feature);
       return;
     }
     if (feature.type_key === "chamfer" && feature.chamfer) {

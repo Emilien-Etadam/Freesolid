@@ -1548,7 +1548,6 @@
  "Garder seulement les corps cochés": "Keep only the checked bodies",
  "Les corps ôtés reviennent quand on recule la barre au-dessus de la fonction, ou qu'on la supprime.": "Removed bodies come back when you roll the bar back above the feature, or delete it.",
  "Cochez au moins un corps": "Check at least one body",
- "clic droit : barre de retour, renommer, supprimer": "right-click: rollback bar, rename, delete",
  "Corps supprimés : {b}": "Bodies deleted: {b}",
  "Corps gardés : {b}": "Bodies kept: {b}"
 }

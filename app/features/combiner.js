@@ -41,7 +41,8 @@ const COMBINE_FEATURE = {
 // Une case par corps du dossier : chaque solide d'un corps qui en garde
 // plusieurs, chaque surface. La fonction ôte les corps cochés de la pièce
 // à son rang, ou ne garde qu'eux ; ils reviennent quand on recule la
-// barre au-dessus d'elle ou qu'on la supprime.
+// barre au-dessus d'elle ou qu'on la supprime. La réédition rouvre le
+// même panneau, sur les corps qui existent à son rang (app/tree.js).
 
 /** Clé de la case d'un corps (`{ name, solid? }`). */
 export function removalKey(target) {
@@ -68,44 +69,53 @@ export function removalCandidates(tree) {
   return rows;
 }
 
-/** Cases cochées → cibles du moteur, dans l'ordre du dossier. */
-export function removalTargets(v, tree) {
-  return removalCandidates(tree).filter((c) => v[removalKey(c)])
+/** Cases cochées → cibles du moteur, dans l'ordre des candidats. */
+export function removalTargets(v, candidates) {
+  return candidates.filter((c) => v[removalKey(c)])
     .map(({ name, solid }) =>
       (Number.isInteger(solid) ? { name, solid } : { name }));
 }
 
-export function removeBodiesBuild(v, ctx) {
-  const targets = removalTargets(v, ctx?.lastTree);
-  return targets.length
-    ? { op: "add_remove_bodies",
-        params: { targets, keep: v.mode === "keep" } }
-    : null;
+/** Paramètres d'une suppression (`targets`, `keep`), ou null tant que
+ *  rien n'est coché. */
+export function removeBodiesParams(v, candidates) {
+  const targets = removalTargets(v, candidates);
+  return targets.length ? { targets, keep: v.mode === "keep" } : null;
 }
+
+export function removeBodiesBuild(v, ctx) {
+  const params = removeBodiesParams(v, removalCandidates(ctx?.lastTree));
+  return params ? { op: "add_remove_bodies", params } : null;
+}
+
+/** Le mode, puis une case par candidat — cochée d'emblée quand il porte
+ *  `checked` (réédition). Création et réédition ont le même panneau. */
+export function removeBodiesGroups(candidates, keep = false) {
+  const check = (c) => ({ type: "check", key: removalKey(c),
+                          label: c.label, value: !!c.checked });
+  const solids = candidates.filter((c) => !c.surface);
+  const surfaces = candidates.filter((c) => c.surface);
+  return [
+    { label: "Opération",
+      rows: [{ type: "select", key: "mode", value: keep ? "keep" : "remove",
+               options: [["remove", "Supprimer les corps cochés"],
+                         ["keep", "Garder seulement les corps cochés"]] }] },
+    solids.length && { label: "Corps volumiques", rows: solids.map(check) },
+    surfaces.length
+      && { label: "Corps surfaciques", rows: surfaces.map(check) },
+  ].filter(Boolean);
+}
+
+export const REMOVE_BODIES_NOTE = "Les corps ôtés reviennent quand on "
+  + "recule la barre au-dessus de la fonction, ou qu'on la supprime.";
 
 const REMOVE_BODIES_FEATURE = {
   icon: "remove_bodies",
   title: "Supprimer des corps",
   guard: (ctx) => (removalCandidates(ctx.lastTree).length ? null
     : "Supprimer des corps : la pièce n'a pas encore de corps"),
-  groups: (ctx) => {
-    const candidates = removalCandidates(ctx.lastTree);
-    const check = (c) => ({ type: "check", key: removalKey(c),
-                            label: c.label, value: false });
-    const solids = candidates.filter((c) => !c.surface);
-    const surfaces = candidates.filter((c) => c.surface);
-    return [
-      { label: "Opération",
-        rows: [{ type: "select", key: "mode", value: "remove",
-                 options: [["remove", "Supprimer les corps cochés"],
-                           ["keep", "Garder seulement les corps cochés"]] }] },
-      solids.length && { label: "Corps volumiques", rows: solids.map(check) },
-      surfaces.length
-        && { label: "Corps surfaciques", rows: surfaces.map(check) },
-    ].filter(Boolean);
-  },
-  note: "Les corps ôtés reviennent quand on recule la barre au-dessus "
-    + "de la fonction, ou qu'on la supprime.",
+  groups: (ctx) => removeBodiesGroups(removalCandidates(ctx.lastTree)),
+  note: REMOVE_BODIES_NOTE,
   preview: false,
   build: removeBodiesBuild,
   invalid: "Cochez au moins un corps",

@@ -17,6 +17,13 @@ class EquationsMixin:
                        "Diameter", "Depth", "HoleCutDiameter",
                        "HoleCutDepth", "Pitch", "Height")
 
+    # Genres dont une propriété porte le nom d'une cote sans en être une :
+    # la taille d'affichage d'un plan ou d'un axe de référence (l'interface
+    # dessine le sien à la taille de la pièce), la hauteur d'une
+    # projection, que le mode « Edges » n'emploie pas.
+    _NO_DIMENSIONS = ("PartDesign::Plane", "PartDesign::Line",
+                      "Part::ProjectOnSurface")
+
     _VARSET_NAME = "Variables"
 
 
@@ -59,7 +66,8 @@ class EquationsMixin:
         # null »). On mémorise l'état pour tout restaurer sur refus.
         exprs_before = dict(obj.ExpressionEngine or [])
         previous = []  # (prop, ancienne expression ou None, ancienne valeur)
-        editable = self._EDITABLE_PROPS
+        editable = (() if obj.TypeId in self._NO_DIMENSIONS
+                    else self._EDITABLE_PROPS)
         thin = self._thin_spec(obj) is not None
         revolved = obj.TypeId in (
             "PartDesign::Revolution", "PartDesign::Groove")
@@ -251,6 +259,8 @@ class EquationsMixin:
     def _editable_props(self, obj):
         """Cotes proposées à l'édition. Le chanfrein ne montre que celles
         du type en cours : une distance, deux distances, ou distance et angle."""
+        if getattr(obj, "TypeId", "") in self._NO_DIMENSIONS:
+            return ()
         if "FreeSolidBodyPattern" in getattr(obj, "PropertiesList", ()):
             # Réseau de corps : les cotes que l'hôte porte (get_params
             # saute celles qu'il n'a pas).

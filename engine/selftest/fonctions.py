@@ -1612,12 +1612,28 @@ def p87_modifier_suit_le_double_clic(self, mark, report, etat):
     state = self.sketch_start(plane="XZ")
     self.sketch_add_line(state["sketch"], 0, 20, 30, 20)
     self.sketch_finish(state["sketch"])
-    tree = self.surface_extrude(10, sketch=state["sketch"])
+    self.surface_extrude(10, sketch=state["sketch"])
+    # Plan et axe de référence : leur « Length » est une taille
+    # d'affichage, pas une cote.
+    self.add_datum_plane(base="XY", offset=5)
+    tree = self.add_datum_axis(axis="Z")
     rows = {f["name"]: f for f in tree["features"]}
     surface = tree["surfaces"][-1]
+    datums = [f for f in tree["features"]
+              if f.get("type_key") in ("datum_plane", "datum_axis")]
     report["p87_cotes_dans_l_arbre"] = (
         rows[pad]["has_params"] is True and rows[mirror]["has_params"] is False
         and surface["has_params"] is True
         and self.get_params(mirror)["params"] == []
         and bool(self.get_params(pad)["params"]))
+    try:
+        self.set_params(datums[0]["name"], {"Length": 50})
+        datum_refused = False
+    except KernelError:
+        datum_refused = True
+    report["p87_reference_sans_cote"] = (
+        len(datums) == 2 and datum_refused
+        and all(d["has_params"] is False
+                and self.get_params(d["name"])["params"] == []
+                for d in datums))
 

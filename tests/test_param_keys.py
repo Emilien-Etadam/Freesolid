@@ -219,7 +219,6 @@ CASES = {
     "surface_radiate": ("Part::Offset2D", {"Value": 3.0}),
     "curve_helix": ("Part::Helix", {
         "Pitch": 5.0, "Height": 20.0, "Radius": 4.0, "Angle": 0.0}),
-    "datum_plane": ("PartDesign::Plane", {"Length": 50.0}),
 }
 
 
@@ -291,6 +290,24 @@ def test_une_cle_inconnue_est_refusee(key):
     with pytest.raises(KernelError, match="propriété non éditable : " + key):
         kernel.set_params("F", {key: 3})
     assert obj.Length == 10.0
+
+
+@pytest.mark.parametrize("type_id, props", [
+    ("PartDesign::Plane", {"Length": 50.0}),
+    ("PartDesign::Line", {"Length": 50.0}),
+    ("Part::ProjectOnSurface", {"Height": 5.0}),
+])
+def test_une_taille_d_affichage_n_est_pas_une_cote(type_id, props):
+    """Plan et axe de référence, projection : leur ``Length`` ou leur
+    ``Height`` ne change pas la pièce. Ni « Modifier » ni réédition."""
+    obj = _Obj("F", type_id, **props)
+    kernel = _kernel(obj)
+    assert kernel.get_params("F")["params"] == []
+    assert kernel._has_params(obj) is False
+    prop, value = next(iter(props.items()))
+    with pytest.raises(KernelError, match="propriété non éditable"):
+        kernel.set_params("F", {prop: value + 1})
+    assert getattr(obj, prop) == value
 
 
 def test_deux_cles_pour_la_meme_cote_sont_refusees():

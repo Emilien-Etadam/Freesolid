@@ -594,32 +594,42 @@ export function extrudeEditProblem(v, feature) {
 }
 
 // ---------- fusionner ou non (extrusion, révolution, lissage, balayage) ----------
-// Décochée : un nouveau corps. Cochée : le corps actif, et les corps qu'on
-// clique dans la vue — la fonction les fond en un seul. Seulement quand
-// la pièce a déjà un volume.
+// Décochée : un nouveau corps. Cochée : le corps actif, et les corps que
+// la fonction touche — le moteur les trouve et les fond en un seul. Sans
+// « Fondre les corps touchés », les corps qu'on clique dans la vue.
+// Seulement quand la pièce a déjà un volume.
 
 /** Groupe « Résultat » d'un volume, vide sans corps solide. `when` : le
  *  groupe ne s'affiche que si ces valeurs le veulent (pas pour un
- *  enlèvement de matière). */
+ *  enlèvement de matière). Un corps actif vide : le premier volume le
+ *  fonde sans rien fondre d'office, reste la zone. */
 export function mergeGroups(bodies, { when } = {}) {
   const solid = (bodies ?? []).filter((b) => b.has_solid === true);
   if (!solid.length) return [];
-  const active = (bodies ?? []).find((b) => b.active && b.has_solid === true);
+  const active = activeSolidBody(bodies);
   return [{
     label: "Résultat",
     ...(when ? { showIf: when } : {}),
     rows: [
       { type: "check", key: "merge", label: "Fusionner", value: true },
+      ...(active ? [{ type: "check", key: "touched",
+                      label: "Fondre les corps touchés", value: true,
+                      showIf: (v) => v.merge !== false }] : []),
       { type: "selection", key: "body", accepts: ["body"], label: "Corps",
         multiple: true, hint: "Cliquez des corps dans la vue",
         value: { kind: "body", items: active
           ? [{ kind: "body", name: active.name, label: active.label }] : [] },
-        showIf: (v) => v.merge !== false },
+        showIf: (v) => v.merge !== false && !touching(v, bodies) },
     ],
   }];
 }
 
 const activeBodyName = (bodies) => (bodies ?? []).find((b) => b.active)?.name;
+const activeSolidBody = (bodies) => (bodies ?? [])
+  .find((b) => b.active && b.has_solid === true);
+/** Le moteur fond les corps touchés : pas de liste à envoyer. */
+const touching = (v, bodies) => v.touched !== false
+  && !!activeSolidBody(bodies);
 
 /** Les corps de la zone, dans l'ordre des clics, et celui où la fonction
  *  se range : le corps actif s'il y est, sinon le premier (zone vide : le
@@ -639,6 +649,7 @@ export function mergeProblem(v, bodies) {
       && (!v.dir2 || v.cond2 === "borgne"));
     return blind ? null : "Nouveau corps : profondeur borgne ou plan milieu";
   }
+  if (touching(v, bodies)) return null;
   const { target } = mergeTargets(v, bodies);
   if (v.cond === "face" && target && target !== activeBodyName(bodies)) {
     return "Jusqu'à la face : fusionnez avec le corps actif";
@@ -646,15 +657,17 @@ export function mergeProblem(v, bodies) {
   return null;
 }
 
-/** Params moteur de la fusion : `merge: false`, ou le corps où ranger la
- *  fonction s'il n'est pas le corps actif, et les autres corps qu'elle y
- *  fond (`bodies`). */
+/** Params moteur de la fusion : `merge: false` ; rien, et le moteur fond
+ *  les corps touchés ; ou le corps où ranger la fonction s'il n'est pas
+ *  le corps actif, et les autres corps qu'elle y fond (`bodies`, même
+ *  vide : sans liste, le moteur prendrait les corps touchés). */
 export function mergeParams(v, bodies) {
   if (v.merge === false) return { merge: false };
+  if (touching(v, bodies)) return {};
   const { target, others } = mergeTargets(v, bodies);
   return { ...(target && target !== activeBodyName(bodies)
     ? { body: target } : {}),
-           ...(others.length ? { bodies: others } : {}) };
+           bodies: others };
 }
 
 // ---------- corps fondus, à la réédition ----------

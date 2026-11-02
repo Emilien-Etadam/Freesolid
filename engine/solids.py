@@ -346,7 +346,8 @@ class SolidsMixin:
         ``thin`` : paroi mince, voir ``engine.extrude.thin_settings``.
         ``merge`` faux : un nouveau corps ; ``body`` : le corps où
         fusionner, le corps actif par défaut ; ``bodies`` : d'autres corps
-        qui s'y fondent (``_result_body``)."""
+        qui s'y fondent — sans ``body`` ni ``bodies``, ceux qu'elle touche
+        (``_result_body``)."""
         from engine.kernel import KernelError
         if sketch is not None:
             profile = self._get_sketch(sketch)
@@ -371,7 +372,7 @@ class SolidsMixin:
             self._own_thin_helpers(pad, helpers)
             if spec is not None and spec["caps"]:
                 helpers += self._thin_cavity(body, pad, profile, spec)
-            helpers += self._fuse_bodies(body, pad, fused)
+            helpers += self._fuse_result(body, pad, fused)
             self._recompute()
         except KernelError:
             # Le corps neuf part en dernier, vidé d'abord.
@@ -387,10 +388,12 @@ class SolidsMixin:
         balayage) : ``(corps, nouveau, corps à fondre)``.
 
         Fusionner : le corps actif, ou ``body`` ; ``bodies``, d'autres
-        corps que la fonction y fond (``_fuse_bodies``). Sinon un nouveau
-        corps — sauf si les esquisses sont seules dans le leur, qui le
-        devient. Une face d'arrivée se clique sur le corps actif : elle ne
-        vaut que là. ``conditions`` : celles d'une extrusion."""
+        corps que la fonction y fond (``_fuse_bodies``) — sans l'un ni
+        l'autre, ceux qu'elle touche (corps à fondre None,
+        ``_fuse_result``). Sinon un nouveau corps — sauf si les esquisses
+        sont seules dans le leur, qui le devient. Une face d'arrivée se
+        clique sur le corps actif : elle ne vaut que là. ``conditions`` :
+        celles d'une extrusion."""
         from engine.kernel import KernelError
         from engine.extrude import ExtrudeError, check_new_body
         conditions = conditions or {}
@@ -404,6 +407,8 @@ class SolidsMixin:
                 raise KernelError(
                     "jusqu'à la face : fusionnez avec le corps actif, "
                     "celui de la face cliquée")
+            if bodies is None and body is None:
+                return target, False, None
             fused = []
             for name in bodies or ():
                 other = self._merge_body(name)
@@ -443,14 +448,97 @@ class SolidsMixin:
         (où il reparaît) : FreeCAD l'ôterait sans bruit de ce combiner.
         ``own`` : le combiner qu'on règle."""
         from engine.kernel import KernelError
+        host = self._holder_of(tool, own)
+        if host is not None:
+            raise KernelError(
+                "« {} » est déjà fondu dans « {} » par une fonction "
+                "plus bas : un corps ne se fond qu'une fois".format(
+                    self._body_title(tool), self._body_title(host)))
+
+    def _holder_of(self, tool, own=None):
+        """Le corps dont un combiner (autre que ``own``) tient ``tool``,
+        ou None."""
         for host in self._history_bodies():
             for obj in host.Group:
                 if (obj.TypeId == "PartDesign::Boolean" and obj is not own
                         and tool in self._boolean_tools(obj)):
-                    raise KernelError(
-                        "« {} » est déjà fondu dans « {} » par une fonction "
-                        "plus bas : un corps ne se fond qu'une fois".format(
-                            self._body_title(tool), self._body_title(host)))
+                    return host
+        return None
+
+    def _fuse_result(self, body, feature, fused):
+        """Le combiner caché de ``feature`` ; ``fused`` None : les corps
+        qu'elle touche, comme « Fusionner » le veut (``_touched_bodies``)
+        — il faut d'abord sa forme, d'où un premier recalcul. Le premier
+        volume d'un corps vide le fonde sans rien fondre : ce corps a été
+        créé pour lui (bouton « Corps »)."""
+        if fused is None:
+            candidates = (self._merge_candidates(body)
+                          if getattr(feature, "BaseFeature", None) is not None
+                          else [])
+            fused = []
+            if candidates:
+                self._recompute()
+                fused = self._touched_bodies(body, feature, candidates)
+        return self._fuse_bodies(body, feature, fused)
+
+    def _merge_candidates(self, body):
+        """Les corps que « Fusionner » peut fondre dans ``body`` : présents
+        à la barre, libres (aucun combiner ne les tient), et qui ne
+        suivent pas ``body`` (une copie de réseau bouclerait le graphe)."""
+        removed = self._removed_names()
+        return [other for other in self._history_bodies()
+                if other is not body and other.Name not in removed
+                and getattr(other, "Tip", None) is not None
+                and body not in (other.OutListRecursive or ())
+                and self._holder_of(other) is None]
+
+    def _touched_bodies(self, body, feature, candidates):
+        """Parmi ``candidates``, les corps que touche le volume ajouté par
+        ``feature`` : fondus ensemble, ils perdent un solide — un contact
+        par une arête ou un point n'en est pas un. La cavité d'une paroi
+        mince fermée n'est pas de la matière : un corps logé dedans n'est
+        pas touché."""
+        from engine.bodypattern import is_subtractive_type
+        try:
+            added = self._added_shape(body, feature)
+            if added is None:
+                return []
+            for helper in self._thin_helpers(feature):
+                if is_subtractive_type(helper.TypeId):
+                    hollow = self._added_shape(body, helper)
+                    if hollow is not None:
+                        added = added.cut(hollow)
+            box = added.BoundBox
+            box.enlarge(1e-6)
+            count = len(added.Solids)
+        except Exception:  # noqa: BLE001 — OCCT : rien de sûr, rien de fondu
+            return []
+        touched = []
+        for other in candidates:
+            try:
+                shape = other.Shape
+                if (shape.isNull() or not shape.Solids
+                        or not box.intersect(shape.BoundBox)):
+                    continue
+                joined = added.fuse(shape)
+                if len(joined.Solids) < count + len(shape.Solids):
+                    touched.append(other)
+            except Exception:  # noqa: BLE001 — OCCT : pas de fusion, pas de contact
+                continue
+        return touched
+
+    @staticmethod
+    def _added_shape(body, feature):
+        """La forme qu'ajoute ou ôte ``feature``, dans le repère global :
+        ``AddSubShape`` est dans celui de la fonction (tourné pour une
+        esquisse sur XZ), lui-même dans celui du corps. None si vide."""
+        shape = getattr(feature, "AddSubShape", None)
+        if shape is None or shape.isNull() or not shape.Solids:
+            return None
+        shape = shape.copy()
+        shape.Placement = body.Placement.multiply(
+            feature.Placement).multiply(shape.Placement)
+        return shape
 
     def _merge_body(self, name):
         """Un corps où fusionner, ou à fondre : présent à la barre."""
@@ -1044,7 +1132,7 @@ class SolidsMixin:
             loft.Closed = bool(closed)
             loft.Label = label_for_type(type_id, self.lang)
             self._own_thin_helpers(loft, helpers)
-            helpers += self._fuse_bodies(body, loft, fused)
+            helpers += self._fuse_result(body, loft, fused)
             self._recompute()
         except Exception:
             self._remove_all(([body] if made else []) + helpers
@@ -1133,7 +1221,7 @@ class SolidsMixin:
             # compris : un corps neuf n'en garde rien.
             self._own_thin_helpers(
                 pipe, helpers + ([binder] if binder is not None else []))
-            helpers += self._fuse_bodies(body, pipe, fused)
+            helpers += self._fuse_result(body, pipe, fused)
             self._recompute()
         except Exception:
             self._remove_all(([body] if made else [])
@@ -1443,7 +1531,7 @@ class SolidsMixin:
                 feature.Midplane = True
             feature.Label = label_for_type(type_id, self.lang)
             self._own_thin_helpers(feature, helpers)
-            helpers += self._fuse_bodies(body, feature, fused)
+            helpers += self._fuse_result(body, feature, fused)
             self._drop_unused_axis_tools()
             self._recompute()
         except Exception:

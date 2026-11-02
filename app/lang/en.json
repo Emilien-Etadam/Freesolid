@@ -613,6 +613,7 @@
  "Jusqu'à la face : cliquez la face d'arrivée": "Up to face: click the target face",
  "Résultat": "Result",
  "Fusionner": "Merge",
+ "Fondre les corps touchés": "Merge the bodies it touches",
  "Cliquez des corps dans la vue": "Click bodies in the view",
  "Corps fondus": "Merged bodies",
  "Corps : {s}": "Body: {s}",

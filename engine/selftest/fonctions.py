@@ -1770,7 +1770,8 @@ def p96_corps_fondus_reedites(self, mark, report, etat):
     b = self._require_body()
     self.set_active_body(a.Name)
     ring = rect(15, 0, 35, 5, plane="XZ")
-    call("add_revolution", sketch=ring, angle=360)
+    # L'anneau touche B : sans liste, il le fondrait dès la création.
+    call("add_revolution", sketch=ring, angle=360, bodies=[])
     turned = self._thin_owner(a.Tip).Name
     alone = folder() == [a.Name, b.Name]
     fused = call("set_params", feature=turned, values={"bodies": [b.Name]})
@@ -1813,6 +1814,197 @@ def p96_corps_fondus_reedites(self, mark, report, etat):
         shown and all(r.get("ok") is False and "déjà fondu" in str(r.get("error"))
                 for r in held)
         and folder() == [a.Name] and clean())
+
+
+def p97_fusion_des_corps_touches(self, mark, report, etat):
+    mark("p97: « Fusionner » fond les corps que le volume touche")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2, **where):
+        name = self.sketch_start(**(where or {"plane": "XY"}))["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def folder():
+        return [b["name"] for b in self.get_tree()["bodies"]]
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def box(x1, y1, x2, y2):
+        # Un corps vide, puis son premier volume : un corps à part.
+        self.add_body()
+        rect(x1, y1, x2, y2)
+        call("add_pad", length=10)
+        return self._require_body()
+
+    def fused_by(body):
+        row = next(r for r in self.get_tree()["features"]
+                   if r["name"] == self._thin_owner(body.Tip).Name)
+        return [f["name"] for f in row.get("fused", [])]
+
+    self.new_part("Corps touchés")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    b = box(20, 0, 40, 20)   # contre A par une face
+    c = box(60, 0, 80, 20)
+    d = box(100, 0, 120, 20)
+    report["p97_corps_vide"] = (
+        folder() == [a.Name, b.Name, c.Name, d.Name] and clean())
+
+    # Une barre posée contre C par une face : C se fond dans B, rien
+    # d'autre. Un cube qui ne touche D que par une arête : pas fondu.
+    self.set_active_body(b.Name)
+    rect(40, 5, 60, 15)
+    face = call("add_pad", length=5)
+    one = (face.get("ok") is True and folder() == [a.Name, b.Name, d.Name]
+           and fused_by(b) == [c.Name] and len(b.Shape.Solids) == 1
+           and abs(b.Shape.Volume - (4000 + 4000 + 1000)) < 1e-6)
+    rect(90, 20, 100, 30)
+    edge = call("add_pad", length=10)
+    report["p97_face_oui_arete_non"] = (
+        one and edge.get("ok") is True
+        and folder() == [a.Name, b.Name, d.Name]
+        and len(b.Shape.Solids) == 2 and clean())
+
+    # Une liste, même vide, ou un corps choisi : rien d'office.
+    rect(15, 5, 25, 15)
+    empty = call("add_pad", length=5, bodies=[])
+    rect(15, 5, 25, 15)
+    chosen = call("add_pad", length=5, body=a.Name)
+    report["p97_liste_ou_corps_choisi"] = (
+        empty.get("ok") is True and chosen.get("ok") is True
+        and folder() == [a.Name, b.Name, d.Name]
+        and self._require_body() is a and clean())
+
+    # Sans liste, dans B : A s'y fond. L'aperçu ne laisse rien ; Ctrl+Z
+    # rend A ; la réédition le rend aussi.
+    self.set_active_body(b.Name)
+    rect(15, 5, 25, 15)
+    count = len(self._doc.Objects)
+    preview = dispatch(self, "preview",
+                       {"op": "add_pad", "params": {"length": 3}})
+    seen = (preview.get("ok") is True and len(self._doc.Objects) == count
+            and folder() == [a.Name, b.Name, d.Name])
+    call("add_pad", length=3)
+    merged = folder() == [b.Name, d.Name] and fused_by(b) == [a.Name]
+    call("undo")
+    back = folder() == [a.Name, b.Name, d.Name]
+    call("redo")
+    pad = self._thin_owner(b.Tip).Name
+    edit = call("set_params", feature=pad, values={"bodies": []})
+    report["p97_apercu_annuler_reediter"] = (
+        seen and merged and back and edit.get("ok") is True
+        and folder() == [a.Name, b.Name, d.Name] and fused_by(b) == []
+        and clean())
+
+    # Une révolution aussi.
+    self.set_active_body(d.Name)
+    ring = rect(90, 0, 100, 5, plane="XZ")
+    turned = call("add_revolution", sketch=ring, angle=360)
+    report["p97_revolution"] = (
+        turned.get("ok") is True and b.Name not in folder()
+        and fused_by(d) == [b.Name] and clean())
+
+    # Barre levée au-dessus d'un « Combiner » : le corps qu'il tient
+    # reparaît, mais un volume qui le touche ne le lui prend pas.
+    self.new_part("Corps tenu, corps touchés")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    b = box(30, 0, 50, 20)
+    c = box(60, 0, 80, 20)
+    c_pad = c.Tip.Name
+    self.set_active_body(a.Name)
+    call("add_boolean", tool=b.Name, type="fuse")
+    combiner = a.Tip
+    call("set_tip", feature=c_pad)
+    shown = folder() == [a.Name, b.Name, c.Name]
+    self.set_active_body(c.Name)
+    rect(45, 5, 65, 15)
+    taken = call("add_pad", length=5)
+    call("tip_to_end")
+    report["p97_corps_tenu"] = (
+        shown and taken.get("ok") is True
+        and b in self._boolean_tools(combiner) and fused_by(c) == []
+        and folder() == [a.Name, c.Name] and clean())
+
+    # Une copie de réseau, figée au rang du réseau, se fond dans sa source
+    # comme un autre corps : sans boucler le graphe.
+    self.new_part("Copie touchée")
+    self.add_rect_sketch(10, 10)
+    self.add_pad(8)
+    source = self._require_body()
+    self.add_body_pattern("linear", [source.Name], length=20, count=2,
+                          axis="X", spacing=True)
+    copies = [n for n in folder() if n != source.Name]
+    self.set_active_body(source.Name)
+    rect(0, -2, 16, 2)
+    reached = call("add_pad", length=4)
+    report["p97_copie_de_reseau"] = (
+        reached.get("ok") is True and len(copies) == 1
+        and folder() == [source.Name] and fused_by(source) == copies
+        and len(source.Shape.Solids) == 1
+        and abs(source.Shape.Volume - (800 + 800 + 256 - 80 - 16)) < 1e-6
+        and clean())
+
+    # Une répétition variable rejoue son groupe dans un corps provisoire,
+    # au contact du corps hôte : le second volume ne doit pas l'y fondre,
+    # sinon la copie emporterait tout le corps.
+    self.new_part("Répétition, corps touchés")
+    self.add_rect_sketch(20, 20)
+    self.add_pad(10)
+    host = self._require_body()
+    rect(5, -5, 15, 5)
+    self.add_pad(5)
+    first = self._thin_owner(host.Tip).Name
+    rect(12, -2, 20, 2)
+    self.add_pad(8)
+    second = self._thin_owner(host.Tip).Name
+    alone = abs(host.Shape.Volume - 4446) < 1e-6
+    # Deux copies empilées, qui se touchent : 696 mm³ chacune.
+    repeated = call("add_repeat_feature", features=[first, second],
+                    instances=[{"offset": [0, 0, 10]}, {"offset": [0, 0, 18]}],
+                    mode="fuse")
+    report["p97_repetition_variable"] = (
+        alone and repeated.get("ok") is True
+        and abs(host.Shape.Volume - (4446 + 2 * 696)) < 1e-6
+        and folder() == [host.Name] and clean())
+
+    # Une esquisse sur XZ : la forme ajoutée est dans le repère tourné de
+    # sa fonction. La barre entre dans B, posé à côté.
+    self.new_part("Corps touchés sur XZ")
+    rect(0, 0, 20, 20, plane="XZ")
+    self.add_pad(10)
+    a = self._require_body()
+    b = box(30, -10, 50, 0)
+    self.set_active_body(a.Name)
+    rect(15, 5, 35, 10, plane="XZ")
+    standing = call("add_pad", length=4)
+    report["p97_esquisse_sur_xz"] = (
+        standing.get("ok") is True and folder() == [a.Name]
+        and fused_by(a) == [b.Name] and len(a.Shape.Solids) == 1
+        and clean())
+
+    # Une paroi mince fermée autour d'un corps qui ne la touche pas : la
+    # cavité n'est pas de la matière, le corps reste à part.
+    self.new_part("Enceinte")
+    rect(0, 0, 10, 10)
+    self.add_pad(5)
+    inner = self._require_body()
+    host = box(40, 0, 60, 20)
+    rect(-10, -10, 20, 20)
+    walls = call("add_pad", length=20, midplane=True,
+                 thin={"type": "un", "thickness": 2, "caps": 2})
+    report["p97_paroi_fermee_autour"] = (
+        walls.get("ok") is True and folder() == [inner.Name, host.Name]
+        and fused_by(host) == [] and abs(inner.Shape.Volume - 500) < 1e-6
+        and clean())
 
 
 def protocol_dangling(tree):
@@ -2026,7 +2218,7 @@ def p83_corps_concernes(self, mark, report, etat):
     cut = next(f["name"] for f in self.get_tree()["features"]
                if f.get("edits") == pattern["name"])
     self.add_rect_sketch(4, 4)
-    self.add_pad(3)
+    self.add_pad(3, bodies=[])  # entre dans l'autre corps : sans le fondre
     self.delete_feature(cut)
     after = _volumes(self)
     self.set_active_body(top)

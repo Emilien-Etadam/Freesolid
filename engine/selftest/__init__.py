@@ -212,6 +212,7 @@ def _etapes():
         fonctions.p94_fusionner_les_autres_volumes,
         fonctions.p95_fusionner_plusieurs_corps,
         fonctions.p96_corps_fondus_reedites,
+        fonctions.p97_fusion_des_corps_touches,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

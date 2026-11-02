@@ -26,8 +26,8 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 | Révolution | oui | angle, axe, inverser, plan médian, contours, corps fondus | esquisse, « Fusionner » et le corps de la fonction | oui | oui | oui (axe, plan médian, corps fondus) |
 | Enlèvement de révolution | oui | comme la Révolution | comme la Révolution | oui | oui | non (seule la Révolution est testée) |
 | Perçage | oui | le panneau de la création sans les positions : type (simple, lamage, fraisage), cotes du type, angle du fraisage, à travers ou borgne, profondeur | positions et face | oui | oui | oui (type, condition de fin) |
-| Lissage | oui | rien | tout : profils et ordre, soustractif, lissage droit, boucle fermée, « Fusionner » et les corps choisis | — | oui | non |
-| Balayage | oui | rien | tout : profil, trajectoire, soustractif, « Fusionner » et les corps choisis | — | oui | non |
+| Lissage | oui | rien | tout : profils et ordre, soustractif, lissage droit, boucle fermée, « Fusionner » et les corps fondus | — | oui | non |
+| Balayage | oui | rien | tout : profil, trajectoire, soustractif, « Fusionner » et les corps fondus | — | oui | non |
 | Hélice | oui | pas, hauteur, angle | esquisse profil | oui | oui | non |
 | Texte | oui | texte, taille, profondeur, position | face d'appui, relief ou gravure, police | non | oui | oui |
 

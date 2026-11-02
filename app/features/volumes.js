@@ -594,8 +594,9 @@ export function extrudeEditProblem(v, feature) {
 }
 
 // ---------- fusionner ou non (extrusion, révolution, lissage, balayage) ----------
-// Décochée : un nouveau corps. Cochée : le corps actif, ou celui qu'on
-// clique dans la vue. Seulement quand la pièce a déjà un volume.
+// Décochée : un nouveau corps. Cochée : le corps actif, et les corps qu'on
+// clique dans la vue — la fonction les fond en un seul. Seulement quand
+// la pièce a déjà un volume.
 
 /** Groupe « Résultat » d'un volume, vide sans corps solide. `when` : le
  *  groupe ne s'affiche que si ces valeurs le veulent (pas pour un
@@ -610,15 +611,26 @@ export function mergeGroups(bodies, { when } = {}) {
     rows: [
       { type: "check", key: "merge", label: "Fusionner", value: true },
       { type: "selection", key: "body", accepts: ["body"], label: "Corps",
-        hint: "Cliquez un corps dans la vue",
-        value: active
-          ? { kind: "body", name: active.name, label: active.label } : null,
+        multiple: true, hint: "Cliquez des corps dans la vue",
+        value: { kind: "body", items: active
+          ? [{ kind: "body", name: active.name, label: active.label }] : [] },
         showIf: (v) => v.merge !== false },
     ],
   }];
 }
 
 const activeBodyName = (bodies) => (bodies ?? []).find((b) => b.active)?.name;
+
+/** Les corps de la zone, dans l'ordre des clics, et celui où la fonction
+ *  se range : le corps actif s'il y est, sinon le premier (zone vide : le
+ *  corps actif). */
+function mergeTargets(v, bodies) {
+  const picks = v.body?.items ?? (v.body ? [v.body] : []);
+  const names = [...new Set(picks.map((i) => i.name).filter(Boolean))];
+  const active = activeBodyName(bodies);
+  const target = !names.length || names.includes(active) ? active : names[0];
+  return { target, others: names.filter((n) => n !== target) };
+}
 
 /** Ce que la fusion interdit, sinon null. */
 export function mergeProblem(v, bodies) {
@@ -627,19 +639,22 @@ export function mergeProblem(v, bodies) {
       && (!v.dir2 || v.cond2 === "borgne"));
     return blind ? null : "Nouveau corps : profondeur borgne ou plan milieu";
   }
-  const target = v.body?.name;
+  const { target } = mergeTargets(v, bodies);
   if (v.cond === "face" && target && target !== activeBodyName(bodies)) {
     return "Jusqu'à la face : fusionnez avec le corps actif";
   }
   return null;
 }
 
-/** Params moteur de la fusion : `merge: false`, ou le corps choisi s'il
- *  n'est pas le corps actif. */
+/** Params moteur de la fusion : `merge: false`, ou le corps où ranger la
+ *  fonction s'il n'est pas le corps actif, et les autres corps qu'elle y
+ *  fond (`bodies`). */
 export function mergeParams(v, bodies) {
   if (v.merge === false) return { merge: false };
-  const target = v.body?.name;
-  return target && target !== activeBodyName(bodies) ? { body: target } : {};
+  const { target, others } = mergeTargets(v, bodies);
+  return { ...(target && target !== activeBodyName(bodies)
+    ? { body: target } : {}),
+           ...(others.length ? { bodies: others } : {}) };
 }
 
 // Lissage, balayage : un enlèvement creuse le corps actif, sans fusion.

@@ -409,6 +409,7 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, BodySol
     def _recompute(self):
         doc = self._require_doc()
         self._sync_revolution_axes()
+        self._sync_bar_booleans()
         doc.recompute()
         # Formes figées (suppression de face), copies d'un réseau de
         # corps, outils des corps concernés : ils suivent les fonctions

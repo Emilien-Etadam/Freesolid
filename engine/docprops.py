@@ -225,6 +225,11 @@ class DocPropsMixin:
         from engine.kernel import KernelError as _Broken
         for obj in targets:
             obj.Suppressed = bool(suppressed)
+            # Ses objets cachés la suivent : la cavité d'une paroi mince,
+            # le combiner qui fond d'autres corps (les corps reviennent).
+            for helper in self._thin_helpers(obj):
+                if self._is_suppressible(helper):
+                    helper.Suppressed = bool(suppressed)
         for _ in range(2):
             try:
                 self._recompute()

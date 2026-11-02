@@ -21,13 +21,13 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 
 | Fonction | Aperçu à la création | Réédition : ce qui revient | Ne revient pas | Aperçu à la réédition | Barre de retour | Selftest de réédition |
 |---|---|---|---|---|---|---|
-| Extrusion | oui + flèche | le panneau de la création : condition de fin (sauf passer à « jusqu'à la face » ; borgne seulement pour le premier volume d'un corps), décalage, inverser, dépouille, direction 2 (condition, profondeur, dépouille), épaisseurs et côté de la paroi mince, contours | face d'arrivée, activer la paroi mince ou en changer le genre, esquisse, « Fusionner » et le corps choisi | oui + flèche (la flèche s'efface quand le sens ou la condition change) | oui | oui (conditions, direction 2, paroi mince, extrémités fermées) |
+| Extrusion | oui + flèche | le panneau de la création : condition de fin (sauf passer à « jusqu'à la face » ; borgne seulement pour le premier volume d'un corps), décalage, inverser, dépouille, direction 2 (condition, profondeur, dépouille), épaisseurs et côté de la paroi mince, contours | face d'arrivée, activer la paroi mince ou en changer le genre, esquisse, « Fusionner » et les corps choisis | oui + flèche (la flèche s'efface quand le sens ou la condition change) | oui | oui (conditions, direction 2, paroi mince, extrémités fermées) |
 | Enlèvement extrudé | oui + flèche | comme l'Extrusion | comme l'Extrusion | oui + flèche | oui | oui (à travers tout, borgne, refus de « jusqu'à la face ») |
-| Révolution | oui | angle, axe, inverser, plan médian, contours | esquisse, « Fusionner » et le corps choisi | oui | oui | oui (axe, plan médian) |
+| Révolution | oui | angle, axe, inverser, plan médian, contours | esquisse, « Fusionner » et les corps choisis | oui | oui | oui (axe, plan médian) |
 | Enlèvement de révolution | oui | comme la Révolution | comme la Révolution | oui | oui | non (seule la Révolution est testée) |
 | Perçage | oui | le panneau de la création sans les positions : type (simple, lamage, fraisage), cotes du type, angle du fraisage, à travers ou borgne, profondeur | positions et face | oui | oui | oui (type, condition de fin) |
-| Lissage | oui | rien | tout : profils et ordre, soustractif, lissage droit, boucle fermée, « Fusionner » et le corps choisi | — | oui | non |
-| Balayage | oui | rien | tout : profil, trajectoire, soustractif, « Fusionner » et le corps choisi | — | oui | non |
+| Lissage | oui | rien | tout : profils et ordre, soustractif, lissage droit, boucle fermée, « Fusionner » et les corps choisis | — | oui | non |
+| Balayage | oui | rien | tout : profil, trajectoire, soustractif, « Fusionner » et les corps choisis | — | oui | non |
 | Hélice | oui | pas, hauteur, angle | esquisse profil | oui | oui | non |
 | Texte | oui | texte, taille, profondeur, position | face d'appui, relief ou gravure, police | non | oui | oui |
 
@@ -123,6 +123,7 @@ Où ça se décide : `app/editkind.js` ; `engine/equations.py` (`_has_params`, `
 ### 2. Désactiver et Masquer : les règles ne suivaient pas les fonctions
 
 - **Désactiver proposé, refusé par le moteur** : Axe, Point et Repère de référence, Courbe composite et Supprimer la face d'une surface. Le menu n'excluait que le Plan, alors que le moteur ne désactive que les objets qui portent la propriété `Suppressed` (message « seule une fonction de volume se désactive »), et qu'aucun de ces genres (`PartDesign::Line`, `Point`, `CoordinateSystem`, `SubShapeBinder`) ne la porte dans FreeCAD 1.1.3. Corrigé par #153 : l'arbre dit si une ligne se désactive (`suppressible`), le menu le suit. Une ligne qu'une répétition creuse dans un autre corps ne se désactive pas seule : on désactive la répétition.
+- **Objets cachés d'une fonction** : ils se désactivent avec elle. La cavité d'une paroi mince fermée restait active et creusait le corps (une paroi tournée vers la matière y laissait son vide) ; le combiner caché d'un volume qui fond plusieurs corps les rend quand on le désactive. Corrigé par la fusion de plusieurs corps (`set_suppressed`).
 - **Ce qui ne se désactive pas** : tout ce qui n'est pas une fonction de corps PartDesign. Les surfaces (y compris Épaissir, dont le résultat est un solide), les références, le réseau de corps, la Suppression de corps. Les modeleurs courants désactivent tout : il faudrait un mécanisme à FreeSolid, comme le drapeau qui fait reculer les surfaces avec la barre de retour.
 - **Fonctions graphe, Répétition variable, Texte** : le menu propose « Désactiver » quand le moteur l'accepte ; l'effet sur la pièce reste à vérifier (le corps outil caché du Texte, par exemple).
 - **Masquer** : il manquait à la Courbe composite et à Supprimer la face d'une surface, dont le genre (`binder`) n'était pas dans la liste des surfaces. Corrigé par #151 : toute ligne du dossier des surfaces se masque. Les fonctions de corps ne se masquent pas (seuls les corps et les surfaces du premier niveau).
@@ -178,7 +179,7 @@ Corrigé pour quatre fonctions : leur double-clic rouvre le panneau de la créat
 
 Reste :
 
-- **Extrusion et Enlèvement** : passer à « jusqu'à la face » ou changer de face (une sélection, thème 4), activer la paroi mince ou changer son genre (un, plan milieu, deux côtés), ce qui ajoute ou retire des profils cachés. Pour l'Extrusion, comme pour la Révolution, le Lissage et le Balayage, « Fusionner » et le corps choisi : les changer déplacerait la fonction d'un corps à l'autre, avec ce qui la suit.
+- **Extrusion et Enlèvement** : passer à « jusqu'à la face » ou changer de face (une sélection, thème 4), activer la paroi mince ou changer son genre (un, plan milieu, deux côtés), ce qui ajoute ou retire des profils cachés. Pour l'Extrusion, comme pour la Révolution, le Lissage et le Balayage, « Fusionner » et les corps choisis : les changer déplacerait la fonction d'un corps à l'autre, avec ce qui la suit.
 - **Dépouille** : le plan neutre.
 - **Texte** : relief ou gravure, police. Le relief est dans la forme des lettres et dans le genre du booléen : il faut reconstruire.
 - **Couper avec une surface** : passer de « tout un côté » à « bande épaisse » change le genre de l'outil.

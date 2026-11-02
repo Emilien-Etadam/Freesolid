@@ -210,6 +210,7 @@ def _etapes():
         fonctions.p92_coque_et_percage_reedites,
         fonctions.p93_fusionner_ou_non,
         fonctions.p94_fusionner_les_autres_volumes,
+        fonctions.p95_fusionner_plusieurs_corps,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

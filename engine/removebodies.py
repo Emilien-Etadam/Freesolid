@@ -102,8 +102,9 @@ class RemoveBodiesMixin:
         return spec if isinstance(spec, dict) else {}
 
     def _removed_names(self):
-        """Corps et surfaces ôtés à la position de la barre."""
-        names = set()
+        """Corps et surfaces ôtés à la position de la barre : par une
+        suppression, ou fondus dans un autre corps (``_absorbed_bodies``)."""
+        names = set(self._absorbed_bodies())
         for host in self._removal_hosts():
             if self._is_rolled_back(host):
                 continue
@@ -154,6 +155,15 @@ class RemoveBodiesMixin:
                 spec = self._removal_spec(other)
                 removed.update(spec.get("bodies") or ())
                 removed.update(spec.get("surfaces") or ())
+        # Les corps fondus dans un autre avant ce rang (``_absorbed_bodies``
+        # à la barre) : un combiner actif, outils lâchés sous la barre
+        # compris.
+        for body in self._history_bodies():
+            for obj in body.Group:
+                if (obj.TypeId == "PartDesign::Boolean"
+                        and not getattr(obj, "Suppressed", False)
+                        and order_of.get(obj.Name, -1) < rank):
+                    removed.update(t.Name for t in self._boolean_tools(obj))
         tips = {body.Name: doc.getObject(last[body.Name][1])
                 for body in self._history_bodies()
                 if body.Name in last and body.Name not in removed}
@@ -466,9 +476,19 @@ class RemoveBodiesMixin:
 
     def _keep_active_body(self):
         """Le corps actif n'est jamais un corps supprimé : on passe au
-        premier corps qui reste."""
+        corps où il est fondu, sinon au premier corps qui reste."""
         removed = self._removed_names()
         if self._body is None or self._body.Name not in removed:
+            return
+        absorbed = self._absorbed_bodies()
+        host = absorbed.get(self._body.Name)
+        seen = set()
+        while (host is not None and host.Name in removed
+               and host.Name not in seen):
+            seen.add(host.Name)
+            host = absorbed.get(host.Name)
+        if host is not None and host.Name not in removed:
+            self._body = host
             return
         for body in self._history_bodies():
             if body.Name not in removed:

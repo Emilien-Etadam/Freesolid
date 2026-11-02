@@ -15,7 +15,7 @@ import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
   revolutionGroups, revolutionEditValues, revolutionProblem,
   extrudeEditInitial, extrudeEditProblem, extrudeEditValues, extrudeGroups,
-  fusedGroups, fusedValues,
+  bodyChoiceGroups, bodyChoiceValues,
   holeEditInitial, holeEditValues, holeGroups, shellEditGroups,
   shellEditValues,
   checkedContours, contourRows, vertexChamferDistances, vertexChamferRows,
@@ -1881,16 +1881,16 @@ export function installTree(ctx) {
   }
 
   /** Les cotes d'une réédition, et les corps fondus (ou creusés) s'ils
-   *  ont changé (`fusedValues`, sur l'arbre de l'ouverture du panneau). */
-  function withFused(values, v, feature, tree) {
-    return values && { ...values, ...fusedValues(v, feature, tree) };
+   *  ont changé (`bodyChoiceValues`, sur l'arbre de l'ouverture du panneau). */
+  function withBodyChoices(values, v, feature, tree) {
+    return values && { ...values, ...bodyChoiceValues(v, feature, tree) };
   }
 
   function editRevolved(feature) {
     const spec = feature.revolution;
     const tree = ctx.lastTree;
     const sketch = findSketch(tree, spec.profile);
-    const build = (v) => withFused(
+    const build = (v) => withBodyChoices(
       revolutionEditValues(v, spec, feature.params), v, feature, tree);
     panel.open({
       icon: TREE_ICONS[feature.type_key] ?? "revolve",
@@ -1900,7 +1900,7 @@ export function installTree(ctx) {
         axis: spec.axis,
         reversed: spec.reversed,
         midplane: spec.midplane,
-      }), ...contourGroups(feature), ...fusedGroups(feature, tree)],
+      }), ...contourGroups(feature), ...bodyChoiceGroups(feature, tree)],
       onChange: (v) => {
         const values = build(v);
         schedulePreview(values
@@ -1929,13 +1929,13 @@ export function installTree(ctx) {
     const sameWay = (values) => !["cond", "midplane", "reversed", "cond2"]
       .some((key) => key in values);
     const tree = ctx.lastTree;
-    const build = (v) => withFused(extrudeEditValues(v, feature), v, feature,
+    const build = (v) => withBodyChoices(extrudeEditValues(v, feature), v, feature,
                                    tree);
     panel.open({
       icon: TREE_ICONS[feature.type_key] ?? "body",
       title: feature.label,
       groups: [...extrudeGroups(kind, extrudeEditInitial(feature)),
-               ...contourGroups(feature), ...fusedGroups(feature, tree)],
+               ...contourGroups(feature), ...bodyChoiceGroups(feature, tree)],
       onChange: (v, how) => {
         const values = build(v);
         schedulePreview(values
@@ -2205,8 +2205,8 @@ export function installTree(ctx) {
       (v) => shellEditValues(v, feature), "Épaisseur invalide"),
     hole: (feature) => editWithValues(feature,
       [...holeGroups(holeEditInitial(feature)),
-       ...fusedGroups(feature, ctx.lastTree)],
-      (v) => withFused(holeEditValues(v, feature), v, feature, ctx.lastTree),
+       ...bodyChoiceGroups(feature, ctx.lastTree)],
+      (v) => withBodyChoices(holeEditValues(v, feature), v, feature, ctx.lastTree),
       "Valeurs du perçage invalides"),
     remove_bodies: (feature) => editRemoveBodies(feature),
     params: editParams,

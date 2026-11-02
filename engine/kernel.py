@@ -68,6 +68,8 @@ from engine.configs import ConfigsMixin
 from engine.splineedit import SplineEditMixin
 from engine.sketch3d import Sketch3dMixin
 from engine.solids import SolidsMixin
+from engine.bodyfuse import BodyFuseMixin
+from engine.bodyscope import BodyScopeMixin
 from engine.bodypattern import BodyPatternMixin
 from engine.bodysolids import BodySolidsMixin
 from engine.removebodies import RemoveBodiesMixin
@@ -308,7 +310,7 @@ def _format_mm(value):
     return text.replace(".", ",") or "0"
 
 
-class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyPatternMixin, BodySolidsMixin, RemoveBodiesMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, MaterialsMixin, RefGeomMixin, ClipboardMixin, TemplatesMixin, TreeOrgMixin, DirectEditMixin, ConfigsMixin, SplineEditMixin, Sketch3dMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
+class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyFuseMixin, BodyScopeMixin, BodyPatternMixin, BodySolidsMixin, RemoveBodiesMixin, SketchMixin, SketchDrawMixin, SketchEditMixin, SketchRefMixin, SketchMoreMixin, SketchLayersMixin, DocPropsMixin, VertexChamferMixin, SelectChainMixin, MaterialsMixin, RefGeomMixin, ClipboardMixin, TemplatesMixin, TreeOrgMixin, DirectEditMixin, ConfigsMixin, SplineEditMixin, Sketch3dMixin, EquationsMixin, FilesMixin, GraphMixin, SurfaceMixin, AssemblyMixin, TextMixin, DrawingMixin, SelftestMixin):
     """Owns one FreeCAD document and executes protocol operations."""
 
     def __init__(self):

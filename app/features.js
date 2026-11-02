@@ -23,6 +23,8 @@ export {
   resolveProfileSketch,
 } from "./features/commun.js";
 export {
+  bodyChoiceGroups,
+  bodyChoiceValues,
   checkedContours,
   contourLabel,
   contourRows,
@@ -34,8 +36,6 @@ export {
   extrudeEditValues,
   extrudeGroups,
   extrudeInvalid,
-  fusedGroups,
-  fusedValues,
   holeEditInitial,
   holeEditValues,
   holeGroups,

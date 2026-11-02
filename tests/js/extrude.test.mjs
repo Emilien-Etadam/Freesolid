@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   FEATURES,
-  cutGroups, cutParams, extrudeBuild, extrudeEditInitial, extrudeEditProblem, extrudeEditValues,
-  extrudeGroups, extrudeInvalid, fusedGroups, fusedValues, holeEditInitial,
+  bodyChoiceGroups, bodyChoiceValues, cutGroups, cutParams, extrudeBuild, extrudeEditInitial,
+  extrudeEditProblem, extrudeEditValues, extrudeGroups, extrudeInvalid, holeEditInitial,
   holeEditValues, holeGroups, mergeGroups, mergeParams, mergeProblem, shellEditGroups, shellEditValues,
 } from "../../app/features.js";
 
@@ -549,32 +549,32 @@ describe("corps fondus, à la réédition", () => {
                 fused: [{ name: "Body001", label: "Extrusion1" }] };
 
   it("une case par corps fondu, cochée, puis par autre corps solide", () => {
-    const [group] = fusedGroups(pad, tree);
+    const [group] = bodyChoiceGroups(pad, tree);
     assert.equal(group.label, "Corps fondus");
     assert.deepEqual(group.rows.map((r) => [r.key, r.label, r.value]), [
-      ["fuse:Body001", "Extrusion1", true],
-      ["fuse:Body002", "Extrusion2", false],
+      ["body:Body001", "Extrusion1", true],
+      ["body:Body002", "Extrusion2", false],
     ]);
   });
 
   it("ni chanfrein, ni corps seul : pas de groupe", () => {
-    assert.deepEqual(fusedGroups({ ...pad, type_key: "chamfer" }, tree), []);
-    assert.deepEqual(fusedGroups({ name: "Pad", type_key: "pad" },
+    assert.deepEqual(bodyChoiceGroups({ ...pad, type_key: "chamfer" }, tree), []);
+    assert.deepEqual(bodyChoiceGroups({ name: "Pad", type_key: "pad" },
                                  { bodies: [tree.bodies[0]] }), []);
   });
 
   it("une ligne d'un autre corps garde ce corps hors des cases", () => {
     const other = { name: "Pad9", type_key: "revolution", body: "Body002" };
-    assert.deepEqual(fusedGroups(other, tree)[0].rows.map((r) => r.key),
-                     ["fuse:Body"]);
+    assert.deepEqual(bodyChoiceGroups(other, tree)[0].rows.map((r) => r.key),
+                     ["body:Body"]);
   });
 
   it("bodies seulement quand les cases changent", () => {
-    const same = { "fuse:Body001": true, "fuse:Body002": false };
-    assert.deepEqual(fusedValues(same, pad, tree), {});
-    assert.deepEqual(fusedValues({ ...same, "fuse:Body002": true }, pad, tree),
+    const same = { "body:Body001": true, "body:Body002": false };
+    assert.deepEqual(bodyChoiceValues(same, pad, tree), {});
+    assert.deepEqual(bodyChoiceValues({ ...same, "body:Body002": true }, pad, tree),
                      { bodies: ["Body001", "Body002"] });
-    assert.deepEqual(fusedValues({ ...same, "fuse:Body001": false }, pad, tree),
+    assert.deepEqual(bodyChoiceValues({ ...same, "body:Body001": false }, pad, tree),
                      { bodies: [] });
   });
 });
@@ -590,31 +590,31 @@ describe("corps creusés, à la réédition", () => {
                    cut: [{ name: "Body001", label: "Enlèvement[2]" }] };
 
   it("une case par corps creusé, cochée, puis par autre corps solide", () => {
-    const [group] = fusedGroups(pocket, tree);
+    const [group] = bodyChoiceGroups(pocket, tree);
     assert.equal(group.label, "Corps creusés");
     assert.deepEqual(group.rows.map((r) => [r.key, r.label, r.value]), [
-      ["fuse:Body001", "Enlèvement[2]", true],
-      ["fuse:Body002", "Extrusion2", false],
+      ["body:Body001", "Enlèvement[2]", true],
+      ["body:Body002", "Extrusion2", false],
     ]);
   });
 
   it("la gorge et le perçage aussi ; les corps fondus n'y comptent pas", () => {
     for (const type_key of ["groove", "hole"]) {
-      const [group] = fusedGroups({ ...pocket, type_key }, tree);
+      const [group] = bodyChoiceGroups({ ...pocket, type_key }, tree);
       assert.equal(group.label, "Corps creusés");
     }
     const fusedOnly = { name: "Pocket", type_key: "pocket",
                         fused: [{ name: "Body001", label: "x" }] };
-    assert.deepEqual(fusedGroups(fusedOnly, tree)[0].rows.map((r) => r.value),
+    assert.deepEqual(bodyChoiceGroups(fusedOnly, tree)[0].rows.map((r) => r.value),
                      [false, false]);
   });
 
   it("bodies seulement quand les cases changent", () => {
-    const same = { "fuse:Body001": true, "fuse:Body002": false };
-    assert.deepEqual(fusedValues(same, pocket, tree), {});
-    assert.deepEqual(fusedValues({ ...same, "fuse:Body001": false }, pocket,
+    const same = { "body:Body001": true, "body:Body002": false };
+    assert.deepEqual(bodyChoiceValues(same, pocket, tree), {});
+    assert.deepEqual(bodyChoiceValues({ ...same, "body:Body001": false }, pocket,
                                  tree), { bodies: [] });
-    assert.deepEqual(fusedValues({ ...same, "fuse:Body002": true }, pocket,
+    assert.deepEqual(bodyChoiceValues({ ...same, "body:Body002": true }, pocket,
                                  tree), { bodies: ["Body001", "Body002"] });
   });
 });

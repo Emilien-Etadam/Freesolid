@@ -1,5 +1,8 @@
 """Fonctions volumiques : corps, extrusions, révolutions, habillages.
 
+Fondre d'autres corps dans un volume : ``engine/bodyfuse.py`` ; les
+creuser par un enlèvement : ``engine/bodyscope.py``.
+
 Mixin de ``Kernel``. Pas d'import FreeCAD au niveau du module :
 les méthodes importent le noyau à l'appel, pour éviter un cycle.
 """
@@ -83,6 +86,42 @@ class SolidsMixin:
                     if tool.TypeId == "PartDesign::Body":
                         absorbed[tool.Name] = host
         return absorbed
+
+    # -- corps qu'une fonction fond ou creuse (``bodies``) ------------------
+
+    def _listed_body(self, name):
+        """Un corps nommé par une fonction (où fusionner, à fondre, à
+        creuser) : présent à la barre."""
+        from engine.kernel import KernelError
+        obj = self._require_doc().getObject(str(name))
+        if (obj is None or obj.TypeId != "PartDesign::Body"
+                or self._is_internal_tool(obj)):
+            raise KernelError("corps inconnu : {}".format(name))
+        self._refuse_gone_body(obj)
+        return obj
+
+    def _listed_bodies(self, names, body, held=()):
+        """Les corps de la liste ``names``, sans ``body`` ni doublon.
+        ``held`` : ceux que la fonction tient déjà — la barre a pu les ôter
+        du dossier, ``_listed_body`` les refuserait."""
+        from engine.kernel import KernelError
+        if not isinstance(names, (list, tuple)):
+            raise KernelError("bodies : une liste de corps attendue")
+        found = []
+        for name in names:
+            other = (next((b for b in held if b.Name == str(name)), None)
+                     or self._listed_body(name))
+            if other is not body and other not in found:
+                found.append(other)
+        return found
+
+    def _other_bodies(self, body):
+        """Les autres corps présents à la barre, et bâtis : ceux qu'une
+        fonction de ``body`` peut fondre ou creuser sans liste."""
+        removed = self._removed_names()
+        return [other for other in self._history_bodies()
+                if other is not body and other.Name not in removed
+                and getattr(other, "Tip", None) is not None]
 
     def set_body_color(self, body, color, solid=None):
         """Couleur d'affichage d'un corps, persistée dans le .FCStd.
@@ -174,79 +213,6 @@ class SolidsMixin:
         doc = self._require_doc()
         return [t for t in (doc.getObject(str(n)) for n in names)
                 if t is not None]
-
-    #: Volumes ajoutés qui fondent d'autres corps (``bodies``).
-    _FUSING_TYPES = ("PartDesign::Pad", "PartDesign::Revolution",
-                     "PartDesign::AdditiveLoft", "PartDesign::AdditivePipe")
-
-    def _fuse_helper(self, feature):
-        """Le combiner caché d'un volume qui fond d'autres corps, ou None."""
-        if getattr(feature, "TypeId", "") not in self._FUSING_TYPES:
-            return None
-        return next((h for h in self._thin_helpers(feature)
-                     if h.TypeId == "PartDesign::Boolean"), None)
-
-    def _fused_bodies_of(self, feature):
-        """Les corps que ``feature`` fond dans le sien."""
-        fuse = self._fuse_helper(feature)
-        return self._boolean_tools(fuse) if fuse is not None else []
-
-    def _set_fused_bodies(self, feature, names):
-        """Réédition : les corps que ``feature`` fond dans le sien. Aucun,
-        son combiner caché part ; un premier, il se pose juste après elle
-        (et sa cavité). La liste est contrôlée avant tout changement."""
-        from engine.kernel import KernelError
-        if feature.TypeId not in self._FUSING_TYPES:
-            raise KernelError("seul un volume ajouté fond d'autres corps")
-        if not isinstance(names, (list, tuple)):
-            raise KernelError("bodies : une liste de corps attendue")
-        body = feature.getParentGeoFeatureGroup()
-        fuse = self._fuse_helper(feature)
-        mine = self._fused_bodies_of(feature)
-        others = []
-        for name in names:
-            # Les siens sont fondus : ``_merge_body`` les refuserait.
-            other = (next((b for b in mine if b.Name == str(name)), None)
-                     or self._merge_body(name))
-            if other is body or other in others:
-                continue
-            self._refuse_held_body(other, fuse)
-            if body in (other.OutListRecursive or ()):
-                raise KernelError(
-                    "« {} » suit « {} » : il ne s'y fond pas".format(
-                        self._body_title(other), self._body_title(body)))
-            others.append(other)
-        if fuse is None:
-            if others:
-                self._insert_fuse(body, feature, others)
-            return
-        if not others:
-            base = getattr(fuse, "BaseFeature", None)
-            if body.Tip is fuse:
-                body.Tip = base
-            self._relink_chain(body, [fuse], base)
-            self._require_doc().removeObject(fuse.Name)
-            return
-        if self._PARKED_TOOLS in fuse.PropertiesList:
-            setattr(fuse, self._PARKED_TOOLS, "")
-        fuse.Group = []
-        self._set_boolean_tools(fuse, others)
-
-    def _insert_fuse(self, body, feature, others):
-        """Le combiner caché d'une fonction rééditée, juste après elle : la
-        pointe y passe le temps de l'insertion, les fonctions suivantes se
-        rebranchent sur lui, puis elle revient."""
-        anchor = self._tip_with_helpers(feature)
-        tip = body.Tip
-        previous = self._body
-        self._body = body
-        body.Tip = anchor
-        try:
-            self._fuse_bodies(body, feature, others)
-        finally:
-            self._body = previous
-            if tip is not anchor:
-                body.Tip = tip
 
     def _boolean_tools(self, obj):
         """Les corps outils d'un combiner, même lâchés sous la barre."""
@@ -381,323 +347,6 @@ class SolidsMixin:
             raise
         self._body = body
         return self.get_tree()
-
-    def _result_body(self, profiles, merge, body, conditions=None,
-                     bodies=None):
-        """Corps où ranger un volume (extrusion, révolution, lissage,
-        balayage) : ``(corps, nouveau, corps à fondre)``.
-
-        Fusionner : le corps actif, ou ``body`` ; ``bodies``, d'autres
-        corps que la fonction y fond (``_fuse_bodies``) — sans l'un ni
-        l'autre, ceux qu'elle touche (corps à fondre None,
-        ``_fuse_result``). Sinon un nouveau corps — sauf si les esquisses
-        sont seules dans le leur, qui le devient. Une face d'arrivée se
-        clique sur le corps actif : elle ne vaut que là. ``conditions`` :
-        celles d'une extrusion."""
-        from engine.kernel import KernelError
-        from engine.extrude import ExtrudeError, check_new_body
-        conditions = conditions or {}
-        doc = self._require_doc()
-        active = self._require_body()
-        if merge:
-            target = active if body is None else self._merge_body(body)
-            if target is not active and (
-                    conditions.get("cond") == "face"
-                    or conditions.get("cond2") == "face"):
-                raise KernelError(
-                    "jusqu'à la face : fusionnez avec le corps actif, "
-                    "celui de la face cliquée")
-            if bodies is None and body is None:
-                return target, False, None
-            fused = []
-            for name in bodies or ():
-                other = self._merge_body(name)
-                if other is target or other in fused:
-                    continue
-                self._refuse_held_body(other)
-                if target in (other.OutListRecursive or ()):
-                    # Une copie de réseau suit sa source : la fondre dans
-                    # la source bouclerait le graphe.
-                    raise KernelError(
-                        "« {} » suit « {} » : il ne s'y fond pas".format(
-                            self._body_title(other),
-                            self._body_title(target)))
-                fused.append(other)
-            return target, False, fused
-        try:
-            check_new_body(conditions.get("cond"), conditions.get("cond2"))
-        except ExtrudeError as exc:
-            raise KernelError(str(exc))
-        homes = {getattr(p.getParentGeoFeatureGroup(), "Name", None)
-                 for p in profiles}
-        name = homes.pop() if len(homes) == 1 else None
-        home = doc.getObject(name) if name else None
-        if (getattr(home, "TypeId", "") == "PartDesign::Body"
-                and not any(o.isDerivedFrom("PartDesign::Feature")
-                            for o in home.Group)):
-            return home, False, []
-        made = doc.addObject("PartDesign::Body", "Body")
-        made.Label = self._t("Corps")
-        made.addProperty("App::PropertyBool", "FreeSolidNewBody", "FreeSolid",
-                         "Né d'une fonction non fusionnée")
-        made.FreeSolidNewBody = True
-        return made, True, []
-
-    def _refuse_held_body(self, tool, own=None):
-        """Refuse un corps qu'un combiner tient déjà, même sous la barre
-        (où il reparaît) : FreeCAD l'ôterait sans bruit de ce combiner.
-        ``own`` : le combiner qu'on règle."""
-        from engine.kernel import KernelError
-        host = self._holder_of(tool, own)
-        if host is not None:
-            raise KernelError(
-                "« {} » est déjà fondu dans « {} » par une fonction "
-                "plus bas : un corps ne se fond qu'une fois".format(
-                    self._body_title(tool), self._body_title(host)))
-
-    def _holder_of(self, tool, own=None):
-        """Le corps dont un combiner (autre que ``own``) tient ``tool``,
-        ou None."""
-        for host in self._history_bodies():
-            for obj in host.Group:
-                if (obj.TypeId == "PartDesign::Boolean" and obj is not own
-                        and tool in self._boolean_tools(obj)):
-                    return host
-        return None
-
-    def _fuse_result(self, body, feature, fused):
-        """Le combiner caché de ``feature`` ; ``fused`` None : les corps
-        qu'elle touche, comme « Fusionner » le veut (``_touched_bodies``)
-        — il faut d'abord sa forme, d'où un premier recalcul. Le premier
-        volume d'un corps vide le fonde sans rien fondre : ce corps a été
-        créé pour lui (bouton « Corps »)."""
-        if fused is None:
-            candidates = (self._merge_candidates(body)
-                          if getattr(feature, "BaseFeature", None) is not None
-                          else [])
-            fused = []
-            if candidates:
-                self._recompute()
-                fused = self._touched_bodies(body, feature, candidates)
-        return self._fuse_bodies(body, feature, fused)
-
-    def _merge_candidates(self, body):
-        """Les corps que « Fusionner » peut fondre dans ``body`` : présents
-        à la barre, libres (aucun combiner ne les tient), et qui ne
-        suivent pas ``body`` (une copie de réseau bouclerait le graphe)."""
-        removed = self._removed_names()
-        return [other for other in self._history_bodies()
-                if other is not body and other.Name not in removed
-                and getattr(other, "Tip", None) is not None
-                and body not in (other.OutListRecursive or ())
-                and self._holder_of(other) is None]
-
-    def _touched_bodies(self, body, feature, candidates):
-        """Parmi ``candidates``, les corps que touche le volume ajouté par
-        ``feature`` : fondus ensemble, ils perdent un solide — un contact
-        par une arête ou un point n'en est pas un. La cavité d'une paroi
-        mince fermée n'est pas de la matière : un corps logé dedans n'est
-        pas touché."""
-        from engine.bodypattern import is_subtractive_type
-        try:
-            added = self._added_shape(body, feature)
-            if added is None:
-                return []
-            for helper in self._thin_helpers(feature):
-                if is_subtractive_type(helper.TypeId):
-                    hollow = self._added_shape(body, helper)
-                    if hollow is not None:
-                        added = added.cut(hollow)
-            box = added.BoundBox
-            box.enlarge(1e-6)
-            count = len(added.Solids)
-        except Exception:  # noqa: BLE001 — OCCT : rien de sûr, rien de fondu
-            return []
-        touched = []
-        for other in candidates:
-            try:
-                shape = other.Shape
-                if (shape.isNull() or not shape.Solids
-                        or not box.intersect(shape.BoundBox)):
-                    continue
-                joined = added.fuse(shape)
-                if len(joined.Solids) < count + len(shape.Solids):
-                    touched.append(other)
-            except Exception:  # noqa: BLE001 — OCCT : pas de fusion, pas de contact
-                continue
-        return touched
-
-    def _cut_others(self, body, feature, bodies):
-        """L'enlèvement ``feature`` creuse aussi d'autres corps : ``bodies``,
-        ou sans liste ceux qu'il traverse, comme les modeleurs courants —
-        une étape cachée dans chacun (``_attach_pattern_scope``). Appelé sa
-        forme calculée ; recalcule s'il en creuse un."""
-        from engine.kernel import KernelError
-        if bodies is None:
-            removed = self._removed_names()
-            candidates = [o for o in self._history_bodies()
-                          if o is not body and o.Name not in removed
-                          and getattr(o, "Tip", None) is not None]
-            others = self._crossed_bodies(body, feature, candidates)
-        elif not isinstance(bodies, (list, tuple)):
-            raise KernelError("bodies : une liste de corps attendue")
-        else:
-            others = []
-            for name in bodies:
-                other = self._merge_body(name)
-                if other is not body and other not in others:
-                    others.append(other)
-        if not others:
-            return
-        self._attach_pattern_scope(feature, [o.Name for o in others])
-        self._recompute()
-
-    def _cut_bodies_of(self, feature):
-        """Les autres corps que l'enlèvement ``feature`` creuse."""
-        if not self._is_cut_source(feature):
-            return []
-        return [target for target in (cut.getParentGeoFeatureGroup()
-                                      for cut in self._scope_cuts(feature))
-                if target is not None]
-
-    def _set_cut_bodies(self, feature, names):
-        """Réédition : les autres corps que l'enlèvement ``feature`` creuse.
-        Un corps décoché perd son étape cachée ; un corps coché en reçoit
-        une, à son rang dans le corps (``_insert_scope_cut``)."""
-        from engine.bodypattern import format_scope
-        from engine.kernel import KernelError
-        if not isinstance(names, (list, tuple)):
-            raise KernelError("bodies : une liste de corps attendue")
-        body = feature.getParentGeoFeatureGroup()
-        current = {cut.getParentGeoFeatureGroup(): cut
-                   for cut in self._scope_cuts(feature)}
-        wanted = []
-        for name in names:
-            other = (next((b for b in current if b.Name == str(name)), None)
-                     or self._merge_body(name))
-            if other is not body and other not in wanted:
-                wanted.append(other)
-        added = [target for target in wanted if target not in current]
-        if added and not self._scope_seeds(feature):
-            raise KernelError(
-                "« {} » est désactivé : réactivez-le pour qu'il creuse "
-                "d'autres corps".format(feature.Label))
-        for target, cut in current.items():
-            if target not in wanted:
-                self._remove_scope_cut(cut)
-        for target in added:
-            self._insert_scope_cut(feature, target)
-        scope = format_scope(t.Name for t in wanted)
-        if getattr(feature, "FreeSolidScope", "") != scope:
-            self._stamp_text(feature, "FreeSolidScope", scope)
-
-    def _insert_scope_cut(self, feature, target):
-        """L'étape cachée de ``feature`` dans ``target``, après la dernière
-        fonction de ``target`` plus ancienne que lui : la pointe y passe le
-        temps de l'insertion, puis revient — ou reste sur l'étape si elle
-        était sur cette fonction et que ``feature`` est au-dessus de la
-        barre."""
-        from engine.kernel import KernelError
-        order_of = self._tree_order()
-        rank = order_of.get(feature.Name, -1)
-        anchor = None
-        for obj in target.Group:
-            if not obj.isDerivedFrom("PartDesign::Feature"):
-                continue
-            source = getattr(obj, "FreeSolidScopeOf", "")
-            hidden = source and self._is_thin_helper(obj)
-            if order_of.get(source if hidden else obj.Name, -1) < rank:
-                anchor = obj
-        if anchor is None:
-            raise KernelError(
-                "« {} » n'existe pas encore au rang de « {} »".format(
-                    self._body_title(target), feature.Label))
-        anchor = self._tip_with_helpers(anchor)
-        tip = target.Tip
-        own = feature.getParentGeoFeatureGroup()
-        members = list(getattr(own, "Group", None) or ())
-        mark = getattr(own, "Tip", None)
-        # Reculé par la barre : l'étape naît reculée aussi.
-        rolled = mark is None or (
-            feature in members and mark in members
-            and members.index(feature) > members.index(mark))
-        target.Tip = anchor
-        try:
-            self._make_scope_cut(feature, target)
-        finally:
-            if tip is not anchor or rolled:
-                target.Tip = tip
-
-    def _crossed_bodies(self, body, feature, candidates):
-        """Parmi ``candidates``, les corps où l'enlèvement ``feature`` ôte
-        de la matière."""
-        try:
-            seeds = self._scope_seeds(feature, extend=True)
-            if not seeds:
-                return []
-            removed = seeds[0].copy()
-            removed.Placement = body.Placement.multiply(removed.Placement)
-            box = removed.BoundBox
-        except Exception:  # noqa: BLE001 — OCCT : rien de sûr, rien de creusé
-            return []
-        crossed = []
-        for other in candidates:
-            try:
-                shape = other.Shape
-                if (shape.isNull() or not shape.Solids
-                        or not box.intersect(shape.BoundBox)):
-                    continue
-                if removed.common(shape).Volume > 1e-6:
-                    crossed.append(other)
-            except Exception:  # noqa: BLE001 — OCCT : pas de creux sûr
-                continue
-        return crossed
-
-    def _undo_cut_others(self, feature):
-        """Retire les étapes cachées d'un enlèvement refusé."""
-        try:
-            self._drop_pattern_scope(feature)
-        except Exception:  # noqa: BLE001 — la transaction défait le reste
-            pass
-
-    @staticmethod
-    def _added_shape(body, feature):
-        """La forme qu'ajoute ou ôte ``feature``, dans le repère global :
-        ``AddSubShape`` est dans celui de la fonction (tourné pour une
-        esquisse sur XZ), lui-même dans celui du corps. None si vide."""
-        shape = getattr(feature, "AddSubShape", None)
-        if shape is None or shape.isNull() or not shape.Solids:
-            return None
-        shape = shape.copy()
-        shape.Placement = body.Placement.multiply(
-            feature.Placement).multiply(shape.Placement)
-        return shape
-
-    def _merge_body(self, name):
-        """Un corps où fusionner, ou à fondre : présent à la barre."""
-        from engine.kernel import KernelError
-        obj = self._require_doc().getObject(str(name))
-        if (obj is None or obj.TypeId != "PartDesign::Body"
-                or self._is_internal_tool(obj)):
-            raise KernelError("corps inconnu : {}".format(name))
-        self._refuse_gone_body(obj)
-        return obj
-
-    def _fuse_bodies(self, body, feature, others):
-        """Le combiner caché qui fond ``others`` dans ``body``, juste après
-        ``feature`` : il la suit (désactiver, supprimer, barre de retour)
-        et les corps fondus quittent le dossier tant qu'il agit
-        (``_absorbed_bodies``)."""
-        if not others:
-            return []
-        fuse = self._new_thin_helper(body, "PartDesign::Boolean",
-                                     "MergeBodies", "Corps fondus")
-        fuse.Type = "Fuse"
-        self._set_boolean_tools(fuse, others)
-        self._own_thin_helpers(feature, [fuse])
-        # Posé à la réédition d'une fonction désactivée : désactivé aussi.
-        fuse.Suppressed = bool(getattr(feature, "Suppressed", False))
-        return [fuse]
 
     def _profile_helpers(self, body, profile, helpers):
         """Objets cachés d'un profil rangé hors de son esquisse :
@@ -1144,13 +793,12 @@ class SolidsMixin:
     def add_pocket(self, length=None, through=False, reversed=False,
                    sketch=None, midplane=False, cond=None, thin=None,
                    bodies=None, **conditions):
-        """Cut with the latest sketch — an extruded cut.
+        """Enlèvement extrudé de la dernière esquisse.
 
-        No length (or ``through``) means « À travers tout » — the option
-        chosen by default on a cut. ``cond`` and the
-        other conditions: see ``engine.extrude``. ``bodies`` : les autres
-        corps qu'il creuse, sans liste ceux qu'il traverse
-        (``_cut_others``).
+        Sans longueur (ou ``through``) : « À travers tout », l'option
+        par défaut d'un enlèvement. ``cond`` et les autres conditions :
+        voir ``engine.extrude``. ``bodies`` : les autres corps qu'il
+        creuse, sans liste ceux qu'il traverse (``_cut_others``).
         """
         from engine.kernel import KernelError
         body = self._require_body()
@@ -1189,8 +837,6 @@ class SolidsMixin:
             self._remove_all([pocket] + helpers)
             raise
         return self.get_tree()
-
-    #: Ops the yellow ghost preview may run speculatively.
 
     def add_datum_plane(self, base=None, face=None, offset=0.0, angle=0.0):
         """Plan de référence : décalé (et incliné) d'un plan d'origine ou
@@ -1761,7 +1407,7 @@ class SolidsMixin:
     def _transform(self, type_id, configure, features=None, scope=None):
         """Répétition ou symétrie des fonctions ``features`` du corps
         actif. ``scope`` : autres corps que ses enlèvements de matière
-        creusent aussi (``engine/bodypattern.py``)."""
+        creusent aussi (``engine/bodyscope.py``)."""
         from engine.kernel import (
             KernelError,
             label_for_type,
@@ -1782,12 +1428,12 @@ class SolidsMixin:
         try:
             self._recompute()
             if scope:
-                self._attach_pattern_scope(feature, scope)
+                self._attach_scope(feature, scope)
                 self._recompute()
         except KernelError:
             # Refusée : la pointe revient où elle était, sinon le corps
             # resterait sans solide.
-            self._drop_pattern_scope(feature)
+            self._drop_scope(feature)
             body.Tip = previous
             doc.removeObject(feature.Name)
             raise

@@ -15,6 +15,7 @@ import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
   revolutionGroups, revolutionEditValues, revolutionProblem,
   extrudeEditInitial, extrudeEditProblem, extrudeEditValues, extrudeGroups,
+  fusedGroups, fusedValues,
   holeEditInitial, holeEditValues, holeGroups, shellEditGroups,
   shellEditValues,
   checkedContours, contourRows, vertexChamferDistances, vertexChamferRows,
@@ -1879,9 +1880,18 @@ export function installTree(ctx) {
     return null;
   }
 
+  /** Les cotes d'une réédition, et les corps fondus s'ils ont changé
+   *  (`fusedValues`, sur l'arbre de l'ouverture du panneau). */
+  function withFused(values, v, feature, tree) {
+    return values && { ...values, ...fusedValues(v, feature, tree) };
+  }
+
   function editRevolved(feature) {
     const spec = feature.revolution;
-    const sketch = findSketch(ctx.lastTree, spec.profile);
+    const tree = ctx.lastTree;
+    const sketch = findSketch(tree, spec.profile);
+    const build = (v) => withFused(
+      revolutionEditValues(v, spec, feature.params), v, feature, tree);
     panel.open({
       icon: TREE_ICONS[feature.type_key] ?? "revolve",
       title: feature.label,
@@ -1890,16 +1900,16 @@ export function installTree(ctx) {
         axis: spec.axis,
         reversed: spec.reversed,
         midplane: spec.midplane,
-      }), ...contourGroups(feature)],
+      }), ...contourGroups(feature), ...fusedGroups(feature, tree)],
       onChange: (v) => {
-        const values = revolutionEditValues(v, spec, feature.params);
+        const values = build(v);
         schedulePreview(values
           ? { op: "set_params",
               params: { feature: feature.name, values } }
           : null);
       },
       onApply: (v) => {
-        const values = revolutionEditValues(v, spec, feature.params);
+        const values = build(v);
         if (values === null) {
           say(revolutionProblem(), true);
           return;
@@ -1918,13 +1928,16 @@ export function installTree(ctx) {
     const depth = ctx.editDepthHandle?.(feature);
     const sameWay = (values) => !["cond", "midplane", "reversed", "cond2"]
       .some((key) => key in values);
+    const tree = ctx.lastTree;
+    const build = (v) => withFused(extrudeEditValues(v, feature), v, feature,
+                                   tree);
     panel.open({
       icon: TREE_ICONS[feature.type_key] ?? "body",
       title: feature.label,
       groups: [...extrudeGroups(kind, extrudeEditInitial(feature)),
-               ...contourGroups(feature)],
+               ...contourGroups(feature), ...fusedGroups(feature, tree)],
       onChange: (v, how) => {
-        const values = extrudeEditValues(v, feature);
+        const values = build(v);
         schedulePreview(values
           ? { op: "set_params",
               params: { feature: feature.name, values } }
@@ -1933,7 +1946,7 @@ export function installTree(ctx) {
       },
       onClose: () => depth?.close(),
       onApply: (v) => {
-        const values = extrudeEditValues(v, feature);
+        const values = build(v);
         if (values === null) {
           say(extrudeEditProblem(v, feature), true);
           return;

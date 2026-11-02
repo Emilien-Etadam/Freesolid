@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import {
   FEATURES,
   extrudeBuild, extrudeEditInitial, extrudeEditProblem, extrudeEditValues,
-  extrudeGroups, extrudeInvalid, holeEditInitial, holeEditValues, holeGroups,
-  mergeGroups, mergeParams, mergeProblem, shellEditGroups, shellEditValues,
+  extrudeGroups, extrudeInvalid, fusedGroups, fusedValues, holeEditInitial,
+  holeEditValues, holeGroups, mergeGroups, mergeParams, mergeProblem, shellEditGroups, shellEditValues,
 } from "../../app/features.js";
 
 describe("extrudeBuild", () => {
@@ -423,5 +423,45 @@ describe("fusionner ou non : révolution, lissage, balayage", () => {
       assert.equal(entry(button).groups(empty)
         .find((g) => g.label === "Résultat"), undefined);
     }
+  });
+});
+
+describe("corps fondus, à la réédition", () => {
+  const tree = { bodies: [
+    { name: "Body", label: "Extrusion3", active: true, has_solid: true },
+    { name: "Body002", label: "Extrusion2", active: false, has_solid: true },
+    { name: "Body003", label: "Vide", active: false, has_solid: false },
+  ] };
+  const pad = { name: "Pad003", type_key: "pad",
+                fused: [{ name: "Body001", label: "Extrusion1" }] };
+
+  it("une case par corps fondu, cochée, puis par autre corps solide", () => {
+    const [group] = fusedGroups(pad, tree);
+    assert.equal(group.label, "Corps fondus");
+    assert.deepEqual(group.rows.map((r) => [r.key, r.label, r.value]), [
+      ["fuse:Body001", "Extrusion1", true],
+      ["fuse:Body002", "Extrusion2", false],
+    ]);
+  });
+
+  it("ni enlèvement, ni corps seul : pas de groupe", () => {
+    assert.deepEqual(fusedGroups({ ...pad, type_key: "pocket" }, tree), []);
+    assert.deepEqual(fusedGroups({ name: "Pad", type_key: "pad" },
+                                 { bodies: [tree.bodies[0]] }), []);
+  });
+
+  it("une ligne d'un autre corps garde ce corps hors des cases", () => {
+    const other = { name: "Pad9", type_key: "revolution", body: "Body002" };
+    assert.deepEqual(fusedGroups(other, tree)[0].rows.map((r) => r.key),
+                     ["fuse:Body"]);
+  });
+
+  it("bodies seulement quand les cases changent", () => {
+    const same = { "fuse:Body001": true, "fuse:Body002": false };
+    assert.deepEqual(fusedValues(same, pad, tree), {});
+    assert.deepEqual(fusedValues({ ...same, "fuse:Body002": true }, pad, tree),
+                     { bodies: ["Body001", "Body002"] });
+    assert.deepEqual(fusedValues({ ...same, "fuse:Body001": false }, pad, tree),
+                     { bodies: [] });
   });
 });

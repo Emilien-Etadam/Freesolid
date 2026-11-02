@@ -131,8 +131,12 @@ class SolidsMixin:
                 parked = getattr(obj, self._PARKED_TOOLS, "")
                 tools = list(getattr(obj, "Group", None) or ())
                 if rank > limit:
+                    # Corps de l'utilisateur seulement : les outils internes
+                    # (formes figées, suppressions) ont leur forme, et
+                    # leurs fonctions lisent ``Group``.
                     if any(t.TypeId == "PartDesign::Body"
                            and getattr(t, "Tip", None) is None
+                           and not self._is_internal_tool(t)
                            for t in tools):
                         if self._PARKED_TOOLS not in obj.PropertiesList:
                             obj.addProperty("App::PropertyString",
@@ -171,6 +175,79 @@ class SolidsMixin:
         return [t for t in (doc.getObject(str(n)) for n in names)
                 if t is not None]
 
+    #: Volumes ajoutés qui fondent d'autres corps (``bodies``).
+    _FUSING_TYPES = ("PartDesign::Pad", "PartDesign::Revolution",
+                     "PartDesign::AdditiveLoft", "PartDesign::AdditivePipe")
+
+    def _fuse_helper(self, feature):
+        """Le combiner caché d'un volume qui fond d'autres corps, ou None."""
+        if getattr(feature, "TypeId", "") not in self._FUSING_TYPES:
+            return None
+        return next((h for h in self._thin_helpers(feature)
+                     if h.TypeId == "PartDesign::Boolean"), None)
+
+    def _fused_bodies_of(self, feature):
+        """Les corps que ``feature`` fond dans le sien."""
+        fuse = self._fuse_helper(feature)
+        return self._boolean_tools(fuse) if fuse is not None else []
+
+    def _set_fused_bodies(self, feature, names):
+        """Réédition : les corps que ``feature`` fond dans le sien. Aucun,
+        son combiner caché part ; un premier, il se pose juste après elle
+        (et sa cavité). La liste est contrôlée avant tout changement."""
+        from engine.kernel import KernelError
+        if feature.TypeId not in self._FUSING_TYPES:
+            raise KernelError("seul un volume ajouté fond d'autres corps")
+        if not isinstance(names, (list, tuple)):
+            raise KernelError("bodies : une liste de corps attendue")
+        body = feature.getParentGeoFeatureGroup()
+        fuse = self._fuse_helper(feature)
+        mine = self._fused_bodies_of(feature)
+        others = []
+        for name in names:
+            # Les siens sont fondus : ``_merge_body`` les refuserait.
+            other = (next((b for b in mine if b.Name == str(name)), None)
+                     or self._merge_body(name))
+            if other is body or other in others:
+                continue
+            self._refuse_held_body(other, fuse)
+            if body in (other.OutListRecursive or ()):
+                raise KernelError(
+                    "« {} » suit « {} » : il ne s'y fond pas".format(
+                        self._body_title(other), self._body_title(body)))
+            others.append(other)
+        if fuse is None:
+            if others:
+                self._insert_fuse(body, feature, others)
+            return
+        if not others:
+            base = getattr(fuse, "BaseFeature", None)
+            if body.Tip is fuse:
+                body.Tip = base
+            self._relink_chain(body, [fuse], base)
+            self._require_doc().removeObject(fuse.Name)
+            return
+        if self._PARKED_TOOLS in fuse.PropertiesList:
+            setattr(fuse, self._PARKED_TOOLS, "")
+        fuse.Group = []
+        self._set_boolean_tools(fuse, others)
+
+    def _insert_fuse(self, body, feature, others):
+        """Le combiner caché d'une fonction rééditée, juste après elle : la
+        pointe y passe le temps de l'insertion, les fonctions suivantes se
+        rebranchent sur lui, puis elle revient."""
+        anchor = self._tip_with_helpers(feature)
+        tip = body.Tip
+        previous = self._body
+        self._body = body
+        body.Tip = anchor
+        try:
+            self._fuse_bodies(body, feature, others)
+        finally:
+            self._body = previous
+            if tip is not anchor:
+                body.Tip = tip
+
     def _boolean_tools(self, obj):
         """Les corps outils d'un combiner, même lâchés sous la barre."""
         return [t for t in list(getattr(obj, "Group", None) or ())
@@ -202,6 +279,7 @@ class SolidsMixin:
         else:
             # Déjà fondu : FreeCAD l'ôterait sans bruit de son combiner.
             self._refuse_gone_body(tool_obj)
+            self._refuse_held_body(tool_obj)
         if tool_obj is body:
             raise KernelError(
                 "un corps ne se combine pas avec lui-même — choisissez "
@@ -331,6 +409,7 @@ class SolidsMixin:
                 other = self._merge_body(name)
                 if other is target or other in fused:
                     continue
+                self._refuse_held_body(other)
                 if target in (other.OutListRecursive or ()):
                     # Une copie de réseau suit sa source : la fondre dans
                     # la source bouclerait le graphe.
@@ -359,6 +438,20 @@ class SolidsMixin:
         made.FreeSolidNewBody = True
         return made, True, []
 
+    def _refuse_held_body(self, tool, own=None):
+        """Refuse un corps qu'un combiner tient déjà, même sous la barre
+        (où il reparaît) : FreeCAD l'ôterait sans bruit de ce combiner.
+        ``own`` : le combiner qu'on règle."""
+        from engine.kernel import KernelError
+        for host in self._history_bodies():
+            for obj in host.Group:
+                if (obj.TypeId == "PartDesign::Boolean" and obj is not own
+                        and tool in self._boolean_tools(obj)):
+                    raise KernelError(
+                        "« {} » est déjà fondu dans « {} » par une fonction "
+                        "plus bas : un corps ne se fond qu'une fois".format(
+                            self._body_title(tool), self._body_title(host)))
+
     def _merge_body(self, name):
         """Un corps où fusionner, ou à fondre : présent à la barre."""
         from engine.kernel import KernelError
@@ -381,6 +474,8 @@ class SolidsMixin:
         fuse.Type = "Fuse"
         self._set_boolean_tools(fuse, others)
         self._own_thin_helpers(feature, [fuse])
+        # Posé à la réédition d'une fonction désactivée : désactivé aussi.
+        fuse.Suppressed = bool(getattr(feature, "Suppressed", False))
         return [fuse]
 
     def _profile_helpers(self, body, profile, helpers):

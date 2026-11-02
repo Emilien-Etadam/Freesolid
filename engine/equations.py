@@ -60,7 +60,13 @@ class EquationsMixin:
             raise KernelError("fonction inconnue : {}".format(feature))
         if not isinstance(values, dict):
             raise KernelError("values doit être un objet JSON")
+        # Les corps qu'un volume fond : pas une cote, son combiner caché.
+        values = dict(values)
+        fusing = "bodies" in values
+        fused = values.pop("bodies", None)
         values, asked = self._props_from_keys(obj, values)
+        if fusing:
+            self._set_fused_bodies(obj, fused)
         # Atomicité : une expression était stockée AVANT que le recompute
         # ne la valide — un identifiant inconnu (« _ ») laissait la pièce
         # Invalid pour toujours (barre bloquée, cascade « Tool shape is

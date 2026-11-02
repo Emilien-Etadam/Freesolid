@@ -952,6 +952,11 @@ class TreeMixin:
             }
             if item["suppressible"] and obj.Suppressed:
                 item["suppressed"] = True
+            fused = self._fused_bodies_of(obj)
+            if fused:
+                # Les corps qu'elle fond : la réédition les décoche.
+                item["fused"] = [{"name": b.Name, "label": self._body_title(b)}
+                                 for b in fused]
             if obj.TypeId in ("PartDesign::Plane", "PartDesign::Line",
                               "PartDesign::Point",
                               "PartDesign::CoordinateSystem"):

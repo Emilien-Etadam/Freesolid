@@ -1667,6 +1667,154 @@ def p95_fusionner_plusieurs_corps(self, mark, report, etat):
         hollow and abs(a.Shape.Volume - before) < 1e-6 and clean())
 
 
+def p96_corps_fondus_reedites(self, mark, report, etat):
+    mark("p96: les corps qu'un volume fond se rééditent")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2, **where):
+        name = self.sketch_start(**(where or {"plane": "XY"}))["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def folder():
+        return [b["name"] for b in self.get_tree()["bodies"]]
+
+    def row(name):
+        tree = self.get_tree()
+        return next(r for r in tree["features"] + tree["other_features"]
+                    if r["name"] == name)
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    self.new_part("Corps fondus rééditer")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    self.add_body()
+    rect(30, 0, 50, 20)
+    self.add_pad(10)
+    b = self._require_body()
+    self.add_body()
+    rect(60, 0, 80, 20)
+    self.add_pad(10)
+    c = self._require_body()
+    self.set_active_body(a.Name)
+    rect(10, 5, 70, 15)
+    call("add_pad", length=5, bodies=[b.Name])
+    pad = self._thin_owner(a.Tip).Name
+    first = (folder() == [a.Name, c.Name]
+             and [f["name"] for f in row(pad).get("fused", [])] == [b.Name])
+
+    # Ajouter C et changer la profondeur, d'un même OK.
+    more = call("set_params", feature=pad, values={"length": 6,
+                                                   "bodies": [b.Name, c.Name]})
+    three = 3 * 4000 + 3600 - 2400
+    added = (more.get("ok") is True and folder() == [a.Name]
+             and abs(a.Shape.Volume - three) < 1e-6
+             and len(a.Shape.Solids) == 1
+             and [f["name"] for f in row(pad)["fused"]] == [b.Name, c.Name])
+    call("undo")
+    undone = (folder() == [a.Name, c.Name]
+              and abs(float(self._doc.getObject(pad).Length) - 5) < 1e-6)
+    report["p96_ajouter_un_corps"] = first and added and undone and clean()
+
+    # Plus aucun corps : le combiner caché part, la fonction reste.
+    none = call("set_params", feature=pad, values={"bodies": []})
+    report["p96_retirer_tous_les_corps"] = (
+        none.get("ok") is True and folder() == [a.Name, b.Name, c.Name]
+        and not any(o.TypeId == "PartDesign::Boolean" for o in a.Group)
+        and abs(a.Shape.Volume - (4000 + 3000 - 500)) < 1e-6
+        and "fused" not in row(pad) and clean())
+
+    # Une fonction suivie d'une autre : le combiner se pose juste après
+    # elle, la suivante se rebranche dessus, la pointe ne bouge pas.
+    rect(0, 30, 10, 40)
+    self.add_pad(4)
+    after = self._last_body_feature(a)
+    back = call("set_params", feature=pad, values={"bodies": [c.Name]})
+    fuse = self._fuse_helper(self._doc.getObject(pad))
+    report["p96_inserer_au_milieu"] = (
+        back.get("ok") is True and fuse is not None
+        and fuse.BaseFeature is self._doc.getObject(pad)
+        and after.BaseFeature is fuse and a.Tip is after
+        and folder() == [a.Name, b.Name]
+        and abs(a.Shape.Volume - (4000 + 3000 - 500 + 4000 - 500 + 400))
+        < 1e-6 and clean())
+
+    # Refus : un enlèvement ne fond rien ; un corps fondu ailleurs non plus.
+    rect(2, 2, 4, 4, face=self._top_face_id())
+    self.add_pocket(2)
+    pocket = self._last_body_feature(a).Name
+    refused = [call("set_params", feature=pocket,
+                    values={"bodies": [b.Name]}),
+               call("set_params", feature=after.Name, values={"bodies": [c.Name]})]
+    report["p96_refus"] = (
+        refused[0].get("ok") is False
+        and "volume ajouté" in str(refused[0].get("error"))
+        and refused[1].get("ok") is False
+        and "est fondu dans" in str(refused[1].get("error")) and clean())
+
+    # Une révolution aussi.
+    self.new_part("Révolution rééditée")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    self.add_body()
+    rect(30, 0, 50, 20)
+    self.add_pad(10)
+    b = self._require_body()
+    self.set_active_body(a.Name)
+    ring = rect(15, 0, 35, 5, plane="XZ")
+    call("add_revolution", sketch=ring, angle=360)
+    turned = self._thin_owner(a.Tip).Name
+    alone = folder() == [a.Name, b.Name]
+    fused = call("set_params", feature=turned, values={"bodies": [b.Name]})
+    report["p96_revolution"] = (
+        alone and fused.get("ok") is True and folder() == [a.Name]
+        and len(a.Shape.Solids) == 1 and clean())
+
+    # Une fonction désactivée qu'on réédite : son combiner l'est aussi.
+    call("set_params", feature=turned, values={"bodies": []})
+    call("set_suppressed", features=[turned], suppressed=True)
+    off = call("set_params", feature=turned, values={"bodies": [b.Name]})
+    stays = folder() == [a.Name, b.Name]
+    call("set_suppressed", features=[turned], suppressed=False)
+    report["p96_fonction_desactivee"] = (
+        off.get("ok") is True and stays and folder() == [a.Name]
+        and clean())
+
+    # Barre levée au-dessus du combiner : le corps qu'il tient reparaît,
+    # mais ne se fond pas une seconde fois — FreeCAD le lui prendrait.
+    self.new_part("Corps tenu sous la barre")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    self.add_body()
+    rect(30, 0, 50, 20)
+    self.add_pad(10)
+    b = self._require_body()
+    b_pad = b.Tip.Name
+    self.set_active_body(a.Name)
+    rect(10, 5, 40, 15)
+    call("add_pad", length=5, bodies=[b.Name])
+    call("set_tip", feature=b_pad)
+    shown = folder() == [a.Name, b.Name]
+    self.set_active_body(a.Name)
+    rect(0, 30, 10, 40)
+    held = [call("add_pad", length=5, bodies=[b.Name]),
+            call("add_boolean", tool=b.Name, type="fuse")]
+    call("tip_to_end")
+    report["p96_corps_tenu_sous_la_barre"] = (
+        shown and all(r.get("ok") is False and "déjà fondu" in str(r.get("error"))
+                for r in held)
+        and folder() == [a.Name] and clean())
+
+
 def protocol_dangling(tree):
     from engine import protocol
     return protocol.dangling_deps(tree)

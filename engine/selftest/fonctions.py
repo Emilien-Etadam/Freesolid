@@ -1417,6 +1417,42 @@ def p94_fusionner_les_autres_volumes(self, mark, report, etat):
     report["p94_ctrl_z_rend_le_corps"] = (
         pad_back and grown > 0 and self._require_body() is first)
 
+    # Ctrl+Y rend le corps d'après : le corps neuf, y compris après deux
+    # pas défaits d'un coup ; une esquisse abandonnée entre deux ne
+    # dérègle rien, une op neuve vide la pile.
+    first = start()
+    rect(50, 0, 70, 10, plane="XY")
+    dispatch(self, "add_pad", {"length": 5, "merge": False})
+    made = self._require_body().Name
+    dispatch(self, "undo", {})
+    undone = self._require_body() is first
+    dispatch(self, "redo", {})
+    redone = self._require_body().Name == made
+    rect(52, 2, 58, 8, plane="XY")
+    dispatch(self, "add_pad", {"length": 8})
+    dispatch(self, "undo", {"steps": 2})
+    both = self._require_body() is first
+    dispatch(self, "redo", {})
+    one = self._require_body().Name == made
+    dispatch(self, "redo", {})
+    two = self._require_body().Name == made
+    sketch = dispatch(self, "sketch_start", {"plane": "XY"})["result"]["sketch"]
+    dispatch(self, "sketch_add_line", {"sketch": sketch, "x1": 0, "y1": 0,
+                                       "x2": 5, "y2": 5})
+    dispatch(self, "sketch_cancel", {"sketch": sketch})
+    dispatch(self, "undo", {})
+    dispatch(self, "redo", {})
+    cancelled = self._require_body().Name == made
+    dispatch(self, "undo", {})
+    self._body = first
+    rect(0, 0, 5, 5, plane="XY")
+    dispatch(self, "add_pad", {"length": 2})
+    dispatch(self, "undo", {})
+    dispatch(self, "redo", {})
+    report["p94_ctrl_y_rend_le_corps"] = (
+        undone and redone and both and one and two and cancelled
+        and self._require_body() is first and clean())
+
     # Lissage en nouveau corps : le même que dans le corps des esquisses.
     first = start()
     self.add_datum_plane(base="XY", offset=20)

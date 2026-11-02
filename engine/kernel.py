@@ -332,6 +332,9 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyFuseMixin, BodyScopeM
         # L'esquisse d'avant un glisser (sketch_move), pour que le lâcher
         # en fasse un seul pas d'annulation (sketch_drop).
         self._drag_from = None
+        # Ctrl+Y : le corps actif d'après chaque op défaite, rangé depuis
+        # le bas de la pile de FreeCAD (``_keep_bodies_after``).
+        self._redo_bodies = []
         self._reset_face_match()
         # Callback d'avancement (phase, fait, total) — posé par le
         # transport, jamais importé d'ici. Absent = no-op.
@@ -808,6 +811,7 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyFuseMixin, BodyScopeM
             raise KernelError("rien à annuler")
         names = list(doc.UndoNames)
         count = max(1, min(int(steps), room))
+        self._keep_bodies_after(names[:count], len(doc.RedoNames))
         for _ in range(count):
             doc.undo()
         if sketch is None:
@@ -818,8 +822,41 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyFuseMixin, BodyScopeM
         """Ctrl+Z : le corps actif d'avant la plus ancienne op défaite —
         une fusion dans un autre corps, un nouveau corps, y ramènent."""
         from engine.docprops import body_before
-        before = body_before(name)
-        found = self._doc.getObject(before) if before else None
+        self._activate_if_body(body_before(name))
+
+    def _keep_bodies_after(self, names, at):
+        """Avant Ctrl+Z des ops ``names`` (de la plus récente à la plus
+        ancienne) : le corps actif d'après chacune — celui d'à présent pour
+        la plus récente, pour les autres celui d'avant l'op qui l'a suivie.
+        Changer de corps actif n'est pas un pas : Ctrl+Y rend celui qui
+        l'était juste avant le pas suivant.
+        ``at`` : la hauteur de la pile de rétablissement, où elles vont
+        s'empiler ; ce qui est au-dessus est périmé (une op neuve a vidé
+        la pile)."""
+        from engine.docprops import body_before
+        kept = self._redo_bodies[:at]
+        kept += [None] * (at - len(kept))  # défaites hors de ``undo``
+        after = _active_body_name(self)
+        for name in names:
+            kept.append((name, after))
+            after = body_before(name)
+        self._redo_bodies = kept
+
+    def _restore_body_after(self, names, count, activate=True):
+        """Ctrl+Y de ``count`` des ops ``names`` (RedoNames, la prochaine
+        en tête) : le corps actif d'après la dernière rétablie. Sans
+        ``activate`` (Ctrl+Y dans l'esquisse), la pile suit seulement."""
+        at = len(names) - count  # sa place, depuis le bas de la pile
+        entry = (self._redo_bodies[at] if at < len(self._redo_bodies)
+                 else None)
+        self._redo_bodies = self._redo_bodies[:at]
+        if activate and entry is not None and entry[0] == names[count - 1]:
+            self._activate_if_body(entry[1])
+
+    def _activate_if_body(self, name):
+        """Rend actif le corps ``name`` s'il est encore un corps de la
+        pièce."""
+        found = self._doc.getObject(name) if name else None
         if (found is not None and found.TypeId == "PartDesign::Body"
                 and not self._is_internal_tool(found)):
             self._body = found
@@ -832,8 +869,11 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyFuseMixin, BodyScopeM
             raise KernelError("rien à rétablir dans l'esquisse")
         if not room:
             raise KernelError("rien à rétablir")
-        for _ in range(max(1, min(int(steps), room))):
+        names = list(doc.RedoNames)
+        count = max(1, min(int(steps), room))
+        for _ in range(count):
             doc.redo()
+        self._restore_body_after(names, count, activate=sketch is None)
         return self._after_history(sketch)
 
     def _undo_room(self, names, sketch=None):

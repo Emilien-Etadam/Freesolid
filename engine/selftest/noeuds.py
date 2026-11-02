@@ -389,6 +389,35 @@ def n10_proprete(self, mark, report, etat):
         and not dangling_deps(tree))
 
 
+def n10_une_instance(self, mark, report, etat):
+    _close = etat._close  # posé par document.cycle_de_vie_open_part
+    _volume = etat._volume  # posé par document.cycle_de_vie_open_part
+    pad_name = etat.pad_name  # posé par noeuds.n10_repetition_variable
+    repeat_line = etat.repeat_line  # posé par noeuds.n10_repetition_variable
+    mark("n10: une seule instance garde son décalage")
+    # La base d'un corps ignore la position de sa forme : seule, la copie
+    # retombait sur l'original. 3360 + 336 × 15 = 8400.
+    self.edit_repeat_feature(
+        repeat_line["name"],
+        [{"offset": [20, 0, 0], "params": {pad_name: {"Length": 15}}}],
+    )
+    edited = _close(_volume(), 8400.0, tol=1e-4)
+    # En enlèvement aussi : 40×40×5 + un bossage 10×10×10 = 8500, sa
+    # copie creuse la plaque 20 mm plus loin.
+    self.new_part("Pièce une instance N010")
+    self.add_rect_sketch(40, 40)
+    self.add_pad(5)
+    state = self.sketch_start(plane="XY")
+    self.sketch_add_rectangle(state["sketch"], -20, -20, -10, -10)
+    self.sketch_finish(state["sketch"])
+    self.add_pad(10, sketch=state["sketch"])
+    boss = self._thin_owner(self._require_body().Tip).Name
+    self.add_repeat_feature(
+        [boss], [{"offset": [20, 0, 0]}], mode="cut")
+    report["n10_une_instance"] = (
+        edited and _close(_volume(), 8000.0, tol=1e-4))
+
+
 def n10_garde_topologique(self, mark, report, etat):
     _close = etat._close  # posé par document.cycle_de_vie_open_part
     _volume = etat._volume  # posé par document.cycle_de_vie_open_part

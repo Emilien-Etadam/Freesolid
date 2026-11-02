@@ -43,7 +43,9 @@ export function patternBodiesParams(v) {
 const otherBodies = (ctx) =>
   (ctx?.lastTree?.bodies ?? []).filter((body) => !body.active);
 
-/** Corps concernés : rien tant que la pièce n'a qu'un corps. */
+/** Corps concernés : rien tant que la pièce n'a qu'un corps. Comme dans
+ *  les modeleurs courants, les occurrences creusent les corps qu'elles
+ *  traversent — le moteur les trouve. */
 export function patternScopeGroup(ctx) {
   const others = otherBodies(ctx);
   if (!others.length) return null;
@@ -51,8 +53,9 @@ export function patternScopeGroup(ctx) {
     label: "Corps concernés",
     showIf: (v) => !repeatsBodies(v),
     rows: [
-      { type: "select", key: "scopeMode", value: "active",
-        options: [["active", "Corps actif seulement"],
+      { type: "select", key: "scopeMode", value: "crossed",
+        options: [["crossed", "Corps traversés"],
+                  ["active", "Corps actif seulement"],
                   ["all", "Tous les corps"],
                   ["selected", "Corps choisis"]] },
       ...others.map((body) => ({
@@ -65,12 +68,15 @@ export function patternScopeGroup(ctx) {
   };
 }
 
+/** Params moteur : rien, et le moteur prend les corps traversés ; sinon
+ *  `scope`, les autres corps creusés (vide : le corps actif seul). */
 export function patternScopeParams(v, ctx) {
   const others = otherBodies(ctx);
+  if (!others.length || (v.scopeMode ?? "crossed") === "crossed") return {};
   const chosen = v.scopeMode === "all" ? others
     : v.scopeMode === "selected"
       ? others.filter((body) => v[`scope:${body.name}`]) : [];
-  return chosen.length ? { scope: chosen.map((body) => body.name) } : {};
+  return { scope: chosen.map((body) => body.name) };
 }
 
 /** Groupes d'une répétition : quoi répéter, puis `own` (direction, plan). */

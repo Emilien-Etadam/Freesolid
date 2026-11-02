@@ -564,8 +564,9 @@ export function holeEditValues(v, feature) {
   if (v.cut !== "none") {
     const head = measure("cutDiameter", retyped);
     if (head == null) return null;
-    // Le lamage englobe le trou.
-    if (typeof head === "number" && typeof diameter === "number"
+    // Le lamage englobe le trou — vérifié quand l'un des deux change.
+    const resized = "cutDiameter" in values || "diameter" in values;
+    if (resized && typeof head === "number" && typeof diameter === "number"
         && !(head > diameter)) return null;
     const extra = v.cut === "lamage" ? "cutDepth" : "cutAngle";
     if (measure(extra, retyped) == null) return null;

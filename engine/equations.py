@@ -150,7 +150,11 @@ class EquationsMixin:
                     self._restore_props(obj, previous)
                     raise KernelError("sens de la coque : booléen attendu")
                 previous.append((prop, None, getattr(obj, prop, None)))
-                obj.Reversed = not flag
+                try:
+                    obj.Reversed = not flag
+                except Exception as exc:  # noqa: BLE001
+                    self._restore_props(obj, previous)
+                    raise KernelError(_explain(exc))
                 continue
             if prop in ("HoleCutType", "DepthType"):
                 table = (self._HOLE_CUTS if prop == "HoleCutType"
@@ -170,7 +174,11 @@ class EquationsMixin:
                         previous.append((head, exprs_before.get(head),
                                          getattr(obj, head, None)))
                 previous.append((prop, None, getattr(obj, prop, None)))
-                setattr(obj, prop, table[token])
+                try:
+                    setattr(obj, prop, table[token])
+                except Exception as exc:  # noqa: BLE001
+                    self._restore_props(obj, previous)
+                    raise KernelError(_explain(exc))
                 continue
             if prop in ("Reversed", "Midplane") and revolved:
                 if isinstance(value, bool):
@@ -217,7 +225,11 @@ class EquationsMixin:
                     raise KernelError(
                         "côté de la paroi mince : booléen attendu")
                 previous.append((prop, None, getattr(obj, prop, None)))
-                setattr(obj, prop, flag)
+                try:
+                    setattr(obj, prop, flag)
+                except Exception as exc:  # noqa: BLE001
+                    self._restore_props(obj, previous)
+                    raise KernelError(_explain(exc))
                 continue
             if prop == "FlipDirection":
                 if isinstance(value, bool):

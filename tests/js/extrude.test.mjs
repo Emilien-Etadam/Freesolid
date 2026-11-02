@@ -262,6 +262,12 @@ describe("réédition du perçage", () => {
     const f = hole();
     assert.equal(holeEditValues(
       { ...opened(f), cut: "lamage", cutDiameter: 5 }, f), null);
+    // Un perçage d'avant, déjà ainsi : OK sans rien changer ne refuse pas.
+    const old = hole({ cut: "lamage", cutDiameter: 5, cutDepth: 2 },
+                     [{ key: "diameter", value: 6 },
+                      { key: "cutDiameter", value: 5 },
+                      { key: "cutDepth", value: 2 }]);
+    assert.deepEqual(holeEditValues(opened(old), old), {});
   });
 
   it("le panneau de réédition n'a pas de positions", () => {

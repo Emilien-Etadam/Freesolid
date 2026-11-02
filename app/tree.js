@@ -1816,7 +1816,7 @@ export function installTree(ctx) {
       }],
       onApply: (v) => {
         const size = num(v.distance);
-        if (size === null) return;
+        if (!size) return;
         const distance = v.side ? -Math.abs(size) : Math.abs(size);
         if (distance === signed) return;
         refresh(call("set_params", {

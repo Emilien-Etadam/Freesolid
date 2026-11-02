@@ -552,6 +552,82 @@ class SolidsMixin:
         self._attach_pattern_scope(feature, [o.Name for o in others])
         self._recompute()
 
+    def _cut_bodies_of(self, feature):
+        """Les autres corps que l'enlèvement ``feature`` creuse."""
+        if not self._is_cut_source(feature):
+            return []
+        return [target for target in (cut.getParentGeoFeatureGroup()
+                                      for cut in self._scope_cuts(feature))
+                if target is not None]
+
+    def _set_cut_bodies(self, feature, names):
+        """Réédition : les autres corps que l'enlèvement ``feature`` creuse.
+        Un corps décoché perd son étape cachée ; un corps coché en reçoit
+        une, à son rang dans le corps (``_insert_scope_cut``)."""
+        from engine.bodypattern import format_scope
+        from engine.kernel import KernelError
+        if not isinstance(names, (list, tuple)):
+            raise KernelError("bodies : une liste de corps attendue")
+        body = feature.getParentGeoFeatureGroup()
+        current = {cut.getParentGeoFeatureGroup(): cut
+                   for cut in self._scope_cuts(feature)}
+        wanted = []
+        for name in names:
+            other = (next((b for b in current if b.Name == str(name)), None)
+                     or self._merge_body(name))
+            if other is not body and other not in wanted:
+                wanted.append(other)
+        added = [target for target in wanted if target not in current]
+        if added and not self._scope_seeds(feature):
+            raise KernelError(
+                "« {} » est désactivé : réactivez-le pour qu'il creuse "
+                "d'autres corps".format(feature.Label))
+        for target, cut in current.items():
+            if target not in wanted:
+                self._remove_scope_cut(cut)
+        for target in added:
+            self._insert_scope_cut(feature, target)
+        scope = format_scope(t.Name for t in wanted)
+        if getattr(feature, "FreeSolidScope", "") != scope:
+            self._stamp_text(feature, "FreeSolidScope", scope)
+
+    def _insert_scope_cut(self, feature, target):
+        """L'étape cachée de ``feature`` dans ``target``, après la dernière
+        fonction de ``target`` plus ancienne que lui : la pointe y passe le
+        temps de l'insertion, puis revient — ou reste sur l'étape si elle
+        était sur cette fonction et que ``feature`` est au-dessus de la
+        barre."""
+        from engine.kernel import KernelError
+        order_of = self._tree_order()
+        rank = order_of.get(feature.Name, -1)
+        anchor = None
+        for obj in target.Group:
+            if not obj.isDerivedFrom("PartDesign::Feature"):
+                continue
+            source = getattr(obj, "FreeSolidScopeOf", "")
+            hidden = source and self._is_thin_helper(obj)
+            if order_of.get(source if hidden else obj.Name, -1) < rank:
+                anchor = obj
+        if anchor is None:
+            raise KernelError(
+                "« {} » n'existe pas encore au rang de « {} »".format(
+                    self._body_title(target), feature.Label))
+        anchor = self._tip_with_helpers(anchor)
+        tip = target.Tip
+        own = feature.getParentGeoFeatureGroup()
+        members = list(getattr(own, "Group", None) or ())
+        mark = getattr(own, "Tip", None)
+        # Reculé par la barre : l'étape naît reculée aussi.
+        rolled = mark is None or (
+            feature in members and mark in members
+            and members.index(feature) > members.index(mark))
+        target.Tip = anchor
+        try:
+            self._make_scope_cut(feature, target)
+        finally:
+            if tip is not anchor or rolled:
+                target.Tip = tip
+
     def _crossed_bodies(self, body, feature, candidates):
         """Parmi ``candidates``, les corps où l'enlèvement ``feature`` ôte
         de la matière."""

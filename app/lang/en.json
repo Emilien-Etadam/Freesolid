@@ -616,6 +616,7 @@
  "Fondre les corps touchés": "Merge the bodies it touches",
  "Cliquez des corps dans la vue": "Click bodies in the view",
  "Corps fondus": "Merged bodies",
+ "Corps creusés": "Bodies cut",
  "Corps : {s}": "Body: {s}",
  "Nouveau corps : profondeur borgne ou plan milieu": "New body: blind depth or mid plane",
  "Jusqu'à la face : fusionnez avec le corps actif": "Up to face: merge with the active body",

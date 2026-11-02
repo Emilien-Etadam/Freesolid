@@ -557,8 +557,8 @@ describe("corps fondus, à la réédition", () => {
     ]);
   });
 
-  it("ni enlèvement, ni corps seul : pas de groupe", () => {
-    assert.deepEqual(fusedGroups({ ...pad, type_key: "pocket" }, tree), []);
+  it("ni chanfrein, ni corps seul : pas de groupe", () => {
+    assert.deepEqual(fusedGroups({ ...pad, type_key: "chamfer" }, tree), []);
     assert.deepEqual(fusedGroups({ name: "Pad", type_key: "pad" },
                                  { bodies: [tree.bodies[0]] }), []);
   });
@@ -576,5 +576,45 @@ describe("corps fondus, à la réédition", () => {
                      { bodies: ["Body001", "Body002"] });
     assert.deepEqual(fusedValues({ ...same, "fuse:Body001": false }, pad, tree),
                      { bodies: [] });
+  });
+});
+
+describe("corps creusés, à la réédition", () => {
+  const tree = { bodies: [
+    { name: "Body", label: "Enlèvement[1]", active: true, has_solid: true },
+    { name: "Body001", label: "Enlèvement[2]", active: false,
+      has_solid: true },
+    { name: "Body002", label: "Extrusion2", active: false, has_solid: true },
+  ] };
+  const pocket = { name: "Pocket", type_key: "pocket",
+                   cut: [{ name: "Body001", label: "Enlèvement[2]" }] };
+
+  it("une case par corps creusé, cochée, puis par autre corps solide", () => {
+    const [group] = fusedGroups(pocket, tree);
+    assert.equal(group.label, "Corps creusés");
+    assert.deepEqual(group.rows.map((r) => [r.key, r.label, r.value]), [
+      ["fuse:Body001", "Enlèvement[2]", true],
+      ["fuse:Body002", "Extrusion2", false],
+    ]);
+  });
+
+  it("la gorge et le perçage aussi ; les corps fondus n'y comptent pas", () => {
+    for (const type_key of ["groove", "hole"]) {
+      const [group] = fusedGroups({ ...pocket, type_key }, tree);
+      assert.equal(group.label, "Corps creusés");
+    }
+    const fusedOnly = { name: "Pocket", type_key: "pocket",
+                        fused: [{ name: "Body001", label: "x" }] };
+    assert.deepEqual(fusedGroups(fusedOnly, tree)[0].rows.map((r) => r.value),
+                     [false, false]);
+  });
+
+  it("bodies seulement quand les cases changent", () => {
+    const same = { "fuse:Body001": true, "fuse:Body002": false };
+    assert.deepEqual(fusedValues(same, pocket, tree), {});
+    assert.deepEqual(fusedValues({ ...same, "fuse:Body001": false }, pocket,
+                                 tree), { bodies: [] });
+    assert.deepEqual(fusedValues({ ...same, "fuse:Body002": true }, pocket,
+                                 tree), { bodies: ["Body001", "Body002"] });
   });
 });

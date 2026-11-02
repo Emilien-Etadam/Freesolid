@@ -1880,8 +1880,8 @@ export function installTree(ctx) {
     return null;
   }
 
-  /** Les cotes d'une réédition, et les corps fondus s'ils ont changé
-   *  (`fusedValues`, sur l'arbre de l'ouverture du panneau). */
+  /** Les cotes d'une réédition, et les corps fondus (ou creusés) s'ils
+   *  ont changé (`fusedValues`, sur l'arbre de l'ouverture du panneau). */
   function withFused(values, v, feature, tree) {
     return values && { ...values, ...fusedValues(v, feature, tree) };
   }
@@ -2204,8 +2204,10 @@ export function installTree(ctx) {
     shell: (feature) => editWithValues(feature, shellEditGroups(feature),
       (v) => shellEditValues(v, feature), "Épaisseur invalide"),
     hole: (feature) => editWithValues(feature,
-      holeGroups(holeEditInitial(feature)),
-      (v) => holeEditValues(v, feature), "Valeurs du perçage invalides"),
+      [...holeGroups(holeEditInitial(feature)),
+       ...fusedGroups(feature, ctx.lastTree)],
+      (v) => withFused(holeEditValues(v, feature), v, feature, ctx.lastTree),
+      "Valeurs du perçage invalides"),
     remove_bodies: (feature) => editRemoveBodies(feature),
     params: editParams,
   };

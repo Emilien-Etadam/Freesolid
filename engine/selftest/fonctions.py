@@ -1746,11 +1746,10 @@ def p96_corps_fondus_reedites(self, mark, report, etat):
         and abs(a.Shape.Volume - (4000 + 3000 - 500 + 4000 - 500 + 400))
         < 1e-6 and clean())
 
-    # Refus : un enlèvement ne fond rien ; un corps fondu ailleurs non plus.
-    rect(2, 2, 4, 4, face=self._top_face_id())
-    self.add_pocket(2)
-    pocket = self._last_body_feature(a).Name
-    refused = [call("set_params", feature=pocket,
+    # Refus : une esquisse ne fond rien (un enlèvement creuse, p99) ; un
+    # corps fondu ailleurs non plus.
+    sketch = rect(2, 2, 4, 4, face=self._top_face_id())
+    refused = [call("set_params", feature=sketch,
                     values={"bodies": [b.Name]}),
                call("set_params", feature=after.Name, values={"bodies": [c.Name]})]
     report["p96_refus"] = (
@@ -2184,6 +2183,146 @@ def p98_enlevement_traversant(self, mark, report, etat):
     report["p98_a_travers_tout_loin"] = (
         drilled.get("ok") is True and deep
         and abs(b.Shape.Volume - (40000 - 10000 - bore)) < 1e-4 and clean())
+
+
+def p99_corps_creuses_reedites(self, mark, report, etat):
+    mark("p99: rééditer les corps qu'un enlèvement creuse")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2, **where):
+        name = self.sketch_start(**(where or {"plane": "XY"}))["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def ranks():
+        tree = self.get_tree()
+        rows = tree["features"] + tree.get("other_features", [])
+        return [r["name"] for r in sorted(rows, key=lambda r: r["order"])]
+
+    def volumes(*bodies):
+        return [round(b.Shape.Volume, 6) for b in bodies]
+
+    # Trois corps côte à côte ; l'enlèvement ne creuse d'abord que A.
+    self.new_part("Corps creusés")
+    bodies = []
+    for x in (0, 20, 40):
+        rect(x, 0, x + 20, 20)
+        call("add_pad", length=10, merge=not bodies)
+        bodies.append(self._require_body())
+    a, b, c = bodies
+    self.set_active_body(a.Name)
+    rect(10, 5, 50, 15)
+    call("add_pocket", through=True, reversed=True, bodies=[])
+    pocket = self._thin_owner(a.Tip).Name
+    alone = volumes(a, b, c) == [3000, 4000, 4000]
+    before = ranks()
+
+    def row():
+        return next(r for r in self.get_tree()["features"]
+                    if r["name"] == pocket)
+
+    # Cocher B et C : creusés à leur tour ; la ligne les nomme.
+    both = call("set_params", feature=pocket,
+                values={"bodies": [b.Name, c.Name]})
+    cut_both = (both.get("ok") is True
+                and volumes(a, b, c) == [3000, 2000, 3000]
+                and [x["name"] for x in row().get("cut", [])]
+                == [b.Name, c.Name])
+    # Décocher B : il revient ; Ctrl+Z le recreuse.
+    call("set_params", feature=pocket, values={"bodies": [c.Name]})
+    back = volumes(b, c) == [4000, 3000]
+    call("undo")
+    report["p99_cocher_decocher"] = (
+        alone and cut_both and back and volumes(b, c) == [2000, 3000]
+        and ranks() == before and clean())
+
+    # Un corps coché à la réédition est creusé au rang de l'enlèvement :
+    # le bossage posé ensuite sur B le recouvre sans être entamé (4400 ;
+    # creusé en bout de chaîne, 4320 ; pas creusé, 4800). Ni ce bossage ni
+    # la fonction de A venue après lui ne changent de rang.
+    self.new_part("Corps creusé à son rang")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(20, 0, 40, 20)
+    call("add_pad", length=10, merge=False)
+    b = self._require_body()
+    self.set_active_body(a.Name)
+    rect(10, 8, 30, 12)
+    call("add_pocket", through=True, reversed=True, bodies=[])
+    pocket = self._thin_owner(a.Tip).Name
+    self.set_active_body(b.Name)
+    rect(20, 0, 40, 20, face=self._top_face_id())
+    call("add_pad", length=2, bodies=[])
+    self.set_active_body(a.Name)
+    rect(0, 0, 5, 5, face=self._top_face_id())
+    call("add_pad", length=2, bodies=[])
+    before = ranks()
+    call("set_params", feature=pocket, values={"bodies": [b.Name]})
+    report["p99_a_son_rang"] = (
+        abs(b.Shape.Volume - 4400) < 1e-6 and ranks() == before
+        and clean())
+
+    # Refus : un corps né après l'enlèvement, un enlèvement désactivé.
+    rect(50, 0, 60, 10)
+    call("add_pad", length=5, merge=False)
+    late = self._require_body()
+    born = call("set_params", feature=pocket,
+                values={"bodies": [b.Name, late.Name]})
+    call("set_suppressed", features=[pocket], suppressed=True)
+    call("set_params", feature=pocket, values={"bodies": []})
+    off = call("set_params", feature=pocket, values={"bodies": [b.Name]})
+    report["p99_refus"] = (
+        born.get("ok") is False
+        and "n'existe pas encore" in str(born.get("error"))
+        and off.get("ok") is False
+        and "désactivé" in str(off.get("error")) and clean())
+
+    # Le perçage aussi : un trou à cheval sur A et B, puis B coché.
+    self.new_part("Perçage réédité")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(20, 0, 40, 20)
+    call("add_pad", length=10, merge=False)
+    b = self._require_body()
+    self.set_active_body(a.Name)
+    call("add_hole", diameter=4, through=True, face=self._top_face_id(),
+         points=[[20, 10, 10]], bodies=[])
+    hole = self._thin_owner(a.Tip).Name
+    whole = abs(b.Shape.Volume - 4000) < 1e-6
+    call("set_params", feature=hole, values={"bodies": [b.Name]})
+    report["p99_percage"] = (
+        whole and abs(b.Shape.Volume - (4000 - math.pi * 4 * 10 / 2)) < 1e-4
+        and clean())
+
+    # La barre au-dessus de l'enlèvement : B, coché, reste entier tant
+    # qu'elle n'est pas redescendue.
+    self.new_part("Réédité sous la barre")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(20, 0, 40, 20)
+    call("add_pad", length=10, merge=False)
+    b = self._require_body()
+    b_pad = b.Tip.Name
+    self.set_active_body(a.Name)
+    rect(10, 8, 30, 12)
+    call("add_pocket", through=True, reversed=True, bodies=[])
+    pocket = self._thin_owner(a.Tip).Name
+    call("set_tip", feature=b_pad)
+    call("set_params", feature=pocket, values={"bodies": [b.Name]})
+    above = abs(b.Shape.Volume - 4000) < 1e-6
+    call("tip_to_end")
+    report["p99_sous_la_barre"] = (
+        above and abs(b.Shape.Volume - 3600) < 1e-6 and clean())
 
 
 def protocol_dangling(tree):

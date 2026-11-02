@@ -672,32 +672,36 @@ export function mergeParams(v, bodies) {
            bodies: others };
 }
 
-// ---------- corps fondus, à la réédition ----------
+// ---------- corps fondus ou creusés, à la réédition ----------
 // Un corps fondu ne se voit plus à part dans la vue : la réédition donne
 // une case par corps — cochée pour ceux que la fonction fond, décochée
 // pour les autres corps du dossier. Le corps de la fonction ne bouge pas.
+// Un enlèvement de même, pour les corps qu'il creuse.
 
 const FUSING = ["pad", "revolution"];
+const CUTTING = ["pocket", "groove", "hole"];
 const fuseKey = (name) => `fuse:${name}`;
 
-/** Les cases de la réédition : les corps fondus, puis les autres corps
- *  solides du dossier, sauf celui de la fonction. */
+/** Les cases de la réédition : les corps fondus (ou creusés), puis les
+ *  autres corps solides du dossier, sauf celui de la fonction. */
 export function fusedCandidates(feature, tree) {
-  if (!FUSING.includes(feature?.type_key)) return [];
+  const kind = feature?.type_key;
+  if (!FUSING.includes(kind) && !CUTTING.includes(kind)) return [];
   const own = feature.body ?? activeBodyName(tree?.bodies);
-  const fused = feature.fused ?? [];
+  const fused = (CUTTING.includes(kind) ? feature.cut : feature.fused) ?? [];
   const others = (tree?.bodies ?? []).filter((b) => b.has_solid === true
     && b.name !== own && !fused.some((f) => f.name === b.name));
   return [...fused.map(({ name, label }) => ({ name, label, fused: true })),
           ...others.map(({ name, label }) => ({ name, label, fused: false }))];
 }
 
-/** Groupe « Corps fondus » de la réédition, vide sans autre corps. */
+/** Groupe « Corps fondus » (« Corps creusés ») de la réédition, vide sans
+ *  autre corps. */
 export function fusedGroups(feature, tree) {
   const candidates = fusedCandidates(feature, tree);
   if (!candidates.length) return [];
   return [{
-    label: "Corps fondus",
+    label: CUTTING.includes(feature.type_key) ? "Corps creusés" : "Corps fondus",
     rows: candidates.map((c) => ({ type: "check", key: fuseKey(c.name),
                                    label: c.label, value: c.fused })),
   }];

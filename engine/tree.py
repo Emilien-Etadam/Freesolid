@@ -178,7 +178,12 @@ class TreeMixin:
         self._require_body()
         order_of = {obj.Name: i for i, obj in enumerate(self._doc.Objects)}
         for body in self._history_bodies():
-            members = [o for o in body.Group if o.Name in order_of]
+            # Les étapes cachées d'un enlèvement prennent le rang de leur
+            # source (``_history_rows``) : glissées dans la chaîne d'un
+            # corps, elles n'y décalent pas les fonctions.
+            members = [o for o in body.Group if o.Name in order_of
+                       and not (getattr(o, "FreeSolidScopeOf", "")
+                                and self._is_thin_helper(o))]
             for slot, obj in zip(sorted(order_of[o.Name] for o in members),
                                  members):
                 order_of[obj.Name] = slot
@@ -996,6 +1001,11 @@ class TreeMixin:
                 # Les corps qu'elle fond : la réédition les décoche.
                 item["fused"] = [{"name": b.Name, "label": self._body_title(b)}
                                  for b in fused]
+            cut = self._cut_bodies_of(obj)
+            if cut:
+                # Et ceux qu'un enlèvement creuse.
+                item["cut"] = [{"name": b.Name, "label": self._body_title(b)}
+                               for b in cut]
             if obj.TypeId in ("PartDesign::Plane", "PartDesign::Line",
                               "PartDesign::Point",
                               "PartDesign::CoordinateSystem"):

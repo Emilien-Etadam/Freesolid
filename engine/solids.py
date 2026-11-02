@@ -45,11 +45,44 @@ class SolidsMixin:
         obj = doc.getObject(str(body))
         if obj is None or obj.TypeId != "PartDesign::Body":
             raise KernelError("corps inconnu : {}".format(body))
+        self._refuse_gone_body(obj)
+        self._body = obj
+        return self.get_tree()
+
+    def _refuse_gone_body(self, obj):
+        """Refuse un corps ôté à la position de la barre : supprimé par
+        une fonction, ou fondu dans un autre (``_absorbed_bodies``)."""
+        from engine.kernel import KernelError
+        host = self._absorbed_bodies().get(obj.Name)
+        if host is not None:
+            raise KernelError("« {} » est fondu dans « {} » par une "
+                              "fonction — reculez la barre au-dessus "
+                              "d'elle".format(
+                                  self._body_title(obj),
+                                  self._body_title(host)))
         if obj.Name in self._removed_names():
             raise KernelError("{} est supprimé par une fonction — reculez "
                               "la barre au-dessus d'elle".format(obj.Label))
-        self._body = obj
-        return self.get_tree()
+
+    def _absorbed_bodies(self):
+        """Corps fondus dans un autre à la position de la barre : les
+        outils d'un combiner actif sous le Tip de son corps — « Combiner »,
+        ou celui, caché, d'un volume qui fusionne plusieurs corps
+        (``_fuse_bodies``). ``{nom du corps fondu: corps qui le porte}``."""
+        absorbed = {}
+        for host in self._history_bodies():
+            group = list(host.Group)
+            tip = getattr(host, "Tip", None)
+            if tip not in group:
+                continue
+            for obj in group[:group.index(tip) + 1]:
+                if (obj.TypeId != "PartDesign::Boolean"
+                        or getattr(obj, "Suppressed", False)):
+                    continue
+                for tool in getattr(obj, "Group", None) or ():
+                    if tool.TypeId == "PartDesign::Body":
+                        absorbed[tool.Name] = host
+        return absorbed
 
     def set_body_color(self, body, color, solid=None):
         """Couleur d'affichage d'un corps, persistée dans le .FCStd.
@@ -78,6 +111,72 @@ class SolidsMixin:
             obj.FreeSolidTinted = False  # choisie : la matière n'y touche plus
         return self.get_tree()
 
+    #: Corps outils qu'un combiner sous la barre a lâchés (noms, JSON).
+    _PARKED_TOOLS = "FreeSolidParkedTools"
+
+    def _sync_bar_booleans(self):
+        """Un combiner sous la barre de retour dont un corps outil n'existe
+        pas encore à ce rang (Tip vide) casserait, et son corps avec lui :
+        FreeCAD recalcule aussi ce qui suit le Tip, et ne recalcule plus un
+        corps dont une fonction casse. Il lâche donc ses outils, gardés par
+        leur nom, et les reprend revenu au-dessus de la barre."""
+        import json
+        for body in self._history_bodies():
+            group = list(body.Group)
+            tip = getattr(body, "Tip", None)
+            limit = group.index(tip) if tip in group else -1
+            for rank, obj in enumerate(group):
+                if obj.TypeId != "PartDesign::Boolean":
+                    continue
+                parked = getattr(obj, self._PARKED_TOOLS, "")
+                tools = list(getattr(obj, "Group", None) or ())
+                if rank > limit:
+                    if any(t.TypeId == "PartDesign::Body"
+                           and getattr(t, "Tip", None) is None
+                           for t in tools):
+                        if self._PARKED_TOOLS not in obj.PropertiesList:
+                            obj.addProperty("App::PropertyString",
+                                            self._PARKED_TOOLS, "FreeSolid",
+                                            "Corps outils lâchés sous la "
+                                            "barre")
+                            obj.setEditorMode(self._PARKED_TOOLS, 2)
+                        setattr(obj, self._PARKED_TOOLS,
+                                json.dumps([t.Name for t in tools]))
+                        obj.Group = []
+                elif parked:
+                    setattr(obj, self._PARKED_TOOLS, "")
+                    # Un corps pris depuis par un autre combiner y reste,
+                    # comme un corps qui s'est mis à dépendre de celui-ci
+                    # (il y a été fondu, barre levée) : la reprise
+                    # bouclerait le graphe.
+                    back = [t for t in self._parked_tools(obj, parked)
+                            if t is not body
+                            and body not in (t.OutListRecursive or ())
+                            and not any(
+                                o.TypeId == "PartDesign::Boolean"
+                                and t in (o.Group or ()) for o in t.InList)]
+                    if back:
+                        self._set_boolean_tools(obj, tools + back)
+
+    def _parked_tools(self, obj, parked=None):
+        """Les corps qu'un combiner a lâchés sous la barre."""
+        import json
+        parked = (getattr(obj, self._PARKED_TOOLS, "")
+                  if parked is None else parked)
+        try:
+            names = json.loads(parked) if parked else []
+        except ValueError:
+            names = []
+        doc = self._require_doc()
+        return [t for t in (doc.getObject(str(n)) for n in names)
+                if t is not None]
+
+    def _boolean_tools(self, obj):
+        """Les corps outils d'un combiner, même lâchés sous la barre."""
+        return [t for t in list(getattr(obj, "Group", None) or ())
+                + self._parked_tools(obj)
+                if t.TypeId == "PartDesign::Body"]
+
     def add_boolean(self, tool, type="cut"):
         """Combiner deux corps — Soustraire / Ajouter / Intersection.
 
@@ -100,6 +199,9 @@ class SolidsMixin:
                 derived_names.append(base.Name)
         elif tool_obj is None or tool_obj.TypeId != "PartDesign::Body":
             raise KernelError("corps outil inconnu : {}".format(tool))
+        else:
+            # Déjà fondu : FreeCAD l'ôterait sans bruit de son combiner.
+            self._refuse_gone_body(tool_obj)
         if tool_obj is body:
             raise KernelError(
                 "un corps ne se combine pas avec lui-même — choisissez "
@@ -122,14 +224,7 @@ class SolidsMixin:
                 "common".format(type))
         feature = body.newObject("PartDesign::Boolean", "Boolean")
         feature.Type = boolean_type
-        # L'API d'ajout du corps outil a changé selon les versions.
-        try:
-            feature.addObjects([tool_obj])
-        except AttributeError:
-            try:
-                feature.addObject(tool_obj)
-            except AttributeError:
-                feature.Group = [tool_obj]
+        self._set_boolean_tools(feature, [tool_obj])
         feature.Label = labels[str(type)]
         boolean_phases = {
             "cut": "Soustraire",
@@ -152,20 +247,35 @@ class SolidsMixin:
             raise
         return self.get_tree()
 
+    @staticmethod
+    def _set_boolean_tools(feature, tools):
+        """Les corps outils d'un combiner — l'API a changé selon les
+        versions."""
+        try:
+            feature.addObjects(list(tools))
+        except AttributeError:
+            try:
+                for tool in tools:
+                    feature.addObject(tool)
+            except AttributeError:
+                feature.Group = list(tools)
+
     def add_pad(self, length=None, sketch=None, reversed=False,
                 midplane=False, thin=None, merge=True, body=None,
-                **conditions):
+                bodies=None, **conditions):
         """Extrusion. ``conditions`` : voir ``engine.extrude`` —
         cond, face, offset, taper, cond2, length2, face2, offset2, taper2.
         ``thin`` : paroi mince, voir ``engine.extrude.thin_settings``.
         ``merge`` faux : un nouveau corps ; ``body`` : le corps où
-        fusionner, le corps actif par défaut (``_result_body``)."""
+        fusionner, le corps actif par défaut ; ``bodies`` : d'autres corps
+        qui s'y fondent (``_result_body``)."""
         from engine.kernel import KernelError
         if sketch is not None:
             profile = self._get_sketch(sketch)
         else:
             profile = self._latest_sketch()
-        body, made = self._result_body([profile], merge, body, conditions)
+        body, made, fused = self._result_body([profile], merge, body,
+                                              conditions, bodies)
         tip = body.Tip  # les faces visées appartiennent à l'état d'avant
         helpers = []
         pad = None
@@ -183,6 +293,7 @@ class SolidsMixin:
             self._own_thin_helpers(pad, helpers)
             if spec is not None and spec["caps"]:
                 helpers += self._thin_cavity(body, pad, profile, spec)
+            helpers += self._fuse_bodies(body, pad, fused)
             self._recompute()
         except KernelError:
             # Le corps neuf part en dernier, vidé d'abord.
@@ -192,37 +303,43 @@ class SolidsMixin:
         self._body = body
         return self.get_tree()
 
-    def _result_body(self, profiles, merge, body, conditions=None):
+    def _result_body(self, profiles, merge, body, conditions=None,
+                     bodies=None):
         """Corps où ranger un volume (extrusion, révolution, lissage,
-        balayage) : ``(corps, nouveau)``.
+        balayage) : ``(corps, nouveau, corps à fondre)``.
 
-        Fusionner : le corps actif, ou ``body``. Sinon un nouveau corps —
-        sauf si les esquisses sont seules dans le leur, qui le devient.
-        Une face d'arrivée se clique sur le corps actif : elle ne vaut que
-        là. ``conditions`` : celles d'une extrusion."""
+        Fusionner : le corps actif, ou ``body`` ; ``bodies``, d'autres
+        corps que la fonction y fond (``_fuse_bodies``). Sinon un nouveau
+        corps — sauf si les esquisses sont seules dans le leur, qui le
+        devient. Une face d'arrivée se clique sur le corps actif : elle ne
+        vaut que là. ``conditions`` : celles d'une extrusion."""
         from engine.kernel import KernelError
         from engine.extrude import ExtrudeError, check_new_body
         conditions = conditions or {}
         doc = self._require_doc()
         active = self._require_body()
         if merge:
-            if body is None:
-                return active, False
-            target = doc.getObject(str(body))
-            if (target is None or target.TypeId != "PartDesign::Body"
-                    or self._is_internal_tool(target)):
-                raise KernelError("corps inconnu : {}".format(body))
-            if target.Name in self._removed_names():
-                raise KernelError("{} est supprimé par une fonction — "
-                                  "reculez la barre au-dessus d'elle"
-                                  .format(target.Label))
+            target = active if body is None else self._merge_body(body)
             if target is not active and (
                     conditions.get("cond") == "face"
                     or conditions.get("cond2") == "face"):
                 raise KernelError(
                     "jusqu'à la face : fusionnez avec le corps actif, "
                     "celui de la face cliquée")
-            return target, False
+            fused = []
+            for name in bodies or ():
+                other = self._merge_body(name)
+                if other is target or other in fused:
+                    continue
+                if target in (other.OutListRecursive or ()):
+                    # Une copie de réseau suit sa source : la fondre dans
+                    # la source bouclerait le graphe.
+                    raise KernelError(
+                        "« {} » suit « {} » : il ne s'y fond pas".format(
+                            self._body_title(other),
+                            self._body_title(target)))
+                fused.append(other)
+            return target, False, fused
         try:
             check_new_body(conditions.get("cond"), conditions.get("cond2"))
         except ExtrudeError as exc:
@@ -234,13 +351,37 @@ class SolidsMixin:
         if (getattr(home, "TypeId", "") == "PartDesign::Body"
                 and not any(o.isDerivedFrom("PartDesign::Feature")
                             for o in home.Group)):
-            return home, False
+            return home, False, []
         made = doc.addObject("PartDesign::Body", "Body")
         made.Label = self._t("Corps")
         made.addProperty("App::PropertyBool", "FreeSolidNewBody", "FreeSolid",
                          "Né d'une fonction non fusionnée")
         made.FreeSolidNewBody = True
-        return made, True
+        return made, True, []
+
+    def _merge_body(self, name):
+        """Un corps où fusionner, ou à fondre : présent à la barre."""
+        from engine.kernel import KernelError
+        obj = self._require_doc().getObject(str(name))
+        if (obj is None or obj.TypeId != "PartDesign::Body"
+                or self._is_internal_tool(obj)):
+            raise KernelError("corps inconnu : {}".format(name))
+        self._refuse_gone_body(obj)
+        return obj
+
+    def _fuse_bodies(self, body, feature, others):
+        """Le combiner caché qui fond ``others`` dans ``body``, juste après
+        ``feature`` : il la suit (désactiver, supprimer, barre de retour)
+        et les corps fondus quittent le dossier tant qu'il agit
+        (``_absorbed_bodies``)."""
+        if not others:
+            return []
+        fuse = self._new_thin_helper(body, "PartDesign::Boolean",
+                                     "MergeBodies", "Corps fondus")
+        fuse.Type = "Fuse"
+        self._set_boolean_tools(fuse, others)
+        self._own_thin_helpers(feature, [fuse])
+        return [fuse]
 
     def _profile_helpers(self, body, profile, helpers):
         """Objets cachés d'un profil rangé hors de son esquisse :
@@ -768,11 +909,11 @@ class SolidsMixin:
         return self.get_tree()
 
     def add_loft(self, sketches, subtractive=False, ruled=False,
-                 closed=False, merge=True, body=None):
+                 closed=False, merge=True, body=None, bodies=None):
         """Lissage (ou enlèvement) entre plusieurs profils —
         typiquement des esquisses posées sur des plans de référence.
-        ``merge``, ``body`` : comme l'extrusion (``_result_body``) ; un
-        enlèvement creuse le corps actif."""
+        ``merge``, ``body``, ``bodies`` : comme l'extrusion
+        (``_result_body``) ; un enlèvement creuse le corps actif."""
         from engine.kernel import (
             KernelError,
             label_for_type,
@@ -782,9 +923,10 @@ class SolidsMixin:
             raise KernelError("un lissage demande au moins deux profils")
         profiles = [self._get_sketch(str(n)) for n in sketches]
         if subtractive:
-            body, made = active, False
+            body, made, fused = active, False, []
         else:
-            body, made = self._result_body(profiles, merge, body)
+            body, made, fused = self._result_body(profiles, merge, body,
+                                                  bodies=bodies)
         type_id = ("PartDesign::SubtractiveLoft" if subtractive
                    else "PartDesign::AdditiveLoft")
         helpers = []
@@ -807,6 +949,7 @@ class SolidsMixin:
             loft.Closed = bool(closed)
             loft.Label = label_for_type(type_id, self.lang)
             self._own_thin_helpers(loft, helpers)
+            helpers += self._fuse_bodies(body, loft, fused)
             self._recompute()
         except Exception:
             self._remove_all(([body] if made else []) + helpers
@@ -816,11 +959,11 @@ class SolidsMixin:
         return self.get_tree()
 
     def add_sweep(self, profile, spine, subtractive=False, merge=True,
-                  body=None):
+                  body=None, bodies=None):
         """Balayage (ou enlèvement) : un profil suit une
         trajectoire — deux esquisses, souvent sur des plans différents.
-        ``merge``, ``body`` : comme l'extrusion (``_result_body``) ; un
-        enlèvement creuse le corps actif."""
+        ``merge``, ``body``, ``bodies`` : comme l'extrusion
+        (``_result_body``) ; un enlèvement creuse le corps actif."""
         from engine.kernel import (
             KernelError,
             label_for_type,
@@ -844,9 +987,10 @@ class SolidsMixin:
         sketches = [section] + ([path] if path.TypeId == "Sketcher::"
                                 "SketchObject" else [])
         if subtractive:
-            body, made = active, False
+            body, made, fused = active, False, []
         else:
-            body, made = self._result_body(sketches, merge, body)
+            body, made, fused = self._result_body(sketches, merge, body,
+                                                  bodies=bodies)
         type_id = ("PartDesign::SubtractivePipe" if subtractive
                    else "PartDesign::AdditivePipe")
         binder = None
@@ -894,6 +1038,7 @@ class SolidsMixin:
             # compris : un corps neuf n'en garde rien.
             self._own_thin_helpers(
                 pipe, helpers + ([binder] if binder is not None else []))
+            helpers += self._fuse_bodies(body, pipe, fused)
             self._recompute()
         except Exception:
             self._remove_all(([body] if made else [])
@@ -1157,14 +1302,15 @@ class SolidsMixin:
         return lines
 
     def _revolved(self, type_id, angle, sketch, axis=None,
-                  reversed=False, midplane=False, merge=True, body=None):
+                  reversed=False, midplane=False, merge=True, body=None,
+                  bodies=None):
         """Révolution ou gorge : même axe, ajout ou enlèvement.
 
         Sans axe, l'axe vertical de l'esquisse — le profil se dessine à
         côté. ``axis`` peut être ``horizontal``, ``line:<id>`` (une ligne
         de l'esquisse, de construction de préférence) ou ``X``, ``Y``, ``Z``.
-        ``merge``, ``body`` : comme l'extrusion (``_result_body``) ; une
-        gorge creuse le corps actif.
+        ``merge``, ``body``, ``bodies`` : comme l'extrusion
+        (``_result_body``) ; une gorge creuse le corps actif.
         """
         from engine.kernel import (
             KernelError,
@@ -1180,9 +1326,10 @@ class SolidsMixin:
         profile = (self._get_sketch(sketch) if sketch is not None
                    else self._latest_sketch())
         if type_id == "PartDesign::Revolution":
-            body, made = self._result_body([profile], merge, body)
+            body, made, fused = self._result_body([profile], merge, body,
+                                                  bodies=bodies)
         else:
-            body, made = active, False
+            body, made, fused = active, False, []
         helpers = []
         feature = None
         try:
@@ -1201,6 +1348,7 @@ class SolidsMixin:
                 feature.Midplane = True
             feature.Label = label_for_type(type_id, self.lang)
             self._own_thin_helpers(feature, helpers)
+            helpers += self._fuse_bodies(body, feature, fused)
             self._drop_unused_axis_tools()
             self._recompute()
         except Exception:
@@ -1213,12 +1361,13 @@ class SolidsMixin:
 
     def add_revolution(self, angle=360.0, sketch=None, axis=None,
                        reversed=False, midplane=False, merge=True,
-                       body=None):
+                       body=None, bodies=None):
         """Révolution. ``merge`` faux : un nouveau corps ; ``body`` : le
-        corps où fusionner."""
+        corps où fusionner ; ``bodies`` : d'autres corps qui s'y fondent."""
         return self._revolved(
             "PartDesign::Revolution", angle, sketch, axis=axis,
-            reversed=reversed, midplane=midplane, merge=merge, body=body)
+            reversed=reversed, midplane=midplane, merge=merge, body=body,
+            bodies=bodies)
 
     def add_groove(self, angle=360.0, sketch=None, axis=None,
                    reversed=False, midplane=False):

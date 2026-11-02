@@ -403,6 +403,11 @@ def _profile_name(kernel, obj):
     if kernel._thin_spec(obj) is not None:
         raise KernelError("capture refusée : {} est une paroi mince"
                           .format(obj.Label))
+    if any(h.TypeId == "PartDesign::Boolean"
+           for h in kernel._thin_helpers(obj)):
+        # Son rejeu ne fondrait rien.
+        raise KernelError("capture refusée : {} fond d'autres corps"
+                          .format(obj.Label))
     if kernel._profile_copy_of(obj) is not None:
         sketch, _ = kernel._profile_of(obj)
         return getattr(sketch, "Name", None)

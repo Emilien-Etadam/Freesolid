@@ -76,9 +76,10 @@ OPS = (
     Op("edit_remove_bodies", Req(("feature", str), ("targets", list),
                                  optional={"keep": bool}), undo=True),
     # Conditions de fin : engine/extrude.py. Sans length : jusqu'à…
-    # merge faux : un nouveau corps ; body : le corps où fusionner.
+    # merge faux : un nouveau corps ; body : le corps où fusionner ;
+    # bodies : d'autres corps qui s'y fondent.
     Op("add_pad", Req(optional={"length": float, "contours": list,
-                                "merge": bool, "body": str,
+                                "merge": bool, "body": str, "bodies": list,
                                 **_EXTRUDE_OPTIONAL}),
        undo=True, preview=True, creates="PartDesign::Pad",
        replay=_rejouer_extrusion),
@@ -96,6 +97,7 @@ OPS = (
         "contours": list,        # index des contours de l'esquisse pris
         "merge": bool,           # faux : un nouveau corps
         "body": str,             # le corps où fusionner (défaut : l'actif)
+        "bodies": list,          # d'autres corps qui s'y fondent
     }),
        undo=True, preview=True, creates="PartDesign::Revolution",
        replay=_rejouer_revolution),    # sketch reste libre (nom d'esquisse)
@@ -112,12 +114,14 @@ OPS = (
        undo=True),
                                        # [] : toute l'esquisse
     Op("add_loft", Req(("sketches", list),
-                       optional={"merge": bool, "body": str}),
+                       optional={"merge": bool, "body": str,
+                                 "bodies": list}),
        undo=True, preview=True,
        no_replay="plusieurs profils (Sections), pas get_params"),
                                        # optional: subtractive, ruled, closed
     Op("add_sweep", Req(("profile", str), ("spine", str),
-                        optional={"merge": bool, "body": str}),
+                        optional={"merge": bool, "body": str,
+                                  "bodies": list}),
        undo=True, preview=True,
        no_replay="Profile + Spine, pas get_params"),  # optional: subtractive
     Op("add_helix", Req(("pitch", float), ("height", float)),

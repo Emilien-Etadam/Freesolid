@@ -1496,6 +1496,177 @@ def p94_fusionner_les_autres_volumes(self, mark, report, etat):
         and clean())
 
 
+def p95_fusionner_plusieurs_corps(self, mark, report, etat):
+    mark("p95: un volume fond plusieurs corps en un seul")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2):
+        name = self.sketch_start(plane="XY")["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def folder():
+        return [b["name"] for b in self.get_tree()["bodies"]]
+
+    def shown():
+        return [o["name"] for o in self.tessellate().get("other_bodies", [])]
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    self.new_part("Fusionner plusieurs corps")
+    rect(0, 0, 20, 20)
+    first = self.add_pad(10)["features"][0]["name"]
+    a = self._require_body()
+    self.add_body()
+    rect(30, 0, 50, 20)
+    self.add_pad(10)
+    b = self._require_body()
+    self.add_body()
+    rect(60, 0, 80, 20)
+    self.add_pad(10)
+    c = self._require_body()
+    self.set_active_body(a.Name)
+    rect(10, 5, 70, 15)
+    # Une barre de 60 × 10 × 5 qui touche les trois corps : un solide.
+    merged = call("add_pad", length=5, bodies=[b.Name, c.Name])
+    pad = a.Tip.FreeSolidThinOwner if self._is_thin_helper(a.Tip) else ""
+    rows = [r["name"] for r in (merged.get("result") or {}).get("features", [])
+            + (merged.get("result") or {}).get("other_features", [])]
+    one = 3 * 4000 + 3000 - 2000
+    report["p95_trois_corps_fondus"] = (
+        merged.get("ok") is True and bool(pad)
+        and a.Tip.TypeId == "PartDesign::Boolean"
+        and abs(a.Shape.Volume - one) < 1e-6 and len(a.Shape.Solids) == 1
+        and folder() == [a.Name] and shown() == []
+        and b.Tip.Name in rows and c.Tip.Name in rows and pad in rows
+        and not any(r["name"] == a.Tip.Name
+                    for r in merged["result"]["features"]))
+
+    # Un corps fondu n'est plus ni actif, ni outil, ni à fondre ailleurs.
+    refused = [call("set_active_body", body=b.Name),
+               call("add_boolean", tool=b.Name, type="fuse")]
+    rect(0, 30, 10, 40)
+    refused.append(call("add_pad", length=5, bodies=[c.Name]))
+    report["p95_corps_fondu_refuse"] = (
+        all(r.get("ok") is False and "est fondu dans" in str(r.get("error"))
+            for r in refused)
+        and self._require_body() is a)
+
+    # Désactiver la fonction rend les corps ; la réactiver les refond.
+    call("set_suppressed", features=[pad], suppressed=True)
+    apart = (folder() == [a.Name, b.Name, c.Name]
+             and shown() == [b.Name, c.Name]
+             and abs(a.Shape.Volume - 4000) < 1e-6)
+    call("set_suppressed", features=[pad], suppressed=False)
+    report["p95_desactiver_rend_les_corps"] = (
+        apart and folder() == [a.Name]
+        and abs(a.Shape.Volume - one) < 1e-6)
+
+    # Barre au-dessus : chaque corps à son rang, même ceux qui ne sont
+    # pas encore nés ; redescendue, la fusion revient.
+    up = call("set_tip", feature=first)
+    above = (up.get("ok") is True and abs(a.Shape.Volume - 4000) < 1e-6
+             and folder() == [a.Name, b.Name, c.Name])
+    down = call("tip_to_end")
+    report["p95_barre_au_dessus"] = (
+        above and down.get("ok") is True and folder() == [a.Name]
+        and abs(a.Shape.Volume - one) < 1e-6 and clean())
+
+    # Supprimer la fonction rend les corps ; Ctrl+Z les refond.
+    call("delete_feature", feature=pad)
+    freed = (folder() == [a.Name, b.Name, c.Name]
+             and abs(b.Shape.Volume - 4000) < 1e-6
+             and not any(o.TypeId == "PartDesign::Boolean"
+                         for o in a.Group))
+    call("undo")
+    report["p95_supprimer_et_annuler"] = (
+        freed and folder() == [a.Name]
+        and abs(a.Shape.Volume - one) < 1e-6 and clean())
+
+    # « Supprimer des corps » posée après : sa réédition ne propose pas
+    # les corps fondus. Le rejeu d'une fonction qui fond est refusé.
+    self.add_body()
+    rect(0, 40, 10, 50)
+    self.add_pad(5)
+    d = self._require_body()
+    removal = call("add_remove_bodies", targets=[{"name": d.Name}])
+    host = next((r["name"] for r in (removal.get("result") or {}).get(
+        "features", []) + (removal.get("result") or {}).get(
+        "other_features", []) if r.get("role") == "remove"), None)
+    if host is None:
+        host = self._removal_hosts()[-1].Name
+    info = call("remove_bodies_info", feature=host).get("result") or {}
+    offered = sorted(c["name"] for c in info.get("candidates", []))
+    from engine.replay import capture_group
+    try:
+        capture_group(self, [pad])
+        captured = True
+    except KernelError as exc:
+        captured = "fond d'autres corps" not in str(exc)
+    report["p95_suppression_et_rejeu"] = (
+        removal.get("ok") is True and offered == sorted([a.Name, d.Name])
+        and not captured)
+
+    # Une révolution fond aussi ; un « Combiner » laisse la barre monter
+    # au-dessus de son corps outil.
+    self.new_part("Combiner sous la barre")
+    rect(0, 0, 20, 20)
+    first = self.add_pad(10)["features"][0]["name"]
+    a = self._require_body()
+    self.add_body()
+    rect(10, 0, 40, 20)
+    self.add_pad(10)
+    b = self._require_body()
+    self.set_active_body(a.Name)
+    combined = call("add_boolean", tool=b.Name, type="fuse")
+    up = call("set_tip", feature=first)
+    above = (up.get("ok") is True and abs(a.Shape.Volume - 4000) < 1e-6
+             and folder() == [a.Name, b.Name])
+    down = call("tip_to_end")
+    report["p95_combiner_sous_la_barre"] = (
+        combined.get("ok") is True and above and down.get("ok") is True
+        and folder() == [a.Name] and abs(a.Shape.Volume - 8000) < 1e-6
+        and clean())
+    self.new_part("Révolution qui fond")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    self.add_body()
+    rect(30, 0, 50, 20)
+    self.add_pad(10)
+    b = self._require_body()
+    self.set_active_body(a.Name)
+    ring = self.sketch_start(plane="XZ")["sketch"]
+    self.sketch_add_rectangle(ring, 15, 0, 35, 5)
+    self.sketch_finish(ring)
+    turned = call("add_revolution", sketch=ring, angle=360, bodies=[b.Name])
+    report["p95_revolution_fond"] = (
+        turned.get("ok") is True and folder() == [a.Name]
+        and len(a.Shape.Solids) == 1 and a.Shape.Volume > 8000 and clean())
+
+    # Une paroi mince fermée désactivée part en entier, sa cavité aussi :
+    # tournée vers le bloc, la cavité restée seule le creuserait.
+    self.new_part("Paroi désactivée")
+    self.add_rect_sketch(40, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    rect_name = self.sketch_start(face=self._top_face_id())["sketch"]
+    self.sketch_add_rectangle(rect_name, -10, -5, 10, 5)
+    self.sketch_finish(rect_name)
+    before = a.Shape.Volume
+    capped = self.add_pad(6, reversed=True, thin={
+        "type": "un", "thickness": 2, "caps": 1})["features"][-1]["name"]
+    hollow = a.Shape.Volume < before - 1
+    call("set_suppressed", features=[capped], suppressed=True)
+    report["p95_paroi_desactivee"] = (
+        hollow and abs(a.Shape.Volume - before) < 1e-6 and clean())
+
+
 def protocol_dangling(tree):
     from engine import protocol
     return protocol.dangling_deps(tree)

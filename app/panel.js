@@ -526,6 +526,11 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
           z: +value.z.toFixed(2) });
       } else if (value.kind === "surfpoint") {
         box.textContent = t("{s} — partie cliquée", { s: value.label });
+      } else if (value.items && value.items.every((i) => i.kind === "body")) {
+        // Corps à fondre : une liste, comme les fonctions.
+        const labels = value.items.map((i) => i.label).join(", ");
+        box.textContent = value.items.length <= 2 ? labels
+          : t("{n} corps : ", { n: value.items.length }) + labels;
       } else if (value.items && value.items.every((i) => i.kind === "feature")) {
         // Fonctions à répéter : une liste, pas un ordre de profils.
         const labels = value.items.map((i) => i.label).join(", ");

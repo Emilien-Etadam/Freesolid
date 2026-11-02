@@ -131,6 +131,7 @@ def _etapes():
         noeuds.n10_repetition_variable,
         noeuds.n10_reedition,
         noeuds.n10_proprete,
+        noeuds.n10_une_instance,
         noeuds.n10_garde_topologique,
         noeuds.n10b_graphe_pilote,
         noeuds.n10b_seul_point_verite,

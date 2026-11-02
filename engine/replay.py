@@ -644,6 +644,11 @@ def replay_group(kernel, captured, substitutions=None, offset=(0.0, 0.0, 0.0),
         dx, dy, dz = offset
         if dx or dy or dz:
             shape.translate(App.Vector(float(dx), float(dy), float(dz)))
+            # La base d'un corps ignore la position de sa forme : seule,
+            # l'instance retombait sur l'original. Rangée dans un composé,
+            # elle garde la sienne.
+            import Part
+            shape = Part.makeCompound([shape])
         return shape
     finally:
         kernel._body = host

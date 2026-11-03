@@ -3543,3 +3543,73 @@ def p103_fusionner_a_la_reedition(self, mark, report, etat):
         all(refusals) and clean() and volume(a) == kept
         and lone.getParentGeoFeatureGroup() is a
         and not any(row.get("error") for row in self.get_tree()["features"]))
+
+
+def p104_corps_de_la_fonction(self, mark, report, etat):
+    mark("p104: le corps de la fonction se change à la réédition")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2):
+        name = self.sketch_start(plane="XY")["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+
+    def folder():
+        return [row["name"] for row in self.get_tree()["bodies"]]
+
+    def volume(obj):
+        return round(obj.Shape.Volume, 3)
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def row(feature):
+        tree = self.get_tree()
+        return next(r for r in tree["features"] + tree.get("other_features", [])
+                    if r["name"] == feature.Name)
+
+    # A et C, puis une extrusion de A qui touche les deux : elle fond C.
+    self.new_part("Corps de la fonction")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(30, 0, 40, 20)
+    self.add_pad(10, merge=False)
+    c = self._require_body()
+    self.set_active_body(a.Name)
+    rect(15, 5, 35, 10)
+    call("add_pad", length=5)
+    pad = self._thin_owner(a.Tip)
+    start = (folder() == [a.Name] and volume(a) == 6250.0
+             and [b.Name for b in self._fused_bodies_of(pad)] == [c.Name]
+             and row(pad)["alone"] is False)
+
+    # Comme la zone d'action des modeleurs courants : le corps de A ôté de
+    # la liste, la fonction sort de A pour un corps neuf qui fond C.
+    same = call("set_params", feature=pad.Name,
+                values={"merge": True, "bodies": [a.Name, c.Name]})
+    unchanged = same.get("ok") and pad.getParentGeoFeatureGroup() is a
+    answer = call("set_params", feature=pad.Name,
+                  values={"merge": True, "bodies": [c.Name]})
+    home = pad.getParentGeoFeatureGroup()
+    report["p104_sort_vers_les_corps_choisis"] = (
+        start and unchanged and answer.get("ok") and clean()
+        and home is not a and folder() == [a.Name, home.Name]
+        and volume(a) == 4000.0 and volume(home) == 2375.0
+        and c.Name in self._absorbed_bodies()
+        and row(pad)["alone"] is True and row(pad)["merged"] is True)
+    call("undo")
+    back = (pad.getParentGeoFeatureGroup() is a and volume(a) == 6250.0
+            and folder() == [a.Name] and clean())
+
+    # Liste vide : elle sort de A et ne fond plus rien.
+    answer = call("set_params", feature=pad.Name,
+                  values={"merge": True, "bodies": []})
+    home = pad.getParentGeoFeatureGroup()
+    report["p104_liste_vide_et_ctrl_z"] = (
+        back and answer.get("ok") and clean()
+        and folder() == [a.Name, c.Name, home.Name]
+        and volume(home) == 500.0 and row(pad)["merged"] is False)

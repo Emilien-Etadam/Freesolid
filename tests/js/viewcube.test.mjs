@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  VIEW_KEYS, VIEWS, orthoZoomFor, placeOrientBox,
+  VIEW_KEYS, VIEWS, framedMeshes, orthoZoomFor, placeOrientBox,
 } from "../../app/viewcube.js";
 
 describe("orthoZoomFor", () => {
@@ -44,5 +44,23 @@ describe("vues standard", () => {
     assert.equal(VIEW_KEYS[7], "view-iso");
     assert.deepEqual(VIEWS["view-front"].direction, [0, -1, 0]);
     assert.equal(VIEWS["view-fit"].direction, null);
+  });
+});
+
+describe("framedMeshes", () => {
+  const mesh = (name, visible = true) => ({ name, visible, geometry: {} });
+  it("cadre le modèle entier : corps actif, autres corps, surfaces affichées", () => {
+    const names = framedMeshes({
+      partMesh: mesh("actif"),
+      othersMeshes: [mesh("B"), mesh("C", false)],
+      surfaceMeshes: [mesh("S"), mesh("S cachée", false)],
+    }).map((m) => m.name);
+    // Un corps en filaire (maillage masqué) compte : ses arêtes se voient.
+    assert.deepEqual(names, ["actif", "B", "C", "S"]);
+  });
+  it("sans corps actif, les autres corps suffisent", () => {
+    assert.deepEqual(framedMeshes({ partMesh: null, othersMeshes: [mesh("B")] })
+      .map((m) => m.name), ["B"]);
+    assert.deepEqual(framedMeshes({}), []);
   });
 });

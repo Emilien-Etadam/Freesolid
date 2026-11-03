@@ -219,6 +219,7 @@ def _etapes():
         fonctions.p100_repetition_traversante,
         fonctions.p101_repetition_corps_reedites,
         fonctions.p102_corps_vide_ou_cache,
+        fonctions.p103_fusionner_a_la_reedition,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

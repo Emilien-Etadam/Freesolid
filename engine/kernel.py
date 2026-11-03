@@ -1016,6 +1016,20 @@ def _abort(doc):
     _close_booking(abort=True)
 
 
+def _settle(doc):
+    """Après une op refusée, la transaction défaite rend les objets, pas
+    leur état : une fonction cassée en route resterait marquée en erreur
+    dans l'arbre. Un recalcul le rend, s'il reste quelque chose à refaire."""
+    if doc is None:
+        return
+    try:
+        if any({"Touched", "Invalid"} & set(obj.State or ())
+               for obj in doc.Objects):
+            doc.recompute()
+    except Exception:  # noqa: BLE001 - l'erreur de l'op prime
+        pass
+
+
 def _close_booking(abort=False):
     """Ferme la transaction réservée qui resterait ouverte. FreeCAD ne
     crée une transaction qu'au premier changement : une op refusée
@@ -1070,9 +1084,11 @@ def dispatch(kernel: Kernel, op: str, params: dict):
             result = kernel._plugins.call_op(op, kernel, **params)
     except (KernelError, PluginError) as exc:
         _abort(doc)
+        _settle(doc)
         return protocol.err(str(exc))
     except Exception as exc:  # noqa: BLE001 - the envelope is the handler
         _abort(doc)
+        _settle(doc)
         return protocol.err(_explain(exc),
                             hint="erreur moteur non traduite — à signaler")
     if doc is not None:

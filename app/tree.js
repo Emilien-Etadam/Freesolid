@@ -15,7 +15,7 @@ import {
   chamferRows, chamferFieldValue, chamferEditValues, chamferProblem,
   revolutionGroups, revolutionEditValues, revolutionProblem,
   extrudeEditInitial, extrudeEditProblem, extrudeEditValues, extrudeGroups,
-  bodyChoiceGroups, bodyChoiceValues,
+  bodyChoiceGroups, bodyChoiceValues, extrudeMergeProblem,
   holeEditInitial, holeEditValues, holeGroups, shellEditGroups,
   shellEditValues,
   checkedContours, contourRows, vertexChamferDistances, vertexChamferRows,
@@ -1937,8 +1937,8 @@ export function installTree(ctx) {
     const sameWay = (values) => !["cond", "midplane", "reversed", "cond2"]
       .some((key) => key in values);
     const tree = ctx.lastTree;
-    const build = (v) => withBodyChoices(extrudeEditValues(v, feature), v, feature,
-                                   tree);
+    const build = (v) => (extrudeMergeProblem(v, feature) ? null
+      : withBodyChoices(extrudeEditValues(v, feature), v, feature, tree));
     panel.open({
       icon: TREE_ICONS[feature.type_key] ?? "body",
       title: feature.label,

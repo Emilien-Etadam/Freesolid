@@ -620,6 +620,7 @@
  "{n} corps ajouté(s)": "{n} body(ies) added",
  "Aucun nouveau corps dans le cadre": "No new body in the box",
  "Corps fondus": "Merged bodies",
+ "Zone vide : les corps qu'elle touche": "Empty zone: the bodies it touches",
  "Corps creusés": "Bodies cut",
  "Corps : {s}": "Body: {s}",
  "Nouveau corps : profondeur borgne ou plan milieu": "New body: blind depth or mid plane",

@@ -1000,6 +1000,9 @@ class TreeMixin:
             }
             if item["suppressible"] and obj.Suppressed:
                 item["suppressed"] = True
+            if self._merge_editable(obj):
+                # « Fusionner » : la réédition le montre coché ou non.
+                item["merged"] = self._is_merged(obj)
             fused = self._fused_bodies_of(obj)
             if fused:
                 # Les corps qu'elle fond : la réédition les décoche.

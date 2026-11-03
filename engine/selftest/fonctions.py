@@ -3374,3 +3374,172 @@ def p102_corps_vide_ou_cache(self, mark, report, etat):
     report["p102_cache_fondu"] = (
         clean() and c.Name in self._absorbed_bodies()
         and folder() == [a.Name])
+
+
+def p103_fusionner_a_la_reedition(self, mark, report, etat):
+    mark("p103: « Fusionner » se change à la réédition")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2, plane="XY"):
+        name = self.sketch_start(plane=plane)["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def folder():
+        return [row["name"] for row in self.get_tree()["bodies"]]
+
+    def flags():
+        tree = self.get_tree()
+        return {row["name"]: row["merged"]
+                for row in tree["features"] + tree.get("other_features", [])
+                if "merged" in row}
+
+    def volume(obj):
+        return round(obj.Shape.Volume, 3)
+
+    def added(obj):
+        shape = obj.AddSubShape
+        box = shape.BoundBox
+        return (round(shape.Volume, 3),
+                tuple(round(v, 3) for v in (box.XMin, box.YMin, box.ZMin,
+                                            box.XMax, box.YMax, box.ZMax)))
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def unmerge(feature):
+        return call("set_params", feature=feature.Name,
+                    values={"merge": False})
+
+    # Une extrusion au milieu de son corps, sur le plan de face : décochée,
+    # elle sort dans un corps neuf, dans le même sens ; l'enlèvement
+    # d'après reste au corps d'origine. Ctrl+Z la remet, Ctrl+Y la ressort.
+    self.new_part("Fusionner rééditer")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(15, 0, 30, 10, plane="XZ")
+    self.add_pad(5)
+    pad = a.Tip
+    shape = added(pad)
+    rect(2, 2, 5, 5)
+    call("add_pocket", length=3, reversed=True)
+    pocket = a.Tip
+    before = (flags(), volume(a))
+    answer = unmerge(pad)
+    out = pad.getParentGeoFeatureGroup()
+    report["p103_sort_de_son_corps"] = (
+        before == ({"Pad": False, "Pad001": True}, 4723.0)
+        and answer.get("ok") and clean()
+        and out is not a and folder() == [a.Name, out.Name]
+        and flags() == {"Pad": False, "Pad001": False}
+        and added(pad) == shape and volume(out) == 750.0
+        and pocket.getParentGeoFeatureGroup() is a and volume(a) == 3973.0
+        and pocket.BaseFeature.Name == "Pad")
+    call("undo")
+    back = pad.getParentGeoFeatureGroup() is a and volume(a) == 4723.0
+    call("redo")
+    report["p103_ctrl_z_ctrl_y"] = (
+        back and pad.getParentGeoFeatureGroup() is out
+        and folder() == [a.Name, out.Name] and clean())
+
+    # Cochée : le premier volume d'un corps fond les corps qu'il touche,
+    # nés avant lui ; un volume qui ne touche rien est refusé.
+    answer = call("set_params", feature=pad.Name, values={"merge": True})
+    fused = (answer.get("ok") and clean() and folder() == [out.Name]
+             and a.Name in self._absorbed_bodies()
+             and flags()["Pad001"] is True)
+    rect(40, 0, 50, 10)
+    self.add_pad(5, merge=False)
+    lone = self._require_body().Tip
+    refused = call("set_params", feature=lone.Name, values={"merge": True})
+    report["p103_fond_les_corps_touches"] = (
+        fused and refused.get("ok") is False
+        and "ne touche aucun autre corps" in str(refused.get("error"))
+        and not self._is_merged(lone))
+
+    # Une révolution sort de même, pour chaque genre d'axe : même volume,
+    # même place.
+    same = []
+    for axis in ("vertical", "horizontal", "line:1", "X"):
+        self.new_part("Révolution rééditée")
+        rect(0, 0, 20, 20)
+        self.add_pad(10)
+        a = self._require_body()
+        rect(30, 5, 40, 15, plane="XZ")
+        self.add_revolution(90, axis=axis)
+        revolution = self._thin_owner(a.Tip)
+        shape = added(revolution)
+        answer = unmerge(revolution)
+        same.append(answer.get("ok") and clean()
+                    and revolution.getParentGeoFeatureGroup() is not a
+                    and self._revolution_axis_token(revolution) == axis
+                    and added(revolution) == shape)
+    report["p103_revolution_sort"] = all(same)
+
+    # Paroi mince fermée et contours choisis : ses objets cachés et son
+    # profil la suivent.
+    self.new_part("Mince rééditée")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(25, 0, 45, 20)
+    self.add_pad(10, thin={"type": "un", "thickness": 2, "caps": 1})
+    thin = self._thin_owner(a.Tip)
+    total = volume(a)
+    thin_ok = unmerge(thin).get("ok") and clean()
+    home = thin.getParentGeoFeatureGroup()
+    thin_ok = (thin_ok and home is not a
+               and abs(volume(a) + volume(home) - total) < 1e-2
+               and all(h.getParentGeoFeatureGroup() is home
+                       for h in self._thin_helpers(thin)))
+    name = self.sketch_start(plane="XY")["sketch"]
+    self.sketch_add_rectangle(name, 0, 30, 5, 35)
+    self.sketch_add_rectangle(name, 10, 30, 15, 35)
+    self.sketch_finish(name)
+    self.set_active_body(a.Name)
+    self.add_pad(4, sketch=name, contours=[1])
+    chosen = a.Tip
+    shape = added(chosen)
+    used = self._profile_entry(chosen)["used"]
+    report["p103_mince_et_contours"] = (
+        thin_ok and len(used) == 1 and unmerge(chosen).get("ok") and clean()
+        and added(chosen) == shape
+        and self._profile_entry(chosen)["used"] == used)
+
+    # Refusé, la pièce comme avant et rien en erreur : « jusqu'au
+    # suivant » (rien ne l'arrête dans un corps neuf), sous la barre, un
+    # congé sur ses arêtes.
+    self.new_part("Fusionner refusé")
+    rect(10, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(30, 0, 40, 10)
+    self.add_pad(10)
+    lone = a.Tip
+    rect(5, 2, 10, 5, plane="YZ")
+    upto = call("add_pad", length=5, cond="suivant")
+    if not upto.get("ok"):
+        upto = call("add_pad", length=5, cond="suivant", reversed=True)
+    upto_name = a.Tip.Name
+    refusals = [upto.get("ok") is True]
+    answer = call("set_params", feature=upto_name, values={"merge": False})
+    refusals.append("profondeur borgne" in str(answer.get("error")))
+    call("set_tip", feature=lone.BaseFeature.Name)
+    answer = unmerge(lone)
+    refusals.append("sous la barre" in str(answer.get("error")))
+    call("tip_to_end")
+    edges = [i for i, e in enumerate(a.Shape.Edges)
+             if all(v.Point.x >= 30 - 1e-6 for v in e.Vertexes)]
+    call("add_fillet", radius=1, edges=edges[:1])
+    kept = volume(a)
+    answer = unmerge(lone)
+    refusals.append(answer.get("ok") is False)
+    report["p103_refus"] = (
+        all(refusals) and clean() and volume(a) == kept
+        and lone.getParentGeoFeatureGroup() is a
+        and not any(row.get("error") for row in self.get_tree()["features"]))

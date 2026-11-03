@@ -8,7 +8,9 @@ Un combiner caché (``PartDesign::Boolean`` Fuse), juste après la
 fonction, tient les corps fondus : il la suit (désactiver, supprimer,
 barre de retour) et ces corps quittent le dossier tant qu'il agit
 (``_absorbed_bodies``). À la réédition, « Corps fondus » le règle
-(``_set_fused_bodies``).
+(``_set_fused_bodies``), et « Fusionner » d'une extrusion ou d'une
+révolution se change (``_set_merge``) : décochée, la fonction sort de
+son corps pour un corps neuf (``_detach_feature``).
 
 Mixin de ``Kernel``. Pas d'import FreeCAD au niveau du module :
 les méthodes importent le noyau à l'appel.
@@ -65,12 +67,17 @@ class BodyFuseMixin:
                 and not any(o.isDerivedFrom("PartDesign::Feature")
                             for o in home.Group)):
             return home, False, []
-        made = doc.addObject("PartDesign::Body", "Body")
+        return self._new_result_body(), True, []
+
+    def _new_result_body(self):
+        """Le corps neuf d'une fonction non fusionnée : il part avec sa
+        dernière fonction (``_drop_emptied_body``)."""
+        made = self._require_doc().addObject("PartDesign::Body", "Body")
         made.Label = self._t("Corps")
         made.addProperty("App::PropertyBool", "FreeSolidNewBody", "FreeSolid",
                          "Né d'une fonction non fusionnée")
         made.FreeSolidNewBody = True
-        return made, True, []
+        return made
 
     def _refuse_unfusable(self, other, body, own=None):
         """Refuse de fondre ``other`` dans ``body`` : un combiner autre que
@@ -252,3 +259,152 @@ class BodyFuseMixin:
             self._body = previous
             if tip is not anchor:
                 body.Tip = tip
+
+    # ---------- « Fusionner », à la réédition ----------
+
+    #: Volumes dont « Fusionner » se change à la réédition.
+    _MERGE_EDIT_TYPES = ("PartDesign::Pad", "PartDesign::Revolution")
+
+    def _merge_editable(self, obj):
+        """Vrai si la réédition de ``obj`` montre « Fusionner »."""
+        return (getattr(obj, "TypeId", "") in self._MERGE_EDIT_TYPES
+                and "FreeSolidTextString" not in obj.PropertiesList)
+
+    def _is_merged(self, feature):
+        """« Fusionner » d'un volume : il part d'une fonction d'avant de son
+        corps, ou il fond d'autres corps. Seul, le premier volume d'un
+        corps l'a ouvert : il n'est pas fusionné."""
+        return (getattr(feature, "BaseFeature", None) is not None
+                or self._fuse_helper(feature) is not None)
+
+    def _set_merge(self, feature, merge, bodies=None):
+        """Réédition de « Fusionner », comme dans les modeleurs courants.
+        Décochée : la fonction ne fond plus rien et, partie d'une fonction
+        d'avant, elle sort de son corps pour un corps neuf
+        (``_detach_feature``). Cochée sur le premier volume d'un corps :
+        elle fond ``bodies`` ou, sans liste, les corps qu'elle touche
+        (``_merge_touched``). Déjà fusionnée, ``bodies`` règle ses corps
+        fondus."""
+        from engine.kernel import KernelError
+        if not self._merge_editable(feature):
+            raise KernelError("« Fusionner » ne se change que sur une "
+                              "extrusion ou une révolution")
+        if not isinstance(merge, bool):
+            raise KernelError("merge : booléen attendu")
+        if not merge and bodies:
+            raise KernelError("sans « Fusionner », la fonction ne fond "
+                              "aucun corps")
+        merged = self._is_merged(feature)
+        if merge and merged:
+            if bodies is not None:
+                self._set_fused_bodies(feature, bodies)
+            return
+        if merge == merged:
+            return
+        if feature.Name in self._features_after_tips():
+            raise KernelError(
+                "« {} » est sous la barre de retour : « Fusionner » se "
+                "change au-dessus".format(feature.Label))
+        if getattr(feature, "Suppressed", False):
+            raise KernelError(
+                "« {} » est désactivée : « Fusionner » se change sur une "
+                "fonction active".format(feature.Label))
+        if merge:
+            self._merge_touched(feature, bodies)
+            return
+        self._set_fused_bodies(feature, [])
+        if getattr(feature, "BaseFeature", None) is not None:
+            self._detach_feature(feature)
+
+    def _merge_touched(self, feature, bodies=None):
+        """« Fusionner » coché sur le premier volume d'un corps : il fond
+        ``bodies`` ou, comme à la création, les corps qu'il touche — parmi
+        ceux qui existent déjà à son rang."""
+        from engine.kernel import KernelError
+        if bodies:
+            self._set_fused_bodies(feature, bodies)
+            return
+        body = feature.getParentGeoFeatureGroup()
+        candidates = [other for other in self._merge_candidates(body)
+                      if self._born_before(other, feature)]
+        touched = (self._touched_bodies(body, feature, candidates)
+                   if candidates else [])
+        if not touched:
+            raise KernelError(
+                "« {} » ne touche aucun autre corps à son rang : rien "
+                "à fusionner".format(feature.Label))
+        self._insert_fuse(body, feature, touched)
+
+    def _born_before(self, other, feature):
+        """Vrai si ``other`` a une fonction plus ancienne que ``feature`` :
+        à son rang, ce corps existe déjà."""
+        order_of = self._tree_order()
+        rank = order_of.get(feature.Name, -1)
+        return any(
+            obj.isDerivedFrom("PartDesign::Feature") and order_of.get(
+                self._hidden_cut_source(obj) or obj.Name, -1) < rank
+            for obj in other.Group)
+
+    def _detach_feature(self, feature):
+        """« Fusionner » décoché : ``feature`` sort de son corps pour un corps
+        neuf, avec ses objets cachés. Les fonctions d'après restent dans le
+        sien et repartent de celle d'avant (FreeCAD les rebranche au
+        retrait). L'esquisse ne bouge pas : le profil entre par un liant,
+        et l'axe d'une révolution est repris dans le corps neuf, comme à la
+        création dans un autre corps."""
+        from engine.kernel import KernelError
+        from engine.extrude import ExtrudeError, check_new_body
+        if feature.TypeId == "PartDesign::Pad":
+            state = self._extrude_state(feature)
+            if state is None:
+                raise KernelError(
+                    "{} : conditions de fin que la réédition ne sait pas "
+                    "changer".format(feature.Label))
+            try:
+                check_new_body(state["cond"], state["cond2"])
+            except ExtrudeError as exc:
+                raise KernelError(str(exc))
+        body = feature.getParentGeoFeatureGroup()
+        helpers = self._thin_helpers(feature)
+        moving = [obj for obj in body.Group
+                  if obj is feature or obj in helpers]
+        token = (self._revolution_axis_token(feature)
+                 if feature.TypeId == "PartDesign::Revolution" else None)
+        sketch, subs = self._profile_of(feature)
+        # Le profil est l'esquisse même, pas un liant (paroi mince, autre
+        # corps) qui part avec la fonction.
+        direct = (getattr(sketch, "TypeId", "") == "Sketcher::SketchObject"
+                  and self._as_object(getattr(feature, "Profile", None))
+                  is sketch)
+        made = self._new_result_body()
+        new = []
+        if direct:
+            # Un liant fait entrer l'esquisse dans le corps neuf.
+            if token is None:
+                new = self._profile_helpers(made, sketch, [])
+            else:
+                new = [self._profile_copy(made, sketch)]
+        reference = (self._revolution_reference(sketch, token, made,
+                                                feature=feature, made=new)
+                     if token is not None else None)
+        first = next(obj for obj in moving
+                     if obj.isDerivedFrom("PartDesign::Feature"))
+        base = first.BaseFeature
+        if body.Tip in moving:
+            body.Tip = base
+        for obj in moving:
+            body.removeObject(obj)
+        for obj in moving:
+            made.addObject(obj)
+        if direct:
+            copy = next(h for h in new
+                        if h.TypeId == "PartDesign::SubShapeBinder")
+            copy.Support = [(sketch, tuple(subs) or ("",))]
+            if token is None:
+                self._link_profile(feature, sketch, new)
+            else:
+                feature.Profile = copy
+        if reference is not None:
+            feature.ReferenceAxis = reference
+        self._own_thin_helpers(feature, new)
+        made.Tip = self._tip_with_helpers(feature)

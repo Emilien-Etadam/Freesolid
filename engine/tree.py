@@ -904,9 +904,11 @@ class TreeMixin:
         owner = self._thin_owner(tip)
         if current and getattr(owner, "FreeSolidScope", ""):
             # Un enlèvement qui creuse d'autres corps les nomme tous :
-            # numérotés, comme les solides d'un corps.
+            # numérotés, comme les solides d'un corps — sauf ceux qu'il a
+            # vidés, qui ne sont plus au dossier.
             sharing = [other for other in self._history_bodies()
-                       if self._title_owner(other) is owner]
+                       if self._title_owner(other) is owner
+                       and self._body_has_solid(other)]
             if len(sharing) > 1 and body in sharing:
                 return "{}[{}]".format(owner.Label, sharing.index(body) + 1)
         return owner.Label

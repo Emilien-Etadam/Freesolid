@@ -103,8 +103,9 @@ class RemoveBodiesMixin:
 
     def _removed_names(self):
         """Corps et surfaces ôtés à la position de la barre : par une
-        suppression, ou fondus dans un autre corps (``_absorbed_bodies``)."""
-        names = set(self._absorbed_bodies())
+        suppression, fondus dans un autre corps (``_absorbed_bodies``) ou
+        creusés en entier (``_consumed_bodies``)."""
+        names = set(self._absorbed_bodies()) | self._consumed_bodies()
         for host in self._removal_hosts():
             if self._is_rolled_back(host):
                 continue

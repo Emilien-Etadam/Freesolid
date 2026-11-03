@@ -3251,3 +3251,90 @@ def p90_copie_repetee(self, mark, report, etat):
         and sorted(_volumes(self)) == before
         and not any("Invalid" in (o.State or ())
                     for o in self._doc.Objects))
+
+
+def p102_corps_vide_ou_cache(self, mark, report, etat):
+    mark("p102: corps creusé en entier, corps cachés fondus et creusés")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2):
+        name = self.sketch_start(plane="XY")["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def folder():
+        return [row["name"] for row in self.get_tree()["bodies"]]
+
+    def shown():
+        return {row["name"] for row in self.tessellate().get("other_bodies", [])}
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    # A (20 de long), B et C (10) en ligne, 20 de large, 10 de haut.
+    self.new_part("Corps vide")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(30, 0, 40, 20)
+    self.add_pad(10, merge=False)
+    b = self._require_body()
+    rect(50, 0, 60, 20)
+    self.add_pad(10, merge=False)
+    c = self._require_body()
+    pad_c = c.Tip.Name
+    self.set_active_body(a.Name)
+
+    # Un enlèvement de A qui couvre B tout entier : B n'est plus un corps
+    # volumique, comme dans les modeleurs courants — hors du dossier et de
+    # la vue, il ne se rend plus actif.
+    rect(10, -5, 45, 25)
+    call("add_pocket", through=True, reversed=True)
+    pocket = a.Tip.Name
+    refused = call("set_active_body", body=b.Name)
+    titles = {row["name"]: row["label"] for row in self.get_tree()["bodies"]}
+    report["p102_corps_vide_quitte_le_dossier"] = (
+        clean() and folder() == [a.Name, c.Name]
+        # Seul corps restant de l'enlèvement : pas de numéro.
+        and titles[a.Name] == self._doc.getObject(pocket).Label
+        and shown() == {c.Name}
+        and refused.get("ok") is False
+        and "creusé en entier" in str(refused.get("error"))
+        and round(a.Shape.Volume) == 2000)
+
+    # Il revient quand l'enlèvement cesse d'agir : désactivé, sous la
+    # barre, supprimé — et repart avec Ctrl+Z.
+    back = []
+    call("set_suppressed", features=[pocket], suppressed=True)
+    back.append(folder() == [a.Name, b.Name, c.Name])
+    call("set_suppressed", features=[pocket], suppressed=False)
+    back.append(folder() == [a.Name, c.Name])
+    call("set_tip", feature=pad_c)
+    back.append(b.Name in folder())
+    call("tip_to_end")
+    back.append(b.Name not in folder())
+    call("delete_feature", feature=pocket)
+    back.append(b.Name in folder())
+    call("undo")
+    back.append(b.Name not in folder() and clean())
+    report["p102_corps_vide_revient"] = all(back)
+
+    # Cacher ne change que l'affichage : un corps caché est creusé…
+    self.set_active_body(a.Name)
+    self.set_hidden([c.Name], True)
+    rect(5, 5, 55, 8)
+    call("add_pocket", through=True, reversed=True)
+    report["p102_cache_creuse"] = (
+        clean() and round(c.Shape.Volume) == 1850
+        and c.Name in folder())
+
+    # … et fondu par un volume qui le touche.
+    rect(45, 0, 50, 20)
+    call("add_pad", length=10)
+    report["p102_cache_fondu"] = (
+        clean() and c.Name in self._absorbed_bodies()
+        and folder() == [a.Name])

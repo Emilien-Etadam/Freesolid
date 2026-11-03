@@ -82,6 +82,7 @@
  "gardez au moins un corps volumique": "keep at least one solid body",
  "le corps n'aurait plus de solide — supprimez-le en entier": "the body would have no solid left — delete it as a whole",
  "{} est supprimé par une fonction — reculez la barre au-dessus d'elle": "{} is deleted by a feature — move the rollback bar above it",
+ "« {} » est creusé en entier par une fonction — reculez la barre au-dessus d'elle": "\"{}\" is cut away entirely by a feature — move the rollback bar above it",
  "« {} » est fondu dans « {} » par une fonction — reculez la barre au-dessus d'elle": "\"{}\" is merged into \"{}\" by a feature — move the rollback bar above it",
  "« {} » suit « {} » : il ne s'y fond pas": "\"{}\" follows \"{}\": it cannot be merged into it",
  "« {} » est désactivé : réactivez-le pour qu'il creuse d'autres corps": "\"{}\" is suppressed: unsuppress it so it cuts other bodies",

@@ -3613,3 +3613,106 @@ def p104_corps_de_la_fonction(self, mark, report, etat):
         back and answer.get("ok") and clean()
         and folder() == [a.Name, c.Name, home.Name]
         and volume(home) == 500.0 and row(pad)["merged"] is False)
+
+
+def p105_corps_du_lissage_et_du_balayage(self, mark, report, etat):
+    mark("p105: corps fondus et creusés d'un lissage, d'un balayage, "
+         "à la réédition")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2, datum=None):
+        name = (self.sketch_start(datum=datum) if datum
+                else self.sketch_start(plane="XY"))["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def folder():
+        return [row["name"] for row in self.get_tree()["bodies"]]
+
+    def volume(obj):
+        return round(obj.Shape.Volume, 3)
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def row(feature):
+        tree = self.get_tree()
+        return next(r for r in tree["features"] + tree.get("other_features", [])
+                    if r["name"] == feature.Name)
+
+    def datum(offset):
+        self.add_datum_plane(base="XY", offset=offset)
+        return [o.Name for o in self._doc.Objects
+                if o.TypeId == "PartDesign::Plane"][-1]
+
+    def two_bodies(title):
+        self.new_part(title)
+        rect(0, 0, 20, 20)
+        self.add_pad(10)
+        a = self._require_body()
+        rect(30, 0, 40, 20)
+        self.add_pad(10, merge=False)
+        c = self._require_body()
+        self.set_active_body(a.Name)
+        return a, c
+
+    # Un lissage de A qui touche C, créé sans le fondre : sans cote, il se
+    # rouvre sur sa zone « Corps fondus », vide. C choisi, il le fond ;
+    # la zone vidée, il le rend.
+    a, c = two_bodies("Lissage")
+    top = datum(20)
+    low, high = rect(15, 5, 35, 10), rect(15, 5, 35, 10, datum=top)
+    call("add_loft", sketches=[low, high], bodies=[])
+    loft = self._thin_owner(a.Tip)
+    offered = (row(loft).get("fused") == [] and folder() == [a.Name, c.Name]
+               and volume(a) == 5750.0)
+    fused = call("set_params", feature=loft.Name,
+                 values={"bodies": [c.Name]})
+    fused_ok = (fused.get("ok") and folder() == [a.Name]
+                and volume(a) == 7500.0
+                and [b["name"] for b in row(loft)["fused"]] == [c.Name]
+                and clean())
+    freed = call("set_params", feature=loft.Name, values={"bodies": []})
+    freed_ok = (freed.get("ok") and folder() == [a.Name, c.Name]
+                and volume(a) == 5750.0 and volume(c) == 2000.0
+                and row(loft)["fused"] == [] and clean())
+    call("undo")
+    # Seul corps de la pièce : rien à choisir, pas de zone.
+    self.new_part("Lissage seul")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    top = datum(20)
+    self.add_loft([rect(5, 5, 15, 15), rect(5, 5, 15, 15, datum=top)])
+    alone = "fused" not in row(self._thin_owner(self._require_body().Tip))
+    report["p105_lissage_fond_les_corps_choisis"] = (
+        offered and fused_ok and freed_ok and alone and clean())
+
+    # Un enlèvement balayé de A qui traverse C, créé sans le creuser : sa
+    # zone « Corps creusés » se rouvre vide ; C choisi, il est creusé.
+    a, c = two_bodies("Balayage")
+    ring = self.sketch_start(plane="YZ")["sketch"]
+    self.sketch_add_circle(ring, 10, 5, 2)
+    self.sketch_finish(ring)
+    path = self.sketch_start(datum=datum(5))["sketch"]
+    self.sketch_add_line(path, 0, 10, 40, 10)
+    self.sketch_finish(path)
+    call("add_sweep", profile=ring, spine=path, subtractive=True, bodies=[])
+    sweep = self._thin_owner(a.Tip)
+    hole = round(math.pi * 4, 3)
+    offered = (row(sweep).get("cut") == [] and volume(c) == 2000.0
+               and abs(volume(a) - (4000.0 - hole * 20)) < 1e-2)
+    cut = call("set_params", feature=sweep.Name, values={"bodies": [c.Name]})
+    cut_ok = (cut.get("ok") and folder() == [a.Name, c.Name]
+              and abs(volume(c) - (2000.0 - hole * 10)) < 1e-2
+              and [b["name"] for b in row(sweep)["cut"]] == [c.Name]
+              and clean())
+    call("undo")
+    undone = volume(c) == 2000.0 and row(sweep)["cut"] == [] and clean()
+    call("redo")
+    report["p105_balayage_creuse_les_corps_choisis"] = (
+        offered and cut_ok and undone
+        and abs(volume(c) - (2000.0 - hole * 10)) < 1e-2 and clean())

@@ -692,12 +692,13 @@ export function mergeParams(v, bodies) {
 // d'action : le corps d'où elle part y est aussi ; retiré, elle en sort
 // pour un corps neuf qui fond les autres.
 
-const FUSING = ["pad", "revolution"];
-const CUTTING = ["pocket", "groove", "hole"];
+const FUSING = ["pad", "revolution", "loft", "sweep"];
+const CUTTING = ["pocket", "groove", "hole", "loft_cut", "sweep_cut"];
 const PATTERNS = ["linear_pattern", "polar_pattern", "mirror"];
 const cuts = (feature) => CUTTING.includes(feature?.type_key)
   || (PATTERNS.includes(feature?.type_key) && Array.isArray(feature.cut));
-/** Le moteur dit si la fonction est fusionnée : la case se rééditera. */
+/** Le moteur dit si la fonction est fusionnée : la case se rééditera
+ *  (extrusion, révolution). */
 const mergesAtEdit = (feature) => FUSING.includes(feature?.type_key)
   && typeof feature.merged === "boolean";
 /** Fusionnée et partie d'une fonction d'avant : son corps est dans la zone. */

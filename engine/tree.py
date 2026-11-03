@@ -1005,14 +1005,19 @@ class TreeMixin:
                 # fonction part de son corps, sauf le premier volume.
                 item["merged"] = self._is_merged(obj)
                 item["alone"] = getattr(obj, "BaseFeature", None) is None
+            # Un lissage, un balayage n'ont pas de cote : leurs corps fondus
+            # ou creusés viennent même vides, leur réédition s'y rouvre.
+            sweeps = obj.TypeId in self._SWEPT_TYPES and bool(
+                self._other_bodies(obj.getParentGeoFeatureGroup()))
             fused = self._fused_bodies_of(obj)
-            if fused:
+            if fused or (sweeps and obj.TypeId in self._FUSING_TYPES):
                 # Les corps qu'elle fond : la réédition les décoche.
                 item["fused"] = [{"name": b.Name, "label": self._body_title(b)}
                                  for b in fused]
             cut = self._cut_bodies_of(obj)
-            if cut or (self._is_scope_pattern(obj) and self._other_bodies(
-                    obj.getParentGeoFeatureGroup())):
+            if cut or (sweeps and self._is_cut_source(obj)) or (
+                    self._is_scope_pattern(obj) and self._other_bodies(
+                        obj.getParentGeoFeatureGroup())):
                 # Et ceux qu'un enlèvement creuse. Une répétition
                 # d'enlèvements les donne même vides : sa réédition les
                 # propose, une symétrie sans cote s'y rouvre.

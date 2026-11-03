@@ -26,8 +26,8 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 | Révolution | oui | angle, axe, inverser, plan médian, contours, « Fusionner », corps fondus et corps de la fonction | esquisse | oui | oui | oui (axe, plan médian, « Fusionner », corps fondus) |
 | Enlèvement de révolution | oui | comme la Révolution, les corps creusés au lieu des corps fondus | comme la Révolution | oui | oui | non (seule la Révolution est testée) |
 | Perçage | oui | le panneau de la création sans les positions : type (simple, lamage, fraisage), cotes du type, angle du fraisage, à travers ou borgne, profondeur, corps creusés (une zone : clic ou cadre dans la vue, clic dans le dossier, croix pour retirer) | positions et face | oui | oui | oui (type, condition de fin, corps creusés) |
-| Lissage | oui | rien | tout : profils et ordre, soustractif, lissage droit, boucle fermée, « Fusionner », les corps fondus ou creusés | — | oui | non |
-| Balayage | oui | rien | tout : profil, trajectoire, soustractif, « Fusionner », les corps fondus ou creusés | — | oui | non |
+| Lissage | oui | quand la pièce a d'autres corps : les corps fondus, ou creusés pour l'enlèvement lissé (une zone : clic ou cadre dans la vue, clic dans le dossier, croix pour retirer) ; rien sinon | profils et ordre, soustractif, lissage droit, boucle fermée, « Fusionner » | oui | oui | oui (corps fondus ajoutés puis retirés, pas de zone dans une pièce d'un seul corps) |
+| Balayage | oui | comme le Lissage : les corps fondus, ou creusés pour l'enlèvement balayé | profil, trajectoire, soustractif, « Fusionner » | oui | oui | oui (corps creusés ajoutés, Ctrl+Z et Ctrl+Y) |
 | Hélice | oui | pas, hauteur, angle | esquisse profil | oui | oui | non |
 | Texte | oui | texte, taille, profondeur, position | face d'appui, relief ou gravure, police | non | oui | oui |
 
@@ -139,7 +139,7 @@ Où ça se décide :
 
 Un choix de création est définitif : il faut supprimer et refaire.
 
-- **Volumes** : Lissage, Balayage.
+- **Volumes** : Lissage, Balayage, sauf leurs corps fondus ou creusés quand la pièce a d'autres corps.
 - **Habillage et références** : Combiner, Axe, Point, Repère, Plan de référence.
 - **Répétitions** : Symétrie des fonctions et des corps.
 - **Surfaces** : lissée, plane, balayée, frontière, réglée, remplissage sans tangence.
@@ -179,7 +179,7 @@ Corrigé pour quatre fonctions : leur double-clic rouvre le panneau de la créat
 
 Reste :
 
-- **Extrusion et Enlèvement** : passer à « jusqu'à la face » ou changer de face (une sélection, thème 4), activer la paroi mince ou changer son genre (un, plan milieu, deux côtés), ce qui ajoute ou retire des profils cachés. « Fusionner » et les corps qu'elle fusionne se rééditent pour l'Extrusion et la Révolution. Décochée, la fonction sort de son corps pour un corps neuf ; cochée sur le premier volume d'un corps, elle fond les corps qu'elle touche, ou ceux de la zone. La zone est remplie des corps fondus et, si la fonction part d'une fonction d'avant, de son corps : retiré, elle en sort pour un corps neuf qui fond les autres ; un clic dans la vue ou le dossier en ajoute ou en retire un, la croix d'une ligne le retire (un corps fondu ne se voit plus à part dans la vue). Le Lissage et le Balayage ne rééditent encore ni « Fusionner » ni leurs corps.
+- **Extrusion et Enlèvement** : passer à « jusqu'à la face » ou changer de face (une sélection, thème 4), activer la paroi mince ou changer son genre (un, plan milieu, deux côtés), ce qui ajoute ou retire des profils cachés. « Fusionner » et les corps qu'elle fusionne se rééditent pour l'Extrusion et la Révolution. Décochée, la fonction sort de son corps pour un corps neuf ; cochée sur le premier volume d'un corps, elle fond les corps qu'elle touche, ou ceux de la zone. La zone est remplie des corps fondus et, si la fonction part d'une fonction d'avant, de son corps : retiré, elle en sort pour un corps neuf qui fond les autres ; un clic dans la vue ou le dossier en ajoute ou en retire un, la croix d'une ligne le retire (un corps fondu ne se voit plus à part dans la vue). Le Lissage et le Balayage, sans cote, se rouvrent sur leur zone quand la pièce a d'autres corps : « Corps fondus », ou « Corps creusés » pour l'enlèvement. Un corps ajouté est fondu ou creusé à leur rang ; retiré, il revient. Leur « Fusionner » ne se réédite pas encore : en sortir demanderait un liant pour chaque profil et pour la trajectoire.
 - **Dépouille** : le plan neutre.
 - **Texte** : relief ou gravure, police. Le relief est dans la forme des lettres et dans le genre du booléen : il faut reconstruire.
 - **Couper avec une surface** : passer de « tout un côté » à « bande épaisse » change le genre de l'outil.
@@ -228,7 +228,7 @@ Où ça se décide : `engine/ops/volumes.py`, `habillage.py`, `references.py`, `
 
 ### 10. La couverture du selftest
 
-Aucune étape de réédition dans `engine/selftest/` pour : Enlèvement extrudé, Enlèvement de révolution, Lissage, Balayage, Hélice (volume), Dépouille, Combiner, Plan, Axe, Point, Repère, Répétition circulaire (fonctions et corps), Symétrie, Surface de révolution, décalée, radiée, Épaissir, et les opérations Diviser, Annuler l'ajustement, Courbe d'intersection, Projeter, Courbe composite, Remplacer et Supprimer la face. Les clés de quatre surfaces ne sont vérifiées que par un test unitaire (`tests/test_param_keys.py`). Ce qui n'a pas de réédition n'a pas de test de bout en bout ; que l'arbre et `get_params` disent la même chose est vérifié par l'étape p87, et le choix de l'éditeur par `tests/js/editkind.test.mjs`.
+Aucune étape de réédition dans `engine/selftest/` pour : Enlèvement extrudé, Enlèvement de révolution, Hélice (volume), Dépouille, Combiner, Plan, Axe, Point, Repère, Répétition circulaire (fonctions et corps), Symétrie, Surface de révolution, décalée, radiée, Épaissir, et les opérations Diviser, Annuler l'ajustement, Courbe d'intersection, Projeter, Courbe composite, Remplacer et Supprimer la face. Les clés de quatre surfaces ne sont vérifiées que par un test unitaire (`tests/test_param_keys.py`). Ce qui n'a pas de réédition n'a pas de test de bout en bout ; que l'arbre et `get_params` disent la même chose est vérifié par l'étape p87, et le choix de l'éditeur par `tests/js/editkind.test.mjs`.
 
 Aucun selftest ne vise la barre de retour ni Masquer sur les surfaces et courbes (la barre n'est testée que sur une surface générique, Masquer que sur des corps). Désactiver n'est pas testé fonction par fonction.
 

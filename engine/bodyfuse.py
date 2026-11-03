@@ -21,6 +21,10 @@ class BodyFuseMixin:
     #: Volumes ajoutés qui fondent d'autres corps (``bodies``).
     _FUSING_TYPES = ("PartDesign::Pad", "PartDesign::Revolution",
                      "PartDesign::AdditiveLoft", "PartDesign::AdditivePipe")
+    #: Lissages et balayages, ajoutés ou ôtés.
+    _SWEPT_TYPES = ("PartDesign::AdditiveLoft", "PartDesign::AdditivePipe",
+                    "PartDesign::SubtractiveLoft",
+                    "PartDesign::SubtractivePipe")
 
     # ---------- à la création ----------
 

@@ -934,7 +934,9 @@
     color: var(--ink-2);
     padding: 10px var(--space-3) 6px;
   }
-  #tree { list-style: none; position: relative; }
+  /* Le double-clic rouvre une ligne : il n'en sélectionne pas le texte
+     (le champ du renommage, éditable, reste sélectionnable). */
+  #tree { list-style: none; position: relative; user-select: none; }
   #tree-filter {
     display: block;
     width: calc(100% - 2 * var(--space-3));

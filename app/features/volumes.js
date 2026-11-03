@@ -676,19 +676,22 @@ export function mergeParams(v, bodies) {
 // Un corps fondu ne se voit plus à part dans la vue : la réédition donne
 // une case par corps — cochée pour ceux que la fonction fond, décochée
 // pour les autres corps du dossier. Le corps de la fonction ne bouge pas.
-// Un enlèvement de même, pour les corps qu'il creuse.
+// Un enlèvement de même, pour les corps qu'il creuse ; une répétition
+// aussi, quand le moteur lui donne `cut` : elle répète un enlèvement.
 
 const FUSING = ["pad", "revolution"];
 const CUTTING = ["pocket", "groove", "hole"];
+const PATTERNS = ["linear_pattern", "polar_pattern", "mirror"];
 const bodyKey = (name) => `body:${name}`;
+const cuts = (feature) => CUTTING.includes(feature?.type_key)
+  || (PATTERNS.includes(feature?.type_key) && Array.isArray(feature.cut));
 
 /** Les cases de la réédition : les corps fondus (ou creusés), puis les
  *  autres corps solides du dossier, sauf celui de la fonction. */
 export function bodyChoices(feature, tree) {
-  const kind = feature?.type_key;
-  if (!FUSING.includes(kind) && !CUTTING.includes(kind)) return [];
+  if (!FUSING.includes(feature?.type_key) && !cuts(feature)) return [];
   const own = feature.body ?? activeBodyName(tree?.bodies);
-  const held = (CUTTING.includes(kind) ? feature.cut : feature.fused) ?? [];
+  const held = (cuts(feature) ? feature.cut : feature.fused) ?? [];
   const others = (tree?.bodies ?? []).filter((b) => b.has_solid === true
     && b.name !== own && !held.some((f) => f.name === b.name));
   return [...held.map(({ name, label }) => ({ name, label, held: true })),
@@ -701,7 +704,7 @@ export function bodyChoiceGroups(feature, tree) {
   const candidates = bodyChoices(feature, tree);
   if (!candidates.length) return [];
   return [{
-    label: CUTTING.includes(feature.type_key) ? "Corps creusés" : "Corps fondus",
+    label: cuts(feature) ? "Corps creusés" : "Corps fondus",
     rows: candidates.map((c) => ({ type: "check", key: bodyKey(c.name),
                                    label: c.label, value: c.held })),
   }];

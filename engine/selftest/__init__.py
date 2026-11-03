@@ -217,6 +217,7 @@ def _etapes():
         fonctions.p98_enlevement_traversant,
         fonctions.p99_corps_creuses_reedites,
         fonctions.p100_repetition_traversante,
+        fonctions.p101_repetition_corps_reedites,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

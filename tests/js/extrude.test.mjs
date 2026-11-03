@@ -618,3 +618,28 @@ describe("corps creusés, à la réédition", () => {
                                  tree), { bodies: ["Body001", "Body002"] });
   });
 });
+
+describe("corps creusés d'une répétition, à la réédition", () => {
+  const tree = { bodies: [
+    { name: "Body", label: "Répétition", active: true, has_solid: true },
+    { name: "Body001", label: "Extrusion2", active: false, has_solid: true },
+  ] };
+
+  it("une case par corps quand le moteur donne cut, même vide", () => {
+    for (const type_key of ["linear_pattern", "polar_pattern", "mirror"]) {
+      const [group] = bodyChoiceGroups({ name: "P", type_key, cut: [] }, tree);
+      assert.equal(group.label, "Corps creusés");
+      assert.deepEqual(group.rows.map((r) => [r.key, r.value]),
+                       [["body:Body001", false]]);
+    }
+    const held = { name: "P", type_key: "mirror",
+                   cut: [{ name: "Body001", label: "Extrusion2" }] };
+    assert.deepEqual(bodyChoiceValues({ "body:Body001": false }, held, tree),
+                     { bodies: [] });
+  });
+
+  it("sans cut (répétition d'une extrusion, fichier d'avant) : pas de groupe", () => {
+    assert.deepEqual(bodyChoiceGroups({ name: "P", type_key: "linear_pattern" },
+                                      tree), []);
+  });
+});

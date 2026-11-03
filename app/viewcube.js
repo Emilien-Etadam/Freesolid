@@ -12,6 +12,16 @@ export function orthoZoomFor(radius, width, height, orthoHeight) {
   return Math.min(orthoHeight * aspect, orthoHeight) / needed;
 }
 
+/** Les maillages que « Zoom au mieux » cadre : le modèle entier — le
+ *  corps actif, les autres corps (même en filaire, où seules leurs arêtes
+ *  se voient) et les surfaces affichées. */
+export function framedMeshes({ partMesh, othersMeshes, surfaceMeshes }) {
+  return [
+    partMesh, ...(othersMeshes ?? []),
+    ...(surfaceMeshes ?? []).filter((mesh) => mesh?.visible !== false),
+  ].filter((mesh) => mesh?.geometry);
+}
+
 /** Place la boîte sous le pointeur, en la gardant dans la fenêtre.
  *  Coordonnées en pixels, origine en haut à gauche de l'écran pour
  *  `at`, de la zone graphique pour `host`. */
@@ -55,16 +65,23 @@ export function installViewCube(ctx) {
   } = ctx;
 
   function partCenterRadius() {
-    // La sphère n'existe qu'une fois calculée (un lancer de rayon le fait) :
-    // juste après un chargement, le cadrage prenait le rayon par défaut.
-    const partMesh = ctx.partMesh;
-    if (partMesh && !partMesh.geometry.boundingSphere) {
-      partMesh.geometry.computeBoundingSphere();
+    const spheres = [];
+    for (const mesh of framedMeshes(ctx)) {
+      // La sphère n'existe qu'une fois calculée (un lancer de rayon le
+      // fait) : juste après un chargement, le cadrage prenait le rayon
+      // par défaut.
+      if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
+      const sphere = mesh.geometry.boundingSphere;
+      if (!sphere) continue;
+      mesh.updateMatrixWorld();
+      const center = sphere.center.clone().applyMatrix4(mesh.matrixWorld);
+      spheres.push({ center: [center.x, center.y, center.z],
+                     radius: sphere.radius });
     }
-    if (!partMesh || !partMesh.geometry.boundingSphere)
-      return { center: new THREE.Vector3(0, 0, 20), radius: 90 };
-    const sphere = partMesh.geometry.boundingSphere;
-    return { center: sphere.center.clone(), radius: Math.max(sphere.radius, 1) };
+    const covered = coverBounds([], spheres);
+    if (!covered) return { center: new THREE.Vector3(0, 0, 20), radius: 90 };
+    return { center: new THREE.Vector3(...covered.center),
+             radius: covered.radius };
   }
 
   function fitOrthoZoom(radius) {

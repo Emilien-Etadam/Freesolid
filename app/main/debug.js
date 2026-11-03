@@ -101,8 +101,41 @@ export function installDebug(ctx) {
     return points;
   }
 
+  /** Pour chaque solide du corps `name` (s'il en garde plusieurs), un
+   *  point écran sur sa face la plus tournée vers la caméra :
+   *  `{ rang: { x, y } }`. */
+  function solidScreenPoints(name) {
+    const active = (ctx.lastTree?.bodies ?? []).find((b) => b.active);
+    const mesh = active?.name === name ? ctx.partMesh
+      : ctx.othersMeshes.find((m) => m.userData.body.name === name);
+    const groups = mesh === ctx.partMesh ? ctx.meshGroups : mesh?.userData.groups;
+    if (!mesh || !groups) return {};
+    const pos = mesh.geometry.getAttribute("position");
+    const index = mesh.geometry.index;
+    const corner = (k) => mesh.localToWorld(new THREE.Vector3()
+      .fromBufferAttribute(pos, index ? index.getX(k) : k));
+    const best = {};
+    for (const group of groups) {
+      if (!Number.isInteger(group.solid)) continue;
+      for (let k = group.start; k + 2 < group.start + group.count; k += 3) {
+        const [a, b, c] = [corner(k), corner(k + 1), corner(k + 2)];
+        const centre = a.clone().add(b).add(c).divideScalar(3);
+        const normal = b.clone().sub(a).cross(c.clone().sub(a)).normalize();
+        const facing = normal.dot(camera.position.clone().sub(centre).normalize());
+        if (!(facing > (best[group.solid]?.facing ?? 0))) continue;
+        best[group.solid] = { facing, centre };
+      }
+    }
+    const rect = renderer.domElement.getBoundingClientRect();
+    return Object.fromEntries(Object.entries(best).map(([solid, { centre }]) => {
+      const p = centre.project(camera);
+      return [solid, ndcToScreen(p.x, p.y, rect)];
+    }));
+  }
+
   window.__freesolidDebug = {
     get otherBodyScreenPoints() { return otherBodyScreenPoints(); },
+    solidScreenPoints: (name) => solidScreenPoints(name),
     get volumeVisibleCount() { return volumeVisibleCount(); },
     get volumeScreenPoint() { return volumeScreenPoint(); },
     get isOrthographic() { return camera.isOrthographicCamera === true; },

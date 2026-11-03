@@ -11,6 +11,9 @@ import {
   resolveProfileSketch,
   sameMeasure,
   storedMeasure,
+  bodyZoneRow,
+  bodyZoneValue,
+  zoneNames,
 } from "./commun.js";
 
 /** Perçage : les centres cliqués (sélection « point ») → { face, points }
@@ -617,11 +620,9 @@ export function mergeGroups(bodies, { when } = {}) {
       ...(active ? [{ type: "check", key: "touched",
                       label: "Fondre les corps touchés", value: true,
                       showIf: (v) => v.merge !== false }] : []),
-      { type: "selection", key: "body", accepts: ["body"], label: "Corps",
-        multiple: true, hint: "Cliquez des corps dans la vue",
-        value: { kind: "body", items: active
-          ? [{ kind: "body", name: active.name, label: active.label }] : [] },
-        showIf: (v) => v.merge !== false && !touching(v, bodies) },
+      bodyZoneRow("body", { label: "Corps",
+        value: bodyZoneValue(active ? [active] : []),
+        showIf: (v) => v.merge !== false && !touching(v, bodies) }),
     ],
   }];
 }
@@ -637,8 +638,7 @@ const touching = (v, bodies) => v.touched !== false
  *  se range : le corps actif s'il y est, sinon le premier (zone vide : le
  *  corps actif). */
 function mergeTargets(v, bodies) {
-  const picks = v.body?.items ?? (v.body ? [v.body] : []);
-  const names = [...new Set(picks.map((i) => i.name).filter(Boolean))];
+  const names = zoneNames(v.body?.items ? v.body : { items: v.body ? [v.body] : [] });
   const active = activeBodyName(bodies);
   const target = !names.length || names.includes(active) ? active : names[0];
   return { target, others: names.filter((n) => n !== target) };
@@ -701,12 +701,8 @@ export function bodyChoiceGroups(feature, tree) {
   if (!held.length && !others.length) return [];
   return [{
     label: cuts(feature) ? "Corps creusés" : "Corps fondus",
-    rows: [{ type: "selection", key: "bodies", accepts: ["body"],
-             multiple: true,
-             hint: "Cliquez des corps dans la vue ou dans le dossier",
-             allows: (pick) => pick.name !== own,
-             value: { kind: "body", items: held.map(({ name, label }) =>
-               ({ kind: "body", name, label })) } }],
+    rows: [bodyZoneRow("bodies", { allows: (pick) => pick.name !== own,
+                                   value: bodyZoneValue(held) })],
   }];
 }
 
@@ -714,8 +710,7 @@ export function bodyChoiceGroups(feature, tree) {
 export function bodyChoiceValues(v, feature, tree) {
   if (!v.bodies?.items) return {};
   const own = ownBody(feature, tree);
-  const chosen = [...new Set(v.bodies.items.map((i) => i.name))]
-    .filter((name) => name && name !== own);
+  const chosen = zoneNames(v.bodies).filter((name) => name !== own);
   const before = heldBodies(feature).map((b) => b.name);
   const same = chosen.length === before.length
     && chosen.every((name) => before.includes(name));
@@ -725,9 +720,9 @@ export function bodyChoiceValues(v, feature, tree) {
 // ---------- corps concernés d'un enlèvement ----------
 // Comme dans les modeleurs courants, un enlèvement creuse tous les corps
 // qu'il traverse — le moteur les trouve. Sinon le corps actif seul, ou
-// les corps cochés. Seulement quand la pièce a un autre corps solide.
+// les corps de la zone « Corps choisis ». Seulement quand la pièce a un
+// autre corps solide.
 
-const cutKey = (name) => `cut:${name}`;
 const otherSolidBodies = (bodies) => (bodies ?? [])
   .filter((b) => b.has_solid === true && !b.active);
 
@@ -744,9 +739,9 @@ export function cutGroups(bodies, { when } = {}) {
         options: [["crossed", "Corps traversés"],
                   ["active", "Corps actif seulement"],
                   ["selected", "Corps choisis"]] },
-      ...others.map((b) => ({
-        type: "check", key: cutKey(b.name), label: b.label, value: false,
-        showIf: (v) => v.cutScope === "selected" })),
+      bodyZoneRow("cutBodies", {
+        allows: (pick) => pick.name !== activeBodyName(bodies),
+        showIf: (v) => v.cutScope === "selected" }),
     ],
   }];
 }
@@ -757,8 +752,8 @@ export function cutParams(v, bodies) {
   if (!otherSolidBodies(bodies).length) return {};
   if (v.cutScope === "active") return { bodies: [] };
   if (v.cutScope !== "selected") return {};
-  return { bodies: otherSolidBodies(bodies)
-    .filter((b) => v[cutKey(b.name)]).map((b) => b.name) };
+  return { bodies: zoneNames(v.cutBodies)
+    .filter((name) => name !== activeBodyName(bodies)) };
 }
 
 // Lissage, balayage : fusionner un ajout ; un enlèvement creuse le corps

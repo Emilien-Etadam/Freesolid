@@ -2857,11 +2857,22 @@ def p84_arbre_unique(self, mark, report, etat):
         and rows["Bloc"]["color"] == "#cc3333" and not rows["Bloc"]["hidden"]
         and rows[title]["hidden"] and rows[title]["color"] is None
         and {g.get("color") for g in after["groups"]} == {"#cc3333"})
-    self.set_hidden([body.Name], False, solid=1 - right)
+    # Le congé a pu changer l'ordre des solides : le rang d'à présent.
+    east = 0 if body.Shape.Solids[0].CenterOfMass.x > 15 else 1
+    self.set_hidden([body.Name], False, solid=1 - east)
+    # Chaque face dit son solide : la vue en vise un seul.
+    faces = body.Shape.Faces
+    both = self.tessellate()["groups"]
+    by_face = all(g.get("solid") == (
+        east if faces[g["faceId"]].CenterOfMass.x > 15 else 1 - east)
+        for g in both)
     state = self.sketch_start(plane="XY")
     self.sketch_add_rectangle(state["sketch"], 5, 0, 25, 3)
     self.sketch_finish(state["sketch"])
     self.add_pad(5, sketch=state["sketch"])
+    report["p84_face_solids"] = (
+        by_face and {g.get("solid") for g in both} == {0, 1}
+        and all("solid" not in g for g in self.tessellate()["groups"]))
     joined = self.get_tree()["bodies"]
     report["p84_solides_du_corps"] = (
         len(split) == 1

@@ -41,7 +41,7 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 | Coque | oui | épaisseur, « vers l'extérieur » | faces à ouvrir | oui | oui | oui (sens, refus d'une coque trop épaisse) |
 | Dépouille | oui | angle | face, plan neutre | oui | oui | non |
 | Combiner | non, voulu | rien | opération, corps outil | — | oui | non |
-| Supprimer des corps | non | complète : corps ou solides cochés, ôter ou garder | rien | non | oui (drapeau) | oui |
+| Supprimer des corps | non | complète : corps, solides ou surfaces choisis (une zone : clic dans la vue ou le dossier, croix pour retirer), ôter ou garder | rien | non | oui (drapeau) | oui |
 | Plan de référence | oui + fantôme | rien | appui, décalage, angle | — | non (d'après le code, à vérifier) | non |
 | Axe de référence | non | rien | tout | — | non (d'après le code, à vérifier) | non |
 | Point de référence | non | rien | tout | — | non (d'après le code, à vérifier) | non |
@@ -150,7 +150,7 @@ Une même fonction change de comportement selon un choix : le Remplissage est pa
 
 Où ça se décide : `app/tree.js`, `editSurface` (aiguille par genre de surface) et `editFeature` (branches dédiées : Révolution et son enlèvement, Chanfrein, Chanfrein de sommet, Texte, Couper avec une surface, Supprimer des corps ; le reste tombe sur `get_params`) ; `engine/equations.py` (`_EDITABLE_PROPS`, liste blanche des cotes) ; `engine/vocab.py` (`PARAM_KEYS`) ; `engine/surfacefeat/commun.py` (ce qui est « figé »).
 
-Contre-exemple à suivre : Supprimer des corps vient d'être rendu rééditable (panneau de la création rouvert, corps cochés selon ce qu'elle vise, réécrit sur place sans changer de rang).
+Contre-exemple à suivre : Supprimer des corps vient d'être rendu rééditable (panneau de la création rouvert, sa zone remplie de ce qu'elle vise, réécrit sur place sans changer de rang).
 
 ### 4. Les sélections qui ne reviennent pas
 
@@ -179,7 +179,7 @@ Corrigé pour quatre fonctions : leur double-clic rouvre le panneau de la créat
 
 Reste :
 
-- **Extrusion et Enlèvement** : passer à « jusqu'à la face » ou changer de face (une sélection, thème 4), activer la paroi mince ou changer son genre (un, plan milieu, deux côtés), ce qui ajoute ou retire des profils cachés. Pour l'Extrusion, comme pour la Révolution, le Lissage et le Balayage, « Fusionner » et le corps où la fonction se range : les changer déplacerait la fonction d'un corps à l'autre, avec ce qui la suit. Les corps qu'elle fond se rééditent pour l'Extrusion et la Révolution : une case par corps, car un corps fondu ne se clique plus à part dans la vue.
+- **Extrusion et Enlèvement** : passer à « jusqu'à la face » ou changer de face (une sélection, thème 4), activer la paroi mince ou changer son genre (un, plan milieu, deux côtés), ce qui ajoute ou retire des profils cachés. Pour l'Extrusion, comme pour la Révolution, le Lissage et le Balayage, « Fusionner » et le corps où la fonction se range : les changer déplacerait la fonction d'un corps à l'autre, avec ce qui la suit. Les corps qu'elle fond se rééditent pour l'Extrusion et la Révolution : une zone, remplie des corps fondus ; un clic dans la vue ou le dossier en ajoute ou en retire un, la croix d'une ligne le retire (un corps fondu ne se voit plus à part dans la vue).
 - **Dépouille** : le plan neutre.
 - **Texte** : relief ou gravure, police. Le relief est dans la forme des lettres et dans le genre du booléen : il faut reconstruire.
 - **Couper avec une surface** : passer de « tout un côté » à « bande épaisse » change le genre de l'outil.

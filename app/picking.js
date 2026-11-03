@@ -101,10 +101,24 @@ export function installPicking(ctx) {
                : { ...body, face: groups[faceGroup].faceId, faceGroup } };
   }
 
-  /** Un panneau attend un corps (fusionner avec…) et pas de face : la
-   *  vue vise des corps entiers, le corps actif compris. */
+  /** Un panneau remplit une zone de corps (fondre, creuser, répéter,
+   *  supprimer) : la vue vise des corps entiers, le corps actif compris
+   *  (`panel.pickingBodies`). */
   function wantsBody() {
-    return !!panel.active && panel.accepts("body") && !panel.accepts("face");
+    return !!panel.active && panel.pickingBodies();
+  }
+
+  /** Le solide visé d'un corps qui en garde plusieurs, quand le panneau
+   *  en veut un (« Supprimer des corps ») : `{ solid, label, bodyLabel }`. */
+  function hitSolid(hit, groups, name, label) {
+    if (!panel.pickingSolids()) return {};
+    const at = hit.faceIndex * 3;
+    const solid = groups?.find((g) => at >= g.start
+      && at < g.start + g.count)?.solid;
+    if (!Number.isInteger(solid)) return {};
+    const body = (ctx.lastTree?.bodies ?? []).find((b) => b.name === name);
+    return { solid, label: body?.solids?.[solid]?.label ?? label,
+             bodyLabel: label };
   }
 
   function hoverWholeBody() {
@@ -114,16 +128,21 @@ export function installPicking(ctx) {
     let body = null;
     if (hit && hit.object === ctx.partMesh) {
       const active = (ctx.lastTree?.bodies ?? []).find((b) => b.active);
-      if (active) body = { name: active.name, label: active.label, active: true };
+      if (active) {
+        body = { name: active.name, label: active.label, active: true,
+                 ...hitSolid(hit, ctx.meshGroups, active.name, active.label) };
+      }
     } else if (hit) {
       const { name, label } = hit.object.userData.body;
-      body = { name, label };
+      body = { name, label,
+               ...hitSolid(hit, hit.object.userData.groups, name, label) };
     }
     coordsEl.textContent = coordsText(hit?.point ?? null);
     const stale = ctx.hoveredGroup >= 0 || ctx.hoveredEdgeGroup >= 0
       || ctx.hoveredOther || ctx.hoveredSketch || ctx.hoveredSurface
       || ctx.hoveredBoundary;
-    if (!stale && body?.name === ctx.hoveredBody?.name) return;
+    if (!stale && body?.name === ctx.hoveredBody?.name
+        && body?.solid === ctx.hoveredBody?.solid) return;
     ctx.hoveredGroup = -1;
     ctx.hoveredEdgeGroup = -1;
     ctx.hoveredOther = null;
@@ -143,18 +162,33 @@ export function installPicking(ctx) {
     return other ? `${other.name}:${other.faceGroup}:${other.edgeGroup}` : null;
   }
 
+  /** Le corps survolé en entier — ou seulement son solide visé — couvre-
+   *  t-il cette face ? */
+  function wholeHover(name, group) {
+    const body = ctx.hoveredBody;
+    return body?.name === name
+      && (!Number.isInteger(body.solid) || body.solid === group?.solid);
+  }
+
+  /** Le panneau retient-il ce corps, ou le solide de cette face ? */
+  function pickedBody(name, group) {
+    return !!(ctx.pickedBodies?.has(name)
+      || ctx.pickedBodies?.has(`${name}#${group?.solid}`));
+  }
+
   /** La face ou l'arête survolée d'un autre corps se teinte. */
   function repaintOtherBodies() {
     const hover = ctx.hoveredOther;
     for (const mesh of ctx.othersMeshes) {
       const name = mesh.userData.body.name;
       const mine = hover?.name === name;
-      // Corps entier : survolé, ou retenu par le panneau.
-      const whole = ctx.hoveredBody?.name === name ? 1
-        : ctx.pickedBodies?.has(name) ? 2 : null;
       mesh.geometry.groups.forEach((g, i) => {
+        // Corps entier (ou solide) : survolé, ou retenu par le panneau.
+        const group = mesh.userData.groups[i];
+        const whole = wholeHover(name, group) ? 1
+          : pickedBody(name, group) ? 2 : null;
         g.materialIndex = whole ?? (mine && i === hover.faceGroup ? 1
-          : (mesh.userData.groups[i].baseIndex ?? 0));
+          : (group.baseIndex ?? 0));
       });
     }
     for (const lines of ctx.othersEdges) {
@@ -168,7 +202,8 @@ export function installPicking(ctx) {
   function repaintSurfaces() {
     for (const mesh of ctx.surfaceMeshes) {
       const name = mesh.userData.surface?.name;
-      if (ctx.selectedSurface?.name === name) {
+      if (ctx.selectedSurface?.name === name
+          || ctx.pickedSurfaces?.has(name)) {
         mesh.material = surfaceSelectedMaterial;
       } else if (ctx.hoveredSurface?.name === name) {
         mesh.material = surfaceHoverMaterial;
@@ -428,11 +463,15 @@ export function installPicking(ctx) {
 
   function repaintGroups() {
     if (ctx.partMesh) {
+      const active = (ctx.lastTree?.bodies ?? []).find((b) => b.active)?.name;
       ctx.partMesh.geometry.groups.forEach((g, i) => {
         const isSelected = ctx.meshGroups[i].faceId === ctx.selectedFaceId;
-        const hovered = ctx.hoveredBody?.active || i === ctx.hoveredGroup;
-        g.materialIndex = isSelected ? 2 : (hovered ? 1
-          : (ctx.meshGroups[i].baseIndex ?? 0));
+        const hovered = (ctx.hoveredBody?.active
+          && wholeHover(ctx.hoveredBody.name, ctx.meshGroups[i]))
+          || i === ctx.hoveredGroup;
+        const picked = active && pickedBody(active, ctx.meshGroups[i]);
+        g.materialIndex = isSelected ? 2 : hovered ? 1 : picked ? 2
+          : (ctx.meshGroups[i].baseIndex ?? 0);
       });
     }
     const parts = [];
@@ -581,8 +620,9 @@ export function installPicking(ctx) {
     // Le panneau attend un corps : le clic prend celui qu'il survole.
     if (wantsBody()) {
       if (ctx.hoveredBody && event.button === 0) {
-        const { name, label } = ctx.hoveredBody;
-        panel.notifyPick("body", { kind: "body", name, label });
+        const { name, label, solid, bodyLabel } = ctx.hoveredBody;
+        panel.notifyPick("body", { kind: "body", name, label,
+          ...(Number.isInteger(solid) ? { solid, bodyLabel } : {}) });
       }
       return;
     }

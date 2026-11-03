@@ -1,6 +1,7 @@
 // Fonctions — combiner des corps (booléen), supprimer des corps.
 
 import { combineConfirm, combineToolOptions } from "../combine.js";
+import { bodyZoneRow } from "./commun.js";
 
 /** Combiner : corps outils du noyau, plus ceux des plugins
  *  (`combine.js`). Un plugin peut aussi poser ce panneau sous un bouton
@@ -38,17 +39,13 @@ const COMBINE_FEATURE = {
 };
 
 // ---------- supprimer des corps ----------
-// Une case par corps du dossier : chaque solide d'un corps qui en garde
-// plusieurs, chaque surface. La fonction ôte les corps cochés de la pièce
-// à son rang, ou ne garde qu'eux ; ils reviennent quand on recule la
-// barre au-dessus d'elle ou qu'on la supprime. La réédition rouvre le
-// même panneau, sur les corps qui existent à son rang (app/tree.js).
-
-/** Clé de la case d'un corps (`{ name, solid? }`). */
-export function removalKey(target) {
-  return Number.isInteger(target.solid)
-    ? `rm:${target.name}:${target.solid}` : `rm:${target.name}`;
-}
+// Une zone, comme dans les modeleurs courants : les corps choisis dans la
+// vue ou sur une ligne du dossier — un solide d'un corps qui en garde
+// plusieurs, une surface (sa ligne). La fonction ôte ces corps de la
+// pièce à son rang, ou ne garde qu'eux ; ils reviennent quand on recule
+// la barre au-dessus d'elle ou qu'on la supprime. La réédition rouvre le
+// même panneau, la zone remplie de ses corps ; seuls les corps qui
+// existent à son rang y entrent (app/tree.js).
 
 /** Ce que le dossier montre et qu'une suppression peut viser. */
 export function removalCandidates(tree) {
@@ -69,9 +66,25 @@ export function removalCandidates(tree) {
   return rows;
 }
 
-/** Cases cochées → cibles du moteur, dans l'ordre des candidats. */
+/** Le candidat que vise un choix de la zone (ou une ligne du dossier),
+ *  ou null : un corps à plusieurs solides se vise solide par solide. */
+export function removalMatch(pick, candidates) {
+  return candidates.find((c) => c.name === pick?.name
+    && (c.solid ?? null) === (pick.solid ?? null)) ?? null;
+}
+
+/** Ce que la zone montre d'un candidat. */
+export function removalItem(candidate) {
+  const { name, label, solid, surface } = candidate;
+  return surface ? { kind: "surface", name, label }
+    : { kind: "body", name, label,
+        ...(Number.isInteger(solid) ? { solid } : {}) };
+}
+
+/** La zone → cibles du moteur, dans l'ordre des clics. */
 export function removalTargets(v, candidates) {
-  return candidates.filter((c) => v[removalKey(c)])
+  return (v.targets?.items ?? [])
+    .map((item) => removalMatch(item, candidates)).filter(Boolean)
     .map(({ name, solid }) =>
       (Number.isInteger(solid) ? { name, solid } : { name }));
 }
@@ -88,22 +101,21 @@ export function removeBodiesBuild(v, ctx) {
   return params ? { op: "add_remove_bodies", params } : null;
 }
 
-/** Le mode, puis une case par candidat — cochée d'emblée quand il porte
+/** Le mode, puis la zone — remplie d'emblée des candidats qui portent
  *  `checked` (réédition). Création et réédition ont le même panneau. */
 export function removeBodiesGroups(candidates, keep = false) {
-  const check = (c) => ({ type: "check", key: removalKey(c),
-                          label: c.label, value: !!c.checked });
-  const solids = candidates.filter((c) => !c.surface);
-  const surfaces = candidates.filter((c) => c.surface);
   return [
     { label: "Opération",
       rows: [{ type: "select", key: "mode", value: keep ? "keep" : "remove",
-               options: [["remove", "Supprimer les corps cochés"],
-                         ["keep", "Garder seulement les corps cochés"]] }] },
-    solids.length && { label: "Corps volumiques", rows: solids.map(check) },
-    surfaces.length
-      && { label: "Corps surfaciques", rows: surfaces.map(check) },
-  ].filter(Boolean);
+               options: [["remove", "Supprimer les corps choisis"],
+                         ["keep", "Garder seulement les corps choisis"]] }] },
+    { label: "Corps",
+      rows: [bodyZoneRow("targets", {
+        accepts: ["body", "surface"], solids: true,
+        allows: (pick) => removalMatch(pick, candidates) !== null,
+        value: { kind: "body", items: candidates.filter((c) => c.checked)
+          .map(removalItem) } })] },
+  ];
 }
 
 export const REMOVE_BODIES_NOTE = "Les corps ôtés reviennent quand on "
@@ -118,7 +130,7 @@ const REMOVE_BODIES_FEATURE = {
   note: REMOVE_BODIES_NOTE,
   preview: false,
   build: removeBodiesBuild,
-  invalid: "Cochez au moins un corps",
+  invalid: "Choisissez au moins un corps",
   refresh: "part",
 };
 

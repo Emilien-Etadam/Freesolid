@@ -481,14 +481,19 @@ describe("corps concernés d'un enlèvement", () => {
     assert.deepEqual(cutParams({ cutScope: "active" }, [bodies[0]]), {});
   });
 
-  it("corps traversés par défaut ; une case par autre corps solide", () => {
+  it("corps traversés par défaut ; « Corps choisis » ouvre une zone", () => {
     const [group] = cutGroups(bodies);
-    const [mode, ...checks] = group.rows;
+    const [mode, zone, ...rest] = group.rows;
     assert.equal(mode.key, "cutScope");
     assert.equal(mode.value, "crossed");
-    assert.deepEqual(checks.map((r) => r.label), ["Extrusion1"]);
-    assert.equal(checks[0].showIf({ cutScope: "crossed" }), false);
-    assert.equal(checks[0].showIf({ cutScope: "selected" }), true);
+    assert.deepEqual(rest, []);
+    assert.deepEqual([zone.type, zone.key, zone.accepts, zone.multiple],
+                     ["selection", "cutBodies", ["body"], true]);
+    assert.equal(zone.showIf({ cutScope: "crossed" }), false);
+    assert.equal(zone.showIf({ cutScope: "selected" }), true);
+    // Le corps actif est déjà creusé : il n'entre pas dans la zone.
+    assert.equal(zone.allows({ kind: "body", name: "Body" }), false);
+    assert.equal(zone.allows({ kind: "body", name: "Body001" }), true);
   });
 
   it("traversés : rien à envoyer ; actif seul : une liste vide ; "
@@ -499,9 +504,14 @@ describe("corps concernés d'un enlèvement", () => {
                      { bodies: [] });
     assert.deepEqual(cutParams({ cutScope: "selected" }, bodies),
                      { bodies: [] });
+    const chosen = (...names) => ({ kind: "body",
+      items: names.map((name) => ({ kind: "body", name, label: name })) });
     assert.deepEqual(cutParams(
-      { cutScope: "selected", "cut:Body001": true }, bodies),
+      { cutScope: "selected", cutBodies: chosen("Body001") }, bodies),
     { bodies: ["Body001"] });
+    // Une zone remplie puis masquée (« Corps traversés ») ne compte pas.
+    assert.deepEqual(cutParams(
+      { cutScope: "crossed", cutBodies: chosen("Body001") }, bodies), {});
   });
 
   it("enlèvement extrudé, gorge, perçage ; lissage et balayage en "
@@ -518,7 +528,9 @@ describe("corps concernés d'un enlèvement", () => {
       .params.bodies, undefined);
     const groove = entry("btn-groove").build(
       { angle: 90, cond: "one", axis: "vertical", cutScope: "selected",
-        "cut:Body001": true }, ctx).params;
+        cutBodies: { kind: "body", items: [
+          { kind: "body", name: "Body001", label: "Extrusion1" }] } },
+      ctx).params;
     assert.deepEqual(groove.bodies, ["Body001"]);
     const hole = entry("btn-hole").build(
       { diameter: 5, cond: "travers", cut: "none", cutScope: "active" },

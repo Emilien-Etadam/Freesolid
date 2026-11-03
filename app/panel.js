@@ -28,9 +28,11 @@
 //       { type: "select", key, options: [[value, label]…], value, label? }
 //       { type: "check",  key, label, value }
 //       { type: "selection", key, label?, hint?, value?, accepts?, multiple?,
-//         allows?(pick) — faux : la zone n'absorbe pas ce choix }
-//         Une zone multiple de corps liste un corps par ligne, chacun
-//         retirable (✕).
+//         allows?(pick) — faux : la zone n'absorbe pas ce choix ;
+//         solids? — une zone de corps qui vise aussi un solide d'un corps }
+//         Une zone multiple de corps (ou de surfaces) liste un objet par
+//         ligne, chacun retirable (✕). La zone active — la dernière
+//         cliquée, ou tout juste apparue — prend les clics de la vue.
 //       { type: "text", key, label, value?, placeholder?, unit? }
 //       { type: "list", items: [{ label, onDelete?, onEdit?, editable? }], empty? }
 //       { type: "note", text, readonly?, onClick? }
@@ -118,12 +120,40 @@ export function samePick(a, b) {
   if (b.kind === "boundary") {
     return a.kind === "boundary" && a.name === b.name && a.edge === b.edge;
   }
+  if (b.kind === "body") {
+    return a.kind === "body" && a.name === b.name
+      && (a.solid ?? null) === (b.solid ?? null);
+  }
   return a.name === b.name;
 }
 
-/** Une zone qui ne prend que des corps. */
-export function bodyZone(row) {
-  return (row.accepts ?? ["face"]).every((kind) => kind === "body");
+/** Une zone d'objets entiers : des corps, des surfaces. */
+export function objectZone(row) {
+  return (row.accepts ?? ["face"]).every(
+    (kind) => kind === "body" || kind === "surface");
+}
+
+/** La vue vise-t-elle des corps entiers ? Oui quand une zone de corps est
+ *  visible et que c'est elle qu'on remplit : la zone active (`focus`),
+ *  sinon la seule à prendre ses choix dans la vue — une zone de fonctions
+ *  se remplit dans l'arbre. `rows` : les zones visibles. */
+export function bodyPicking(rows, focus) {
+  const takes = (row) => (row.accepts ?? ["face"]).includes("body");
+  if (!rows.some(takes)) return false;
+  const focused = rows.find((row) => row.key === focus);
+  if (focused) return takes(focused);
+  return rows.every((row) => takes(row)
+    || (row.accepts ?? ["face"]).every((kind) => kind === "feature"));
+}
+
+/** Un corps tel que la zone le garde : un solide seulement si elle en
+ *  vise (`solids`), sinon le corps entier, sous son nom. */
+export function zonePick(row, kind, value) {
+  if (kind !== "body" || row.solids || !Number.isInteger(value.solid)) {
+    return value;
+  }
+  return { kind: "body", name: value.name,
+           label: value.bodyLabel ?? value.label };
 }
 
 /** La zone ``row`` absorbe-t-elle ce choix de genre ``kind`` ? */
@@ -288,20 +318,25 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       return true;
     }
     if (!rows.length) return false;
-    const multiRow = rows.find((r) => r.multiple);
+    // La zone active d'abord, si elle prend ce choix.
+    const multiRow = rows.find((r) => r.multiple && r.key === active.focus)
+      ?? rows.find((r) => r.multiple);
     if (multiRow) {
+      const pick = zonePick(multiRow, kind, value);
       const current = active.values[multiRow.key] ?? { kind, items: [] };
-      const at = current.items.findIndex((i) => samePick(i, value));
+      const at = current.items.findIndex((i) => samePick(i, pick));
       if (at >= 0) current.items.splice(at, 1);
-      else current.items.push(value);
+      else current.items.push(pick);
       active.values[multiRow.key] = { ...current };
+      active.focus = multiRow.key;
     } else {
       // Première zone vide, sinon la dernière est remplacée — le
       // balayage remplit Profil puis Trajectoire en deux clics.
       const target = rows.find(
         (r) => !selectionFilled(active.values[r.key]))
         ?? rows[rows.length - 1];
-      active.values[target.key] = value;
+      active.values[target.key] = zonePick(target, kind, value);
+      active.focus = target.key;
     }
     render();
     changed();
@@ -316,6 +351,31 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       }
     }
     return null;
+  }
+
+  /** Les zones de sélection visibles. */
+  function shownZones() {
+    const rows = [];
+    for (const group of active?.spec.groups ?? []) {
+      if (!groupShown(group, active.values)) continue;
+      for (const row of group.rows ?? []) {
+        if (row.type === "selection"
+            && (!row.showIf || row.showIf(active.values))) rows.push(row);
+      }
+    }
+    return rows;
+  }
+
+  /** Une zone tout juste apparue (une liste changée, une case cochée)
+   *  devient la zone active : c'est elle qu'on veut remplir. Rien à
+   *  l'ouverture du panneau. */
+  function followNewZones() {
+    const keys = shownZones().map((row) => row.key);
+    if (active.shownKeys) {
+      const fresh = keys.filter((key) => !active.shownKeys.includes(key));
+      if (fresh.length) active.focus = fresh[fresh.length - 1];
+    }
+    active.shownKeys = keys;
   }
 
   function selectionRows(kind) {
@@ -357,8 +417,8 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       for (const row of group.rows ?? []) {
         if (row.type !== "selection") continue;
         if (!selectionFilled(active.values[row.key])) continue;
-        // Un corps garde son nom quand la géométrie change.
-        if (bodyZone(row)) continue;
+        // Un corps, une surface gardent leur nom quand la géométrie change.
+        if (objectZone(row)) continue;
         active.values[row.key] = row.multiple ? { items: [] } : null;
         cleared++;
       }
@@ -374,6 +434,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
   function render() {
     const { spec } = active;
     panelEl.innerHTML = "";
+    followNewZones();
 
     const head = el("div", "phead-main");
     const icon = document.createElement("img");
@@ -440,6 +501,17 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       panelEl.append(box);
     }
     if (spec.note) panelEl.append(el("div", "pnote", spec.note));
+  }
+
+  /** Un clic sur une zone la rend active : la vue la remplit. */
+  function focusable(box, row) {
+    if (row.key === active.focus) box.classList.add("focused");
+    box.addEventListener("click", () => {
+      if (active.focus === row.key) return;
+      active.focus = row.key;
+      render();
+    });
+    return box;
   }
 
   /** Zone multiple de corps : un corps par ligne, retirable par sa croix
@@ -537,9 +609,10 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     if (row.type === "selection") {
       const box = el("div", "pselect-box");
       const value = values[row.key];
-      if (row.multiple && bodyZone(row) && selectionFilled(value)) {
-        return renderBodyList(row, value);
+      if (row.multiple && objectZone(row) && selectionFilled(value)) {
+        return focusable(renderBodyList(row, value), row);
       }
+      focusable(box, row);
       if (!selectionFilled(value)) {
         box.textContent =
           t(row.hint ?? "Cliquez une face dans la zone graphique");
@@ -818,6 +891,12 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     accepts: (kind) => active !== null
       && (selectionRows(kind).length > 0
           || (kind === "point3d" && findPointsRow() !== null)),
+    /** La vue vise des corps entiers (`bodyPicking`). */
+    pickingBodies: () => active !== null
+      && bodyPicking(shownZones(), active.focus),
+    /** … et un solide d'un corps qui en garde plusieurs. */
+    pickingSolids: () => active !== null
+      && selectionRows("body").some((row) => row.solids),
     /** Parmi `kinds`, celui qu'attend la première zone vide (dans
      *  l'ordre du panneau), ou null. */
     firstNeeded: (kinds) => {

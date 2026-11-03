@@ -156,6 +156,19 @@ export function zonePick(row, kind, value) {
            label: value.bodyLabel ?? value.label };
 }
 
+/** Les choix d'une zone multiple après l'ajout de `values` (le cadre de
+ *  la vue) : ceux qu'elle refuse (`allows`) ou tient déjà n'y entrent pas,
+ *  rien n'en sort. */
+export function zoneAdd(row, kind, items, values) {
+  const out = [...items];
+  for (const value of values) {
+    if (row.allows && row.allows(value) === false) continue;
+    const pick = zonePick(row, kind, value);
+    if (!out.some((item) => samePick(item, pick))) out.push(pick);
+  }
+  return out;
+}
+
 /** La zone ``row`` absorbe-t-elle ce choix de genre ``kind`` ? */
 export function zoneTakes(row, kind, pick, values) {
   return row.type === "selection"
@@ -342,6 +355,28 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     changed();
     reportPicks();
     return true;
+  }
+
+  /** Plusieurs choix d'un coup (le cadre de la vue) : la zone multiple
+   *  active, sinon la première qui les prend, ajoute ceux qu'elle n'a pas
+   *  sans retirer les autres. Rend le nombre de choix ajoutés. */
+  function addPicks(kind, values) {
+    if (!active) return 0;
+    const rows = shownZones().filter((row) => row.multiple
+      && zoneTakes(row, kind, null, active.values));
+    const row = rows.find((r) => r.key === active.focus) ?? rows[0];
+    if (!row) return 0;
+    active.focus = row.key;
+    const current = active.values[row.key] ?? { kind, items: [] };
+    const items = zoneAdd(row, kind, current.items, values);
+    const added = items.length - current.items.length;
+    if (added) active.values[row.key] = { ...current, items };
+    render();
+    if (added) {
+      changed();
+      reportPicks();
+    }
+    return added;
   }
 
   function findPointsRow() {
@@ -918,6 +953,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     /** OK, comme le bouton ✓ — sans effet sur un panneau d'information. */
     apply: () => { if (active && !active.spec.noApply) close(true); },
     notifyPick,
+    addPicks,
     invalidateSelections,
     /** Change des valeurs sans redessiner le panneau (pendant un glisser
      *  dans la vue, ou pour une valeur cachée) : onChange suit. */

@@ -136,6 +136,49 @@ export function pickInBox(items, rect, mode) {
   return picked;
 }
 
+/** Le point p est-il dans le triangle [a, b, c] ? Un triangle plat ne
+ *  contient rien. */
+function inTriangle(p, a, b, c) {
+  const side = (u, v, w) => (v.x - u.x) * (w.y - u.y) - (v.y - u.y) * (w.x - u.x);
+  if (side(a, b, c) === 0) return false;
+  const d1 = side(a, b, p), d2 = side(b, c, p), d3 = side(c, a, p);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+
+/** Le triangle [a, b, c] touche-t-il le rectangle ? Un côté le coupe, ou
+ *  le rectangle est tout entier dedans. */
+export function triangleHitsRect(a, b, c, r) {
+  return segmentHitsRect(a, b, r) || segmentHitsRect(b, c, r)
+    || segmentHitsRect(c, a, r) || inTriangle({ x: r.left, y: r.top }, a, b, c);
+}
+
+const finite = (p) => Number.isFinite(p.x) && Number.isFinite(p.y);
+
+/**
+ * Objets maillés retenus par le cadre. `items` : [{ id, points }] en
+ * pixels écran, trois points par triangle. « window » : tous les points
+ * dedans ; « crossing » : un triangle qui touche le cadre. Un point hors de
+ * la vue (non fini) n'est jamais dedans.
+ */
+export function pickMeshesInBox(items, rect, mode) {
+  const picked = [];
+  for (const { id, points = [] } of items) {
+    if (!points.length) continue;
+    let keep = false;
+    if (mode === "window") {
+      keep = points.every((p) => inside(p, rect));
+    } else {
+      for (let i = 0; !keep && i + 2 < points.length; i += 3) {
+        const [a, b, c] = [points[i], points[i + 1], points[i + 2]];
+        keep = finite(a) && finite(b) && finite(c)
+          && triangleHitsRect(a, b, c, rect);
+      }
+    }
+    if (keep) picked.push(id);
+  }
+  return picked;
+}
+
 function push2(out, point) {
   if (!Array.isArray(point) || point.length < 2) return;
   const x = Number(point[0]);

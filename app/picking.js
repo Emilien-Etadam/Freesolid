@@ -6,7 +6,9 @@ import { t } from "./i18n.js";
 import { eventToNdc, ndcToScreen } from "./screen.js";
 import { snapFacePoint } from "./pointsnap.js";
 import { coordsText, measureText } from "./statusbar.js";
-import { boxMode, isDrag, normalizeRect, pickInBox } from "./navigation.js";
+import {
+  boxMode, isDrag, normalizeRect, pickInBox, pickMeshesInBox,
+} from "./navigation.js";
 import {
   dimEditPayload, dimLabel, openDimEditor, sketchDimAnchor,
 } from "./dims.js";
@@ -116,9 +118,13 @@ export function installPicking(ctx) {
     const solid = groups?.find((g) => at >= g.start
       && at < g.start + g.count)?.solid;
     if (!Number.isInteger(solid)) return {};
+    return { solid, label: solidLabel(name, solid, label), bodyLabel: label };
+  }
+
+  /** Le nom d'un solide dans le dossier, sinon `fallback`. */
+  function solidLabel(name, solid, fallback) {
     const body = (ctx.lastTree?.bodies ?? []).find((b) => b.name === name);
-    return { solid, label: body?.solids?.[solid]?.label ?? label,
-             bodyLabel: label };
+    return body?.solids?.[solid]?.label ?? fallback;
   }
 
   function hoverWholeBody() {
@@ -540,6 +546,54 @@ export function installPicking(ctx) {
     panel.notifyPick("edges", { kind: "edges", edges: [...ctx.selectedEdges] });
   }
 
+  /** Corps retenus par le cadre — ou leurs solides, si le panneau en veut
+   *  (`panel.pickingSolids`) : la zone active les ajoute. Fenêtre (gauche
+   *  → droite) : le corps entier dans le cadre ; capture (droite →
+   *  gauche) : le corps touché. */
+  function selectBodiesInBox(start, end) {
+    const host = renderer.domElement.getBoundingClientRect();
+    const solids = panel.pickingSolids();
+    const active = (ctx.lastTree?.bodies ?? []).find((b) => b.active);
+    const meshes = [
+      ...(ctx.partMesh && active ? [{ mesh: ctx.partMesh,
+        groups: ctx.meshGroups, name: active.name, label: active.label }] : []),
+      ...ctx.othersMeshes.map((mesh) => ({ mesh,
+        groups: mesh.userData.groups, ...mesh.userData.body })),
+    ];
+    const items = [];
+    const v = new THREE.Vector3();
+    for (const { mesh, groups, name, label } of meshes) {
+      if (!mesh.visible) continue;
+      const pos = mesh.geometry.getAttribute("position");
+      const index = mesh.geometry.getIndex();
+      const parts = new Map(); // rang du solide (ou "corps") → item
+      for (const group of groups ?? []) {
+        const solid = solids && Number.isInteger(group.solid)
+          ? group.solid : null;
+        if (!parts.has(solid)) {
+          parts.set(solid, { points: [], id: solid === null
+            ? { kind: "body", name, label }
+            : { kind: "body", name, solid, bodyLabel: label,
+                label: solidLabel(name, solid, label) } });
+        }
+        const { points } = parts.get(solid);
+        for (let k = group.start; k < group.start + group.count; k++) {
+          v.fromBufferAttribute(pos, index ? index.getX(k) : k)
+            .applyMatrix4(mesh.matrixWorld).project(camera);
+          // Derrière la caméra : hors de la vue.
+          points.push(Math.abs(v.z) <= 1 ? ndcToScreen(v.x, v.y, host)
+            : { x: NaN, y: NaN });
+        }
+      }
+      items.push(...parts.values());
+    }
+    const picks = pickMeshesInBox(items, normalizeRect(start, end),
+                                  boxMode(start, end));
+    const added = panel.addPicks("body", picks);
+    say(added ? t("{n} corps ajouté(s)", { n: added })
+      : t("Aucun nouveau corps dans le cadre"));
+  }
+
   renderer.domElement.addEventListener("pointerdown", (event) => {
     // L'esquisse, la spline 3D et les pôles gèrent leurs clics.
     if (ctx.sketchMode.active || ctx.curveTool?.active
@@ -551,9 +605,11 @@ export function installPicking(ctx) {
     }
     const nothingHovered = ctx.hoveredGroup < 0 && ctx.hoveredEdgeGroup < 0
       && !ctx.hoveredSketch && !ctx.hoveredSurface && !ctx.hoveredBoundary
-      && !ctx.hoveredOther;
+      && !ctx.hoveredOther && !ctx.hoveredBody;
+    // Le cadre prend des arêtes du corps actif, ou des corps quand le
+    // panneau en attend.
     boxStart = event.button === 0 && nothingHovered && !ctx.assemblyState
-      && !ctx.planePicking && !ctx.measuring && ctx.partEdges
+      && !ctx.planePicking && !ctx.measuring && (ctx.partEdges || wantsBody())
       ? { x: event.clientX, y: event.clientY } : null;
     if (!pluginSeesPointer()) return;
     setPointerFromEvent(event);
@@ -574,8 +630,9 @@ export function installPicking(ctx) {
     boxOverlay.hide();
     if (box && isDrag(box, { x: event.clientX, y: event.clientY })) {
       pressPosition = null;
-      selectEdgesInBox(box, { x: event.clientX, y: event.clientY },
-        event.ctrlKey || event.metaKey);
+      const end = { x: event.clientX, y: event.clientY };
+      if (wantsBody()) selectBodiesInBox(box, end);
+      else selectEdgesInBox(box, end, event.ctrlKey || event.metaKey);
       return;
     }
     if (!pressPosition) return;

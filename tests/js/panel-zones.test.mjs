@@ -1,7 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { bodyPicking, objectZone, zonePick, zoneTakes } from "../../app/panel.js";
+import {
+  bodyPicking, objectZone, zoneAdd, zonePick, zoneTakes,
+} from "../../app/panel.js";
 
 describe("zones de sélection", () => {
   const bodies = { type: "selection", key: "bodies", accepts: ["body"],
@@ -57,5 +59,22 @@ describe("zones de sélection", () => {
     assert.equal(zonePick(bodies, "body", whole), whole);
     const surface = { kind: "surface", name: "Surface", label: "S" };
     assert.equal(zonePick(bodies, "surface", surface), surface);
+  });
+
+  it("le cadre ajoute sans retirer ni doubler, et la zone trie", () => {
+    const item = (name, extra = {}) => ({ kind: "body", name, label: name, ...extra });
+    const held = [item("Body001")];
+    const boxed = [item("Body001"), item("Body"), item("Body002"),
+                   item("Body002", { solid: 1, bodyLabel: "Body002" })];
+    // Body est refusé (allows) ; Body001 y est déjà ; le solide de Body002
+    // compte pour son corps.
+    assert.deepEqual(zoneAdd(bodies, "body", held, boxed).map((i) => i.name),
+                     ["Body001", "Body002"]);
+    assert.deepEqual(held.map((i) => i.name), ["Body001"]);
+    // Une zone de solides les garde à part.
+    const solids = { ...bodies, solids: true, allows: undefined };
+    assert.deepEqual(zoneAdd(solids, "body", [], boxed)
+      .map((i) => [i.name, i.solid ?? null]),
+      [["Body001", null], ["Body", null], ["Body002", null], ["Body002", 1]]);
   });
 });

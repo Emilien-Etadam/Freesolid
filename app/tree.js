@@ -612,6 +612,7 @@ export function installTree(ctx) {
     return {
       ...bodyInfo,
       label: solid.label,
+      bodyLabel: bodyInfo.label,
       color: solid.color ?? bodyInfo.color,
       hidden: !!(bodyInfo.hidden || solid.hidden),
       solid: index,
@@ -648,6 +649,10 @@ export function installTree(ctx) {
         : `${bodyInfo.label} — ${t("Clic : activer ce corps")}`;
       bodyItem.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, bodyItem, bodyInfo)) return;
+        // Un panneau attend des corps : la ligne lui donne le sien, comme
+        // un clic dans la vue — utile au corps masqué ou enfoui.
+        if (panel.notifyPick("body", { kind: "body", name: bodyInfo.name,
+          label: bodyInfo.bodyLabel ?? bodyInfo.label })) return;
         if (!bodyInfo.active) {
           refresh(call("set_active_body", { body: bodyInfo.name }));
         }

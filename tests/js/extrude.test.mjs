@@ -547,35 +547,46 @@ describe("corps fondus, à la réédition", () => {
   ] };
   const pad = { name: "Pad003", type_key: "pad",
                 fused: [{ name: "Body001", label: "Extrusion1" }] };
+  const zone = (feature) => bodyChoiceGroups(feature, tree)[0].rows[0];
 
-  it("une case par corps fondu, cochée, puis par autre corps solide", () => {
+  it("une zone de corps, remplie des corps fondus", () => {
     const [group] = bodyChoiceGroups(pad, tree);
     assert.equal(group.label, "Corps fondus");
-    assert.deepEqual(group.rows.map((r) => [r.key, r.label, r.value]), [
-      ["body:Body001", "Extrusion1", true],
-      ["body:Body002", "Extrusion2", false],
-    ]);
+    assert.equal(group.rows.length, 1);
+    const row = group.rows[0];
+    assert.deepEqual([row.type, row.key, row.accepts, row.multiple],
+                     ["selection", "bodies", ["body"], true]);
+    assert.deepEqual(row.value, { kind: "body", items: [
+      { kind: "body", name: "Body001", label: "Extrusion1" }] });
+  });
+
+  it("le corps de la fonction n'y entre pas", () => {
+    assert.equal(zone(pad).allows({ kind: "body", name: "Body" }), false);
+    assert.equal(zone(pad).allows({ kind: "body", name: "Body002" }), true);
+    const other = { name: "Pad9", type_key: "revolution", body: "Body002" };
+    assert.equal(zone(other).allows({ kind: "body", name: "Body002" }), false);
+    assert.equal(zone(other).allows({ kind: "body", name: "Body" }), true);
   });
 
   it("ni chanfrein, ni corps seul : pas de groupe", () => {
     assert.deepEqual(bodyChoiceGroups({ ...pad, type_key: "chamfer" }, tree), []);
     assert.deepEqual(bodyChoiceGroups({ name: "Pad", type_key: "pad" },
                                  { bodies: [tree.bodies[0]] }), []);
+    // Un corps fondu suffit : il se retire de la zone.
+    assert.equal(bodyChoiceGroups(pad, { bodies: [tree.bodies[0]] }).length, 1);
   });
 
-  it("une ligne d'un autre corps garde ce corps hors des cases", () => {
-    const other = { name: "Pad9", type_key: "revolution", body: "Body002" };
-    assert.deepEqual(bodyChoiceGroups(other, tree)[0].rows.map((r) => r.key),
-                     ["body:Body"]);
-  });
-
-  it("bodies seulement quand les cases changent", () => {
-    const same = { "body:Body001": true, "body:Body002": false };
-    assert.deepEqual(bodyChoiceValues(same, pad, tree), {});
-    assert.deepEqual(bodyChoiceValues({ ...same, "body:Body002": true }, pad, tree),
+  it("bodies seulement quand la zone change", () => {
+    const items = (...names) => ({ bodies: { kind: "body",
+      items: names.map((name) => ({ kind: "body", name, label: name })) } });
+    assert.deepEqual(bodyChoiceValues(items("Body001"), pad, tree), {});
+    assert.deepEqual(bodyChoiceValues({}, pad, tree), {});
+    assert.deepEqual(bodyChoiceValues(items("Body001", "Body002"), pad, tree),
                      { bodies: ["Body001", "Body002"] });
-    assert.deepEqual(bodyChoiceValues({ ...same, "body:Body001": false }, pad, tree),
-                     { bodies: [] });
+    assert.deepEqual(bodyChoiceValues(items(), pad, tree), { bodies: [] });
+    // Le corps de la fonction, un doublon : écartés.
+    assert.deepEqual(bodyChoiceValues(items("Body", "Body002", "Body002"), pad,
+                                      tree), { bodies: ["Body002"] });
   });
 });
 
@@ -589,13 +600,10 @@ describe("corps creusés, à la réédition", () => {
   const pocket = { name: "Pocket", type_key: "pocket",
                    cut: [{ name: "Body001", label: "Enlèvement[2]" }] };
 
-  it("une case par corps creusé, cochée, puis par autre corps solide", () => {
+  it("une zone remplie des corps creusés", () => {
     const [group] = bodyChoiceGroups(pocket, tree);
     assert.equal(group.label, "Corps creusés");
-    assert.deepEqual(group.rows.map((r) => [r.key, r.label, r.value]), [
-      ["body:Body001", "Enlèvement[2]", true],
-      ["body:Body002", "Extrusion2", false],
-    ]);
+    assert.deepEqual(group.rows[0].value.items.map((i) => i.name), ["Body001"]);
   });
 
   it("la gorge et le perçage aussi ; les corps fondus n'y comptent pas", () => {
@@ -605,17 +613,17 @@ describe("corps creusés, à la réédition", () => {
     }
     const fusedOnly = { name: "Pocket", type_key: "pocket",
                         fused: [{ name: "Body001", label: "x" }] };
-    assert.deepEqual(bodyChoiceGroups(fusedOnly, tree)[0].rows.map((r) => r.value),
-                     [false, false]);
+    assert.deepEqual(bodyChoiceGroups(fusedOnly, tree)[0].rows[0].value.items,
+                     []);
   });
 
-  it("bodies seulement quand les cases changent", () => {
-    const same = { "body:Body001": true, "body:Body002": false };
-    assert.deepEqual(bodyChoiceValues(same, pocket, tree), {});
-    assert.deepEqual(bodyChoiceValues({ ...same, "body:Body001": false }, pocket,
-                                 tree), { bodies: [] });
-    assert.deepEqual(bodyChoiceValues({ ...same, "body:Body002": true }, pocket,
-                                 tree), { bodies: ["Body001", "Body002"] });
+  it("bodies seulement quand la zone change", () => {
+    const zone = (...names) => ({ bodies: { kind: "body",
+      items: names.map((name) => ({ kind: "body", name, label: name })) } });
+    assert.deepEqual(bodyChoiceValues(zone("Body001"), pocket, tree), {});
+    assert.deepEqual(bodyChoiceValues(zone(), pocket, tree), { bodies: [] });
+    assert.deepEqual(bodyChoiceValues(zone("Body001", "Body002"), pocket, tree),
+                     { bodies: ["Body001", "Body002"] });
   });
 });
 
@@ -625,17 +633,16 @@ describe("corps creusés d'une répétition, à la réédition", () => {
     { name: "Body001", label: "Extrusion2", active: false, has_solid: true },
   ] };
 
-  it("une case par corps quand le moteur donne cut, même vide", () => {
+  it("une zone quand le moteur donne cut, même vide", () => {
     for (const type_key of ["linear_pattern", "polar_pattern", "mirror"]) {
       const [group] = bodyChoiceGroups({ name: "P", type_key, cut: [] }, tree);
       assert.equal(group.label, "Corps creusés");
-      assert.deepEqual(group.rows.map((r) => [r.key, r.value]),
-                       [["body:Body001", false]]);
+      assert.deepEqual(group.rows[0].value.items, []);
     }
     const held = { name: "P", type_key: "mirror",
                    cut: [{ name: "Body001", label: "Extrusion2" }] };
-    assert.deepEqual(bodyChoiceValues({ "body:Body001": false }, held, tree),
-                     { bodies: [] });
+    assert.deepEqual(bodyChoiceValues({ bodies: { kind: "body", items: [] } },
+                                      held, tree), { bodies: [] });
   });
 
   it("sans cut (répétition d'une extrusion, fichier d'avant) : pas de groupe", () => {

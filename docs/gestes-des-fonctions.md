@@ -21,11 +21,11 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 
 | Fonction | Aperçu à la création | Réédition : ce qui revient | Ne revient pas | Aperçu à la réédition | Barre de retour | Selftest de réédition |
 |---|---|---|---|---|---|---|
-| Extrusion | oui + flèche | le panneau de la création : condition de fin (sauf passer à « jusqu'à la face » ; borgne seulement pour le premier volume d'un corps), décalage, inverser, dépouille, direction 2 (condition, profondeur, dépouille), épaisseurs et côté de la paroi mince, contours, corps fondus (une zone : clic dans la vue ou le dossier, croix pour retirer) | face d'arrivée, activer la paroi mince ou en changer le genre, esquisse, « Fusionner » et le corps de la fonction | oui + flèche (la flèche s'efface quand le sens ou la condition change) | oui | oui (conditions, direction 2, paroi mince, extrémités fermées, corps fondus) |
-| Enlèvement extrudé | oui + flèche | comme l'Extrusion, les corps creusés au lieu des corps fondus (une zone : clic dans la vue ou le dossier, croix pour retirer) | comme l'Extrusion | oui + flèche | oui | oui (à travers tout, borgne, refus de « jusqu'à la face », corps creusés qui suivent la cote, corps creusés ajoutés ou retirés) |
+| Extrusion | oui + flèche | le panneau de la création : condition de fin (sauf passer à « jusqu'à la face » ; borgne seulement pour le premier volume d'un corps), décalage, inverser, dépouille, direction 2 (condition, profondeur, dépouille), épaisseurs et côté de la paroi mince, contours, corps fondus (une zone : clic ou cadre dans la vue, clic dans le dossier, croix pour retirer) | face d'arrivée, activer la paroi mince ou en changer le genre, esquisse, « Fusionner » et le corps de la fonction | oui + flèche (la flèche s'efface quand le sens ou la condition change) | oui | oui (conditions, direction 2, paroi mince, extrémités fermées, corps fondus) |
+| Enlèvement extrudé | oui + flèche | comme l'Extrusion, les corps creusés au lieu des corps fondus (une zone : clic ou cadre dans la vue, clic dans le dossier, croix pour retirer) | comme l'Extrusion | oui + flèche | oui | oui (à travers tout, borgne, refus de « jusqu'à la face », corps creusés qui suivent la cote, corps creusés ajoutés ou retirés) |
 | Révolution | oui | angle, axe, inverser, plan médian, contours, corps fondus | esquisse, « Fusionner » et le corps de la fonction | oui | oui | oui (axe, plan médian, corps fondus) |
 | Enlèvement de révolution | oui | comme la Révolution, les corps creusés au lieu des corps fondus | comme la Révolution | oui | oui | non (seule la Révolution est testée) |
-| Perçage | oui | le panneau de la création sans les positions : type (simple, lamage, fraisage), cotes du type, angle du fraisage, à travers ou borgne, profondeur, corps creusés (une zone : clic dans la vue ou le dossier, croix pour retirer) | positions et face | oui | oui | oui (type, condition de fin, corps creusés) |
+| Perçage | oui | le panneau de la création sans les positions : type (simple, lamage, fraisage), cotes du type, angle du fraisage, à travers ou borgne, profondeur, corps creusés (une zone : clic ou cadre dans la vue, clic dans le dossier, croix pour retirer) | positions et face | oui | oui | oui (type, condition de fin, corps creusés) |
 | Lissage | oui | rien | tout : profils et ordre, soustractif, lissage droit, boucle fermée, « Fusionner », les corps fondus ou creusés | — | oui | non |
 | Balayage | oui | rien | tout : profil, trajectoire, soustractif, « Fusionner », les corps fondus ou creusés | — | oui | non |
 | Hélice | oui | pas, hauteur, angle | esquisse profil | oui | oui | non |
@@ -41,7 +41,7 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 | Coque | oui | épaisseur, « vers l'extérieur » | faces à ouvrir | oui | oui | oui (sens, refus d'une coque trop épaisse) |
 | Dépouille | oui | angle | face, plan neutre | oui | oui | non |
 | Combiner | non, voulu | rien | opération, corps outil | — | oui | non |
-| Supprimer des corps | non | complète : corps, solides ou surfaces choisis (une zone : clic dans la vue ou le dossier, croix pour retirer), ôter ou garder | rien | non | oui (drapeau) | oui |
+| Supprimer des corps | non | complète : corps, solides ou surfaces choisis (une zone : clic ou cadre dans la vue, clic dans le dossier, croix pour retirer), ôter ou garder | rien | non | oui (drapeau) | oui |
 | Plan de référence | oui + fantôme | rien | appui, décalage, angle | — | non (d'après le code, à vérifier) | non |
 | Axe de référence | non | rien | tout | — | non (d'après le code, à vérifier) | non |
 | Point de référence | non | rien | tout | — | non (d'après le code, à vérifier) | non |

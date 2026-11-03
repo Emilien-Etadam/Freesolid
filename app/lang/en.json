@@ -617,6 +617,8 @@
  "Cliquez des corps dans la vue ou dans le dossier": "Click bodies in the view or in the folder",
  "{n} corps": "{n} bodies",
  "Retirer": "Remove",
+ "{n} corps ajouté(s)": "{n} body(ies) added",
+ "Aucun nouveau corps dans le cadre": "No new body in the box",
  "Corps fondus": "Merged bodies",
  "Corps creusés": "Bodies cut",
  "Corps : {s}": "Body: {s}",

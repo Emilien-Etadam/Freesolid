@@ -9,11 +9,13 @@ import {
   middleAction,
   normalizeRect,
   pickInBox,
+  pickMeshesInBox,
   pushView,
   readReverseWheel,
   readSelectFilter,
   readZoomToCursor,
   segmentHitsRect,
+  triangleHitsRect,
   writeSelectFilter,
   nudgeView,
   sketchLocalPoints,
@@ -106,6 +108,42 @@ describe("sélection par cadre", () => {
     const items = [{ id: 1, points: [{ x: -10, y: 5 }, { x: 20, y: 5 }] }];
     assert.deepEqual(pickInBox(items, r, "crossing"), [1]);
     assert.deepEqual(pickInBox(items, r, "window"), []);
+  });
+});
+
+describe("cadre sur des corps maillés", () => {
+  const r = { left: 0, right: 10, top: 0, bottom: 10 };
+  const P = (x, y) => ({ x, y });
+  it("un triangle touche le cadre par un côté, ou l'enveloppe", () => {
+    assert.equal(triangleHitsRect(P(-5, 5), P(15, 5), P(5, 30), r), true);
+    // Le cadre tout entier dans un grand triangle : aucun côté ne le coupe.
+    assert.equal(triangleHitsRect(P(-50, -50), P(100, -50), P(-50, 100), r), true);
+    assert.equal(triangleHitsRect(P(20, 20), P(30, 20), P(20, 30), r), false);
+    // Un triangle plat loin du cadre ne contient pas son coin.
+    assert.equal(triangleHitsRect(P(20, 0), P(30, 0), P(40, 0), r), false);
+  });
+
+  it("fenêtre : le corps entier dedans ; capture : un triangle qui touche", () => {
+    const items = [
+      { id: "dedans", points: [P(1, 1), P(2, 1), P(1, 2)] },
+      { id: "à cheval", points: [P(1, 1), P(2, 1), P(1, 2),
+                                 P(8, 8), P(20, 8), P(8, 20)] },
+      { id: "dehors", points: [P(20, 20), P(30, 20), P(20, 30)] },
+      { id: "sous", points: [P(-50, -50), P(100, -50), P(-50, 100)] },
+      { id: "vide", points: [] },
+    ];
+    assert.deepEqual(pickMeshesInBox(items, r, "window"), ["dedans"]);
+    assert.deepEqual(pickMeshesInBox(items, r, "crossing"),
+      ["dedans", "à cheval", "sous"]);
+  });
+
+  it("un sommet hors de la vue n'est jamais dedans", () => {
+    const behind = [{ id: 1, points: [P(1, 1), P(2, 1), P(NaN, NaN)] }];
+    assert.deepEqual(pickMeshesInBox(behind, r, "window"), []);
+    assert.deepEqual(pickMeshesInBox(behind, r, "crossing"), []);
+    const twice = [{ id: 2, points: [P(1, 1), P(2, 1), P(NaN, NaN),
+                                     P(1, 1), P(2, 1), P(1, 2)] }];
+    assert.deepEqual(pickMeshesInBox(twice, r, "crossing"), [2]);
   });
 });
 

@@ -36,6 +36,9 @@ describe("éditeur d'une fonction", () => {
 
   it("sans cote ni éditeur : rien ; sans avis du moteur : on tente", () => {
     assert.equal(featureEditor({ type_key: "mirror", has_params: false }), null);
+    // Une symétrie d'enlèvements se rouvre pour ses corps creusés.
+    assert.equal(featureEditor({ type_key: "mirror", has_params: false,
+                                 cut: [] }), "params");
     // Copie d'une symétrie de corps : la symétrie n'a pas de cote.
     assert.equal(featureEditor({ type_key: "feature", edits: "Pattern",
       edits_has_params: false }), null);

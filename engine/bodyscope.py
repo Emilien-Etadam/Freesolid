@@ -4,11 +4,12 @@ Deux sources, un seul mécanisme. Sans liste, comme les modeleurs
 courants, elles creusent les corps qu'elles traversent (``_cut_others``) ;
 sinon ceux qu'on leur donne :
 
-- un enlèvement seul (extrudé, gorge, perçage…), ``bodies`` ; la
-  réédition coche et décoche ses « Corps creusés »
-  (``_set_cut_bodies``) ;
+- un enlèvement seul (extrudé, gorge, perçage…), ``bodies`` ;
 - une répétition de fonctions, ``scope`` : ses occurrences creusent, la
   fonction répétée creusant elle-même à sa place (``_SCOPE_INSTANCES``).
+
+La réédition de l'un comme de l'autre coche et décoche ses « Corps
+creusés » (``_set_cut_bodies``).
 
 Dans chaque corps concerné, un booléen Soustraire prend pour outil une
 forme figée interne : les formes d'enlèvement, placées comme FreeCAD
@@ -33,6 +34,13 @@ from engine.bodypattern import linear_steps, polar_angles
 #: corps concernés.
 _SUBTRACTIVE_TYPES = frozenset({
     "PartDesign::Pocket", "PartDesign::Groove", "PartDesign::Hole",
+})
+
+#: Répétitions de fonctions dont les occurrences creusent les corps
+#: concernés (``_occurrences``).
+_PATTERN_TYPES = frozenset({
+    "PartDesign::LinearPattern", "PartDesign::PolarPattern",
+    "PartDesign::Mirrored",
 })
 
 
@@ -64,8 +72,25 @@ class BodyScopeMixin:
     def _attach_scope(self, pattern, targets):
         """Les enlèvements de ``pattern`` (répétés, ou lui-même) creusent
         aussi les corps ``targets``."""
+        self._refuse_unscoped(pattern)
+        for target in targets:
+            self._make_scope_cut(pattern, target)
+        self._stamp_text(pattern, "FreeSolidScope",
+                         format_scope(t.Name for t in targets))
+
+    def _refuse_unscoped(self, pattern):
+        """Refuse des corps concernés à ce qui n'y creuserait rien :
+        désactivé, sans enlèvement, ou répétition sans autre occurrence."""
         from engine.kernel import KernelError
-        if not self._scope_seeds(pattern):
+        if getattr(pattern, "Suppressed", False) or not self._scope_seeds(
+                pattern):
+            off = [f for f in [pattern] + self._scope_originals(pattern)
+                   if getattr(f, "Suppressed", False)
+                   and (f is pattern or is_subtractive_type(f.TypeId))]
+            if off:
+                raise KernelError(
+                    "« {} » est désactivé : réactivez-le pour qu'il creuse "
+                    "d'autres corps".format(off[0].Label))
             raise KernelError(
                 "corps concernés : seuls les enlèvements de matière "
                 "creusent les autres corps")
@@ -73,16 +98,13 @@ class BodyScopeMixin:
             raise KernelError(
                 "corps concernés : la répétition n'a pas d'autre "
                 "occurrence")
-        for target in targets:
-            self._make_scope_cut(pattern, target)
-        self._stamp_text(pattern, "FreeSolidScope",
-                         format_scope(t.Name for t in targets))
 
     def _mark_scope_instances(self, pattern):
         """Une répétition neuve : voir ``_SCOPE_INSTANCES``."""
-        pattern.addProperty("App::PropertyBool", self._SCOPE_INSTANCES,
-                            "FreeSolid", "Corps concernés : les "
-                            "occurrences seules, en étapes cachées")
+        if self._SCOPE_INSTANCES not in pattern.PropertiesList:
+            pattern.addProperty("App::PropertyBool", self._SCOPE_INSTANCES,
+                                "FreeSolid", "Corps concernés : les "
+                                "occurrences seules, en étapes cachées")
         setattr(pattern, self._SCOPE_INSTANCES, True)
 
     def _scope_hidden(self, pattern):
@@ -97,11 +119,36 @@ class BodyScopeMixin:
         return (is_subtractive_type(getattr(obj, "TypeId", ""))
                 and "Originals" not in getattr(obj, "PropertiesList", ()))
 
+    def _cuts_bodies(self, obj):
+        """Un enlèvement seul ou une répétition : la réédition passe ses
+        « Corps creusés » à ``_set_cut_bodies``."""
+        return (self._is_cut_source(obj)
+                or getattr(obj, "TypeId", "") in _PATTERN_TYPES)
+
+    def _is_scope_pattern(self, obj):
+        """Une répétition d'enlèvements dont la réédition coche les corps
+        creusés. Pas celle d'un fichier d'avant qui en creuse déjà : ses
+        booléens sont des lignes de l'arbre, à supprimer une à une."""
+        if getattr(obj, "TypeId", "") not in _PATTERN_TYPES:
+            return False
+        if not any(is_subtractive_type(f.TypeId)
+                   for f in self._scope_originals(obj)):
+            return False
+        return (bool(getattr(obj, self._SCOPE_INSTANCES, False))
+                or not self._scope_cuts(obj))
+
     def _hidden_cut_source(self, obj):
         """Le nom de l'enlèvement ou de la répétition dont ``obj`` est
         l'étape cachée dans un autre corps, ou ""."""
         source = getattr(obj, "FreeSolidScopeOf", "")
         return source if source and self._is_thin_helper(obj) else ""
+
+    def _scope_originals(self, pattern):
+        """Les fonctions que ``pattern`` répète, ou lui-même : un enlèvement
+        seul."""
+        if self._is_cut_source(pattern):
+            return [pattern]
+        return list(getattr(pattern, "Originals", None) or ())
 
     def _scope_seeds(self, pattern, extend=False):
         """Formes d'enlèvement des fonctions répétées — ou de l'enlèvement
@@ -109,9 +156,7 @@ class BodyScopeMixin:
         travers tout » prolongées au-delà de tous les corps."""
         reach = self._through_reach() if extend else 0.0
         seeds = []
-        originals = ([pattern] if self._is_cut_source(pattern)
-                     else getattr(pattern, "Originals", None) or ())
-        for feature in originals:
+        for feature in self._scope_originals(pattern):
             if (not is_subtractive_type(feature.TypeId)
                     or getattr(feature, "Suppressed", False)):
                 continue
@@ -469,30 +514,40 @@ class BodyScopeMixin:
         except Exception:  # noqa: BLE001 — la transaction défait le reste
             pass
 
-    # ---------- un enlèvement seul, à la réédition ----------
+    # ---------- les corps creusés, à la réédition ----------
 
     def _cut_bodies_of(self, feature):
-        """Les autres corps que l'enlèvement ``feature`` creuse."""
-        if not self._is_cut_source(feature):
+        """Les autres corps que l'enlèvement ``feature`` — ou la répétition
+        d'enlèvements — creuse."""
+        if not (self._is_cut_source(feature)
+                or self._is_scope_pattern(feature)):
             return []
         return [target for target in (cut.getParentGeoFeatureGroup()
                                       for cut in self._scope_cuts(feature))
                 if target is not None]
 
     def _set_cut_bodies(self, feature, names):
-        """Réédition : les autres corps que l'enlèvement ``feature`` creuse.
-        Un corps décoché perd son étape cachée ; un corps coché en reçoit
-        une, à son rang dans le corps (``_insert_scope_cut``)."""
+        """Réédition : les autres corps que l'enlèvement ``feature`` — ou la
+        répétition — creuse. Un corps décoché perd son étape cachée ; un
+        corps coché en reçoit une, à son rang dans le corps
+        (``_insert_scope_cut``)."""
         from engine.kernel import KernelError
         body = feature.getParentGeoFeatureGroup()
         current = {cut.getParentGeoFeatureGroup(): cut
                    for cut in self._scope_cuts(feature)}
         wanted = self._listed_bodies(names, body, list(current))
         added = [target for target in wanted if target not in current]
-        if added and not self._scope_seeds(feature):
+        if (current and not self._scope_hidden(feature)
+                and set(wanted) != set(current)):
             raise KernelError(
-                "« {} » est désactivé : réactivez-le pour qu'il creuse "
-                "d'autres corps".format(feature.Label))
+                "« {} » vient d'un fichier d'avant : ses corps creusés "
+                "sont des lignes de l'arbre".format(feature.Label))
+        if added:
+            if not self._scope_hidden(feature):
+                # Une répétition d'un fichier d'avant qui ne creusait rien :
+                # elle devient une répétition neuve.
+                self._mark_scope_instances(feature)
+            self._refuse_unscoped(feature)
         for target, cut in current.items():
             if target not in wanted:
                 self._remove_scope_cut(cut)

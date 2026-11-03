@@ -27,7 +27,10 @@
 //         sortie), pas à chaque frappe }
 //       { type: "select", key, options: [[value, label]…], value, label? }
 //       { type: "check",  key, label, value }
-//       { type: "selection", key, label?, hint?, value?, accepts?, multiple? }
+//       { type: "selection", key, label?, hint?, value?, accepts?, multiple?,
+//         allows?(pick) — faux : la zone n'absorbe pas ce choix }
+//         Une zone multiple de corps liste un corps par ligne, chacun
+//         retirable (✕).
 //       { type: "text", key, label, value?, placeholder?, unit? }
 //       { type: "list", items: [{ label, onDelete?, onEdit?, editable? }], empty? }
 //       { type: "note", text, readonly?, onClick? }
@@ -116,6 +119,19 @@ export function samePick(a, b) {
     return a.kind === "boundary" && a.name === b.name && a.edge === b.edge;
   }
   return a.name === b.name;
+}
+
+/** Une zone qui ne prend que des corps. */
+export function bodyZone(row) {
+  return (row.accepts ?? ["face"]).every((kind) => kind === "body");
+}
+
+/** La zone ``row`` absorbe-t-elle ce choix de genre ``kind`` ? */
+export function zoneTakes(row, kind, pick, values) {
+  return row.type === "selection"
+    && (row.accepts ?? ["face"]).includes(kind)
+    && (!row.showIf || row.showIf(values))
+    && (!pick || !row.allows || row.allows(pick) !== false);
 }
 
 /** Texte d'une zone remplie de bords (arêtes de surface, de courbe, du
@@ -257,11 +273,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
       if (!groupShown(group, active.values)) continue;
       for (const row of group.rows ?? []) {
         // Une zone masquée (showIf) n'absorbe pas les clics.
-        if (row.type === "selection"
-            && (row.accepts ?? ["face"]).includes(kind)
-            && (!row.showIf || row.showIf(active.values))) {
-          rows.push(row);
-        }
+        if (zoneTakes(row, kind, value, active.values)) rows.push(row);
       }
     }
     const pointsRow = kind === "point3d" && findPointsRow();
@@ -311,9 +323,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     for (const group of active?.spec.groups ?? []) {
       if (!groupShown(group, active.values)) continue;
       for (const row of group.rows ?? []) {
-        if (row.type === "selection"
-            && (row.accepts ?? ["face"]).includes(kind)
-            && (!row.showIf || row.showIf(active.values))) rows.push(row);
+        if (zoneTakes(row, kind, null, active.values)) rows.push(row);
       }
     }
     return rows;
@@ -348,7 +358,7 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
         if (row.type !== "selection") continue;
         if (!selectionFilled(active.values[row.key])) continue;
         // Un corps garde son nom quand la géométrie change.
-        if ((row.accepts ?? ["face"]).every((k) => k === "body")) continue;
+        if (bodyZone(row)) continue;
         active.values[row.key] = row.multiple ? { items: [] } : null;
         cleared++;
       }
@@ -432,6 +442,36 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     if (spec.note) panelEl.append(el("div", "pnote", spec.note));
   }
 
+  /** Zone multiple de corps : un corps par ligne, retirable par sa croix
+   *  — un corps fondu ne se voit plus à part dans la vue. Longue, la
+   *  liste défile. */
+  function renderBodyList(row, value) {
+    const box = el("div", "pselect-box filled pbodies");
+    if (value.items.length > 3) {
+      const count = el("div", "pbodies-count");
+      count.textContent = t("{n} corps", { n: value.items.length });
+      box.append(count);
+    }
+    value.items.forEach((item, index) => {
+      const line = el("div", "plist-item");
+      const label = document.createElement("span");
+      label.textContent = item.label ?? item.name;
+      const remove = el("button", "pdel", "✕");
+      remove.title = t("Retirer");
+      remove.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const items = value.items.filter((_, at) => at !== index);
+        active.values[row.key] = { ...value, items };
+        render();
+        changed();
+        reportPicks();
+      });
+      line.append(label, remove);
+      box.append(line);
+    });
+    return box;
+  }
+
   function renderRow(row) {
     const { values } = active;
     if (row.showIf && !row.showIf(values)) return null;
@@ -497,6 +537,9 @@ export function createPropertyPanel({ say, onClose, onToggle, onPicks }) {
     if (row.type === "selection") {
       const box = el("div", "pselect-box");
       const value = values[row.key];
+      if (row.multiple && bodyZone(row) && selectionFilled(value)) {
+        return renderBodyList(row, value);
+      }
       if (!selectionFilled(value)) {
         box.textContent =
           t(row.hint ?? "Cliquez une face dans la zone graphique");

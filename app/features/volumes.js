@@ -673,49 +673,53 @@ export function mergeParams(v, bodies) {
 }
 
 // ---------- corps fondus ou creusés, à la réédition ----------
-// Un corps fondu ne se voit plus à part dans la vue : la réédition donne
-// une case par corps — cochée pour ceux que la fonction fond, décochée
-// pour les autres corps du dossier. Le corps de la fonction ne bouge pas.
-// Un enlèvement de même, pour les corps qu'il creuse.
+// Comme à la création, une zone : les corps que la fonction fond. Un clic
+// dans la vue ou dans le dossier en ajoute ou en retire un ; un corps
+// fondu, qui ne se voit plus à part, se retire par sa croix. Le corps de
+// la fonction n'y entre pas. Un enlèvement de même, pour les corps qu'il
+// creuse ; une répétition aussi, quand le moteur lui donne `cut` : elle
+// répète un enlèvement.
 
 const FUSING = ["pad", "revolution"];
 const CUTTING = ["pocket", "groove", "hole"];
-const bodyKey = (name) => `body:${name}`;
-
-/** Les cases de la réédition : les corps fondus (ou creusés), puis les
- *  autres corps solides du dossier, sauf celui de la fonction. */
-export function bodyChoices(feature, tree) {
-  const kind = feature?.type_key;
-  if (!FUSING.includes(kind) && !CUTTING.includes(kind)) return [];
-  const own = feature.body ?? activeBodyName(tree?.bodies);
-  const held = (CUTTING.includes(kind) ? feature.cut : feature.fused) ?? [];
-  const others = (tree?.bodies ?? []).filter((b) => b.has_solid === true
-    && b.name !== own && !held.some((f) => f.name === b.name));
-  return [...held.map(({ name, label }) => ({ name, label, held: true })),
-          ...others.map(({ name, label }) => ({ name, label, held: false }))];
-}
+const PATTERNS = ["linear_pattern", "polar_pattern", "mirror"];
+const cuts = (feature) => CUTTING.includes(feature?.type_key)
+  || (PATTERNS.includes(feature?.type_key) && Array.isArray(feature.cut));
+const ownBody = (feature, tree) => feature.body ?? activeBodyName(tree?.bodies);
+/** Les corps que la fonction fond (ou creuse) : `{ name, label }`. */
+const heldBodies = (feature) => (cuts(feature) ? feature.cut
+  : feature.fused) ?? [];
 
 /** Groupe « Corps fondus » (« Corps creusés ») de la réédition, vide sans
  *  autre corps. */
 export function bodyChoiceGroups(feature, tree) {
-  const candidates = bodyChoices(feature, tree);
-  if (!candidates.length) return [];
+  if (!FUSING.includes(feature?.type_key) && !cuts(feature)) return [];
+  const own = ownBody(feature, tree);
+  const held = heldBodies(feature);
+  const others = (tree?.bodies ?? []).filter((b) => b.has_solid === true
+    && b.name !== own);
+  if (!held.length && !others.length) return [];
   return [{
-    label: CUTTING.includes(feature.type_key) ? "Corps creusés" : "Corps fondus",
-    rows: candidates.map((c) => ({ type: "check", key: bodyKey(c.name),
-                                   label: c.label, value: c.held })),
+    label: cuts(feature) ? "Corps creusés" : "Corps fondus",
+    rows: [{ type: "selection", key: "bodies", accepts: ["body"],
+             multiple: true,
+             hint: "Cliquez des corps dans la vue ou dans le dossier",
+             allows: (pick) => pick.name !== own,
+             value: { kind: "body", items: held.map(({ name, label }) =>
+               ({ kind: "body", name, label })) } }],
   }];
 }
 
-/** `{ bodies }` quand les cases ont changé, sinon `{}`. */
+/** `{ bodies }` quand la zone a changé, sinon `{}`. */
 export function bodyChoiceValues(v, feature, tree) {
-  const candidates = bodyChoices(feature, tree);
-  const checked = candidates
-    .filter((c) => v[bodyKey(c.name)] ?? c.held).map((c) => c.name);
-  const before = candidates.filter((c) => c.held).map((c) => c.name);
-  const same = checked.length === before.length
-    && checked.every((name) => before.includes(name));
-  return same ? {} : { bodies: checked };
+  if (!v.bodies?.items) return {};
+  const own = ownBody(feature, tree);
+  const chosen = [...new Set(v.bodies.items.map((i) => i.name))]
+    .filter((name) => name && name !== own);
+  const before = heldBodies(feature).map((b) => b.name);
+  const same = chosen.length === before.length
+    && chosen.every((name) => before.includes(name));
+  return same ? {} : { bodies: chosen };
 }
 
 // ---------- corps concernés d'un enlèvement ----------

@@ -934,7 +934,9 @@
     color: var(--ink-2);
     padding: 10px var(--space-3) 6px;
   }
-  #tree { list-style: none; position: relative; }
+  /* Le double-clic rouvre une ligne : il n'en sélectionne pas le texte
+     (le champ du renommage, éditable, reste sélectionnable). */
+  #tree { list-style: none; position: relative; user-select: none; }
   #tree-filter {
     display: block;
     width: calc(100% - 2 * var(--space-3));
@@ -1196,6 +1198,12 @@
   }
   .pselect-box.filled {
     border: 1px solid var(--accent); color: var(--accent);
+  }
+  /* Zone de corps : une ligne par corps, la liste défile au-delà. */
+  .pselect-box.pbodies { max-height: 12em; overflow-y: auto; padding: 2px 0; }
+  .pbodies .plist-item { padding: 2px var(--space-2); }
+  .pbodies-count {
+    padding: 2px var(--space-2); color: var(--ink-2); font-size: var(--text-xs);
   }
   .pnote { padding: var(--space-1) var(--space-3) var(--space-2); font-size: var(--text-xs); color: var(--ink-2); }
   .pnote.readonly { opacity: 0.8; cursor: default; }

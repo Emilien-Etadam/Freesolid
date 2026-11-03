@@ -60,13 +60,13 @@ class EquationsMixin:
             raise KernelError("fonction inconnue : {}".format(feature))
         if not isinstance(values, dict):
             raise KernelError("values doit être un objet JSON")
-        # Les corps qu'un volume fond, ou qu'un enlèvement creuse : pas
-        # une cote, ses objets cachés.
+        # Les corps qu'un volume fond, ou qu'un enlèvement — ou une
+        # répétition — creuse : pas une cote, ses objets cachés.
         values = dict(values)
         chosen = "bodies" in values
         bodies = values.pop("bodies", None)
         values, asked = self._props_from_keys(obj, values)
-        if chosen and self._is_cut_source(obj):
+        if chosen and self._cuts_bodies(obj):
             self._set_cut_bodies(obj, bodies)
         elif chosen:
             self._set_fused_bodies(obj, bodies)

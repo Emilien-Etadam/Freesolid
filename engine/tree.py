@@ -1004,8 +1004,11 @@ class TreeMixin:
                 item["fused"] = [{"name": b.Name, "label": self._body_title(b)}
                                  for b in fused]
             cut = self._cut_bodies_of(obj)
-            if cut:
-                # Et ceux qu'un enlèvement creuse.
+            if cut or (self._is_scope_pattern(obj) and self._other_bodies(
+                    obj.getParentGeoFeatureGroup())):
+                # Et ceux qu'un enlèvement creuse. Une répétition
+                # d'enlèvements les donne même vides : sa réédition les
+                # propose, une symétrie sans cote s'y rouvre.
                 item["cut"] = [{"name": b.Name, "label": self._body_title(b)}
                                for b in cut]
             if obj.TypeId in ("PartDesign::Plane", "PartDesign::Line",

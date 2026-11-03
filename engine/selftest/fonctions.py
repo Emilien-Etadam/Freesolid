@@ -2416,6 +2416,132 @@ def p100_repetition_traversante(self, mark, report, etat):
         == [pattern.Name] and clean())
 
 
+def p101_repetition_corps_reedites(self, mark, report, etat):
+    mark("p101: rééditer les corps qu'une répétition creuse")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2, **where):
+        name = self.sketch_start(**(where or {"plane": "XY"}))["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def rows():
+        tree = self.get_tree()
+        return tree["features"] + tree.get("other_features", [])
+
+    def row(name):
+        return next(r for r in rows() if r["name"] == name)
+
+    def ranks():
+        return [r["name"] for r in sorted(rows(), key=lambda r: r["order"])]
+
+    def volumes():
+        return [round(a.Shape.Volume, 6), round(b.Shape.Volume, 6)]
+
+    def refused(answer, words):
+        return answer.get("ok") is False and words in str(answer.get("error"))
+
+    # A et B côte à côte, 20 × 20 × 10, symétriques par rapport au plan de
+    # face. Une rainure de A dans B, qui ne creuse que A, répétée une fois
+    # le long de Y et symétrisée, sans corps concernés ; puis un bossage
+    # de 2 sur B.
+    self.new_part("Répétition rééditée")
+    rect(0, -10, 20, 10)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(20, -10, 40, 10)
+    call("add_pad", length=10, merge=False)
+    b = self._require_body()
+    self.set_active_body(a.Name)
+    rect(15, 2, 25, 4)
+    call("add_pocket", through=True, reversed=True, bodies=[])
+    pocket = self._thin_owner(a.Tip).Name
+    call("add_linear_pattern", length=3, count=2, axis="Y", spacing=True,
+         features=[pocket], scope=[])
+    linear = a.Tip.Name
+    call("add_mirror", plane="XZ", features=[pocket], scope=[])
+    mirror = a.Tip.Name
+    self.set_active_body(b.Name)
+    rect(20, -10, 40, 10, face=self._top_face_id())
+    call("add_pad", length=2, bodies=[])
+    before = ranks()
+    offered = (volumes() == [3700, 4800] and row(linear).get("cut") == []
+               and row(mirror).get("cut") == []
+               and row(mirror).get("has_params") is False)
+
+    # Cocher B : ses occurrences le creusent, à leur rang — le bossage qui
+    # le recouvre n'est pas entamé (creusé en bout de chaîne, 4680). La
+    # rainure elle-même ne creuse toujours pas B.
+    added = call("set_params", feature=linear, values={"bodies": [b.Name]})
+    at_rank = volumes() == [3700, 4700]
+    call("set_params", feature=mirror, values={"bodies": [b.Name]})
+    both = (volumes() == [3700, 4600]
+            and [x["name"] for x in row(linear).get("cut", [])] == [b.Name]
+            and [x["name"] for x in row(mirror).get("cut", [])] == [b.Name])
+    hidden = not [r for r in rows() if r.get("edits") in (linear, mirror)]
+    # Décocher B : il revient ; Ctrl+Z le recreuse.
+    call("set_params", feature=linear, values={"bodies": []})
+    back = volumes() == [3700, 4700]
+    call("undo")
+    report["p101_cocher_decocher"] = (
+        offered and added.get("ok") is True and at_rank and both and hidden
+        and back and volumes() == [3700, 4600] and ranks() == before
+        and clean())
+
+    # Refus : une répétition ramenée à la fonction répétée, une symétrie
+    # désactivée, une répétition d'extrusion. Décocher passe toujours.
+    call("set_params", feature=linear, values={"count": 1})
+    call("set_params", feature=linear, values={"bodies": []})
+    lone = call("set_params", feature=linear, values={"bodies": [b.Name]})
+    call("set_params", feature=linear, values={"count": 2})
+    call("set_suppressed", features=[mirror], suppressed=True)
+    call("set_params", feature=mirror, values={"bodies": []})
+    off = call("set_params", feature=mirror, values={"bodies": [b.Name]})
+    call("set_suppressed", features=[mirror], suppressed=False)
+    self.set_active_body(a.Name)
+    rect(0, -10, 2, -8, face=self._top_face_id())
+    call("add_pad", length=2, bodies=[])
+    boss = a.Tip.Name
+    call("add_linear_pattern", length=4, count=2, axis="X", spacing=True,
+         features=[boss], scope=[])
+    bosses = a.Tip.Name
+    no_cut = call("set_params", feature=bosses, values={"bodies": [b.Name]})
+    report["p101_refus"] = (
+        refused(lone, "pas d'autre occurrence") and refused(off, "désactivé")
+        and refused(no_cut, "seuls les enlèvements")
+        and "cut" not in row(bosses) and volumes()[1] == 4800 and clean())
+
+    # Fichiers d'avant. Une répétition qui ne creusait rien devient neuve
+    # en cochant B ; une qui creusait déjà garde ses lignes.
+    mirror_obj = self._doc.getObject(mirror)
+    mirror_obj.removeProperty(self._SCOPE_INSTANCES)
+    offered = row(mirror).get("cut") == []
+    call("set_params", feature=mirror, values={"bodies": [b.Name]})
+    renewed = (volumes()[1] == 4700
+               and getattr(mirror_obj, self._SCOPE_INSTANCES, False)
+               and all(self._is_thin_helper(c)
+                       for c in self._scope_cuts(mirror_obj)))
+    call("set_params", feature=linear, values={"bodies": [b.Name]})
+    linear_obj = self._doc.getObject(linear)
+    linear_obj.removeProperty(self._SCOPE_INSTANCES)
+    for step in self._scope_cuts(linear_obj):
+        step.removeProperty(self._THIN_HELPER)
+        step.removeProperty("FreeSolidThinOwner")
+    self._recompute()
+    kept = call("set_params", feature=linear, values={"bodies": []})
+    report["p101_fichier_d_avant"] = (
+        offered and renewed and volumes()[1] == 4500
+        and "cut" not in row(linear)
+        and refused(kept, "fichier d'avant") and clean())
+
+
 def protocol_dangling(tree):
     from engine import protocol
     return protocol.dangling_deps(tree)

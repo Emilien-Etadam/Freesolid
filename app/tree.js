@@ -612,6 +612,7 @@ export function installTree(ctx) {
     return {
       ...bodyInfo,
       label: solid.label,
+      bodyLabel: bodyInfo.label,
       color: solid.color ?? bodyInfo.color,
       hidden: !!(bodyInfo.hidden || solid.hidden),
       solid: index,
@@ -648,6 +649,10 @@ export function installTree(ctx) {
         : `${bodyInfo.label} — ${t("Clic : activer ce corps")}`;
       bodyItem.addEventListener("click", (event) => {
         if (consumeTreeRenameClick(event, bodyItem, bodyInfo)) return;
+        // Un panneau attend des corps : la ligne lui donne le sien, comme
+        // un clic dans la vue — utile au corps masqué ou enfoui.
+        if (panel.notifyPick("body", { kind: "body", name: bodyInfo.name,
+          label: bodyInfo.bodyLabel ?? bodyInfo.label })) return;
         if (!bodyInfo.active) {
           refresh(call("set_active_body", { body: bodyInfo.name }));
         }
@@ -2132,11 +2137,14 @@ export function installTree(ctx) {
     });
   }
 
-  /** Les cotes de get_params, avec l'aperçu jaune et la flèche. */
+  /** Les cotes de get_params, avec l'aperçu jaune et la flèche ; les
+   *  corps creusés d'une répétition d'enlèvements. */
   async function editParams(feature) {
     try {
       const info = await call("get_params", { feature: feature.name });
-      if (!info.params.length) {
+      const tree = ctx.lastTree;
+      const bodies = bodyChoiceGroups(feature, tree);
+      if (!info.params.length && !bodies.length) {
         say(t("{f} : aucun paramètre numérique éditable", { f: info.label }));
         return;
       }
@@ -2149,22 +2157,23 @@ export function installTree(ctx) {
           const raw = String(v[p.key] ?? "").trim();
           if (raw && raw !== original) values[p.key] = raw;
         }
-        return values;
+        return withBodyChoices(values, v, feature, tree);
       };
       // La flèche au bout d'une extrusion, comme à la création.
       const depth = ctx.editDepthHandle?.(feature);
+      const dimensions = info.params.length ? [{
+        label: t("Paramètres"),
+        rows: info.params.map((p) => {
+          const [label, unit] = paramLabel(feature.type_key, p.key);
+          return { type: "text", key: p.key,
+                   label: (p.expr ? "Σ " : "") + label, unit,
+                   value: String(p.expr ?? p.value) };
+        }),
+      }] : [];
       panel.open({
         icon: TREE_ICONS[feature.type_key] ?? "body",
         title: info.label,
-        groups: [{
-          label: t("Paramètres"),
-          rows: info.params.map((p) => {
-            const [label, unit] = paramLabel(feature.type_key, p.key);
-            return { type: "text", key: p.key,
-                     label: (p.expr ? "Σ " : "") + label, unit,
-                     value: String(p.expr ?? p.value) };
-          }),
-        }, ...contourGroups(feature)],
+        groups: [...dimensions, ...contourGroups(feature), ...bodies],
         // L'édition profite du même aperçu jaune que la création, dès
         // l'ouverture : sans changement, il montre la fonction telle
         // qu'elle est.

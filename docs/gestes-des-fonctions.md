@@ -21,11 +21,11 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 
 | Fonction | Aperçu à la création | Réédition : ce qui revient | Ne revient pas | Aperçu à la réédition | Barre de retour | Selftest de réédition |
 |---|---|---|---|---|---|---|
-| Extrusion | oui + flèche | le panneau de la création : condition de fin (sauf passer à « jusqu'à la face » ; borgne seulement pour le premier volume d'un corps), décalage, inverser, dépouille, direction 2 (condition, profondeur, dépouille), épaisseurs et côté de la paroi mince, contours, corps fondus (une case par corps) | face d'arrivée, activer la paroi mince ou en changer le genre, esquisse, « Fusionner » et le corps de la fonction | oui + flèche (la flèche s'efface quand le sens ou la condition change) | oui | oui (conditions, direction 2, paroi mince, extrémités fermées, corps fondus) |
-| Enlèvement extrudé | oui + flèche | comme l'Extrusion, les corps creusés au lieu des corps fondus (une case par corps) | comme l'Extrusion | oui + flèche | oui | oui (à travers tout, borgne, refus de « jusqu'à la face », corps creusés qui suivent la cote, corps creusés cochés ou décochés) |
+| Extrusion | oui + flèche | le panneau de la création : condition de fin (sauf passer à « jusqu'à la face » ; borgne seulement pour le premier volume d'un corps), décalage, inverser, dépouille, direction 2 (condition, profondeur, dépouille), épaisseurs et côté de la paroi mince, contours, corps fondus (une zone : clic dans la vue ou le dossier, croix pour retirer) | face d'arrivée, activer la paroi mince ou en changer le genre, esquisse, « Fusionner » et le corps de la fonction | oui + flèche (la flèche s'efface quand le sens ou la condition change) | oui | oui (conditions, direction 2, paroi mince, extrémités fermées, corps fondus) |
+| Enlèvement extrudé | oui + flèche | comme l'Extrusion, les corps creusés au lieu des corps fondus (une zone : clic dans la vue ou le dossier, croix pour retirer) | comme l'Extrusion | oui + flèche | oui | oui (à travers tout, borgne, refus de « jusqu'à la face », corps creusés qui suivent la cote, corps creusés ajoutés ou retirés) |
 | Révolution | oui | angle, axe, inverser, plan médian, contours, corps fondus | esquisse, « Fusionner » et le corps de la fonction | oui | oui | oui (axe, plan médian, corps fondus) |
 | Enlèvement de révolution | oui | comme la Révolution, les corps creusés au lieu des corps fondus | comme la Révolution | oui | oui | non (seule la Révolution est testée) |
-| Perçage | oui | le panneau de la création sans les positions : type (simple, lamage, fraisage), cotes du type, angle du fraisage, à travers ou borgne, profondeur, corps creusés (une case par corps) | positions et face | oui | oui | oui (type, condition de fin, corps creusés) |
+| Perçage | oui | le panneau de la création sans les positions : type (simple, lamage, fraisage), cotes du type, angle du fraisage, à travers ou borgne, profondeur, corps creusés (une zone : clic dans la vue ou le dossier, croix pour retirer) | positions et face | oui | oui | oui (type, condition de fin, corps creusés) |
 | Lissage | oui | rien | tout : profils et ordre, soustractif, lissage droit, boucle fermée, « Fusionner », les corps fondus ou creusés | — | oui | non |
 | Balayage | oui | rien | tout : profil, trajectoire, soustractif, « Fusionner », les corps fondus ou creusés | — | oui | non |
 | Hélice | oui | pas, hauteur, angle | esquisse profil | oui | oui | non |
@@ -51,11 +51,11 @@ Tenir la grille à jour : une fonction ajoutée ou corrigée met sa ligne à jou
 
 | Fonction | Aperçu à la création | Réédition : ce qui revient | Ne revient pas | Aperçu à la réédition | Barre de retour | Selftest de réédition |
 |---|---|---|---|---|---|---|
-| Répétition linéaire, des fonctions | oui | distance, nombre, nombre en direction 2 (si déjà > 1) | fonctions répétées, direction, inverser, pas ou longueur totale, activer la direction 2, distance en direction 2, corps concernés | oui, sans la flèche | oui | oui (nombre) |
+| Répétition linéaire, des fonctions | oui | distance, nombre, nombre en direction 2 (si déjà > 1) ; corps creusés, quand elle répète un enlèvement | fonctions répétées, direction, inverser, pas ou longueur totale, activer la direction 2, distance en direction 2 | oui, sans la flèche | oui | oui (nombre, corps creusés) |
 | Répétition linéaire, des corps | oui | distance, nombre, direction 2 (distance et nombre, si déjà créée) | corps répétés, direction, inverser, pas ou longueur totale, ajouter la direction 2, copies sautées | oui | oui | oui (nombre, distance) |
-| Répétition circulaire, des fonctions | oui | angle total, nombre | fonctions répétées, axe, inverser, corps concernés | oui | oui | non |
+| Répétition circulaire, des fonctions | oui | angle total, nombre ; corps creusés, quand elle répète un enlèvement | fonctions répétées, axe, inverser | oui | oui | non |
 | Répétition circulaire, des corps | oui | angle total, nombre | corps répétés, axe, inverser | oui | oui | non |
-| Symétrie, des fonctions | oui | rien | tout : plan, fonctions, corps concernés | — | oui | non |
+| Symétrie, des fonctions | oui | corps creusés, quand elle répète un enlèvement | plan, fonctions | oui | oui | oui (corps creusés) |
 | Symétrie, des corps | oui | rien | tout : plan, corps | — | oui | non |
 | Fonction graphe, solide (ajout, enlèvement) | non | le graphe, dans l'éditeur de graphe | ajout ou enlèvement, nature solide ou courbe | non | oui | oui |
 | Fonction graphe, courbe ou surface | non | le graphe, dans l'éditeur de graphe | nature courbe ou surface | non | oui (drapeau) | oui |
@@ -114,7 +114,7 @@ Maintenant le moteur dit dans l'arbre si une fonction a des cotes (`has_params`)
 
 Le relevé a trouvé en chemin trois fausses cotes : la `Length` du plan et de l'axe de référence (une taille d'affichage) et la `Height` de la projection (sans effet en mode « Edges »). Le double-clic ouvrait pour elles un panneau sans effet. Elles ne sont plus des cotes (`engine/equations.py`, `_NO_DIMENSIONS`).
 
-Et une ligne qu'une répétition à corps concernés creuse dans un autre corps rouvre cette répétition : creusée par une symétrie, elle proposait « Modifier » pour rien. L'arbre dit maintenant si la répétition rouverte a des cotes (`edits_has_params`). Une répétition neuve creuse les autres corps par des étapes cachées : ces lignes ne restent que dans les fichiers d'avant.
+Et une ligne qu'une répétition à corps concernés creuse dans un autre corps rouvre cette répétition : creusée par une symétrie, elle proposait « Modifier » pour rien. L'arbre dit maintenant si la répétition rouverte a des cotes (`edits_has_params`). Une répétition neuve creuse les autres corps par des étapes cachées : ces lignes ne restent que dans les fichiers d'avant. Elle-même rouvre ses « Corps creusés » (`cut` dans l'arbre, même vide) : une symétrie d'enlèvements, sans cote, se réédite pour eux.
 
 Reste : le menu de la vue 3D n'a ni Masquer ni Supprimer, que le menu de l'arbre a.
 

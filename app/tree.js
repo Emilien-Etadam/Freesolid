@@ -652,7 +652,10 @@ export function installTree(ctx) {
         // Un panneau attend des corps : la ligne lui donne le sien, comme
         // un clic dans la vue — utile au corps masqué ou enfoui.
         if (panel.notifyPick("body", { kind: "body", name: bodyInfo.name,
-          label: bodyInfo.bodyLabel ?? bodyInfo.label })) return;
+          label: bodyInfo.label,
+          ...(Number.isInteger(bodyInfo.solid)
+            ? { solid: bodyInfo.solid, bodyLabel: bodyInfo.bodyLabel } : {}),
+        })) return;
         if (!bodyInfo.active) {
           refresh(call("set_active_body", { body: bodyInfo.name }));
         }
@@ -2060,7 +2063,7 @@ export function installTree(ctx) {
   }
 
   /** Suppression de corps : le panneau de la création, sur les corps qui
-   *  existent à son rang, cochés selon ce qu'elle vise. OK la réécrit sur
+   *  existent à son rang, sa zone remplie de ce qu'elle vise. OK la réécrit sur
    *  place, sans changer son rang. */
   async function editRemoveBodies(feature) {
     let info;
@@ -2076,10 +2079,10 @@ export function installTree(ctx) {
       title: info.label,
       groups: removeBodiesGroups(info.candidates, info.keep),
       note: REMOVE_BODIES_NOTE,
-      hint: (v) => (params(v) ? null : "Cochez au moins un corps"),
+      hint: (v) => (params(v) ? null : "Choisissez au moins un corps"),
       onApply: (v) => {
         if (!params(v)) {
-          say(t("Cochez au moins un corps"), true);
+          say(t("Choisissez au moins un corps"), true);
           return;
         }
         refresh(call("edit_remove_bodies",

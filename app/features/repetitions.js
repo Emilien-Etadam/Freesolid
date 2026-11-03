@@ -1,6 +1,7 @@
 // Fonctions — répétitions linéaire et circulaire, symétrie.
 
 import { num } from "../num.js";
+import { bodyZoneRow, bodyZoneValue, zoneNames } from "./commun.js";
 
 // ---------- répétitions et symétrie ----------
 // Répéter des fonctions du corps actif, ou des corps entiers : chaque
@@ -9,8 +10,8 @@ import { num } from "../num.js";
 // Fonctions à répéter : clic dans l'arbre (plusieurs, un second clic
 // retire) ; vide = la dernière fonction. Direction : un axe d'origine ou
 // une arête droite cliquée dans la zone graphique.
-// Corps concernés : les enlèvements de matière répétés creusent aussi
-// les autres corps choisis.
+// Corps à répéter, corps concernés : des zones, remplies par un clic dans
+// la vue ou sur une ligne du dossier.
 
 const repeatsBodies = (v) => v.target === "bodies";
 
@@ -23,21 +24,24 @@ export function patternTargetGroup() {
   };
 }
 
-/** Une case par corps de la pièce ; le corps actif est coché. */
+/** Les corps à répéter : une zone, remplie du corps actif. Un corps vide
+ *  n'y entre pas. */
 export function patternBodiesGroup(ctx) {
+  const bodies = ctx?.lastTree?.bodies ?? [];
+  const active = bodies.filter((body) => body.active && body.has_solid);
   return {
     label: "Corps à répéter",
     showIf: repeatsBodies,
-    rows: (ctx?.lastTree?.bodies ?? []).map((body) => ({
-      type: "check", key: `src:${body.name}`, label: body.label,
-      value: !!body.active })),
+    rows: [bodyZoneRow("sources", {
+      value: bodyZoneValue(active),
+      allows: (pick) => bodies.some((body) => body.name === pick.name
+        && body.has_solid === true) })],
   };
 }
 
-/** Corps cochés → noms, dans l'ordre de l'arbre. */
+/** Les corps de la zone, dans l'ordre des clics. */
 export function patternBodiesParams(v) {
-  return Object.keys(v).filter((key) => key.startsWith("src:") && v[key])
-    .map((key) => key.slice(4));
+  return zoneNames(v.sources);
 }
 
 const otherBodies = (ctx) =>
@@ -58,9 +62,9 @@ export function patternScopeGroup(ctx) {
                   ["active", "Corps actif seulement"],
                   ["all", "Tous les corps"],
                   ["selected", "Corps choisis"]] },
-      ...others.map((body) => ({
-        type: "check", key: `scope:${body.name}`, label: body.label,
-        value: false, showIf: (v) => v.scopeMode === "selected" })),
+      bodyZoneRow("scopeBodies", {
+        allows: (pick) => others.some((body) => body.name === pick.name),
+        showIf: (v) => v.scopeMode === "selected" }),
       { type: "note", readonly: true,
         text: "Seuls les enlèvements de matière creusent les autres corps",
         showIf: (v) => v.scopeMode && v.scopeMode !== "active" },
@@ -73,10 +77,11 @@ export function patternScopeGroup(ctx) {
 export function patternScopeParams(v, ctx) {
   const others = otherBodies(ctx);
   if (!others.length || (v.scopeMode ?? "crossed") === "crossed") return {};
-  const chosen = v.scopeMode === "all" ? others
+  const names = others.map((body) => body.name);
+  const chosen = v.scopeMode === "all" ? names
     : v.scopeMode === "selected"
-      ? others.filter((body) => v[`scope:${body.name}`]) : [];
-  return { scope: chosen.map((body) => body.name) };
+      ? zoneNames(v.scopeBodies).filter((name) => names.includes(name)) : [];
+  return { scope: chosen };
 }
 
 /** Groupes d'une répétition : quoi répéter, puis `own` (direction, plan). */
@@ -104,7 +109,7 @@ function patternBuild(v, ctx, op, kind, params) {
 
 function patternInvalid(v) {
   return repeatsBodies(v) && !patternBodiesParams(v).length
-    ? "Cochez au moins un corps à répéter" : "Valeurs invalides";
+    ? "Choisissez au moins un corps à répéter" : "Valeurs invalides";
 }
 
 export function patternFeaturesGroup(ctx) {

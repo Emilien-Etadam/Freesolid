@@ -13,7 +13,9 @@ import { readScene } from "./theme.js";
 import {
   readDisplay, writeDisplay, displayEffects,
 } from "./display.js";
-import { FEATURES, removalKey } from "./features.js";
+import {
+  FEATURES, removalCandidates, removalItem, removalMatch,
+} from "./features.js";
 import { installContextMenu } from "./contextmenu.js";
 import { installMeasure } from "./measure.js";
 import { VIEW_KEYS, VIEWS, installViewCube } from "./viewcube.js";
@@ -504,15 +506,21 @@ function repaintBoundaries() {
   }
 }
 
-/** Corps retenus par le panneau (fusionner avec…) : surlignés, sauf le
- *  corps actif — la fonction le prend sans qu'on le choisisse. */
+/** Corps et surfaces retenus par une zone du panneau : surlignés, le
+ *  corps actif compris — une zone qui le tient l'a choisi (répéter,
+ *  supprimer). */
 function setPickedBodies(items) {
-  const active = lastTree?.bodies?.find((b) => b.active)?.name;
-  const picked = (items ?? []).filter((i) => i.kind === "body"
-    && i.name !== active).map((i) => i.name);
-  if (!picked.length && !ctx.pickedBodies?.size) return;
+  const picked = (items ?? []).filter((i) => i.kind === "body")
+    .map((i) => (Number.isInteger(i.solid) ? `${i.name}#${i.solid}` : i.name));
+  const surfaces = (items ?? []).filter((i) => i.kind === "surface")
+    .map((i) => i.name);
+  if (!picked.length && !surfaces.length && !ctx.pickedBodies?.size
+      && !ctx.pickedSurfaces?.size) return;
   ctx.pickedBodies = new Set(picked);
+  ctx.pickedSurfaces = new Set(surfaces);
+  repaintGroups();
   repaintOtherBodies();
+  repaintSurfaces();
 }
 
 /** Bords retenus par le panneau : surlignés dans la vue. */
@@ -2307,10 +2315,13 @@ document.getElementById("btn-sketch").addEventListener("click", () =>
 for (const entry of FEATURES) bindFeature(entry);
 
 // « Supprimer » sur une ligne du dossier des corps : le panneau de la
-// fonction, cette ligne déjà cochée.
+// fonction, cette ligne déjà dans la zone.
 ctx.openRemoveBodies = (target) => featureCommand(() => {
   openFeaturePanel(FEATURES.find((entry) => entry.op === "add_remove_bodies"));
-  panel.restore({ [removalKey(target)]: true });
+  const chosen = removalMatch(target, removalCandidates(lastTree));
+  if (chosen) {
+    panel.restore({ targets: { kind: "body", items: [removalItem(chosen)] } });
+  }
 });
 
 document.getElementById("btn-body").addEventListener("click", () =>

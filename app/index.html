@@ -1199,6 +1199,8 @@
   .pselect-box.filled {
     border: 1px solid var(--accent); color: var(--accent);
   }
+  /* Zone active : la vue la remplit (un clic sur une zone l'active). */
+  .pselect-box.focused { box-shadow: 0 0 0 2px var(--accent-wash); }
   /* Zone de corps : une ligne par corps, la liste défile au-delà. */
   .pselect-box.pbodies { max-height: 12em; overflow-y: auto; padding: 2px 0; }
   .pbodies .plist-item { padding: 2px var(--space-2); }

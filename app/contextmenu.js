@@ -398,7 +398,8 @@ export function installContextMenu(ctx) {
   barItem("ctx-flat", () => ctx.setFlatTree(!ctx.isFlatTree()));
   document.getElementById("ctx-delete").addEventListener("click", () => {
     if (!menuFeature) return;
-    // Dans un dossier : le panneau « Supprimer des corps », la ligne cochée.
+    // Dans un dossier : le panneau « Supprimer des corps », sa zone remplie
+    // de la ligne.
     const target = folderRemovalTarget(menuFeature);
     if (target) {
       ctx.openRemoveBodies(target);

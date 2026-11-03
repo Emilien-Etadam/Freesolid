@@ -69,7 +69,8 @@ export {
   patternFeaturesParams,
 } from "./features/repetitions.js";
 export {
-  REMOVE_BODIES_NOTE, removalKey, removeBodiesGroups, removeBodiesParams,
+  REMOVE_BODIES_NOTE, removalCandidates, removalItem, removalMatch,
+  removeBodiesGroups, removeBodiesParams,
 } from "./features/combiner.js";
 export {
   boundaryParam,

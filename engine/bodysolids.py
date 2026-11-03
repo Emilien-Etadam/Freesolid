@@ -234,6 +234,14 @@ class BodySolidsMixin:
         edges = [edge_of.get(e.hashCode()) for e in shape.Edges]
         return faces, edges
 
+    def _face_solids(self, body):
+        """Rang du solide de chaque face d'un corps qui en garde plusieurs
+        (la vue vise alors un solide), ou None."""
+        shape = getattr(body, "Shape", None)
+        if shape is None or len(shape.Solids) < 2:
+            return None
+        return self._solid_face_edges(body)[0]
+
     def _solid_display(self, body):
         """Ce que la vue retire et teinte d'un corps à plusieurs solides :
         ``(faces masquées, arêtes masquées, {face: couleur})``, en rangs

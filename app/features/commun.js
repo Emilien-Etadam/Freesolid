@@ -98,3 +98,30 @@ export function sameMeasure(value, stored) {
   if (typeof value === "string") return stored.expr === value;
   return stored.numeric != null && Math.abs(value - stored.numeric) < 1e-9;
 }
+
+// ---------- zones de corps ----------
+// Comme dans les modeleurs courants, une zone ne liste que les corps
+// choisis (fondre, creuser, répéter, supprimer) : un clic dans la vue ou
+// sur une ligne du dossier en ajoute un ou le retire, la croix d'une
+// ligne le retire.
+
+export const BODY_ZONE_HINT = "Cliquez des corps dans la vue ou dans le dossier";
+
+/** Une zone de corps de clé `key` ; `extra` : value, allows, showIf… */
+export function bodyZoneRow(key, extra = {}) {
+  return { type: "selection", key, accepts: ["body"], multiple: true,
+           hint: BODY_ZONE_HINT, ...extra };
+}
+
+/** Une zone remplie de ces corps `{ name, label, solid? }`. */
+export function bodyZoneValue(bodies) {
+  return { kind: "body", items: bodies.map(({ name, label, solid }) => ({
+    kind: "body", name, label,
+    ...(Number.isInteger(solid) ? { solid } : {}) })) };
+}
+
+/** Les noms d'une zone de corps, sans doublon, dans l'ordre des clics. */
+export function zoneNames(value) {
+  return [...new Set((value?.items ?? []).map((item) => item.name)
+    .filter(Boolean))];
+}

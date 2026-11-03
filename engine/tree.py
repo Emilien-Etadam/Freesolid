@@ -1240,6 +1240,15 @@ class TreeMixin:
                 normals.append((0.0, 0.0, 1.0))
         return (face_id, points, triangles, normals), is_bspline_surface(face)
 
+    @staticmethod
+    def _mark_face_solid(group, solid_of):
+        """``solid`` : le rang du solide de la face, quand son corps en
+        garde plusieurs — « Supprimer des corps » en vise un seul."""
+        face = group.get("faceId")
+        if solid_of is not None and isinstance(face, int) \
+                and 0 <= face < len(solid_of) and solid_of[face] is not None:
+            group["solid"] = solid_of[face]
+
     def tessellate(self, deviation=None):
         """Per-face tessellation of the body's current shape.
 
@@ -1273,9 +1282,11 @@ class TreeMixin:
         mesh = protocol.pack_mesh(faces)
         producers = self._face_producers()
         face_colors = self._face_colors(body)
+        solid_of = self._face_solids(body) if shape is not None else None
         for group, spline in zip(mesh.get("groups") or [], splines):
             if spline:
                 group["spline"] = True
+            self._mark_face_solid(group, solid_of)
             tint = face_colors.get(str(group.get("faceId")))
             if tint:
                 group["color"] = tint
@@ -1316,10 +1327,12 @@ class TreeMixin:
                 continue
             packed = protocol.pack_mesh(other_faces)
             tints = {**solid_tints, **self._face_colors(obj)}
+            solid_of = self._face_solids(obj)
             for group in packed["groups"]:
                 tint = tints.get(str(group.get("faceId")))
                 if tint:
                     group["color"] = tint
+                self._mark_face_solid(group, solid_of)
             other_bodies.append({
                 "name": obj.Name,
                 "label": self._body_title(obj),

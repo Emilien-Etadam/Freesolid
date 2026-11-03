@@ -63,6 +63,10 @@ class SolidsMixin:
                               "d'elle".format(
                                   self._body_title(obj),
                                   self._body_title(host)))
+        if obj.Name in self._consumed_bodies():
+            raise KernelError("« {} » est creusé en entier par une "
+                              "fonction — reculez la barre au-dessus "
+                              "d'elle".format(self._body_title(obj)))
         if obj.Name in self._removed_names():
             raise KernelError("{} est supprimé par une fonction — reculez "
                               "la barre au-dessus d'elle".format(obj.Label))
@@ -86,6 +90,21 @@ class SolidsMixin:
                     if tool.TypeId == "PartDesign::Body":
                         absorbed[tool.Name] = host
         return absorbed
+
+    def _consumed_bodies(self):
+        """Corps vidés à la position de la barre : bâtis (une pointe sans
+        erreur) mais sans solide — un enlèvement les a creusés en entier.
+        Comme dans les modeleurs courants, ce n'est plus un corps
+        volumique : il quitte le dossier, et revient quand la fonction
+        cesse d'agir. Un corps neuf, sans pointe, reste."""
+        consumed = set()
+        for body in self._history_bodies():
+            tip = getattr(body, "Tip", None)
+            if tip is None or "Invalid" in (tip.State or ()):
+                continue
+            if not self._body_has_solid(body):
+                consumed.add(body.Name)
+        return consumed
 
     # -- corps qu'une fonction fond ou creuse (``bodies``) ------------------
 

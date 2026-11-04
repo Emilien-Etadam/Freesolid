@@ -36,6 +36,7 @@ export {
   extrudeEditValues,
   extrudeGroups,
   extrudeInvalid,
+  extrudeMergeProblem,
   holeEditInitial,
   holeEditValues,
   holeGroups,

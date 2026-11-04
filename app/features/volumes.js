@@ -591,6 +591,8 @@ export function holeEditValues(v, feature) {
 
 /** Ce qui manque à une réédition refusée (`extrudeEditValues` à null). */
 export function extrudeEditProblem(v, feature) {
+  const merge = extrudeMergeProblem(v, feature);
+  if (merge) return merge;
   const bad = (key) => key in v && readMeasure(
     v[key], storedMeasure(feature.params, key, 1),
     { min: 0, max: Infinity }) == null;
@@ -645,11 +647,15 @@ function mergeTargets(v, bodies) {
 }
 
 /** Ce que la fusion interdit, sinon null. */
+/** Rien n'arrête un « jusqu'à » dans un corps neuf : profondeurs borgnes
+ *  ou plan milieu seulement. */
+const newBodyDepth = (v) => v.cond === "milieu" || (v.cond === "borgne"
+  && (!v.dir2 || v.cond2 === "borgne"));
+
 export function mergeProblem(v, bodies) {
   if (v.merge === false) {
-    const blind = v.cond === "milieu" || (v.cond === "borgne"
-      && (!v.dir2 || v.cond2 === "borgne"));
-    return blind ? null : "Nouveau corps : profondeur borgne ou plan milieu";
+    return newBodyDepth(v) ? null
+      : "Nouveau corps : profondeur borgne ou plan milieu";
   }
   if (touching(v, bodies)) return null;
   const { target } = mergeTargets(v, bodies);
@@ -679,42 +685,76 @@ export function mergeParams(v, bodies) {
 // la fonction n'y entre pas. Un enlèvement de même, pour les corps qu'il
 // creuse ; une répétition aussi, quand le moteur lui donne `cut` : elle
 // répète un enlèvement.
+// Une extrusion ou une révolution montre aussi « Fusionner », comme dans
+// les modeleurs courants : décochée, elle sort de son corps pour un corps
+// neuf ; cochée sur le premier volume d'un corps, elle fond les corps
+// qu'elle touche, ou ceux de la zone.
 
 const FUSING = ["pad", "revolution"];
 const CUTTING = ["pocket", "groove", "hole"];
 const PATTERNS = ["linear_pattern", "polar_pattern", "mirror"];
 const cuts = (feature) => CUTTING.includes(feature?.type_key)
   || (PATTERNS.includes(feature?.type_key) && Array.isArray(feature.cut));
+/** Le moteur dit si la fonction est fusionnée : la case se rééditera. */
+const mergesAtEdit = (feature) => FUSING.includes(feature?.type_key)
+  && typeof feature.merged === "boolean";
 const ownBody = (feature, tree) => feature.body ?? activeBodyName(tree?.bodies);
 /** Les corps que la fonction fond (ou creuse) : `{ name, label }`. */
 const heldBodies = (feature) => (cuts(feature) ? feature.cut
   : feature.fused) ?? [];
 
-/** Groupe « Corps fondus » (« Corps creusés ») de la réédition, vide sans
- *  autre corps. */
+/** Groupe « Résultat » d'une extrusion ou d'une révolution (« Corps
+ *  creusés » d'un enlèvement), vide sans rien à changer. */
 export function bodyChoiceGroups(feature, tree) {
   if (!FUSING.includes(feature?.type_key) && !cuts(feature)) return [];
   const own = ownBody(feature, tree);
   const held = heldBodies(feature);
   const others = (tree?.bodies ?? []).filter((b) => b.has_solid === true
     && b.name !== own);
-  if (!held.length && !others.length) return [];
+  const merging = mergesAtEdit(feature);
+  const zone = held.length || others.length ? [bodyZoneRow("bodies", {
+    allows: (pick) => pick.name !== own, value: bodyZoneValue(held),
+    ...(merging ? { label: "Corps fondus",
+                    showIf: (v) => v.merge !== false } : {}) })] : [];
+  const check = merging && (feature.merged || others.length) ? [
+    { type: "check", key: "merge", label: "Fusionner", value: feature.merged },
+    ...(feature.merged ? [] : [{ type: "note", readonly: true,
+      text: "Zone vide : les corps qu'elle touche",
+      showIf: (v) => v.merge !== false && !zoneNames(v.bodies).length }]),
+  ] : [];
+  if (!check.length && !zone.length) return [];
   return [{
-    label: cuts(feature) ? "Corps creusés" : "Corps fondus",
-    rows: [bodyZoneRow("bodies", { allows: (pick) => pick.name !== own,
-                                   value: bodyZoneValue(held) })],
+    label: merging ? "Résultat"
+      : cuts(feature) ? "Corps creusés" : "Corps fondus",
+    rows: [...check, ...zone],
   }];
 }
 
-/** `{ bodies }` quand la zone a changé, sinon `{}`. */
+/** `{ merge }` quand « Fusionner » a changé (et les corps de la zone,
+ *  cochée), `{ bodies }` quand la zone a changé, sinon `{}`. */
 export function bodyChoiceValues(v, feature, tree) {
-  if (!v.bodies?.items) return {};
   const own = ownBody(feature, tree);
   const chosen = zoneNames(v.bodies).filter((name) => name !== own);
+  if (mergesAtEdit(feature) && typeof v.merge === "boolean") {
+    if (!v.merge) return feature.merged ? { merge: false } : {};
+    if (!feature.merged) {
+      return { merge: true, ...(chosen.length ? { bodies: chosen } : {}) };
+    }
+  }
+  if (!v.bodies?.items) return {};
   const before = heldBodies(feature).map((b) => b.name);
   const same = chosen.length === before.length
     && chosen.every((name) => before.includes(name));
   return same ? {} : { bodies: chosen };
+}
+
+/** Ce qui empêche une extrusion rééditée de sortir de son corps, sinon
+ *  null : comme à la création, un nouveau corps veut des profondeurs
+ *  borgnes. */
+export function extrudeMergeProblem(v, feature) {
+  return feature?.type_key === "pad" && feature.merged === true
+    && v.merge === false && !newBodyDepth(v)
+    ? "Nouveau corps : profondeur borgne ou plan milieu" : null;
 }
 
 // ---------- corps concernés d'un enlèvement ----------

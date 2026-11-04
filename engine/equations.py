@@ -62,13 +62,19 @@ class EquationsMixin:
             raise KernelError("values doit être un objet JSON")
         # Les corps qu'un volume fond, ou qu'un enlèvement — ou une
         # répétition — creuse : pas une cote, ses objets cachés.
+        # « Fusionner » d'un volume : après les cotes, qui décident s'il
+        # peut ouvrir un corps et ce qu'il touche (``_set_merge``).
         values = dict(values)
         chosen = "bodies" in values
         bodies = values.pop("bodies", None)
+        merge = values.pop("merge", None)
         values, asked = self._props_from_keys(obj, values)
+        if merge is not None and not self._merge_editable(obj):
+            raise KernelError("« Fusionner » ne se change que sur une "
+                              "extrusion ou une révolution")
         if chosen and self._cuts_bodies(obj):
             self._set_cut_bodies(obj, bodies)
-        elif chosen:
+        elif chosen and merge is None:
             self._set_fused_bodies(obj, bodies)
         # Atomicité : une expression était stockée AVANT que le recompute
         # ne la valide — un identifiant inconnu (« _ ») laissait la pièce
@@ -297,6 +303,9 @@ class EquationsMixin:
         try:
             self._sync_thin(obj)
             self._recompute()
+            if merge is not None:
+                self._set_merge(obj, merge, bodies if chosen else None)
+                self._recompute()
             if obj.TypeId in ("PartDesign::Fillet", "PartDesign::Chamfer"):
                 # Rayon ou distance rééditée : même garde qu'à la création.
                 invalid = self._invalid_dressup_message(obj)

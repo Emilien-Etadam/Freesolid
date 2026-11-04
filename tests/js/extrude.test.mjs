@@ -4,8 +4,9 @@ import assert from "node:assert/strict";
 import {
   FEATURES,
   bodyChoiceGroups, bodyChoiceValues, cutGroups, cutParams, extrudeBuild, extrudeEditInitial,
-  extrudeEditProblem, extrudeEditValues, extrudeGroups, extrudeInvalid, holeEditInitial,
-  holeEditValues, holeGroups, mergeGroups, mergeParams, mergeProblem, shellEditGroups, shellEditValues,
+  extrudeEditProblem, extrudeEditValues, extrudeGroups, extrudeInvalid, extrudeMergeProblem,
+  holeEditInitial, holeEditValues, holeGroups, mergeGroups, mergeParams, mergeProblem, shellEditGroups,
+  shellEditValues,
 } from "../../app/features.js";
 
 describe("extrudeBuild", () => {
@@ -599,6 +600,87 @@ describe("corps fondus, à la réédition", () => {
     // Le corps de la fonction, un doublon : écartés.
     assert.deepEqual(bodyChoiceValues(items("Body", "Body002", "Body002"), pad,
                                       tree), { bodies: ["Body002"] });
+  });
+});
+
+describe("Fusionner, à la réédition", () => {
+  const tree = { bodies: [
+    { name: "Body", label: "Extrusion3", active: true, has_solid: true },
+    { name: "Body002", label: "Extrusion2", active: false, has_solid: true },
+  ] };
+  const merged = { name: "Pad003", type_key: "pad", merged: true,
+                   fused: [{ name: "Body001", label: "Extrusion1" }] };
+  const alone = { name: "Pad004", type_key: "pad", merged: false,
+                  body: "Body002" };
+  const zone = (...names) => ({ kind: "body",
+    items: names.map((name) => ({ kind: "body", name, label: name })) });
+
+  it("une case « Fusionner », puis la zone des corps fondus", () => {
+    const [group] = bodyChoiceGroups(merged, tree);
+    assert.equal(group.label, "Résultat");
+    assert.deepEqual(group.rows.map((row) => [row.type, row.key]),
+                     [["check", "merge"], ["selection", "bodies"]]);
+    assert.equal(group.rows[0].value, true);
+    const [, bodies] = group.rows;
+    assert.equal(bodies.label, "Corps fondus");
+    assert.equal(bodies.showIf({ merge: false }), false);
+    assert.equal(bodies.showIf({ merge: true }), true);
+  });
+
+  it("premier volume d'un corps : décochée, la zone vide fond les corps touchés", () => {
+    const [group] = bodyChoiceGroups(alone, tree);
+    assert.deepEqual(group.rows.map((row) => row.type),
+                     ["check", "note", "selection"]);
+    assert.equal(group.rows[0].value, false);
+    const note = group.rows[1];
+    assert.equal(note.showIf({ merge: true, bodies: zone() }), true);
+    assert.equal(note.showIf({ merge: true, bodies: zone("Body") }), false);
+    assert.equal(note.showIf({ merge: false }), false);
+  });
+
+  it("rien à fondre ni à quitter : pas de groupe ; fusionnée seule : la case", () => {
+    const single = { bodies: [tree.bodies[0]] };
+    assert.deepEqual(bodyChoiceGroups({ ...alone, body: "Body" }, single), []);
+    const [group] = bodyChoiceGroups({ ...merged, fused: [] }, single);
+    assert.deepEqual(group.rows.map((row) => row.key), ["merge"]);
+  });
+
+  it("merge seulement quand la case change", () => {
+    assert.deepEqual(bodyChoiceValues({ merge: false }, merged, tree),
+                     { merge: false });
+    // Décochée, la zone ne compte plus.
+    assert.deepEqual(bodyChoiceValues({ merge: false, bodies: zone("Body") },
+                                      merged, tree), { merge: false });
+    assert.deepEqual(bodyChoiceValues({ merge: true, bodies: zone("Body001") },
+                                      merged, tree), {});
+    assert.deepEqual(bodyChoiceValues({ merge: true, bodies: zone() },
+                                      merged, tree), { bodies: [] });
+    assert.deepEqual(bodyChoiceValues({ merge: true, bodies: zone() },
+                                      alone, tree), { merge: true });
+    assert.deepEqual(bodyChoiceValues({ merge: true,
+      bodies: zone("Body", "Body002") }, alone, tree),
+                     { merge: true, bodies: ["Body"] });
+    assert.deepEqual(bodyChoiceValues({ merge: false, bodies: zone("Body") },
+                                      alone, tree), {});
+  });
+
+  it("sortir de son corps : profondeurs borgnes ou plan milieu", () => {
+    const problem = "Nouveau corps : profondeur borgne ou plan milieu";
+    assert.equal(extrudeMergeProblem({ merge: false, cond: "suivant" },
+                                     merged), problem);
+    assert.equal(extrudeMergeProblem({ merge: false, cond: "borgne",
+                                       dir2: true, cond2: "travers" },
+                                     merged), problem);
+    assert.equal(extrudeMergeProblem({ merge: false, cond: "borgne" },
+                                     merged), null);
+    assert.equal(extrudeMergeProblem({ merge: false, cond: "milieu" },
+                                     merged), null);
+    assert.equal(extrudeMergeProblem({ merge: true, cond: "suivant" },
+                                     merged), null);
+    assert.equal(extrudeMergeProblem({ merge: false, cond: "suivant" },
+      { ...merged, type_key: "revolution" }), null);
+    assert.equal(extrudeEditProblem({ merge: false, cond: "suivant" },
+                                    merged), problem);
   });
 });
 

@@ -30,6 +30,15 @@ describe("fil de la sélection", () => {
     assert.equal(findFeature(tree.features, "Hole").label, "Perçages M6");
   });
 
+  it("une face venue d'un corps fondu : la fonction de ce corps", () => {
+    const fused = { ...tree, other_features: [
+      { name: "Pad001", label: "Bloc B", type_key: "pad", body: "Body001" }] };
+    assert.deepEqual(
+      breadcrumbTrail(fused, [{ faceId: 9, feature: "Pad001" }], 9)
+        .map((s) => s.label),
+      ["Équerre-support", "Bloc B", "Face 9"]);
+  });
+
   it("rien sans face choisie", () => {
     assert.deepEqual(breadcrumbTrail(tree, groups, null), []);
     assert.deepEqual(breadcrumbTrail(null, groups, 0), []);

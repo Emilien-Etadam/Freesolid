@@ -43,6 +43,7 @@ class ClipboardMixin:
             raise KernelError("choisissez la face ou le plan où coller")
         try:
             copy = doc.copyObject(sketch, False)
+            self._unrank(copy)
             body.addObject(copy)
             if face is not None:
                 self._attach_to_face(copy, face)
@@ -61,6 +62,7 @@ class ClipboardMixin:
                     copy, [(self._origin_feature(role), ("",))])
             if solid is not None:
                 twin = doc.copyObject(solid, False)
+                self._unrank(twin)
                 body.addObject(twin)
                 twin.Profile = (copy, [""])
                 axis = getattr(twin, "ReferenceAxis", None)

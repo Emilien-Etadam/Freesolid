@@ -107,6 +107,10 @@ class FilesMixin:
                 "probablement de l'atelier Part (booléennes sans historique "
                 "de fonctions), que cette interface ne couvre pas encore")
         self._doc, self._body = doc, bodies[0]
+        if self._bar_line() is not None:
+            # Enregistré la barre au milieu : ce qu'on ajoute vient à la
+            # barre, même dans un fichier d'avant les rangs enregistrés.
+            self._persist_ranks()
         tree = self.get_tree()
         tree["bodies_in_file"] = len(bodies)
         return tree

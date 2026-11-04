@@ -19,12 +19,16 @@ export function findFeature(features, name) {
 
 /** Étapes du fil pour la face `faceId` : [{ kind, label, icon, item }].
  *  `groups` : les groupes du maillage ({ faceId, feature }). Sans face, un
- *  fil vide. */
+ *  fil vide. Une face venue d'un corps fondu désigne une fonction de ce
+ *  corps : elle est dans `other_features`. */
 export function breadcrumbTrail(tree, groups, faceId) {
   if (faceId === null || faceId === undefined || !tree) return [];
   const trail = [{ kind: "part", label: tree.body ?? t("Pièce"), icon: "body" }];
   const group = (groups ?? []).find((g) => g.faceId === faceId);
-  const feature = group?.feature ? findFeature(tree.features, group.feature) : null;
+  const feature = group?.feature
+    ? findFeature([...(tree.features ?? []), ...(tree.other_features ?? [])],
+      group.feature)
+    : null;
   if (feature) {
     trail.push({ kind: "feature", label: feature.label ?? feature.name,
                  icon: TREE_ICONS[feature.type_key] ?? "body", item: feature });

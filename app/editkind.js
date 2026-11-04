@@ -7,12 +7,13 @@
 // `has_params` vient du moteur : vrai quand get_params a au moins une
 // cote. Absent (ligne d'un plugin, ligne reconstruite à la main), on
 // tente get_params, comme avant. Une répétition d'enlèvements sans cote
-// (une symétrie) se rouvre pour ses corps creusés, `cut`.
+// (une symétrie) se rouvre pour ses corps creusés, `cut` ; un lissage ou
+// un balayage, pour ses corps fondus ou creusés, `fused` ou `cut`.
 
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
 
 const params = (item) => (item.has_params === false && !item.cut
-  ? null : "params");
+  && !item.fused ? null : "params");
 
 /** Fonction de corps, esquisse, suppression ou réseau de corps. */
 export function featureEditor(item) {

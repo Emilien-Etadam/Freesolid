@@ -754,6 +754,28 @@ describe("corps creusés, à la réédition", () => {
   });
 });
 
+describe("corps d'un lissage ou d'un balayage, à la réédition", () => {
+  const tree = { bodies: [
+    { name: "Body", label: "Lissage", active: true, has_solid: true },
+    { name: "Body001", label: "Extrusion2", active: false, has_solid: true },
+  ] };
+
+  it("une zone, même vide, sans case « Fusionner »", () => {
+    for (const [type_key, label, key] of [
+      ["loft", "Corps fondus", "fused"], ["sweep", "Corps fondus", "fused"],
+      ["loft_cut", "Corps creusés", "cut"],
+      ["sweep_cut", "Corps creusés", "cut"]]) {
+      const [group] = bodyChoiceGroups({ name: "L", type_key, [key]: [] },
+                                       tree);
+      assert.equal(group.label, label);
+      assert.deepEqual(group.rows.map((row) => row.key), ["bodies"]);
+      assert.deepEqual(bodyChoiceValues({ bodies: {
+        kind: "body", items: [{ kind: "body", name: "Body001" }] } },
+      { name: "L", type_key, [key]: [] }, tree), { bodies: ["Body001"] });
+    }
+  });
+});
+
 describe("corps creusés d'une répétition, à la réédition", () => {
   const tree = { bodies: [
     { name: "Body", label: "Répétition", active: true, has_solid: true },

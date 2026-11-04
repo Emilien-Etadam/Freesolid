@@ -45,6 +45,11 @@ describe("éditeur d'une fonction", () => {
     assert.equal(featureEditor({ type_key: "feature", edits: "Pattern",
       edits_has_params: true }), "edits");
     assert.equal(featureEditor({ type_key: "loft", has_params: false }), null);
+    // Un lissage, un balayage se rouvrent pour leurs corps fondus ou creusés.
+    assert.equal(featureEditor({ type_key: "loft", has_params: false,
+                                 fused: [] }), "params");
+    assert.equal(featureEditor({ type_key: "sweep_cut", has_params: false,
+                                 cut: [] }), "params");
     assert.equal(featureEditor({ type_key: "pad" }), "params");
     assert.equal(featureEditor({ type_key: "body", active: true }), null);
     assert.equal(featureEditor(null), null);

@@ -590,8 +590,8 @@ export function holeEditValues(v, feature) {
 }
 
 /** Ce qui manque à une réédition refusée (`extrudeEditValues` à null). */
-export function extrudeEditProblem(v, feature) {
-  const merge = extrudeMergeProblem(v, feature);
+export function extrudeEditProblem(v, feature, tree) {
+  const merge = extrudeMergeProblem(v, feature, tree);
   if (merge) return merge;
   const bad = (key) => key in v && readMeasure(
     v[key], storedMeasure(feature.params, key, 1),
@@ -688,7 +688,9 @@ export function mergeParams(v, bodies) {
 // Une extrusion ou une révolution montre aussi « Fusionner », comme dans
 // les modeleurs courants : décochée, elle sort de son corps pour un corps
 // neuf ; cochée sur le premier volume d'un corps, elle fond les corps
-// qu'elle touche, ou ceux de la zone.
+// qu'elle touche, ou ceux de la zone. Fusionnée, sa zone est sa zone
+// d'action : le corps d'où elle part y est aussi ; retiré, elle en sort
+// pour un corps neuf qui fond les autres.
 
 const FUSING = ["pad", "revolution"];
 const CUTTING = ["pocket", "groove", "hole"];
@@ -698,22 +700,38 @@ const cuts = (feature) => CUTTING.includes(feature?.type_key)
 /** Le moteur dit si la fonction est fusionnée : la case se rééditera. */
 const mergesAtEdit = (feature) => FUSING.includes(feature?.type_key)
   && typeof feature.merged === "boolean";
+/** Fusionnée et partie d'une fonction d'avant : son corps est dans la zone. */
+const scopesOwn = (feature) => mergesAtEdit(feature) && feature.merged
+  && feature.alone === false;
 const ownBody = (feature, tree) => feature.body ?? activeBodyName(tree?.bodies);
 /** Les corps que la fonction fond (ou creuse) : `{ name, label }`. */
 const heldBodies = (feature) => (cuts(feature) ? feature.cut
   : feature.fused) ?? [];
+/** Ce que montre la zone : les corps tenus, et le sien d'abord s'il y est. */
+function zoneBodies(feature, tree) {
+  const held = heldBodies(feature);
+  if (!scopesOwn(feature)) return held;
+  const own = ownBody(feature, tree);
+  const row = (tree?.bodies ?? []).find((b) => b.name === own);
+  return [{ name: own, label: row?.label ?? own }, ...held];
+}
+/** Les noms de la zone, sans le corps de la fonction quand il n'y entre
+ *  pas. */
+const zoneChoice = (v, feature, tree) => zoneNames(v.bodies).filter(
+  (name) => scopesOwn(feature) || name !== ownBody(feature, tree));
 
 /** Groupe « Résultat » d'une extrusion ou d'une révolution (« Corps
  *  creusés » d'un enlèvement), vide sans rien à changer. */
 export function bodyChoiceGroups(feature, tree) {
   if (!FUSING.includes(feature?.type_key) && !cuts(feature)) return [];
   const own = ownBody(feature, tree);
-  const held = heldBodies(feature);
+  const shown = zoneBodies(feature, tree);
   const others = (tree?.bodies ?? []).filter((b) => b.has_solid === true
     && b.name !== own);
   const merging = mergesAtEdit(feature);
-  const zone = held.length || others.length ? [bodyZoneRow("bodies", {
-    allows: (pick) => pick.name !== own, value: bodyZoneValue(held),
+  const zone = shown.length || others.length ? [bodyZoneRow("bodies", {
+    allows: (pick) => scopesOwn(feature) || pick.name !== own,
+    value: bodyZoneValue(shown),
     ...(merging ? { label: "Corps fondus",
                     showIf: (v) => v.merge !== false } : {}) })] : [];
   const check = merging && (feature.merged || others.length) ? [
@@ -731,10 +749,11 @@ export function bodyChoiceGroups(feature, tree) {
 }
 
 /** `{ merge }` quand « Fusionner » a changé (et les corps de la zone,
- *  cochée), `{ bodies }` quand la zone a changé, sinon `{}`. */
+ *  cochée), `{ bodies }` quand la zone a changé, sinon `{}`. Fusionnée et
+ *  partie de son corps : `{ merge: true, bodies }`, tous les corps qu'elle
+ *  fusionne, le sien compris s'il y reste. */
 export function bodyChoiceValues(v, feature, tree) {
-  const own = ownBody(feature, tree);
-  const chosen = zoneNames(v.bodies).filter((name) => name !== own);
+  const chosen = zoneChoice(v, feature, tree);
   if (mergesAtEdit(feature) && typeof v.merge === "boolean") {
     if (!v.merge) return feature.merged ? { merge: false } : {};
     if (!feature.merged) {
@@ -742,19 +761,25 @@ export function bodyChoiceValues(v, feature, tree) {
     }
   }
   if (!v.bodies?.items) return {};
-  const before = heldBodies(feature).map((b) => b.name);
+  const before = zoneBodies(feature, tree).map((b) => b.name);
   const same = chosen.length === before.length
     && chosen.every((name) => before.includes(name));
-  return same ? {} : { bodies: chosen };
+  if (same) return {};
+  return scopesOwn(feature) ? { merge: true, bodies: chosen }
+    : { bodies: chosen };
 }
 
 /** Ce qui empêche une extrusion rééditée de sortir de son corps, sinon
  *  null : comme à la création, un nouveau corps veut des profondeurs
- *  borgnes. */
-export function extrudeMergeProblem(v, feature) {
-  return feature?.type_key === "pad" && feature.merged === true
-    && v.merge === false && !newBodyDepth(v)
-    ? "Nouveau corps : profondeur borgne ou plan milieu" : null;
+ *  borgnes. Elle en sort décochée, ou quand son corps quitte la zone. */
+export function extrudeMergeProblem(v, feature, tree) {
+  if (feature?.type_key !== "pad" || feature.merged !== true
+      || newBodyDepth(v)) {
+    return null;
+  }
+  const leaves = v.merge === false || (scopesOwn(feature) && !!v.bodies?.items
+    && !zoneNames(v.bodies).includes(ownBody(feature, tree)));
+  return leaves ? "Nouveau corps : profondeur borgne ou plan milieu" : null;
 }
 
 // ---------- corps concernés d'un enlèvement ----------

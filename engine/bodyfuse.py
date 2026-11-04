@@ -283,8 +283,9 @@ class BodyFuseMixin:
         d'avant, elle sort de son corps pour un corps neuf
         (``_detach_feature``). Cochée sur le premier volume d'un corps :
         elle fond ``bodies`` ou, sans liste, les corps qu'elle touche
-        (``_merge_touched``). Déjà fusionnée, ``bodies`` règle ses corps
-        fondus."""
+        (``_merge_touched``). Déjà fusionnée, ``bodies`` est la liste de
+        tous les corps qu'elle fusionne, le sien compris
+        (``_set_merged_bodies``)."""
         from engine.kernel import KernelError
         if not self._merge_editable(feature):
             raise KernelError("« Fusionner » ne se change que sur une "
@@ -297,10 +298,20 @@ class BodyFuseMixin:
         merged = self._is_merged(feature)
         if merge and merged:
             if bodies is not None:
-                self._set_fused_bodies(feature, bodies)
+                self._set_merged_bodies(feature, bodies)
             return
         if merge == merged:
             return
+        self._refuse_merge_change(feature)
+        if merge:
+            self._merge_touched(feature, bodies)
+            return
+        self._leave_body(feature, [])
+
+    def _refuse_merge_change(self, feature):
+        """Refuse de changer où se range une fonction sous la barre ou
+        désactivée."""
+        from engine.kernel import KernelError
         if feature.Name in self._features_after_tips():
             raise KernelError(
                 "« {} » est sous la barre de retour : « Fusionner » se "
@@ -309,12 +320,34 @@ class BodyFuseMixin:
             raise KernelError(
                 "« {} » est désactivée : « Fusionner » se change sur une "
                 "fonction active".format(feature.Label))
-        if merge:
-            self._merge_touched(feature, bodies)
+
+    def _set_merged_bodies(self, feature, names):
+        """Les corps que fusionne une fonction déjà fusionnée, comme la zone
+        d'action des modeleurs courants : le sien, si elle part d'une
+        fonction d'avant, et ceux qu'elle fond. Le sien retiré, elle en
+        sort pour un corps neuf qui fond les autres (``_leave_body``)."""
+        from engine.kernel import KernelError
+        if not isinstance(names, (list, tuple)):
+            raise KernelError("bodies : une liste de corps attendue")
+        body = feature.getParentGeoFeatureGroup()
+        names = [str(name) for name in names]
+        if (getattr(feature, "BaseFeature", None) is None
+                or body.Name in names):
+            self._set_fused_bodies(
+                feature, [name for name in names if name != body.Name])
             return
+        self._refuse_merge_change(feature)
+        self._leave_body(feature, names)
+
+    def _leave_body(self, feature, names):
+        """``feature`` ne fond plus que ``names`` et, partie d'une fonction
+        d'avant, sort de son corps pour un corps neuf
+        (``_detach_feature``), qui les fond."""
         self._set_fused_bodies(feature, [])
         if getattr(feature, "BaseFeature", None) is not None:
             self._detach_feature(feature)
+        if names:
+            self._set_fused_bodies(feature, names)
 
     def _merge_touched(self, feature, bodies=None):
         """« Fusionner » coché sur le premier volume d'un corps : il fond

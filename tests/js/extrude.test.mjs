@@ -664,6 +664,39 @@ describe("Fusionner, à la réédition", () => {
                                       alone, tree), {});
   });
 
+  it("partie de son corps : la zone d'action le montre, d'abord", () => {
+    const based = { ...merged, alone: false };
+    const [group] = bodyChoiceGroups(based, tree);
+    const bodies = group.rows.find((row) => row.key === "bodies");
+    assert.deepEqual(bodies.value.items.map((i) => [i.name, i.label]),
+                     [["Body", "Extrusion3"], ["Body001", "Extrusion1"]]);
+    assert.equal(bodies.allows({ kind: "body", name: "Body" }), true);
+    // Premier volume de son corps : il n'y entre pas.
+    const first = { ...merged, alone: true };
+    const [own] = bodyChoiceGroups(first, tree);
+    assert.deepEqual(own.rows.find((row) => row.key === "bodies").value.items
+      .map((i) => i.name), ["Body001"]);
+  });
+
+  it("partie de son corps : merge et tous les corps, le sien compris", () => {
+    const based = { ...merged, alone: false };
+    const values = (...names) => bodyChoiceValues(
+      { merge: true, bodies: zone(...names) }, based, tree);
+    assert.deepEqual(values("Body", "Body001"), {});
+    assert.deepEqual(values("Body001"), { merge: true, bodies: ["Body001"] });
+    assert.deepEqual(values("Body", "Body001", "Body002"),
+                     { merge: true, bodies: ["Body", "Body001", "Body002"] });
+    assert.deepEqual(values(), { merge: true, bodies: [] });
+    // Sorti de son corps, il n'y a plus de profondeur « jusqu'à ».
+    const problem = "Nouveau corps : profondeur borgne ou plan milieu";
+    const suivant = (...names) => extrudeMergeProblem(
+      { merge: true, cond: "suivant", bodies: zone(...names) }, based, tree);
+    assert.equal(suivant("Body001"), problem);
+    assert.equal(suivant("Body", "Body001"), null);
+    assert.equal(extrudeEditProblem({ merge: true, cond: "suivant",
+      bodies: zone("Body001") }, based, tree), problem);
+  });
+
   it("sortir de son corps : profondeurs borgnes ou plan milieu", () => {
     const problem = "Nouveau corps : profondeur borgne ou plan milieu";
     assert.equal(extrudeMergeProblem({ merge: false, cond: "suivant" },

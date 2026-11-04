@@ -1937,7 +1937,7 @@ export function installTree(ctx) {
     const sameWay = (values) => !["cond", "midplane", "reversed", "cond2"]
       .some((key) => key in values);
     const tree = ctx.lastTree;
-    const build = (v) => (extrudeMergeProblem(v, feature) ? null
+    const build = (v) => (extrudeMergeProblem(v, feature, tree) ? null
       : withBodyChoices(extrudeEditValues(v, feature), v, feature, tree));
     panel.open({
       icon: TREE_ICONS[feature.type_key] ?? "body",
@@ -1956,7 +1956,7 @@ export function installTree(ctx) {
       onApply: (v) => {
         const values = build(v);
         if (values === null) {
-          say(extrudeEditProblem(v, feature), true);
+          say(extrudeEditProblem(v, feature, tree), true);
           return;
         }
         applyEdit(feature, v, values);

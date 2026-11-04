@@ -50,6 +50,7 @@ class EquationsMixin:
         """
         from engine.kernel import (
             KernelError,
+            NeedsConfirm,
             _explain,
             parse_user_number,
             shell_too_thick_message,
@@ -321,6 +322,8 @@ class EquationsMixin:
                 self._recompute()
             except KernelError:
                 pass  # l'état d'origine était déjà sain : ne pas masquer exc
+            if isinstance(exc, NeedsConfirm):
+                raise exc  # sa question part avec lui
             raise KernelError(
                 "{} — la pièce n'a pas été modifiée".format(exc))
         self._drop_unused_axis_tools()

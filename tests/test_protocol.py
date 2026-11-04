@@ -43,6 +43,18 @@ def test_envelopes():
     assert protocol.err("boom", "try X")["hint"] == "try X"
 
 
+def test_confirmation():
+    # Un refus qui pose une question ; « Oui » renvoie ``confirmed``.
+    asked = protocol.err("non réduit", confirm="Continuer ?")
+    assert asked == {"ok": False, "error": "non réduit",
+                     "confirm": "Continuer ?"}
+    assert "confirm" not in protocol.err("boom")
+    assert protocol.request_confirmed({"op": "x", "confirmed": True})
+    assert not protocol.request_confirmed({"op": "x", "confirmed": "oui"})
+    assert not protocol.request_confirmed({"op": "x"})
+    assert not protocol.request_confirmed(None)
+
+
 # -- mesh packing --------------------------------------------------------
 
 def _two_triangles():

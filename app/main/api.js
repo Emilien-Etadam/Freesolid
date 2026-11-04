@@ -8,13 +8,14 @@ import { currentLang, t } from "../i18n.js";
 export function installApi(ctx) {
   const { statusEl } = ctx;
 
-  async function call(op, params = {}) {
+  async function call(op, params = {}, { confirmed = false } = {}) {
     const response = await fetch("/api", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // La langue de l'interface part avec chaque requête : le moteur nomme
       // ce qu'il crée et rédige ses erreurs dans cette langue.
-      body: JSON.stringify({ op, params, lang: currentLang() }),
+      body: JSON.stringify({ op, params, lang: currentLang(),
+                             ...(confirmed ? { confirmed: true } : {}) }),
     });
     const text = await response.text();
     let payload = null;
@@ -24,7 +25,12 @@ export function installApi(ctx) {
       payload = null;
     }
     // {ok:false} (HTTP 200 ou 4xx protocole) : message moteur / protocole.
+    // Un refus qui pose une question (déjà traduite par le moteur) : « Oui »
+    // renvoie la même requête, confirmée ; « Non » laisse le message.
     if (payload && payload.ok === false) {
+      if (payload.confirm && !confirmed && window.confirm(payload.confirm)) {
+        return call(op, params, { confirmed: true });
+      }
       throw new Error(payload.error + (payload.hint ? ` (${payload.hint})` : ""));
     }
     if (!response.ok || !payload || payload.ok !== true) {

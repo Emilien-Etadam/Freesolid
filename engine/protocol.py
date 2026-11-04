@@ -232,11 +232,20 @@ def ok(result) -> dict:
     return {"ok": True, "result": result}
 
 
-def err(message: str, hint: str = "") -> dict:
+def err(message: str, hint: str = "", confirm: str = "") -> dict:
+    """Refus. ``confirm`` : la question à poser — « Oui » renvoie la même
+    requête avec ``"confirmed": true`` (``request_confirmed``)."""
     out = {"ok": False, "error": str(message)}
     if hint:
         out["hint"] = hint
+    if confirm:
+        out["confirm"] = str(confirm)
     return out
+
+
+def request_confirmed(payload) -> bool:
+    """Vrai si la requête répond « Oui » à une question du moteur."""
+    return isinstance(payload, dict) and payload.get("confirmed") is True
 
 
 #: Posée à « 1 » par l'application de bureau, qui choisit les fichiers

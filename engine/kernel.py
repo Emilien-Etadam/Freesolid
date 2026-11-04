@@ -80,6 +80,17 @@ class KernelError(Exception):
     """Operation failed; message is designer-facing when translatable."""
 
 
+class NeedsConfirm(KernelError):
+    """Refus qu'une confirmation lève. Le client pose ``question`` ; sur
+    « Oui », il renvoie la même requête avec ``confirmed``, que
+    ``dispatch`` passe au noyau (``Kernel._confirmed``). Le message dit
+    ce qui n'a pas changé, si on répond « Non »."""
+
+    def __init__(self, message, question):
+        super().__init__(message)
+        self.question = question
+
+
 _BODY_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -338,6 +349,8 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyFuseMixin, BodyScopeM
         # Réédition au rang d'une fonction : où la barre était avant
         # (``rank_view``), None hors de cette vue.
         self._rank_view = None
+        # Vrai le temps d'une requête confirmée (``NeedsConfirm``).
+        self._confirmed = False
         self._reset_face_match()
         # Callback d'avancement (phase, fait, total) — posé par le
         # transport, jamais importé d'ici. Absent = no-op.
@@ -1070,7 +1083,7 @@ def _transactional(kernel, op):
     return op in _TRANSACTIONAL or op in extra
 
 
-def dispatch(kernel: Kernel, op: str, params: dict):
+def dispatch(kernel: Kernel, op: str, params: dict, confirmed=False):
     """Route one validated request to the kernel, normalizing errors.
 
     Mutating ops run inside a document transaction: one UI action = one
@@ -1078,7 +1091,17 @@ def dispatch(kernel: Kernel, op: str, params: dict):
 
     Méthode du noyau si elle existe, sinon opération du registre — dans
     cet ordre. Un plugin ne détourne pas une opération existante.
+    ``confirmed`` : la requête répond « Oui » à la question d'un
+    ``NeedsConfirm`` ; le refus renvoie la question dans ``confirm``.
     """
+    kernel._confirmed = bool(confirmed)
+    try:
+        return _dispatch(kernel, op, params)
+    finally:
+        kernel._confirmed = False
+
+
+def _dispatch(kernel, op, params):
     from . import protocol
     from .docprops import transaction_name
     if (op not in _RANK_VIEW_READS
@@ -1103,7 +1126,8 @@ def dispatch(kernel: Kernel, op: str, params: dict):
     except (KernelError, PluginError) as exc:
         _abort(doc)
         _settle(doc)
-        return protocol.err(str(exc))
+        return protocol.err(str(exc),
+                            confirm=getattr(exc, "question", "") or "")
     except Exception as exc:  # noqa: BLE001 - the envelope is the handler
         _abort(doc)
         _settle(doc)

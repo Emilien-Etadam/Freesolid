@@ -3716,3 +3716,183 @@ def p105_corps_du_lissage_et_du_balayage(self, mark, report, etat):
     report["p105_balayage_creuse_les_corps_choisis"] = (
         offered and cut_ok and undone
         and abs(volume(c) - (2000.0 - hole * 10)) < 1e-2 and clean())
+
+
+def p106_fusionner_lissage_et_balayage(self, mark, report, etat):
+    mark("p106: « Fusionner » d'un lissage, d'un balayage, à la réédition")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2, datum=None):
+        name = (self.sketch_start(datum=datum) if datum
+                else self.sketch_start(plane="XY"))["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def datum(offset):
+        self.add_datum_plane(base="XY", offset=offset)
+        return [o.Name for o in self._doc.Objects
+                if o.TypeId == "PartDesign::Plane"][-1]
+
+    def folder():
+        return [row["name"] for row in self.get_tree()["bodies"]]
+
+    def volume(obj):
+        return round(obj.Shape.Volume, 3)
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def row(feature):
+        tree = self.get_tree()
+        return next(r for r in tree["features"] + tree.get("other_features", [])
+                    if r["name"] == feature.Name)
+
+    def box(shape):
+        b = shape.BoundBox
+        return tuple(round(v, 3) for v in (b.XMin, b.YMin, b.ZMin,
+                                           b.XMax, b.YMax, b.ZMax))
+
+    def home(feature):
+        return feature.getParentGeoFeatureGroup()
+
+    def inside(feature):
+        """Profils et trajectoire dans le corps de la fonction : des liants
+        cachés, comme à la création dans un autre corps (FreeCAD calcule
+        aussi un lien qui en sort, avec un simple avertissement)."""
+        links = [getattr(feature, "Profile", None),
+                 getattr(feature, "Spine", None)]
+        links += list(getattr(feature, "Sections", None) or [])
+        objects = [self._as_object(link) for link in links if link]
+        return bool(objects) and all(
+            obj.getParentGeoFeatureGroup() is home(feature)
+            and self._thin_owner(obj) is feature for obj in objects)
+
+    def sweep_on_block(circles):
+        """Un bloc A, et un balayage le long de son dessus."""
+        self.new_part("Balayage")
+        rect(0, 0, 40, 20)
+        self.add_pad(10)
+        a = self._require_body()
+        ring = self.sketch_start(plane="YZ")["sketch"]
+        for y in circles:
+            self.sketch_add_circle(ring, y, 10, 2)
+        self.sketch_finish(ring)
+        path = self.sketch_start(datum=datum(10))["sketch"]
+        self.sketch_add_line(path, 0, 10, 40, 10)
+        self.sketch_finish(path)
+        self.add_sweep(ring, path)
+        return a, self._thin_owner(a.Tip)
+
+    # Un lissage posé sur A : décoché, il sort pour un corps neuf, même
+    # volume, même place ; ses esquisses restent dans A. Ctrl+Z le remet,
+    # Ctrl+Y le ressort ; recoché, il refond A, qu'il touche.
+    self.new_part("Lissage")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    low = rect(5, 5, 15, 15, datum=datum(10))
+    high = rect(7, 7, 13, 13, datum=datum(20))
+    self.add_loft([low, high])
+    loft = self._thin_owner(a.Tip)
+    added, where = round(loft.AddSubShape.Volume, 3), box(loft.AddSubShape)
+    flags = (row(loft).get("merged") is True and row(loft)["alone"] is False
+             and volume(a) == round(4000.0 + added, 3))
+    out = call("set_params", feature=loft.Name, values={"merge": False})
+    made = home(loft)
+    out_ok = (out.get("ok") and made is not a and folder() == [a.Name, made.Name]
+              and volume(a) == 4000.0 and volume(made) == added
+              and box(loft.Shape) == where and inside(loft)
+              and all(self._doc.getObject(s).getParentGeoFeatureGroup() is a
+                      for s in (low, high))
+              and row(loft)["merged"] is False and clean())
+    call("undo")
+    undone = home(loft) is a and folder() == [a.Name] and clean()
+    call("redo")
+    redone = home(loft) is made and volume(a) == 4000.0 and clean()
+    back = call("set_params", feature=loft.Name, values={"merge": True})
+    report["p106_lissage_sort_de_son_corps"] = (
+        flags and out_ok and undone and redone and back.get("ok")
+        and folder() == [made.Name]
+        and volume(made) == round(4000.0 + added, 3)
+        and a.Name in self._absorbed_bodies() and clean())
+
+    # Un balayage, le long d'une esquisse puis d'une courbe 3D : il sort de
+    # même ; le liant de la courbe part avec lui.
+    a, pipe = sweep_on_block([10])
+    tube = round(pipe.AddSubShape.Volume, 3)
+    out = call("set_params", feature=pipe.Name, values={"merge": False})
+    on_sketch = (out.get("ok") and home(pipe) is not a
+                 and volume(a) == 8000.0 and volume(home(pipe)) == tube
+                 and abs(tube - math.pi * 4 * 40) < 1e-2 and inside(pipe)
+                 and clean())
+    self.new_part("Courbe")
+    rect(-70, -10, -50, 10)
+    self.add_pad(10)
+    a = self._require_body()
+    curve = self.add_curve3d([[-60, 0, 10], [-60, 0, 30], [-40, 0, 50]],
+                             spline=True)["surfaces"][-1]["name"]
+    ring = self.sketch_start(datum=datum(10))["sketch"]
+    self.sketch_add_circle(ring, -60, 0, 3)
+    self.sketch_finish(ring)
+    self.add_sweep(ring, curve)
+    pipe = self._thin_owner(a.Tip)
+    tube = round(pipe.AddSubShape.Volume, 3)
+    out = call("set_params", feature=pipe.Name, values={"merge": False})
+    group = home(pipe).Group
+    report["p106_balayage_sort_de_son_corps"] = (
+        on_sketch and out.get("ok") and home(pipe) is not a
+        and volume(a) == 4000.0 and volume(home(pipe)) == tube
+        and inside(pipe)
+        and any(o.Name.startswith("SpineBinder") for o in group)
+        and not any(o.Name.startswith("SpineBinder") for o in a.Group)
+        and clean())
+
+    # Zone d'action : un lissage de A qui fond C ; A retiré de la zone, il
+    # sort pour un corps neuf qui fond C.
+    self.new_part("Zone")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(30, 0, 40, 20)
+    self.add_pad(10, merge=False)
+    c = self._require_body()
+    self.set_active_body(a.Name)
+    self.add_loft([rect(15, 5, 35, 15, datum=datum(10)),
+                   rect(15, 5, 35, 15, datum=datum(20))])
+    loft = self._thin_owner(a.Tip)
+    fused = [b.Name for b in self._fused_bodies_of(loft)] == [c.Name]
+    out = call("set_params", feature=loft.Name,
+               values={"merge": True, "bodies": [c.Name]})
+    made = home(loft)
+    report["p106_zone_d_action"] = (
+        fused and out.get("ok") and made is not a
+        and folder() == [a.Name, made.Name] and volume(a) == 4000.0
+        and volume(made) == 4000.0 and c.Name in self._absorbed_bodies()
+        and inside(loft) and clean())
+
+    # Refusé, la pièce comme avant : un profil en deux morceaux (d'un
+    # liant, FreeCAD ne balaie qu'une face), un lissage sous la barre.
+    a, pipe = sweep_on_block([5, 15])
+    before, count = volume(a), len(self._doc.Objects)
+    two = call("set_params", feature=pipe.Name, values={"merge": False})
+    refused = (two.get("ok") is False and "seul tenant" in str(two.get("error"))
+               and volume(a) == before and len(self._doc.Objects) == count
+               and home(pipe) is a and clean())
+    self.new_part("Barre")
+    rect(0, 0, 20, 20)
+    self.add_pad(10)
+    a = self._require_body()
+    self.add_loft([rect(5, 5, 15, 15, datum=datum(10)),
+                   rect(7, 7, 13, 13, datum=datum(20))])
+    loft = self._thin_owner(a.Tip)
+    call("set_tip", feature=loft.BaseFeature.Name)
+    barred = call("set_params", feature=loft.Name, values={"merge": False})
+    call("tip_to_end")
+    report["p106_refus"] = (
+        refused and barred.get("ok") is False
+        and "sous la barre" in str(barred.get("error")) and home(loft) is a
+        and folder() == [a.Name] and clean())

@@ -50,6 +50,11 @@ describe("éditeur d'une fonction", () => {
                                  fused: [] }), "params");
     assert.equal(featureEditor({ type_key: "sweep_cut", has_params: false,
                                  cut: [] }), "params");
+    // Et pour « Fusionner », même seuls dans la pièce.
+    assert.equal(featureEditor({ type_key: "sweep", has_params: false,
+                                 merged: true }), "params");
+    assert.equal(featureEditor({ type_key: "loft", has_params: false,
+                                 merged: false }), "params");
     assert.equal(featureEditor({ type_key: "pad" }), "params");
     assert.equal(featureEditor({ type_key: "body", active: true }), null);
     assert.equal(featureEditor(null), null);

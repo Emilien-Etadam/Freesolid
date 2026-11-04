@@ -267,7 +267,9 @@ class BodyFuseMixin:
     # ---------- « Fusionner », à la réédition ----------
 
     #: Volumes dont « Fusionner » se change à la réédition.
-    _MERGE_EDIT_TYPES = ("PartDesign::Pad", "PartDesign::Revolution")
+    _MERGE_EDIT_TYPES = ("PartDesign::Pad", "PartDesign::Revolution",
+                         "PartDesign::AdditiveLoft",
+                         "PartDesign::AdditivePipe")
 
     def _merge_editable(self, obj):
         """Vrai si la réédition de ``obj`` montre « Fusionner »."""
@@ -292,8 +294,9 @@ class BodyFuseMixin:
         (``_set_merged_bodies``)."""
         from engine.kernel import KernelError
         if not self._merge_editable(feature):
-            raise KernelError("« Fusionner » ne se change que sur une "
-                              "extrusion ou une révolution")
+            raise KernelError("« Fusionner » ne se change que sur un "
+                              "volume ajouté : extrusion, révolution, "
+                              "lissage ou balayage")
         if not isinstance(merge, bool):
             raise KernelError("merge : booléen attendu")
         if not merge and bodies:
@@ -388,7 +391,8 @@ class BodyFuseMixin:
         sien et repartent de celle d'avant (FreeCAD les rebranche au
         retrait). L'esquisse ne bouge pas : le profil entre par un liant,
         et l'axe d'une révolution est repris dans le corps neuf, comme à la
-        création dans un autre corps."""
+        création dans un autre corps. Un lissage ou un balayage, de même,
+        pour chacun de ses profils et sa trajectoire (``_swept_links``)."""
         from engine.kernel import KernelError
         from engine.extrude import ExtrudeError, check_new_body
         if feature.TypeId == "PartDesign::Pad":
@@ -407,7 +411,8 @@ class BodyFuseMixin:
                   if obj is feature or obj in helpers]
         token = (self._revolution_axis_token(feature)
                  if feature.TypeId == "PartDesign::Revolution" else None)
-        sketch, subs = self._profile_of(feature)
+        swept = feature.TypeId in self._SWEPT_TYPES
+        sketch, subs = (None, ()) if swept else self._profile_of(feature)
         # Le profil est l'esquisse même, pas un liant (paroi mince, autre
         # corps) qui part avec la fonction.
         direct = (getattr(sketch, "TypeId", "") == "Sketcher::SketchObject"
@@ -415,6 +420,9 @@ class BodyFuseMixin:
                   is sketch)
         made = self._new_result_body()
         new = []
+        links = {}
+        if swept:
+            links, new = self._swept_links(feature, made, helpers)
         if direct:
             # Un liant fait entrer l'esquisse dans le corps neuf.
             if token is None:
@@ -433,6 +441,8 @@ class BodyFuseMixin:
             body.removeObject(obj)
         for obj in moving:
             made.addObject(obj)
+        for prop, value in links.items():
+            self._set_link(feature, prop, value)
         if direct:
             copy = next(h for h in new
                         if h.TypeId == "PartDesign::SubShapeBinder")
@@ -445,3 +455,58 @@ class BodyFuseMixin:
             feature.ReferenceAxis = reference
         self._own_thin_helpers(feature, new)
         made.Tip = self._tip_with_helpers(feature)
+
+    def _swept_links(self, feature, made, helpers):
+        """Les liens d'un lissage ou d'un balayage qui sort vers ``made`` :
+        chaque esquisse y entre par un liant caché, comme à la création dans
+        un autre corps ; un liant qui part avec la fonction (``helpers``)
+        reste. Renvoie les propriétés à reposer après le déplacement et les
+        liants neufs."""
+        from engine.kernel import KernelError
+        copies = []
+
+        def entering(link, label):
+            obj = self._as_object(link)
+            if obj in helpers:
+                return link, None
+            if getattr(obj, "TypeId", "") != "Sketcher::SketchObject":
+                raise KernelError(
+                    "« {} » : un profil ou une trajectoire que la réédition "
+                    "ne sait pas reprendre".format(feature.Label))
+            copy = self._profile_copy(made, obj, label)
+            copies.append(copy)
+            return copy, copy
+
+        if feature.TypeId == "PartDesign::AdditiveLoft":
+            profile, _ = entering(feature.Profile, "Profil lié")
+            sections = [self._as_object(entering(section, "Profil lié")[0])
+                        for section in feature.Sections]
+            return {"Profile": profile, "Sections": sections}, copies
+        if getattr(feature, "Sections", None):
+            raise KernelError(
+                "« {} » : un balayage à plusieurs sections ne sort pas de "
+                "son corps".format(feature.Label))
+        profile, copy = entering(feature.Profile, "Profil lié")
+        spine, _ = entering(feature.Spine, "Trajectoire liée")
+        if copy is not None:
+            # Comme à la création : d'un liant, FreeCAD ne balaie qu'une
+            # face, le profil doit être d'un seul tenant.
+            self._require_doc().recompute()
+            if len(copy.Shape.Faces) != 1:
+                raise KernelError(
+                    "balayage dans un autre corps : le profil doit être "
+                    "d'un seul tenant")
+            profile = (copy, ["Face1"])
+        return {"Profile": profile, "Spine": spine}, copies
+
+    @staticmethod
+    def _set_link(feature, prop, value):
+        """Pose un lien ; une liste ou un lien simple refusés, en sous-liens
+        ``(objet, ("",))``."""
+        try:
+            setattr(feature, prop, value)
+        except TypeError:
+            if isinstance(value, list):
+                setattr(feature, prop, [(obj, ("",)) for obj in value])
+            else:
+                setattr(feature, prop, (value, ("",)))

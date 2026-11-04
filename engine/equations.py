@@ -70,8 +70,9 @@ class EquationsMixin:
         merge = values.pop("merge", None)
         values, asked = self._props_from_keys(obj, values)
         if merge is not None and not self._merge_editable(obj):
-            raise KernelError("« Fusionner » ne se change que sur une "
-                              "extrusion ou une révolution")
+            raise KernelError("« Fusionner » ne se change que sur un "
+                              "volume ajouté : extrusion, révolution, "
+                              "lissage ou balayage")
         if chosen and self._cuts_bodies(obj):
             self._set_cut_bodies(obj, bodies)
         elif chosen and merge is None:

@@ -222,6 +222,7 @@ def _etapes():
         fonctions.p103_fusionner_a_la_reedition,
         fonctions.p104_corps_de_la_fonction,
         fonctions.p105_corps_du_lissage_et_du_balayage,
+        fonctions.p106_fusionner_lissage_et_balayage,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

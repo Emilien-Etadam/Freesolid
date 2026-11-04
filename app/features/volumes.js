@@ -688,8 +688,8 @@ export function mergeParams(v, bodies) {
 // la fonction n'y entre pas. Un enlèvement de même, pour les corps qu'il
 // creuse ; une répétition aussi, quand le moteur lui donne `cut` : elle
 // répète un enlèvement.
-// Une extrusion ou une révolution montre aussi « Fusionner », comme dans
-// les modeleurs courants : décochée, elle sort de son corps pour un corps
+// Une extrusion, une révolution, un lissage ou un balayage montre aussi
+// « Fusionner », comme dans les modeleurs courants : décochée, elle sort de son corps pour un corps
 // neuf ; cochée sur le premier volume d'un corps, elle fond les corps
 // qu'elle touche, ou ceux de la zone. Fusionnée, sa zone est sa zone
 // d'action : le corps d'où elle part y est aussi ; retiré, elle en sort
@@ -701,7 +701,7 @@ const PATTERNS = ["linear_pattern", "polar_pattern", "mirror"];
 const cuts = (feature) => CUTTING.includes(feature?.type_key)
   || (PATTERNS.includes(feature?.type_key) && Array.isArray(feature.cut));
 /** Le moteur dit si la fonction est fusionnée : la case se rééditera
- *  (extrusion, révolution). */
+ *  (extrusion, révolution, lissage, balayage). */
 const mergesAtEdit = (feature) => FUSING.includes(feature?.type_key)
   && typeof feature.merged === "boolean";
 /** Fusionnée et partie d'une fonction d'avant : son corps est dans la zone. */
@@ -724,7 +724,7 @@ function zoneBodies(feature, tree) {
 const zoneChoice = (v, feature, tree) => zoneNames(v.bodies).filter(
   (name) => scopesOwn(feature) || name !== ownBody(feature, tree));
 
-/** Groupe « Résultat » d'une extrusion ou d'une révolution (« Corps
+/** Groupe « Résultat » d'un volume ajouté (« Corps
  *  concernés » des autres), vide sans rien à changer. */
 export function bodyChoiceGroups(feature, tree) {
   if (!FUSING.includes(feature?.type_key) && !cuts(feature)) return [];

@@ -639,6 +639,25 @@ describe("Fusionner, à la réédition", () => {
     assert.equal(note.showIf({ merge: false }), false);
   });
 
+  it("un lissage, un balayage : la même case, et leur corps dans la zone", () => {
+    for (const type_key of ["loft", "sweep"]) {
+      const feature = { name: "L", type_key, merged: true, alone: false,
+                        body: "Body", fused: [] };
+      const [group] = bodyChoiceGroups(feature, tree);
+      assert.equal(group.label, "Résultat");
+      assert.deepEqual(group.rows.map((row) => [row.type, row.key]),
+                       [["check", "merge"], ["selection", "bodies"]]);
+      assert.deepEqual(group.rows[1].value.items.map((item) => item.name),
+                       ["Body"]);
+      assert.deepEqual(bodyChoiceValues({ merge: false }, feature, tree),
+                       { merge: false });
+      // Son corps retiré de la zone : elle en sort pour fondre Body002.
+      assert.deepEqual(bodyChoiceValues({ merge: true,
+        bodies: zone("Body002") }, feature, tree),
+      { merge: true, bodies: ["Body002"] });
+    }
+  });
+
   it("rien à fondre ni à quitter : pas de groupe ; fusionnée seule : la case", () => {
     const single = { bodies: [tree.bodies[0]] };
     assert.deepEqual(bodyChoiceGroups({ ...alone, body: "Body" }, single), []);

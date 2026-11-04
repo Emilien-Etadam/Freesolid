@@ -3661,7 +3661,7 @@ def p105_corps_du_lissage_et_du_balayage(self, mark, report, etat):
         return a, c
 
     # Un lissage de A qui touche C, créé sans le fondre : sans cote, il se
-    # rouvre sur sa zone « Corps fondus », vide. C choisi, il le fond ;
+    # rouvre sur sa zone « Corps concernés », vide. C choisi, il le fond ;
     # la zone vidée, il le rend.
     a, c = two_bodies("Lissage")
     top = datum(20)

@@ -7,7 +7,7 @@ les modeleurs courants (``_touched_bodies``) ; ``bodies`` les choisit.
 Un combiner caché (``PartDesign::Boolean`` Fuse), juste après la
 fonction, tient les corps fondus : il la suit (désactiver, supprimer,
 barre de retour) et ces corps quittent le dossier tant qu'il agit
-(``_absorbed_bodies``). À la réédition, « Corps fondus » le règle
+(``_absorbed_bodies``). À la réédition, « Corps concernés » le règle
 (``_set_fused_bodies``), et « Fusionner » d'une extrusion ou d'une
 révolution se change (``_set_merge``) : décochée, la fonction sort de
 son corps pour un corps neuf (``_detach_feature``).

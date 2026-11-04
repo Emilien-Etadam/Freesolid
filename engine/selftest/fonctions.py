@@ -4419,3 +4419,84 @@ def p111_coller_lissage_et_balayage(self, mark, report, etat):
         and owned(twin, twin.Spine, [self._as_object(source.Spine)])
         and abs(twin.AddSubShape.Volume - source.AddSubShape.Volume) < 1e-6
         and clean())
+
+
+def p112_reseau_reduit_confirme(self, mark, report, etat):
+    mark("p112: réduire un réseau de corps demande confirmation")
+    from engine.kernel import dispatch
+
+    def call(name, confirmed=False, **params):
+        return dispatch(self, name, params, confirmed=confirmed)
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    # Quatre occurrences ; une extrusion sur la dernière copie, l'avant-
+    # dernière combinée à la source.
+    self.new_part("Réseau réduit")
+    self.add_rect_sketch(10, 10)
+    self.add_pad(8)
+    source = self._require_body()
+    self.add_body_pattern("linear", [source.Name], length=40, count=4,
+                          axis="X", spacing=False)
+    host = self._body_pattern_hosts()[0]
+    ordered = sorted(self._body_pattern_copies(host).values(),
+                     key=lambda body: body.Shape.BoundBox.XMin)
+    last, before_last = ordered[-1], ordered[-2]
+    self.set_active_body(last.Name)
+    top = next(i for i, f in enumerate(last.Shape.Faces)
+               if abs(f.CenterOfMass.z - 8) < 1e-6)
+    x0 = last.Shape.BoundBox.XMin
+    sketch = self.sketch_start(face=top)["sketch"]
+    self.sketch_add_rectangle(sketch, x0 + 3, 3, x0 + 7, 7)
+    self.sketch_finish(sketch)
+    call("add_pad", length=3)
+    extra = last.Tip
+    extra_name, extra_label = extra.Name, extra.Label
+    self.set_active_body(source.Name)
+    call("add_boolean", tool=before_last.Name, type="fuse")
+    combine = source.Tip
+    count = len(self._doc.Objects)
+
+    # Ramené à 2 : refusé avec la question, rien ne change ; l'aperçu
+    # montre la réduction sans rien demander.
+    asked = call("set_params", feature=host.Name, values={"Occurrences": 2})
+    question = str(asked.get("confirm") or "")
+    report["p112_question_avant_de_reduire"] = (
+        asked.get("ok") is False
+        and extra_label in question and combine.Label in question
+        and "2 copie(s)" in question
+        and len(self._doc.Objects) == count
+        and len(self._body_pattern_copies(host)) == 3
+        and int(host.Occurrences) == 4 and clean())
+    shown = call("preview", op="set_params",
+                 params={"feature": host.Name, "values": {"Occurrences": 2}})
+    report["p112_apercu_sans_question"] = (
+        shown.get("ok") is True and "confirm" not in shown
+        and len(self._doc.Objects) == count)
+
+    # Confirmé : réduit, et un seul Ctrl+Z rend tout.
+    done = call("set_params", confirmed=True, feature=host.Name,
+                values={"Occurrences": 2})
+    reduced = (done.get("ok") is True
+               and len(self._body_pattern_copies(host)) == 1
+               and self._doc.getObject(extra_name) is None
+               and not self._confirmed)
+    call("undo")
+    report["p112_confirme_puis_annule"] = (
+        reduced and len(self._doc.Objects) == count
+        and self._doc.getObject(extra_name) is not None
+        and len(self._body_pattern_copies(host)) == 3 and clean())
+
+    # Des copies qui ne portent rien partent sans question.
+    self.new_part("Réseau nu")
+    self.add_rect_sketch(10, 10)
+    self.add_pad(8)
+    bare = self._require_body()
+    self.add_body_pattern("linear", [bare.Name], length=40, count=4,
+                          axis="X", spacing=False)
+    host = self._body_pattern_hosts()[0]
+    quiet = call("set_params", feature=host.Name, values={"Occurrences": 2})
+    report["p112_copies_vides_sans_question"] = (
+        quiet.get("ok") is True and "confirm" not in quiet
+        and len(self._body_pattern_copies(host)) == 1 and clean())

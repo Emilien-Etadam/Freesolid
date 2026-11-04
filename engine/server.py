@@ -107,19 +107,20 @@ def _feed_progress(phase, fait=0, total=0):
 def _localized(envelope, lang):
     """Enveloppe d'erreur traduite dans ``lang`` (message et indice)."""
     if lang != "fr" and isinstance(envelope, dict) and envelope.get("ok") is False:
-        for key in ("error", "hint"):
+        for key in ("error", "hint", "confirm"):
             if isinstance(envelope.get(key), str):
                 envelope[key] = translate(envelope[key], lang)
     return envelope
 
 
-def run_op(op, params, lang="fr"):
+def run_op(op, params, lang="fr", confirmed=False):
     """Exécute une op validée.
 
     ``progress`` lit l'état de module et rend la main immédiatement.
     Toute autre op prend ``_KERNEL_LOCK`` et nourrit l'avancement via
     un callback, pas un import. ``lang`` est la langue de l'interface :
     le noyau nomme dans cette langue ce qu'il crée (libellés d'arbre).
+    ``confirmed`` : la requête répond « Oui » à une question du moteur.
     """
     if op == "progress":
         return protocol.ok(_progress_snapshot())
@@ -130,7 +131,8 @@ def run_op(op, params, lang="fr"):
         _KERNEL._progress = _feed_progress
         _KERNEL.lang = lang
         try:
-            return kernel_mod.dispatch(_KERNEL, op, params)
+            return kernel_mod.dispatch(_KERNEL, op, params,
+                                       confirmed=confirmed)
         finally:
             _KERNEL._progress = previous
             _set_progress(**_idle_progress())
@@ -286,7 +288,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, _localized(protocol.err(str(exc)), lang))
             return
         lang = protocol.request_lang(payload)
-        self._send(200, _localized(run_op(op, params, lang), lang))
+        confirmed = protocol.request_confirmed(payload)
+        self._send(200, _localized(run_op(op, params, lang, confirmed),
+                                   lang))
 
     # -- static UI -------------------------------------------------------
 

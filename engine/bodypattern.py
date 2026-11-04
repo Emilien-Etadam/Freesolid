@@ -403,10 +403,11 @@ class BodyPatternMixin:
         wanted = self._body_pattern_wanted(host, spec)
         existing = self._body_pattern_copies(host)
         changed = False
-        for (source, key), body in existing.items():
-            if (source, key) not in wanted:
-                self._remove_body_copy(body)
-                changed = True
+        doomed = [body for key, body in existing.items() if key not in wanted]
+        self._confirm_dropped_copies(host, doomed)
+        for body in doomed:
+            self._remove_body_copy(body)
+            changed = True
         for (source, key), (number, placement) in wanted.items():
             body = existing.get((source, key))
             if body is None:
@@ -440,6 +441,49 @@ class BodyPatternMixin:
                 inner.Support = [(read, ("",))]
                 changed = True
         return changed
+
+    def _confirm_dropped_copies(self, host, doomed):
+        """Moins de copies : celles qui portent quelque chose ne partent
+        qu'après confirmation — leurs fonctions partent avec elles, un
+        combiner qui en prend une perd son outil. L'aperçu, toujours
+        défait, ne demande rien."""
+        from engine.kernel import NeedsConfirm
+        if (not doomed or getattr(self, "_confirmed", False)
+                or getattr(self, "_previewing", False)):
+            return
+        touched = self._copies_contents(doomed)
+        if not touched:
+            return
+        names = ", ".join("« {} »".format(label) for label in touched)
+        raise NeedsConfirm(
+            "réseau non réduit : cela toucherait {}".format(names),
+            "Réduire « {} » supprime {} copie(s) ; cela touche aussi {}. "
+            "Continuer ?".format(host.Label, len(doomed), names))
+
+    def _copies_contents(self, copies):
+        """Libellés de ce que portent les copies ``copies`` : leurs
+        esquisses et fonctions, et les combiners d'autres corps qui en
+        prennent une pour outil."""
+        doc = self._require_doc()
+        names = {body.Name for body in copies}
+        labels = []
+        for body in copies:
+            inner = getattr(body, "FreeSolidPatternInner", "")
+            for obj in body.Group:
+                if (obj.Name == inner or self._is_pattern_base(obj)
+                        or self._is_internal_tool(obj)
+                        or self._is_thin_helper(obj)):
+                    continue
+                if (obj.isDerivedFrom("PartDesign::Feature")
+                        or obj.TypeId == "Sketcher::SketchObject"):
+                    labels.append(obj.Label)
+        for obj in doc.Objects:
+            if (obj.TypeId != "PartDesign::Boolean"
+                    or obj.getParentGeoFeatureGroup() in copies):
+                continue
+            if any(tool.Name in names for tool in self._boolean_tools(obj)):
+                labels.append(self._thin_owner(obj).Label)
+        return list(dict.fromkeys(labels))
 
     def _make_body_copy(self, host, spec, source, key, number, placement):
         """Un corps qui suit ``source`` à la place du réseau, placé par

@@ -144,8 +144,9 @@ def test_progress_responds_while_kernel_lock_held():
 def test_run_op_feeds_progress_then_clears(monkeypatch):
     seen = []
 
-    def fake_dispatch(kernel, op, params):
+    def fake_dispatch(kernel, op, params, confirmed=False):
         seen.append(op)
+        assert confirmed is False
         assert kernel._progress is server._feed_progress
         kernel._progress("Construction du compound", 47, 200)
         snapshot = server._progress_snapshot()
@@ -164,3 +165,29 @@ def test_run_op_feeds_progress_then_clears(monkeypatch):
     assert idle["op"] is None
     assert idle["phase"] == ""
     assert server._KERNEL._progress is None
+
+
+def test_confirmation_round_trip():
+    # Un refus qui pose une question : la même requête, confirmée, passe ;
+    # le drapeau ne survit pas à la requête. La question se traduit.
+    k = Kernel()
+
+    def reduce():
+        if not k._confirmed:
+            raise kernel_mod.NeedsConfirm(
+                "réseau non réduit : cela toucherait « E »",
+                "Réduire « R » supprime 2 copie(s) ; cela touche aussi « E »."
+                " Continuer ?")
+        return "réduit"
+
+    k.reduce = reduce
+    asked = kernel_mod.dispatch(k, "reduce", {})
+    assert asked["ok"] is False and "Continuer ?" in asked["confirm"]
+    assert kernel_mod.dispatch(k, "reduce", {}, confirmed=True) == {
+        "ok": True, "result": "réduit"}
+    assert k._confirmed is False
+    english = server._localized(dict(asked), "en")
+    assert english["confirm"] == (
+        "Reducing « R » removes 2 copy(ies); this also affects « E ». "
+        "Continue?")
+    assert english["error"] == "pattern not reduced: it would affect « E »"

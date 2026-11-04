@@ -654,6 +654,8 @@
  "un balayage guidé par une seconde trajectoire ne se colle pas encore": "a sweep guided by a second path cannot be pasted yet",
  "choisissez la face ou le plan où coller": "choose the face or plane to paste on",
  "indiquez la distance de la direction 2": "give the distance of direction 2",
+ "réseau non réduit : cela toucherait {}": "pattern not reduced: it would affect {}",
+ "Réduire « {} » supprime {} copie(s) ; cela touche aussi {}. Continuer ?": "Reducing « {} » removes {} copy(ies); this also affects {}. Continue?",
  "nom de gabarit invalide — lettres, chiffres, espaces et tirets": "invalid template name — letters, digits, spaces and dashes",
  "un gabarit se fait depuis une pièce": "a template is made from a part",
  "gabarit introuvable : {}": "template not found: {}",

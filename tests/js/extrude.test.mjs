@@ -292,8 +292,8 @@ describe("fusionner ou non", () => {
                                     has_solid: false }]), []);
   });
 
-  it("coché, les corps touchés se fondent ; sinon la zone Corps, qui part "
-     + "du corps actif et en prend plusieurs", () => {
+  it("coché, les corps touchés se fondent ; sinon la zone « Corps "
+     + "concernés », qui part du corps actif et en prend plusieurs", () => {
     const [group] = mergeGroups(bodies);
     const [merge, touched, body] = group.rows;
     assert.equal(merge.value, true);
@@ -301,6 +301,7 @@ describe("fusionner ou non", () => {
     assert.equal(touched.value, true);
     assert.equal(touched.showIf({ merge: false }), false);
     assert.equal(touched.showIf({ merge: true }), true);
+    assert.equal(body.label, "Corps concernés");
     assert.deepEqual(body.accepts, ["body"]);
     assert.equal(body.multiple, true);
     assert.deepEqual(body.value, { kind: "body", items: [
@@ -564,7 +565,7 @@ describe("corps fondus, à la réédition", () => {
 
   it("une zone de corps, remplie des corps fondus", () => {
     const [group] = bodyChoiceGroups(pad, tree);
-    assert.equal(group.label, "Corps fondus");
+    assert.equal(group.label, "Corps concernés");
     assert.equal(group.rows.length, 1);
     const row = group.rows[0];
     assert.deepEqual([row.type, row.key, row.accepts, row.multiple],
@@ -622,7 +623,7 @@ describe("Fusionner, à la réédition", () => {
                      [["check", "merge"], ["selection", "bodies"]]);
     assert.equal(group.rows[0].value, true);
     const [, bodies] = group.rows;
-    assert.equal(bodies.label, "Corps fondus");
+    assert.equal(bodies.label, "Corps concernés");
     assert.equal(bodies.showIf({ merge: false }), false);
     assert.equal(bodies.showIf({ merge: true }), true);
   });
@@ -729,14 +730,14 @@ describe("corps creusés, à la réédition", () => {
 
   it("une zone remplie des corps creusés", () => {
     const [group] = bodyChoiceGroups(pocket, tree);
-    assert.equal(group.label, "Corps creusés");
+    assert.equal(group.label, "Corps concernés");
     assert.deepEqual(group.rows[0].value.items.map((i) => i.name), ["Body001"]);
   });
 
   it("la gorge et le perçage aussi ; les corps fondus n'y comptent pas", () => {
     for (const type_key of ["groove", "hole"]) {
       const [group] = bodyChoiceGroups({ ...pocket, type_key }, tree);
-      assert.equal(group.label, "Corps creusés");
+      assert.equal(group.label, "Corps concernés");
     }
     const fusedOnly = { name: "Pocket", type_key: "pocket",
                         fused: [{ name: "Body001", label: "x" }] };
@@ -761,13 +762,11 @@ describe("corps d'un lissage ou d'un balayage, à la réédition", () => {
   ] };
 
   it("une zone, même vide, sans case « Fusionner »", () => {
-    for (const [type_key, label, key] of [
-      ["loft", "Corps fondus", "fused"], ["sweep", "Corps fondus", "fused"],
-      ["loft_cut", "Corps creusés", "cut"],
-      ["sweep_cut", "Corps creusés", "cut"]]) {
+    for (const [type_key, key] of [["loft", "fused"], ["sweep", "fused"],
+      ["loft_cut", "cut"], ["sweep_cut", "cut"]]) {
       const [group] = bodyChoiceGroups({ name: "L", type_key, [key]: [] },
                                        tree);
-      assert.equal(group.label, label);
+      assert.equal(group.label, "Corps concernés");
       assert.deepEqual(group.rows.map((row) => row.key), ["bodies"]);
       assert.deepEqual(bodyChoiceValues({ bodies: {
         kind: "body", items: [{ kind: "body", name: "Body001" }] } },
@@ -785,7 +784,7 @@ describe("corps creusés d'une répétition, à la réédition", () => {
   it("une zone quand le moteur donne cut, même vide", () => {
     for (const type_key of ["linear_pattern", "polar_pattern", "mirror"]) {
       const [group] = bodyChoiceGroups({ name: "P", type_key, cut: [] }, tree);
-      assert.equal(group.label, "Corps creusés");
+      assert.equal(group.label, "Corps concernés");
       assert.deepEqual(group.rows[0].value.items, []);
     }
     const held = { name: "P", type_key: "mirror",

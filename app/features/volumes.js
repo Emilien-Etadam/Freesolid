@@ -603,8 +603,9 @@ export function extrudeEditProblem(v, feature, tree) {
 // ---------- fusionner ou non (extrusion, révolution, lissage, balayage) ----------
 // Décochée : un nouveau corps. Cochée : le corps actif, et les corps que
 // la fonction touche — le moteur les trouve et les fond en un seul. Sans
-// « Fondre les corps touchés », les corps qu'on clique dans la vue.
-// Seulement quand la pièce a déjà un volume.
+// « Fondre les corps touchés », les corps qu'on clique dans la vue : la
+// zone « Corps concernés », comme celle d'un enlèvement. Seulement quand
+// la pièce a déjà un volume.
 
 /** Groupe « Résultat » d'un volume, vide sans corps solide. `when` : le
  *  groupe ne s'affiche que si ces valeurs le veulent (pas pour un
@@ -622,7 +623,7 @@ export function mergeGroups(bodies, { when } = {}) {
       ...(active ? [{ type: "check", key: "touched",
                       label: "Fondre les corps touchés", value: true,
                       showIf: (v) => v.merge !== false }] : []),
-      bodyZoneRow("body", { label: "Corps",
+      bodyZoneRow("body", { label: "Corps concernés",
         value: bodyZoneValue(active ? [active] : []),
         showIf: (v) => v.merge !== false && !touching(v, bodies) }),
     ],
@@ -679,7 +680,9 @@ export function mergeParams(v, bodies) {
 }
 
 // ---------- corps fondus ou creusés, à la réédition ----------
-// Comme à la création, une zone : les corps que la fonction fond. Un clic
+// Comme à la création, une zone, « Corps concernés » pour un ajout comme
+// pour un enlèvement (une fonction ne fait que l'un ou l'autre) : les
+// corps que la fonction fond. Un clic
 // dans la vue ou dans le dossier en ajoute ou en retire un ; un corps
 // fondu, qui ne se voit plus à part, se retire par sa croix. Le corps de
 // la fonction n'y entre pas. Un enlèvement de même, pour les corps qu'il
@@ -722,7 +725,7 @@ const zoneChoice = (v, feature, tree) => zoneNames(v.bodies).filter(
   (name) => scopesOwn(feature) || name !== ownBody(feature, tree));
 
 /** Groupe « Résultat » d'une extrusion ou d'une révolution (« Corps
- *  creusés » d'un enlèvement), vide sans rien à changer. */
+ *  concernés » des autres), vide sans rien à changer. */
 export function bodyChoiceGroups(feature, tree) {
   if (!FUSING.includes(feature?.type_key) && !cuts(feature)) return [];
   const own = ownBody(feature, tree);
@@ -733,7 +736,7 @@ export function bodyChoiceGroups(feature, tree) {
   const zone = shown.length || others.length ? [bodyZoneRow("bodies", {
     allows: (pick) => scopesOwn(feature) || pick.name !== own,
     value: bodyZoneValue(shown),
-    ...(merging ? { label: "Corps fondus",
+    ...(merging ? { label: "Corps concernés",
                     showIf: (v) => v.merge !== false } : {}) })] : [];
   const check = merging && (feature.merged || others.length) ? [
     { type: "check", key: "merge", label: "Fusionner", value: feature.merged },
@@ -743,8 +746,7 @@ export function bodyChoiceGroups(feature, tree) {
   ] : [];
   if (!check.length && !zone.length) return [];
   return [{
-    label: merging ? "Résultat"
-      : cuts(feature) ? "Corps creusés" : "Corps fondus",
+    label: merging ? "Résultat" : "Corps concernés",
     rows: [...check, ...zone],
   }];
 }

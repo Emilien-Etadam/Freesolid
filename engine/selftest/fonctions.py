@@ -3896,3 +3896,105 @@ def p106_fusionner_lissage_et_balayage(self, mark, report, etat):
         refused and barred.get("ok") is False
         and "sous la barre" in str(barred.get("error")) and home(loft) is a
         and folder() == [a.Name] and clean())
+
+
+def p107_enlevement_remonte(self, mark, report, etat):
+    mark("p107: un enlèvement réordonné creuse les autres corps à son rang")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2):
+        name = self.sketch_start(plane="XY")["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def volume(body):
+        return round(body.Shape.Volume)
+
+    def step_after(body):
+        """La fonction de ``body`` juste avant l'étape cachée."""
+        group = [o for o in body.Group if o.isDerivedFrom("PartDesign::Feature")]
+        step = next(o for o in group if self._hidden_cut_source(o))
+        return group[group.index(step) - 1]
+
+    # A1, B1, A2, B2, puis un enlèvement de A à travers tout, qui creuse
+    # une rainure dans B (B1 : 10 × 10 × 10 ; B2 le rehausse sur la moitié).
+    self.new_part("Enlèvement remonté")
+    rect(0, 0, 10, 10)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(30, 0, 40, 10)
+    self.add_pad(10, merge=False)
+    b = self._require_body()
+    b1 = b.Tip
+    self.set_active_body(a.Name)
+    rect(0, 0, 5, 5)
+    self.add_pad(20)
+    a2 = a.Tip
+    self.set_active_body(b.Name)
+    rect(30, 0, 35, 10)
+    self.add_pad(20)
+    b2 = b.Tip
+    self.set_active_body(a.Name)
+    rect(-5, 4, 45, 6)
+    call("add_pocket", through=True, reversed=True)
+    cut = a.Tip
+    start = volume(b) == 1200 and step_after(b) is b2
+
+    # Remonté au-dessus de B2 : il creuse B avant B2, qui rebouche sa part
+    # de la rainure. La barre posée juste sous lui montre B creusé, sans B2.
+    up = call("reorder_feature", feature=cut.Name, target=a2.Name)
+    raised = (up.get("ok") and volume(b) == 1400 and step_after(b) is b1
+              and clean())
+    call("set_tip", feature=cut.Name)
+    barred = volume(b) == 800 and b2.Name in self._features_after_tips()
+    call("tip_to_end")
+    report["p107_remonte_creuse_avant"] = (
+        start and raised and barred and volume(b) == 1400)
+
+    # Redescendu sous B2, il le creuse de nouveau ; Ctrl+Z le remonte.
+    down = call("reorder_feature", feature=cut.Name, target=a2.Name,
+                after=True)
+    lowered = down.get("ok") and volume(b) == 1200 and step_after(b) is b2
+    call("undo")
+    report["p107_redescendu"] = (
+        lowered and volume(b) == 1400 and step_after(b) is b1 and clean())
+
+    # La barre au milieu reste sous la même ligne : posée sous B2,
+    # l'enlèvement qu'on remonte passe au-dessus d'elle, A2 dessous.
+    call("reorder_feature", feature=cut.Name, target=a2.Name, after=True)
+    call("set_tip", feature=b2.Name)
+    mid = call("reorder_feature", feature=cut.Name, target=a2.Name)
+    rolled = self._features_after_tips()
+    report["p107_barre_au_milieu"] = (
+        mid.get("ok") and volume(b) == 1400 and cut.Name not in rolled
+        and a2.Name in rolled and b2.Name not in rolled and clean())
+    call("tip_to_end")
+
+    # Refusé au-dessus de la naissance de B : rien à creuser à ce rang.
+    self.new_part("Avant le corps")
+    rect(0, 0, 10, 10)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(0, 0, 5, 5)
+    self.add_pad(20)
+    a1b = a.Tip
+    rect(30, 0, 40, 10)
+    self.add_pad(10, merge=False)
+    b = self._require_body()
+    self.set_active_body(a.Name)
+    rect(-5, 4, 45, 6)
+    call("add_pocket", through=True, reversed=True)
+    cut = a.Tip
+    before = volume(b)
+    early = call("reorder_feature", feature=cut.Name, target=a1b.Name)
+    report["p107_refus_avant_le_corps"] = (
+        before == 800 and early.get("ok") is False
+        and "n'existe pas encore" in str(early.get("error"))
+        and volume(b) == 800 and a.Tip is cut and clean())

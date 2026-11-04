@@ -2064,7 +2064,11 @@ export function installTree(ctx) {
 
   /** Suppression de corps : le panneau de la création, sur les corps qui
    *  existent à son rang, sa zone remplie de ce qu'elle vise. OK la réécrit sur
-   *  place, sans changer son rang. */
+   *  place, sans changer son rang.
+   *
+   *  Le temps du panneau, la pièce se montre à son rang (`rank_view`, la
+   *  barre juste au-dessus d'elle, sans pas d'annulation) : ce qu'elle
+   *  supprime se revoit et se clique, dans la vue comme dans le dossier. */
   async function editRemoveBodies(feature) {
     let info;
     try {
@@ -2073,20 +2077,43 @@ export function installTree(ctx) {
       say(error.message, true);
       return;
     }
+    // Sans la vue au rang (refusée), le panneau s'ouvre sur la pièce
+    // d'aujourd'hui, comme avant.
+    const atRank = await call("rank_view", { feature: feature.name })
+      .catch(() => null);
+    if (atRank) await refresh(Promise.resolve(atRank));
     const params = (v) => removeBodiesParams(v, info.candidates);
+    let applied = false;
     panel.open({
       icon: "remove_bodies",
       title: info.label,
       groups: removeBodiesGroups(info.candidates, info.keep),
       note: REMOVE_BODIES_NOTE,
       hint: (v) => (params(v) ? null : "Choisissez au moins un corps"),
+      // Fermé sans réédition (annuler, Échap, autre panneau) : la barre
+      // revient. Le moteur la rend aussi de lui-même avant la réédition ;
+      // un seul appel part, l'ordre de deux appels n'étant pas garanti.
+      onClose: () => setTimeout(() => {
+        if (atRank && !applied) refresh(call("rank_view_end"));
+      }, 0),
       onApply: (v) => {
         if (!params(v)) {
           say(t("Choisissez au moins un corps"), true);
           return;
         }
-        refresh(call("edit_remove_bodies",
-          { feature: feature.name, ...params(v) }));
+        applied = true;
+        const edited = call("edit_remove_bodies",
+          { feature: feature.name, ...params(v) });
+        if (!atRank) {
+          refresh(edited);
+          return;
+        }
+        // Refusée, la pièce d'aujourd'hui revient quand même : le moteur a
+        // rendu la barre avant d'essayer. Le message reste affiché.
+        edited.then((tree) => refresh(Promise.resolve(tree)), async (error) => {
+          await refresh(call("get_tree"));
+          say(error.message, true);
+        });
       },
     });
   }

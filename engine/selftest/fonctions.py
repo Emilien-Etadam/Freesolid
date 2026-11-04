@@ -4126,3 +4126,104 @@ def p108_ajout_barre_au_milieu(self, mark, report, etat):
     call("tip_to_end")
     report["p108_fichier_d_avant"] = (
         order() == names[:2] + [x] + names[2:] and clean())
+
+
+def p109_reedition_au_rang(self, mark, report, etat):
+    mark("p109: rééditer une suppression de corps sur la pièce à son rang")
+    import os
+    import tempfile
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2):
+        name = self.sketch_start(plane="XY")["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def solids(body):
+        """Le milieu en x de chaque solide du corps, en mm (arrondi bas)."""
+        return sorted(int(s.CenterOfMass.x) for s in body.Shape.Solids)
+
+    def steps():
+        return len(self._doc.UndoNames)
+
+    # Un bloc coupé en deux par un enlèvement (moitiés centrées en 4,5 et
+    # 15,5) ; la suppression ôte celle de droite, une extrusion vient
+    # ensuite à part (centrée en 2,5).
+    self.new_part("Réédition au rang")
+    rect(0, 0, 20, 10)
+    self.add_pad(10)
+    a = self._require_body()
+    rect(9, -5, 11, 15)
+    call("add_pocket", through=True, reversed=True)
+    cut = a.Tip
+    right = next(i for i, s in enumerate(cut.Shape.Solids)
+                 if s.CenterOfMass.x > 10)
+    host = call("add_remove_bodies",
+                targets=[{"name": a.Name, "solid": right}])["result"]
+    host = next(f["name"] for f in host["features"]
+                if f["type_key"] == "remove_bodies")
+    rect(0, 20, 5, 25)
+    call("add_pad", length=5)
+    later = a.Tip
+    today = solids(a)
+
+    # La vue au rang : la barre juste au-dessus de la suppression, les deux
+    # moitiés revenues, dans le corps comme dans le dossier. Pas de pas
+    # d'annulation, la pièce n'est pas modifiée.
+    count, modified = steps(), self._modified
+    tree = call("rank_view", feature=host)["result"]
+    rolled = self._rolled_back_objects()
+    folder = next(b for b in tree["bodies"] if b["name"] == a.Name)
+    report["p109_vue_au_rang"] = (
+        today == [2, 4] and solids(a) == [4, 15]
+        and len(folder.get("solids") or []) == 2
+        and host in {o.Name for o in rolled}
+        and later.Name in {o.Name for o in rolled}
+        and cut.Name not in {o.Name for o in rolled}
+        and steps() == count and self._modified == modified and clean())
+
+    # Fermée sans réédition : la pièce d'aujourd'hui revient.
+    call("rank_view_end")
+    report["p109_fin_de_la_vue"] = (
+        solids(a) == today and not self._rolled_back_objects()
+        and steps() == count and clean())
+
+    # Rééditée depuis la vue : le moteur rend d'abord la barre, la
+    # réédition s'applique à la pièce d'aujourd'hui et Ctrl+Z ne défait
+    # qu'elle.
+    call("rank_view", feature=host)
+    left = 1 - right
+    edited = call("edit_remove_bodies", feature=host,
+                  targets=[{"name": a.Name, "solid": left}])
+    after = solids(a)
+    call("undo")
+    report["p109_reedition_depuis_la_vue"] = (
+        edited.get("ok") and after == [2, 15]
+        and solids(a) == today and not self._rolled_back_objects()
+        and self._rank_view is None and clean())
+
+    # La barre au milieu revient où elle était ; enregistrer depuis la vue
+    # enregistre la pièce d'aujourd'hui.
+    call("set_tip", feature=host)
+    call("rank_view", feature=host)
+    call("rank_view_end")
+    mid = (later.Name in self._features_after_tips()
+           and host not in self._features_after_tips())
+    call("tip_to_end")
+    call("rank_view", feature=host)
+    path = os.path.join(tempfile.gettempdir(), "freesolid-au-rang.FCStd")
+    call("save_part", path=path)
+    saved = solids(a) == today and not self._rolled_back_objects()
+    name = a.Name
+    call("open_part", path=path)
+    a = self._doc.getObject(name)
+    report["p109_barre_et_enregistrement"] = (
+        mid and saved and solids(a) == today
+        and not self._rolled_back_objects() and clean())

@@ -519,6 +519,84 @@ class TreeMixin:
         self._recompute()
         return self.get_tree()
 
+    def rank_view(self, feature):
+        """La pièce comme au rang de ``feature``, le temps de la rééditer :
+        la barre juste au-dessus d'elle, sans pas d'annulation. Les corps
+        et les solides qu'elle supprime se revoient et se cliquent, dans la
+        vue comme dans le dossier.
+
+        ``rank_view_end`` rend la barre où elle était. Toute opération qui
+        change la pièce, l'enregistre ou l'annule le fait d'abord
+        (``dispatch``) : la réédition s'applique à la pièce d'aujourd'hui.
+        """
+        from engine.kernel import KernelError, rollback_tips
+        self._end_rank_view()
+        doc = self._require_doc()
+        history = self._history_lines()
+        names = [line.Name for line in history]
+        obj = doc.getObject(str(feature))
+        if obj is None or obj.Name not in names:
+            raise KernelError("fonction inconnue : {}".format(feature))
+        at = names.index(obj.Name)
+        saved = self._bar_state()
+        flags, tips = rollback_tips(self._history_rows(history),
+                                    names[at - 1] if at else None)
+        self._rank_view = saved
+        try:
+            self._apply_tips(tips)
+            self._apply_rollback_flags(flags)
+            self._set_bar_sketches()
+            self._recompute()
+        except KernelError:
+            self._end_rank_view()
+            raise
+        return self.get_tree()
+
+    def rank_view_end(self):
+        """Fin de ``rank_view`` : la barre revient où elle était."""
+        self._end_rank_view()
+        return self.get_tree()
+
+    def _bar_state(self):
+        """Où passe la barre : la pointe de chaque corps, les objets
+        marqués reculés, l'esquisse sortie de sa fonction."""
+        from engine.kernel import _ROLLED_BACK_PROP
+        doc = self._require_doc()
+        return {
+            "tips": {b.Name: getattr(b.Tip, "Name", "")
+                     for b in self._history_bodies()},
+            "rolled": {o.Name for o in doc.Objects
+                       if _ROLLED_BACK_PROP in o.PropertiesList
+                       and self._is_rolled_back(o)},
+            "sketches": {b.Name: getattr(b, _BAR_SKETCH_PROP, "")
+                         for b in self._history_bodies()},
+        }
+
+    def _end_rank_view(self):
+        """Rend la barre de ``rank_view``. Vrai si elle était posée."""
+        from engine.kernel import _ROLLED_BACK_PROP, KernelError
+        saved = getattr(self, "_rank_view", None)
+        self._rank_view = None
+        doc = self._doc
+        if not saved or doc is None:
+            return False
+        for name, tip in saved["tips"].items():
+            body = doc.getObject(name)
+            if body is not None:
+                body.Tip = doc.getObject(tip) if tip else None
+        for obj in doc.Objects:
+            if (_ROLLED_BACK_PROP in obj.PropertiesList
+                    and self._is_rolled_back(obj) != (
+                        obj.Name in saved["rolled"])):
+                self._set_rolled_back(obj, obj.Name in saved["rolled"])
+        for body in self._history_bodies():
+            self._set_bar_sketch(body, saved["sketches"].get(body.Name, ""))
+        try:
+            self._recompute()
+        except KernelError:
+            pass  # la pièce d'avant, telle qu'elle était, erreurs comprises
+        return True
+
     def _bar_line(self):
         """La ligne sous laquelle passe la barre de retour : ``None`` quand
         elle est en bas de l'arbre, ``""`` tout en haut, l'esquisse quand

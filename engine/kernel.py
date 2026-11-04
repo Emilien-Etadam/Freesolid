@@ -335,6 +335,9 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyFuseMixin, BodyScopeM
         # Ctrl+Y : le corps actif d'après chaque op défaite, rangé depuis
         # le bas de la pile de FreeCAD (``_keep_bodies_after``).
         self._redo_bodies = []
+        # Réédition au rang d'une fonction : où la barre était avant
+        # (``rank_view``), None hors de cette vue.
+        self._rank_view = None
         self._reset_face_match()
         # Callback d'avancement (phase, fait, total) — posé par le
         # transport, jamais importé d'ici. Absent = no-op.
@@ -999,6 +1002,16 @@ _DIRTY_OPS = frozenset({"undo", "redo", "sketch_move",
                         "set_document_properties", "set_hidden"})
 
 
+#: Lectures qui gardent la vue au rang d'une fonction (``rank_view``) :
+#: celles que le panneau de réédition et la vue font pendant qu'il est
+#: ouvert. Toute autre opération rend d'abord la barre où elle était.
+_RANK_VIEW_READS = frozenset({
+    "rank_view", "rank_view_end", "get_tree", "tessellate",
+    "tessellate_edges", "remove_bodies_info", "get_params", "progress",
+    "document_status", "undo_history", "material_library", "list_variables",
+})
+
+
 def _track_modified(kernel, op):
     if op in _CLEAN_OPS:
         kernel._modified = False
@@ -1068,6 +1081,11 @@ def dispatch(kernel: Kernel, op: str, params: dict):
     """
     from . import protocol
     from .docprops import transaction_name
+    if (op not in _RANK_VIEW_READS
+            and getattr(kernel, "_rank_view", None) is not None):
+        # La pièce revient d'abord à aujourd'hui : rien ne s'applique,
+        # ne s'enregistre ni ne s'annule sur la vue au rang d'une fonction.
+        kernel._end_rank_view()
     doc = kernel._doc if _transactional(kernel, op) else None
     if doc is not None:
         # Pendant une esquisse, la transaction porte le numéro de sa

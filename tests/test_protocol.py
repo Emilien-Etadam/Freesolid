@@ -597,6 +597,8 @@ def test_ops_snapshot_keys():
             "ping",
             "preview",
             "progress",
+            "rank_view",
+            "rank_view_end",
             "rebuild",
             "rebuild_errors",
             "redo",

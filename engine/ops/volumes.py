@@ -78,6 +78,11 @@ OPS = (
                                        # targets: [{name, solid?}]
     Op("remove_bodies_info", Req(("feature", str))),
                                        # lecture : les cases au rang de la fonction
+    Op("rank_view", Req(("feature", str))),
+                                       # la pièce au rang de la fonction, le
+                                       # temps de la rééditer ; sans pas
+                                       # d'annulation
+    Op("rank_view_end"),               # la barre revient où elle était
     Op("edit_remove_bodies", Req(("feature", str), ("targets", list),
                                  optional={"keep": bool}), undo=True),
     # Conditions de fin : engine/extrude.py. Sans length : jusqu'à…

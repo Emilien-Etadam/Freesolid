@@ -96,6 +96,8 @@
   "ping": {"requis": [], "types": [], "optionnels": []},
   "preview": {"requis": ["op", "params"], "types": [["op", "str"], ["params", "dict"]], "optionnels": []},
   "progress": {"requis": [], "types": [], "optionnels": []},
+  "rank_view": {"requis": ["feature"], "types": [["feature", "str"]], "optionnels": []},
+  "rank_view_end": {"requis": [], "types": [], "optionnels": []},
   "rebuild": {"requis": [], "types": [], "optionnels": []},
   "rebuild_errors": {"requis": [], "types": [], "optionnels": []},
   "redo": {"requis": [], "types": [], "optionnels": [["steps", "int"], ["sketch", "str"]]},

@@ -8,12 +8,13 @@
 // cote. Absent (ligne d'un plugin, ligne reconstruite à la main), on
 // tente get_params, comme avant. Une répétition d'enlèvements sans cote
 // (une symétrie) se rouvre pour ses corps creusés, `cut` ; un lissage ou
-// un balayage, pour ses corps fondus ou creusés, `fused` ou `cut`.
+// un balayage, pour ses corps fondus ou creusés, `fused` ou `cut`, et pour
+// « Fusionner », `merged`.
 
 import { isGraphFeature, isRepeatFeature } from "./graph.js";
 
 const params = (item) => (item.has_params === false && !item.cut
-  && !item.fused ? null : "params");
+  && !item.fused && typeof item.merged !== "boolean" ? null : "params");
 
 /** Fonction de corps, esquisse, suppression ou réseau de corps. */
 export function featureEditor(item) {

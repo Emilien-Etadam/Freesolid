@@ -224,6 +224,7 @@ def _etapes():
         fonctions.p105_corps_du_lissage_et_du_balayage,
         fonctions.p106_fusionner_lissage_et_balayage,
         fonctions.p107_enlevement_remonte,
+        fonctions.p108_ajout_barre_au_milieu,
         _etapes_des_plugins,
         document.bilan,
         document.n4e_evaluer_apres_ouverture,

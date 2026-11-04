@@ -8,6 +8,12 @@ les méthodes importent le noyau à l'appel, pour éviter un cycle.
 _BAR_SKETCH_PROP = "FreeSolidBarSketch"
 #: Corps nommé à la main : le dossier garde son nom (propriété du corps).
 _NAMED_PROP = "FreeSolidNamed"
+#: Rang de l'objet dans l'arbre, enregistré quand la barre bouge
+#: (``_persist_ranks``, propriété de chaque objet).
+_RANK_PROP = "FreeSolidRank"
+#: Le changer ne relance aucun recalcul (Output | NoRecompute), et
+#: l'éditeur de propriétés de FreeCAD ne le montre pas (Hidden).
+_RANK_ATTR = 8 | 16 | 4
 
 
 class TreeMixin:
@@ -31,6 +37,7 @@ class TreeMixin:
         if moved is anchor:
             return self.get_tree()
         bar = self._bar_line()
+        self._persist_ranks()
         consumed = self._consumed_sketches()
         # La fonction voyage avec ses esquisses ; « avant » une fonction,
         # c'est avant ses esquisses à elle aussi.
@@ -89,6 +96,7 @@ class TreeMixin:
             # La barre reste sous la même ligne : chaque corps s'arrête à
             # son rang, étapes cachées comprises.
             return self.set_tip(bar)
+        self._persist_ranks()  # les rangs redistribués du corps
         return self.get_tree()
 
     def _last_body_feature(self, body=None):
@@ -180,16 +188,106 @@ class TreeMixin:
             return "feature"
         return None
 
+    def _base_order(self):
+        """Rang de chaque objet avant le rangement par corps.
+
+        Tant que la barre n'a jamais bougé (pièce neuve, fichier d'avant) :
+        l'ordre de création. Dès qu'elle bouge, chaque objet garde le rang
+        enregistré alors (``_persist_ranks``). Un objet né depuis vient où
+        la barre était, comme dans les modeleurs courants : juste au-dessus
+        des lignes reculées, en bas de l'arbre quand la barre y est. S'il
+        suit dans son corps une fonction reculée (une étape d'une fonction
+        rééditée sous la barre), il vient juste après elle. Rien ne change
+        donc de place autour de lui.
+        """
+        objects = list(self._doc.Objects)
+        ranked = {o.Name: getattr(o, _RANK_PROP) for o in objects
+                  if _RANK_PROP in o.PropertiesList}
+        if not ranked:
+            return {obj.Name: i for i, obj in enumerate(objects)}
+        fresh = [o for o in objects if o.Name not in ranked]
+        if not fresh:
+            return ranked
+        # La barre passe entre les lignes reculées et les autres. Une étape
+        # cachée compte au rang de sa source, pas au sien : elle n'y entre
+        # pas.
+        steps = {o.Name for o in objects if self._hidden_cut_source(o)}
+        rows = {n: k for n, k in ranked.items() if n not in steps}
+        rolled = self._rolled_names()
+        below = [k for n, k in rows.items() if n in rolled]
+        ceiling = min(below) if below else None
+        above = [k for k in rows.values() if ceiling is None or k < ceiling]
+        floor = (max(above) if above
+                 else ceiling - 1 if ceiling is not None else -1)
+        born = {o.Name for o in fresh}
+        anchors = {}
+        for body in self._history_bodies():
+            last = None
+            for obj in body.Group:
+                if obj.Name in born:
+                    anchors[obj.Name] = last
+                elif obj.Name not in steps:
+                    key = ranked.get(obj.Name)
+                    last = (key if ceiling is not None and key is not None
+                            and key >= ceiling else None)
+        groups = {}
+        for obj in fresh:  # dans l'ordre de création
+            groups.setdefault(anchors.get(obj.Name), []).append(obj.Name)
+        values = sorted(set(ranked.values()))
+        order_of = dict(ranked)
+        for anchor, names in groups.items():
+            start = floor if anchor is None else anchor
+            end = next((v for v in values if v > start), start + 1)
+            step = (end - start) / (len(names) + 1)
+            for index, name in enumerate(names, 1):
+                order_of[name] = start + step * index
+        return order_of
+
+    def _rolled_names(self):
+        """Ce que la barre recule, sans passer par l'ordre de l'arbre :
+        fonctions après la pointe de leur corps, objets marqués reculés,
+        réseaux de corps dont les copies n'existent pas encore."""
+        rolled = set(self._features_after_tips())
+        rolled.update(o.Name for o in self._doc.Objects
+                      if self._is_rolled_back(o))
+        rolled.update(host.Name for host in self._body_pattern_hosts()
+                      if self._body_pattern_rolled_back(host))
+        return rolled
+
+    def _persist_ranks(self):
+        """Enregistre le rang de chaque objet, tel que l'arbre le range,
+        avant que la barre ne bouge : un objet né à la barre y reste quand
+        elle repart. Des entiers, dans l'ordre ; deux objets de même rang
+        gardent le même."""
+        order_of = self._tree_order()
+        dense = {v: i for i, v in enumerate(sorted(set(order_of.values())))}
+        for obj in self._require_doc().Objects:
+            rank = dense[order_of[obj.Name]]
+            if _RANK_PROP not in obj.PropertiesList:
+                obj.addProperty("App::PropertyInteger", _RANK_PROP,
+                                "FreeSolid", "Rang dans l'arbre de création",
+                                _RANK_ATTR)
+            elif getattr(obj, _RANK_PROP) == rank:
+                continue
+            setattr(obj, _RANK_PROP, rank)
+
+    @staticmethod
+    def _unrank(obj):
+        """Une copie (coller) naît où la barre est : sans le rang de sa
+        source, que ``copyObject`` recopie."""
+        if _RANK_PROP in obj.PropertiesList:
+            obj.removeProperty(_RANK_PROP)
+
     def _tree_order(self):
         """Rang de chaque objet, celui que l'arbre affiche (``order``).
 
         Dans chaque corps, l'ordre du corps fait foi (réordonner le change
         sans toucher l'ordre de création) : on redistribue ses rangs selon
         body.Group, ce qui garde l'entrelacement avec les autres corps et
-        les surfaces hors corps.
+        les surfaces hors corps. Les rangs de départ : ``_base_order``.
         """
         self._require_body()
-        order_of = {obj.Name: i for i, obj in enumerate(self._doc.Objects)}
+        order_of = self._base_order()
         for body in self._history_bodies():
             # Les étapes cachées d'un enlèvement prennent le rang de leur
             # source (``_history_rows``) : glissées dans la chaîne d'un
@@ -386,6 +484,8 @@ class TreeMixin:
             rollback_tips,
         )
         self._require_body()
+        # Ce qui est né à la barre y reste quand elle repart.
+        self._persist_ranks()
         history = self._history_lines()
         if feature is None or not str(feature).strip():
             flags, tips = rollback_tips(self._history_rows(history), None)
@@ -572,6 +672,7 @@ class TreeMixin:
             rollback_tips,
         )
         self._require_body()
+        self._persist_ranks()
         history = self._history_lines()
         if not history:
             raise KernelError("aucune fonction dans la pièce")

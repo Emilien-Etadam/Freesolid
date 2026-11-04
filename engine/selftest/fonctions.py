@@ -3998,3 +3998,131 @@ def p107_enlevement_remonte(self, mark, report, etat):
         before == 800 and early.get("ok") is False
         and "n'existe pas encore" in str(early.get("error"))
         and volume(b) == 800 and a.Tip is cut and clean())
+
+
+def p108_ajout_barre_au_milieu(self, mark, report, etat):
+    mark("p108: une fonction ajoutée la barre au milieu y reste")
+    import os
+    import tempfile
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2):
+        name = self.sketch_start(plane="XY")["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def order():
+        """Les fonctions de l'arbre, de haut en bas (sans étapes cachées)."""
+        return [row["name"] for row in self._history_rows()
+                if row["role"] == "feature"
+                and not self._hidden_cut_source(
+                    self._doc.getObject(row["name"]))]
+
+    def under_bar(name):
+        return name in self._features_after_tips()
+
+    def part():
+        """A1, B1, A2, B2 : deux corps qui s'entrelacent ; B1 10 × 10 × 10
+        et B2 qui le rehausse sur la moitié."""
+        rect(0, 0, 10, 10)
+        self.add_pad(10)
+        a = self._require_body()
+        rect(30, 0, 40, 10)
+        self.add_pad(10, merge=False)
+        b = self._require_body()
+        b1 = b.Tip
+        self.set_active_body(a.Name)
+        rect(0, 0, 5, 5)
+        self.add_pad(20)
+        a2 = a.Tip
+        self.set_active_body(b.Name)
+        rect(30, 0, 35, 10)
+        self.add_pad(20)
+        b2 = b.Tip
+        return a, b, b1, a2, b2
+
+    # La barre sous B1 : X, ajouté dans A, vient à la barre et y reste
+    # quand elle redescend, puis remonte. A2 garde son rang avant B2.
+    self.new_part("Barre au milieu")
+    a, b, b1, a2, b2 = part()
+    a1 = a2.BaseFeature
+    call("set_tip", feature=b1.Name)
+    self.set_active_body(a.Name)
+    rect(5, 5, 10, 10)
+    call("add_pad", length=15)
+    x = a.Tip
+    wanted = [a1.Name, b1.Name, x.Name, a2.Name, b2.Name]
+    born = (order() == wanted and not under_bar(x.Name)
+            and under_bar(a2.Name) and under_bar(b2.Name))
+    call("tip_to_end")
+    ended = order() == wanted
+    call("set_tip", feature=b1.Name)
+    raised = order() == wanted and under_bar(x.Name)
+    call("tip_to_end")
+    report["p108_fonction_reste_a_la_barre"] = (
+        born and ended and raised and order() == wanted and clean())
+
+    # Ctrl+Z sur les trois pas de barre : X redevient la fonction neuve
+    # sous laquelle passe la barre, au même rang ; encore Ctrl+Z, il part.
+    for _ in range(3):
+        call("undo")
+    back = order() == wanted and not under_bar(x.Name) and under_bar(a2.Name)
+    name = x.Name
+    call("undo")
+    report["p108_annuler"] = (
+        back and self._doc.getObject(name) is None
+        and order() == [a1.Name, b1.Name, a2.Name, b2.Name] and clean())
+
+    # Un enlèvement ajouté à la barre creuse B à ce rang : avant B2, qui
+    # rebouche sa part de la rainure.
+    self.set_active_body(a.Name)
+    rect(-5, 4, 45, 6)
+    call("add_pocket", through=True, reversed=True)
+    cut = a.Tip
+    call("tip_to_end")
+    report["p108_enlevement_a_la_barre"] = (
+        order() == [a1.Name, b1.Name, cut.Name, a2.Name, b2.Name]
+        and round(b.Shape.Volume) == 1400 and clean())
+
+    # Une fonction collée la barre au milieu y vient aussi, pas au rang de
+    # sa source.
+    call("set_tip", feature=cut.Name)
+    self.set_active_body(a.Name)
+    pasted = call("paste_feature", feature=a1.Name, plane="XY")
+    twin = a.Tip
+    report["p108_collage_a_la_barre"] = (
+        pasted.get("ok") and twin is not a1
+        # copyObject recopie le rang de la source : la copie le perd.
+        and "FreeSolidRank" not in twin.PropertiesList
+        and order() == [a1.Name, b1.Name, cut.Name, twin.Name, a2.Name,
+                        b2.Name]
+        and not under_bar(twin.Name) and under_bar(a2.Name) and clean())
+    call("tip_to_end")
+
+    # Un fichier d'avant les rangs enregistrés, la barre au milieu : à la
+    # réouverture, ce qu'on ajoute vient à la barre.
+    self.new_part("Fichier d'avant")
+    a, b, b1, a2, b2 = part()
+    names = [a2.BaseFeature.Name, b1.Name, a2.Name, b2.Name]
+    body = a.Name
+    call("set_tip", feature=b1.Name)
+    for obj in self._doc.Objects:
+        if "FreeSolidRank" in obj.PropertiesList:
+            obj.removeProperty("FreeSolidRank")
+    path = os.path.join(tempfile.gettempdir(), "freesolid-barre.FCStd")
+    self.save_part(path)
+    self.open_part(path)
+    self.set_active_body(body)
+    rect(5, 5, 10, 10)
+    call("add_pad", length=15)
+    x = self._doc.getObject(body).Tip.Name
+    call("tip_to_end")
+    report["p108_fichier_d_avant"] = (
+        order() == names[:2] + [x] + names[2:] and clean())

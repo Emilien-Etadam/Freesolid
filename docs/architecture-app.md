@@ -93,6 +93,8 @@ Le serveur sert aussi l'UI statique (`app/`) : un seul processus, un onglet.
 
 ## Ce que cette architecture ne promet pas
 
-Les limites structurelles du moteur restent : un Body = un solide contigu
-(pas de multicorps), et la qualité du recompute est celle de FreeCAD. On
-change la peau et la main ; pas les os.
+Les limites structurelles du moteur restent : la qualité du recompute est
+celle de FreeCAD. La pièce multicorps (n° 69 de `docs/ecarts-solidworks.md`)
+s'appuie sur ce que FreeCAD sait déjà faire — plusieurs `Body`, des solides
+disjoints dans un même `Body`, des combinaisons — et non sur un mécanisme à
+part. On change la peau et la main ; pas les os.

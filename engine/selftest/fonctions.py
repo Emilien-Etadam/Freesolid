@@ -4229,6 +4229,198 @@ def p109_reedition_au_rang(self, mark, report, etat):
         and not self._rolled_back_objects() and clean())
 
 
+def p110_face_du_corps_fondu(self, mark, report, etat):
+    mark("p110: une face venue d'un corps fondu désigne la fonction de ce corps")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2):
+        name = self.sketch_start(plane="XY")["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def designated():
+        """Centre de chaque face du corps actif (mm, arrondi à 0,1) → la
+        fonction qu'elle désigne au survol."""
+        faces = self._require_body().Shape.Faces
+        found = {}
+        for group in self.tessellate()["groups"]:
+            centre = faces[group["faceId"]].CenterOfMass
+            key = tuple(round(v, 1) for v in (centre.x, centre.y, centre.z))
+            found[key] = group.get("feature")
+        return found
+
+    # Une barre en A fond B et C : les faces de B et de C, même rognées
+    # par la barre, désignent leur propre extrusion ; celles de la barre,
+    # la barre.
+    self.new_part("Face du corps fondu")
+    rect(0, 0, 20, 20)
+    a_pad = self.add_pad(10)["features"][0]["name"]
+    a = self._require_body()
+    self.add_body()
+    rect(30, 0, 50, 20)
+    self.add_pad(10)
+    b = self._require_body()
+    self.add_body()
+    rect(60, 0, 80, 20)
+    self.add_pad(10)
+    c = self._require_body()
+    self.set_active_body(a.Name)
+    rect(10, 5, 70, 15)
+    call("add_pad", length=5, bodies=[b.Name, c.Name])
+    bar = self._thin_owner(a.Tip).Name
+    seen = designated()
+    match = self._face_match
+    report["p110_extrusion_qui_fond"] = (
+        seen.get((40.0, 10.0, 10.0)) == b.Tip.Name      # dessus de B
+        and seen.get((30.0, 10.0, 5.8)) == b.Tip.Name   # flanc rogné
+        and seen.get((70.0, 10.0, 10.0)) == c.Tip.Name  # dessus de C
+        and seen.get((25.0, 10.0, 5.0)) == bar          # dessus de la barre
+        and seen.get((10.0, 10.0, 10.0)) == a_pad       # dessus de A
+        and match.get("matched") == match.get("faces") == len(seen))
+
+    # Tirer le dessus de B change l'extrusion de B.
+    top = next(i for i, face in enumerate(a.Shape.Faces)
+               if abs(face.CenterOfMass.z - 10) < 1e-6
+               and abs(face.CenterOfMass.x - 40) < 1e-6)
+    drag = self.face_drag_info(top)["drag"] or {}
+    report["p110_tirer_la_face"] = (
+        drag.get("feature") == b.Tip.Name and drag.get("value") == 10.0)
+
+    # « Combiner » : la face de B restée entière et celle qu'il rogne.
+    self.new_part("Face combinée")
+    rect(0, 0, 20, 20)
+    a_pad = self.add_pad(10)["features"][0]["name"]
+    a = self._require_body()
+    self.add_body()
+    rect(10, 0, 40, 20)
+    self.add_pad(5)
+    b = self._require_body()
+    self.set_active_body(a.Name)
+    call("add_boolean", tool=b.Name, type="fuse")
+    seen = designated()
+    report["p110_combiner"] = (
+        seen.get((40.0, 10.0, 2.5)) == b.Tip.Name
+        and seen.get((30.0, 10.0, 5.0)) == b.Tip.Name
+        and seen.get((10.0, 10.0, 10.0)) == a_pad)
+
+    # Une copie de réseau de corps : ses faces désignent le réseau, seule
+    # ou combinée avec sa source.
+    self.new_part("Face d'une copie")
+    rect(0, 0, 10, 10)
+    self.add_pad(8)
+    source = self._require_body()
+    self.add_body_pattern("linear", [source.Name], length=8, count=2,
+                          axis="X", spacing=True)
+    host = self._body_pattern_hosts()[0].Name
+    copy = next(bd for bd in self._history_bodies() if bd is not source)
+    self.set_active_body(copy.Name)
+    alone = set(designated().values())
+    self.set_active_body(source.Name)
+    call("add_boolean", tool=copy.Name, type="fuse")
+    report["p110_copie_de_reseau"] = (
+        alone == {host} and designated().get((18.0, 5.0, 4.0)) == host)
+
+
+def p111_coller_lissage_et_balayage(self, mark, report, etat):
+    mark("p111: un lissage ou un balayage collé emporte ses autres esquisses")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def square(sketch, x1, y1, x2, y2):
+        for line in ((x1, y1, x2, y1), (x2, y1, x2, y2),
+                     (x2, y2, x1, y2), (x1, y2, x1, y1)):
+            self.sketch_add_line(sketch, *line)
+        self.sketch_finish(sketch)
+
+    def top_of(body, x):
+        """La face du dessus du bloc dont le milieu est en ``x``."""
+        faces = body.Shape.Faces
+        best = max((f.CenterOfMass.z, i) for i, f in enumerate(faces)
+                   if abs(f.CenterOfMass.x - x) < 1e-6
+                   and abs(f.normalAt(0, 0).z - 1) < 1e-6)
+        return best[1]
+
+    def owned(twin, link, source_links):
+        """L'esquisse de ``link`` : neuve, dans le corps, attachée au
+        profil collé."""
+        sketch = self._as_object(link)
+        support = list(getattr(sketch, "AttachmentSupport", None)
+                       or getattr(sketch, "Support", None) or [])
+        return (sketch not in source_links
+                and sketch.getParentGeoFeatureGroup() is self._require_body()
+                and sketch.MapMode == "ObjectXY"
+                and support and support[0][0] is self._as_object(twin.Profile))
+
+    # Un lissage à côté du bloc, collé sur le dessus du bloc (l'esquisse
+    # garde ses coordonnées : la copie monte de 5) : même volume, sa
+    # section le suit quand le bloc grandit.
+    self.new_part("Coller un lissage")
+    self.add_rect_sketch(20, 20)
+    block = self.add_pad(5)["features"][0]["name"]
+    body = self._require_body()
+    low = self.sketch_start(plane="XY")["sketch"]
+    square(low, 40, -10, 60, 10)
+    datum = next(f["name"] for f in self.add_datum_plane(
+        base="XY", offset=20)["features"] if f["type"] == "PartDesign::Plane")
+    high = self.sketch_start(datum=datum)["sketch"]
+    square(high, 45, -5, 55, 5)
+    self.add_loft([low, high])
+    source = body.Tip
+    before = body.Shape.Volume
+    count = len(self._doc.Objects)
+    pasted = call("paste_feature", feature=source.Name, face=top_of(body, 0))
+    twin = body.Tip
+    section = self._as_object(twin.Sections[0])
+    report["p111_lissage_colle"] = (
+        pasted.get("ok") is True and twin is not source
+        and owned(twin, twin.Sections[0],
+                  [self._as_object(s) for s in source.Sections])
+        and abs(twin.AddSubShape.Volume - source.AddSubShape.Volume) < 1e-6
+        and body.Shape.Volume > before + 1
+        and abs(section.getGlobalPlacement().Base.z - 25) < 1e-6
+        and clean())
+    call("set_params", feature=block, values={"length": 15})
+    followed = (abs(section.getGlobalPlacement().Base.z - 35) < 1e-6
+                and abs(twin.AddSubShape.Volume
+                        - source.AddSubShape.Volume) < 1e-6)
+    call("undo")
+    call("undo")
+    report["p111_suit_la_face_et_s_annule"] = (
+        followed and len(self._doc.Objects) == count
+        and body.Tip is source and clean())
+
+    # Un balayage : sa trajectoire part avec lui.
+    self.new_part("Coller un balayage")
+    self.add_rect_sketch(20, 20)
+    self.add_pad(5)
+    body = self._require_body()
+    spine = self.sketch_start(plane="XZ")["sketch"]
+    self.sketch_add_line(spine, 40, 0, 40, 30)
+    self.sketch_add_line(spine, 40, 30, 60, 30)
+    self.sketch_finish(spine)
+    ring = self.sketch_start(plane="XY")["sketch"]
+    self.sketch_add_circle(ring, 40, 0, 3)
+    self.sketch_finish(ring)
+    self.add_sweep(ring, spine)
+    source = body.Tip
+    pasted = call("paste_feature", feature=source.Name, face=top_of(body, 0))
+    twin = body.Tip
+    report["p111_balayage_colle"] = (
+        pasted.get("ok") is True and twin is not source
+        and owned(twin, twin.Spine, [self._as_object(source.Spine)])
+        and abs(twin.AddSubShape.Volume - source.AddSubShape.Volume) < 1e-6
+        and clean())
+
+
 def p112_reseau_reduit_confirme(self, mark, report, etat):
     mark("p112: réduire un réseau de corps demande confirmation")
     from engine.kernel import dispatch

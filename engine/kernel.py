@@ -582,7 +582,9 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyFuseMixin, BodyScopeM
         Appariement, dans l'ordre : hash OCCT, ``isSame``, empreinte
         (aire + centre). La première fonction de l'historique qui
         porte la face est celle qui l'a produite. Faces restantes :
-        le Tip — et le compte ``_face_match`` le dit.
+        le Tip — et le compte ``_face_match`` le dit. Une face venue d'un
+        corps fondu désigne la fonction de ce corps qui l'a faite
+        (``_fused_face_producers``).
         """
         body = self._require_body()
         shape = getattr(body, "Shape", None)
@@ -590,6 +592,23 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyFuseMixin, BodyScopeM
         self._reset_face_match(len(faces))
         if not faces:
             return {}
+        producer, how, hash_errors = self._match_face_producers(body, faces)
+        matched = sum(1 for via in how.values() if via != "tip")
+        self._face_match = {
+            "faces": len(faces),
+            "matched": matched,
+            "assigned": len(producer),
+            "hash": sum(1 for via in how.values() if via == "hash"),
+            "same": sum(1 for via in how.values() if via == "same"),
+            "geo": sum(1 for via in how.values() if via == "geo"),
+            "tip": sum(1 for via in how.values() if via == "tip"),
+            "hash_errors": list(dict.fromkeys(hash_errors))[:5],
+        }
+        return self._fused_face_producers(body, producer)
+
+    def _match_face_producers(self, body, faces):
+        """``faces`` (celles de ``body.Shape``) → première fonction de
+        ``body`` qui les porte : (producteur, moyen, erreurs de hash)."""
         hash_errors = []
         tip_geo = []
         hash_index = {}
@@ -653,18 +672,83 @@ class Kernel(SketchShareMixin, TreeMixin, SolidsMixin, BodyFuseMixin, BodyScopeM
             for index in tuple(unmatched):
                 self._claim_face(
                     unmatched, producer, how, index, tip.Name, "tip")
-        matched = sum(1 for via in how.values() if via != "tip")
-        self._face_match = {
-            "faces": len(faces),
-            "matched": matched,
-            "assigned": len(producer),
-            "hash": sum(1 for via in how.values() if via == "hash"),
-            "same": sum(1 for via in how.values() if via == "same"),
-            "geo": sum(1 for via in how.values() if via == "geo"),
-            "tip": sum(1 for via in how.values() if via == "tip"),
-            "hash_errors": list(dict.fromkeys(hash_errors))[:5],
-        }
+        return producer, how, hash_errors
+
+    # Les combiners qui gardent des faces de leurs corps outils.
+    _FACE_KEEPING_BOOLEANS = ("Fuse", "Common")
+
+    def _fused_face_producers(self, body, producer, seen=()):
+        """Une face qu'un combiner tient d'un corps outil — « Combiner »,
+        ou le combiner caché d'un volume qui fond d'autres corps — désigne
+        la fonction de ce corps qui l'a faite, même rognée : l'historique
+        d'élément de FreeCAD passe par ce corps (``Body001``) et dit sa
+        face. Une face d'une copie de réseau de corps désigne le réseau.
+        Les faces que la fusion a refaites restent au combiner."""
+        doc = self._require_doc()
+        keeping = {obj.Name for obj in body.Group
+                   if obj.TypeId == "PartDesign::Boolean"
+                   and getattr(obj, "Type", "") in self._FACE_KEEPING_BOOLEANS}
+        tip = getattr(body, "Tip", None)
+        reverse = {}
+        if keeping and getattr(tip, "Shape", None) is not None:
+            try:
+                reverse = tip.Shape.ElementReverseMap
+            except Exception:  # noqa: BLE001 — sans carte, rien à suivre
+                reverse = {}
+        sources = {}
+        for index, name in list(producer.items()):
+            if name not in keeping:
+                continue
+            found = self._face_source_body(
+                tip, reverse.get("Face{}".format(index + 1)), body)
+            if found is None or found[0].Name in seen:
+                continue
+            other, other_index = found
+            if other.Name not in sources:
+                sources[other.Name] = self._body_face_producers(
+                    other, seen + (body.Name,))
+            origin = sources[other.Name].get(other_index)
+            if origin:
+                producer[index] = origin
+        for index, name in list(producer.items()):
+            obj = doc.getObject(name)
+            if obj is not None and self._is_pattern_base(obj):
+                host = self._body_pattern_host_of(obj)
+                if host is not None:
+                    producer[index] = host.Name
         return producer
+
+    def _body_face_producers(self, body, seen=()):
+        """``_face_producers`` d'un autre corps, sans toucher au compte."""
+        faces = list(getattr(getattr(body, "Shape", None), "Faces", None)
+                     or ())
+        if not faces:
+            return {}
+        producer, _, _ = self._match_face_producers(body, faces)
+        return self._fused_face_producers(body, producer, seen)
+
+    @staticmethod
+    def _face_source_body(tip, mapped, body):
+        """(corps outil, index de sa face) d'où vient la face ``mapped``
+        du Tip, ou None : le premier autre corps de son historique."""
+        if not mapped:
+            return None
+        try:
+            history = tip.getElementHistory(mapped)
+        except Exception:  # noqa: BLE001 — pas d'historique : pas d'origine
+            return None
+        for step in history or ():
+            other, name = step[0], step[1]
+            if (other is body
+                    or getattr(other, "TypeId", "") != "PartDesign::Body"):
+                continue
+            try:
+                indexed = other.Shape.getElementName(name)
+            except Exception:  # noqa: BLE001
+                return None
+            match = re.fullmatch(r"Face(\d+)", str(indexed or ""))
+            return (other, int(match.group(1)) - 1) if match else None
+        return None
 
     # -- operations ------------------------------------------------------
 

@@ -226,6 +226,8 @@ def _etapes():
         fonctions.p107_enlevement_remonte,
         fonctions.p108_ajout_barre_au_milieu,
         fonctions.p109_reedition_au_rang,
+        fonctions.p110_face_du_corps_fondu,
+        fonctions.p111_coller_lissage_et_balayage,
         fonctions.p112_reseau_reduit_confirme,
         _etapes_des_plugins,
         document.bilan,

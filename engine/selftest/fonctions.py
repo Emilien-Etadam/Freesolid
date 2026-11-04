@@ -1506,15 +1506,13 @@ def p94_fusionner_les_autres_volumes(self, mark, report, etat):
     self.add_sweep(ring, curve, merge=False)
     curved = self._require_body()
     on_curve = curved is not first and curved.Shape.Volume > 0
-    # Un balayage le long d'une courbe 3D ne se colle pas encore : seules
-    # des esquisses suivent le profil collé.
+    # Un balayage ne se colle pas : sa trajectoire resterait la sienne.
     pasted = dispatch(self, "paste_feature", {"feature": curved.Tip.Name,
                                               "plane": "XY"})
     self.delete_feature(curved.Tip.Name)
     report["p94_balayage_nouveau_corps"] = (
         swept and gone and refused_ok and on_curve
         and pasted.get("ok") is False
-        and "courbe 3D" in str(pasted.get("error"))
         and len(self.get_tree()["bodies"]) == 1 and clean())
 
     # Copier-coller d'une révolution d'un autre corps : l'axe de
@@ -4229,6 +4227,102 @@ def p109_reedition_au_rang(self, mark, report, etat):
     report["p109_barre_et_enregistrement"] = (
         mid and saved and solids(a) == today
         and not self._rolled_back_objects() and clean())
+
+
+def p110_face_du_corps_fondu(self, mark, report, etat):
+    mark("p110: une face venue d'un corps fondu désigne la fonction de ce corps")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def rect(x1, y1, x2, y2):
+        name = self.sketch_start(plane="XY")["sketch"]
+        self.sketch_add_rectangle(name, x1, y1, x2, y2)
+        self.sketch_finish(name)
+        return name
+
+    def designated():
+        """Centre de chaque face du corps actif (mm, arrondi à 0,1) → la
+        fonction qu'elle désigne au survol."""
+        faces = self._require_body().Shape.Faces
+        found = {}
+        for group in self.tessellate()["groups"]:
+            centre = faces[group["faceId"]].CenterOfMass
+            key = tuple(round(v, 1) for v in (centre.x, centre.y, centre.z))
+            found[key] = group.get("feature")
+        return found
+
+    # Une barre en A fond B et C : les faces de B et de C, même rognées
+    # par la barre, désignent leur propre extrusion ; celles de la barre,
+    # la barre.
+    self.new_part("Face du corps fondu")
+    rect(0, 0, 20, 20)
+    a_pad = self.add_pad(10)["features"][0]["name"]
+    a = self._require_body()
+    self.add_body()
+    rect(30, 0, 50, 20)
+    self.add_pad(10)
+    b = self._require_body()
+    self.add_body()
+    rect(60, 0, 80, 20)
+    self.add_pad(10)
+    c = self._require_body()
+    self.set_active_body(a.Name)
+    rect(10, 5, 70, 15)
+    call("add_pad", length=5, bodies=[b.Name, c.Name])
+    bar = self._thin_owner(a.Tip).Name
+    seen = designated()
+    match = self._face_match
+    report["p110_extrusion_qui_fond"] = (
+        seen.get((40.0, 10.0, 10.0)) == b.Tip.Name      # dessus de B
+        and seen.get((30.0, 10.0, 5.8)) == b.Tip.Name   # flanc rogné
+        and seen.get((70.0, 10.0, 10.0)) == c.Tip.Name  # dessus de C
+        and seen.get((25.0, 10.0, 5.0)) == bar          # dessus de la barre
+        and seen.get((10.0, 10.0, 10.0)) == a_pad       # dessus de A
+        and match.get("matched") == match.get("faces") == len(seen))
+
+    # Tirer le dessus de B change l'extrusion de B.
+    top = next(i for i, face in enumerate(a.Shape.Faces)
+               if abs(face.CenterOfMass.z - 10) < 1e-6
+               and abs(face.CenterOfMass.x - 40) < 1e-6)
+    drag = self.face_drag_info(top)["drag"] or {}
+    report["p110_tirer_la_face"] = (
+        drag.get("feature") == b.Tip.Name and drag.get("value") == 10.0)
+
+    # « Combiner » : la face de B restée entière et celle qu'il rogne.
+    self.new_part("Face combinée")
+    rect(0, 0, 20, 20)
+    a_pad = self.add_pad(10)["features"][0]["name"]
+    a = self._require_body()
+    self.add_body()
+    rect(10, 0, 40, 20)
+    self.add_pad(5)
+    b = self._require_body()
+    self.set_active_body(a.Name)
+    call("add_boolean", tool=b.Name, type="fuse")
+    seen = designated()
+    report["p110_combiner"] = (
+        seen.get((40.0, 10.0, 2.5)) == b.Tip.Name
+        and seen.get((30.0, 10.0, 5.0)) == b.Tip.Name
+        and seen.get((10.0, 10.0, 10.0)) == a_pad)
+
+    # Une copie de réseau de corps : ses faces désignent le réseau, seule
+    # ou combinée avec sa source.
+    self.new_part("Face d'une copie")
+    rect(0, 0, 10, 10)
+    self.add_pad(8)
+    source = self._require_body()
+    self.add_body_pattern("linear", [source.Name], length=8, count=2,
+                          axis="X", spacing=True)
+    host = self._body_pattern_hosts()[0].Name
+    copy = next(bd for bd in self._history_bodies() if bd is not source)
+    self.set_active_body(copy.Name)
+    alone = set(designated().values())
+    self.set_active_body(source.Name)
+    call("add_boolean", tool=copy.Name, type="fuse")
+    report["p110_copie_de_reseau"] = (
+        alone == {host} and designated().get((18.0, 5.0, 4.0)) == host)
 
 
 def p111_coller_lissage_et_balayage(self, mark, report, etat):

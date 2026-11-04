@@ -1506,13 +1506,15 @@ def p94_fusionner_les_autres_volumes(self, mark, report, etat):
     self.add_sweep(ring, curve, merge=False)
     curved = self._require_body()
     on_curve = curved is not first and curved.Shape.Volume > 0
-    # Un balayage ne se colle pas : sa trajectoire resterait la sienne.
+    # Un balayage le long d'une courbe 3D ne se colle pas encore : seules
+    # des esquisses suivent le profil collé.
     pasted = dispatch(self, "paste_feature", {"feature": curved.Tip.Name,
                                               "plane": "XY"})
     self.delete_feature(curved.Tip.Name)
     report["p94_balayage_nouveau_corps"] = (
         swept and gone and refused_ok and on_curve
         and pasted.get("ok") is False
+        and "courbe 3D" in str(pasted.get("error"))
         and len(self.get_tree()["bodies"]) == 1 and clean())
 
     # Copier-coller d'une révolution d'un autre corps : l'axe de
@@ -4227,3 +4229,99 @@ def p109_reedition_au_rang(self, mark, report, etat):
     report["p109_barre_et_enregistrement"] = (
         mid and saved and solids(a) == today
         and not self._rolled_back_objects() and clean())
+
+
+def p111_coller_lissage_et_balayage(self, mark, report, etat):
+    mark("p111: un lissage ou un balayage collé emporte ses autres esquisses")
+    from engine.kernel import dispatch
+
+    def call(op, **params):
+        return dispatch(self, op, params)
+
+    def clean():
+        return not any("Invalid" in (o.State or ()) for o in self._doc.Objects)
+
+    def square(sketch, x1, y1, x2, y2):
+        for line in ((x1, y1, x2, y1), (x2, y1, x2, y2),
+                     (x2, y2, x1, y2), (x1, y2, x1, y1)):
+            self.sketch_add_line(sketch, *line)
+        self.sketch_finish(sketch)
+
+    def top_of(body, x):
+        """La face du dessus du bloc dont le milieu est en ``x``."""
+        faces = body.Shape.Faces
+        best = max((f.CenterOfMass.z, i) for i, f in enumerate(faces)
+                   if abs(f.CenterOfMass.x - x) < 1e-6
+                   and abs(f.normalAt(0, 0).z - 1) < 1e-6)
+        return best[1]
+
+    def owned(twin, link, source_links):
+        """L'esquisse de ``link`` : neuve, dans le corps, attachée au
+        profil collé."""
+        sketch = self._as_object(link)
+        support = list(getattr(sketch, "AttachmentSupport", None)
+                       or getattr(sketch, "Support", None) or [])
+        return (sketch not in source_links
+                and sketch.getParentGeoFeatureGroup() is self._require_body()
+                and sketch.MapMode == "ObjectXY"
+                and support and support[0][0] is self._as_object(twin.Profile))
+
+    # Un lissage à côté du bloc, collé sur le dessus du bloc (l'esquisse
+    # garde ses coordonnées : la copie monte de 5) : même volume, sa
+    # section le suit quand le bloc grandit.
+    self.new_part("Coller un lissage")
+    self.add_rect_sketch(20, 20)
+    block = self.add_pad(5)["features"][0]["name"]
+    body = self._require_body()
+    low = self.sketch_start(plane="XY")["sketch"]
+    square(low, 40, -10, 60, 10)
+    datum = next(f["name"] for f in self.add_datum_plane(
+        base="XY", offset=20)["features"] if f["type"] == "PartDesign::Plane")
+    high = self.sketch_start(datum=datum)["sketch"]
+    square(high, 45, -5, 55, 5)
+    self.add_loft([low, high])
+    source = body.Tip
+    before = body.Shape.Volume
+    count = len(self._doc.Objects)
+    pasted = call("paste_feature", feature=source.Name, face=top_of(body, 0))
+    twin = body.Tip
+    section = self._as_object(twin.Sections[0])
+    report["p111_lissage_colle"] = (
+        pasted.get("ok") is True and twin is not source
+        and owned(twin, twin.Sections[0],
+                  [self._as_object(s) for s in source.Sections])
+        and abs(twin.AddSubShape.Volume - source.AddSubShape.Volume) < 1e-6
+        and body.Shape.Volume > before + 1
+        and abs(section.getGlobalPlacement().Base.z - 25) < 1e-6
+        and clean())
+    call("set_params", feature=block, values={"length": 15})
+    followed = (abs(section.getGlobalPlacement().Base.z - 35) < 1e-6
+                and abs(twin.AddSubShape.Volume
+                        - source.AddSubShape.Volume) < 1e-6)
+    call("undo")
+    call("undo")
+    report["p111_suit_la_face_et_s_annule"] = (
+        followed and len(self._doc.Objects) == count
+        and body.Tip is source and clean())
+
+    # Un balayage : sa trajectoire part avec lui.
+    self.new_part("Coller un balayage")
+    self.add_rect_sketch(20, 20)
+    self.add_pad(5)
+    body = self._require_body()
+    spine = self.sketch_start(plane="XZ")["sketch"]
+    self.sketch_add_line(spine, 40, 0, 40, 30)
+    self.sketch_add_line(spine, 40, 30, 60, 30)
+    self.sketch_finish(spine)
+    ring = self.sketch_start(plane="XY")["sketch"]
+    self.sketch_add_circle(ring, 40, 0, 3)
+    self.sketch_finish(ring)
+    self.add_sweep(ring, spine)
+    source = body.Tip
+    pasted = call("paste_feature", feature=source.Name, face=top_of(body, 0))
+    twin = body.Tip
+    report["p111_balayage_colle"] = (
+        pasted.get("ok") is True and twin is not source
+        and owned(twin, twin.Spine, [self._as_object(source.Spine)])
+        and abs(twin.AddSubShape.Volume - source.AddSubShape.Volume) < 1e-6
+        and clean())

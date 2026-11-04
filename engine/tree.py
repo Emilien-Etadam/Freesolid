@@ -30,6 +30,7 @@ class TreeMixin:
             raise KernelError("réordonner : fonction inconnue dans ce corps")
         if moved is anchor:
             return self.get_tree()
+        bar = self._bar_line()
         consumed = self._consumed_sketches()
         # La fonction voyage avec ses esquisses ; « avant » une fonction,
         # c'est avant ses esquisses à elle aussi.
@@ -56,6 +57,9 @@ class TreeMixin:
             last = self._last_body_feature(body)
             if last is not None:
                 body.Tip = last
+        # Le rang de la fonction a changé parmi les autres corps : les
+        # étapes cachées des enlèvements suivent le leur.
+        self._place_scope_cuts()
         # Chaque objet doit venir après ce qu'il référence dans le corps
         # (esquisse posée sur une face, habillage sur des arêtes…). Le
         # chaînage BaseFeature, lui, est refait par FreeCAD.
@@ -69,13 +73,22 @@ class TreeMixin:
                     raise KernelError(
                         "réordonner : « {} » dépend de « {} », qui viendrait "
                         "après".format(obj.Label, dep.Label))
-        doc.recompute()
-        broken = [o.Label for o in body.Group if "Invalid" in (o.State or ())]
+        try:
+            # Les outils figés des étapes cachées suivent leur source.
+            self._recompute()
+        except KernelError:
+            pass  # refusé ci-dessous, en nommant ce qui casse
+        broken = [o.Label for b in self._history_bodies() for o in b.Group
+                  if "Invalid" in (o.State or ())]
         if broken:
             raise KernelError(
                 "réordonner : l'arbre ne se reconstruit plus ({}) — une "
                 "fonction viendrait avant ce dont elle dépend".format(
                     ", ".join(broken)))
+        if bar is not None:
+            # La barre reste sous la même ligne : chaque corps s'arrête à
+            # son rang, étapes cachées comprises.
+            return self.set_tip(bar)
         return self.get_tree()
 
     def _last_body_feature(self, body=None):
@@ -405,6 +418,24 @@ class TreeMixin:
         self._set_bar_sketches(obj.Name if absorbed else "")
         self._recompute()
         return self.get_tree()
+
+    def _bar_line(self):
+        """La ligne sous laquelle passe la barre de retour : ``None`` quand
+        elle est en bas de l'arbre, ``""`` tout en haut, l'esquisse quand
+        elle passe entre une esquisse et sa fonction."""
+        for body in self._history_bodies():
+            sketch = getattr(body, _BAR_SKETCH_PROP, "")
+            if sketch:
+                return sketch
+        rolled = {o.Name for o in self._rolled_back_objects()}
+        if not rolled:
+            return None
+        last = ""
+        for line in self._history_lines():
+            if line.Name in rolled:
+                break
+            last = line.Name
+        return last
 
     def _set_bar_sketch(self, body, name):
         """Esquisse au-dessus de laquelle passe la barre, sortie de sa

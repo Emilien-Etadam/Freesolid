@@ -590,3 +590,36 @@ class BodyScopeMixin:
                 "« {} » n'existe pas encore au rang de « {} »".format(
                     self._body_title(target), feature.Label))
         return self._tip_with_helpers(anchor)
+
+    def _place_scope_cuts(self):
+        """Range chaque étape cachée au rang de sa source, dans son corps :
+        juste après ``_scope_anchor``. Un enlèvement remonté au-dessus de
+        fonctions d'un corps qu'il creuse le creuse avant elles ; descendu
+        sous elles, après. Refusé si le corps n'existe pas encore au rang
+        de l'enlèvement.
+
+        Les étapes se rangent de la plus ancienne à la plus récente : celles
+        d'avant sont à leur place quand vient la suivante. Un corps dont la
+        pointe était en bout de chaîne l'y garde."""
+        doc = self._require_doc()
+        order_of = self._tree_order()
+        steps = []
+        for cut in doc.Objects:
+            source = doc.getObject(self._hidden_cut_source(cut) or "")
+            body = cut.getParentGeoFeatureGroup() if source else None
+            if getattr(body, "TypeId", "") == "PartDesign::Body":
+                steps.append((order_of.get(source.Name, -1), cut, source,
+                              body))
+        steps.sort(key=lambda step: step[0])
+        for _rank, cut, source, body in steps:
+            anchor = self._scope_anchor(source, body)
+            group = list(body.Group)
+            before = [o for o in group[:group.index(cut)]
+                      if o.isDerivedFrom("PartDesign::Feature")]
+            if before and before[-1] is anchor:
+                continue
+            tip = body.Tip
+            at_end = tip is not None and tip is self._last_body_feature(body)
+            body.removeObject(cut)
+            body.insertObject(cut, anchor, True)
+            body.Tip = self._last_body_feature(body) if at_end else tip
